@@ -44,7 +44,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=synthetic-agent-defaults-bootstrap",
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class PromptManagementPostgresIT {
     private static final String PATH = "/api/v1/settings/prompts";
@@ -66,7 +65,7 @@ class PromptManagementPostgresIT {
     private static AdminPrincipal owner;
     MockMvc mvc;
     @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("synthetic-agent-defaults-bootstrap", "synthetic-director-admin", "synthetic-director-password");
+        if (owner == null) owner = identities.setup("synthetic-director-admin", "synthetic-director-password");
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
     }
     private UsernamePasswordAuthenticationToken asUser(String role) {

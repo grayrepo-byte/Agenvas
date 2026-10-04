@@ -1,4 +1,4 @@
-# Build server and web from this checkout; PostgreSQL uses the official image.
+# Pull the latest application images and the fixed official PostgreSQL version.
 # Edit runtime settings, ports, volumes, and resource limits here for your deployment.
 name: agenvas
 
@@ -98,11 +98,8 @@ services:
     restart: unless-stopped
 
   server:
-    build:
-      context: ..
-      dockerfile: deploy/docker/server.Dockerfile
-    image: agenvas-server:local
-    pull_policy: build
+    image: docker.io/grayrepo/agenvas-server:latest
+    pull_policy: always
     environment:
       AGENVAS_DB_URL: jdbc:postgresql://postgres:5432/agenvas
       AGENVAS_DB_USER: agenvas
@@ -149,11 +146,8 @@ services:
     restart: unless-stopped
 
   web:
-    build:
-      context: ..
-      dockerfile: deploy/docker/frontend.Dockerfile
-    image: agenvas-web:local
-    pull_policy: build
+    image: docker.io/grayrepo/agenvas-web:latest
+    pull_policy: always
     depends_on:
       server:
         condition: service_healthy

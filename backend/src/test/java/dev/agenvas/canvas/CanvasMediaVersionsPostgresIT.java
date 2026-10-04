@@ -56,7 +56,6 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=media-version-integration-secret",
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class CanvasMediaVersionsPostgresIT {
     @Container
@@ -88,7 +87,7 @@ class CanvasMediaVersionsPostgresIT {
     void setup() {
         owner = jdbc.sql("select id from app_user where login_name = 'media-version-admin'")
                 .query(UUID.class).optional().map(id -> new AdminPrincipal(id, "media-version-admin"))
-                .orElseGet(() -> identities.setup("media-version-integration-secret", "media-version-admin",
+                .orElseGet(() -> identities.setup("media-version-admin",
                         "media-version-password-123"));
         project = projects.create(owner.userId(), "Node versions", Project.AspectRatio.LANDSCAPE_16_9);
     }

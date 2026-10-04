@@ -34,7 +34,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=comfy-remote-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class ComfyUiRemoteConnectionPostgresIT {
@@ -60,7 +59,7 @@ class ComfyUiRemoteConnectionPostgresIT {
     @Test
     void savesFullEndpointEncryptedAndPreservesRedactedEditsAndHistoricalVersions() throws Exception {
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
-        var admin = identities.setup("comfy-remote-integration-secret", "admin", "test-password-123");
+        var admin = identities.setup("admin", "test-password-123");
         var auth = authentication(new UsernamePasswordAuthenticationToken(admin, null,
                 List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         String endpoint = "https://comfy.example.com/proxy/synthetic-path-key";

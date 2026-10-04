@@ -28,7 +28,6 @@ import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -37,7 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/auth")
 public class AuthenticationController {
 
-    /** 执行初始化凭据与管理员密码校验。 */
+    /** 执行一次性初始化与管理员密码校验。 */
     private final IdentityService identityService;
     /** 验证已存储的管理员账户凭据。 */
     private final AuthenticationManager authenticationManager;
@@ -72,10 +71,9 @@ public class AuthenticationController {
     /** 创建首个管理员账户；初始化成功不会自动建立登录会话。 */
     @PostMapping("/setup")
     public ResponseEntity<CurrentUserResponse> setup(
-            @RequestHeader("X-Agenvas-Bootstrap-Secret") String bootstrapSecret,
             @Valid @RequestBody SetupRequest request) {
         AdminPrincipal principal = identityService.setup(
-                bootstrapSecret, request.loginName(), request.password());
+                request.loginName(), request.password());
         return ResponseEntity.status(HttpStatus.CREATED).body(CurrentUserResponse.from(principal));
     }
 

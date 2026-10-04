@@ -39,7 +39,6 @@ import tools.jackson.databind.JsonNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=media-settings-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class MediaCapabilitySettingsPostgresIT {
@@ -65,8 +64,7 @@ class MediaCapabilitySettingsPostgresIT {
     @Test
     void administratorCreatesMaskedVersionedConnectionAndCapabilities() throws Exception {
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
-        AdminPrincipal admin = identities.setup("media-settings-integration-secret",
-                "media-admin", "media-password-123");
+        AdminPrincipal admin = identities.setup("media-admin", "media-password-123");
         var adminAuth = authentication(new UsernamePasswordAuthenticationToken(admin, null,
                 List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         var userAuth = authentication(new UsernamePasswordAuthenticationToken(admin, null,

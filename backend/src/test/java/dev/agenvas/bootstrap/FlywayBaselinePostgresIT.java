@@ -28,6 +28,7 @@ import tools.jackson.databind.ObjectMapper;
 class FlywayBaselinePostgresIT {
 
     private static final String INITIAL_BASELINE_VERSION = "1";
+    private static final String BEFORE_PERMANENT_SETUP_VERSION = "8";
     private static final String INITIAL_BASELINE_SCRIPT = "V1__initial_schema.sql";
     private static final String FOREIGN_KEY_VIOLATION = "23503";
     private static final String CHECK_VIOLATION = "23514";
@@ -78,6 +79,26 @@ class FlywayBaselinePostgresIT {
             assertThat(count(connection, "select count(*) from flyway_schema_history where success and version is not null"))
                     .isEqualTo(MigrationVersions.sorted().size());
         }
+    }
+
+    @Test
+    void permanentSetupUpgradeRecognizesAnExistingDisabledAdministrator() throws Exception {
+        Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target(BEFORE_PERMANENT_SETUP_VERSION).load().migrate();
+        UUID owner = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertOwner(connection, owner);
+            execute(connection, "update app_user set status='DISABLED' where id=?", owner);
+        }
+        flyway.migrate();
+        try (Connection connection = connection()) {
+            assertThat(count(connection, "select count(*) from installation_lock where initialized_at is not null"))
+                    .isEqualTo(1);
+            assertThat(count(connection, "select count(*) from app_user where id=? and status='DISABLED'", owner))
+                    .isEqualTo(1);
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isZero();
     }
 
     @Test

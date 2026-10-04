@@ -46,8 +46,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
-        classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=artifact-bootstrap-secret")
+        classes = AgenvasApplication.class)
 class ArtifactPostgresIT {
 
     @Container
@@ -88,8 +87,7 @@ class ArtifactPostgresIT {
                         .query(String.class)
                         .single())
                 .isEqualTo(MigrationVersions.latest());
-        AdminPrincipal owner = identityService.setup(
-                "artifact-bootstrap-secret", "artifact-admin", "artifact-password-123");
+        AdminPrincipal owner = identityService.setup("artifact-admin", "artifact-password-123");
         Project project = projectService.create(
                 owner.userId(), "Artifact project", Project.AspectRatio.LANDSCAPE_16_9);
         Project otherProject = projectService.create(

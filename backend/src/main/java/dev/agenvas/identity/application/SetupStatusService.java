@@ -16,8 +16,8 @@ public class SetupStatusService {
         this.adminAccountRepository = adminAccountRepository;
     }
 
-    /** 仅当尚无活动管理员时返回 true。 */
+    /** 仅当安装从未完成初始化时返回 true，不随管理员停用或删除而重开。 */
     public boolean isSetupRequired() {
-        return !adminAccountRepository.hasAdminAccount();
+        return !adminAccountRepository.isSetupCompleted();
     }
 }

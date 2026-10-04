@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/src/assets/brand/agenvas-square.png" alt="Agenvas Logo" width="120" />
+  <img src="frontend/src/assets/brand/agenvas-favicon.png" alt="Agenvas Logo" width="120" />
 </p>
 
 <h1 align="center">Agenvas</h1>
@@ -31,31 +31,34 @@
 
 ## 快速开始
 
-### 1. 配置环境
+### 1. 启动
 
-安装 Docker Engine / Docker Desktop 和 Docker Compose，在仓库根目录执行：
-
-```sh
-cp .env.example .env
-```
-
-编辑 `.env`，填写以下配置（不要提交真实凭据）：
-
-| 配置 | 用途 |
-| --- | --- |
-| `AGENVAS_DB_PASSWORD` | 必填，独立随机数据库密码 |
-| `AGENVAS_BOOTSTRAP_SECRET` | 必填，至少 24 字符的一次性管理员初始化密钥 |
-| `AGENVAS_CREDENTIAL_MASTER_KEY` | 32 字节随机密钥的 Base64 编码，保存模型或存储凭证、完整 ComfyUI 地址前必填 |
-
-### 2. 启动并登录
+安装 Docker Engine / Docker Desktop 和 Docker Compose，将 `docker-compose.yml` 放入一个目录，在该目录执行：
 
 ```sh
-./deploy/update-local.sh
+docker compose up -d --wait
 ```
 
-脚本构建镜像并启动服务，保留数据库与素材卷。启动和登录无需 GPU 或模型 Key。
+无需创建 `.env`，无需手动生成或填写密钥。首次启动自动生成数据库密码和凭证加密主密钥，并保存到 `credentials-data` 持久卷；重启、更新和普通 `down` 后继续使用原值。
 
-打开 <http://127.0.0.1:8088/setup>，输入初始化密钥并创建管理员，然后登录。
+默认 `docker-compose.yml` 直接拉取 `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest` 和官方 `postgres:17.11-alpine`，不在本机编译。发布流水线配置为生成应用的 amd64 / arm64 镜像；需先成功发布含自动密钥入口的 `latest`。首次发布前可使用[容器源码构建](#容器源码构建)。启动和登录无需 GPU 或模型 Key。
+
+每份 Compose 都完整列出环境、端口、卷、健康检查和资源限制；部署者直接修改所选文件，不需要其他配置文件。需要固定应用版本时，把 `latest` 改为已发布版本、提交标签或 digest。PostgreSQL 使用[官方固定版本镜像](https://hub.docker.com/_/postgres)，不自行构建或发布。
+
+### 2. 创建管理员
+
+打开 <http://127.0.0.1:8088/setup>，填写管理员登录名和密码，创建账号后登录。无需初始化密钥。
+
+程序在数据库中永久记录初始化完成状态：并发请求只有一次成功，完成后再次提交返回 `409 SETUP_ALREADY_COMPLETED`。重启、停用或删除管理员不会重新开放初始化；初始化失败会回滚，仍可重试。先在本机完成初始化，再开放公网反向代理。
+
+数据库密码和凭证主密钥均已自动配置，文件位于 server 容器的 `/run/agenvas/credentials/installation/`，普通使用不需要读取或填写：
+
+| 配置 | 自动生成内容 | 保存文件 |
+| --- | --- | --- |
+| `AGENVAS_DB_PASSWORD` | 32 字节随机值转为 64 字符十六进制数据库密码 | `database-password` |
+| `AGENVAS_CREDENTIAL_MASTER_KEY` | 32 字节随机密钥的 Base64 编码 | `credential-master-key` |
+
+密钥不会写入 Compose、Git 或启动日志。备份时须另外加密保管 `credentials-data`；不要执行 `down -v`，它会删除数据和密钥。已有数据库升级到此入口时，须先恢复密钥卷或通过仓库外私有 Compose 配置导入原数据库密码和主密钥；缺失时启动会停止，避免旧凭证无法解密。详见[备份与恢复](docs/operations/backup-restore.md)。
 
 ### 3. 配置模型，开始创作
 
@@ -70,15 +73,17 @@ Seedance 视频参考需要可公网访问的媒体中继，配置见[媒体中�
 
 ### 更新与停止
 
-更新代码后，再次运行 `./deploy/update-local.sh`。停止服务并保留数据卷：
+执行 `docker compose up -d --wait` 拉取并应用最新 `latest` 应用镜像。若已自行修改 Compose 中的标签或 digest，则使用所指定版本。停止服务并保留数据卷：
 
 ```sh
-docker compose --env-file .env -f deploy/compose.yaml down
+docker compose down
 ```
 
-默认端口为 Web `8088`、API `8080`、PostgreSQL `5432`，均仅绑定本机。可在 `.env` 中通过 `AGENVAS_WEB_PORT`、`AGENVAS_API_PORT`、`AGENVAS_DB_PORT` 修改。
+源码构建环境更新代码后运行 `./deploy/update-local.sh`；停止时使用 `docker compose -f docker-compose.local.yml down`。
 
-对外部署需配置 HTTPS、反向代理和 `AGENVAS_SECURE_COOKIES=true`。升级前备份数据库、媒体、配置与加密密钥；旧 V1–V77 开发库的迁移限制见[备份与恢复说明](docs/operations/backup-restore.md)。
+默认端口为 Web `8088`、API `8080`、PostgreSQL `5432`，均仅绑定本机。直接修改所选 Compose 的 `ports`。
+
+对外部署需配置 HTTPS、反向代理，并将 Compose 的 `AGENVAS_SECURE_COOKIES` 改为 `"true"`。升级前备份数据库、媒体、配置与加密密钥；旧 V1–V77 开发库的迁移限制见[备份与恢复说明](docs/operations/backup-restore.md)。
 
 ## 本地开发
 
@@ -90,12 +95,24 @@ docker compose --env-file .env -f deploy/compose.yaml down
 
 工具链：JDK 21、Node 24 LTS（24.12+）、pnpm 12.5.1。完整版本见[依赖基线](docs/dependency-baseline.md)。
 
-### Mock 环境
+### 容器源码构建
 
-填写 `.env` 中的数据库密码与初始化密钥后启动，无需外部模型账户：
+在仓库根目录执行，编译当前 server、web 源码并启动三个服务，PostgreSQL 直接使用官方固定版本镜像：
 
 ```sh
-docker compose --env-file .env -f deploy/compose.dev.yaml up -d --build
+docker compose -f docker-compose.local.yml up -d --build --wait
+```
+
+也可使用 `./deploy/update-local.sh`，先完成全部镜像构建，再更新容器并等待健康检查。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
+
+镜像部署和源码构建默认项目名均为 `agenvas`，沿用相同数据库、素材和密钥卷，切换时须备份并保证版本兼容。它们是同一环境的两种启动方式；若要并行运行，需用 `-p` 指定独立项目名并修改端口。
+
+### Mock 环境
+
+直接启动，数据库密码和主密钥同样自动生成，无需外部模型账户：
+
+```sh
+docker compose -f deploy/compose.dev.yaml up -d --build --wait
 ```
 
 文字与媒体使用 Mock，图片、视频、音频为合成演示素材，不代表真实模型效果。访问地址与初始化流程同上；停止时使用同一 Compose 文件执行 `down`。
@@ -121,11 +138,32 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-后端需提供 `AGENVAS_DB_URL`、`AGENVAS_DB_USER`、`AGENVAS_DB_PASSWORD` 和 `AGENVAS_BOOTSTRAP_SECRET`，不会自动加载根目录 `.env`。源码运行默认使用 Mock，媒体处理需安装 FFmpeg / FFprobe；深度提取见[本地图片处理配置](docs/local-image-processing.md)。
+独立 JVM 需自行提供 `AGENVAS_DB_URL`、`AGENVAS_DB_USER`、`AGENVAS_DB_PASSWORD`；变量参考 `.env.example`，JVM 不会自动加载此文件。Docker 自动密钥流程仅用于容器入口。源码运行默认使用 Mock，媒体处理需安装 FFmpeg / FFprobe；深度提取见[本地图片处理配置](docs/local-image-processing.md)。
 
 Vite 默认运行于 `5173`，将 `/api` 代理到 `localhost:8080`。
 
 </details>
+
+## Docker Hub 自动发布
+
+在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中配置：
+
+| 类型 | 名称 | 内容 |
+| --- | --- | --- |
+| Secret | `DOCKERHUB_USERNAME` | 有权推送镜像的 Docker Hub 用户名 |
+| Secret | `DOCKERHUB_TOKEN` | Docker Hub Access Token，具备目标仓库的读写权限 |
+
+在 Docker Hub 准备 `grayrepo/agenvas-server`、`grayrepo/agenvas-web` 两个公开仓库，便于部署者匿名拉取。CI 发布地址直接使用 `grayrepo`；需要更换发布方时修改工作流和 Compose 中的地址。PostgreSQL 从官方仓库拉取，只做扫描。
+
+`.github/workflows/ci.yml` 在推送 `main`、推送 `v*.*.*` 版本标签或手动运行时执行。前后端测试、Compose 检查、源码扫描及两个架构的应用与官方 PostgreSQL 镜像扫描通过后，发布已扫描应用镜像的多架构清单：
+
+- 每次发布：`sha-<完整 40 位提交 SHA>`。
+- `main` 分支：额外更新 `latest` 标签，供默认 Compose 使用；在 main 上手动运行也会更新。
+- `v0.1.0` 版本标签：额外发布 `0.1.0`；预发布版本保留后缀，版本标签触发不会覆盖 main 的 `latest`。
+
+PR 只执行检查，不访问 Docker Hub 凭据或推送镜像；其他分支的手动运行也不发布。每个服务和架构保留 SBOM 与许可证清单，成功发布的标签显示在 Actions 摘要中。`ci-<运行 ID>-<尝试次数>-<架构>` 为中间标签，部署使用 `latest` 或自行指定最终版本、提交标签或 digest。
+
+发布实现参考 [Docker 多架构构建说明](https://docs.docker.com/build/ci/github-actions/multi-platform/)与 [Docker 镜像标签规则](https://github.com/docker/metadata-action)。
 
 ## 文档与贡献
 

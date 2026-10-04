@@ -39,8 +39,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** PostgreSQL proof that Mock media results are immutable and current selection is fenced. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=selection-integration-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class TaskArtifactSelectionPostgresIT {
 
     @Container
@@ -72,8 +71,7 @@ class TaskArtifactSelectionPostgresIT {
 
     @Test
     void generatedVersionsSelectOnlyWithPinnedCurrentAndCanceledLateResultStaysHistorical() {
-        AdminPrincipal owner = identities.setup("selection-integration-secret",
-                "selection-admin", "selection-password-123");
+        AdminPrincipal owner = identities.setup("selection-admin", "selection-password-123");
         Project project = projects.create(owner.userId(), "Selection project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         mediaOwnerId = owner.userId();

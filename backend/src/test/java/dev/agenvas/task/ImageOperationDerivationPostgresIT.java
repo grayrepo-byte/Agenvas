@@ -40,7 +40,6 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=image-derivation-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class ImageOperationDerivationPostgresIT {
@@ -70,7 +69,7 @@ class ImageOperationDerivationPostgresIT {
 
     @Test
     void createsConnectedResultBranchAndSelectsOnlyThatBranch() {
-        AdminPrincipal owner = identities.setup("image-derivation-integration-secret", "derivation-admin",
+        AdminPrincipal owner = identities.setup("derivation-admin",
                 "derivation-password-123");
         Project project = projects.create(owner.userId(), "Image derivation",
                 Project.AspectRatio.LANDSCAPE_16_9);

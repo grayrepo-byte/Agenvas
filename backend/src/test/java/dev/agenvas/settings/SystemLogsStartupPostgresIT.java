@@ -23,8 +23,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** Real main startup and PostgreSQL, with Mock providers and the production security chain. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, useMainMethod = SpringBootTest.UseMainMethod.ALWAYS,
-        properties = "agenvas.identity.bootstrap-secret=system-logs-integration-bootstrap-secret")
+@SpringBootTest(classes = AgenvasApplication.class, useMainMethod = SpringBootTest.UseMainMethod.ALWAYS)
 class SystemLogsStartupPostgresIT {
     private static final PrintStream ORIGINAL_OUT = System.out;
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");

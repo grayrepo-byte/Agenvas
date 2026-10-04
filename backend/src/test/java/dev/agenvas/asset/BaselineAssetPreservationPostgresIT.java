@@ -19,8 +19,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** A clean-baseline startup preserves any pre-existing private archive directories. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=creative-reset-secret-2026")
+@SpringBootTest(classes = AgenvasApplication.class)
 class BaselineAssetPreservationPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");

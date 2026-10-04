@@ -43,8 +43,7 @@ import tools.jackson.databind.node.ObjectNode;
  */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=submission-unknown-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class TaskSubmissionUnknownPostgresIT {
 
     @Container
@@ -70,8 +69,7 @@ class TaskSubmissionUnknownPostgresIT {
 
     @Test
     void immediateUnknownKeepsItsReasonAndYieldsToRecoveryWhenTheLeaseIsGone() {
-        AdminPrincipal owner = identities.setup(
-                "submission-unknown-secret", "unknown-admin", "unknown-password-123");
+        AdminPrincipal owner = identities.setup("unknown-admin", "unknown-password-123");
         Project project = projects.create(owner.userId(), "Uncertain submission project",
                 Project.AspectRatio.LANDSCAPE_16_9);
 

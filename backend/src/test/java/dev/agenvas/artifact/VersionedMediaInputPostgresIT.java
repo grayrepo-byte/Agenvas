@@ -37,8 +37,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Ordered exact-version media inputs are saved and frozen through the public API seam. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=versioned-input-bootstrap-secret-2026")
+@SpringBootTest(classes = AgenvasApplication.class)
 class VersionedMediaInputPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -59,8 +58,7 @@ class VersionedMediaInputPostgresIT {
 
     @Test
     void freezesOrderedStartAndEndFramesWithoutLegacySingularFields() throws Exception {
-        AdminPrincipal owner = identities.setup("versioned-input-bootstrap-secret-2026",
-                "input-admin", "input-password-123");
+        AdminPrincipal owner = identities.setup("input-admin", "input-password-123");
         Project project = projects.create(owner.userId(), "Versioned media inputs",
                 Project.AspectRatio.LANDSCAPE_16_9);
         MockMvc mvc = webAppContextSetup(context).apply(

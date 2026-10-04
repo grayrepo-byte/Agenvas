@@ -31,7 +31,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=mock-agent-turn-integration-secret",
         "agenvas.llm.mode=mock",
         "agenvas.llm.scheduler-enabled=false"})
 class MockAgentTurnPostgresIT {
@@ -55,8 +54,7 @@ class MockAgentTurnPostgresIT {
 
     @Test
     void completesAnAgentRunWithoutAnyToolSideEffect() {
-        AdminPrincipal owner = identities.setup("mock-agent-turn-integration-secret",
-                "mock-turn-admin", "mock-turn-password-123");
+        AdminPrincipal owner = identities.setup("mock-turn-admin", "mock-turn-password-123");
         Project project = projects.create(owner.userId(), "Mock turn project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         UUID agent = agents.create(owner.userId(), project.id(), "Creator",

@@ -52,8 +52,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Real Task/Asset path against a loopback fake Google API; no paid call is made. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=google-image-integration-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class GoogleNanoBananaPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -97,8 +96,7 @@ class GoogleNanoBananaPostgresIT {
                 "GOOGLE_NANO_BANANA_2", mapper.readTree("{}"));
         catalog.setDefault(Task.Kind.IMAGE_GENERATION,
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), ability.id());
-        AdminPrincipal owner = identities.setup("google-image-integration-secret",
-                "google-admin", "google-password-123");
+        AdminPrincipal owner = identities.setup("google-admin", "google-password-123");
         Fixture edited = fixture(owner.userId(), "Reference edit", 2);
         Task editTask = approve(owner.userId(), edited);
         assertThat(editTask.input().path("mediaInput").path("images").size()).isEqualTo(2);

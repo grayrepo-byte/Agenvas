@@ -53,7 +53,6 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class,
         ConversationMemoryPostgresIT.FakeModelConfig.class}, properties = {
-        "agenvas.identity.bootstrap-secret=conversation-memory-integration-secret",
         "agenvas.llm.mode=mock",
         "agenvas.llm.scheduler-enabled=false"})
 class ConversationMemoryPostgresIT {
@@ -83,8 +82,7 @@ class ConversationMemoryPostgresIT {
 
     @Test
     void publicHistoryIsFrozenIntoRealMessagesAndTruncatedWithoutLeakingPrivateProtocol() {
-        AdminPrincipal owner = identities.setup("conversation-memory-integration-secret",
-                "memory-admin", "memory-password-123");
+        AdminPrincipal owner = identities.setup("memory-admin", "memory-password-123");
         Project project = projects.create(owner.userId(), "Memory project", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "制作短片", List.of());
         AgentRun first = runs.create(owner.userId(), project.id(), agent.id(),

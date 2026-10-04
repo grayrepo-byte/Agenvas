@@ -23,8 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Fixed cloud mappings expose only declared parameters and remain untested after publishing. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=cloud-media-catalog-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class MediaCloudCapabilityPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");

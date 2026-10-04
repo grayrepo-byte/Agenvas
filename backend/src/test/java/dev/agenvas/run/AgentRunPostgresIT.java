@@ -56,7 +56,7 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
         classes = AgenvasApplication.class,
-        properties = {"agenvas.identity.bootstrap-secret=run-integration-bootstrap-secret",
+        properties = {
                 "agenvas.llm.mode=configured"})
 class AgentRunPostgresIT {
 
@@ -103,8 +103,7 @@ class AgentRunPostgresIT {
 
     @Test
     void concurrentCreationReplaysOneRunAndWaitingStatesRetainTheSlot() throws Exception {
-        AdminPrincipal owner = identityService.setup(
-                "run-integration-bootstrap-secret", "run-admin", "run-password-123");
+        AdminPrincipal owner = identityService.setup("run-admin", "run-password-123");
         Project project = projectService.create(
                 owner.userId(), "Run project", Project.AspectRatio.LANDSCAPE_16_9);
         ArtifactService.ArtifactView brief = artifactService.create(

@@ -46,8 +46,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Real-PostgreSQL evidence for ambiguous submission recovery and cancellation fencing. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=recovery-integration-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class TaskRecoveryPostgresIT {
 
     @Container
@@ -75,8 +74,7 @@ class TaskRecoveryPostgresIT {
 
     @Test
     void crashedSubmissionBecomesUnknownAndCanceledLateResultStaysHistorical() throws Exception {
-        AdminPrincipal owner = identities.setup(
-                "recovery-integration-secret", "recovery-admin", "recovery-password-123");
+        AdminPrincipal owner = identities.setup("recovery-admin", "recovery-password-123");
         Project project = projects.create(owner.userId(), "Recovery project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());

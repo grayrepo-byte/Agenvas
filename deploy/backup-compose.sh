@@ -3,26 +3,25 @@ set -euo pipefail
 
 # Produce one stopped-writer database, asset and repository-template backup.
 # Credentials remain outside this archive and must be escrowed separately.
-if [[ $# -ne 3 ]]; then
-  printf 'Usage: %s <exact-compose-project> <env-file> <new-absolute-backup-directory>\n' "$0" >&2
+if [[ $# -lt 2 || $# -gt 3 ]]; then
+  printf 'Usage: %s <exact-compose-project> <new-absolute-backup-directory> [compose-file]\n' "$0" >&2
   exit 2
 fi
 
 backup_project=$1
-backup_env_file=$2
-backup_output=$3
+backup_output=$2
 backup_repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
-backup_compose_file="$backup_repo/deploy/compose.yaml"
+backup_compose_file=${3:-"$backup_repo/docker-compose.yml"}
 
 if [[ ! $backup_project =~ ^[a-z][a-z0-9_-]{2,63}$ ]]; then
   printf 'Backup project must be an explicit lowercase Compose project name.\n' >&2
   exit 2
 fi
-if [[ ! -r $backup_env_file || $backup_output != /* || -e $backup_output ]]; then
-  printf 'Provide a readable env file and a new absolute output directory.\n' >&2
+if [[ ! -r $backup_compose_file || $backup_output != /* || -e $backup_output ]]; then
+  printf 'Provide a readable Compose file and a new absolute output directory.\n' >&2
   exit 2
 fi
-backup_env_file=$(cd "$(dirname "$backup_env_file")" && pwd -P)/$(basename "$backup_env_file")
+backup_compose_file=$(cd "$(dirname "$backup_compose_file")" && pwd -P)/$(basename "$backup_compose_file")
 backup_parent=$(cd "$(dirname "$backup_output")" && pwd -P)
 if [[ $backup_parent == / || $backup_parent == "$backup_repo" ||
       $backup_parent == "$backup_repo/"* ]]; then
@@ -36,7 +35,7 @@ for backup_command in docker jq sha256sum tar git; do
   fi
 done
 
-backup_compose=(docker compose -p "$backup_project" --env-file "$backup_env_file"
+backup_compose=(docker compose -p "$backup_project" --env-file /dev/null
   -f "$backup_compose_file")
 backup_config=$("${backup_compose[@]}" config --format json)
 backup_config_project=$(jq -r '.name // empty' <<< "$backup_config")
@@ -93,7 +92,8 @@ docker run --rm \
   --mount "type=volume,source=$backup_asset_volume,target=/source,readonly" \
   --mount "type=bind,source=$backup_output,target=/backup" \
   postgres:17.11-alpine tar -C /source -czf /backup/assets.tgz .
-tar -C "$backup_repo" -czf "$backup_output/repository-templates.tgz" configs deploy
+tar -C "$backup_repo" -czf "$backup_output/repository-templates.tgz" \
+  configs deploy docker-compose.yml docker-compose.local.yml
 
 [[ -s $backup_output/database.dump && -s $backup_output/assets.tgz &&
    -s $backup_output/repository-templates.tgz ]]

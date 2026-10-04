@@ -52,7 +52,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=audio-media-integration-test-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mock.scheduler-enabled=false", "agenvas.provider.mock.video-scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
@@ -86,7 +85,7 @@ class AudioMediaPostgresIT {
     @Autowired WebApplicationContext context;
 
     @Test void audioUploadRegenerationAndMixedVideoReferencesStayImmutableAndAuthorized() throws Exception {
-        var owner = identities.setup("audio-media-integration-test-secret", "audio-admin", "audio-password-123");
+        var owner = identities.setup("audio-admin", "audio-password-123");
         UUID ownerId = owner.userId();
         UUID projectId = projects.create(ownerId, "Audio", Project.AspectRatio.LANDSCAPE_16_9).id();
         var audio = artifacts.create(ownerId, projectId, Artifact.Kind.AUDIO, "Audio", null).artifact();

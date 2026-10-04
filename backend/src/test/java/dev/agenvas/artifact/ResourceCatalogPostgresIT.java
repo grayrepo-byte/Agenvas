@@ -39,8 +39,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Synthetic content, real PostgreSQL and authenticated HTTP; no external Provider calls. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=resource-catalog-test-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class ResourceCatalogPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE_ROOT = temporaryRoot();
@@ -63,7 +62,7 @@ class ResourceCatalogPostgresIT {
     @Autowired WebApplicationContext context;
 
     @Test void browsesAllExactResultsWithoutCanvasLibraryOrDefaultSelectionAndEnforcesOwnership() throws Exception {
-        var owner = identities.setup("resource-catalog-test-secret", "resource-admin", "synthetic-password-123");
+        var owner = identities.setup("resource-admin", "synthetic-password-123");
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         var mvc = webAppContextSetup(context).apply(springSecurity()).build();
         var firstProject = projects.create(owner.userId(), "First project", Project.AspectRatio.SQUARE_1_1);

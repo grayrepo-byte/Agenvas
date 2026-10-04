@@ -56,8 +56,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL and decoder-validated synthetic PNGs; no model or provider calls. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=media-template-synthetic-bootstrap")
+@SpringBootTest(classes = AgenvasApplication.class)
 class MediaTemplatePostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE_ROOT = temporaryRoot();
@@ -82,7 +81,7 @@ class MediaTemplatePostgresIT {
 
     @BeforeEach void setup() {
         if (owner == null) {
-        owner = identities.setup("media-template-synthetic-bootstrap", "template-admin", "template-synthetic-password");
+        owner = identities.setup("template-admin", "template-synthetic-password");
         // The deployment permits one active administrator; a synthetic disabled identity
         // with explicit test authentication still exercises owner and authority boundaries.
         other = new AdminPrincipal(UUID.randomUUID(), "template-other");

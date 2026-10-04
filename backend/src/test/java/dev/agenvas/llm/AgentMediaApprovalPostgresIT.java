@@ -93,7 +93,7 @@ import tools.jackson.databind.node.ObjectNode;
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, AgentMediaApprovalPostgresIT.FakeConfig.class},
-        properties = {"agenvas.identity.bootstrap-secret=synthetic-media-approval-bootstrap",
+        properties = {
                 "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false", "agenvas.export.scheduler-enabled=false",
                 "spring.main.allow-bean-definition-overriding=true"})
 class AgentMediaApprovalPostgresIT {
@@ -150,7 +150,7 @@ class AgentMediaApprovalPostgresIT {
     @BeforeAll
     void setup() throws Exception {
         Files.setPosixFilePermissions(storage, PosixFilePermissions.fromString("rwx------"));
-        owner = identities.setup("synthetic-media-approval-bootstrap", "synthetic-approval-admin",
+        owner = identities.setup("synthetic-approval-admin",
                 "synthetic-approval-password-123");
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
         auth = authentication(new UsernamePasswordAuthenticationToken(owner, null,

@@ -53,8 +53,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Fake-model, real-PostgreSQL proof of bounded read tools and Run-visible inputs. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, ReadToolsPostgresIT.FakeConfig.class},
-        properties = "agenvas.identity.bootstrap-secret=read-tools-integration-secret")
+@SpringBootTest(classes = {AgenvasApplication.class, ReadToolsPostgresIT.FakeConfig.class})
 class ReadToolsPostgresIT {
 
     @Container
@@ -83,8 +82,7 @@ class ReadToolsPostgresIT {
 
     @Test
     void readsOnlyPinnedVersionAndNeverLeaksUnboundProjectContent() {
-        AdminPrincipal owner = identities.setup("read-tools-integration-secret",
-                "reader-admin", "reader-password-123");
+        AdminPrincipal owner = identities.setup("reader-admin", "reader-password-123");
         Project project = projects.create(owner.userId(), "Reader project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         ObjectNode content = mapper.createObjectNode();

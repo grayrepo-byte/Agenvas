@@ -49,7 +49,6 @@ import tools.jackson.databind.ObjectMapper;
         classes = AgenvasApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
-            "agenvas.identity.bootstrap-secret=stream-integration-bootstrap-secret",
             // 生产心跳为 15 秒；这里缩短，否则每轮等待失效连接回收要花几十秒。
             "agenvas.sse.heartbeat-interval=200ms"
         })
@@ -92,8 +91,7 @@ class ProjectEventStreamPostgresIT {
 
     @Test
     void replaysHistoryAndLastEventIdWithoutLeakingOtherProjects() throws Exception {
-        AdminPrincipal owner = identityService.setup(
-                "stream-integration-bootstrap-secret", "stream-admin", "stream-password-123");
+        AdminPrincipal owner = identityService.setup("stream-admin", "stream-password-123");
         Project project = projectService.create(
                 owner.userId(), "Stream project", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agentService.create(

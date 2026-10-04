@@ -69,7 +69,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=call-log-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false",
         "agenvas.export.scheduler-enabled=false"})
@@ -112,7 +111,7 @@ class CallLogPostgresIT {
     void setUpOwnerAndHttp() {
         owner = jdbc.sql("select id from app_user where login_name='call-log-admin'")
                 .query(UUID.class).optional().map(id -> new AdminPrincipal(id, "call-log-admin"))
-                .orElseGet(() -> identities.setup("call-log-integration-secret", "call-log-admin",
+                .orElseGet(() -> identities.setup("call-log-admin",
                         "call-log-password-123"));
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
         jdbc.sql("update audit_debug_settings set debug_mode=false").update();

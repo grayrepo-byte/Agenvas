@@ -28,7 +28,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @SpringBootTest(classes = AgenvasApplication.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
-                "agenvas.identity.bootstrap-secret=http-latency-integration-secret",
                 "agenvas.llm.scheduler-enabled=false",
                 "agenvas.export.scheduler-enabled=false"})
 class HttpLatencyMetricsPostgresIT {

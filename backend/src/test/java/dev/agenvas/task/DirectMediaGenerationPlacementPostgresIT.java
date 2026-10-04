@@ -39,7 +39,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=direct-placement-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class DirectMediaGenerationPlacementPostgresIT {
@@ -64,8 +63,7 @@ class DirectMediaGenerationPlacementPostgresIT {
 
     @Test
     void fillsAnEmptyCardThenRegeneratesInTheSameCard() throws Exception {
-        AdminPrincipal owner = identities.setup("direct-placement-integration-secret",
-                "placement-admin", "placement-password-123");
+        AdminPrincipal owner = identities.setup("placement-admin", "placement-password-123");
         Project project = projects.create(owner.userId(), "Direct placement",
                 Project.AspectRatio.LANDSCAPE_16_9);
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();

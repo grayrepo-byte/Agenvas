@@ -42,8 +42,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL proof that manual creation and its original response replay are atomic. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=artifact-idempotency-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class ArtifactCreateIdempotencyPostgresIT {
 
     @Container
@@ -65,8 +64,7 @@ class ArtifactCreateIdempotencyPostgresIT {
 
     @Test
     void sameKeyReplaysOriginalResponseAndConcurrentRequestsCreateOnlyOnce() throws Exception {
-        AdminPrincipal owner = identities.setup("artifact-idempotency-secret",
-                "artifact-idempotency-admin", "artifact-idempotency-password");
+        AdminPrincipal owner = identities.setup("artifact-idempotency-admin", "artifact-idempotency-password");
         Project project = projects.create(owner.userId(), "Manual creation",
                 Project.AspectRatio.LANDSCAPE_16_9);
         JsonNode original = mapper.readTree("""

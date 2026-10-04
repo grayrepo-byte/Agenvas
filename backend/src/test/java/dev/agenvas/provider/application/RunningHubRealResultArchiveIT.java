@@ -31,8 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 @EnabledIfEnvironmentVariable(named = "AGENVAS_RUNNINGHUB_REAL_RESULT_ARCHIVE", matches = "true")
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=runninghub-result-isolated-test", "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+@SpringBootTest(classes = AgenvasApplication.class, properties = { "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class RunningHubRealResultArchiveIT {
     private static final int EXPECTED_WIDTH = 608;
     private static final int EXPECTED_HEIGHT = 352;
@@ -69,7 +68,7 @@ class RunningHubRealResultArchiveIT {
         var manifest = adapter.manifest(response, definition, origin);
         assertThat(manifest.results()).hasSize(1);
         assertThat(manifest.results().getFirst().nodeId()).isEqualTo("155");
-        var owner = identities.setup("runninghub-result-isolated-test", "result-rh-admin", "isolated-rh-password-123").userId();
+        var owner = identities.setup("result-rh-admin", "isolated-rh-password-123").userId();
         var project = projects.create(owner, "Original RunningHub result archive", Project.AspectRatio.LANDSCAPE_16_9);
         var result = manifest.results().getFirst();
         UUID originalLocalTask = UUID.fromString(receipt.path("attempts").get(0).path("taskId").asText());

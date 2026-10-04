@@ -34,8 +34,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
-        classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=integration-bootstrap-secret")
+        classes = AgenvasApplication.class)
 class IdentityPostgresIT {
 
     private static final int CONCURRENT_ATTEMPTS = 20;
@@ -74,9 +73,7 @@ class IdentityPostgresIT {
                 futures.add(executor.submit(() -> {
                     start.await();
                     try {
-                        AdminPrincipal principal = identityService.setup(
-                                "integration-bootstrap-secret",
-                                "admin" + suffix,
+                        AdminPrincipal principal = identityService.setup("admin" + suffix,
                                 "integration-password-123");
                         return new SetupOutcome(true, principal.loginName());
                     } catch (ApiProblemException conflict) {

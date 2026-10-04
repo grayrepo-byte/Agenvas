@@ -45,7 +45,6 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, DirectTextGenerationPostgresIT.FakeConfig.class},
         properties = {
-                "agenvas.identity.bootstrap-secret=direct-text-integration-secret",
                 "agenvas.llm.scheduler-enabled=false"
         })
 class DirectTextGenerationPostgresIT {
@@ -72,8 +71,7 @@ class DirectTextGenerationPostgresIT {
 
     @Test
     void createsNewVersionAndDoesNotSelectLateResultOverManualEdit() {
-        AdminPrincipal owner = identities.setup("direct-text-integration-secret",
-                "text-admin", "text-password-123");
+        AdminPrincipal owner = identities.setup("text-admin", "text-password-123");
         Project project = projects.create(owner.userId(), "Text generation",
                 Project.AspectRatio.LANDSCAPE_16_9);
         ArtifactService.ArtifactView initial = artifacts.create(owner.userId(), project.id(),

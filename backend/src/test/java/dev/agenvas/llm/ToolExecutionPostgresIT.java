@@ -59,8 +59,7 @@ import tools.jackson.databind.JsonNode;
 /** Real database proof of response-before-tool, idempotency and server-owned identity. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, ToolExecutionPostgresIT.FakeConfig.class},
-        properties = "agenvas.identity.bootstrap-secret=tool-ledger-integration-secret")
+@SpringBootTest(classes = {AgenvasApplication.class, ToolExecutionPostgresIT.FakeConfig.class})
 class ToolExecutionPostgresIT {
 
     @Container
@@ -91,8 +90,7 @@ class ToolExecutionPostgresIT {
 
     @Test
     void committedResponseExecutesOnceAndForgedScopeNeverBecomesAuthority() throws Exception {
-        AdminPrincipal owner = identities.setup("tool-ledger-integration-secret",
-                "tool-admin", "tool-password-123");
+        AdminPrincipal owner = identities.setup("tool-admin", "tool-password-123");
         Project project = projects.create(owner.userId(), "Tool project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create",

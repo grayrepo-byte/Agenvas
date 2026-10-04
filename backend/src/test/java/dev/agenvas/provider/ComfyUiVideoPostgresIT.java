@@ -53,7 +53,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=comfy-video-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.mode=configured",
         "agenvas.provider.media.scheduler-enabled=false"})
@@ -122,7 +121,7 @@ class ComfyUiVideoPostgresIT {
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), imageCapability);
         catalog.setDefault(Task.Kind.VIDEO_GENERATION,
                 catalog.defaultVersion(Task.Kind.VIDEO_GENERATION), videoCapability);
-        AdminPrincipal owner = identities.setup("comfy-video-integration-secret", "video-admin",
+        AdminPrincipal owner = identities.setup("video-admin",
                 "video-password-123");
         Project project = projects.create(owner.userId(), "I2V candidate",
                 Project.AspectRatio.LANDSCAPE_16_9);

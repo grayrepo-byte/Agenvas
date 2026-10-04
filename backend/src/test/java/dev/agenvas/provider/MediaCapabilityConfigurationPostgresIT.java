@@ -35,7 +35,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=capability-config-test-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class MediaCapabilityConfigurationPostgresIT {
@@ -61,7 +60,7 @@ class MediaCapabilityConfigurationPostgresIT {
 
     @Test
     void freezesDefaultsLimitsAndDecimalPricesAndReleasesTheOriginalEstimate() {
-        var owner = identities.setup("capability-config-test-secret", "config-admin", "config-password-123");
+        var owner = identities.setup("config-admin", "config-password-123");
         var project = projects.create(owner.userId(), "Configured media", Project.AspectRatio.LANDSCAPE_16_9);
         var connection = catalog.createConnection("Mock configuration", null);
         var capability = catalog.publishCapability(connection.id(), "Priced video", "MOCK_VIDEO", mapper.readTree("""

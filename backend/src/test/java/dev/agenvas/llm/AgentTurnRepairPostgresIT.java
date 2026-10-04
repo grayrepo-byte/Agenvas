@@ -43,8 +43,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** Fake-model, real-PostgreSQL proof that invalid rounds are atomic and repair is bounded. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, AgentTurnRepairPostgresIT.FakeConfig.class},
-        properties = "agenvas.identity.bootstrap-secret=agent-repair-integration-secret")
+@SpringBootTest(classes = {AgenvasApplication.class, AgentTurnRepairPostgresIT.FakeConfig.class})
 class AgentTurnRepairPostgresIT {
 
     @Container
@@ -68,8 +67,7 @@ class AgentTurnRepairPostgresIT {
 
     @Test
     void repairsWholeInvalidRoundOnceAndBlocksAfterTwoFailedRepairs() {
-        AdminPrincipal owner = identities.setup("agent-repair-integration-secret",
-                "repair-admin", "repair-password-123");
+        AdminPrincipal owner = identities.setup("repair-admin", "repair-password-123");
         Project project = projects.create(owner.userId(), "Repair project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",

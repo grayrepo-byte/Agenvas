@@ -39,12 +39,24 @@ public class JooqAdminAccountRepository implements AdminAccountRepository {
                 .fetchSingle();
     }
 
-    /** 检查是否已有活动管理员，初始化流程在互斥锁内调用。 */
+    /** 完成标记永久关闭初始化；任意状态的既有账户也阻止重新创建。 */
     @Override
-    public boolean hasAdminAccount() {
+    public boolean isSetupCompleted() {
         return dsl.fetchExists(dsl.selectOne()
-                .from(APP_USER)
-                .where(APP_USER.STATUS.eq(AdminAccount.Status.ACTIVE.name())));
+                .from(INSTALLATION_LOCK)
+                .where(INSTALLATION_LOCK.ID.eq(SETUP_LOCK_ID))
+                .and(INSTALLATION_LOCK.INITIALIZED_AT.isNotNull()))
+                || dsl.fetchExists(dsl.selectOne().from(APP_USER));
+    }
+
+    /** CAS 写入首次完成时间，与账户插入共同提交或共同回滚。 */
+    @Override
+    public boolean completeSetup(Instant completedAt) {
+        return dsl.update(INSTALLATION_LOCK)
+                .set(INSTALLATION_LOCK.INITIALIZED_AT, atUtc(completedAt))
+                .where(INSTALLATION_LOCK.ID.eq(SETUP_LOCK_ID))
+                .and(INSTALLATION_LOCK.INITIALIZED_AT.isNull())
+                .execute() == 1;
     }
 
     /** 按规范化登录名读取活动账户及密码哈希，不返回已禁用账户。 */

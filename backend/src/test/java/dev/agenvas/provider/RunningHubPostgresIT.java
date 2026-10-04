@@ -59,8 +59,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 /** Real PostgreSQL, production adapters/archives and a local fake RunningHub. No real provider calls. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=runninghub-integration-test-secret", "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
+@SpringBootTest(classes = AgenvasApplication.class, properties = { "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class RunningHubPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @TempDir static java.nio.file.Path storage;
@@ -88,7 +87,7 @@ class RunningHubPostgresIT {
     @Autowired ObjectMapper mapper;
     @Autowired WebApplicationContext webContext;
     private static UUID owner;
-    @BeforeEach void owner() { if (owner == null) owner = identities.setup("runninghub-integration-test-secret", "rh-admin", "runninghub-password-123").userId(); }
+    @BeforeEach void owner() { if (owner == null) owner = identities.setup("rh-admin", "runninghub-password-123").userId(); }
 
     @Test void archivesMultipleMediaOutputsSkipsCompanionZipResumesFromManifestAndPreservesANewerDraft() throws Exception {
         try (var provider = new Fake(2, true, false)) {

@@ -42,8 +42,7 @@ import tools.jackson.databind.ObjectMapper;
 /** HTTP and PostgreSQL proof that guessed resource IDs do not expand project scope. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = "agenvas.identity.bootstrap-secret=resource-scope-bootstrap-secret")
+@SpringBootTest(classes = AgenvasApplication.class)
 class ResourceScopePostgresIT {
 
     @Container
@@ -69,8 +68,7 @@ class ResourceScopePostgresIT {
 
     @Test
     void guessedIdsDoNotExposeArtifactAssetRunOrEventStream() throws Exception {
-        AdminPrincipal owner = identities.setup("resource-scope-bootstrap-secret",
-                "scope-admin", "scope-password-123");
+        AdminPrincipal owner = identities.setup("scope-admin", "scope-password-123");
         AdminPrincipal foreign = new AdminPrincipal(UUID.randomUUID(), "foreign-principal");
         Project target = projects.create(owner.userId(), "Private target",
                 Project.AspectRatio.LANDSCAPE_16_9);

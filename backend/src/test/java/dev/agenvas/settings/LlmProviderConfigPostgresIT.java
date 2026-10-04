@@ -49,7 +49,6 @@ import org.testcontainers.utility.MountableFile;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=llm-settings-integration-secret",
         "agenvas.llm.mode=configured",
         "agenvas.credentials.key-version=7",
         "agenvas.settings.llm.allow-loopback-http=true"})
@@ -78,8 +77,7 @@ class LlmProviderConfigPostgresIT {
     @Test
     void adminOnlyEncryptedRotationIsMaskedAndVersioned() throws Exception {
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
-        AdminPrincipal admin = identities.setup("llm-settings-integration-secret",
-                "settings-admin", "settings-password-123");
+        AdminPrincipal admin = identities.setup("settings-admin", "settings-password-123");
         var auth = authentication(new UsernamePasswordAuthenticationToken(admin, null, List.of()));
         mvc.perform(get("/api/v1/settings/llm"))
                 .andExpect(status().isUnauthorized());

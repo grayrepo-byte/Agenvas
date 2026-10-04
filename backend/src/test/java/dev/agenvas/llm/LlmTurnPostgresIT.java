@@ -47,8 +47,7 @@ import tools.jackson.databind.JsonNode;
 /** PostgreSQL proof that a complete tool-call response commits before callback execution. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = {AgenvasApplication.class, LlmTurnPostgresIT.FakeConfig.class},
-        properties = "agenvas.identity.bootstrap-secret=llm-checkpoint-integration-secret")
+@SpringBootTest(classes = {AgenvasApplication.class, LlmTurnPostgresIT.FakeConfig.class})
 class LlmTurnPostgresIT {
 
     @Container
@@ -71,7 +70,7 @@ class LlmTurnPostgresIT {
 
     @Test
     void responseAndProtocolMetadataAreDurableBeforeToolExecutionAndReplaySkipsModel() {
-        AdminPrincipal owner = identities.setup("llm-checkpoint-integration-secret", "llm-admin",
+        AdminPrincipal owner = identities.setup("llm-admin",
                 "llm-password-123");
         Project project = projects.create(owner.userId(), "LLM project",
                 Project.AspectRatio.LANDSCAPE_16_9);

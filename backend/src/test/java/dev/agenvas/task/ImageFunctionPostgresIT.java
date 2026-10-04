@@ -52,7 +52,6 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=synthetic-image-functions-bootstrap",
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false"})
 class ImageFunctionPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -80,7 +79,7 @@ class ImageFunctionPostgresIT {
     @Autowired dev.agenvas.usage.application.UsageService usage;
     private static AdminPrincipal owner;
     @BeforeEach void setup() {
-        if (owner == null) owner = identities.setup("synthetic-image-functions-bootstrap", "synthetic-image-admin", "synthetic-image-password-123");
+        if (owner == null) owner = identities.setup("synthetic-image-admin", "synthetic-image-password-123");
     }
 
     @Test void keepsImageAndVideoRoutesAndGenerationDefaultsIndependent() {

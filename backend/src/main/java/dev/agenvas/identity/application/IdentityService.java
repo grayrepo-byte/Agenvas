@@ -3,7 +3,6 @@ package dev.agenvas.identity.application;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Locale;
@@ -14,7 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** 负责首次管理员初始化和敏感账户操作，并在服务端验证部署凭据及并发版本。 */
+/** 负责一次性管理员初始化和敏感账户操作，并在数据库事务中仲裁初始化及并发版本。 */
 @Service
 public class IdentityService {
 
@@ -25,32 +24,27 @@ public class IdentityService {
     private final AdminAccountRepository accounts;
     /** 对管理员密码进行带盐编码并验证现有密码。 */
     private final PasswordEncoder passwordEncoder;
-    /** 提供部署时注入的一次性初始化凭据。 */
-    private final IdentityProperties properties;
     /** 为账户创建和密码更新提供可注入的时间源。 */
     private final Clock clock;
 
-    /** 注入账户持久化、密码编码和初始化配置依赖。 */
+    /** 注入账户持久化、密码编码和时间源。 */
     public IdentityService(
             AdminAccountRepository accounts,
             PasswordEncoder passwordEncoder,
-            IdentityProperties properties,
             Clock clock) {
         this.accounts = accounts;
         this.passwordEncoder = passwordEncoder;
-        this.properties = properties;
         this.clock = clock;
     }
 
-    /** 校验部署凭据并串行执行一次性初始化；账户已存在时拒绝再次创建。 */
+    /** 串行创建管理员并持久记录完成状态；停用或删除账户也不重新开放初始化。 */
     @Transactional
-    public AdminPrincipal setup(String presentedSecret, String loginName, String password) {
-        verifyBootstrapSecret(presentedSecret);
+    public AdminPrincipal setup(String loginName, String password) {
         String normalizedLogin = normalizeLoginName(loginName);
         validateLoginName(normalizedLogin);
         validatePassword(password);
         accounts.lockSetup();
-        if (accounts.hasAdminAccount()) {
+        if (accounts.isSetupCompleted()) {
             throw alreadyInitialized();
         }
 
@@ -58,6 +52,9 @@ public class IdentityService {
         Instant now = clock.instant();
         try {
             accounts.createAdmin(userId, normalizedLogin, passwordEncoder.encode(password), now);
+            if (!accounts.completeSetup(now)) {
+                throw alreadyInitialized();
+            }
         } catch (DataIntegrityViolationException conflict) {
             throw alreadyInitialized();
         }
@@ -110,22 +107,6 @@ public class IdentityService {
             return "";
         }
         return loginName.trim().toLowerCase(Locale.ROOT);
-    }
-
-    /** 以常量时间字节比较验证部署凭据，不记录或回显任一凭据内容。 */
-    private void verifyBootstrapSecret(String presentedSecret) {
-        byte[] expected = properties.bootstrapSecret().getBytes(StandardCharsets.UTF_8);
-        byte[] actual = presentedSecret == null
-                ? new byte[0]
-                : presentedSecret.getBytes(StandardCharsets.UTF_8);
-        if (!MessageDigest.isEqual(expected, actual)) {
-            throw new ApiProblemException(
-                    HttpStatus.FORBIDDEN,
-                    "BOOTSTRAP_SECRET_INVALID",
-                    ApiMessage.of("api.identity-service.invalid-initialization-credentials"),
-                    ApiMessage.of("api.identity-service.the-initialization-credentials-provided-by-the-deployment-are-incorrect"),
-                    false);
-        }
     }
 
     /** 限制密码字符长度和 UTF-8 字节数，避免 BCrypt 截断产生等价密码。 */

@@ -31,7 +31,6 @@ import tools.jackson.databind.ObjectMapper;
 
 @Testcontainers
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=media-catalog-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.skill.worker-enabled=false",
         "agenvas.library.worker-enabled=false",

@@ -33,7 +33,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=stored-llm-integration-secret",
         "agenvas.llm.mode=configured",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.settings.llm.allow-loopback-http=true"})

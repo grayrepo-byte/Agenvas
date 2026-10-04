@@ -669,7 +669,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 一次性创建管理员 */
+        /**
+         * 一次性创建管理员
+         * @description 仅提交登录名与密码；数据库永久记录初始化完成，并发只有一次成功，后续调用返回 409 SETUP_ALREADY_COMPLETED。
+         */
         post: operations["setupAdministrator"];
         delete?: never;
         options?: never;
@@ -6873,13 +6876,12 @@ export interface operations {
     setupAdministrator: {
         parameters: {
             query?: never;
-            header: {
+            header?: {
                 /**
                  * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
                  * @example ru-RU, en;q=0.8
                  */
                 "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-                "X-Agenvas-Bootstrap-Secret": string;
             };
             path?: never;
             cookie?: never;

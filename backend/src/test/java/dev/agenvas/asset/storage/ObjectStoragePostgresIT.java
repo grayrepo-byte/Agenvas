@@ -55,8 +55,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 /** Real PostgreSQL and a labelled fake object server; no real cloud account/provider is contacted. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = { AgenvasApplication.class, ObjectStoragePostgresIT.Transport.class }, properties = {
-    "agenvas.identity.bootstrap-secret=storage-integration-bootstrap-secret", "agenvas.tasks.scheduler-enabled=false",
+@SpringBootTest(classes = { AgenvasApplication.class, ObjectStoragePostgresIT.Transport.class }, properties = { "agenvas.tasks.scheduler-enabled=false",
     "agenvas.library.worker-enabled=false" })
 class ObjectStoragePostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -99,7 +98,7 @@ class ObjectStoragePostgresIT {
     }
     @Test void switchDestinationsPreservesLocalAndCloudAssetsRangeAuthorizationAndRecovery() throws Exception {
         var mvc = webAppContextSetup(context).apply(springSecurity()).build();
-        AdminPrincipal owner = identities.setup("storage-integration-bootstrap-secret", "storage-admin", "strong-storage-password");
+        AdminPrincipal owner = identities.setup("storage-admin", "strong-storage-password");
         var auth = UsernamePasswordAuthenticationToken.authenticated(owner, null, java.util.List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
         UUID project = projects.create(owner.userId(), "storage-test", dev.agenvas.project.domain.Project.AspectRatio.LANDSCAPE_16_9).id();
         byte[] png = png();

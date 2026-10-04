@@ -35,7 +35,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=resolution-pricing-integration-test-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=false"})
 class AutoDlResolutionPricingPostgresIT {
@@ -58,7 +57,7 @@ class AutoDlResolutionPricingPostgresIT {
     @Autowired org.springframework.web.context.WebApplicationContext context;
 
     @Test void freezesSelectedTierPriceAndDefaultsAndRejectsUnpublishedTiers() throws Exception {
-        UUID owner = identities.setup("resolution-pricing-integration-test-secret", "resolution-admin", "resolution-password-123").userId();
+        UUID owner = identities.setup("resolution-admin", "resolution-password-123").userId();
         var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(context)
                 .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
         var principal = new dev.agenvas.identity.application.AdminPrincipal(owner, "resolution-admin");

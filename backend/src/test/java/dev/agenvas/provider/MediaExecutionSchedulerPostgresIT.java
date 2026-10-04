@@ -36,7 +36,6 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.identity.bootstrap-secret=mock-scheduler-integration-secret",
         "agenvas.llm.scheduler-enabled=false",
         "agenvas.provider.media.scheduler-enabled=true"
 })
@@ -69,8 +68,7 @@ class MediaExecutionSchedulerPostgresIT {
     @Test
     void backgroundTickCreatesReadableImageThroughTheBoundMediaPipeline() throws Exception {
         assertThat(scheduler).isNotNull();
-        AdminPrincipal owner = identities.setup("mock-scheduler-integration-secret",
-                "mock-scheduler-admin", "mock-scheduler-password-123");
+        AdminPrincipal owner = identities.setup("mock-scheduler-admin", "mock-scheduler-password-123");
         Project project = projects.create(owner.userId(), "Scheduled Mock image",
                 Project.AspectRatio.LANDSCAPE_16_9);
         var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
