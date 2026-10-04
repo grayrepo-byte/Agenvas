@@ -6,8 +6,8 @@ import { LibraryBrowser } from "./LibraryBrowser";
 import { TransferState,useLibraryTransfer } from "./useLibraryTransfer";
 
 type ReferencePlan = Pick<ReferenceLibraryRequest, "role" | "color"> & { videoInputMode: ReferenceLibraryRequest["draft"]["videoInputMode"] };
-export function LibraryReferencePicker({ projectId, itemId, draft, kinds, plan, onApplied, onBusy }: {
-  projectId: string; itemId: string; draft: ReferenceLibraryRequest["draft"]; kinds: Artifact["kind"][];
+export function LibraryReferencePicker({ projectId, itemId, draft, kinds, plan, onApplied, onBusy, slotKey }: {
+  projectId: string; itemId: string; slotKey?: string; draft: ReferenceLibraryRequest["draft"]; kinds: Artifact["kind"][];
   plan: (entry: LibraryEntry) => ReferencePlan | null;
   onApplied: (saved: MediaDraft, submitted: ReferenceLibraryRequest["draft"]) => void; onBusy?: (busy: boolean) => void;
 }) {
@@ -40,7 +40,7 @@ export function LibraryReferencePicker({ projectId, itemId, draft, kinds, plan, 
     if (!confirmed && selected.videoInputMode && selected.videoInputMode !== draft.videoInputMode) { setConfirmation(entry); return; }
     setError(null); setConfirmation(null);
     submitted.current = { ...draft, ...(selected.videoInputMode ? { videoInputMode: selected.videoInputMode } : {}) };
-    transfer.start({ entryId: entry.id, expectedVersion: entry.version, draft: submitted.current, role: selected.role, color: selected.color });
+    transfer.start({ entryId: entry.id, expectedVersion: entry.version, draft: submitted.current, role: selected.role, color: selected.color, ...(slotKey ? { slotKey } : {}) });
   }
   return <div className="library-picker"><p>{t("library.referencePicker.referenceHint")}</p>
     {error ? <p role="alert">{error}</p> : null}

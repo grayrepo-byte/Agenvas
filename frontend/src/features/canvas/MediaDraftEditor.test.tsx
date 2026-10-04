@@ -419,6 +419,129 @@ describe("MediaDraftEditor", () => {
     }
     expect(screen.queryByRole("dialog", { name: "我的资产参考" })).not.toBeInTheDocument();
   });
+  it.each(["RUNNINGHUB_VIDEO", "COMFY_VIDEO_V1"])("uses the existing reference source menu for %s named slots", async (adapterId) => {
+    const fields = [{ key: "hero", label: "人物图", type: "IMAGE" as const, nodeId: "1", fieldName: "image", required: true, advanced: false }];
+    const capability: MediaCapability = { ...versatileVideoCapability, id: "workflow-menu", adapterId,
+      settings: adapterId === "COMFY_VIDEO_V1" ? { comfyInputs: fields } : { runningHub: {
+        schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false,
+        addMetadata: false, fields, outputs: [{ kind: "VIDEO", primary: true, maxCount: 1 }],
+      } } };
+    setup({ kind: "VIDEO", draft: { ...initialDraft, capabilityId: capability.id, videoInputMode: "TEXT" },
+      settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
+        defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] } });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "选择人物图" }));
+    const menu = screen.getByRole("menu", { name: "图片来源" });
+    expect(menu).toHaveClass("media-draft-reference-sources");
+    for (const name of ["从设备上传", "从资源库选择", "从画布选择", "从我的资产选择"]) {
+      expect(within(menu).getByRole("menuitem", { name })).toBeEnabled();
+    }
+    expect(screen.queryByText("项目资源")).not.toBeInTheDocument();
+    await user.click(within(menu).getByRole("menuitem", { name: "从资源库选择" }));
+    expect(screen.getByRole("searchbox", { name: "搜索资源图片" })).toBeVisible();
+  });
+
+  it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("filters both existing pickers by the %s workflow slot and binds its exact version", async (kind) => {
+    const capability: MediaCapability = { ...imageCapability, id: "typed-workflow", adapterId: "RUNNINGHUB_IMAGE",
+      settings: { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123",
+        usePersonalQueue: false, addMetadata: false,
+        fields: [{ key: "input", label: "工作流素材", type: kind, nodeId: "1", fieldName: "input", required: true, advanced: false }],
+        outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+      } } };
+    const sources = (["IMAGE", "VIDEO", "AUDIO"] as const).map((type) => ({ ...artifact,
+      id: `source-${type}`, kind: type, title: `合成${type}`, resourceDefaultVersionId: `${type}-v2` }));
+    const { saves } = setup({ draft: { ...initialDraft, capabilityId: capability.id },
+      settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
+        defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] },
+      handlers: [http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: sources })),
+        ...sources.map((source) => http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/${source.id}/versions`, () => HttpResponse.json({ items: [1, 2].map((versionNo) => ({
+          id: `${source.kind}-v${versionNo}`, versionNo, content: { assetId: `${source.kind}-asset-${versionNo}` },
+        })) }))),
+        http.get(`/api/v1/projects/${PROJECT_ID}/canvas/items`, () => HttpResponse.json({ items: sources.map((source) => ({
+          id: `canvas-${source.kind}`, subjectType: "ARTIFACT", title: source.title, artifact: source,
+          selectedVersion: { id: `${source.kind}-v1`, versionNo: 1, content: { assetId: `${source.kind}-asset-1` } },
+        })) })),
+      ] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "选择工作流素材" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    for (const other of sources.filter((source) => source.kind !== kind)) {
+      expect(screen.queryByRole("button", { name: `选择 ${other.title} · v2` })).not.toBeInTheDocument();
+    }
+    await user.click(await screen.findByRole("button", { name: `选择 合成${kind} · v2` }));
+    await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ input: `${kind}-v2` }));
+    await user.click(screen.getByRole("button", { name: "选择工作流素材" }));
+    await user.click(screen.getByRole("menuitem", { name: "从画布选择" }));
+    const picker = screen.getByRole("dialog", { name: kind === "IMAGE" ? "从画布选择图片" : "从画布选择媒体" });
+    expect(within(picker).getAllByRole("button")).toHaveLength(1);
+    await user.click(within(picker).getByRole("button"));
+    await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ input: `${kind}-v1` }));
+    expect(saves.at(-1)?.mediaInputs).toEqual([expect.objectContaining({ versionId: `${kind}-v1`,
+      role: kind === "IMAGE" ? "REFERENCE" : kind === "VIDEO" ? "VIDEO_REFERENCE" : "AUDIO_REFERENCE" })]);
+  });
+
+  it.each(["RUNNINGHUB_VIDEO", "COMFY_VIDEO_V1"])("imports a personal asset into the named %s slot without a video-mode confirmation", async (adapterId) => {
+    const fields = [{ key: "hero", label: "人物图", type: "IMAGE" as const, nodeId: "1", fieldName: "image", required: true, advanced: false }];
+    const capability: MediaCapability = { ...versatileVideoCapability, id: "workflow-library", adapterId,
+      settings: adapterId === "COMFY_VIDEO_V1" ? { comfyInputs: fields } : { runningHub: {
+        schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false,
+        addMetadata: false, fields, outputs: [{ kind: "VIDEO", primary: true, maxCount: 1 }],
+      } } };
+    let submitted: Record<string, unknown> | undefined;
+    setup({ kind: "VIDEO", draft: { ...initialDraft, capabilityId: capability.id, videoInputMode: "TEXT" },
+      settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
+        defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] },
+      handlers: [http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [{ id: "library-hero", name: "合成人物", kind: "IMAGE", category: "OTHER", version: 1,
+        source: {}, favorite: false, createdAt: NOW, hasThumbnail: false }], total: 1, categoryCounts: { OTHER: 1 } })),
+        http.post(`/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/library-references`, async ({ request }) => {
+          submitted = await request.json() as Record<string, unknown>;
+          return HttpResponse.json({ id: "library-workflow-command", status: "ACCEPTED" }, { status: 202 });
+        }),
+        http.get("/api/v1/library/commands/library-workflow-command", () => HttpResponse.json({ id: "library-workflow-command", status: "ARCHIVING" })),
+      ] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "选择人物图" }));
+    await user.click(screen.getByRole("menuitem", { name: "从我的资产选择" }));
+    await user.click(await screen.findByRole("button", { name: "用作参考：合成人物" }));
+    await waitFor(() => expect(submitted).toEqual(expect.objectContaining({ slotKey: "hero", entryId: "library-hero" })));
+    expect(screen.queryByRole("button", { name: "确认切换并添加" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "选择人物图" })).toBeDisabled());
+  });
+
+  it("keeps personal-asset transfer disabled until uploads into other named slots finish", async () => {
+    const capability: MediaCapability = { ...imageCapability, id: "workflow-upload-transfer", adapterId: "RUNNINGHUB_IMAGE",
+      settings: { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false, addMetadata: false,
+        fields: ["hero", "detail"].map((key) => ({ key, label: key, type: "IMAGE", nodeId: key, fieldName: "image", required: true, advanced: false })),
+        outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+      } } };
+    let finishUpload: (() => void) | undefined;
+    const uploadPath = `/api/v1/projects/${PROJECT_ID}/assets`;
+    const interceptedFetch = globalThis.fetch;
+    // Intercept multipart before Node fetch tries to serialize jsdom File objects.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === uploadPath) {
+        expect(init?.body).toBeInstanceOf(FormData);
+        await new Promise<void>((resolve) => { finishUpload = resolve; });
+        return HttpResponse.json({ id: "pending-upload-asset", mediaKind: "IMAGE" }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    setup({ draft: { ...initialDraft, capabilityId: capability.id },
+      settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
+        defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] },
+      handlers: [http.post(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ ...artifact, id: "pending-upload", resourceDefaultVersionId: "pending-upload-version" })),
+      ] });
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: "选择hero" });
+    await changeControl(screen.getByLabelText("上传hero"), { target: { files: [new File(["synthetic"], "hero.png", { type: "image/png" })] } });
+    await waitFor(() => expect(finishUpload).toBeDefined());
+    await user.click(screen.getByRole("button", { name: "选择detail" }));
+    expect(screen.getByRole("menuitem", { name: "从我的资产选择" })).toHaveAttribute("aria-disabled", "true");
+    finishUpload?.();
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: "从我的资产选择" })).not.toHaveAttribute("aria-disabled", "true"));
+    expect(screen.queryByRole("dialog", { name: "我的资产参考" })).not.toBeInTheDocument();
+  });
+
   it("uses RunningHub fields for a promptless video app and persists named exact video slots", async () => {
     const capability: MediaCapability = { ...videoCapability, id: "rh-video", adapterId: "RUNNINGHUB_VIDEO", name: "视频换背景", supportedVideoInputModes: ["TEXT", "GENERAL_REFERENCE"],
       settings: { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false, addMetadata: false, fields: [
@@ -439,7 +562,8 @@ describe("MediaDraftEditor", () => {
     await user.click(screen.getByRole("button", { name: "运行" }));
     expect(screen.getByRole("dialog", { name: "请检查生成输入" })).toHaveTextContent("参考视频");
     await user.click(slot);
-    await user.click(await screen.findByRole("button", { name: "原片段 · v1" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    await user.click(await screen.findByRole("button", { name: "选择 原片段 · v1" }));
     expect(screen.queryByRole("dialog", { name: "请检查生成输入" })).not.toBeInTheDocument();
     await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ clip: "video-v1" }));
     expect(saves.at(-1)?.mediaInputs).toEqual([{ versionId: "video-v1", role: "VIDEO_REFERENCE", color: "#F15CAF" }]);
@@ -462,7 +586,8 @@ describe("MediaDraftEditor", () => {
     const user = userEvent.setup();
     async function choose(label: string, version: number) {
       await user.click(await screen.findByRole("button", { name: `选择${label}` }));
-      await user.click(await screen.findByRole("button", { name: `合成图片 · v${version}` }));
+      await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+      await user.click(await screen.findByRole("button", { name: `选择 合成图片 · v${version}` }));
     }
     await choose("主体图", 1); await choose("细节图", 1);
     await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ hero: "source-v1", detail: "source-v1" }));

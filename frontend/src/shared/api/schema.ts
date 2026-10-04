@@ -3448,6 +3448,8 @@ export interface components {
             commandKey: string;
         };
         ReferenceLibraryRequest: {
+            /** @description Optional active named workflow media slot; the imported project-local version is assigned atomically with the draft update. Omit for ordinary media references. */
+            slotKey?: string;
             /** Format: uuid */
             entryId: string;
             /** Format: int64 */

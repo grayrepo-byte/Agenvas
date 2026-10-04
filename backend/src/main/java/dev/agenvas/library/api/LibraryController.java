@@ -139,7 +139,7 @@ public class LibraryController {
         return response(library.reference(principal.userId(), projectId, itemId, request.entryId(), request.expectedVersion(),
                 new LibraryService.ReferenceDraft(draft.expectedVersion(), draft.prompt(), draft.parameters(), draft.durationSeconds(),
                         draft.capabilityId(), draft.videoInputMode(), draft.mediaInputs(), draft.mentions(), draft.styleId()),
-                request.role(), request.color(), request.commandKey()), httpRequest);
+                request.role(), request.color(), request.commandKey(), request.slotKey()), httpRequest);
     }
     public record ReferenceDraftRequest(@PositiveOrZero long expectedVersion,
             @NotNull @Size(max = LibraryService.MAX_DRAFT_PROMPT_LENGTH) String prompt, JsonNode parameters, Integer durationSeconds, UUID capabilityId,
@@ -151,7 +151,8 @@ public class LibraryController {
             @NotNull @Valid ReferenceDraftRequest draft,
             @NotNull dev.agenvas.artifact.domain.MediaDraft.InputRole role,
             @NotNull @jakarta.validation.constraints.Pattern(regexp = "^#[0-9A-F]{6}$") String color,
-            @NotBlank @Size(max = LibraryService.MAX_COMMAND_KEY_LENGTH) String commandKey) {}
+            @NotBlank @Size(max = LibraryService.MAX_COMMAND_KEY_LENGTH) String commandKey,
+            @jakarta.validation.constraints.Pattern(regexp = "^[A-Za-z][A-Za-z0-9_]{0,63}$") String slotKey) {}
 
     public record ImportRequest(@NotNull UUID entryId, @PositiveOrZero long expectedVersion,
             @NotNull @jakarta.validation.constraints.DecimalMin(MIN_CANVAS_COORDINATE) @jakarta.validation.constraints.DecimalMax(MAX_CANVAS_COORDINATE) java.math.BigDecimal x,

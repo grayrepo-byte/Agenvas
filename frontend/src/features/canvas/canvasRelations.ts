@@ -120,15 +120,14 @@ export function mediaInputConnection(items: CanvasItem[], connection: Connection
   const sourceVersionId = source ? canvasItemVersionId(source) : null;
   if (!source?.artifact || !["IMAGE", "AUDIO", "VIDEO"].includes(source.artifact.kind) || !sourceVersionId
       || !target?.artifact || target.artifact.kind === "TEXT"
-      || source.artifact.kind === "AUDIO" && target.artifact.kind === "IMAGE"
-      || source.artifact.kind === "VIDEO" && target.artifact.kind !== "VIDEO" || source.id === target.id) return null;
+      || source.id === target.id) return null;
   return { sourceCanvasItemId: source.id, targetCanvasItemId: target.id, sourceVersionId };
 }
 
 /**
- * Drag feedback for React Flow. It reuses the same predicate as the commit path so a highlighted
- * drop target can never be one the server write would reject, and vice versa. Hand-drawn relations
- * create either an Agent input binding or a persisted image-to-media input connection.
+ * Drag feedback validates endpoints and source identity. The server resolves the target draft's
+ * published input contract: output kind cannot reject its declared audio or video input kinds.
+ * A persisted relation never triggers generation.
  */
 export function isCanvasConnectionValid(items: CanvasItem[], connection: Connection | Edge) {
   return inputConnectionUpdate(items, connection) !== null

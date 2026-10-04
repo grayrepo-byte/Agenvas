@@ -40,35 +40,35 @@ function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolea
     setValues((previous) => { const next = { ...previous }; if (value === undefined) delete next[key]; else next[key] = value; return next; });
   }
   return <>{dialog ? <WorkflowParametersDialog open onOpenChange={() => {}} definition={definition} values={values} prompt="画面提示词" durationSeconds={45} onChange={change} />
-    : <WorkflowMediaInputs definition={definition} values={values} prompt="" durationSeconds={null} choices={choices} canvasChoices={canvasChoices} onChange={change} />}
+    : <WorkflowMediaInputs definition={definition} values={values} prompt="" durationSeconds={null} choices={choices} canvasChoices={canvasChoices} onChange={change} onChooseSource={() => {}} />}
     <output data-testid="values">{JSON.stringify(values)}</output></>;
 }
 
 describe("WorkflowMediaInputs", () => {
-  it("renders exactly one tile for each media slot, allows reuse and chooses exact project or canvas versions", async () => {
-    render(<ValuesHarness />);
+  it("opens the shared source menu for each named slot and delegates selection with its exact key", async () => {
+    const choose = vi.fn(); const clear = vi.fn();
+    render(<WorkflowMediaInputs definition={definition} values={{ first: "image-v1", last: "image-v1" }} prompt="" durationSeconds={null}
+      choices={choices} canvasChoices={canvasChoices} onChange={clear} onChooseSource={choose} onUpload={vi.fn()} />);
     expect(screen.getAllByRole("button", { name: /^选择/ })).toHaveLength(3);
     expect(screen.getByText("首帧 *")).toHaveClass("sr-only");
-    expect(screen.getByRole("button", { name: "选择首帧" })).toHaveClass("media-draft-reference-add");
-    expect(screen.getByRole("button", { name: "选择首帧" })).toHaveAttribute("title", "首帧 *");
     await clickControl(screen.getByRole("button", { name: "选择首帧" }));
-    expect(screen.queryByRole("button", { name: "合成音频 · v1" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /已删除图片/ })).toBeDisabled();
-    await clickControl(screen.getByRole("button", { name: "合成图片 · v1" }));
+    const menu = screen.getByRole("menu", { name: "图片来源" });
+    expect(menu).toHaveClass("media-draft-reference-sources");
+    await clickControl(within(menu).getByRole("menuitem", { name: "从资源库选择" }));
+    expect(choose).toHaveBeenLastCalledWith(expect.objectContaining({ key: "first" }), "resources", screen.getByRole("button", { name: "选择首帧" }));
     await clickControl(screen.getByRole("button", { name: "选择尾帧" }));
-    await clickControl(screen.getByRole("button", { name: "合成图片 · v1" }));
-    expect(screen.getByTestId("values")).toHaveTextContent('{"first":"image-v1","last":"image-v1"}');
-    expect(screen.getAllByRole("button", { name: /^选择/ })).toHaveLength(3);
-    await clickControl(screen.getByRole("button", { name: "选择尾帧" }));
-    expect(screen.getAllByRole("button", { name: "画布图片 · v3" })).toHaveLength(1);
-    await clickControl(screen.getByRole("button", { name: "画布图片 · v3" }));
+    await clickControl(screen.getByRole("menuitem", { name: "从画布选择" }));
+    expect(choose).toHaveBeenLastCalledWith(expect.objectContaining({ key: "last" }), "canvas", screen.getByRole("button", { name: "选择尾帧" }));
+    await clickControl(screen.getByRole("button", { name: "选择配音" }));
+    await clickControl(screen.getByRole("menuitem", { name: "从我的资产选择" }));
+    expect(choose).toHaveBeenLastCalledWith(expect.objectContaining({ key: "sound" }), "library", screen.getByRole("button", { name: "选择配音" }));
     await clickControl(screen.getByRole("button", { name: "清空首帧" }));
-    expect(screen.getByTestId("values")).toHaveTextContent('{"last":"image-canvas"}');
+    expect(clear).toHaveBeenCalledWith("first", undefined);
   });
 
   it("uses defaults to hide inactive slots and keeps unavailable saved versions visible", () => {
     const conditional = { ...definition, fields: definition.fields.map((field) => field.key === "last" ? { ...field, enabledWhen: { field: "mode", value: 2 } } : field) };
-    const props = { definition: conditional, values: { first: "missing-version" }, prompt: "", durationSeconds: null, choices, onChange: vi.fn() };
+    const props = { definition: conditional, values: { first: "missing-version" }, prompt: "", durationSeconds: null, choices, onChooseSource: vi.fn(), onChange: vi.fn() };
     const { rerender } = render(<WorkflowMediaInputs {...props} />);
     expect(screen.queryByRole("button", { name: "选择尾帧" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "选择首帧" })).toHaveAttribute("aria-invalid", "true");
@@ -83,12 +83,12 @@ describe("WorkflowMediaInputs", () => {
     let rejectUpload: ((reason: Error) => void) | undefined;
     const upload = vi.fn().mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectUpload = reject; })).mockResolvedValue(undefined);
     const onBusy = vi.fn();
-    const props = { definition, values: {}, prompt: "", durationSeconds: null, choices, onChange: vi.fn(), onUpload: upload, onBusy };
+    const props = { definition, values: {}, prompt: "", durationSeconds: null, choices, onChooseSource: vi.fn(), onChange: vi.fn(), onUpload: upload, onBusy };
     const { rerender } = render(<WorkflowMediaInputs {...props} />);
     await clickControl(screen.getByRole("button", { name: "选择首帧" }));
     fireEvent.change(screen.getByLabelText("上传首帧"), { target: { files: [uploaded] } });
     expect(onBusy).toHaveBeenLastCalledWith(true);
-    expect(screen.getByRole("button", { name: "合成图片 · v1" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "选择首帧" })).toBeDisabled();
     rejectUpload?.(new Error("合成上传失败"));
     await waitFor(() => expect(onBusy).toHaveBeenLastCalledWith(false));
     expect(screen.getAllByRole("alert").some((alert) => alert.textContent?.includes("合成上传失败"))).toBe(true);
@@ -96,10 +96,15 @@ describe("WorkflowMediaInputs", () => {
     await waitFor(() => expect(upload).toHaveBeenCalledTimes(2));
     expect(upload).toHaveBeenLastCalledWith(expect.objectContaining({ key: "first" }), uploaded);
     await waitFor(() => expect(screen.queryByText("合成上传失败")).not.toBeInTheDocument());
+    upload.mockRejectedValueOnce(new Error("新的合成上传失败"));
+    fireEvent.change(screen.getByLabelText("上传首帧"), { target: { files: [uploaded] } });
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("新的合成上传失败"));
+    rerender(<WorkflowMediaInputs {...props} values={{ first: "image-v1" }} />);
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
     await clickControl(screen.getByRole("button", { name: "选择首帧" }));
     rerender(<WorkflowMediaInputs {...props} disabled />);
-    expect(screen.getByRole("button", { name: "合成图片 · v1" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "从设备上传" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "选择首帧" })).toBeDisabled();
+    expect(screen.queryByRole("menu", { name: "图片来源" })).not.toBeInTheDocument();
   });
 });
 

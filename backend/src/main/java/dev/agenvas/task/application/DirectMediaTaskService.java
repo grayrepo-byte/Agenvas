@@ -19,6 +19,7 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
+import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
 import dev.agenvas.provider.domain.AutoDlWorkflows;
 import dev.agenvas.project.application.ProjectService;
@@ -972,7 +973,18 @@ public class DirectMediaTaskService {
             default -> throw invalid(ApiMessage.of("api.direct-media-task-service.media-references-cannot-be-added-to-text-nodes"));
         };
         MediaCapabilityBinding binding = capabilities.forDraft(draft.capabilityId(), kind);
-        validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
+        var definition = capabilities.runningHubDefinition(binding);
+        var comfy = capabilities.comfyWorkflowDefinition(binding);
+        if (definition != null) {
+            definition.values(mapper, draft.parameters(), draft.prompt(), draft.durationSeconds(), false);
+            MediaDraftService.validateSlots(definition, draft.parameters(), draft.mediaInputs(), false);
+        } else if (comfy != null) {
+            ObjectNode values = mapper.createObjectNode();
+            values.set(RunningHubDefinition.VALUES_PROPERTY, comfy.values(mapper, draft.parameters(),
+                    draft.prompt(), draft.durationSeconds(), draft.mediaInputs().stream()
+                            .map(MediaDraft.MediaInput::versionId).toList(), false));
+            MediaDraftService.validateSlots(comfy.inputs(), values, draft.mediaInputs(), false);
+        } else validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
         validateReferenceAssets(owner, project, draft, binding);
     }
 

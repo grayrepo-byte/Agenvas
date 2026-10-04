@@ -4522,6 +4522,7 @@ components:
       additionalProperties: false
       required: ["entryId", "expectedVersion", "draft", "role", "color", "commandKey"]
       properties:
+        slotKey: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$", description: "Optional active named workflow media slot; the imported project-local version is assigned atomically with the draft update. Omit for ordinary media references."}
         entryId:
           type: "string"
           format: "uuid"
