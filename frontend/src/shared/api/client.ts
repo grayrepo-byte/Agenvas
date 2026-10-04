@@ -21,6 +21,15 @@ export type CreateProjectRequest = components["schemas"]["CreateProjectRequest"]
 export type UpdateProjectRequest = components["schemas"]["UpdateProjectRequest"];
 export type Artifact = components["schemas"]["Artifact"];
 export type ArtifactList = components["schemas"]["ArtifactList"];
+export type ResourceResult = components["schemas"]["ResourceResult"];
+export type ResourceFilters = NonNullable<paths["/api/v1/resources"]["get"]["parameters"]["query"]>;
+
+/** Account-wide immutable results, paged by the server rather than fetched project by project. */
+export function listResources(filters: ResourceFilters): Promise<components["schemas"]["ResourcePage"]> {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
+  return readJson(`/api/v1/resources?${query}`, t("resources.loadFailed"));
+}
 export type MediaDraft = components["schemas"]["MediaDraft"];
 export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest"];
 export type RemoveMediaDraftMediaInputRequest = components["schemas"]["RemoveMediaDraftMediaInputRequest"];

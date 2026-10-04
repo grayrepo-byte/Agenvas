@@ -116,26 +116,27 @@ public class LibraryRepository {
 
     public record Cursor(String value, UUID id) {}
     private Condition scope(UUID owner, LibraryEntry.Category category, Artifact.Kind kind,
-            String query, boolean favorite, boolean trash) {
+            String query, boolean favorite, boolean trash, boolean mediaOnly) {
         Condition condition = LIBRARY_ENTRY.OWNER_ID.eq(owner).and(trash
                 ? LIBRARY_ENTRY.TRASHED_AT.isNotNull() : LIBRARY_ENTRY.TRASHED_AT.isNull());
         if (category != null) condition = condition.and(LIBRARY_ENTRY.CATEGORY.eq(category.name()));
         if (kind != null) condition = condition.and(LIBRARY_ENTRY.KIND.eq(kind.name()));
+        if (mediaOnly) condition = condition.and(LIBRARY_ENTRY.KIND.in(Artifact.Kind.IMAGE.name(), Artifact.Kind.VIDEO.name(), Artifact.Kind.AUDIO.name()));
         if (favorite) condition = condition.and(LIBRARY_ENTRY.FAVORITE.isTrue());
         if (query != null && !query.isBlank()) condition = condition.and(LIBRARY_ENTRY.NAME.containsIgnoreCase(query));
         return condition;
     }
-    public int count(UUID owner, LibraryEntry.Category category, Artifact.Kind kind, String query, boolean favorite, boolean trash) {
-        return db.fetchCount(db.selectFrom(LIBRARY_ENTRY).where(scope(owner, category, kind, query, favorite, trash)));
+    public int count(UUID owner, LibraryEntry.Category category, Artifact.Kind kind, String query, boolean favorite, boolean trash, boolean mediaOnly) {
+        return db.fetchCount(db.selectFrom(LIBRARY_ENTRY).where(scope(owner, category, kind, query, favorite, trash, mediaOnly)));
     }
-    public Map<String, Integer> counts(UUID owner, boolean trash) {
+    public Map<String, Integer> counts(UUID owner, boolean trash, boolean mediaOnly) {
         return db.select(LIBRARY_ENTRY.CATEGORY, org.jooq.impl.DSL.count()).from(LIBRARY_ENTRY)
-                .where(scope(owner, null, null, null, false, trash)).groupBy(LIBRARY_ENTRY.CATEGORY)
+                .where(scope(owner, null, null, null, false, trash, mediaOnly)).groupBy(LIBRARY_ENTRY.CATEGORY)
                 .fetchMap(LIBRARY_ENTRY.CATEGORY, org.jooq.impl.DSL.count());
     }
     public List<LibraryEntry> list(UUID owner, LibraryEntry.Category category, Artifact.Kind kind,
-            String query, boolean favorite, boolean trash, LibraryEntry.Sort sort, Cursor cursor, int limit) {
-        Condition condition = scope(owner, category, kind, query, favorite, trash);
+            String query, boolean favorite, boolean trash, boolean mediaOnly, LibraryEntry.Sort sort, Cursor cursor, int limit) {
+        Condition condition = scope(owner, category, kind, query, favorite, trash, mediaOnly);
         if (cursor != null) {
             if (sort == LibraryEntry.Sort.NAME) condition = condition.and(LIBRARY_ENTRY.NAME.gt(cursor.value())
                     .or(LIBRARY_ENTRY.NAME.eq(cursor.value()).and(LIBRARY_ENTRY.ID.lt(cursor.id()))));

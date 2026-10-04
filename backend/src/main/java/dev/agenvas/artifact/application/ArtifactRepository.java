@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import tools.jackson.databind.JsonNode;
 
 /** 产物身份与只追加内容版本的持久化边界。 */
 public interface ArtifactRepository {
@@ -83,6 +84,13 @@ public interface ArtifactRepository {
 
     /** 列出所有者授权项目的产物身份，供一致性清单构建使用。 */
     List<Artifact> listProjectArtifacts(UUID ownerId, UUID projectId);
+
+    /** Browse immutable media results across owned projects, independently of canvas and library saves. */
+    List<ResourceResult> listResources(UUID ownerId, Artifact.Kind kind, String query,
+            Instant beforeCreatedAt, UUID beforeId, int limit);
+
+    record ResourceResult(UUID versionId, UUID artifactId, UUID projectId, String projectName,
+            String title, Artifact.Kind kind, int versionNo, JsonNode content, Instant createdAt) {}
 
     /** 返回已授权历史 Run 仍被当前选用的非人工输出，供同会话下一轮冻结精确输入。 */
     List<SelectedRunOutput> listSelectedRunOutputs(UUID ownerId, UUID projectId,

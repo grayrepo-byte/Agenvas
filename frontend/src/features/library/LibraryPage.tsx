@@ -7,7 +7,7 @@ deleteLibraryEntry,getLibraryEntry,importLibraryEntry,libraryContentUrl,listProj
 type ImportLibraryRequest,type LibraryCategory,type LibraryEntry
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
-import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
+import { isAudioFile,MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { Dialog } from "../../shared/ui/Dialog";
 import { PageShell } from "../../shared/ui/PageShell";
 import { Button } from "../../shared/ui/primitives/button";
@@ -17,17 +17,29 @@ import { Select } from "../../shared/ui/Select";
 import { LibraryBrowser } from "./LibraryBrowser";
 import { CATEGORY_LABELS,KIND_LABELS,MAX_LIBRARY_NAME_LENGTH } from "./libraryLabels";
 import { TransferState,useLibraryTransfer } from "./useLibraryTransfer";
+import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
+import { ResourceBrowser } from "./ResourceBrowser";
 
 const DEFAULT_LIBRARY_DROP_COORDINATE = 80;
 
 export function LibraryPage() {
   useLocale();
-  const [trash, setTrash] = useState(false);
   const [selected, setSelected] = useState<LibraryEntry | null>(null);
   const [upload, setUpload] = useState(false);
   return <PageShell title={t("common.asset")} description={t("library.page.description")} actions={<Button variant="default"  type="button" onClick={() => setUpload(true)}>{t("library.page.upload")}</Button>}>
-    <div className="library-tabs"><Button variant="ghost" type="button" aria-pressed={!trash} onClick={() => setTrash(false)}>{t("library.title")}</Button><Button variant="ghost" type="button" aria-pressed={trash} onClick={() => setTrash(true)}>{t("library.page.trash")}</Button><Link to="/projects">{t("library.page.openCanvas")}</Link></div>
-    <LibraryBrowser trash={trash} onPick={setSelected} />
+    <Tabs defaultValue="LIBRARY">
+      <div className="library-navigation">
+        <TabsList aria-label={t("resources.navigation")}>
+          <TabsTrigger value="LIBRARY">{t("library.title")}</TabsTrigger>
+          <TabsTrigger value="RESOURCES">{t("resources.title")}</TabsTrigger>
+          <TabsTrigger value="TRASH">{t("library.page.trash")}</TabsTrigger>
+        </TabsList>
+        <Button asChild variant="ghost"><Link to="/projects">{t("library.page.openCanvas")}</Link></Button>
+      </div>
+      <TabsContent value="LIBRARY"><LibraryBrowser mediaOnly onPick={setSelected} /></TabsContent>
+      <TabsContent value="RESOURCES"><ResourceBrowser /></TabsContent>
+      <TabsContent value="TRASH"><LibraryBrowser mediaOnly trash onPick={setSelected} /></TabsContent>
+    </Tabs>
     {selected ? <LibraryDetail key={selected.id} entry={selected} onClose={() => setSelected(null)} /> : null}
     {upload ? <UploadWindow onClose={() => setUpload(false)} /> : null}
   </PageShell>;
@@ -82,11 +94,11 @@ function UploadWindow({ onClose }: { onClose: () => void }) {
   const done = transfer.data?.status === "SUCCEEDED";
   return <Dialog title={t("library.page.upload")} onClose={() => { void client.invalidateQueries({ queryKey: ["library"] }); onClose(); }} busy={transfer.working}
     onSubmit={(event) => { event.preventDefault(); if (file) transfer.start({ file, name: name.trim(), category,
-      kind: file.type.startsWith("audio/") ? "AUDIO" : file.type === "video/mp4" ? "VIDEO" : "IMAGE" }); }}
+      kind: isAudioFile(file) ? "AUDIO" : file.type === "video/mp4" ? "VIDEO" : "IMAGE" }); }}
     footer={<><Button variant="outline"  type="button" disabled={transfer.working} onClick={() => { void client.invalidateQueries({ queryKey: ["library"] }); onClose(); }}>{done ? t("common.done") : t("common.cancel")}</Button>
       <Button variant="default"  type="submit" disabled={!file || !name.trim() || transfer.working || done}>{t("library.page.uploadAndSave")}</Button></>}>
     <p>{t("library.page.uploadLimitsHint")}</p>
-    <Field><FieldLabel className="field block">{t("library.page.file")}<Input type="file" required accept={`${MEDIA_FILE_ACCEPT.IMAGE},${MEDIA_FILE_ACCEPT.AUDIO},${MEDIA_FILE_ACCEPT.VIDEO}`} disabled={transfer.frozen} onChange={(event) => { const selected = event.target.files?.[0] ?? null; setFile(selected); if (!name && selected) setName(selected.name.replace(/\.[^.]+$/, "")); }} /></FieldLabel></Field>
+    <Field><FieldLabel className="field block">{t("library.page.file")}<Input type="file" required accept={`${MEDIA_FILE_ACCEPT.IMAGE},${MEDIA_FILE_ACCEPT.VIDEO},${MEDIA_FILE_ACCEPT.AUDIO}`} disabled={transfer.frozen} onChange={(event) => { const selected = event.target.files?.[0] ?? null; setFile(selected); if (!name && selected) setName(selected.name.replace(/\.[^.]+$/, "")); }} /></FieldLabel></Field>
     <Field><FieldLabel className="field block">{t("library.page.assetName")}<Input required maxLength={MAX_LIBRARY_NAME_LENGTH} value={name} disabled={transfer.frozen} onChange={(event) => setName(event.target.value)} /></FieldLabel></Field>
     <Field><FieldLabel className="field block">{t("library.page.category")}<Select value={category} disabled={transfer.frozen} onChange={(event) => setCategory(event.target.value as LibraryCategory)}>{Object.entries(CATEGORY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select></FieldLabel></Field>
     <TransferState transfer={transfer} success={t("library.page.savedCategory", { "0": CATEGORY_LABELS[category] })} />

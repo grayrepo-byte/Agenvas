@@ -2461,6 +2461,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/resources": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read immutable IMAGE/VIDEO/AUDIO results across the authenticated owner's projects, including archived projects and all historical versions. Independent of canvas presence, resource defaults and personal library saves. Excludes text, empty media drafts and internal Skill imports. */
+        get: operations["listResources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/entries": {
         parameters: {
             query?: never;
@@ -4404,6 +4427,26 @@ export interface components {
         };
         ArtifactVersionList: {
             items: components["schemas"]["ArtifactVersion"][];
+        };
+        ResourceResult: {
+            /** Format: uuid */
+            versionId: string;
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            projectId: string;
+            projectName: string;
+            title: string;
+            kind: components["schemas"]["ArtifactKind"];
+            /** @description Artifact audit version number, rather than CanvasItem history numbering. */
+            versionNo: number;
+            content: components["schemas"]["ArtifactContent"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ResourcePage: {
+            items: components["schemas"]["ResourceResult"][];
+            nextCursor: string | null;
         };
         ArtifactList: {
             items: components["schemas"]["Artifact"][];
@@ -9763,6 +9806,47 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    listResources: {
+        parameters: {
+            query?: {
+                kind?: "IMAGE" | "VIDEO" | "AUDIO";
+                /** @description Literal case-insensitive search over resource titles and project names. */
+                query?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Results ordered by creation time and version ID descending; media URLs use existing project-authorized content endpoints. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourcePage"];
+                };
+            };
+            /** @description ProblemDetail error; malformed cursors return 400 RESOURCE_QUERY_INVALID; invalid parameters return 400. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listLibraryEntries: {
         parameters: {
             query?: {
@@ -9771,6 +9855,8 @@ export interface operations {
                 query?: string;
                 favorite?: boolean;
                 trash?: boolean;
+                /** @description Limit items, total and category counts to IMAGE/VIDEO/AUDIO for asset-page browsing; saved entries and reference pickers are unaffected. */
+                mediaOnly?: boolean;
                 sort?: components["schemas"]["LibrarySort"];
                 cursor?: string;
             };

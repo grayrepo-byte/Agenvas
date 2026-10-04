@@ -2918,6 +2918,37 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/resources:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    get:
+      operationId: "listResources"
+      description: "Read immutable IMAGE/VIDEO/AUDIO results across the authenticated owner's projects, including archived projects and all historical versions. Independent of canvas presence, resource defaults and personal library saves. Excludes text, empty media drafts and internal Skill imports."
+      parameters:
+        - name: kind
+          in: query
+          schema: {type: string, enum: [IMAGE, VIDEO, AUDIO]}
+        - name: query
+          in: query
+          description: "Literal case-insensitive search over resource titles and project names."
+          schema: {type: string, maxLength: 160, default: ""}
+        - name: cursor
+          in: query
+          schema: {type: string, maxLength: 256}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 40}
+      responses:
+        "200":
+          description: "Results ordered by creation time and version ID descending; media URLs use existing project-authorized content endpoints."
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ResourcePage"}
+        default:
+          description: "ProblemDetail error; malformed cursors return 400 RESOURCE_QUERY_INVALID; invalid parameters return 400."
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
   /api/v1/library/entries:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -2961,6 +2992,10 @@ paths:
           schema:
             type: "boolean"
             default: false
+        - name: "mediaOnly"
+          in: "query"
+          description: "Limit items, total and category counts to IMAGE/VIDEO/AUDIO for asset-page browsing; saved entries and reference pickers are unaffected."
+          schema: {type: boolean, default: false}
         - name: "sort"
           in: "query"
           schema:
@@ -5686,6 +5721,29 @@ components:
         items:
           type: array
           items: {$ref: "#/components/schemas/ArtifactVersion"}
+    ResourceResult:
+      type: object
+      additionalProperties: false
+      required: [versionId, artifactId, projectId, projectName, title, kind, versionNo, content, createdAt]
+      properties:
+        versionId: {type: string, format: uuid}
+        artifactId: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        projectName: {type: string}
+        title: {type: string}
+        kind: {$ref: "#/components/schemas/ArtifactKind"}
+        versionNo: {type: integer, minimum: 1, description: "Artifact audit version number, rather than CanvasItem history numbering."}
+        content: {$ref: "#/components/schemas/ArtifactContent"}
+        createdAt: {type: string, format: date-time}
+    ResourcePage:
+      type: object
+      additionalProperties: false
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/ResourceResult"}
+        nextCursor: {type: [string, "null"]}
     ArtifactList:
       type: object
       additionalProperties: false
