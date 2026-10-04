@@ -75,8 +75,10 @@ function LlmExchange({ view, requestBody, responseBody, request, response, respo
       </dl>
       <p className="ui-muted">{t("logs.exchange.usageHint")}</p>
     </details>
-    <MessageSection title="Prompt" messages={view.prompt} tokens={usage.prompt} onExpand={() => setExpanded("prompt")} />
-    <MessageSection title="Completion" messages={view.completion} tokens={usage.completion} onExpand={() => setExpanded("completion")} />
+    <div className="llm-log-messages">
+      <MessageSection title="Prompt" messages={view.prompt} tokens={usage.prompt} onExpand={() => setExpanded("prompt")} />
+      <MessageSection title="Completion" messages={view.completion} tokens={usage.completion} onExpand={() => setExpanded("completion")} />
+    </div>
     <details className="llm-log-section"><summary>{t("logs.exchange.generationData")}<span>JSON</span></summary>
       <BodyContent title={t("logs.exchange.requestBody")} body={requestBody} parsed={request} mode="formatted" empty={t("logs.exchange.requestBodyMissing")} />
       <BodyContent title={responseTitle} body={responseBody} parsed={response} mode="formatted" empty={t("logs.exchange.responseNotCollected")} />

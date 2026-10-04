@@ -41,8 +41,16 @@
 
 .call-log-debug { margin-top: var(--ui-space-5); border-top: 1px solid var(--line); padding-top: var(--ui-space-4); }
 .call-log-debug h3, .call-log-debug h4 { margin: 0 0 var(--ui-space-3); font-weight: 550; }
-.call-log-exchange { margin-top: var(--ui-space-4); min-width: 0; }
-.call-log-url { font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+.call-log-debug-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-3); }
+.call-log-debug-header h3 { margin: 0; }
+.call-log-privacy-hint { margin: var(--ui-space-3) 0 var(--ui-space-4); font-size: var(--ui-text-sm); line-height: 1.6; }
+.call-log-http { display: grid; gap: var(--ui-space-3); margin-top: var(--ui-space-5); }
+.call-log-http > h4 { margin: 0; }
+.call-log-exchange > summary > svg { flex: none; }
+.call-log-exchange[open] > summary > svg { transform: rotate(90deg); }
+.call-log-exchange-content { display: grid; gap: var(--ui-space-3); margin-top: var(--ui-space-4); }
+.call-log-exchange-content .call-log-metadata { margin: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.call-log-url { margin: 0; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
 .call-log-body { margin-top: var(--ui-space-3); }
 .call-log-body summary { cursor: pointer; }
 .call-log-body pre { max-height: 320px; max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--ui-space-3); background: var(--ui-field); border: 1px solid var(--line); border-radius: 6px; font-size: var(--ui-text-xs); }
@@ -52,3 +60,4 @@
 .call-log-overview { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-3); }
 .call-log-overview .call-log-badges { margin: 0; }
 @media (max-width: 560px) { .ui-dialog.app-page.call-log-dialog { width: calc(100% - var(--ui-space-4)); max-height: calc(100dvh - var(--ui-space-4)); } }
+@media (max-width: 560px) { .call-log-exchange-content .call-log-metadata { grid-template-columns: minmax(0, 1fr); } }
