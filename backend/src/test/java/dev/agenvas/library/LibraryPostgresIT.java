@@ -13,11 +13,13 @@ import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.testing.ImageAssetFixture;
+import dev.agenvas.testing.AudioAssetFixture;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -55,9 +57,11 @@ class LibraryPostgresIT {
     @Autowired IdentityService identities;
     @Autowired ProjectService projects;
     @Autowired AssetService assets;
+    @Autowired MediaToolRunner mediaTools;
     @Autowired ArtifactService artifacts;
     @Autowired ObjectMapper mapper;
     @Autowired WebApplicationContext context;
+    @Autowired org.springframework.jdbc.core.simple.JdbcClient jdbc;
 
     @Test void savesTheDisplayedImageAsAnIndependentClassifiedAsset() throws Exception {
         AdminPrincipal owner = identities.setup("library-integration-test-secret", "library-admin", "library-password-123");
@@ -90,6 +94,34 @@ class LibraryPostgresIT {
         });
         JsonNode saved = awaitCommand(mvc, owner, accepted.path("id").asText());
         String entryId = saved.path("result").path("entryId").asText();
+        UUID hiddenTextId = UUID.randomUUID();
+        jdbc.sql("""
+                insert into library_entry(id, owner_id, name, category, kind, text_content, source_json, created_at, updated_at)
+                values(:id, :owner, 'Synthetic text', 'OTHER', 'TEXT',
+                    '{"format":"PLAIN_TEXT","text":"Retained text"}'::jsonb, '{"schemaVersion":1}'::jsonb, now(), now())
+                """)
+                .param("id", hiddenTextId).param("owner", owner.userId()).update();
+        UUID audioAssetId = AudioAssetFixture.archive(assets, mediaTools, owner.userId(), source.id());
+        byte[] audioBytes = Files.readAllBytes(assets.get(owner.userId(), source.id(), audioAssetId).path());
+        JsonNode audioUpload = mapper.readTree(mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart("/api/v1/library/uploads")
+                .file(new org.springframework.mock.web.MockMultipartFile("file", "synthetic.wav", "audio/wav", audioBytes))
+                .param("kind", "AUDIO").param("name", "Synthetic audio").param("category", "OTHER").param("commandKey", "upload-audio")
+                .with(auth).with(csrf())).andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString());
+        awaitCommand(mvc, owner, audioUpload.path("id").asText());
+        JsonNode media = mapper.readTree(mvc.perform(get("/api/v1/library/entries").with(auth).param("mediaOnly", "true"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(media.path("items").size()).isEqualTo(2);
+        assertThat(media.path("total").asInt()).isEqualTo(2);
+        assertThat(media.path("categoryCounts").path("OTHER").asInt()).isEqualTo(1);
+        JsonNode audioEntries = mapper.readTree(mvc.perform(get("/api/v1/library/entries").with(auth).param("mediaOnly", "true").param("kind", "AUDIO"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(audioEntries.path("total").asInt()).isEqualTo(1);
+        assertThat(audioEntries.path("items").get(0).path("kind").asText()).isEqualTo("AUDIO");
+        JsonNode allEntries = mapper.readTree(mvc.perform(get("/api/v1/library/entries").with(auth))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(allEntries.path("total").asInt()).isEqualTo(3);
+        mvc.perform(get("/api/v1/library/entries/" + hiddenTextId).with(auth)).andExpect(status().isOk());
+
         Path original = assets.get(owner.userId(), source.id(), assetId).path();
         byte[] originalBytes = Files.readAllBytes(original);
         Files.delete(original); // Simulate physical cleanup of the old project's immutable file.

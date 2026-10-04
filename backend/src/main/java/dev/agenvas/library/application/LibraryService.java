@@ -308,7 +308,7 @@ public class LibraryService {
     public record Page(List<EntryResponse> items, String nextCursor, int total, Map<String, Integer> categoryCounts) {}
     public EntryResponse get(UUID owner, UUID id) { return reads.execute(ignored -> response(require(owner, id))); }
     public Page list(UUID owner, LibraryEntry.Category category, Artifact.Kind kind, String query, boolean favorite,
-            boolean trash, LibraryEntry.Sort sort, String cursor) {
+            boolean trash, boolean mediaOnly, LibraryEntry.Sort sort, String cursor) {
         return reads.execute(ignored -> {
             LibraryRepository.Cursor after = null;
             if (cursor != null && !cursor.isBlank()) {
@@ -320,7 +320,7 @@ public class LibraryService {
                 }
                 catch (RuntimeException invalid) { throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.library-service.the-paging-cursor-is-invalid")); }
             }
-            var all = repository.list(owner, category, kind, query, favorite, trash, sort, after, PAGE_SIZE + 1);
+            var all = repository.list(owner, category, kind, query, favorite, trash, mediaOnly, sort, after, PAGE_SIZE + 1);
             var page = all.stream().limit(PAGE_SIZE).toList();
             String next = null;
             if (all.size() > PAGE_SIZE) {
@@ -331,7 +331,7 @@ public class LibraryService {
                         new LibraryRepository.Cursor(value, last.id())).getBytes(StandardCharsets.UTF_8));
             }
             return new Page(page.stream().map(this::response).toList(), next,
-                    repository.count(owner, category, kind, query, favorite, trash), repository.counts(owner, trash));
+                    repository.count(owner, category, kind, query, favorite, trash, mediaOnly), repository.counts(owner, trash, mediaOnly));
         });
     }
     private EntryResponse response(LibraryEntry entry) {

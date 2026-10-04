@@ -432,6 +432,37 @@ public class JooqArtifactRepository implements ArtifactRepository {
                 });
     }
 
+    /** One owner-scoped query exposes historical results without loading each project's canvas. */
+    @Override
+    public List<ResourceResult> listResources(UUID ownerId, Artifact.Kind kind, String query,
+            Instant beforeCreatedAt, UUID beforeId, int limit) {
+        var sourceType = DSL.jsonbGetAttributeAsText(ARTIFACT_VERSION.CONTENT_JSON, "sourceType");
+        var condition = PROJECT.OWNER_ID.eq(ownerId)
+                .and(ARTIFACT.KIND.in(Artifact.Kind.IMAGE.name(), Artifact.Kind.VIDEO.name(), Artifact.Kind.AUDIO.name()))
+                .and(ARTIFACT.ARCHIVED_AT.isNull())
+                // Skill installation material is internal context, rather than a creation result.
+                .and(sourceType.isNull().or(sourceType.ne(ArtifactVersion.MediaSourceType.SKILL_IMPORT.name())));
+        if (kind != null) condition = condition.and(ARTIFACT.KIND.eq(kind.name()));
+        if (!query.isBlank()) condition = condition.and(ARTIFACT.TITLE.containsIgnoreCase(query)
+                .or(PROJECT.NAME.containsIgnoreCase(query)));
+        if (beforeCreatedAt != null) condition = condition.and(ARTIFACT_VERSION.CREATED_AT.lt(utc(beforeCreatedAt))
+                .or(ARTIFACT_VERSION.CREATED_AT.eq(utc(beforeCreatedAt)).and(ARTIFACT_VERSION.ID.lt(beforeId))));
+        // Read versions directly: an unselected result and a result whose card was removed remain visible.
+        return dsl.select(ARTIFACT_VERSION.ID, ARTIFACT.ID, PROJECT.ID, PROJECT.NAME,
+                        ARTIFACT.TITLE, ARTIFACT.KIND, ARTIFACT_VERSION.VERSION_NO,
+                        ARTIFACT_VERSION.CONTENT_JSON, ARTIFACT_VERSION.CREATED_AT)
+                .from(ARTIFACT_VERSION)
+                .join(ARTIFACT).on(ARTIFACT.ID.eq(ARTIFACT_VERSION.ARTIFACT_ID)
+                        .and(ARTIFACT.PROJECT_ID.eq(ARTIFACT_VERSION.PROJECT_ID)))
+                .join(PROJECT).on(PROJECT.ID.eq(ARTIFACT.PROJECT_ID))
+                .where(condition)
+                .orderBy(ARTIFACT_VERSION.CREATED_AT.desc(), ARTIFACT_VERSION.ID.desc())
+                .limit(limit)
+                .fetch(row -> new ResourceResult(row.value1(), row.value2(), row.value3(), row.value4(),
+                        row.value5(), Artifact.Kind.valueOf(row.value6()), row.value7(),
+                        objectMapper.readTree(row.value8().data()), row.value9().toInstant()));
+    }
+
     /** 为导出清单按产物和版本顺序读取项目正文；调用方负责白名单脱敏。 */
     @Override
     public List<ArtifactVersion> listProjectVersions(UUID projectId) {

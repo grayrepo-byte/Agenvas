@@ -38,9 +38,10 @@ public class LibraryController {
             @RequestParam(defaultValue = "") @Size(max = LibraryService.MAX_NAME_LENGTH) String query,
             @RequestParam(defaultValue = "false") boolean favorite,
             @RequestParam(defaultValue = "false") boolean trash,
+            @RequestParam(defaultValue = "false") boolean mediaOnly,
             @RequestParam(defaultValue = "SAVED") LibraryEntry.Sort sort,
             @RequestParam(required = false) @Size(max = MAX_CURSOR_LENGTH) String cursor) {
-        return library.list(principal.userId(), category, kind, query, favorite, trash, sort, cursor);
+        return library.list(principal.userId(), category, kind, query, favorite, trash, mediaOnly, sort, cursor);
     }
     @GetMapping("/library/entries/{entryId}")
     public LibraryService.EntryResponse get(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID entryId) {
