@@ -42,6 +42,11 @@ function emptyDefinition(adapterId: string): RunningHubDefinition {
     fixedBindings: [], outputs: [{ kind, primary: true, maxCount: 1 }], instanceType: "default", usePersonalQueue: false, addMetadata: false };
 }
 
+function inputNodeIds(definition: RunningHubDefinition) {
+  return [...new Set([...definition.fields, ...(definition.fixedBindings ?? [])].map((item) => item.nodeId))]
+    .sort((first, second) => first.localeCompare(second, undefined, { numeric: true }));
+}
+
 /** Candidate import, field editing and the same form used on the canvas. No generation occurs here. */
 export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onChange }: {
   connectionId: string; adapterId: string; value?: RunningHubDefinition; onChange: (value: RunningHubDefinition, primaryKind?: OutputKind) => void;
@@ -53,13 +58,13 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
   const [warnings, setWarnings] = useState<string[]>([]);
   const [previewValues, setPreviewValues] = useState<Record<string, string | number | boolean>>({});
   const [expandedField, setExpandedField] = useState<number | null>(null);
-  const [nodeSelection, setNodeSelection] = useState<string[]>([]);
+  // Saved mappings must be visible without rediscovering and replacing the published contract.
+  const [nodeSelection, setNodeSelection] = useState<string[]>(() => inputNodeIds(definition));
   const nodePickerId = useId();
   const nodePickerHintId = useId();
   const nodePickerTrigger = useRef<HTMLButtonElement>(null);
   const invalidParameter = useRef<HTMLElement | null>(null);
-  const nodeIds = [...new Set([...definition.fields, ...(definition.fixedBindings ?? [])].map((item) => item.nodeId))]
-    .sort((first, second) => first.localeCompare(second, undefined, { numeric: true }));
+  const nodeIds = inputNodeIds(definition);
   const selectedNodes = nodeIds.filter((nodeId) => nodeSelection.includes(nodeId));
   const nodeSummary = selectedNodes.map(nodeLabel).join(" · ");
   useEffect(() => { if (!value) onChange(emptyDefinition(adapterId)); }, [adapterId, value, onChange]);
@@ -67,7 +72,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
     mutationFn: () => previewRunningHubImport(connectionId, { targetType: definition.targetType,
       targetId: definition.targetId, kind: adapterId === "RUNNINGHUB_VIDEO" ? "VIDEO_GENERATION" : adapterId === "RUNNINGHUB_AUDIO" ? "AUDIO_GENERATION" : "IMAGE_GENERATION",
       ...(source.trim() ? { source: JSON.parse(source) as unknown } : {}) }),
-    onSuccess: (result) => { onChange(result.definition); setWarnings(result.warnings); setLocalError(""); setPreviewValues({}); setExpandedField(null); setNodeSelection([]); },
+    onSuccess: (result) => { onChange(result.definition); setWarnings(result.warnings); setLocalError(""); setPreviewValues({}); setExpandedField(null); setNodeSelection(inputNodeIds(result.definition)); },
   });
   function update(next: RunningHubDefinition) { onChange(next); }
   function revealNode(nodeId: string) { setNodeSelection((selected) => selected.includes(nodeId) ? selected : [...selected, nodeId]); }

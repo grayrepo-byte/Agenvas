@@ -102,8 +102,21 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
 
 
 describe("RunningHubDefinitionEditor mapping table", () => {
+  it("shows saved nodes and their parameter mappings immediately when opening the editor", async () => {
+    await mount(false);
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 节点 2");
+    expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
+    const strength = screen.getByRole("row", { name: "强度" });
+    expect(within(strength).getByRole("textbox", { name: "节点 ID" })).toHaveValue("2");
+    expect(within(strength).getByRole("textbox", { name: "节点字段" })).toHaveValue("strength");
+    expect(within(strength).getByRole("textbox", { name: "默认值" })).toHaveValue("0");
+    expect(screen.getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue('"initial"');
+    expect(currentDefinition()).toEqual(initialDefinition);
+  });
+
   it("selects multiple nodes in one open menu and shows their editable and fixed parameters together", async () => {
     await mount(false);
+    await showNodes();
     await clickControl(screen.getByRole("button", { name: "选择节点" }));
     await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 1" }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
@@ -118,8 +131,9 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 节点 2");
   });
 
-  it("shows parameters only after choosing a node and retains scalar drafts across node switches", async () => {
+  it("retains scalar drafts across clearing the selection and switching nodes", async () => {
     await mount(false);
+    await showNodes();
     expect(screen.queryByRole("table", { name: "参数绑定" })).not.toBeInTheDocument();
     await showNodes("1");
     expect(screen.getByRole("row", { name: "模式" })).toBeInTheDocument();
@@ -172,6 +186,7 @@ describe("RunningHubDefinitionEditor mapping table", () => {
 
   it("supports keyboard selection and returns focus to the picker after Escape", async () => {
     await mount(false);
+    await showNodes();
     const picker = screen.getByRole("button", { name: "选择节点" });
     picker.focus();
     await userEvent.setup().keyboard("{Enter}{End} ");

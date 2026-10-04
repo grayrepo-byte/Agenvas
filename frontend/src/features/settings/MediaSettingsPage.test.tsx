@@ -180,6 +180,11 @@ describe("MediaSettingsPage", () => {
     await selectValue(within(dialog).getByRole("combobox", { name: "目标类型" }), "AI_APP");
     await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
     await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
+    const importedField = await within(dialog).findByRole("row", { name: "创作风格" });
+    expect(importedField).toBeVisible();
+    expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1");
+    expect(within(importedField).getByRole("textbox", { name: "节点字段" })).toHaveValue("style");
+    expect(within(importedField).getByRole("textbox", { name: "默认值" })).toHaveValue('"photo"');
     await user.click(within(dialog).getByText("创作者表单预览 · 离线"));
     expect(await within(dialog).findByRole("combobox", { name: "创作风格 *" })).toHaveValue("0");
     await user.click(within(dialog).getByRole("combobox", { name: "创作风格 *" }));
@@ -242,6 +247,85 @@ describe("MediaSettingsPage", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(writes).toHaveLength(2);
     expect(writes[1]).toEqual(writes[0]);
+  });
+
+  it.each(["AI_APP", "WORKFLOW"] as const)("edits saved RunningHub %s mappings and reopens the saved values without rediscovery", async (targetType) => {
+    const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
+      schemaVersion: 1, protocolVersion: "V2", targetType, targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [
+        { key: "prompt", label: "画面提示", nodeId: "10", fieldName: "text", type: "STRING", source: "PROMPT",
+          defaultValue: "合成提示", required: false, advanced: false },
+        { key: "seconds", label: "视频时长", nodeId: "20", fieldName: "seconds", type: "INTEGER", source: "DURATION_SECONDS",
+          defaultValue: 4, required: false, advanced: false },
+        { key: "video", label: "来源视频", nodeId: "20", fieldName: "video", type: "VIDEO", source: "PARAMETER",
+          resourceFormat: "FILE_NAME", required: true, advanced: false },
+      ],
+      fixedBindings: [{ nodeId: "30", fieldName: "enabled", value: false, encoding: "NATIVE" }],
+      outputs: [{ nodeId: "99", kind: "VIDEO", primary: true, maxCount: 2 },
+        { nodeId: "100", kind: "AUDIO", primary: false, maxCount: 1 }],
+    };
+    const savedDefinition = { ...definition, fields: definition.fields.map((field) => field.key === "prompt"
+      ? { ...field, defaultValue: "修改后的合成提示" } : field) };
+    let fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub" }, {
+      adapterId: "RUNNINGHUB_VIDEO", kind: "VIDEO_GENERATION", settings: { runningHub: definition },
+    });
+    const writes: unknown[] = [];
+    const discoveryRequests: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/runninghub/preview", async ({ request }) => {
+        discoveryRequests.push(await request.json());
+        return HttpResponse.json({ definition, warnings: [] });
+      }),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        writes.push(await request.json());
+        fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub" }, {
+          adapterId: "RUNNINGHUB_VIDEO", kind: "VIDEO_GENERATION", version: 5, capabilityVersion: 3,
+          settings: { runningHub: savedDefinition },
+        });
+        return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("combobox", { name: "目标类型" })).toHaveValue(targetType);
+    expect(within(dialog).getByRole("textbox", { name: "真实目标 ID" })).toHaveValue("123");
+    expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 10 · 节点 20 · 节点 30");
+    const prompt = within(dialog).getByRole("row", { name: "画面提示" });
+    expect(prompt).toBeVisible();
+    expect(within(prompt).getByRole("textbox", { name: "节点 ID" })).toHaveValue("10");
+    expect(within(prompt).getByRole("textbox", { name: "节点字段" })).toHaveValue("text");
+    expect(within(prompt).getByRole("combobox", { name: "输入来源" })).toHaveValue("PROMPT");
+    const promptDefault = within(prompt).getByRole("textbox", { name: "默认值" });
+    expect(promptDefault).toHaveValue("合成提示");
+    const duration = within(dialog).getByRole("row", { name: "视频时长" });
+    expect(within(duration).getByRole("combobox", { name: "输入来源" })).toHaveValue("DURATION_SECONDS");
+    expect(within(duration).getByRole("textbox", { name: "默认值" })).toHaveValue("4");
+    const video = within(dialog).getByRole("row", { name: "来源视频" });
+    expect(within(video).getByRole("combobox", { name: "上传后的引用格式" })).toHaveValue("FILE_NAME");
+    expect(within(dialog).getByRole("textbox", { name: "固定节点 ID" })).toHaveValue("30");
+    expect(within(dialog).getByRole("textbox", { name: "固定字段" })).toHaveValue("enabled");
+    expect(within(dialog).getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue("false");
+    const outputs = within(dialog).getByRole("table", { name: "输出映射" });
+    expect(within(outputs).getAllByRole("textbox", { name: "输出节点（留空匹配此类型）" }).map((input) => (input as HTMLInputElement).value)).toEqual(["99", "100"]);
+    expect(within(outputs).getAllByRole("combobox", { name: "媒体类型" }).map((input) => (input as HTMLInputElement).value)).toEqual(["VIDEO", "AUDIO"]);
+    expect(within(outputs).getAllByRole("spinbutton", { name: "最多结果数" }).map((input) => (input as HTMLInputElement).value)).toEqual(["2", "1"]);
+    expect(discoveryRequests).toEqual([]);
+
+    await user.clear(promptDefault); await user.type(promptDefault, "修改后的合成提示");
+    await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(writes).toEqual([{ expectedVersion: 4, name: "Portrait", enabled: true,
+      adapterId: "RUNNINGHUB_VIDEO", settings: { runningHub: savedDefinition } }]);
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    const reopened = screen.getByRole("dialog");
+    expect(within(reopened).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 10 · 节点 20 · 节点 30");
+    expect(within(within(reopened).getByRole("row", { name: "画面提示" })).getByRole("textbox", { name: "默认值" })).toHaveValue("修改后的合成提示");
+    expect(within(reopened).getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue("false");
+    expect(discoveryRequests).toEqual([]);
   });
 
   it.each(["VIDEO", "AUDIO"] as const)("saves a changed %s primary output and preserves the workflow fields", async (kind) => {
