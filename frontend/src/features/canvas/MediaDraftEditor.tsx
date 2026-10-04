@@ -613,7 +613,6 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     const next = availableCapabilities.find((candidate) => candidate.id === resolvedCapabilityId);
     const change = planMediaCapabilityChange({ kind: artifact.kind, fields, capabilityId,
       resolvedCapabilityId, previous: chosenCapability, next });
-    if (change.confirmation && !window.confirm(change.confirmation)) return;
     edit(change.fields);
     setWorkflowPickerField(null);
     setPopover(null);

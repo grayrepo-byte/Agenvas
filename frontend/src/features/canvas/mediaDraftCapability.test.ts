@@ -38,22 +38,20 @@ describe("media capability changes", () => {
     const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, videoInputMode: "TEXT" },
       capabilityId: next.id, resolvedCapabilityId: next.id, previous: video, next });
     expect(change.fields).toMatchObject({ capabilityId: next.id, videoInputMode: mode, mediaInputs: [] });
-    expect(change.confirmation).toBeNull();
   });
 
   it("keeps the implicit default selection and compatible image parameters without prompting", () => {
     const parameters = { aspectRatio: "16:9", resolution: "2K", quality: "high", transparentBackground: true, generationCount: 4 } as const;
     expect(planMediaCapabilityChange({ kind: "IMAGE", fields: { ...fields, parameters }, capabilityId: null,
       resolvedCapabilityId: image.id, previous: image, next: image }))
-      .toEqual({ fields: { capabilityId: null, parameters }, confirmation: null });
+      .toEqual({ fields: { capabilityId: null, parameters } });
   });
 
-  it("requests confirmation before resetting unsupported image parameters", () => {
+  it("resets unsupported image parameters while planning the complete change", () => {
     const next = { ...image, supportedImageAspectRatios: ["AUTO"], supportedImageResolutions: ["1K"], supportsTransparentBackground: false } satisfies MediaCapability;
     const change = planMediaCapabilityChange({ kind: "IMAGE", fields: { ...fields,
       parameters: { aspectRatio: "16:9", resolution: "2K", transparentBackground: true } },
     capabilityId: next.id, resolvedCapabilityId: next.id, previous: image, next });
-    expect(change.confirmation).toContain("不受支持的图片参数");
     expect(change.fields.parameters).toMatchObject({ aspectRatio: "AUTO", resolution: "1K", transparentBackground: false });
     expect(change.fields).not.toHaveProperty("mediaInputs");
   });
@@ -61,7 +59,7 @@ describe("media capability changes", () => {
   it("preserves static audio settings when selecting another capability", () => {
     expect(planMediaCapabilityChange({ kind: "AUDIO", fields: { ...fields, parameters: { speechRate: 50 } },
       capabilityId: null, resolvedCapabilityId: "audio-default" }))
-      .toEqual({ fields: { capabilityId: null }, confirmation: null });
+      .toEqual({ fields: { capabilityId: null } });
   });
 
   it("changes mixed references to frames and prunes only removed versions without mutating the draft", () => {
@@ -81,7 +79,6 @@ describe("media capability changes", () => {
         { versionId: imageInput.versionId, role: "START_FRAME" }, { versionId: second.versionId, role: "END_FRAME" }],
       parameters: { aspectRatio: "AUTO" } });
     expect(change.fields.parameters).not.toHaveProperty("videoResolution");
-    expect(change.confirmation).toContain("重置不支持的分辨率");
     expect(before).toEqual(snapshot);
   });
 
@@ -89,7 +86,6 @@ describe("media capability changes", () => {
     const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields,
       videoInputMode: "START_END", mediaInputs: [{ ...imageInput, role: "START_FRAME" }, audioInput] },
     capabilityId: null, resolvedCapabilityId: video.id, next: { ...video, supportedVideoInputModes: ["GENERAL_REFERENCE"] } });
-    expect(change.confirmation).toBeNull();
     expect(change.fields).toMatchObject({ capabilityId: null, videoInputMode: "GENERAL_REFERENCE", mediaInputs: [imageInput, audioInput] });
   });
 
@@ -100,7 +96,6 @@ describe("media capability changes", () => {
     const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, parameters: { videoResolution: resolution } },
       capabilityId: next.id, resolvedCapabilityId: next.id, previous: video, next });
     expect(change.fields.parameters?.videoResolution).toBe(resolution === "768p" ? resolution : "480p");
-    expect(change.confirmation === null).toBe(resolution === "768p");
   });
 
   it("retains RunningHub values only when field mappings, ranges and options remain compatible", () => {
@@ -115,7 +110,6 @@ describe("media capability changes", () => {
     expect(change.fields).toMatchObject({ capabilityId: next.id, durationSeconds: null,
       parameters: { dynamicValues: { frame: imageInput.versionId, sound: false } }, mediaInputs: [imageInput],
       videoInputMode: "GENERAL_REFERENCE", prompt: `${MENTION_MARKER}+` });
-    expect(change.confirmation).toContain("strength、mode");
     const remapped = { ...next, settings: { runningHub: { ...definition,
       fields: definition.fields.map((field) => ({ ...field, nodeId: "new-node" })),
     } } };
@@ -137,7 +131,6 @@ describe("media capability changes", () => {
     expect(change.fields.parameters).toMatchObject({ aspectRatio: "16:9", generationCount: 2,
       dynamicValues: { reference_0: imageInput.versionId, strength: 0.5 } });
     expect(change.fields.mediaInputs).toEqual([imageInput]);
-    expect(change.confirmation).toBeNull();
   });
 
   it("clears dynamic parameters and exact inputs when leaving RunningHub", () => {
@@ -147,7 +140,6 @@ describe("media capability changes", () => {
     capabilityId: null, resolvedCapabilityId: video.id, previous: dynamic, next: video });
     expect(change.fields).toEqual({ capabilityId: video.id, parameters: {}, mediaInputs: [],
       prompt: "Use ", mentions: [], durationSeconds: null, videoInputMode: "TEXT" });
-    expect(change.confirmation).toContain("frame");
   });
 
   it.each(["GENERAL_REFERENCE", "START_END"] as const)("uses supported %s immediately when leaving RunningHub for an image-only model", (mode) => {
@@ -164,7 +156,6 @@ describe("media capability changes", () => {
     const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, parameters: { aspectRatio: "16:9" } },
       capabilityId: next.id, resolvedCapabilityId: next.id, next });
     expect(change.fields.durationSeconds).toBe(5);
-    expect(change.confirmation).toContain("不兼容参数");
   });
   it("keeps video roles in general reference mode and removes them from first/last slots", () => {
     const videoInput = { versionId: "video-version", role: "VIDEO_REFERENCE", color: "#67C7F3" } as const;

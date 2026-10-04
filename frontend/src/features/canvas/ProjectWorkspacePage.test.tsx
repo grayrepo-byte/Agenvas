@@ -1650,8 +1650,12 @@ describe("ProjectWorkspacePage", () => {
       `/api/v1/projects/project-1/assets/${assetId}/thumbnail`);
     expect(screen.queryByLabelText("Demo clip 的视频")).not.toBeInTheDocument();
     fireEvent.mouseEnter(poster.parentElement!);
+    expect(screen.queryByLabelText("Demo clip 的视频")).not.toBeInTheDocument();
+    expect(play).not.toHaveBeenCalled();
+    await screen.findByLabelText("Demo clip 的视频", {}, { timeout: 2000 });
     expect(screen.getByLabelText("Demo clip 的视频")).toHaveAttribute("src",
       `/api/v1/projects/project-1/assets/${assetId}/content`);
+    expect(screen.getByLabelText("Demo clip 的视频")).toHaveProperty("muted", true);
     expect(screen.getByText("演示视频")).toBeInTheDocument();
     expect(play).toHaveBeenCalledOnce();
     expect(useCanvasStore.getState().selectedIds).toEqual([]);

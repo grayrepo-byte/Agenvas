@@ -1,6 +1,5 @@
 import type { Artifact, ImageGenerationParameters, MediaCapability, SaveMediaDraftRequest } from "../../shared/api/client";
 import { AUTODL_ADAPTER, publishedAutoDlResolutions, resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
-import { t } from "../../shared/i18n";
 import type { RunningHubValue } from "./RunningHubForm";
 import { promptForMediaInputs } from "./mediaPrompt";
 import { workflowDefinition, workflowDraftValues } from "./workflowDraft";
@@ -74,11 +73,11 @@ export function inputsForVideoMode(inputs: DraftFields["mediaInputs"], mode: Vid
   return [];
 }
 
-/** Calculates one complete draft change before the UI confirms or applies any part of it. */
+/** Keeps compatible inputs and calculates one complete change for immediate application. */
 export function planMediaCapabilityChange({ kind, fields, capabilityId, resolvedCapabilityId, previous, next }: {
   kind: Artifact["kind"]; fields: DraftFields; capabilityId: string | null;
   resolvedCapabilityId: string | undefined; previous?: MediaCapability; next?: MediaCapability;
-}): { fields: Partial<DraftFields>; confirmation: string | null } {
+}): { fields: Partial<DraftFields> } {
   const beforeDefinition = workflowDefinition(previous);
   const nextDefinition = workflowDefinition(next);
   if (nextDefinition || beforeDefinition) {
@@ -107,10 +106,6 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
     const used = new Set(nextDefinition?.fields.filter((field) => ["IMAGE", "AUDIO", "VIDEO"].includes(field.type))
       .map((field) => compatible[field.key]).filter((value) => typeof value === "string"));
     const retained = nextDefinition ? fields.mediaInputs.filter((input) => used.has(input.versionId)) : [];
-    const removed = Object.keys(oldValues).filter((key) => !(key in compatible));
-    const confirmation = removed.length || retained.length !== fields.mediaInputs.length
-      || !beforeDefinition && Object.keys(fields.parameters).length
-      ? t("media.capabilitySwitch.inputResetConfirmation", { "0": removed.length ? `（${removed.join("、")}）` : "" }) : null;
     return { fields: { capabilityId: resolvedCapabilityId ?? null,
       parameters: nextDefinition ? { ...(next?.settings.comfyInputs
         ? kind === "IMAGE" ? normalizedImageParameters(fields.parameters, next) : normalizedVideoParameters(fields.parameters, next)
@@ -118,16 +113,13 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
       mediaInputs: retained, ...promptForMediaInputs(fields, retained),
       durationSeconds: nextDefinition?.fields.some((field) => field.source === "DURATION_SECONDS") ? fields.durationSeconds : null,
       ...(kind === "VIDEO" ? { videoInputMode: nextDefinition
-        ? retained.length ? "GENERAL_REFERENCE" : "TEXT" : preferredVideoMode(next, false) } : {}) }, confirmation };
+        ? retained.length ? "GENERAL_REFERENCE" : "TEXT" : preferredVideoMode(next, false) } : {}) } };
   }
   if (kind === "IMAGE") {
     const parameters = normalizedImageParameters(fields.parameters, next);
-    const confirmation = Object.keys(fields.parameters).length > 0
-      && JSON.stringify(parameters) !== JSON.stringify(normalizedImageParameters(fields.parameters, previous))
-      ? t("media.capabilitySwitch.parameterResetConfirmation") : null;
-    return { fields: { capabilityId, parameters }, confirmation };
+    return { fields: { capabilityId, parameters } };
   }
-  if (kind !== "VIDEO") return { fields: { capabilityId }, confirmation: null };
+  if (kind !== "VIDEO") return { fields: { capabilityId } };
 
   const videoInputMode = !fields.videoInputMode || !next?.supportedVideoInputModes.includes(fields.videoInputMode)
     || fields.mediaInputs.length > 0 && fields.videoInputMode === "TEXT"
@@ -141,10 +133,6 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
     if (next?.adapterId === AUTODL_ADAPTER) parameters.videoResolution = next.settings.videoResolution;
     else delete parameters.videoResolution;
   }
-  const confirmation = mediaInputs.length < fields.mediaInputs.length || resolutionIncompatible
-    ? resolutionIncompatible
-      ? t("media.capabilitySwitch.resolutionResetConfirmation")
-      : t("media.capabilitySwitch.referenceRemovalConfirmation") : null;
   return { fields: { capabilityId, parameters, videoInputMode, mediaInputs,
-    ...promptForMediaInputs(fields, mediaInputs) }, confirmation };
+    ...promptForMediaInputs(fields, mediaInputs) } };
 }

@@ -272,9 +272,11 @@ describe("video hover controls", () => {
     await renderInteractiveFlow();
     const poster = await screen.findByRole("img", { name: "参考图 的视频封面" });
     fireEvent.mouseEnter(poster.parentElement!);
-    const video = screen.getByLabelText("参考图 的视频") as HTMLVideoElement;
+    expect(screen.queryByLabelText("参考图 的视频")).not.toBeInTheDocument();
+    expect(play).not.toHaveBeenCalled();
+    const video = await screen.findByLabelText("参考图 的视频", {}, { timeout: 2000 }) as HTMLVideoElement;
     expect(play).toHaveBeenCalledOnce();
-    expect(video.muted).toBe(false);
+    expect(video.muted).toBe(true);
     Object.defineProperty(video, "duration", { configurable: true, value: 10 });
     fireEvent.loadedMetadata(video);
     const seek = screen.getByRole("slider", { name: "视频播放进度" });

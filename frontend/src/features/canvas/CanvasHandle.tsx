@@ -14,7 +14,7 @@ const HANDLE_OFFSET_Y = "--canvas-handle-offset-y";
 
 type CanvasHandleConfig = {
   /**
-   * out：卡片右侧出口，选中卡片后显示，是唯一可拖出手势的连接点。
+   * out：卡片右侧出口，悬停或选中卡片时显示，是唯一可拖出手势的连接点。
    * in：卡片左侧落点，默认不可见也不可点，落点靠 connectionRadius 的距离判定。
    * anchor：Agent 输出组锚点，只承接投影连线。
    */

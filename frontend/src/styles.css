@@ -431,12 +431,14 @@ button:disabled {
   transition: transform 120ms ease;
 }
 
-/* 右侧出口：卡片选中后才出现，是唯一能拖出连线的地方。 */
+/* 右侧出口：悬停或选中卡片时出现，是唯一能拖出连线的地方。
+   出口及其外侧命中区属于节点后代，鼠标从卡片移向按钮时仍保持节点悬停。 */
 .workspace-shell .react-flow__handle.canvas-handle--out {
   opacity: 0;
   pointer-events: none;
 }
 
+.workspace-shell .react-flow__node:hover .react-flow__handle.canvas-handle--out,
 .workspace-shell .react-flow__node.selected .react-flow__handle.canvas-handle--out,
 .workspace-shell .react-flow__handle.canvas-handle--out.connectingfrom {
   opacity: 1;
