@@ -117,7 +117,7 @@ docker compose down
 docker compose -f docker-compose.local.yml up -d --build --wait
 ```
 
-也可使用 `./deploy/update-local.sh`，先完成全部镜像构建，再更新容器并等待健康检查。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
+也可使用 `./deploy/update-local.sh`，先完成全部镜像构建，再更新容器并等待健康检查；完成后仅显示容器名、服务、状态和端口，避免完整启动命令撑宽状态表。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
 
 镜像部署和源码构建默认项目名均为 `agenvas`，沿用相同数据库、素材和密钥卷，切换时须备份并保证版本兼容。它们是同一环境的两种启动方式；若要并行运行，需用 `-p` 指定独立项目名并修改端口。
 
@@ -169,13 +169,13 @@ Vite 默认运行于 `5173`，将 `/api` 代理到 `localhost:8080`。
 
 在 Docker Hub 准备 `grayrepo/agenvas-server`、`grayrepo/agenvas-web` 两个公开仓库，便于部署者匿名拉取。CI 发布地址直接使用 `grayrepo`；需要更换发布方时修改工作流和 Compose 中的地址。PostgreSQL 从官方仓库拉取，只做扫描。
 
-`.github/workflows/ci.yml` 在推送 `main`、推送 `v*.*.*` 版本标签或手动运行时执行。前后端测试、Compose 检查、源码扫描及两个架构的应用与官方 PostgreSQL 镜像扫描通过后，发布已扫描应用镜像的多架构清单：
+`.github/workflows/ci.yml` 在推送 `main`、推送 `v*.*.*` 版本标签或手动运行时执行；只有推送 `v*.*.*` 版本标签会上传 Docker Hub，`main` 推送与手动运行只构建和扫描、不推送。前后端测试、Compose 检查、源码扫描及两个架构的应用与官方 PostgreSQL 镜像扫描通过后，发布已扫描应用镜像的多架构清单：
 
 - 每次发布：`sha-<完整 40 位提交 SHA>`。
-- `main` 分支：额外更新 `latest` 标签，供默认 Compose 使用；在 main 上手动运行也会更新。
-- `v0.1.0` 版本标签：额外发布 `0.1.0`；预发布版本保留后缀，版本标签触发不会覆盖 main 的 `latest`。
+- `v0.1.0` 版本标签：额外发布去除前导 v 后的 `0.1.0`。
+- 稳定版本标签（无预发布后缀，如 `v0.1.0`）：额外把 `latest` 指向该版本，供默认 Compose 使用；预发布版本（如 `v0.1.0-rc.1`）保留后缀，不更新 `latest`。
 
-PR 只执行检查，不访问 Docker Hub 凭据或推送镜像；其他分支的手动运行也不发布。每个服务和架构保留 SBOM 与许可证清单，成功发布的标签显示在 Actions 摘要中。`ci-<运行 ID>-<尝试次数>-<架构>` 为中间标签，部署使用 `latest` 或自行指定最终版本、提交标签或 digest。
+PR 只执行检查，不访问 Docker Hub 凭据或推送镜像；`main` 推送与在非版本标签触发的手动运行也只构建和扫描。每个服务和架构保留 SBOM 与许可证清单，成功发布的标签显示在 Actions 摘要中。`ci-<运行 ID>-<尝试次数>-<架构>` 为中间标签，部署使用 `latest` 或自行指定最终版本、提交标签或 digest。
 
 发布实现参考 [Docker 多架构构建说明](https://docs.docker.com/build/ci/github-actions/multi-platform/)与 [Docker 镜像标签规则](https://github.com/docker/metadata-action)。
 

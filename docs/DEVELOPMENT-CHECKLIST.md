@@ -48,9 +48,11 @@
 - [x] 默认端口安全，SSE 代理配置正确，容器非 root。
 - [x] Mock 状态醒目标识，支持可重复成功和失败 fixture。
 
+2026-10-04 更新脚本状态输出修复：`deploy/update-local.sh` 的最终状态表显式选择容器名、服务、状态和端口，避免 Compose 2.21 将完整内联初始化命令打印到 COMMAND 列后撑宽整张表。完整脚本输出回归中，构建与更新步骤使用 Mock，状态步骤执行真实只读 Compose 查询；修复前最长行 3343 列，修复后 89 列，执行顺序与成功摘要检查通过。Bash 语法、四份 Compose 配置回归与差异空白检查通过。同步中英文 README；无 API、迁移或依赖变化。未运行镜像构建、容器更新、全量测试或真实 Provider 调用。
+
 2026-10-02 部署与开发分离：默认 `deploy/compose.yaml` 的文字/媒体均为 `configured`，`deploy/compose.dev.yaml` 复用三服务并显式 Mock。默认项目名分别为 `agenvas`、`agenvas-dev`，卷按项目名隔离，端口相同时由部署者显式避开。两版数据库密码与初始化密钥仍必填；部署配置云凭证另需主密钥，并由管理员发布真实能力。没有真实媒体配置时生成能力目录为空，预置 Mock 不能用于新生成；已有配置、历史和固定任务保留。备份后直接启动原容器，避免按部署配置重建开发实例。同步 README、规格、ADR 0002、OpenAPI 与生成 TypeScript；`MediaDefault.capabilityId` 允许 null，诊断模式新增 `CONFIGURED`，客户端须重新生成类型并处理空默认值，无数据库迁移。两版 Compose 及 CI 配置断言通过；后端定向单元测试 15 项、真实 PostgreSQL 集成测试 6 项、前端 3 个相关文件 74 项均通过，Java 编译、TypeScript 类型检查、修改文件 ESLint、脚本语法及 `git diff --check` 通过。未运行全量测试、容器整栈构建/启动、完整备份恢复或真实 Provider 调用，不作为生产部署验收。
 
-2026-10-04 Docker Hub 镜像与源码构建入口（按用户进一步确认修订）：
+2026-10-04 Docker Hub 镜像与源码构建入口（按用户进一步确认修订；其中“发布触发与 latest”规则已由文末「Docker Hub 上传仅版本标签触发」记录替代）：
 
 - [x] 根目录 `docker-compose.yml` 固定写明 `grayrepo/agenvas-server:latest`、`grayrepo/agenvas-web:latest` 和官方 `postgres:17.11-alpine`；应用始终拉取 latest，不要求镜像变量。`docker-compose.local.yml` 与原源码/Mock 入口只构建 server/web，PostgreSQL 不再自建。四份 Compose 各自完整列出所有运行设置，无 extends/include 或共享 runtime 文件，部署者直接修改配置。保留项目名、持久卷、健康检查、只读根、资源限制及日志轮转；源码更新脚本使用根入口，备份包含完整配置；Docker 上下文排除环境凭据文件。
 - [x] GitHub CI 增加版本标签与手动触发，在现有测试/源码扫描及三服务双架构镜像扫描通过后发布应用清单。PostgreSQL 只从官方拉取并完整扫描，撤销 gosu 排除与自建 Dockerfile；仅 server/web 推送扫描过的镜像。main 更新 latest，版本标签不覆盖 latest，完整 SHA 标签保留；PR 不使用发布凭据，缺失 Secrets 时明确失败，Docker Actions 固定 commit。同步中英文 README、MVP、ADR 0002、依赖、扫描例外与备份说明；无 API 合约、数据库迁移或应用依赖变化。
@@ -1627,3 +1629,11 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [ ] 全量测试、真实 ComfyUI / RunningHub 模型生成与共享服务部署未运行；合成表单和协议测试不代表真实工作流效果。
 
 工作流编辑栏合并 main 复验：保留 main 的画布框选触发规则、ComfyUI 服务端分配的字符串任务 ID 与 README 配置说明；工作流提交和集成测试冲突保留具名槽位、去重上传、标量冻结、远程原 ID 轮询及 Agent 输入目录检查。46 项画布选择和工作流控件前端测试、112 项后端专项测试（111 单元、1 真实 PostgreSQL＋合成 HTTP 集成）通过，零失败或跳过；TypeScript、Java 主源码及测试编译、差异空白检查通过。全量测试、真实 Provider 调用与部署本轮未运行。
+
+## 2026-10-04 Docker Hub 上传仅版本标签触发
+
+- [x] 按用户决定，Docker Hub 上传只由 `v*.*.*` 版本标签推送触发；`main` 推送与 `pull_request` 不再登录或推送，仍构建并扫描三服务双架构镜像，保留 SBOM 与许可证清单。`PUBLISH_IMAGES` 环境变量、`security-images` 的凭据校验/登录/中间标签推送，以及 `publish-dockerhub` 的 `if` 统一收敛为 `startsWith(github.ref, 'refs/tags/v')`；PR 仍不接触发布凭据，缺失 Secrets 仍明确失败。
+- [x] 按用户进一步决定，`latest` 改由稳定版本标签驱动：无预发布后缀的 `v*.*.*` 标签在发布具体版本的同时把 `latest` 指向该版本，预发布标签（如 `v0.1.0-rc.1`）只发布带后缀版本、不更新 `latest`；`sha-<完整提交 SHA>` 标签继续保留用于审计。默认 `docker-compose.yml` 仍以 `latest` 拉取，语义与 README、规格、ADR 0002 一致。
+- [x] 同步中英文 README 的发布章节、MVP 规格 1811 段与 ADR 0002 发布补充；开发清单旧入口加注替代关系。无 API 合约、数据库迁移、生成类型或应用依赖变更。
+- [x] actionlint 1.7.12 对 `.github/workflows/ci.yml` 零告警（exit 0）；Python 解析工作流 YAML 通过；`git diff --check` 无空白问题。本轮仅改动工作流与文档，未新增部署脚本，未触碰 Mock 或运行数据。
+- [ ] 未运行 GitHub 托管 CI、真实版本标签发布、Docker Hub 登录/推送或远端镜像拉取；工作流与文档变更不代表已实际发布镜像，须由一次真实标签运行验证。

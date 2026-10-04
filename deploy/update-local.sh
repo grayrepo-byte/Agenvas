@@ -5,6 +5,7 @@ set -euo pipefail
 deploy_repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
 deploy_compose_file="$deploy_repo/docker-compose.local.yml"
 deploy_health_wait_seconds=300
+deploy_status_format=$'table {{.Name}}\t{{.Service}}\t{{.Status}}\t{{.Ports}}'
 
 if [[ $# -ne 0 ]]; then
   printf 'Usage: %s\n' "$0" >&2
@@ -28,5 +29,6 @@ printf 'Building local Compose images...\n'
 printf 'Updating containers and waiting for health checks...\n'
 "${deploy_compose[@]}" up -d --no-build --wait --wait-timeout "$deploy_health_wait_seconds"
 
-"${deploy_compose[@]}" ps
+# Older Compose versions print full inline entrypoints in the default COMMAND column.
+"${deploy_compose[@]}" ps --format "$deploy_status_format"
 printf 'Local deployment is healthy. Database and asset volumes were retained.\n'

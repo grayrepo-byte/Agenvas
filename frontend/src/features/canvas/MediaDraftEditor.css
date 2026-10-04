@@ -81,13 +81,13 @@
 .media-draft-prompt-shell { position: relative; min-height: 0; flex: 1 1 var(--draft-prompt-height); margin: 9px 0 8px; }
 .media-draft-editor .media-draft-prompt {
   width: 100%; min-height: var(--draft-prompt-height); height: 100%; overflow-y: auto; resize: none;
-  field-sizing: fixed; border: 1px solid transparent; border-radius: var(--ui-radius-md);
+  field-sizing: fixed; border: 0; border-radius: var(--ui-radius-md);
   background: transparent; color: var(--ui-text-secondary); box-shadow: none; outline: none;
   padding: var(--ui-space-2) var(--ui-space-3); font-size: var(--ui-editor-text-size);
   font-weight: 400; line-height: var(--ui-editor-line-height); white-space: pre-wrap;
-  transition: border-color var(--ui-duration) ease;
 }
-.media-draft-editor .media-draft-prompt:focus-visible { border-color: var(--ui-border-strong); outline: none; }
+/* The surrounding panel owns the frame, including while its prompt is focused. */
+.media-draft-editor .media-draft-prompt:focus-visible { outline: none; box-shadow: none; }
 .media-draft-prompt-shell .media-draft-prompt { min-height: 0; }
 .media-draft-editor .media-draft-prompt[aria-readonly="true"] { color: var(--ui-text-muted); opacity: 0.55; cursor: default; }
 .media-draft-prompt:empty::before { color: var(--ui-text-subtle); content: attr(data-placeholder); pointer-events: none; }

@@ -48,7 +48,7 @@
 
 .text-card-editor { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
 .text-card-editor-body { position: relative; display: flex; flex-direction: column; padding: 8px 12px; }
-.text-card-editor-body textarea {
+.content-canvas-card .text-card-editor-body textarea {
   box-sizing: border-box; width: 100%; min-height: 0; flex: 1 1 auto; resize: none;
   border: 0; border-radius: 7px; background: transparent; color: #dedede; padding: 5px 3px;
   font: inherit; font-size: 13px; line-height: 1.75; outline: none; white-space: pre-wrap;

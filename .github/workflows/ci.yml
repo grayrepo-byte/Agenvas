@@ -16,7 +16,8 @@ concurrency:
 
 env:
   IMAGE_NAMESPACE: grayrepo
-  PUBLISH_IMAGES: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
+  # Docker Hub uploads are tag-only; branch pushes still build and scan, but never publish.
+  PUBLISH_IMAGES: ${{ github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
   frontend:
@@ -227,7 +228,7 @@ jobs:
   publish-dockerhub:
     # Release tags appear only after every service and architecture passes all existing gates.
     needs: [security-images]
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -246,11 +247,11 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: docker.io/${{ env.IMAGE_NAMESPACE }}/agenvas-${{ matrix.service }}
-          # latest is explicit below for main; SemVer tags must not update the rolling channel.
+          # latest floats only for stable version tags; a prerelease suffix must never move the rolling channel.
           flavor: latest=false
           tags: |
             type=sha,format=long
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
             type=semver,pattern={{version}}
       - name: Publish manifests from the scanned architecture images
         env:

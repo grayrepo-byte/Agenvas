@@ -117,7 +117,7 @@ From the repository root, compile server and web from the current checkout and s
 docker compose -f docker-compose.local.yml up -d --build --wait
 ```
 
-Alternatively, `./deploy/update-local.sh` builds all images before updating containers and waiting for health checks. Source builds need no Docker Hub login. Text and media still default to `configured`. The existing `deploy/compose.yaml` uses the same source build configuration.
+Alternatively, `./deploy/update-local.sh` builds all images before updating containers and waiting for health checks. Its final status table shows only container names, services, status, and ports so full startup commands cannot stretch the table. Source builds need no Docker Hub login. Text and media still default to `configured`. The existing `deploy/compose.yaml` uses the same source build configuration.
 
 Image deployment and source builds both default to the `agenvas` project and retain the same database, media, and credential volumes. Back up data and check version compatibility before switching. To run independent environments simultaneously, use distinct project names with `-p` and override the ports.
 
@@ -169,13 +169,13 @@ Configure these under **Settings → Secrets and variables → Actions** in the 
 
 Prepare two public Docker Hub repositories, `grayrepo/agenvas-server` and `grayrepo/agenvas-web`, allowing anonymous deployment pulls. CI publishes directly under `grayrepo`; to change the publisher, edit the workflow and Compose addresses. PostgreSQL is pulled from its official repository and scanned only.
 
-`.github/workflows/ci.yml` runs on pushes to `main`, `v*.*.*` version tags, and manual dispatches. After frontend/backend tests, Compose checks, source scanning, and application/official PostgreSQL image scans on both architectures succeed, it publishes multi-platform manifests from the exact scanned application images:
+`.github/workflows/ci.yml` runs on pushes to `main`, `v*.*.*` version tags, and manual dispatches; only pushes of `v*.*.*` version tags upload to Docker Hub, while `main` pushes and manual runs build and scan without publishing. After frontend/backend tests, Compose checks, source scanning, and application/official PostgreSQL image scans on both architectures succeed, it publishes multi-platform manifests from the exact scanned application images:
 
 - Every publication: `sha-<full 40-character commit SHA>`.
-- `main` branch: also updates `latest` for the default Compose file; manual runs on main do the same.
-- `v0.1.0` version tag: also publishes `0.1.0`; prereleases retain their suffix, and version-tag runs do not overwrite main's `latest`.
+- `v0.1.0` version tag: also publishes `0.1.0` with the leading `v` removed.
+- Stable version tag (no prerelease suffix, e.g. `v0.1.0`): also points `latest` at that version for the default Compose file; a prerelease (e.g. `v0.1.0-rc.1`) retains its suffix and never updates `latest`.
 
-PRs run checks without Docker Hub credentials or pushes. Manual runs on other branches do not publish. Each service and architecture retains SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
+PRs run checks without Docker Hub credentials or pushes, and `main` pushes or manual runs on non-tag refs only build and scan. Each service and architecture retains SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
 
 The workflow follows [Docker's multi-platform build documentation](https://docs.docker.com/build/ci/github-actions/multi-platform/) and [Docker image tagging rules](https://github.com/docker/metadata-action).
 
