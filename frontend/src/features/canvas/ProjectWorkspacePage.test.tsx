@@ -1652,6 +1652,7 @@ describe("ProjectWorkspacePage", () => {
     fireEvent.mouseEnter(poster.parentElement!);
     expect(screen.getByLabelText("Demo clip 的视频")).toHaveAttribute("src",
       `/api/v1/projects/project-1/assets/${assetId}/content`);
+    expect(screen.getByLabelText("Demo clip 的视频")).toHaveProperty("muted", true);
     expect(screen.getByText("演示视频")).toBeInTheDocument();
     expect(play).toHaveBeenCalledOnce();
     expect(useCanvasStore.getState().selectedIds).toEqual([]);

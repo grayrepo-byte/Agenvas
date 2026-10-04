@@ -26,12 +26,19 @@ function hover(preview: HTMLElement) {
 }
 
 describe("VideoPreview", () => {
-  it("plays with sound on hover, pauses on leave and resumes the same position", () => {
+  it("starts muted on hover without a user gesture, pauses on leave and resumes the same position", async () => {
+    // Match the native autoplay policy: hover cannot authorize audible playback.
+    vi.mocked(HTMLMediaElement.prototype.play).mockImplementation(function (this: HTMLMediaElement) {
+      return this.muted ? Promise.resolve() : Promise.reject(new DOMException("Blocked", "NotAllowedError"));
+    });
     const { preview, onClick, unmount } = showPreview();
     expect(screen.queryByLabelText("预览 的视频")).not.toBeInTheDocument();
     expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
-    const video = hover(preview);
-    expect(video.muted).toBe(false);
+    await act(async () => { fireEvent.mouseEnter(preview); });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    const video = screen.getByLabelText("预览 的视频") as HTMLVideoElement;
+    expect(video.muted).toBe(true);
+    expect(screen.getByRole("button", { name: "开启视频声音" })).toBeInTheDocument();
     expect(HTMLMediaElement.prototype.play).toHaveBeenCalledOnce();
     expect(onClick).not.toHaveBeenCalled();
     video.currentTime = 3;
@@ -70,10 +77,14 @@ describe("VideoPreview", () => {
     video.currentTime = 6;
     fireEvent.timeUpdate(video);
     expect(seek).toHaveValue("6");
-    fireEvent.click(screen.getByRole("button", { name: "关闭视频声音" }));
-    expect(video.muted).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "开启视频声音" }));
     expect(video.muted).toBe(false);
+    fireEvent.mouseLeave(preview);
+    expect(hover(preview)).toBe(video);
+    expect(video.muted).toBe(false);
+    expect(video.currentTime).toBe(6);
+    fireEvent.click(screen.getByRole("button", { name: "关闭视频声音" }));
+    expect(video.muted).toBe(true);
     expect(onClick).not.toHaveBeenCalled();
     fireEvent.click(video);
     expect(onClick).toHaveBeenCalledOnce();
@@ -89,17 +100,20 @@ describe("VideoPreview", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("视频播放失败");
     fireEvent.click(screen.getByRole("button", { name: "重试播放" }));
     expect(screen.getByLabelText("预览 的视频")).not.toBe(video);
-    expect(screen.getByLabelText("预览 的视频")).toHaveProperty("muted", false);
+    expect(screen.getByLabelText("预览 的视频")).toHaveProperty("muted", true);
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it("reports rejected sound playback without silently switching to mute", async () => {
-    vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(new DOMException("Blocked", "NotAllowedError"));
+  it("retains explicitly enabled sound when a later playback attempt is rejected and retried", async () => {
     const { preview } = showPreview();
+    hover(preview);
+    fireEvent.click(screen.getByRole("button", { name: "开启视频声音" }));
+    fireEvent.mouseLeave(preview);
+    vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(new DOMException("Blocked", "NotAllowedError"));
     hover(preview);
     expect(await screen.findByRole("alert")).toHaveTextContent("视频播放失败");
     fireEvent.click(screen.getByRole("button", { name: "重试播放" }));
-    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(3));
     expect(screen.getByLabelText("预览 的视频")).toHaveProperty("muted", false);
   });
 

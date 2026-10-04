@@ -1079,7 +1079,7 @@ describe("MediaCanvasCard", () => {
     fireEvent.mouseEnter(preview);
     const video = screen.getByLabelText("湖边 的视频");
     expect(video).not.toHaveAttribute("controls");
-    expect(video).toHaveProperty("muted", false);
+    expect(video).toHaveProperty("muted", true);
     expect(play).toHaveBeenCalledOnce();
     expect(video.getAttribute("src")).toContain("/content");
     expect(screen.getByRole("status", { name: "正在加载视频" })).toBeInTheDocument();

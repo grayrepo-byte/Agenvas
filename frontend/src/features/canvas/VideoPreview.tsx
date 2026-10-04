@@ -17,7 +17,7 @@ function timeLabel(value: number) {
 
 function isolateControl(event: SyntheticEvent) { event.stopPropagation(); }
 
-/** Hover loads and plays the original; only the picture's clicks reach node selection. */
+/** Hover plays the original muted until sound is enabled; picture clicks reach node selection. */
 export function VideoPreview({ src, posterSrc, title, demo, width, height, contentType }: {
   src: string; posterSrc: string; title: string; demo: boolean; width?: number; height?: number; contentType?: string;
 }) {
@@ -31,7 +31,8 @@ export function VideoPreview({ src, posterSrc, title, demo, width, height, conte
   const [attempt, setAttempt] = useState(0);
   const [duration, setDuration] = useState(0);
   const [position, setPosition] = useState(0);
-  const [muted, setMuted] = useState(false);
+  // Hover is not a user activation; audible autoplay can be blocked before any click.
+  const [muted, setMuted] = useState(true);
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {

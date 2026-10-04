@@ -151,6 +151,75 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("menuitemradio", { name: /细节生图/ })).toHaveAttribute("aria-checked", "true");
   });
 
+  it("switches image capabilities directly, preserving compatible parameters and resetting incompatible ones", async () => {
+    const nextCapability: MediaCapability = { ...imageCapability, id: "next-image-capability", name: "切换生图",
+      supportedImageAspectRatios: ["AUTO", "1:1"], supportedImageResolutions: ["1K", "2K"],
+      supportedImageQualities: ["medium"], supportsTransparentBackground: false, settings: { quality: "medium" } };
+    const { saves } = setup({ draft: { ...initialDraft, capabilityId: imageCapability.id,
+      parameters: { aspectRatio: "16:9", resolution: "2K", quality: "high", transparentBackground: true, generationCount: 4 } },
+      settings: { ...settings, connections: [{ ...settings.connections[0]!, capabilities: [imageCapability, nextCapability] }] } });
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole("button", { name: "选择生成模型" });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    const confirmation = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      await user.click(trigger);
+      await user.click(screen.getByRole("menuitemradio", { name: /切换生图/ }));
+      await waitFor(() => expect(saves.at(-1)).toMatchObject({ capabilityId: nextCapability.id,
+        parameters: { aspectRatio: "AUTO", resolution: "2K", quality: "medium", transparentBackground: false, generationCount: 4 } }));
+      expect(trigger).toHaveTextContent("切换生图");
+      expect(confirmation).not.toHaveBeenCalled();
+    } finally { confirmation.mockRestore(); }
+  });
+
+  it.each(["RUNNINGHUB_IMAGE", "COMFY_IMAGE_V1"])("switches %s capabilities directly and prunes incompatible fields and prompt references", async (adapterId) => {
+    const fields: NonNullable<MediaCapability["settings"]["comfyInputs"]> = [
+      { key: "strength", label: "变化强度", type: "NUMBER", nodeId: "1", fieldName: "strength", required: true,
+        advanced: false, minimum: 0, maximum: 1 },
+      { key: "hero", label: "主体图", type: "IMAGE", nodeId: "2", fieldName: "image", required: true, advanced: false },
+      { key: "detail", label: "细节图", type: "IMAGE", nodeId: "3", fieldName: "image", required: false, advanced: false },
+    ];
+    const capability: MediaCapability = { ...imageCapability, id: `${adapterId}-previous`, name: "原工作流", adapterId,
+      settings: adapterId === "COMFY_IMAGE_V1" ? { comfyInputs: fields } : { runningHub: {
+        schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false,
+        addMetadata: false, fields, outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+      } } };
+    const nextFields = fields.map((field) => field.key === "detail" ? { ...field, nodeId: "4" } : field);
+    const nextCapability: MediaCapability = { ...capability, id: `${adapterId}-next`, name: "目标工作流",
+      settings: adapterId === "COMFY_IMAGE_V1" ? { comfyInputs: nextFields }
+        : { runningHub: { ...capability.settings.runningHub!, fields: nextFields } } };
+    const { saves } = setup({ draft: { ...initialDraft, capabilityId: capability.id,
+      prompt: "保留 \uFFFC，移除 \uFFFC", parameters: { dynamicValues: { strength: 0.5, hero: "hero-v1", detail: "detail-v1" } },
+      mediaInputs: [
+        { versionId: "hero-v1", artifactId: "reference-image", order: 0, role: "REFERENCE", color: "#F15CAF", sources: [] },
+        { versionId: "detail-v1", artifactId: "reference-detail", order: 1, role: "REFERENCE", color: "#67C7F3", sources: [] },
+      ], mentions: [{ versionId: "hero-v1", role: "REFERENCE" }, { versionId: "detail-v1", role: "REFERENCE" }] },
+      settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability, nextCapability] }],
+        defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] },
+      handlers: [http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, id: "reference-image", title: "主体", resourceDefaultVersionId: "hero-v1" },
+        { ...artifact, id: "reference-detail", title: "细节", resourceDefaultVersionId: "detail-v1" },
+      ] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => HttpResponse.json({ items: [{ id: "hero-v1", versionNo: 1, content: { assetId: "hero-asset" } }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-detail/versions`, () => HttpResponse.json({ items: [{ id: "detail-v1", versionNo: 1, content: { assetId: "detail-asset" } }] })),
+      ] });
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole("button", { name: "选择生成模型" });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    const confirmation = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      await user.click(trigger);
+      await user.click(screen.getByRole("menuitemradio", { name: /目标工作流/ }));
+      await waitFor(() => expect(saves.at(-1)).toMatchObject({ capabilityId: nextCapability.id,
+        parameters: { dynamicValues: { strength: 0.5, hero: "hero-v1" } },
+        mediaInputs: [{ versionId: "hero-v1", role: "REFERENCE", color: "#F15CAF" }],
+        prompt: "保留 \uFFFC，移除 ", mentions: [{ versionId: "hero-v1", role: "REFERENCE" }] }));
+      expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ strength: 0.5, hero: "hero-v1" });
+      expect(trigger).toHaveTextContent("目标工作流");
+      expect(confirmation).not.toHaveBeenCalled();
+    } finally { confirmation.mockRestore(); }
+  });
+
   it("closes an already open video mode menu when an Agent task starts", async () => {
     const { client, setTasks, saves } = setup({ kind: "VIDEO",
       draft: { ...initialDraft, capabilityId: versatileVideoCapability.id,
