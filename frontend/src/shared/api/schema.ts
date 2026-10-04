@@ -3639,6 +3639,8 @@ export interface components {
         /** @description Versioned settings within a compiled adapter protocol. New ComfyUI publication requires comfyWorkflow; legacy model-only capabilities retain their snapshot for recovery and metadata changes. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits narrow the published declaration. Pricing is an administrator estimate, never an actual provider charge. */
         FixedMediaAdapterSettings: {
             comfyWorkflow?: components["schemas"]["ComfyUiWorkflowDefinition"];
+            /** @description Derived creator input metadata for a published ComfyUI graph. Includes declared scalar parameters and synthesized PROMPT, reference_0 through reference_13 IMAGE slots, and video DURATION_SECONDS. Does not expose the graph or fixed private literals. Ignored on administrator writes and recomputed by the server. */
+            readonly comfyInputs?: components["schemas"]["RunningHubField"][];
             runningHub?: components["schemas"]["RunningHubDefinition"];
             /** @description AutoDL preset or administrator-published workflow ID. Must match workflowDefinition.id when a definition is present. */
             workflowId?: string;
@@ -3693,7 +3695,7 @@ export interface components {
             /** @enum {integer} */
             schemaVersion: 1;
             graph: components["schemas"]["ComfyUiGraph"];
-            /** @description Unique target inputs on the selected result ancestry. PROMPT is required. WIDTH/HEIGHT must occur together; video requires DURATION_SECONDS or FRAME_COUNT, and FRAME_COUNT also requires FPS. Multiple targets may share a source. */
+            /** @description Unique target inputs on the selected result ancestry. PROMPT is optional; without it the creator prompt control is disabled. WIDTH/HEIGHT must occur together; video requires DURATION_SECONDS or FRAME_COUNT, and FRAME_COUNT also requires FPS. Multiple targets may share a source. */
             bindings: {
                 nodeId: string;
                 inputName: string;
@@ -3702,6 +3704,8 @@ export interface components {
                 /** @description Required for REFERENCE_IMAGE; zero-based contiguous indices of frozen project image inputs. All mapped images are required. */
                 referenceIndex?: number | null;
             }[];
+            /** @description Optional administrator-declared scalar inputs exposed in the creator extended-parameters table. Supports STRING/NUMBER/INTEGER/BOOLEAN/SELECT with PARAMETER source and native encoding only. Targets must be existing scalar inputs on the selected output ancestry and cannot overlap bindings. Missing defaults derive from the published graph literal. Keys prompt, durationSeconds and reference_* are reserved. Existing schemaVersion=1 definitions without parameters remain valid. */
+            parameters?: components["schemas"]["RunningHubField"][] | null;
             output: {
                 nodeId: string;
                 /**
@@ -3793,6 +3797,7 @@ export interface components {
                 value: components["schemas"]["RunningHubScalar"];
             }[] | null;
             nodeId: string;
+            /** @description Exact declared node input. RunningHub additionally requires [A-Za-z_][A-Za-z0-9_]{0,79}; ComfyUI permits imported graph input names including symbols and Unicode. */
             fieldName: string;
             /** @enum {string|null} */
             source?: "PARAMETER" | "PROMPT" | "DURATION_SECONDS" | null;
@@ -4421,7 +4426,7 @@ export interface components {
         };
         /** @description 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio 和 AutoDL 专用 videoResolution，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。 */
         ImageGenerationParameters: {
-            /** @description RunningHub only. Named media values are exact version UUIDs matched against mediaInputs; arbitrary URLs are rejected. */
+            /** @description RunningHub named inputs or ComfyUI declared scalar inputs and reference_0 through reference_13 slots. Media values are exact version UUIDs matched against deduplicated mediaInputs; the same version may supply multiple named slots. ComfyUI drafts without the dynamicValues property retain legacy positional assignment; an explicit empty object means all slots are unassigned. Arbitrary graph targets and URLs are rejected. */
             dynamicValues?: {
                 [key: string]: components["schemas"]["RunningHubScalar"];
             };

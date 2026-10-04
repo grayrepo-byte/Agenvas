@@ -221,7 +221,7 @@ public class DirectMediaTaskService {
                 if (kind == Task.Kind.VIDEO_GENERATION && duration != null) input.put("durationSeconds", seconds);
                 ObjectNode frozen = input.putObject("mediaInput");
                 var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
-                if (comfyDimensions != null) frozen.set("providerParameters", mapper.valueToTree(comfyDimensions));
+                if (comfyDimensions != null) frozen.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
                 if (autodlResolution != null) {
                     ObjectNode providerParameters = frozen.putObject("providerParameters");
                     providerParameters.put("workflowId", configuredSettings.path("workflowId").asText());
@@ -239,10 +239,7 @@ public class DirectMediaTaskService {
                 frozen.put("renderedPrompt", renderedPrompt);
                 if (prepared.style() == null) frozen.putNull("style");
                 else frozen.set("style", mapper.valueToTree(prepared.style()));
-                frozen.set("parameters", dynamicParameters != null ? dynamicParameters : imageParameters != null
-                        ? imageParameters.toJson(mapper) : videoParameters != null ? videoParameters.toJson(mapper)
-                        : dev.agenvas.artifact.domain.AudioGenerationParameters.parse(
-                                capabilities.parameters(binding, draft.parameters())).toJson(mapper));
+                frozen.set("parameters", effectiveParameters(prepared));
                 frozen.put("capabilityId", binding.capabilityId().toString());
                 frozen.put("capabilityVersion", binding.capabilityVersion());
                 if (kind == Task.Kind.VIDEO_GENERATION && duration != null) frozen.put("durationSeconds", seconds);
@@ -329,13 +326,19 @@ public class DirectMediaTaskService {
         String renderedPrompt = MediaStyleService.compose(renderPrompt(draft), style);
         MediaCapabilityBinding selected = capabilities.forDraft(draft.capabilityId(), kind);
         var definition = capabilities.runningHubDefinition(selected);
+        JsonNode configuredSettings = capabilities.settings(selected);
+        var comfy = ComfyUiWorkflowDefinition.configured(configuredSettings)
+                ? ComfyUiWorkflowDefinition.parse(mapper, configuredSettings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), kind) : null;
         boolean dynamic = definition != null;
-        if (style != null && dynamic && definition.fields().stream().noneMatch(field ->
-                field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.PROMPT)) {
+        if (style != null && (dynamic && definition.fields().stream().noneMatch(field ->
+                field.effectiveSource() == dev.agenvas.provider.domain.RunningHubDefinition.Source.PROMPT)
+                || comfy != null && !comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT))) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_PROMPT_UNSUPPORTED",
                     ApiMessage.of("api.media-style.title"), ApiMessage.of("api.media-style.prompt-unsupported"), false);
         }
-        if (!dynamic && draft.prompt().isBlank()) throw invalid(ApiMessage.of("api.direct-media-task-service.prompt-words-need-to-be-filled-in-before-running"));
+        if (comfy != null && !comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT)) renderedPrompt = "";
+        if (!dynamic && (comfy == null || comfy.maps(ComfyUiWorkflowDefinition.Source.PROMPT))
+                && draft.prompt().isBlank()) throw invalid(ApiMessage.of("api.direct-media-task-service.prompt-words-need-to-be-filled-in-before-running"));
         if (!dynamic && kind == Task.Kind.VIDEO_GENERATION
                 && draft.videoInputMode() == MediaDraft.VideoInputMode.START_END
                 && (draft.mediaInputs().isEmpty()
@@ -348,7 +351,6 @@ public class DirectMediaTaskService {
                 && draft.mediaInputs().isEmpty()) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.the-all-in-one-reference-video-requires-at-least-one"));
         }
-        JsonNode configuredSettings = capabilities.settings(selected);
         Integer duration = draft.durationSeconds();
         if (kind == Task.Kind.VIDEO_GENERATION && duration == null
                 && configuredSettings.has("defaultDurationSeconds")) {
@@ -384,22 +386,29 @@ public class DirectMediaTaskService {
             }
             dynamicParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, dynamicValues);
             dev.agenvas.artifact.application.MediaDraftService.validateSlots(definition, dynamicParameters, draft.mediaInputs(), true);
-        } else validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding, draft.parameters()));
+        } else validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding,
+                comfy == null ? draft.parameters() : ComfyUiWorkflowDefinition.standardParameters(draft.parameters())));
         if (capabilities.inputPolicy(binding).platform() == dev.agenvas.provider.domain.MediaPlatform.COMFYUI
                 && renderedPrompt.length() > MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_PROMPT_TOO_LONG",
                     ApiMessage.of("api.media-style.title"), ApiMessage.of("api.media-style.prompt-too-long",
                             MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH), false);
         }
-        if (ComfyUiWorkflowDefinition.configured(configuredSettings)) {
-            var workflow = ComfyUiWorkflowDefinition.parse(mapper, configuredSettings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), kind);
-            workflow.requireReferences(draft.mediaInputs().size());
+        ObjectNode comfyValues = null;
+        if (comfy != null) {
+            comfyValues = comfy.values(mapper, draft.parameters(), renderedPrompt, duration,
+                    draft.mediaInputs().stream().map(MediaDraft.MediaInput::versionId).toList(), true);
+            ObjectNode slotParameters = mapper.createObjectNode();
+            slotParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, comfyValues);
+            MediaDraftService.validateSlots(comfy.inputs(), slotParameters, draft.mediaInputs(), true);
         }
         validateReferenceAssets(ownerId, projectId, draft, binding);
+        JsonNode parametersForControls = capabilities.parameters(binding, comfy == null ? draft.parameters()
+                : ComfyUiWorkflowDefinition.standardParameters(draft.parameters()));
         ImageGenerationParameters imageParameters = !dynamic && kind == Task.Kind.IMAGE_GENERATION
-                ? ImageGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
+                ? ImageGenerationParameters.parse(parametersForControls) : null;
         VideoGenerationParameters videoParameters = !dynamic && kind == Task.Kind.VIDEO_GENERATION
-                ? VideoGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
+                ? VideoGenerationParameters.parse(parametersForControls) : null;
         if (imageParameters != null) {
             var policy = capabilities.inputPolicy(binding);
             imageParameters.requireSupported(policy.supportedImageAspectRatios(),
@@ -432,7 +441,7 @@ public class DirectMediaTaskService {
         }
         return new PreparedMedia(target, canvasItem, draft, kind, binding, definition,
                 dynamicParameters, imageParameters, videoParameters, duration, configuredSettings,
-                renderedPrompt, autodlResolution, resolutionTier, style);
+                renderedPrompt, autodlResolution, resolutionTier, style, comfyValues);
     }
 
     private ComfyUiWorkflowDefinition.Dimensions comfyDimensions(UUID ownerId, UUID projectId, PreparedMedia prepared) {
@@ -455,7 +464,23 @@ public class DirectMediaTaskService {
             ObjectNode dynamicParameters, ImageGenerationParameters imageParameters,
             VideoGenerationParameters videoParameters, Integer duration, JsonNode configuredSettings,
             String renderedPrompt, String autodlResolution, String resolutionTier,
-            MediaStyleService.Snapshot style) {}
+            MediaStyleService.Snapshot style, ObjectNode comfyValues) {}
+
+    private ObjectNode effectiveParameters(PreparedMedia prepared) {
+        ObjectNode effective = prepared.dynamicParameters() != null ? prepared.dynamicParameters().deepCopy()
+                : prepared.imageParameters() != null ? prepared.imageParameters().toJson(mapper)
+                : prepared.videoParameters() != null ? prepared.videoParameters().toJson(mapper)
+                : AudioGenerationParameters.parse(capabilities.parameters(prepared.binding(), prepared.draft().parameters())).toJson(mapper);
+        if (prepared.comfyValues() != null)
+            effective.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, prepared.comfyValues());
+        return effective;
+    }
+
+    private ObjectNode comfyProviderParameters(PreparedMedia prepared, ComfyUiWorkflowDefinition.Dimensions dimensions) {
+        ObjectNode frozen = (ObjectNode) mapper.valueToTree(dimensions);
+        frozen.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, prepared.comfyValues());
+        return frozen;
+    }
 
     /** Only trusted Agent approval sources can add provenance to a preflight hash. */
     public MediaPreflight preflightApproved(UUID ownerId, UUID projectId, UUID artifactId,
@@ -496,11 +521,7 @@ public class DirectMediaTaskService {
             throw conflict(ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"));
         }
         int outputCount = prepared.imageParameters() == null ? 1 : prepared.imageParameters().generationCount();
-        JsonNode effectiveParameters = prepared.dynamicParameters() != null ? prepared.dynamicParameters()
-                : prepared.imageParameters() != null ? prepared.imageParameters().toJson(mapper)
-                : prepared.videoParameters() != null ? prepared.videoParameters().toJson(mapper)
-                : AudioGenerationParameters.parse(capabilities.parameters(prepared.binding(),
-                        prepared.draft().parameters())).toJson(mapper);
+        JsonNode effectiveParameters = effectiveParameters(prepared);
         JsonNode pricing = dev.agenvas.provider.domain.MediaCapabilityConfiguration.price(
                 prepared.configuredSettings(), prepared.resolutionTier());
         ObjectNode snapshot = mapper.createObjectNode();
@@ -517,7 +538,7 @@ public class DirectMediaTaskService {
         snapshot.set("style", mapper.valueToTree(prepared.style()));
         snapshot.set("parameters", effectiveParameters);
         var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
-        if (comfyDimensions != null) snapshot.set("providerParameters", mapper.valueToTree(comfyDimensions));
+        if (comfyDimensions != null) snapshot.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
         snapshot.set("mediaInputs", mapper.valueToTree(prepared.draft().mediaInputs()));
         snapshot.set("mentions", mapper.valueToTree(prepared.draft().mentions()));
         snapshot.set("binding", mapper.valueToTree(prepared.binding()));

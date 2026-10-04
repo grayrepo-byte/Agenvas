@@ -2,7 +2,8 @@ import type { MediaCapability, MediaTemplateImport, MediaTemplateKind } from "..
 import { t } from "../../shared/i18n";
 import type { MediaDraftFields } from "../canvas/mediaDraftCapability";
 import { runningHubFieldValue } from "../canvas/RunningHubForm";
-import { MENTION_MARKER } from "../canvas/mediaPrompt";
+import { MENTION_MARKER, promptForMediaInputs } from "../canvas/mediaPrompt";
+import { workflowDefinition, workflowDraftValues } from "../canvas/workflowDraft";
 
 export type TemplateApplyOptions = {
   videoInputMode: NonNullable<MediaDraftFields["videoInputMode"]> | null;
@@ -26,24 +27,39 @@ export function templateSeedPrompt(fields: MediaDraftFields): string {
 
 /** Only active, administrator-published image fields can receive template images. */
 export function templateImageSlots(capability: MediaCapability | undefined, fields: MediaDraftFields) {
-  const definition = capability?.settings.runningHub;
+  const definition = workflowDefinition(capability);
   if (!definition) return [];
-  const values = fields.parameters.dynamicValues ?? {};
+  const values = workflowDraftValues(capability, fields);
   const effective = Object.fromEntries(definition.fields.map((field) => [field.key,
     runningHubFieldValue(field, values, fields.prompt, fields.durationSeconds)]));
   return definition.fields.filter((field) => field.type === "IMAGE" && (field.source == null || field.source === "PARAMETER")
     && (!field.enabledWhen || effective[field.enabledWhen.field] === field.enabledWhen.value));
 }
 
+/** Templates cannot write a prompt when the published workflow exposes no active prompt input. */
+export function templatePromptEnabled(capability: MediaCapability | undefined, fields: MediaDraftFields) {
+  const definition = workflowDefinition(capability);
+  if (!definition) return true;
+  const prompt = definition.fields.find((field) => field.source === "PROMPT");
+  if (!prompt) return false;
+  if (!prompt.enabledWhen) return true;
+  const condition = definition.fields.find((field) => field.key === prompt.enabledWhen?.field);
+  return Boolean(condition && runningHubFieldValue(condition, workflowDraftValues(capability, fields), fields.prompt,
+    fields.durationSeconds) === prompt.enabledWhen.value);
+}
+
 /** Validate the whole replacement before importing bytes; no reference is silently truncated. */
 export function templateApplicationError(kind: MediaTemplateKind, fields: MediaDraftFields,
   capability: MediaCapability | undefined, imageCount: number, options: TemplateApplyOptions,
   prompt: string): string | null {
-  if (prompt.length > MAX_TEMPLATE_PROMPT) return t("templates.promptTooLong");
+  const promptEnabled = templatePromptEnabled(capability, fields);
+  const promptField = workflowDefinition(capability)?.fields.find((field) => field.source === "PROMPT");
+  if (promptEnabled && prompt.length > Math.min(MAX_TEMPLATE_PROMPT, promptField?.maxLength ?? MAX_TEMPLATE_PROMPT)) return t("templates.promptTooLong");
+  if (!promptEnabled && imageCount === 0) return t("media.workflow.noPrompt");
   if (imageCount === 0) return null;
   if (!capability) return t("templates.chooseCapability");
-  if (capability.settings.runningHub) {
-    const slots = templateImageSlots(capability, { ...fields, prompt });
+  if (workflowDefinition(capability)) {
+    const slots = templateImageSlots(capability, { ...fields, prompt: promptEnabled ? prompt : fields.prompt });
     if (imageCount > slots.length) return t("templates.imageLimit", { "0": slots.length });
     if (options.imageSlots.length !== imageCount || options.imageSlots.some((key) => !slots.some((slot) => slot.key === key))
       || new Set(options.imageSlots).size !== imageCount) return t("templates.assignSlots");
@@ -64,16 +80,18 @@ export function templateDraftChanges(kind: MediaTemplateKind, fields: MediaDraft
   options: TemplateApplyOptions, colors: readonly string[]): Partial<MediaDraftFields> {
   const invalid = templateApplicationError(kind, fields, capability, imported.images.length, options, imported.prompt);
   if (invalid) throw new Error(invalid);
-  const changes: Partial<MediaDraftFields> = { prompt: imported.prompt, mentions: [] };
+  const promptEnabled = templatePromptEnabled(capability, fields);
+  const changes: Partial<MediaDraftFields> = promptEnabled ? { prompt: imported.prompt, mentions: [] } : {};
   if (imported.images.length === 0) return changes;
+  const definition = workflowDefinition(capability);
   changes.mediaInputs = imported.images.map((image, index) => ({ versionId: image.versionId,
-    role: kind === "VIDEO" && options.videoInputMode === "START_END"
+    role: !definition && kind === "VIDEO" && options.videoInputMode === "START_END"
       ? index === 0 ? "START_FRAME" : "END_FRAME" : "REFERENCE",
     color: colors[index % colors.length]! }));
-  if (kind === "VIDEO") changes.videoInputMode = capability?.settings.runningHub ? "GENERAL_REFERENCE" : options.videoInputMode;
-  const definition = capability?.settings.runningHub;
+  if (!promptEnabled) Object.assign(changes, promptForMediaInputs(fields, changes.mediaInputs));
+  if (kind === "VIDEO") changes.videoInputMode = definition ? "GENERAL_REFERENCE" : options.videoInputMode;
   if (definition) {
-    const dynamicValues = { ...fields.parameters.dynamicValues };
+    const dynamicValues = workflowDraftValues(capability, fields);
     // Replaced references must not linger in dynamic fields after leaving the reference list.
     for (const field of definition.fields) {
       if (["IMAGE", "VIDEO", "AUDIO"].includes(field.type)) delete dynamicValues[field.key];

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -16,8 +17,12 @@ import tools.jackson.databind.node.ObjectNode;
 /** An administrator-published graph. Callers can supply values only at its declared inputs. */
 public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<Binding> bindings,
         Output output, int width, int height, int minimumSeconds, int maximumSeconds,
-        int fps, int frameMultiple, int frameOffset) {
+        int fps, int frameMultiple, int frameOffset, List<RunningHubDefinition.Field> parameters) {
     public static final String SETTINGS_KEY = "comfyWorkflow";
+    public static final String PUBLIC_INPUTS_KEY = "comfyInputs";
+    public static final String PROMPT_KEY = "prompt";
+    public static final String DURATION_KEY = "durationSeconds";
+    public static final String REFERENCE_KEY_PREFIX = "reference_";
     public static final int SCHEMA_VERSION = 1;
     public static final int MAX_JSON_BYTES = 256 * 1024;
     public static final int MAX_NODES = 256;
@@ -30,8 +35,11 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
     private static final int MAX_FPS = 120;
     private static final int MAX_FRAME_MULTIPLE = 64;
     private static final int PIXEL_ALIGNMENT = 8;
-    private static final Set<String> FIELDS = Set.of("schemaVersion", "graph", "bindings", "output",
+    private static final int MAX_INPUT_LABEL_LENGTH = 160;
+    private static final Set<String> REQUIRED_FIELDS = Set.of("schemaVersion", "graph", "bindings", "output",
             "width", "height", "minimumSeconds", "maximumSeconds", "fps", "frameMultiple", "frameOffset");
+    private static final Set<String> FIELDS = java.util.stream.Stream.concat(REQUIRED_FIELDS.stream(),
+            java.util.stream.Stream.of("parameters")).collect(java.util.stream.Collectors.toUnmodifiableSet());
 
     public enum Source { PROMPT, NEGATIVE_PROMPT, SEED, WIDTH, HEIGHT, REFERENCE_IMAGE,
         DURATION_SECONDS, FRAME_COUNT, FPS, BATCH_SIZE }
@@ -52,7 +60,8 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
     }
 
     public static ComfyUiWorkflowDefinition parse(ObjectMapper mapper, JsonNode source, Task.Kind kind) {
-        if (source == null || !source.isObject() || !FIELDS.equals(source.propertyNames())
+        if (source == null || !source.isObject() || !FIELDS.containsAll(source.propertyNames())
+                || !source.propertyNames().containsAll(REQUIRED_FIELDS)
                 || source.toString().getBytes(StandardCharsets.UTF_8).length > MAX_JSON_BYTES
                 || integer(source, "schemaVersion", SCHEMA_VERSION, SCHEMA_VERSION) != SCHEMA_VERSION) throw invalid("definition");
         ObjectNode graph = validateGraph(mapper, source.get("graph"));
@@ -66,7 +75,7 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
         Set<String> ancestors = new HashSet<>();
         visit(graph, outputNode, new HashSet<>(), ancestors);
         JsonNode rawBindings = source.path("bindings");
-        if (!rawBindings.isArray() || rawBindings.isEmpty() || rawBindings.size() > MAX_BINDINGS) throw invalid("bindings");
+        if (!rawBindings.isArray() || rawBindings.size() > MAX_BINDINGS) throw invalid("bindings");
         List<Binding> bindings = new ArrayList<>();
         Set<String> targets = new HashSet<>();
         Set<Integer> references = new HashSet<>();
@@ -93,7 +102,8 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
             bindings.add(new Binding(nodeId, inputName, bindingSource, index));
             sources.add(bindingSource);
         }
-        if (!sources.contains(Source.PROMPT) || sources.contains(Source.WIDTH) != sources.contains(Source.HEIGHT)) throw invalid("bindings");
+        if (sources.contains(Source.WIDTH) != sources.contains(Source.HEIGHT)) throw invalid("bindings");
+        List<RunningHubDefinition.Field> parameters = parseParameters(mapper, source.get("parameters"), graph, ancestors, targets);
         for (int index = 0; index < references.size(); index++) if (!references.contains(index)) throw invalid("references");
         int minimum = integer(source, "minimumSeconds", kind == Task.Kind.VIDEO_GENERATION ? 1 : 0, MAX_SECONDS);
         int maximum = integer(source, "maximumSeconds", minimum, kind == Task.Kind.VIDEO_GENERATION ? MAX_SECONDS : 0);
@@ -102,7 +112,48 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
         int multiple = integer(source, "frameMultiple", 1, MAX_FRAME_MULTIPLE);
         return new ComfyUiWorkflowDefinition(SCHEMA_VERSION, graph, List.copyOf(bindings), new Output(outputNode, outputField),
                 integer(source, "width", PIXEL_ALIGNMENT, MAX_SIDE), integer(source, "height", PIXEL_ALIGNMENT, MAX_SIDE),
-                minimum, maximum, integer(source, "fps", 1, MAX_FPS), multiple, integer(source, "frameOffset", 0, multiple - 1));
+                minimum, maximum, integer(source, "fps", 1, MAX_FPS), multiple, integer(source, "frameOffset", 0, multiple - 1), parameters);
+    }
+
+    private static List<RunningHubDefinition.Field> parseParameters(ObjectMapper mapper, JsonNode raw,
+            JsonNode graph, Set<String> ancestors, Set<String> targets) {
+        if (raw == null || raw.isNull()) return List.of();
+        List<RunningHubDefinition.Field> parameters = new ArrayList<>();
+        for (var field : RunningHubDefinition.parseFields(mapper, raw)) {
+            if (field.nodeId() == null || field.fieldName() == null) throw invalid("parameters");
+            JsonNode target = graph.path(field.nodeId()).path("inputs").get(field.fieldName());
+            if (field.media() || field.effectiveSource() != RunningHubDefinition.Source.PARAMETER
+                    || field.effectiveEncoding() != RunningHubDefinition.Encoding.NATIVE || field.resourceFormat() != null
+                    || field.key() == null || Set.of(PROMPT_KEY, DURATION_KEY).contains(field.key())
+                    || field.key().startsWith(REFERENCE_KEY_PREFIX)
+                    || !ancestors.contains(field.nodeId()) || target == null || !scalarCompatible(field.type(), target)
+                    || !targets.add(field.nodeId() + ":" + field.fieldName())) throw invalid("parameters");
+            JsonNode defaultValue = field.defaultValue() == null || field.defaultValue().isNull() ? target.deepCopy() : field.defaultValue();
+            if (!sameScalarKind(target, defaultValue) || field.options() != null && field.options().stream()
+                    .anyMatch(option -> option == null || !sameScalarKind(target, option.value()))) throw invalid("parameters");
+            parameters.add(new RunningHubDefinition.Field(field.key(), field.label(), field.description(), field.type(),
+                    field.required(), defaultValue, field.minimum(), field.maximum(), field.maxLength(), field.options(),
+                    field.advanced(), field.nodeId(), field.fieldName(), field.source(), field.encoding(), field.resourceFormat(), field.enabledWhen()));
+        }
+        RunningHubDefinition.validateFields(parameters);
+        return List.copyOf(parameters);
+    }
+
+    private static boolean scalarCompatible(RunningHubDefinition.FieldType type, JsonNode value) {
+        if (type == null) return false;
+        return switch (type) {
+            case STRING -> value.isTextual();
+            case BOOLEAN -> value.isBoolean();
+            case INTEGER -> value.isIntegralNumber();
+            case NUMBER -> value.isNumber();
+            case SELECT -> value.isTextual() || value.isNumber() || value.isBoolean();
+            default -> false;
+        };
+    }
+
+    private static boolean sameScalarKind(JsonNode target, JsonNode value) {
+        return value != null && (target.isTextual() && value.isTextual()
+                || target.isNumber() && value.isNumber() || target.isBoolean() && value.isBoolean());
     }
 
     private static ObjectNode validateGraph(ObjectMapper mapper, JsonNode source) {
@@ -165,6 +216,61 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
 
     public boolean maps(Source source) { return bindings.stream().anyMatch(binding -> binding.source() == source); }
 
+    /** Public metadata contains declared defaults only, never graph literals or fixed model inputs. */
+    public List<RunningHubDefinition.Field> inputs() {
+        List<RunningHubDefinition.Field> result = new ArrayList<>(parameters);
+        bindings.stream().filter(binding -> binding.source() == Source.PROMPT).findFirst().ifPresent(binding ->
+                result.add(input(PROMPT_KEY, binding, RunningHubDefinition.FieldType.STRING,
+                        RunningHubDefinition.Source.PROMPT, null, null, MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH)));
+        for (int index = 0; index < referenceCount(); index++) {
+            int referenceIndex = index;
+            Binding binding = bindings.stream().filter(candidate -> candidate.source() == Source.REFERENCE_IMAGE
+                    && candidate.referenceIndex() == referenceIndex).findFirst().orElseThrow();
+            result.add(input(REFERENCE_KEY_PREFIX + index, binding, RunningHubDefinition.FieldType.IMAGE,
+                    RunningHubDefinition.Source.PARAMETER, null, null, null));
+        }
+        bindings.stream().filter(binding -> Set.of(Source.DURATION_SECONDS, Source.FRAME_COUNT).contains(binding.source()))
+                .findFirst().ifPresent(binding -> result.add(input(DURATION_KEY, binding, RunningHubDefinition.FieldType.INTEGER,
+                        RunningHubDefinition.Source.DURATION_SECONDS, minimumSeconds, maximumSeconds, null)));
+        return List.copyOf(result);
+    }
+
+    private RunningHubDefinition.Field input(String key, Binding binding, RunningHubDefinition.FieldType type,
+            RunningHubDefinition.Source source, Integer minimum, Integer maximum, Integer maxLength) {
+        String title = graph.path(binding.nodeId()).path("_meta").path("title").asText("");
+        String label = title.isBlank() ? binding.inputName() : title + " · " + binding.inputName();
+        if (label.length() > MAX_INPUT_LABEL_LENGTH) label = binding.inputName();
+        return new RunningHubDefinition.Field(key, label, null, type, true, null,
+                minimum == null ? null : java.math.BigDecimal.valueOf(minimum),
+                maximum == null ? null : java.math.BigDecimal.valueOf(maximum), maxLength, null, false,
+                binding.nodeId(), binding.inputName(), source, RunningHubDefinition.Encoding.NATIVE, null, null);
+    }
+
+    /** Preserve legacy positional drafts while new drafts can assign the same image to several named slots. */
+    public ObjectNode values(ObjectMapper mapper, JsonNode cardParameters, String prompt, Integer seconds,
+            List<UUID> positionalVersions, boolean executing) {
+        JsonNode supplied = cardParameters.path(RunningHubDefinition.VALUES_PROPERTY);
+        if (!supplied.isMissingNode() && !supplied.isObject()) throw invalid("parameters");
+        ObjectNode raw = supplied.isMissingNode() ? mapper.createObjectNode() : (ObjectNode) supplied.deepCopy();
+        if (raw.has(PROMPT_KEY) || raw.has(DURATION_KEY)) throw invalid("parameters");
+        if (supplied.isMissingNode()) {
+            for (int index = 0; index < Math.min(referenceCount(), positionalVersions.size()); index++)
+                raw.put(REFERENCE_KEY_PREFIX + index, positionalVersions.get(index).toString());
+        }
+        ObjectNode effective = RunningHubDefinition.inputValues(mapper, inputs(), raw, prompt, seconds, executing);
+        effective.remove(PROMPT_KEY);
+        effective.remove(DURATION_KEY);
+        return effective;
+    }
+
+    /** Standard image/video controls retain their existing validation outside the named input contract. */
+    public static ObjectNode standardParameters(JsonNode parameters) {
+        if (parameters == null || !parameters.isObject()) throw invalid("parameters");
+        ObjectNode standard = (ObjectNode) parameters.deepCopy();
+        standard.remove(RunningHubDefinition.VALUES_PROPERTY);
+        return standard;
+    }
+
     public MediaAdapterRegistry.Declaration declaration(Task.Kind kind) {
         boolean video = kind == Task.Kind.VIDEO_GENERATION;
         Set<String> modes = video ? Set.of(referenceCount() == 0 ? "TEXT" : "GENERAL_REFERENCE") : Set.of();
@@ -191,6 +297,11 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
     /** Render a fresh copy: neither the published graph nor another task's inputs can change. */
     public ObjectNode render(ObjectMapper mapper, String prompt, String negativePrompt, long seed,
             Dimensions dimensions, int seconds, List<String> uploadedImages) {
+        return render(mapper, prompt, negativePrompt, seed, dimensions, seconds, uploadedImages, mapper.createObjectNode());
+    }
+
+    public ObjectNode render(ObjectMapper mapper, String prompt, String negativePrompt, long seed,
+            Dimensions dimensions, int seconds, List<String> uploadedImages, JsonNode frozenValues) {
         requireReferences(uploadedImages.size());
         if (maximumSeconds > 0 && (seconds < minimumSeconds || seconds > maximumSeconds)) throw invalid("duration");
         ObjectNode rendered = (ObjectNode) graph.deepCopy();
@@ -210,6 +321,12 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
             };
             inputs.set(binding.inputName(), value);
         }
+        List<RunningHubDefinition.Field> scalarFields = parameters;
+        ObjectNode supplied = mapper.createObjectNode();
+        for (var field : scalarFields) if (frozenValues.has(field.key())) supplied.set(field.key(), frozenValues.get(field.key()));
+        ObjectNode resolved = RunningHubDefinition.inputValues(mapper, scalarFields, supplied, "", null, true);
+        for (var field : scalarFields) if (resolved.has(field.key()))
+            ((ObjectNode) rendered.path(field.nodeId()).path("inputs")).set(field.fieldName(), resolved.get(field.key()));
         return rendered;
     }
 

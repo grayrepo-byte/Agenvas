@@ -94,8 +94,38 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
                 || retainSeconds != null && (retainSeconds < MIN_RETAIN_SECONDS || retainSeconds > MAX_RETAIN_SECONDS)
                 || sourceSha256 != null && !sourceSha256.matches("[0-9a-f]{64}"))
             throw invalid(ApiMessage.of("api.running-hub-definition.invalid-instance-option-or-source-summary"));
-        Set<String> keys = new HashSet<>();
         Set<String> bindings = new HashSet<>();
+        validateFields(fields);
+        for (Field field : fields) binding(field.nodeId(), field.fieldName(), bindings);
+        if (fixedBindings != null) for (FixedBinding fixed : fixedBindings) {
+            if (fixed == null) throw invalid(ApiMessage.of("api.running-hub-definition.fixed-mapping-is-invalid"));
+            binding(fixed.nodeId(), fixed.fieldName(), bindings);
+            scalar(fixed.value());
+        }
+        if (outputs.stream().anyMatch(java.util.Objects::isNull)) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-output-map"));
+        long primaryCount = outputs.stream().filter(Output::primary).count();
+        if (primaryCount != 1) throw invalid(ApiMessage.of("api.running-hub-definition.a-primary-output-must-be-specified"));
+        Set<String> outputKeys = new HashSet<>();
+        int totalOutputs = 0;
+        for (Output output : outputs) {
+            if (output == null || output.kind() == null || output.maxCount() < 1 || output.maxCount() > MAX_OUTPUTS
+                    || output.nodeId() != null && !output.nodeId().matches("[0-9]{1,32}")
+                    || !outputKeys.add(output.nodeId() + ":" + output.kind())) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-or-duplicate-output-map"));
+            if (output.primary() && !output.kind().name().equals(kind.name().replace("_GENERATION", "")))
+                throw invalid(ApiMessage.of("api.running-hub-definition.primary-output-does-not-match-capability-media-type"));
+            totalOutputs += output.maxCount();
+            if (outputs.stream().anyMatch(other -> other != output && other.kind() == output.kind()
+                    && (other.nodeId() == null || output.nodeId() == null)))
+                throw invalid(ApiMessage.of("api.running-hub-definition.wildcard-output-of-the-same-media-type-cannot-overlap-with"));
+        }
+        if (totalOutputs > MAX_OUTPUTS) throw invalid(ApiMessage.of("api.running-hub-definition.the-total-result-cap-for-all-output-mappings-cannot-exceed"));
+    }
+
+    /** Shared bounded field contract used by imported ComfyUI scalar inputs as well. */
+    public static void validateFields(List<Field> fields) {
+        if (fields == null || fields.size() > MAX_FIELDS)
+            throw invalid(ApiMessage.of("api.running-hub-definition.invalid-capability-field-or-output-quantity"));
+        Set<String> keys = new HashSet<>();
         Set<Source> sources = new HashSet<>();
         for (Field field : fields) {
             if (field == null || field.type() == null || field.key() == null
@@ -105,7 +135,6 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             label(field.label());
             if (field.description() != null && field.description().length() > MAX_DESCRIPTION_LENGTH)
                 throw invalid(ApiMessage.of("api.running-hub-definition.parameter-description-is-too-long"));
-            binding(field.nodeId(), field.fieldName(), bindings);
             if (field.effectiveSource() != Source.PARAMETER && !sources.add(field.effectiveSource()))
                 throw invalid(ApiMessage.of("api.running-hub-definition.prompt-words-and-duration-sources-cannot-be-bound-repeatedly"));
             if (field.effectiveSource() == Source.PROMPT && field.type() != FieldType.STRING
@@ -140,28 +169,22 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
                 throw invalid(ApiMessage.of("api.running-hub-definition.display-conditions-can-only-refer-to-unconditional-ordinary-parameters"));
             validateValue(parent, condition.value());
         }
-        if (fixedBindings != null) for (FixedBinding fixed : fixedBindings) {
-            if (fixed == null) throw invalid(ApiMessage.of("api.running-hub-definition.fixed-mapping-is-invalid"));
-            binding(fixed.nodeId(), fixed.fieldName(), bindings);
-            scalar(fixed.value());
+    }
+
+    public static List<Field> parseFields(ObjectMapper mapper, JsonNode raw) {
+        if (raw == null || !raw.isArray() || raw.size() > MAX_FIELDS)
+            throw invalid(ApiMessage.of("api.running-hub-definition.invalid-capability-field-or-output-quantity"));
+        List<Field> result = new java.util.ArrayList<>();
+        for (JsonNode field : raw) {
+            requireObject(field, FIELD_FIELDS);
+            for (JsonNode option : field.path("options")) requireObject(option, Set.of("label", "value"));
+            if (field.hasNonNull("enabledWhen")) requireObject(field.get("enabledWhen"), Set.of("field", "value"));
+            ObjectNode normalized = (ObjectNode) field.deepCopy();
+            for (String flag : List.of("required", "advanced")) if (!normalized.has(flag)) normalized.put(flag, false);
+            try { result.add(mapper.treeToValue(normalized, Field.class)); }
+            catch (RuntimeException failure) { throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid")); }
         }
-        if (outputs.stream().anyMatch(java.util.Objects::isNull)) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-output-map"));
-        long primaryCount = outputs.stream().filter(Output::primary).count();
-        if (primaryCount != 1) throw invalid(ApiMessage.of("api.running-hub-definition.a-primary-output-must-be-specified"));
-        Set<String> outputKeys = new HashSet<>();
-        int totalOutputs = 0;
-        for (Output output : outputs) {
-            if (output == null || output.kind() == null || output.maxCount() < 1 || output.maxCount() > MAX_OUTPUTS
-                    || output.nodeId() != null && !output.nodeId().matches("[0-9]{1,32}")
-                    || !outputKeys.add(output.nodeId() + ":" + output.kind())) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-or-duplicate-output-map"));
-            if (output.primary() && !output.kind().name().equals(kind.name().replace("_GENERATION", "")))
-                throw invalid(ApiMessage.of("api.running-hub-definition.primary-output-does-not-match-capability-media-type"));
-            totalOutputs += output.maxCount();
-            if (outputs.stream().anyMatch(other -> other != output && other.kind() == output.kind()
-                    && (other.nodeId() == null || output.nodeId() == null)))
-                throw invalid(ApiMessage.of("api.running-hub-definition.wildcard-output-of-the-same-media-type-cannot-overlap-with"));
-        }
-        if (totalOutputs > MAX_OUTPUTS) throw invalid(ApiMessage.of("api.running-hub-definition.the-total-result-cap-for-all-output-mappings-cannot-exceed"));
+        return List.copyOf(result);
     }
 
     /** Incomplete drafts are legal; execution resolves defaults and requires all active inputs. */
@@ -170,6 +193,13 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         JsonNode supplied = parameters == null ? mapper.createObjectNode() : parameters;
         requireObject(supplied, Set.of(VALUES_PROPERTY));
         JsonNode raw = supplied.path(VALUES_PROPERTY);
+        return inputValues(mapper, fields, raw, prompt, seconds, executing);
+    }
+
+    /** Resolve declared fields only; draft callers may omit required inputs until execution. */
+    public static ObjectNode inputValues(ObjectMapper mapper, List<Field> fields, JsonNode raw,
+            String prompt, Integer seconds, boolean executing) {
+        if (raw == null) raw = mapper.createObjectNode();
         if (!raw.isMissingNode() && !raw.isObject()) throw invalid(ApiMessage.of("api.running-hub-definition.dynamic-parameters-must-be-objects"));
         for (String key : raw.propertyNames()) if (fields.stream().noneMatch(field -> field.key().equals(key)))
             throw invalid(ApiMessage.of("api.running-hub-definition.the-current-capability-does-not-support-parameter", key));

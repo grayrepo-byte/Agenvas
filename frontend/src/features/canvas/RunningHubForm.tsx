@@ -12,7 +12,7 @@ export type RunningHubValue = string | number | boolean;
 export type RunningHubChoice = { id: string; label: string; kind: string; available: boolean };
 const MIN_DURATION_SECONDS = 1;
 const MAX_DURATION_SECONDS = 60;
-export function runningHubUsedVersions(definition: RunningHubDefinition, values: Record<string, RunningHubValue>, prompt: string, seconds: number | null | undefined) {
+export function runningHubUsedVersions(definition: Pick<RunningHubDefinition, "fields">, values: Record<string, RunningHubValue>, prompt: string, seconds: number | null | undefined) {
   const effective = Object.fromEntries(definition.fields.map((field) => [field.key, runningHubFieldValue(field, values, prompt, seconds)]));
   return new Set(definition.fields.filter((field) => ["IMAGE", "AUDIO", "VIDEO"].includes(field.type)
     && (!field.enabledWhen || effective[field.enabledWhen.field] === field.enabledWhen.value))
@@ -22,7 +22,7 @@ export function runningHubFieldValue(field: RunningHubField, values: Record<stri
   return field.source === "PROMPT" ? prompt || (field.defaultValue ?? undefined)
     : field.source === "DURATION_SECONDS" ? seconds ?? field.defaultValue ?? undefined : values[field.key] ?? field.defaultValue ?? undefined;
 }
-export function runningHubErrors(definition: RunningHubDefinition, values: Record<string, RunningHubValue>, prompt: string,
+export function runningHubErrors(definition: Pick<RunningHubDefinition, "fields">, values: Record<string, RunningHubValue>, prompt: string,
   seconds: number | null | undefined, choices: RunningHubChoice[]) {
   const effective = Object.fromEntries(definition.fields.map((field) => [field.key, runningHubFieldValue(field, values, prompt, seconds)]));
   const errors: string[] = [];

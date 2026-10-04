@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 import org.springframework.stereotype.Component;
@@ -40,8 +41,8 @@ public class ComfyUiPublishedWorkflow {
         var task = context.lease();
         var definition = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), task.kind());
         var references = FrozenMediaInputs.images(task);
-        definition.requireReferences(references.size());
         var uploaded = new ArrayList<String>();
+        var uploadedByVersion = new HashMap<String, String>();
         // Only authorized immutable project Assets can supply a mapped image filename.
         for (var reference : references) {
             var version = artifacts.requireImageVersionForTask(context.ownerId(), task.projectId(), reference.versionId());
@@ -56,16 +57,28 @@ public class ComfyUiPublishedWorkflow {
                 bytes = buffer.toByteArray();
             } catch (IOException failure) { throw new IllegalStateException("Cannot encode pinned ComfyUI image", failure); }
             UUID uploadId = UUID.nameUUIDFromBytes((context.requestKey() + ":" + reference.order()).getBytes(StandardCharsets.UTF_8));
-            uploaded.add(client.uploadImage(uploadId, bytes, "png"));
+            String name = client.uploadImage(uploadId, bytes, "png");
+            uploaded.add(name);
+            uploadedByVersion.put(reference.versionId().toString(), name);
         }
         JsonNode frozen = task.input().path("mediaInput").path("providerParameters");
         if (!frozen.path("width").isIntegralNumber() || !frozen.path("height").isIntegralNumber())
             throw new IllegalStateException("Pinned ComfyUI dimensions are missing");
         UUID requestKey = UUID.fromString(context.requestKey());
+        JsonNode values = frozen.path(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY);
+        if (values.propertyNames().stream().anyMatch(key -> key.startsWith(ComfyUiWorkflowDefinition.REFERENCE_KEY_PREFIX))) {
+            uploaded.clear();
+            for (int index = 0; index < definition.referenceCount(); index++) {
+                String name = uploadedByVersion.get(values.path(ComfyUiWorkflowDefinition.REFERENCE_KEY_PREFIX + index).asText());
+                if (name == null) throw new IllegalStateException("Pinned ComfyUI image slot is missing an authorized reference");
+                uploaded.add(name);
+            }
+        }
+        definition.requireReferences(uploaded.size());
         var graph = definition.render(mapper, task.input().path("prompt").asText(), task.input().path("negativePrompt").asText(""),
                 requestKey.getMostSignificantBits() & Long.MAX_VALUE,
                 new ComfyUiWorkflowDefinition.Dimensions(frozen.path("width").intValue(), frozen.path("height").intValue()),
-                task.input().path("durationSeconds").asInt(0), uploaded);
+                task.input().path("durationSeconds").asInt(0), uploaded, values);
         return new Submission.Accepted(client.submit(graph, requestKey).toString());
     }
 

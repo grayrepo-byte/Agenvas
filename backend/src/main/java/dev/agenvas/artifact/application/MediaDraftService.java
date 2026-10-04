@@ -96,12 +96,15 @@ public class MediaDraftService {
             throw invalid(ApiMessage.of("api.media-draft-service.media-parameters-must-be-objects"));
         }
         Task.Kind taskKind = Task.Kind.valueOf(kind.name() + "_GENERATION");
-        var definition = capabilityId == null ? null : capabilities.runningHubDefinition(capabilities.forDraft(capabilityId, taskKind));
+        var binding = capabilityId == null ? null : capabilities.forDraft(capabilityId, taskKind);
+        var definition = binding == null ? null : capabilities.runningHubDefinition(binding);
+        var comfy = binding == null ? null : capabilities.comfyWorkflowDefinition(binding);
         boolean dynamic = definition != null;
+        JsonNode standardParameters = comfy == null ? normalizedParameters : dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.standardParameters(normalizedParameters);
         if (dynamic) definition.values(mapper, normalizedParameters, prompt, durationSeconds, false);
-        else if (kind == Artifact.Kind.IMAGE) ImageGenerationParameters.parse(normalizedParameters);
-        else if (kind == Artifact.Kind.VIDEO) VideoGenerationParameters.parse(normalizedParameters);
-        else dev.agenvas.artifact.domain.AudioGenerationParameters.parse(normalizedParameters);
+        else if (kind == Artifact.Kind.IMAGE) ImageGenerationParameters.parse(standardParameters);
+        else if (kind == Artifact.Kind.VIDEO) VideoGenerationParameters.parse(standardParameters);
+        else dev.agenvas.artifact.domain.AudioGenerationParameters.parse(standardParameters);
         List<SaveMediaInput> inputCommands = requestedInputs == null
                 ? List.of() : List.copyOf(requestedInputs);
         List<MediaDraft.PromptMention> mentions = requestedMentions == null
@@ -159,6 +162,12 @@ public class MediaDraftService {
                                     MediaDraft.SourceType.MANUAL, null))));
         }
         if (dynamic) validateSlots(definition, normalizedParameters, inputs, false);
+        if (comfy != null) {
+            ObjectNode values = mapper.createObjectNode();
+            values.set(RunningHubDefinition.VALUES_PROPERTY, comfy.values(mapper, normalizedParameters, prompt, durationSeconds,
+                    inputs.stream().map(MediaDraft.MediaInput::versionId).toList(), false));
+            validateSlots(comfy.inputs(), values, inputs, false);
+        }
         for (MediaDraft.PromptMention mention : mentions) {
             if (mention == null || mention.versionId() == null || mention.role() == null
                     || inputs.stream().noneMatch(input -> input.versionId().equals(
@@ -524,9 +533,14 @@ public class MediaDraftService {
     /** Named slots and the deduplicated exact-version rows must agree on identity and media kind. */
     public static void validateSlots(RunningHubDefinition definition,
             JsonNode parameters, List<MediaDraft.MediaInput> inputs, boolean executing) {
+        validateSlots(definition.fields(), parameters, inputs, executing);
+    }
+
+    public static void validateSlots(List<RunningHubDefinition.Field> fields,
+            JsonNode parameters, List<MediaDraft.MediaInput> inputs, boolean executing) {
         JsonNode values = parameters.path(RunningHubDefinition.VALUES_PROPERTY);
         Set<UUID> used = new HashSet<>();
-        for (var field : definition.fields()) if (field.media() && values.hasNonNull(field.key())) {
+        for (var field : fields) if (field.media() && values.hasNonNull(field.key())) {
             UUID id = UUID.fromString(values.path(field.key()).asText());
             if (inputs.stream().noneMatch(input -> input.versionId().equals(id)
                     && mediaKind(input.role()).name().equals(field.type().name())))

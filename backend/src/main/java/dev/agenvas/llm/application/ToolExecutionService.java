@@ -244,6 +244,8 @@ public class ToolExecutionService {
             if (definition != null) {
                 // Only published scalar field/slot definitions; never forward Provider settings.
                 entry.set("fields", mapper.valueToTree(definition.fields()));
+            } else if (candidate.settings().has(dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY)) {
+                entry.set("fields", candidate.settings().get(dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY));
             }
         }
         return result;

@@ -373,7 +373,7 @@ public class MediaCapabilityService {
         }
         if (declaration.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(source)) {
             if (!java.util.stream.Stream.concat(MediaCapabilityConfiguration.FIELDS.stream(),
-                    java.util.stream.Stream.of(ComfyUiWorkflowDefinition.SETTINGS_KEY)).collect(java.util.stream.Collectors.toSet())
+                    java.util.stream.Stream.of(ComfyUiWorkflowDefinition.SETTINGS_KEY, ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY)).collect(java.util.stream.Collectors.toSet())
                     .containsAll(source.propertyNames())) throw invalid(ApiMessage.of("api.media-capability-service.capability-template-contains-parameters-that-are-not-allowed"));
             var workflow = ComfyUiWorkflowDefinition.parse(mapper, source.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), declaration.kind());
             settings.set(ComfyUiWorkflowDefinition.SETTINGS_KEY, mapper.valueToTree(workflow));
@@ -511,6 +511,13 @@ public class MediaCapabilityService {
                 registry.declaration(binding.adapterId()).kind());
     }
 
+    public ComfyUiWorkflowDefinition comfyWorkflowDefinition(MediaCapabilityBinding binding) {
+        JsonNode settings = settings(binding);
+        if (!ComfyUiWorkflowDefinition.configured(settings)) return null;
+        return ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY),
+                registry.declaration(binding.adapterId()).kind());
+    }
+
     public JsonNode settings(MediaCapabilityBinding binding) {
         return settings(pinnedSnapshot(binding));
     }
@@ -599,8 +606,19 @@ public class MediaCapabilityService {
     }
 
     private JsonNode publicSettings(Snapshot snapshot) {
-        ObjectNode settings = (ObjectNode) settings(snapshot).deepCopy();
+        ObjectNode settings = (ObjectNode) administratorSettings(snapshot);
         settings.remove(ComfyUiWorkflowDefinition.SETTINGS_KEY);
+        return settings;
+    }
+
+    /** Derived read-only input metadata is regenerated, never accepted as an executable mapping. */
+    public JsonNode administratorSettings(Snapshot snapshot) {
+        ObjectNode settings = (ObjectNode) settings(snapshot).deepCopy();
+        if (ComfyUiWorkflowDefinition.configured(settings)) {
+            var definition = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY),
+                    registry.declaration(snapshot.adapterId()).kind());
+            settings.set(ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY, mapper.valueToTree(definition.inputs()));
+        }
         return settings;
     }
 

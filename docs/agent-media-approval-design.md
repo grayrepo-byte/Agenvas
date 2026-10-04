@@ -12,7 +12,7 @@ Agent 通过安全工具提出一批 1–6 项独立的图片、视频或音频�
 
 ## 工具输入与作用域
 
-`list_media_capabilities` 返回当前用户可使用的安全能力目录、输入契约和已发布的 RunningHub 参数字段，不暴露 endpoint、Key、上传/下载地址或供应商原始响应。模型只能选择目录内的能力；权限、项目和 Run 身份由可信服务端上下文注入。
+`list_media_capabilities` 返回当前用户可使用的安全能力目录、输入契约及已发布的 RunningHub / ComfyUI 输入字段摘要，不暴露工作流图、固定图文本、endpoint、Key、上传/下载地址或供应商原始响应。模型只能选择目录内的能力；权限、项目和 Run 身份由可信服务端上下文注入。
 
 `propose_media_generation` 输入为：
 

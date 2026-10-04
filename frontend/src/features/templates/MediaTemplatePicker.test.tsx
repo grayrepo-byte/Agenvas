@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MediaTemplate, MediaTemplateImport } from "../../shared/api/client";
+import type { MediaCapability, MediaTemplate, MediaTemplateImport } from "../../shared/api/client";
 import { changeControl, selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { MediaTemplateForm } from "./MediaTemplateForm";
@@ -13,6 +13,17 @@ const template: MediaTemplate = { id: "my-template", targetKind: "IMAGE", scope:
   version: 1, createdAt: "2026-10-02T00:00:00Z", updatedAt: "2026-10-02T00:00:00Z" };
 const context: TemplatePickerContext = { projectId: "project", targetKind: "IMAGE", fields: { prompt: "draft", parameters: {}, durationSeconds: null,
   capabilityId: null, videoInputMode: null, mediaInputs: [], mentions: [] }, seedImages: [], onApply: vi.fn(), onClose: vi.fn(), onBusy: vi.fn() };
+const comfy: MediaCapability = {
+  id: "comfy", name: "Synthetic Comfy workflow", enabled: true, version: 0, capabilityVersion: 1,
+  adapterId: "COMFY_IMAGE_V1", kind: "IMAGE_GENERATION", minimumSeconds: 0, maximumSeconds: 0,
+  maxReferenceAudios: 0, maxReferenceVideos: 0, maxReferenceImages: 2, supportedVideoInputModes: [], defaultVideoInputMode: null,
+  supportsEndFrame: false, supportedImageAspectRatios: ["AUTO"], supportedImageResolutions: ["1K"], supportedImageQualities: [],
+  supportsImageMask: false, supportsTransparentBackground: false, mappingSha256: "a".repeat(64), settings: { comfyInputs: [
+    { key: "prompt", label: "提示词", type: "STRING", source: "PROMPT", nodeId: "1", fieldName: "text", required: true, advanced: false },
+    { key: "first", label: "首帧", type: "IMAGE", nodeId: "2", fieldName: "image", required: true, advanced: false },
+    { key: "last", label: "尾帧", type: "IMAGE", nodeId: "3", fieldName: "image", required: false, advanced: false },
+  ] },
+};
 function mount(component: React.ReactNode) { render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{component}</QueryClientProvider>); }
 function csrf() { server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" }))); }
 afterEach(() => vi.restoreAllMocks());
@@ -91,6 +102,33 @@ describe("media templates", () => {
     await selectValue(screen.getByRole("combobox", { name: "参考图片输入模式" }), "START_END");
     expect(screen.getByRole("button", { name: "使用模板" })).toBeEnabled();
     expect(within(screen.getByRole("dialog")).getByText(/移除原引用对应的画布连线/)).toBeInTheDocument();
+  });
+  it("requires explicit Comfy workflow slot mapping before importing template images", async () => {
+    const apply = vi.fn(); csrf();
+    const imageTemplate: MediaTemplate = { ...template, images: [{ id: "image", contentType: "image/png", byteSize: 100,
+      width: 100, height: 100, thumbnailUrl: "/synthetic.png", contentUrl: "/synthetic.png" }] };
+    const imported: MediaTemplateImport = { templateId: template.id, templateVersion: 1, targetKind: "IMAGE", prompt: template.prompt,
+      images: [{ ...imageTemplate.images[0]!, versionId: "new-image", assetId: "new-asset", title: "Synthetic" }] };
+    server.use(http.get("/api/v1/media-templates", () => HttpResponse.json({ items: [imageTemplate] })),
+      http.post("/api/v1/projects/project/media-templates/my-template/import", () => HttpResponse.json(imported)));
+    mount(<MediaTemplatePicker {...context} capability={comfy} onApply={apply} />);
+    const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Watercolor" }));
+    expect(screen.getByRole("button", { name: "使用模板" })).toBeDisabled();
+    await selectValue(screen.getByRole("combobox", { name: "参考图片 1" }), "last");
+    expect(screen.getByRole("button", { name: "使用模板" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "使用模板" }));
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(imported, { videoInputMode: null, imageSlots: ["last"] }));
+  });
+  it("disables prompt-only template application when Comfy exposes no prompt input", async () => {
+    const importing = vi.fn();
+    server.use(http.get("/api/v1/media-templates", () => HttpResponse.json({ items: [template] })),
+      http.post("/api/v1/projects/project/media-templates/my-template/import", () => { importing(); return HttpResponse.json({}); }));
+    mount(<MediaTemplatePicker {...context} capability={{ ...comfy, settings: { comfyInputs: comfy.settings.comfyInputs!.filter((field) => field.source !== "PROMPT") } }} />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Watercolor" }));
+    expect(screen.getByRole("button", { name: "使用模板" })).toBeDisabled();
+    expect(screen.getAllByText("此工作流未映射提示词输入").length).toBeGreaterThan(0);
+    expect(screen.getByText("Watercolor style", { selector: ".media-template-preview-prompt" })).toHaveAttribute("aria-disabled", "true");
+    expect(importing).not.toHaveBeenCalled();
   });
   it("cleans up only newly uploaded images on remove and cancel", async () => {
     const deletions: string[] = []; const close = vi.fn(); let counter = 0; csrf();

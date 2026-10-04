@@ -139,7 +139,7 @@ public class MediaCapabilityController {
     private CapabilityView view(Capability capability) {
         var snapshot = catalog.capabilitySnapshot(capability.id());
         var declaration = catalog.inputPolicy(snapshot);
-        JsonNode settings = mapper.readTree(snapshot.specJson()).path("settings");
+        JsonNode settings = catalog.administratorSettings(snapshot);
         return new CapabilityView(capability.id(), capability.name(), capability.enabled(),
                 capability.version(), capability.currentVersion(), snapshot.adapterId(),
                 declaration.kind(), declaration.minimumSeconds(), declaration.maximumSeconds(),

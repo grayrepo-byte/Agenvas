@@ -125,6 +125,21 @@ describe("media capability changes", () => {
       .toMatchObject({ parameters: { dynamicValues: {} }, mediaInputs: [], videoInputMode: "TEXT" });
   });
 
+  it("preserves Comfy slots and scalar values while retaining normal generation controls", () => {
+    const comfy: MediaCapability = { ...image, id: "comfy", adapterId: "COMFY_IMAGE_V1", settings: { comfyInputs: [
+      { ...definition.fields[0]!, key: "reference_0" }, definition.fields[1]!,
+    ] } };
+    const before = { ...fields, mediaInputs: [imageInput], parameters: {
+      aspectRatio: "16:9" as const, generationCount: 2 as const, dynamicValues: { reference_0: imageInput.versionId, strength: 0.5 },
+    } };
+    const change = planMediaCapabilityChange({ kind: "IMAGE", fields: before,
+      capabilityId: comfy.id, resolvedCapabilityId: comfy.id, previous: comfy, next: comfy });
+    expect(change.fields.parameters).toMatchObject({ aspectRatio: "16:9", generationCount: 2,
+      dynamicValues: { reference_0: imageInput.versionId, strength: 0.5 } });
+    expect(change.fields.mediaInputs).toEqual([imageInput]);
+    expect(change.confirmation).toBeNull();
+  });
+
   it("clears dynamic parameters and exact inputs when leaving RunningHub", () => {
     const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields,
       parameters: { dynamicValues: { frame: imageInput.versionId } }, mediaInputs: [imageInput],

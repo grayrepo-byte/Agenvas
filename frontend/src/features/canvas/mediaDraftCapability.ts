@@ -3,6 +3,7 @@ import { AUTODL_ADAPTER, publishedAutoDlResolutions, resolveAutoDlWorkflow } fro
 import { t } from "../../shared/i18n";
 import type { RunningHubValue } from "./RunningHubForm";
 import { promptForMediaInputs } from "./mediaPrompt";
+import { workflowDefinition, workflowDraftValues } from "./workflowDraft";
 
 export const ASPECT_RATIO_OPTIONS = ["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9", "AUTO"] as const;
 export const VIDEO_ASPECT_RATIO_OPTIONS = ["AUTO", "16:9", "9:16", "1:1"] as const;
@@ -78,10 +79,10 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
   kind: Artifact["kind"]; fields: DraftFields; capabilityId: string | null;
   resolvedCapabilityId: string | undefined; previous?: MediaCapability; next?: MediaCapability;
 }): { fields: Partial<DraftFields>; confirmation: string | null } {
-  const beforeDefinition = previous?.settings.runningHub;
-  const nextDefinition = next?.settings.runningHub;
+  const beforeDefinition = workflowDefinition(previous);
+  const nextDefinition = workflowDefinition(next);
   if (nextDefinition || beforeDefinition) {
-    const oldValues = fields.parameters.dynamicValues ?? {};
+    const oldValues = workflowDraftValues(previous, fields);
     const compatible: Record<string, RunningHubValue> = {};
     if (nextDefinition && beforeDefinition) {
       const beforeFields = new Map(beforeDefinition.fields.map((field) => [field.key, field]));
@@ -96,14 +97,24 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
         compatible[candidate.key] = value;
       }
     }
-    const used = new Set(Object.values(compatible).filter((value) => typeof value === "string"));
+    if (next?.settings.comfyInputs && !beforeDefinition) {
+      const images = fields.mediaInputs.filter((input) => input.role !== "AUDIO_REFERENCE" && input.role !== "VIDEO_REFERENCE");
+      for (const [index, slot] of nextDefinition!.fields.filter((field) => field.type === "IMAGE").entries()) {
+        const image = images[index];
+        if (image) compatible[slot.key] = image.versionId;
+      }
+    }
+    const used = new Set(nextDefinition?.fields.filter((field) => ["IMAGE", "AUDIO", "VIDEO"].includes(field.type))
+      .map((field) => compatible[field.key]).filter((value) => typeof value === "string"));
     const retained = nextDefinition ? fields.mediaInputs.filter((input) => used.has(input.versionId)) : [];
     const removed = Object.keys(oldValues).filter((key) => !(key in compatible));
     const confirmation = removed.length || retained.length !== fields.mediaInputs.length
       || !beforeDefinition && Object.keys(fields.parameters).length
       ? t("media.capabilitySwitch.inputResetConfirmation", { "0": removed.length ? `（${removed.join("、")}）` : "" }) : null;
     return { fields: { capabilityId: resolvedCapabilityId ?? null,
-      parameters: nextDefinition ? { dynamicValues: compatible } : {},
+      parameters: nextDefinition ? { ...(next?.settings.comfyInputs
+        ? kind === "IMAGE" ? normalizedImageParameters(fields.parameters, next) : normalizedVideoParameters(fields.parameters, next)
+        : {}), dynamicValues: compatible } : {},
       mediaInputs: retained, ...promptForMediaInputs(fields, retained),
       durationSeconds: nextDefinition?.fields.some((field) => field.source === "DURATION_SECONDS") ? fields.durationSeconds : null,
       ...(kind === "VIDEO" ? { videoInputMode: nextDefinition

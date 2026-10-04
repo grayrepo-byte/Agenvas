@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
@@ -19,10 +20,16 @@ import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.IdentityService;
+import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.LlmTurnCheckpointService;
+import dev.agenvas.llm.application.ToolExecutionService;
+import dev.agenvas.llm.application.TrustedToolContext;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
+import dev.agenvas.run.application.AgentRunService;
+import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.support.CanvasMediaFixture;
 import dev.agenvas.support.ComfyWorkflowFixture;
@@ -45,6 +52,10 @@ import javax.imageio.ImageIO;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -100,6 +111,11 @@ class ComfyUiWorkflowPostgresIT {
     @Autowired ObjectMapper mapper;
     @Autowired JdbcClient jdbc;
     @Autowired WebApplicationContext context;
+    @Autowired AgentInstanceService agents;
+    @Autowired AgentRunService runs;
+    @Autowired LlmTurnCheckpointService checkpoints;
+    @Autowired LlmProtocolCodec codec;
+    @Autowired ToolExecutionService toolExecutor;
 
     @Test void importedGraphsPublishThroughAdminApiExecutePinnedMappingsAndArchiveSelectedOutput() throws Exception {
         var owner = identities.setup("workflow-admin", "synthetic-password-123");
@@ -181,6 +197,90 @@ class ComfyUiWorkflowPostgresIT {
         assertThat(GRAPHS.get(videoPrompt).at("/14/inputs/frames").asInt()).isEqualTo(193);
         assertThat(GRAPHS.get(videoPrompt).at("/14/inputs/fps").asInt()).isEqualTo(24);
         assertThat(UPLOADS).hasValue(2);
+
+        // A no-prompt workflow uses named slots and explicitly declared scalar inputs,
+        // while the durable task keeps its original values after the working draft changes.
+        var extendedSettings = ComfyWorkflowFixture.settings(mapper, false, true);
+        var extendedWorkflow = extendedSettings.withObject("comfyWorkflow");
+        extendedWorkflow.withArray("bindings").remove(0);
+        extendedWorkflow.withArray("bindings").remove(2); // Expose seed as a scalar instead of random semantic binding.
+        extendedWorkflow.withObject("graph").putObject("23").put("class_type", "LoadImage").putObject("inputs").put("image", "second.png");
+        extendedWorkflow.withObject("graph").withObject("14").withObject("inputs").putArray("secondReference").add("23").add(0);
+        extendedWorkflow.withObject("graph").withObject("14").withObject("inputs").put("lora", "synthetic-lora.safetensors");
+        extendedWorkflow.withArray("bindings").addObject().put("nodeId", "23").put("inputName", "image").put("source", "REFERENCE_IMAGE").put("referenceIndex", 1);
+        var extendedFields = extendedWorkflow.putArray("parameters");
+        extendedFields.addObject().put("key", "stepCount").put("label", "Steps").put("type", "INTEGER")
+                .put("nodeId", "14").put("fieldName", "steps").put("minimum", 1).put("maximum", 50);
+        extendedFields.addObject().put("key", "seedValue").put("label", "Seed").put("type", "INTEGER")
+                .put("nodeId", "12").put("fieldName", "seed").put("minimum", 0);
+        extendedFields.addObject().put("key", "loraModel").put("label", "LoRA").put("type", "STRING")
+                .put("nodeId", "14").put("fieldName", "lora");
+        var extended = catalog.publishCapability(connection.id(), "Named ComfyUI inputs", "COMFY_IMAGE_V1", extendedSettings);
+        var publicInputs = catalog.publishedCandidates().stream().filter(candidate -> candidate.binding().capabilityId().equals(extended.id()))
+                .findFirst().orElseThrow().settings();
+        assertThat(publicInputs.has("comfyWorkflow")).isFalse();
+        assertThat(publicInputs.path("comfyInputs")).hasSize(5);
+        assertThat(publicInputs.path("comfyInputs").toString()).doesNotContain("synthetic prompt").doesNotContain("conditioning");
+        var extendedCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Named slots", null);
+        UUID extendedItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), extendedCard.artifact().id());
+        var slotParameters = mapper.createObjectNode();
+        slotParameters.putObject("dynamicValues").put("reference_1", reference.resourceDefaultVersion().id().toString());
+        var uniqueReferences = List.of(new MediaDraftService.SaveMediaInput(reference.resourceDefaultVersion().id(),
+                MediaDraft.InputRole.REFERENCE, "#7C3AED"));
+        var partial = drafts.save(owner.userId(), project.id(), extendedItem, 0, "", slotParameters,
+                null, extended.id(), null, uniqueReferences, List.of(), null);
+        assertThatThrownBy(() -> direct.preflight(owner.userId(), project.id(), extendedCard.artifact().id(), extendedItem, partial.version()))
+                .isInstanceOf(ApiProblemException.class);
+        slotParameters.withObject("dynamicValues").put("reference_0", reference.resourceDefaultVersion().id().toString())
+                .put("stepCount", 12).put("seedValue", 321).put("loraModel", "synthetic-other.safetensors");
+        var complete = drafts.save(owner.userId(), project.id(), extendedItem, partial.version(), "", slotParameters,
+                null, extended.id(), null, uniqueReferences, List.of(), null);
+        var invalidParameters = slotParameters.deepCopy();
+        invalidParameters.withObject("dynamicValues").put("arbitraryTarget", "replacement");
+        assertThatThrownBy(() -> drafts.save(owner.userId(), project.id(), extendedItem, complete.version(), "", invalidParameters,
+                null, extended.id(), null, uniqueReferences, List.of(), null)).isInstanceOf(ApiProblemException.class);
+        var namedTask = direct.run(owner.userId(), project.id(), extendedCard.artifact().id(), extendedItem, complete.version(), "named-comfy-run");
+        assertThat(namedTask.input().at("/mediaInput/providerParameters/dynamicValues/stepCount").asInt()).isEqualTo(12);
+        assertThat(namedTask.input().at("/mediaInput/parameters/dynamicValues/seedValue").asInt()).isEqualTo(321);
+        slotParameters.withObject("dynamicValues").put("stepCount", 22);
+        drafts.save(owner.userId(), project.id(), extendedItem, complete.version(), "", slotParameters,
+                null, extended.id(), null, uniqueReferences, List.of(), null);
+        int uploadsBeforeNamed = UPLOADS.get();
+        assertThat(worker.submitOnce("named-comfy-submit")).isEqualTo(1);
+        UUID namedPrompt = UUID.fromString(tasks.get(owner.userId(), project.id(), namedTask.id()).providerRequestId());
+        JsonNode namedGraph = GRAPHS.get(namedPrompt);
+        assertThat(namedGraph.at("/11/inputs/text").asText()).isEqualTo("synthetic prompt");
+        assertThat(namedGraph.at("/14/inputs/steps").asInt()).isEqualTo(12);
+        assertThat(namedGraph.at("/12/inputs/seed").asInt()).isEqualTo(321);
+        assertThat(namedGraph.at("/14/inputs/lora").asText()).isEqualTo("synthetic-other.safetensors");
+        assertThat(namedGraph.at("/13/inputs/image")).isEqualTo(namedGraph.at("/23/inputs/image"));
+        assertThat(UPLOADS.get() - uploadsBeforeNamed).isEqualTo(1);
+        due(namedTask.id());
+        assertThat(worker.pollOnce("named-comfy-poll")).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), project.id(), namedTask.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(drafts.get(owner.userId(), project.id(), extendedItem).parameters().at("/dynamicValues/stepCount").asInt()).isEqualTo(22);
+
+        var agent = agents.create(owner.userId(), project.id(), "Catalog reader", "Read the published media inputs", List.of());
+        var queuedRun = runs.create(owner.userId(), project.id(), agent.id(), "List media inputs", "comfy-catalog-run").run();
+        var run = runs.transition(owner.userId(), project.id(), queuedRun.id(), queuedRun.version(), AgentRun.Status.RUNNING);
+        int modelVersion = run.policySnapshot().path("modelConfigVersion").asInt();
+        String modelSource = run.policySnapshot().path("modelConfigSource").asText();
+        checkpoints.reserve(owner.userId(), project.id(), run.id(), 0, modelVersion, modelSource,
+                codec.request(List.of(new UserMessage("List the media inputs")), List.of()));
+        var response = AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(
+                "comfy-catalog-call", "function", "list_media_capabilities", "{}"))).build();
+        checkpoints.saveResponse(owner.userId(), project.id(), run.id(), 0, modelVersion,
+                codec.response(new ChatResponse(List.of(new Generation(response)))));
+        long taskCountBeforeTool = jdbc.sql("select count(*) from task").query(Long.class).single();
+        var trusted = new TrustedToolContext(owner.userId(), project.id(), run.id());
+        JsonNode toolResult = toolExecutor.execute(trusted, 0, "comfy-catalog-call");
+        JsonNode listed = java.util.stream.StreamSupport.stream(toolResult.path("capabilities").spliterator(), false)
+                .filter(entry -> entry.path("capabilityId").asText().equals(extended.id().toString())).findFirst().orElseThrow();
+        assertThat(listed.path("fields")).hasSize(5);
+        assertThat(listed.toString()).doesNotContain("\"graph\"").doesNotContain("synthetic prompt")
+                .doesNotContain("filename_prefix").doesNotContain("127.0.0.1");
+        assertThat(toolExecutor.execute(trusted, 0, "comfy-catalog-call")).isEqualTo(toolResult);
+        assertThat(jdbc.sql("select count(*) from task").query(Long.class).single()).isEqualTo(taskCountBeforeTool);
     }
 
     private void due(UUID taskId) {
