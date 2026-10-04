@@ -174,11 +174,28 @@ describe("ComfyWorkflowEditor", () => {
     render(<Harness initial={definition} />); const user = userEvent.setup();
     expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "1. 导入工作流" }));
+    expect(JSON.parse((screen.getByLabelText("API JSON 内容") as HTMLTextAreaElement).value)).toEqual(graph);
+    await user.clear(screen.getByLabelText("API JSON 内容"));
     await user.type(screen.getByLabelText("API JSON 内容"), "invalid");
     await user.click(screen.getByRole("button", { name: "替换工作流并重新映射" }));
     expect(await screen.findByText("API format required")).toBeInTheDocument();
     expect(JSON.parse(screen.getByTestId("settings").textContent ?? "{}").comfyWorkflow).toEqual(definition);
     expect(screen.getByRole("button", { name: "Publish fixture" })).toBeDisabled();
+  });
+
+  it("restores the saved graph as editable JSON and includes later fixed-value edits without losing a JSON draft", async () => {
+    render(<Harness initial={definition} />); const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+    await changeControl(screen.getByLabelText("steps 的固定值"), { target: { value: "30" } });
+    await user.click(screen.getByRole("button", { name: "1. 导入工作流" }));
+    const source = screen.getByLabelText("API JSON 内容") as HTMLTextAreaElement;
+    expect(JSON.parse(source.value)).toEqual(currentWorkflow().graph);
+    expect(JSON.parse(source.value)["14"].inputs.steps).toBe(30);
+    await changeControl(source, { target: { value: "unfinished draft" } });
+    await user.click(screen.getByRole("button", { name: "2. 节点与参数映射" }));
+    await user.click(screen.getByRole("button", { name: "1. 导入工作流" }));
+    expect(screen.getByLabelText("API JSON 内容")).toHaveValue("unfinished draft");
+    expect(currentWorkflow().graph["14"]?.inputs.steps).toBe(30);
   });
 
   it("accepts promptless workflows but rejects disconnected mappings, incomplete dimensions and noncontiguous images", () => {

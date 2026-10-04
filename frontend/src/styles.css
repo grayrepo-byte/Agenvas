@@ -890,7 +890,7 @@ button:disabled {
 }
 .relight-capability-select { display: grid; gap: 4px; color: #888; font-size: 10px; }
 .relight-capability-select .ui-select { max-width: 250px; }
-.relight-submit-group { display: flex; align-items: center; gap: 9px; }
+.relight-submit-group { display: flex; align-items: center; gap: 9px; margin-inline-start: auto; }
 .relight-submit-group > span { display: inline-flex; align-items: center; gap: 4px; color: #ddd; font-size: 11px; }
 .relight-submit-group .relight-submit {
   width: 35px;

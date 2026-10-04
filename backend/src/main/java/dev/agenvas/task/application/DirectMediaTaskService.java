@@ -234,7 +234,7 @@ public class DirectMediaTaskService {
                 frozen.put("mode", kind == Task.Kind.IMAGE_GENERATION
                         ? MediaDraft.VideoInputMode.GENERAL_REFERENCE.name()
                         : kind == Task.Kind.AUDIO_GENERATION ? "TEXT" : draft.videoInputMode().name());
-                if (dynamic) frozen.set("runningHubContract", mapper.valueToTree(definition));
+                if (dynamic) frozen.set("runningHubContract", mapper.valueToTree(definition.executionContract()));
                 frozen.put("prompt", draft.prompt());
                 frozen.put("userRenderedPrompt", renderPrompt(draft));
                 frozen.put("renderedPrompt", renderedPrompt);
@@ -816,7 +816,7 @@ public class DirectMediaTaskService {
             frozen.putArray("mentions");
             if (definition != null) {
                 input.put("providerProtocol", "RUNNINGHUB_V2");
-                frozen.set("runningHubContract", mapper.valueToTree(definition));
+                frozen.set("runningHubContract", mapper.valueToTree(definition.executionContract()));
                 frozen.set("parameters", workflowParameters);
             }
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,

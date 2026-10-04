@@ -89,6 +89,26 @@ class RunningHubDefinitionTest {
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
                 .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
+    @Test void importSourceIsCredentialCheckedBoundedAndExcludedFromExecutionSnapshots() {
+        var schema = schema();
+        var source = mapper.readTree("{\"3\":{\"class_type\":\"Sampler\",\"inputs\":{\"denoise\":0.5}}}");
+        schema.set("importSource", source);
+        var parsed = RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION);
+        assertThat(parsed.importSource()).isEqualTo(source);
+        assertThat(parsed.executionContract().importSource()).isNull();
+        assertThat(parsed.executionContract().fields()).isEqualTo(parsed.fields());
+        assertThat(parsed.executionContract().outputs()).isEqualTo(parsed.outputs());
+        for (String invalid : new String[]{
+                "[]", "\"text\"", "{\"3\":{\"inputs\":{\"apiKey\":\"synthetic\"}}}",
+                "{\"3\":{\"_meta\":{\"Authorization\":\"synthetic\"}}}"}) {
+            schema.set("importSource", mapper.readTree(invalid));
+            assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                    .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        }
+        schema.set("importSource", mapper.createObjectNode().put("large", "x".repeat(RunningHubDefinition.MAX_IMPORT_SOURCE_BYTES)));
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                .hasMessageContaining("大小上限");
+    }
 
     @Test void overlappingOutputsAndCombinedLimitsCannotBePublished() {
         var overlapping = schema();

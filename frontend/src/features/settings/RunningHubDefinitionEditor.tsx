@@ -13,11 +13,12 @@ import { Select } from "../../shared/ui/Select";
 import { Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from "../../shared/ui/primitives/table";
 import "./RunningHubDefinitionEditor.css";
 import { RunningHubForm } from "../canvas/RunningHubForm";
+import { restoreRunningHubCandidates } from "./runningHubImport";
 
 const MAX_FIELDS = 64;
 const FIELD_TABLE_COLUMNS = 9;
 const MAX_OUTPUTS = 16;
-const MAX_IMPORT_SOURCE_CHARACTERS = 256 * 1024;
+const MAX_IMPORT_SOURCE_CHARACTERS = 1024 * 1024;
 const NODE_LABEL_SEPARATOR = " · ";
 type OutputKind = RunningHubDefinition["outputs"][number]["kind"];
 function nodeLabel(nodeId: string, definition: RunningHubDefinition) {
@@ -71,7 +72,8 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
 }) {
   useLocale();
   const definition = value ?? emptyDefinition(adapterId);
-  const [source, setSource] = useState("");
+  const [source, setSource] = useState(() => definition.importSource ? JSON.stringify(definition.importSource, null, 2) : "");
+  const configuredTarget = useRef({ targetType: definition.targetType, targetId: definition.targetId });
   const [localError, setLocalError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [previewValues, setPreviewValues] = useState<Record<string, string | number | boolean>>({});
@@ -99,10 +101,18 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
   const nodeSummary = selectedNodes.map(getNodeLabel).join(NODE_LABEL_SEPARATOR);
   useEffect(() => { if (!value) onChange(emptyDefinition(adapterId)); }, [adapterId, value, onChange]);
   const imported = useMutation({
-    mutationFn: () => previewRunningHubImport(connectionId, { targetType: definition.targetType,
+    mutationFn: (useSource: boolean) => previewRunningHubImport(connectionId, { targetType: definition.targetType,
       targetId: definition.targetId, kind: adapterId === "RUNNINGHUB_VIDEO" ? "VIDEO_GENERATION" : adapterId === "RUNNINGHUB_AUDIO" ? "AUDIO_GENERATION" : "IMAGE_GENERATION",
-      ...(source.trim() ? { source: JSON.parse(source) as unknown } : {}) }),
-    onSuccess: (result) => { onChange(result.definition); setWarnings(result.warnings); setLocalError(""); setPreviewValues({}); setExpandedField(null); setNodeSelection(inputNodeIds(result.definition)); setSavedOutputNodeIds(result.definition.outputs.flatMap((output) => output.nodeId ? [output.nodeId] : [])); },
+      ...(useSource && source.trim() ? { source: JSON.parse(source) as unknown } : {}) }),
+    onSuccess: (result) => {
+      const sameTarget = configuredTarget.current.targetType === result.definition.targetType && configuredTarget.current.targetId === result.definition.targetId;
+      const next = sameTarget ? restoreRunningHubCandidates(definition, result.definition) : result.definition;
+      if (next.fields.length > MAX_FIELDS) { setLocalError(t("settings.runningHub.restoreTooManyFields")); return; }
+      onChange(next); configuredTarget.current = { targetType: next.targetType, targetId: next.targetId };
+      setSource(next.importSource ? JSON.stringify(next.importSource, null, 2) : "");
+      setWarnings(result.warnings); setLocalError(""); setPreviewValues({}); setExpandedField(null);
+      setNodeSelection(inputNodeIds(next)); setSavedOutputNodeIds(next.outputs.flatMap((output) => output.nodeId ? [output.nodeId] : []));
+    },
   });
   function update(next: RunningHubDefinition) { onChange(next); }
   function revealNode(nodeId: string) { setNodeSelection((selected) => selected.includes(nodeId) ? selected : [...selected, nodeId]); }
@@ -145,19 +155,22 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
   return <div className="ui-stack runninghub-definition-editor">
     <p>{t("settings.runningHub.setupHint")}</p>
     <div className="ui-form-grid">
-      <Field><FieldLabel className="ui-field block">{t("settings.runningHub.targetType")}<Select value={definition.targetType} onChange={(event) => update({ ...definition, targetType: event.target.value === "AI_APP" ? "AI_APP" : "WORKFLOW" })}>
+      <Field><FieldLabel className="ui-field block">{t("settings.runningHub.targetType")}<Select disabled={imported.isPending} value={definition.targetType} onChange={(event) => update({ ...definition, targetType: event.target.value === "AI_APP" ? "AI_APP" : "WORKFLOW" })}>
         <option value="WORKFLOW">{t("settings.runningHub.comfyWorkflow")}</option><option value="AI_APP">{t("settings.runningHub.aiApp")}</option>
       </Select></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("settings.runningHub.targetId")}<Input required pattern="[0-9]{1,32}" value={definition.targetId}
+      <Field><FieldLabel className="ui-field block">{t("settings.runningHub.targetId")}<Input disabled={imported.isPending} required pattern="[0-9]{1,32}" value={definition.targetId}
         onChange={(event) => update({ ...definition, targetId: event.target.value })} placeholder="workflowId / webappId" /></FieldLabel></Field>
     </div>
     <p className="ui-muted">{t("settings.runningHub.targetIdHint")}</p>
     <details><summary>{t("settings.runningHub.importJson")}</summary>
-      <Field><FieldLabel className="ui-field block">{t("settings.runningHub.importPlaceholder")}<Textarea value={source} onChange={(event) => setSource(event.target.value)} rows={5} maxLength={MAX_IMPORT_SOURCE_CHARACTERS} />
+      <Field><FieldLabel className="ui-field block">{t("settings.runningHub.importPlaceholder")}<Textarea disabled={imported.isPending} value={source} onChange={(event) => setSource(event.target.value)} rows={5} maxLength={MAX_IMPORT_SOURCE_CHARACTERS} />
       </FieldLabel></Field><p>{t("settings.runningHub.sanitizeImportHint")}</p>
+      <p className="ui-muted">{t("settings.runningHub.savedSourceHint")}</p>
     </details>
     <Button variant="outline"  type="button" disabled={imported.isPending || !/^[0-9]{1,32}$/.test(definition.targetId)}
-      onClick={() => { setLocalError(""); imported.mutate(); }}>{imported.isPending ? t("settings.runningHub.importing") : source.trim() ? t("settings.runningHub.importFields") : t("settings.runningHub.discover")}</Button>
+      onClick={() => { setLocalError(""); imported.mutate(true); }}>{imported.isPending ? t("settings.runningHub.importing") : source.trim() ? t("settings.runningHub.importFields") : t("settings.runningHub.discover")}</Button>
+    {source.trim() ? <Button variant="ghost" type="button" disabled={imported.isPending || !/^[0-9]{1,32}$/.test(definition.targetId)}
+      onClick={() => { setLocalError(""); imported.mutate(false); }}>{t("settings.runningHub.discover")}</Button> : null}
     {imported.error ? <p role="alert">{imported.error.message}</p> : null}
     {warnings.map((warning) => <p className="ui-muted" key={warning}>{warning}</p>)}
     <fieldset className="ui-stack" onInvalidCapture={revealInvalidParameter}><legend>{t("settings.runningHub.mappingTable")}</legend>

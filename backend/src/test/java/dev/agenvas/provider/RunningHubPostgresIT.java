@@ -343,6 +343,32 @@ class RunningHubPostgresIT {
         }
     }
 
+    @Test void savesImportedGraphInImmutableVersionsAndKeepsItOutOfCreatorAndTaskViews() throws Exception {
+        try (var provider = new Fake(1, false, false)) {
+            var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
+            var original = catalog.capabilitySnapshot(fixture.capability);
+            ObjectNode settings = (ObjectNode) mapper.readTree(original.specJson()).path("settings").deepCopy();
+            var source = mapper.readTree("""
+                {"1":{"class_type":"SyntheticInput","inputs":{"text":"private-import-literal"}},
+                 "9":{"class_type":"SaveImage","inputs":{"images":["1",0]}}}
+                """);
+            ((ObjectNode) settings.path("runningHub")).set("importSource", source);
+            catalog.updateCapability(original.connection().id(), fixture.capability, original.capability().version(),
+                    "Saved import", true, "RUNNINGHUB_IMAGE", settings);
+            var updated = catalog.capabilitySnapshot(fixture.capability);
+            assertThat(catalog.administratorSettings(updated).path("runningHub").path("importSource")).isEqualTo(source);
+            assertThat(mapper.readTree(original.specJson()).path("settings").path("runningHub").path("importSource").isNull()).isTrue();
+            assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0).stream()
+                    .filter(candidate -> candidate.binding().capabilityId().equals(fixture.capability)).findFirst().orElseThrow()
+                    .settings().toString()).doesNotContain("importSource", "private-import-literal");
+            Task task = accept(fixture, "");
+            assertThat(dev.agenvas.task.api.TaskController.TaskResponse.from(task).input().toString())
+                    .doesNotContain("private-import-literal", "SyntheticInput");
+            assertThat(task.input().path("mediaInput").path("runningHubContract").path("importSource").isNull()).isTrue();
+            assertThat(provider.submits).hasValue(0);
+        }
+    }
+
     @Test void videoReferenceIsAnExactAuthorizedSlotAndUnknownDurationHasUnknownSecondPricing() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             var fixture = fixture(provider, Artifact.Kind.VIDEO, "AI_APP", true);

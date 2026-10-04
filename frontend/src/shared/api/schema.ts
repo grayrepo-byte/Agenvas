@@ -3756,6 +3756,10 @@ export interface components {
             /** @description Real workflowId/webappId */
             targetId: string;
             sourceSha256?: string | null;
+            /** @description Credential-checked normalized import JSON (256 KiB maximum). WORKFLOW retains its API graph; AI_APP retains only nodeInfoList. Administrator editing and candidate recovery only, never submitted for execution. Optional for older definitions; the complete definition is limited to 1 MiB. */
+            importSource?: {
+                [key: string]: unknown;
+            } | unknown[] | null;
             /** @description Display-only imported workflow node catalog, including nodes without editable inputs. Does not infer output media types or authorize execution. Older definitions may omit it. */
             nodeOptions?: {
                 nodeId: string;

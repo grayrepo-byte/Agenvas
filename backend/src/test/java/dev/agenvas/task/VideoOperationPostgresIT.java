@@ -181,6 +181,7 @@ class VideoOperationPostgresIT {
                 {"runningHub":{"schemaVersion":1,"protocolVersion":"V2","targetType":"WORKFLOW","targetId":"123",
                   "fields":[{"key":"clip","label":"Video","type":"VIDEO","required":true,"nodeId":"1","fieldName":"video"},
                     {"key":"scale","label":"Scale","type":"INTEGER","required":true,"defaultValue":2,"minimum":2,"maximum":4,"nodeId":"2","fieldName":"scale"}],
+                  "importSource":{"1":{"class_type":"LoadVideo","inputs":{"video":"private-import-placeholder"}}},
                   "outputs":[{"kind":"VIDEO","primary":true,"maxCount":1}]},
                  "pricing":{"amount":"0.5","currency":"CNY","unit":"SECOND"}}
                 """);
@@ -194,6 +195,7 @@ class VideoOperationPostgresIT {
             assertThat(task.input().path("mediaInput").path("parameters").path("dynamicValues").path("clip").asText()).isEqualTo(source.versionId().toString());
             assertThat(task.input().path("mediaInput").path("parameters").path("dynamicValues").path("scale").asInt()).isEqualTo(4);
             assertThat(task.input().path("mediaInput").path("runningHubContract").path("targetId").asText()).isEqualTo("123");
+            assertThat(task.input().toString()).doesNotContain("private-import-placeholder");
             assertThat(task.input().has("durationSeconds")).isFalse();
             assertThat(drafts.get(owner.userId(), source.projectId(), UUID.fromString(task.input().path("canvasItemId").asText())).mediaInputs()).isEmpty();
             direct.cancelQueued(owner.userId(), source.projectId(), task.id());

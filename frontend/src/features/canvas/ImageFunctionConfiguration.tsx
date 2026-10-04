@@ -7,6 +7,7 @@ import { MEDIA_FUNCTIONS_QUERY_KEY, imageFunction, imageOperationLabel, mediaFun
 import { estimatedMediaCost } from "../../shared/mediaPricing";
 import { Button } from "../../shared/ui/primitives/button";
 import { RunningHubForm, runningHubErrors, type RunningHubValue } from "./RunningHubForm";
+import "./ImageFunctionConfiguration.css";
 
 type Submission = Pick<RunImageOperationRequest, "expectedFunctionVersion" | "expectedCapabilityVersion" | "parameters" | "instruction" | "referenceVersionIds" | "maskAssetId">;
 type Configuration = {
@@ -51,7 +52,7 @@ function ConfiguredImageFunction({ configured, version, sourceVersionId, busy, o
   // The backend renders the operation's instruction; it owns PROMPT and the pinned source slot.
   const ordinary = definition ? { ...definition, fields: definition.fields.filter((field) => field.type !== "IMAGE" && field.source !== "PROMPT") } : undefined;
   const errors = ordinary ? runningHubErrors(ordinary, values, "", null, []) : [];
-  const parameterControls = ordinary?.fields.length ? <div className="image-function-controls ui-stack">
+  const parameterControls = ordinary?.fields.length ? <div className="image-function-parameters ui-stack">
     <RunningHubForm definition={ordinary} values={values} prompt="" durationSeconds={null} choices={[]}
       disabled={busy} onChange={(key, value) => setValues((current) => {
         const next = { ...current }; if (value === undefined) delete next[key]; else next[key] = value; return next;
@@ -59,9 +60,9 @@ function ConfiguredImageFunction({ configured, version, sourceVersionId, busy, o
     {errors.length ? <p role="status">{errors[0]}</p> : null}
   </div> : null;
   const controls = <div className="image-function-controls ui-stack">
-    <p className="ui-muted">{configured.label}</p>
+    <p className="image-function-method" title={configured.label}>{configured.capability.name}</p>
     {parameterControls}
-    <p className="ui-muted">{configured.capability.adapterId === "LOCAL_IMAGE_PROCESSOR"
+    <p className="image-function-cost">{configured.capability.adapterId === "LOCAL_IMAGE_PROCESSOR"
       ? t("media.video.localCost") : estimatedMediaCost(configured.capability, 1, null)}</p>
   </div>;
   return children({ capability: configured.capability, controls, parameterControls, submitDisabled: errors.length > 0,

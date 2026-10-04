@@ -32,7 +32,7 @@ class RunningHubRealUsageIT {
             boolean app = "app".equals(attempt.path("name").asText());
             var definition = new RunningHubDefinition(1, "V2", app ? RunningHubDefinition.TargetType.AI_APP : RunningHubDefinition.TargetType.WORKFLOW,
                     app ? "2039199752025280513" : "2037454919065673729", List.of(), List.of(),
-                    List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.VIDEO, true, 1)), "default", false, false, null, null, null);
+                    List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.VIDEO, true, 1)), "default", false, false, null, null, null, null);
             var manifest = adapter.manifest(response, definition, receipt.path("origin").asText());
             for (String field : List.of("consumeCoins", "taskCostTime", "thirdPartyConsumeMoney")) {
                 assertThat(manifest.usage().path(field).isNumber()).isTrue();

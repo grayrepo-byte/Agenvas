@@ -45,6 +45,18 @@ function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolea
 }
 
 describe("WorkflowMediaInputs", () => {
+  it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("uses the %s slot description for selection, clearing and unavailable-input feedback", async (kind) => {
+    const label = `来源${kind}`;
+    const field = { key: "source", label: "LoadMedia", description: label, type: kind, nodeId: "2", fieldName: "file", required: true, advanced: false };
+    const change = vi.fn();
+    render(<WorkflowMediaInputs definition={{ fields: [field] }} values={{ source: "saved-unavailable" }} prompt="" durationSeconds={null}
+      choices={[]} onChange={change} onChooseSource={vi.fn()} />);
+    expect(screen.getByRole("button", { name: `选择${label}` })).toHaveAttribute("title", expect.stringContaining("LoadMedia · 2.file"));
+    expect(screen.getByText(`${label} · 版本不可用`)).toBeInTheDocument();
+    expect(screen.queryByText(/LoadMedia/)).not.toBeInTheDocument();
+    await clickControl(screen.getByRole("button", { name: `清空${label}` }));
+    expect(change).toHaveBeenCalledWith("source", undefined);
+  });
   it("renders one shared add entry for ten empty workflow media slots", () => {
     const tenSlots = { ...definition, fields: Array.from({ length: 10 }, (_, index) => ({
       key: `reference_${index}`, label: `参考图 ${index + 1}`, type: "IMAGE" as const,

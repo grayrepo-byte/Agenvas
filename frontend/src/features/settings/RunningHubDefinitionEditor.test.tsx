@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
+import { http, HttpResponse } from "msw";
 import type { RunningHubDefinition } from "../../shared/api/client";
 import { clickControl, selectValue } from "../../test/controls";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
+import { server } from "../../test/server";
 
 const initialDefinition: RunningHubDefinition = {
   schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
@@ -47,6 +49,55 @@ async function showNodes(...nodeIds: string[]) {
 function currentDefinition() {
   return JSON.parse(screen.getByTestId("definition").textContent ?? "") as RunningHubDefinition;
 }
+
+describe("RunningHubDefinitionEditor saved import JSON", () => {
+  it("reopens and re-parses saved JSON without replacing configured fields, fixed bindings or outputs", async () => {
+    const source = {
+      "1": { class_type: "Mode", inputs: { mode: false } },
+      "2": { class_type: "Sampler", inputs: { strength: 0.75, text: "source default" } },
+      "3": { class_type: "Seed", inputs: { seed: 8 } },
+      "99": { class_type: "SaveImage", inputs: { images: ["2", 0] } },
+    };
+    const stored: RunningHubDefinition = { ...initialDefinition, importSource: source,
+      outputs: [{ nodeId: "99", kind: "IMAGE", primary: true, maxCount: 2 }] };
+    const imported: RunningHubDefinition = { ...stored,
+      fields: [...initialDefinition.fields.map((field) => ({ ...field, label: "导入名称", defaultValue: field.nodeId === "2" ? 0.75 : false })),
+        { key: "text", label: "固定字段候选", type: "STRING", nodeId: "2", fieldName: "text", required: false, advanced: false },
+        { key: "mode", label: "种子候选", type: "INTEGER", nodeId: "3", fieldName: "seed", required: false, advanced: false }],
+      fixedBindings: [], outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+      nodeOptions: [{ nodeId: "99", label: "SaveImage" }],
+    };
+    const requests: unknown[] = [];
+    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", async ({ request }) => {
+        requests.push(await request.json()); return HttpResponse.json({ definition: imported, warnings: [] });
+      }));
+    await mount(false, stored);
+    expect(requests).toEqual([]);
+    fireEvent.click(screen.getByText("导入 / 已保存的 JSON"));
+    const input = screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" });
+    expect(JSON.parse((input as HTMLTextAreaElement).value)).toEqual(source);
+    await clickControl(screen.getByRole("button", { name: "导入 JSON 字段" }));
+    await waitFor(() => expect(currentDefinition().fields).toHaveLength(3));
+    expect(requests).toEqual([{ targetType: "WORKFLOW", targetId: "123", kind: "IMAGE_GENERATION", source }]);
+    expect(currentDefinition().fields.slice(0, 2)).toEqual(stored.fields);
+    expect(currentDefinition().fields[2]).toMatchObject({ key: "input1", nodeId: "3", fieldName: "seed" });
+    expect(currentDefinition().fixedBindings).toEqual(stored.fixedBindings);
+    expect(currentDefinition().outputs).toEqual(stored.outputs);
+    expect(currentDefinition().importSource).toEqual(source);
+  });
+
+  it("keeps the saved JSON and mappings when re-parsing fails", async () => {
+    const stored: RunningHubDefinition = { ...initialDefinition, importSource: { "1": { inputs: { mode: false } } } };
+    await mount(false, stored);
+    fireEvent.click(screen.getByText("导入 / 已保存的 JSON"));
+    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), { target: { value: "invalid" } });
+    await clickControl(screen.getByRole("button", { name: "导入 JSON 字段" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(currentDefinition()).toEqual(stored);
+    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue("invalid");
+  });
+});
 
 const scalarInputs = [
   { label: "默认值", error: "默认值需要有效数字或 JSON 标量。", getValue: (definition: RunningHubDefinition) => definition.fields[1]?.defaultValue },

@@ -33,7 +33,7 @@ class RunningHubAdapterTest {
             null, null, null, null, null, mapper, Clock.systemUTC());
     private final RunningHubDefinition definition = new RunningHubDefinition(1, "V2", RunningHubDefinition.TargetType.AI_APP,
             "2039199752025280513", List.of(), List.of(), List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.VIDEO, true, 1)),
-            "default", false, false, null, null, null);
+            "default", false, false, null, null, null, null);
 
     @Test void realProviderNumericStringsAreRecordedWithoutLosingNullOrInferringCurrency() {
         var response = mapper.readTree("""
@@ -73,7 +73,7 @@ class RunningHubAdapterTest {
         assertThat(result.archiveEntry().sha256()).matches("[0-9a-f]{64}");
         assertThat(mapper.readValue(mapper.writeValueAsString(manifest), ProviderResultManifest.class)).isEqualTo(manifest);
         var wrongNode = new RunningHubDefinition(1, "V2", definition.targetType(), definition.targetId(), List.of(), List.of(),
-                List.of(new RunningHubDefinition.Output("90", RunningHubDefinition.OutputKind.VIDEO, true, 1)), "default", false, false, null, null, null);
+                List.of(new RunningHubDefinition.Output("90", RunningHubDefinition.OutputKind.VIDEO, true, 1)), "default", false, false, null, null, null, null);
         assertThatThrownBy(() -> adapter.manifest(zipResponse(), wrongNode, "https://www.runninghub.ai")).isInstanceOf(RunningHubClient.ProtocolFailure.class);
     }
 
@@ -89,7 +89,7 @@ class RunningHubAdapterTest {
                 new JooqMediaCapabilityRepository.Snapshot(null, null, connection, "RUNNINGHUB_VIDEO", "hash", null)));
         var adapter = adapter(client, catalog);
         var two = new RunningHubDefinition(1, "V2", definition.targetType(), definition.targetId(), List.of(), List.of(),
-                List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.VIDEO, true, 2)), "default", false, false, null, null, null);
+                List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.VIDEO, true, 2)), "default", false, false, null, null, null, null);
         var manifest = adapter.manifest(zipResponse(), two, "https://www.runninghub.ai");
         try (var downloads = adapter.openResultDownloads(new AttemptContext(null, binding, UUID.randomUUID(), null, "synthetic-task"))) {
             for (var result : manifest.results()) try (var payload = downloads.download(result)) { assertThat(payload.stream().readAllBytes()).containsExactly((byte) 1); }

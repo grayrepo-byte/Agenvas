@@ -35,6 +35,12 @@ function initialDefinition(graph: ComfyUiGraph, video: boolean): ComfyUiWorkflow
     minimumSeconds: video ? 1 : 0, maximumSeconds: video ? 5 : 0, fps: 24, frameMultiple: 1, frameOffset: 0 };
 }
 
+function editableGraphJson(graph: ComfyUiGraph) {
+  const pretty = JSON.stringify(graph, null, 2);
+  // Formatting must not make a previously accepted graph exceed the import limit.
+  return new TextEncoder().encode(pretty).length <= LIMITS.jsonBytes ? pretty : JSON.stringify(graph);
+}
+
 /** Import candidates, inspect actual nodes, then review the exact contract that will be published. */
 export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange, onReadyChange }: {
   connectionId: string; adapterId: string; values: Settings; onChange: (value: Settings) => void; onReadyChange: (ready: boolean) => void;
@@ -44,7 +50,8 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
   const video = adapterId === "COMFY_VIDEO_V1";
   const definition = values.comfyWorkflow;
   const [step, setStep] = useState<Step>(definition ? "mapping" : "import");
-  const [source, setSource] = useState("");
+  const [source, setSource] = useState(() => definition ? editableGraphJson(definition.graph) : "");
+  const [sourceEdited, setSourceEdited] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string>(Object.keys(definition?.graph ?? {})[0] ?? "");
   const [error, setError] = useState("");
   const [parameterErrors, setParameterErrors] = useState<Record<string, boolean>>({});
@@ -53,7 +60,7 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
   const problem = comfyWorkflowProblem(definition, video);
   const imported = useMutation({
     mutationFn: () => previewComfyWorkflow(connectionId, source),
-    onSuccess: (graph) => { onChange({ comfyWorkflow: initialDefinition(graph, video), pricing: values.pricing }); setSelectedNode(Object.keys(graph)[0] ?? ""); setStep("mapping"); setError(""); setParameterErrors({}); },
+    onSuccess: (graph) => { onChange({ comfyWorkflow: initialDefinition(graph, video), pricing: values.pricing }); setSource(editableGraphJson(graph)); setSourceEdited(false); setSelectedNode(Object.keys(graph)[0] ?? ""); setStep("mapping"); setError(""); setParameterErrors({}); },
     onError: (cause) => setError(cause instanceof ApiError ? cause.message : t("settings.comfy.importFailed")),
   });
   const invalidParameter = Object.values(parameterErrors).some(Boolean);
@@ -115,21 +122,24 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
     setError("");
     if (file.size > LIMITS.jsonBytes) { setError(t("settings.comfy.tooLarge")); return; }
     setReading(true);
-    try { const text = await file.text(); if (epoch === readEpoch.current) setSource(text); }
+    try { const text = await file.text(); if (epoch === readEpoch.current) { setSource(text); setSourceEdited(true); } }
     catch { if (epoch === readEpoch.current) setError(t("settings.comfy.importFailed")); }
     finally { if (epoch === readEpoch.current) setReading(false); }
   }
   return <div className="comfy-workflow-editor ui-stack">
     <nav className="comfy-steps" aria-label={t("settings.comfy.steps")}>
       {STEPS.map((item, index) => <Button key={item} type="button" variant={step === item ? "secondary" : "ghost"} aria-current={step === item ? "step" : undefined}
-        disabled={imported.isPending || reading || item !== "import" && !definition} onClick={() => setStep(item)}>{index + 1}. {t(`settings.comfy.step.${item}`)}</Button>)}
+        disabled={imported.isPending || reading || item !== "import" && !definition} onClick={() => {
+          if (item === "import" && definition && !sourceEdited) setSource(editableGraphJson(definition.graph));
+          setStep(item);
+        }}>{index + 1}. {t(`settings.comfy.step.${item}`)}</Button>)}
     </nav>
     {step === "import" ? <FieldGroup className="comfy-workflow-import">
       <p className="ui-muted">{t("settings.comfy.importHint")}</p>
       <Field><FieldLabel htmlFor={`${fieldId}-file`}>{t("settings.comfy.file")}</FieldLabel><Input id={`${fieldId}-file`} type="file" accept=".json,application/json" disabled={reading || imported.isPending}
         onChange={(event) => { void readFile(event.target.files?.[0]); event.target.value = ""; }} /></Field>
       <Field><FieldLabel htmlFor={`${fieldId}-json`}>{t("settings.comfy.json")}</FieldLabel><Textarea id={`${fieldId}-json`} className="comfy-workflow-json" rows={7} value={source} maxLength={LIMITS.jsonBytes} disabled={reading || imported.isPending}
-        onChange={(event) => { setSource(event.target.value); setError(""); }} placeholder={'{"3":{"class_type":"KSampler","inputs":{...}}}'} /></Field>
+        onChange={(event) => { setSource(event.target.value); setSourceEdited(true); setError(""); }} placeholder={'{"3":{"class_type":"KSampler","inputs":{...}}}'} /></Field>
       <Button type="button" disabled={!source.trim() || reading || imported.isPending} onClick={() => {
         if (new TextEncoder().encode(source).length > LIMITS.jsonBytes) { setError(t("settings.comfy.tooLarge")); return; }
         setError(""); imported.mutate();

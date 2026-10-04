@@ -20,8 +20,8 @@ const comfy: MediaCapability = {
   supportsEndFrame: false, supportedImageAspectRatios: ["AUTO"], supportedImageResolutions: ["1K"], supportedImageQualities: [],
   supportsImageMask: false, supportsTransparentBackground: false, mappingSha256: "a".repeat(64), settings: { comfyInputs: [
     { key: "prompt", label: "提示词", type: "STRING", source: "PROMPT", nodeId: "1", fieldName: "text", required: true, advanced: false },
-    { key: "first", label: "首帧", type: "IMAGE", nodeId: "2", fieldName: "image", required: true, advanced: false },
-    { key: "last", label: "尾帧", type: "IMAGE", nodeId: "3", fieldName: "image", required: false, advanced: false },
+    { key: "first", label: "LoadImage", description: "首帧", type: "IMAGE", nodeId: "2", fieldName: "image", required: true, advanced: false },
+    { key: "last", label: "LoadImage", description: "尾帧", type: "IMAGE", nodeId: "3", fieldName: "image", required: false, advanced: false },
   ] },
 };
 function mount(component: React.ReactNode) { render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{component}</QueryClientProvider>); }
@@ -115,6 +115,7 @@ describe("media templates", () => {
     const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "Watercolor" }));
     expect(screen.getByRole("button", { name: "使用模板" })).toBeDisabled();
     await selectValue(screen.getByRole("combobox", { name: "参考图片 1" }), "last");
+    expect(screen.getByRole("combobox", { name: "参考图片 1" })).toHaveTextContent("尾帧");
     expect(screen.getByRole("button", { name: "使用模板" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "使用模板" }));
     await waitFor(() => expect(apply).toHaveBeenCalledWith(imported, { videoInputMode: null, imageSlots: ["last"] }));

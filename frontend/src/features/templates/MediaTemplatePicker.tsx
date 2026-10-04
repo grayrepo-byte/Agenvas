@@ -14,6 +14,7 @@ import { Input } from "../../shared/ui/primitives/input";
 import { Tabs, TabsList, TabsTrigger } from "../../shared/ui/primitives/tabs";
 import type { MediaDraftFields } from "../canvas/mediaDraftCapability";
 import { workflowDefinition } from "../canvas/workflowDraft";
+import { workflowFieldLabel } from "../canvas/workflowFieldPresentation";
 import { MediaTemplateForm, type TemplateSeedImage } from "./MediaTemplateForm";
 import { templateApplicationError, templateImageSlots, templatePromptEnabled, templateSeedPrompt, type TemplateApplyOptions } from "./templateApplication";
 import "./MediaTemplates.css";
@@ -116,7 +117,7 @@ function MediaTemplateCatalog({ context, system = false, enabled = true }: {
         {selected.images.length > 0 && workflow ? <FieldGroup>
           <p>{t("templates.slotHint")}</p>{selected.images.map((image, index) => <Field key={image.id}><FieldLabel htmlFor={`${id}-slot-${index}`}>{t("templates.numberedImage", { "0": index + 1 })}</FieldLabel>
             <Select id={`${id}-slot-${index}`} value={imageSlots[index] ?? ""} disabled={busy} onChange={(event) => setImageSlots((current) => { const next = [...current]; next[index] = event.target.value; return next; })}>
-              <option value="">{t("templates.chooseSlot")}</option>{slots.map((slot) => <option key={slot.key} value={slot.key} disabled={imageSlots.some((key, position) => key === slot.key && position !== index)}>{slot.label}</option>)}</Select></Field>)}</FieldGroup> : null}
+              <option value="">{t("templates.chooseSlot")}</option>{slots.map((slot) => <option key={slot.key} value={slot.key} disabled={imageSlots.some((key, position) => key === slot.key && position !== index)}>{workflowFieldLabel(slot)}</option>)}</Select></Field>)}</FieldGroup> : null}
         {applyError ? <Notice tone="warning">{applyError}</Notice> : null}
       </> : null}
       <div className="ui-form-actions">

@@ -396,7 +396,7 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
   useLocale();
   const cloud = capabilities[0]?.adapterId !== "LOCAL_IMAGE_PROCESSOR";
   const [instruction, setInstruction] = useState("");
-  const [capabilityId, setCapabilityId] = useState(capabilities[0]?.id ?? "");
+  const capabilityId = capabilities[0]?.id ?? "";
   const [scale, setScale] = useState<2 | 4>(2);
   const initialThreeView = initialThreeViewType ?? "CHARACTER";
   const [threeViewType, setThreeViewType] = useState<ThreeViewType>(initialThreeView);
@@ -445,33 +445,25 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
         <option.icon size={18} /><span><strong>{option.label}</strong><small>{option.summary}</small></span>
       </label>)}
     </fieldset> : null}
-    {operation === "LAYER_SPLIT" ? <label>{t("media.card.outputLayer")}<Select variant="ghost" density="compact" value={layerTarget}
+    {operation === "LAYER_SPLIT" ? <label>{t("media.card.outputLayer")}<Select value={layerTarget}
       onChange={(event) => setLayerTarget(event.target.value as "FOREGROUND" | "BACKGROUND")}>
       <option value="FOREGROUND">{t("media.card.foregroundLayer")}</option>
       <option value="BACKGROUND">{t("media.card.backgroundLayer")}</option>
     </Select></label> : null}
-    {operation === "VIEW_ANGLE" ? <label>{t("media.card.viewAngle")}<Select variant="ghost" density="compact" value={viewAngle}
+    {operation === "VIEW_ANGLE" ? <label>{t("media.card.viewAngle")}<Select value={viewAngle}
       onChange={(event) => setViewAngle(event.target.value as typeof viewAngle)}>
       {VIEW_ANGLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
-    </Select></label> : null}
-    {cloud ? <label>{t("media.imageCapability")}<Select variant="ghost" density="compact" value={selectedCapabilityId} disabled
-      onChange={(event) => setCapabilityId(event.target.value)}>
-      {eligibleCapabilities.length ? eligibleCapabilities.map((capability) => <option key={capability.id}
-        value={capability.id}>{capability.name}</option>)
-        : <option value="">{transparentOutput
-          ? t("media.card.transparentCapabilityHint")
-          : t("media.card.configureProviderHint")}</option>}
     </Select></label> : null}
     {instructionCopy
       ? <label>{instructionCopy.label}
         <Textarea value={instruction} maxLength={4000}
           placeholder={instructionCopy.placeholder}
           onChange={(event) => setInstruction(event.target.value)} /></label> : null}
-    {operation === "UPSCALE" && !capabilities[0]?.settings.runningHub ? <label>{t("media.card.upscaleFactor")}<Select variant="ghost" density="compact" value={scale}
+    {operation === "UPSCALE" && !capabilities[0]?.settings.runningHub ? <label>{t("media.card.upscaleFactor")}<Select value={scale}
       onChange={(event) => setScale(Number(event.target.value) as 2 | 4)}>
       <option value={2}>{t("media.card.upscaleDouble")}</option><option value={4}>{t("media.card.upscaleQuadruple")}</option>
     </Select></label> : null}
-    {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>{t("media.card.aspectRatio")}<Select variant="ghost" density="compact" value={ratio}
+    {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>{t("media.card.aspectRatio")}<Select value={ratio}
       onChange={(event) => setRatio(event.target.value as AspectRatio)}>
       {["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"].filter((value) =>
         !capabilities[0]?.supportedImageAspectRatios?.length || capabilities[0].supportedImageAspectRatios.some((ratio) => ratio === value)).map((value) =>

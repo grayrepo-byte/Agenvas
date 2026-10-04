@@ -59,7 +59,7 @@ class LocalizedResponseTest {
         var definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION, RunningHubDefinition.PROTOCOL_VERSION,
                 RunningHubDefinition.TargetType.WORKFLOW, "123", List.of(), List.of(),
                 List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.IMAGE, true, 1)),
-                "default", false, false, null, "source-hash", List.of(new RunningHubDefinition.NodeOption("20", "保存图片")));
+                "default", false, false, null, "source-hash", List.of(new RunningHubDefinition.NodeOption("20", "保存图片")), null);
         var warning = ApiMessage.of("api.running-hub-import-service.node-field-uses-an-unsupported-mapping-format-and-was-skipped", "6", "用户字段");
         when(service.preview(eq(connectionId), eq(definition.targetType()), eq("123"), eq(Task.Kind.IMAGE_GENERATION), any()))
                 .thenReturn(new RunningHubImportService.Preview(definition, List.of(warning)));

@@ -136,7 +136,7 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, extraContro
       {error instanceof ApiError ? error.message : t("image.relight.submitFailed")}</p> : null}
 
     <footer className="relight-dialog-footer">
-      <label className="relight-capability-select">
+      {!configuredMethod ? <label className="relight-capability-select">
         <span>{t("image.relight.imageCapability")}</span>
         <Select variant="ghost" density="compact" value={capabilityId} disabled={configuredMethod} aria-label={t("image.relight.imageCapability")}
           onChange={(event) => setCapabilityId(event.target.value)}>
@@ -144,7 +144,7 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, extraContro
             value={capability.id}>{capability.name}</option>)
             : <option value="">{t("image.relight.configureProvider")}</option>}
         </Select>
-      </label>
+      </label> : null}
       <div className="relight-submit-group">
         <span title={t("image.relight.billingHint")}><Stack size={19} weight="fill" />AI</span>
         <Button variant="ghost" type="button" className="relight-submit" disabled={!canSubmit}

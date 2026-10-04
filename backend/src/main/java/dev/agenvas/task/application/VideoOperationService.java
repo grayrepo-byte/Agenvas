@@ -159,7 +159,7 @@ public class VideoOperationService {
                     .put("versionId", sourceVersionId.toString()).put("role", "VIDEO_REFERENCE").put("order", 0);
             if (definition != null) {
                 input.put("providerProtocol", "RUNNINGHUB_V2");
-                frozen.set("runningHubContract", mapper.valueToTree(definition));
+                frozen.set("runningHubContract", mapper.valueToTree(definition.executionContract()));
                 JsonNode pricing = catalog.settings(binding).get("pricing");
                 if (pricing != null) input.set("mediaPricing", pricing);
             }

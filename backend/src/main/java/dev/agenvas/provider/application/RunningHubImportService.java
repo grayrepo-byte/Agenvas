@@ -22,7 +22,6 @@ import tools.jackson.databind.ObjectMapper;
 /** Read-only candidate discovery. It cannot publish a capability or submit generation. */
 @Service
 public final class RunningHubImportService {
-    private static final Set<String> SENSITIVE = Set.of("apikey", "authorization", "accesspassword", "password", "token", "secret");
     private final JooqMediaCapabilityRepository repository;
     private final CredentialCipher cipher;
     private final RunningHubClient client;
@@ -53,9 +52,9 @@ public final class RunningHubImportService {
     }
 
     Preview candidates(RunningHubDefinition.TargetType type, String targetId, Task.Kind kind, JsonNode source) {
-        if (source == null || source.toString().getBytes(StandardCharsets.UTF_8).length > RunningHubDefinition.MAX_DEFINITION_BYTES)
+        if (source == null || source.toString().getBytes(StandardCharsets.UTF_8).length > RunningHubDefinition.MAX_IMPORT_SOURCE_BYTES)
             throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.importing-json-exceeds-size-limit"));
-        rejectCredentials(source);
+        RunningHubDefinition.rejectImportCredentials(source);
         if (source.path("data").has("prompt")) source = source.path("data").path("prompt");
         if (source.isTextual()) {
             try { source = mapper.readTree(source.asText()); }
@@ -63,7 +62,7 @@ public final class RunningHubImportService {
         }
         if (source.has("data")) source = source.path("data");
         if (source.has("nodeInfoList")) source = source.path("nodeInfoList");
-        rejectCredentials(source);
+        RunningHubDefinition.rejectImportCredentials(source);
         List<RunningHubDefinition.Field> fields = new ArrayList<>();
         List<RunningHubDefinition.NodeOption> nodeOptions = new ArrayList<>();
         List<ApiMessage> warnings = new ArrayList<>();
@@ -126,7 +125,7 @@ public final class RunningHubImportService {
         RunningHubDefinition definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION, RunningHubDefinition.PROTOCOL_VERSION, type, targetId,
                 List.copyOf(fields), List.of(), List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.valueOf(kind.name().replace("_GENERATION", "")), true, 1)),
                 "default", false, false, null, Sha256.hex(source.toString()),
-                type == RunningHubDefinition.TargetType.WORKFLOW ? List.copyOf(nodeOptions) : null);
+                type == RunningHubDefinition.TargetType.WORKFLOW ? List.copyOf(nodeOptions) : null, source.deepCopy());
         definition.validate(kind);
         return new Preview(definition, List.copyOf(warnings));
     }
@@ -168,12 +167,5 @@ public final class RunningHubImportService {
             options.add(new RunningHubDefinition.Option(option.isObject() ? option.path("label").asText(value.asText()) : value.asText(), value));
         }
         return List.copyOf(options);
-    }
-    private void rejectCredentials(JsonNode node) {
-        if (node.isObject()) for (var entry : node.properties()) {
-            if (SENSITIVE.contains(entry.getKey().toLowerCase(java.util.Locale.ROOT))) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.please-remove-the-credential-field-before-importing-do-not-paste"));
-            rejectCredentials(entry.getValue());
-        }
-        if (node.isArray()) for (JsonNode child : node) rejectCredentials(child);
     }
 }

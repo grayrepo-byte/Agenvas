@@ -4924,6 +4924,12 @@ components:
         targetType: {type: string, enum: [WORKFLOW, AI_APP]}
         targetId: {type: string, pattern: "^[0-9]{1,32}$", description: Real workflowId/webappId, not API directory SKU.}
         sourceSha256: {type: [string, "null"], pattern: "^[0-9a-f]{64}$"}
+        importSource:
+          description: Credential-checked normalized import JSON (256 KiB maximum). WORKFLOW retains its API graph; AI_APP retains only nodeInfoList. Administrator editing and candidate recovery only, never submitted for execution. Optional for older definitions; the complete definition is limited to 1 MiB.
+          oneOf:
+            - {type: object, additionalProperties: true}
+            - {type: array, items: {}}
+            - {type: "null"}
         nodeOptions:
           type: [array, "null"]
           maxItems: 2048

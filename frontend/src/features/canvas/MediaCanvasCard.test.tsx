@@ -370,8 +370,7 @@ describe("MediaCanvasCard", () => {
       await screen.findByRole("img", { name: "湖边 的预览" });
       await clickControl(screen.getByRole("button", { name: "扩展" }));
       await clickControl(screen.getByRole("menuitem", { name: /表情调整.*AI/ }));
-      await waitFor(() => expect(screen.getByRole("combobox", { name: "图片能力" }))
-        .toHaveValue("ai-capability"));
+      expect(await screen.findByText("GPT Image", { selector: "p" })).toBeVisible();
       await changeControl(screen.getByRole("textbox", { name: "目标表情" }), { target: { value: "微笑" } });
       await clickControl(screen.getByRole("button", { name: "开始处理" }));
       await waitFor(() => expect(submissions).toBe(1));
@@ -763,14 +762,14 @@ describe("MediaCanvasCard", () => {
 
     await clickControl(await screen.findByRole("button", { name: "扩展" }));
     await clickControl(screen.getByRole("menuitem", { name: /图层分离.*AI/ }));
-    const capability = screen.getByRole("combobox", { name: "图片能力" });
-    expect(capability).toHaveValue("transparent-capability");
-    expect(screen.queryByRole("option", { name: "Opaque model" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Transparent model", { selector: "p" })).toBeVisible();
+    expect(screen.queryByText("Opaque model")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "图片能力" })).not.toBeInTheDocument();
     await changeControl(screen.getByRole("combobox", { name: "输出图层" }), {
       target: { value: "BACKGROUND" },
     });
-    expect(screen.getByRole("combobox", { name: "图片能力" })).toBeDisabled();
-    expect(screen.getByRole("combobox", { name: "图片能力" })).toHaveValue("transparent-capability");
+    expect(screen.getByText("Transparent model", { selector: "p" })).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "图片能力" })).not.toBeInTheDocument();
   });
 
   describe("configured image tools", () => {
@@ -801,7 +800,9 @@ describe("MediaCanvasCard", () => {
     });
     it("uses the configured image workflow, pins the source and submits the chosen workflow parameter", async () => {
       const settings = imageFunctionsFixture();
-      settings.connections.push({ ...videoFunctionsFixture().connections[1]!, capabilities: [imageWorkflowCapability()] });
+      const capability = imageWorkflowCapability();
+      capability.settings.runningHub!.fields[1] = { ...capability.settings.runningHub!.fields[1]!, label: "PrimitiveInt", description: "模型放大倍数" };
+      settings.connections.push({ ...videoFunctionsFixture().connections[1]!, capabilities: [capability] });
       let request: unknown;
       server.use(http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
         http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings().map((entry) =>
@@ -813,6 +814,9 @@ describe("MediaCanvasCard", () => {
       await clickControl(screen.getByRole("button", { name: "扩展" }));
       await clickControl(screen.getByRole("menuitem", { name: /高清放大/ }));
       const scale = await screen.findByRole("combobox", { name: "模型放大倍数 *" });
+      expect(screen.queryByText("PrimitiveInt")).not.toBeInTheDocument();
+      expect(screen.getByText("模型放大倍数 *")).toHaveAttribute("title", "PrimitiveInt · 2.scale");
+      expect(screen.getByText("合成图片超分", { selector: "p" })).toHaveAttribute("title", expect.stringContaining("RUNNINGHUB"));
       expect(screen.queryByRole("combobox", { name: "来源图片" })).not.toBeInTheDocument();
       await selectValue(scale, "1");
       await clickControl(screen.getByRole("button", { name: "开始处理" }));

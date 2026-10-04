@@ -617,6 +617,10 @@ public class MediaCapabilityService {
     private JsonNode publicSettings(Snapshot snapshot) {
         ObjectNode settings = (ObjectNode) administratorSettings(snapshot);
         settings.remove(ComfyUiWorkflowDefinition.SETTINGS_KEY);
+        if (settings.get("runningHub") instanceof ObjectNode runningHub) {
+            runningHub.remove("importSource");
+            runningHub.remove("nodeOptions");
+        }
         return settings;
     }
 

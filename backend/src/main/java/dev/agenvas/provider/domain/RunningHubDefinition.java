@@ -17,7 +17,7 @@ import tools.jackson.databind.node.ObjectNode;
 public record RunningHubDefinition(int schemaVersion, String protocolVersion, TargetType targetType,
         String targetId, List<Field> fields, List<FixedBinding> fixedBindings, List<Output> outputs,
         String instanceType, boolean usePersonalQueue, boolean addMetadata, Integer retainSeconds,
-        String sourceSha256, List<NodeOption> nodeOptions) {
+        String sourceSha256, List<NodeOption> nodeOptions, JsonNode importSource) {
     public static final int SCHEMA_VERSION = 1;
     public static final String PROTOCOL_VERSION = "V2";
     public static final int MAX_FIELDS = 64;
@@ -25,7 +25,10 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     public static final int MAX_OUTPUTS = 16;
     public static final int MAX_TEXT_LENGTH = 20_000;
     public static final int MAX_OPTIONS = 100;
-    public static final int MAX_DEFINITION_BYTES = 256 * 1024;
+    public static final int MAX_IMPORT_SOURCE_BYTES = 256 * 1024;
+    public static final int MAX_DEFINITION_BYTES = 1024 * 1024;
+    private static final int MAX_IMPORT_DEPTH = 64;
+    private static final Set<String> IMPORT_CREDENTIAL_FIELDS = Set.of("apikey", "authorization", "accesspassword", "password", "token", "secret");
     public static final String VALUES_PROPERTY = "dynamicValues";
     public static final int MAX_LABEL_LENGTH = 160;
     private static final int MAX_DESCRIPTION_LENGTH = 1_000;
@@ -34,7 +37,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     private static final Set<String> INSTANCES = Set.of("default", "plus", "ultra");
     private static final Set<String> ROOT_FIELDS = Set.of("schemaVersion", "protocolVersion",
             "targetType", "targetId", "fields", "fixedBindings", "outputs", "instanceType",
-            "usePersonalQueue", "addMetadata", "retainSeconds", "sourceSha256", "nodeOptions");
+            "usePersonalQueue", "addMetadata", "retainSeconds", "sourceSha256", "nodeOptions", "importSource");
     private static final Set<String> FIELD_FIELDS = Set.of("key", "label", "description", "type",
             "required", "defaultValue", "minimum", "maximum", "maxLength", "options",
             "advanced", "nodeId", "fieldName", "source", "encoding", "resourceFormat", "enabledWhen");
@@ -64,8 +67,16 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
      * It neither authorizes bindings nor determines which nodes actually return media. */
     public record NodeOption(String nodeId, String label) {}
 
+    /** Public execution snapshots need the declared mappings, not administrator import material. */
+    public RunningHubDefinition executionContract() {
+        return new RunningHubDefinition(schemaVersion, protocolVersion, targetType, targetId, fields,
+                fixedBindings, outputs, instanceType, usePersonalQueue, addMetadata, retainSeconds,
+                sourceSha256, null, null);
+    }
+
     public static RunningHubDefinition parse(ObjectMapper mapper, JsonNode value, Task.Kind kind) {
         requireObject(value, ROOT_FIELDS);
+        validateImportSource(value.get("importSource"), value.path("targetType").asText());
         if (value.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_DEFINITION_BYTES)
             throw invalid(ApiMessage.of("api.running-hub-definition.capacity-definition-exceeds-size-limit"));
         for (JsonNode field : value.path("fields")) {
@@ -89,6 +100,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     }
 
     public void validate(Task.Kind kind) {
+        validateImportSource(importSource, targetType == null ? "" : targetType.name());
         if (schemaVersion != SCHEMA_VERSION || !PROTOCOL_VERSION.equals(protocolVersion)
                 || targetType == null || targetId == null || !targetId.matches("[0-9]{1,32}"))
             throw invalid(ApiMessage.of("api.running-hub-definition.v2-protocol-target-type-and-real-target-id-must-be"));
@@ -133,6 +145,29 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
                 throw invalid(ApiMessage.of("api.running-hub-definition.wildcard-output-of-the-same-media-type-cannot-overlap-with"));
         }
         if (totalOutputs > MAX_OUTPUTS) throw invalid(ApiMessage.of("api.running-hub-definition.the-total-result-cap-for-all-output-mappings-cannot-exceed"));
+    }
+
+    /** Keep the normalized import for administrator editing only. It is never a
+     * submission template; the remote target and declared bindings remain authoritative. */
+    private static void validateImportSource(JsonNode source, String targetType) {
+        if (source == null || source.isNull()) return;
+        if (source.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_IMPORT_SOURCE_BYTES)
+            throw invalid(ApiMessage.of("api.running-hub-import-service.importing-json-exceeds-size-limit"));
+        if ("WORKFLOW".equals(targetType) ? !source.isObject() : !"AI_APP".equals(targetType) || !source.isArray())
+            throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid"));
+        rejectImportCredentials(source);
+    }
+
+    /** The same credential boundary applies to imports and direct capability writes. */
+    public static void rejectImportCredentials(JsonNode source) { rejectImportCredentials(source, 0); }
+    private static void rejectImportCredentials(JsonNode source, int depth) {
+        if (depth > MAX_IMPORT_DEPTH) throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid"));
+        if (source.isObject()) for (var entry : source.properties()) {
+            if (IMPORT_CREDENTIAL_FIELDS.contains(entry.getKey().toLowerCase(java.util.Locale.ROOT)))
+                throw invalid(ApiMessage.of("api.running-hub-import-service.please-remove-the-credential-field-before-importing-do-not-paste"));
+            rejectImportCredentials(entry.getValue(), depth + 1);
+        }
+        if (source.isArray()) for (JsonNode child : source) rejectImportCredentials(child, depth + 1);
     }
 
     /** Shared bounded field contract used by imported ComfyUI scalar inputs as well. */

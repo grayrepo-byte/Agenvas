@@ -79,7 +79,7 @@ class RunningHubImportServiceTest {
         assertThat(preview.definition().fields().get(1).type()).isEqualTo(RunningHubDefinition.FieldType.STRING);
         assertThat(preview.definition().sourceSha256()).hasSize(64);
     }
-    @Test void workflowCatalogRetainsOutputOnlyNodesAndSurvivesContractRoundTripWithoutTheGraph() {
+    @Test void workflowImportRetainsItsFullSourceAndOutputOnlyNodesAcrossContractRoundTrip() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("""
                     {"6":{"class_type":"Text","inputs":{"text":"draw"}},
@@ -92,7 +92,9 @@ class RunningHubImportServiceTest {
                 new RunningHubDefinition.NodeOption("20", "保存图片"),
                 new RunningHubDefinition.NodeOption("30", "PreviewImage"));
         var json = mapper.valueToTree(preview.definition());
-        assertThat(json.toString()).doesNotContain("class_type", "images", "inputs");
+        assertThat(json.path("nodeOptions").toString()).doesNotContain("class_type", "images", "inputs");
+        assertThat(json.path("importSource").path("20").path("inputs").path("images")).hasSize(2);
+        assertThat(json.path("importSource").path("30").path("class_type").asText()).isEqualTo("PreviewImage");
         assertThat(RunningHubDefinition.parse(mapper, json, Task.Kind.IMAGE_GENERATION)).isEqualTo(preview.definition());
     }
     @Test void appListPreservesValuesAndMediaDefaultsAreNotRemoteUrls() {
@@ -102,6 +104,8 @@ class RunningHubImportServiceTest {
             """));
         assertThat(preview.definition().fields().getFirst().options().getFirst().label()).isEqualTo("宽屏");
         assertThat(preview.definition().fields().get(1).defaultValue()).isNull();
+        assertThat(preview.definition().importSource().isArray()).isTrue();
+        assertThat(preview.definition().importSource().get(1).path("fieldValue").asText()).isEqualTo("https://remote.invalid/video.mp4");
     }
     @Test void appLabelsUseDescriptionsAndFallBackToNonBlankNodeOrFieldNames() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION, mapper.readTree("""

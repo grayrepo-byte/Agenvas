@@ -267,6 +267,8 @@ describe("MediaSettingsPage", () => {
       outputs: [{ nodeId: "99", kind: "VIDEO", primary: true, maxCount: 2 },
         { nodeId: "100", kind: "AUDIO", primary: false, maxCount: 1 }],
       nodeOptions: [{ nodeId: "99", label: "原视频输出" }, { nodeId: "101", label: "新视频输出" }],
+      importSource: targetType === "WORKFLOW" ? { "99": { class_type: "SaveVideo", inputs: { video: ["20", 0] } } }
+        : [{ nodeId: "10", fieldName: "text", fieldType: "STRING", fieldValue: "合成提示" }],
     };
     const savedDefinition = { ...definition, fields: definition.fields.map((field) => field.key === "prompt"
       ? { ...field, defaultValue: "修改后的合成提示" } : field),
@@ -328,6 +330,8 @@ describe("MediaSettingsPage", () => {
       adapterId: "RUNNINGHUB_VIDEO", settings: { runningHub: savedDefinition } }]);
     await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
     const reopened = screen.getByRole("dialog");
+    await user.click(within(reopened).getByText("导入 / 已保存的 JSON"));
+    expect(JSON.parse((within(reopened).getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }) as HTMLTextAreaElement).value)).toEqual(definition.importSource);
     expect(within(reopened).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 10 · 画面提示 · 节点 20 · 视频时长 · 节点 30");
     expect(within(within(reopened).getByRole("row", { name: "画面提示" })).getByRole("textbox", { name: "默认值" })).toHaveValue("修改后的合成提示");
     expect(within(reopened).getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue("false");
