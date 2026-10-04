@@ -1,125 +1,143 @@
 <p align="center">
-  <img src="frontend/src/assets/brand/agenvas-square.png" alt="Agenvas Logo" width="160" />
+  <img src="frontend/src/assets/brand/agenvas-square.png" alt="Agenvas Logo" width="120" />
 </p>
 
 <h1 align="center">Agenvas</h1>
 
-<p align="center">A self-hosted AI creative canvas for text, images, video, audio, and agents in one workspace.</p>
+<p align="center"><strong>A self-hosted AI creative canvas</strong><br />Text, images, video, audio, and agents in one workspace.</p>
 
-<p align="center"><a href="README.md">中文</a> · <a href="#usage">Usage</a> · <a href="LICENSE">ELv2</a></p>
+<p align="center">
+  <a href="README.md">中文</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#local-development">Development</a> ·
+  <a href="#documentation-and-contributing">Docs &amp; contributing</a> ·
+  <a href="LICENSE">MIT</a>
+</p>
+
+> Development build for a single self-hosting administrator. See the [development checklist](docs/DEVELOPMENT-CHECKLIST.md) for real model compatibility and release verification status.
 
 ## Features
 
-- **Creative canvas**: Text, image, video, audio, and Agent cards with dragging, selection, connections, zoom, locking, and automatic arrangement. Upload local media directly from the canvas context menu.
-- **Direct generation**: Edit prompts, select models, add references, and run individual cards. Queue, cancel, regenerate, and switch historical versions; image edits and post-processing create separate derived nodes.
-- **Agent collaboration**: Read explicitly bound context, create and edit text, and arrange cards. Persistent conversations, creative Skills, streamed public answers, and execution records are available. Agent media proposals require user approval before generation.
-- **Reusable materials**: Project resources, a personal asset library shared across your own projects, image/video prompt templates, visual styles, and image/video/audio references.
-- **Image tools**: Brush annotations, crop, rotate, mirror, resize, and depth extraction. AI edits, outpainting, relighting, and related operations use configured media capabilities.
-- **Model and storage settings**: Administrator-managed LLMs, media connections, published capabilities, and default models. Local files and OSS/COS/S3 storage, with a separate relay for video references.
-- **Execution and recovery**: Persistent tasks, call logs, usage records, event replay after disconnects, and project manifests. UNKNOWN generation requests require an explicit retry; the system does not automatically resubmit them.
-- **Languages**: Chinese, English, Russian, and Japanese use the same interface.
+| Feature | Description |
+| --- | --- |
+| Creative canvas | Drag, select, connect, arrange, and upload local media |
+| Multimodal generation | Run text, image, video, and audio cards with queues, cancellation, regeneration, and version history |
+| Agent collaboration | Read bound context, edit text, and arrange cards; media proposals require user approval |
+| Reusable materials | Project resources, personal assets, prompt templates, visual styles, and mixed references |
+| Image tools | Annotate, crop, rotate, mirror, resize, extract depth, and use configured AI editing capabilities |
+| Self-hosting | Model settings, local and OSS/COS/S3 storage, task and call records, and project manifest exports |
 
-Media adapters include GPT Image, Google Nano Banana, Volcano Ark Seedance, Seed Audio, fixed ComfyUI templates, and RunningHub workflows/AI apps using the fixed V2 protocol. Available inputs, parameters, and operations depend on administrator-published capabilities. An implemented adapter does not establish verified compatibility with every model or official endpoint.
+The interface supports Chinese, English, Russian, and Japanese. Media adapters include GPT Image, Google Nano Banana, Volcano Ark Seedance, Seed Audio, fixed ComfyUI templates, and RunningHub V2 workflows / AI apps. Available operations depend on administrator-published capabilities.
 
-This is a development build for a single self-hosting administrator. Some image proxy endpoints have real generation records; the complete real LLM/image/video path, other Provider compatibility, and production release gates remain incomplete. See the [development checklist](docs/DEVELOPMENT-CHECKLIST.md) for actual verification scope.
+## Quick start
 
-## Usage
+### 1. Configure the environment
 
-### 1. Start the application
-
-Install Docker Engine / Docker Desktop and Docker Compose, then run from the repository root:
+Install Docker Engine / Docker Desktop and Docker Compose. From the repository root:
 
 ```sh
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` (never commit real credentials):
 
 | Setting | Purpose |
 | --- | --- |
-| `AGENVAS_DB_PASSWORD` | Unique random database password; required |
-| `AGENVAS_BOOTSTRAP_SECRET` | One-time administrator setup secret, at least 24 characters; required |
-| `AGENVAS_CREDENTIAL_MASTER_KEY` | Base64-encoded random 32-byte encryption key; required before saving model API keys, cloud credentials, or full ComfyUI addresses |
+| `AGENVAS_DB_PASSWORD` | Required: a unique random database password |
+| `AGENVAS_BOOTSTRAP_SECRET` | Required: a one-time administrator setup secret of at least 24 characters |
+| `AGENVAS_CREDENTIAL_MASTER_KEY` | A Base64-encoded random 32-byte key; required before saving model or storage credentials, or full ComfyUI addresses |
 
-Keep real credentials in your local `.env` or server configuration. Store encryption keys separately from database backups.
+### 2. Start and sign in
 
 ```sh
 ./deploy/update-local.sh
 ```
 
-The script builds images, updates containers, and waits for health checks while retaining database and media volumes. Default deployment uses configured providers. Starting the application and signing in require neither a GPU nor a model key.
+The script builds images and starts the services, retaining database and media volumes. Starting and signing in require neither a GPU nor a model key.
 
-Open [administrator setup](http://127.0.0.1:8088/setup), enter the setup secret, create an administrator, and [sign in](http://127.0.0.1:8088/login).
+Open <http://127.0.0.1:8088/setup>, enter the setup secret, create an administrator, and sign in.
 
-### 2. Configure models
+### 3. Configure models and create
 
-- **Text and Agent**: Add an OpenAI-compatible endpoint, model ID, and API key in model settings. An administrator must run the tool-calling diagnostic before Agent use; the interface explains potential call costs.
-- **Images, video, and audio**: Create connections, publish capabilities, and select default models in media settings. The default deployment has no available media capabilities until configured.
-- **Video reference relay**: For Seedance video references from a local deployment, select a publicly accessible OSS/COS/S3 connection under storage settings → media relay. Default storage can remain local. See the [relay guide](docs/media-relay-design.md).
+- **Text and Agent**: Add an OpenAI-compatible endpoint, model ID, and API key under settings → model settings. An administrator must run the tool-calling diagnostic before using an Agent.
+- **Images, video, and audio**: Create connections, publish capabilities, and choose default models in media settings. The default deployment requires real model configuration before generating media.
 
-ComfyUI uses trusted fixed templates; RunningHub uses administrator-published targets and parameter contracts. Credentials are encrypted server-side, and configuration changes do not replace connection versions pinned by accepted tasks.
+Create a project and use the canvas context menu to add cards or upload media. Select a model, enter a prompt and references, check the estimated cost, and run. Preview, select, or regenerate results. Agent cards can bind context and use Skills; approve or reject media proposals as a batch in the conversation.
 
-### 3. Create on the canvas
+Seedance video references need a publicly accessible media relay. See the [relay guide](docs/media-relay-design.md).
 
-1. Create a project and open its canvas. Add cards or upload images, video, and audio through the context menu.
-2. Edit or generate text in a text card. For media, select a model, enter a prompt, and add the references required by its capability.
-3. Check inputs and estimated cost (unknown when pricing is unavailable), then run. Preview and select results, regenerate within the node, or inspect version history.
-4. Add an Agent card for assistance, explicitly bind context, choose a Skill, and enter a task. Send the task to start; the server checks the model, inputs, and pinned versions before accepting it. Approve or reject a media proposal as a batch in the conversation.
-5. Save results to your personal asset library for reuse, or export a project manifest. The manifest contains data and media metadata; a full backup also requires the database and media files.
+> UNKNOWN results require an explicit retry, which may incur duplicate costs. Cancellation does not guarantee that an external service stops or refunds charges. Project manifests contain data and media metadata; they do not replace database and media file backups.
 
-When a request becomes UNKNOWN, inspect its task and call records first. Explicit retries create separate attempts and may incur duplicate costs. Cancellation stops subsequent local orchestration; it does not guarantee external cancellation or refunds.
+### Update and stop
 
-### Update, stop, and back up
-
-After updating repository code, run `./deploy/update-local.sh` again. Base images are pinned by digest; the script does not automatically upgrade their versions.
+After updating the code, run `./deploy/update-local.sh` again. To stop services and retain data volumes:
 
 ```sh
-# Stop default deployment and retain database/media volumes
 docker compose --env-file .env -f deploy/compose.yaml down
 ```
 
-- Default Web/API/database ports are `8088` / `8080` / `5432`, bound to loopback only. Override with `AGENVAS_WEB_PORT`, `AGENVAS_API_PORT`, and `AGENVAS_DB_PORT`; use a separate `COMPOSE_PROJECT_NAME` for isolated installations.
-- Public deployment requires HTTPS, a reverse proxy, and secure cookies (`AGENVAS_SECURE_COOKIES=true`). Resource limits are documented in `.env.example`. Frontend build heap defaults to 1536 MiB and can be adjusted with the Docker build argument `FRONTEND_BUILD_HEAP_MB`.
-- Back up databases, media, configuration, and current/historical encryption keys before upgrading. Old V1–V77 development databases cannot upgrade directly to the rebuilt V1 baseline. Restore with a matching version and recovery mode first. See [backup and recovery](docs/operations/backup-restore.md).
-- Administrator-only system logs are available in settings. They retain bounded output from the current backend process and clear on restart.
+Default ports are Web `8088`, API `8080`, and PostgreSQL `5432`, all bound to loopback. Override them in `.env` with `AGENVAS_WEB_PORT`, `AGENVAS_API_PORT`, and `AGENVAS_DB_PORT`.
+
+Public deployment requires HTTPS, a reverse proxy, and `AGENVAS_SECURE_COOKIES=true`. Back up databases, media, configuration, and encryption keys before upgrading. For old V1–V77 development database migration limits, see [backup and recovery](docs/operations/backup-restore.md).
 
 ## Local development
 
-Frontend: Vite, React, TypeScript, React Flow, TanStack Query, and Zustand. Backend: Java 21, Spring Boot, Spring AI, jOOQ, PostgreSQL, and Flyway. The frontend is a static SPA; Spring Boot provides business APIs and SSE.
+| Layer | Stack |
+| --- | --- |
+| Frontend | Vite · React · TypeScript · React Flow · TanStack Query · Zustand |
+| Backend | Java 21 · Spring Boot · Spring AI · jOOQ |
+| Data and deployment | PostgreSQL · Flyway · Docker Compose · REST / SSE |
 
-Use JDK 21, Node 24 LTS (24.12+), and pnpm 12.5.1. Exact versions are recorded in the [dependency baseline](docs/dependency-baseline.md).
+Toolchain: JDK 21, Node 24 LTS (24.12+), and pnpm 12.5.1. Exact versions are in the [dependency baseline](docs/dependency-baseline.md).
 
-### Container development environment (Mock)
+### Mock environment
 
-After filling the database password and setup secret in `.env`, start the separate development environment:
+Fill the database password and setup secret in `.env`, then start without external model accounts:
 
 ```sh
 docker compose --env-file .env -f deploy/compose.dev.yaml up -d --build
-# Stop development and retain its volumes
-docker compose --env-file .env -f deploy/compose.dev.yaml down
 ```
 
-Development Compose explicitly enables text and media Mock without external model accounts. Images, video, and audio are synthetic demo materials; audio is a tone, not speech synthesis. The setup URL and login process are the same as above.
+Text and media use Mock. Images, video, and audio are synthetic demo materials, not real model output. Use the same setup URL and process as above; stop with `down` using the same Compose file.
 
-Default deployment and development project names are `agenvas` and `agenvas-dev`. Their volumes are separate, but default ports overlap. Use distinct project names and ports when running both simultaneously.
+Default deployment and Mock use separate data volumes but share default ports. Set distinct ports to run both simultaneously.
 
-### Run from source
+<details>
+<summary><strong>Run from source</strong></summary>
+
+Frontend (separate terminal):
 
 ```sh
-# Frontend, in one terminal
 cd frontend
 corepack pnpm install --frozen-lockfile
 corepack pnpm api:generate
 corepack pnpm dev
 ```
 
+Backend (separate terminal; configure PostgreSQL and environment variables first):
+
 ```sh
-# Backend, in another terminal; configure environment variables and PostgreSQL first
 cd backend
 ./mvnw spring-boot:run
 ```
 
-Provide `AGENVAS_DB_URL`, `AGENVAS_DB_USER`, `AGENVAS_DB_PASSWORD`, and `AGENVAS_BOOTSTRAP_SECRET` to the backend. Spring Boot does not automatically load the root `.env`. Source execution defaults to Mock; media processing needs local FFmpeg/FFprobe, optionally selected with `AGENVAS_MEDIA_TOOLS_FFMPEG` and `AGENVAS_MEDIA_TOOLS_FFPROBE`. Depth extraction has additional [local configuration](docs/local-image-processing.md). Vite runs on port `5173` and proxies `/api` to `localhost:8080`.
+Provide `AGENVAS_DB_URL`, `AGENVAS_DB_USER`, `AGENVAS_DB_PASSWORD`, and `AGENVAS_BOOTSTRAP_SECRET` to the backend; it does not automatically load the root `.env`. Source execution defaults to Mock. Media processing requires FFmpeg / FFprobe; see [local image processing](docs/local-image-processing.md) for depth extraction.
+
+Vite runs on port `5173` and proxies `/api` to `localhost:8080`.
+
+</details>
+
+## Documentation and contributing
+
+| Document | Contents |
+| --- | --- |
+| [Product specification](docs/MVP-SPEC.md) | Feature scope and behavior |
+| [Development checklist](docs/DEVELOPMENT-CHECKLIST.md) | Implementation and verification status |
+| [Development guidelines](AGENTS.md) | Architecture, coding, and testing requirements |
+| [Backup and recovery](docs/operations/backup-restore.md) | Upgrades, backups, and recovery |
+| [Security policy](SECURITY.md) | Security reporting and support scope |
+
+Issues and pull requests are welcome. Read the specification and development guidelines before contributing, and run the relevant tests for feature changes.
 
 ```text
 frontend/       Pages and canvas interaction
@@ -127,15 +145,9 @@ backend/        Business APIs, Agent Runtime, and task execution
 contracts/      Authoritative OpenAPI and content schemas
 configs/        Agent, Skill, and trusted media workflow configuration
 deploy/         Compose, Nginx, and container builds
-docs/           Specifications, designs, dependencies, and verification
+docs/           Specifications, designs, and development documentation
 ```
-
-Before contributing, read [AGENTS.md](AGENTS.md), the [MVP specification](docs/MVP-SPEC.md), and the [development checklist](docs/DEVELOPMENT-CHECKLIST.md). See [SECURITY.md](SECURITY.md) for security reporting and current support boundaries.
 
 ## License
 
-The Agenvas main project uses [Elastic License 2.0 (ELv2)](LICENSE). Subject to its terms, you may use, copy, modify, and distribute the source, including for self-hosted use.
-
-ELv2 restricts hosted or managed services that give third parties access to substantial software functionality, prohibits circumventing license-key functionality, and requires preservation of licensing and copyright notices. It is a source-available license, not an OSI-approved open-source license. Refer to [LICENSE](LICENSE) and the [official Elastic terms](https://www.elastic.co/licensing/elastic-license) for the full conditions.
-
-Third-party dependencies, model weights, media workflows, and components such as FFmpeg retain their own licenses. Model fees and hardware costs remain the user's responsibility. Complete third-party license and release-inventory reviews remain release gates.
+Licensed under the [MIT License](LICENSE). Third-party dependencies, model weights, workflows, and components such as FFmpeg retain their own licenses.

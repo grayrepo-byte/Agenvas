@@ -1319,7 +1319,7 @@ springdoc 作为后端实现说明与比对工具，不允许它与手写合约�
 
 进程数默认 1，线程数与超时受配置限制；取消本地任务应终止进程并清理临时文件。初始单机形态不等同于强沙箱，不能据此开放不受信任插件或公共多租户执行。
 
-FFmpeg 的许可证取决于启用的组件；包含某些 GPL 组件会改变该 FFmpeg 构建的许可要求。发布镜像前记录实际构建参数、组件及分发义务，不能因为主项目选择 ELv2 就把 FFmpeg 也标成 ELv2。[S19]
+FFmpeg 的许可证取决于启用的组件；包含某些 GPL 组件会改变该 FFmpeg 构建的许可要求。发布镜像前记录实际构建参数、组件及分发义务，不能因为主项目选择 MIT 就把 FFmpeg 也标成 MIT。[S19]
 
 ---
 
@@ -1839,9 +1839,9 @@ M2 可以与 M1 的界面工作部分并行，但 M4 的付费/耗资源调用�
 
 ---
 
-## 29. 源码开放、许可证与商业边界
+## 29. 开源许可证与商业边界
 
-2026-10-03 按用户决定，主项目采用 Elastic License 2.0（ELv2），替代此前 Apache-2.0 建议；根目录 `LICENSE` 保存官方完整条款。ELv2 允许在其条件下使用、复制、修改和分发，包括自托管使用，但限制向第三方提供可访问软件实质性功能的托管或管理服务，禁止规避许可证密钥功能及移除许可、版权等声明。它属于源码可用许可证，不是 OSI 批准的开源许可证；历史规格中的“开源”表示源码开放与独立运行目标，不应作为 OSI 许可承诺。[S21]
+2026-10-04 按用户决定，主项目采用 MIT License，替代此前的许可证决定；根目录 `LICENSE` 保存完整条款，版权声明为 `Copyright (c) 2026 Agenvas contributors`。MIT 允许使用、复制、修改、合并、发布、分发、再许可与销售软件，副本或实质性部分须保留版权与许可声明；软件按原样提供，不附带担保。[S21]
 
 核心画布、Agent Runtime、内置工具、任务恢复、基础 Provider 接口与部署能力公开源码并可独立运行。不通过闭源远程服务解锁“真正 Agent 模式”。
 
@@ -1849,7 +1849,7 @@ M2 可以与 M1 的界面工作部分并行，但 M4 的付费/耗资源调用�
 
 模型调用费用、硬件成本、第三方工作流与模型权重许可证独立于本项目源码许可。源码开放不能消除这些成本与条款。
 
-后续商业化可围绕团队运维、算力和支持；向第三方提供托管或管理服务须遵守 ELv2 或另行取得授权，不能据此默认允许第三方 SaaS。不能在本版用大量 SaaS 计费代码阻塞核心创作功能。第三方组件仍保留各自许可证，兼容性、NOTICE、模型与 FFmpeg 分发义务须独立核验。
+后续商业化可围绕团队运维、算力、托管服务和支持；主项目 MIT 许可不额外限制第三方提供 SaaS 或托管服务。不能在本版用大量 SaaS 计费代码阻塞核心创作功能。第三方组件仍保留各自许可证，兼容性、NOTICE、模型与 FFmpeg 分发义务须独立核验。
 
 ---
 
@@ -1924,7 +1924,7 @@ M2 可以与 M1 的界面工作部分并行，但 M4 的付费/耗资源调用�
 
 **ADR 0029（[Agent 对话中的公开进度、流式回答与媒体审批](agent-conversation-stream-design.md)）：** 允许在 Agent 卡片展示可核实的公开步骤、工具摘要、冻结媒体审批与真实回答增量；累计公开文本与事件持久化，复用项目唯一 SSE 连接恢复。私有推理不进入界面、事件或检查点。
 
-**ADR 0032：主项目采用 ELv2（接受，2026-10-03）。** 用户在整理 README 时明确要求添加 ELv2，覆盖第 29 节原 Apache-2.0 建议。根目录加入官方完整 LICENSE，中英文 README 统一声明自托管与源码使用条件；不新增远程许可校验或作者账户依赖。代价是第三方向用户提供实质性功能的托管服务受限，不能继续将主项目描述为 OSI 批准的开源许可，也不能以主许可替代第三方组件的分发核验。本决定记录在现有规格 ADR 汇总中，不新增被忽略规则排除的文档。
+**ADR 0032：主项目采用 MIT（接受，2026-10-04 修订）。** 用户明确要求将许可证调整为 MIT，替代 2026-10-03 的 ELv2 决定及此前 Apache-2.0 建议。根目录 LICENSE、中英文 README、规格与发布文档统一采用 MIT；不新增远程许可校验或作者账户依赖。MIT 允许第三方商用与提供托管服务，不再保留原许可证的托管限制；版权与许可声明仍须保留，第三方组件的分发义务仍独立核验。本决定继续记录在现有规格 ADR 汇总中。
 
 （原 ADR-004「执行计划独立于画布/素材关系」与 ADR-009「先顺序导出，不做完整剪辑器」随 ADR 0013 作废，不再列出。）
 
@@ -1953,7 +1953,7 @@ M2 可以与 M1 的界面工作部分并行，但 M4 的付费/耗资源调用�
 - [S18] MDN Using server-sent events。https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events
 - [S19] FFmpeg License and Legal Considerations。https://www.ffmpeg.org/legal.html
 - [S20] FFmpeg Filters：规范化与拼接能力。https://www.ffmpeg.org/ffmpeg-filters.html
-- [S21] Elastic License 2.0 原文与 FAQ。https://www.elastic.co/licensing/elastic-license ；https://www.elastic.co/licensing/elastic-license/faq
+- [S21] MIT License 完整条款（2026-10-04 核查）。https://opensource.org/license/mit
 - [S22] Spring Boot JSON：Jackson 依赖与支持。https://docs.spring.io/spring-boot/reference/features/json.html
 - [S23] OpenAI Function Calling：结构化工具协议。https://developers.openai.com/api/docs/guides/function-calling
 - [S24] Spring AI Output Converters：结构转换接口。https://docs.spring.io/spring-ai/reference/api/structured-output/converters.html

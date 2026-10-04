@@ -559,7 +559,7 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 依赖：T29。
 
-进展：新增 `SECURITY.md`，明确开发版尚无受支持发布，并仅在仓库启用 GitHub 私密漏洞报告时使用该入口；私密渠道当前无法核实，仍是发布阻断。`docs/release-notes/0.1.0-mvp-draft.md` 汇总 Mock 支持范围、候选 Provider 限制、升级恢复边界与待验门禁，不作为正式发行。CI 已配置镜像级 CycloneDX SBOM/许可证清单工件生成，2026-10-03 按用户决定采用 ELv2，根目录加入官方完整 LICENSE，中英文 README 与规格第 29 节/ADR 0032 已同步；NOTICE、模型/FFmpeg 与第三方许可审查、具体发行工件仍未完成。
+进展：新增 `SECURITY.md`，明确开发版尚无受支持发布，并仅在仓库启用 GitHub 私密漏洞报告时使用该入口；私密渠道当前无法核实，仍是发布阻断。`docs/release-notes/0.1.0-mvp-draft.md` 汇总 Mock 支持范围、候选 Provider 限制、升级恢复边界与待验门禁，不作为正式发行。CI 已配置镜像级 CycloneDX SBOM/许可证清单工件生成，2026-10-04 按用户决定将主项目改为 MIT，根目录 LICENSE、中英文 README 与规格第 29 节/ADR 0032 已同步；NOTICE、模型/FFmpeg 与第三方许可审查、具体发行工件仍未完成。
 
 - [ ] README/README.en、CONTRIBUTING、SECURITY、LICENSE、NOTICE、SBOM 完整。
 - [ ] 媒体模板、模型权重、Custom Node 与 FFmpeg 构建许可分别核验。

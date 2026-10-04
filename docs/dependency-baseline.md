@@ -97,7 +97,7 @@ Run 前模型与输入预览、Agent 版本钉住由 `AgentRunPostgresIT` 和前
 
 ## FFmpeg 分发说明
 
-server 运行镜像安装 Ubuntu Noble 的系统 `ffmpeg` 6.1.1-3ubuntu5；当前 ARM64 镜像显示 `--enable-gpl`、`--enable-libx264`，且编码器列表包含 `libx264`/`libx264rgb`。该系统二进制并非 Agenvas 的 ELv2 主项目代码；依据 [FFmpeg 官方许可证说明](https://ffmpeg.org/doxygen/trunk/md_LICENSE.html)，分发前必须单独核对许可证文本、对应源码与构建信息。此前 Alpine 6.1.2-r2 的验证只属于历史镜像，不能代替当前 Noble 镜像审核。
+server 运行镜像安装 Ubuntu Noble 的系统 `ffmpeg` 6.1.1-3ubuntu5；当前 ARM64 镜像显示 `--enable-gpl`、`--enable-libx264`，且编码器列表包含 `libx264`/`libx264rgb`。该系统二进制并非 Agenvas 的 MIT 主项目代码；依据 [FFmpeg 官方许可证说明](https://ffmpeg.org/doxygen/trunk/md_LICENSE.html)，分发前必须单独核对许可证文本、对应源码与构建信息。此前 Alpine 6.1.2-r2 的验证只属于历史镜像，不能代替当前 Noble 镜像审核。
 
 媒体集成测试不再固定 macOS Homebrew 路径，使用服务端固定路径发现（`/usr/bin`、`/opt/homebrew/bin`、`/usr/local/bin`）；Ubuntu CI 后端 job 显式安装 `ffmpeg`/`ffprobe` 所在系统包。当前主机定向测试已运行，GitHub Ubuntu job 尚未在此工作区验证。
 - SSE 通过 Testcontainers 中真实 Tomcat HTTP 和 Nginx 配置验证；浏览器全链路弱网压测仍属于发布前门禁。
