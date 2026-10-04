@@ -26,7 +26,7 @@ describe("CallDebugDetails", () => {
     const { unmount, client } = show();
     expect(await screen.findByText("https://provider.example/v1/chat/completions")).toBeInTheDocument();
     expect(screen.getByText(/HTTP 500/)).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "原始内容" }));
+    await userEvent.setup().click(screen.getByRole("radio", { name: "原始内容" }));
     expect(screen.getByText('{"prompt":"<script>unsafe</script>"}')).toBeInTheDocument();
     expect(document.querySelector("script")).toBeNull();
     expect(screen.getByText("partial response")).toBeInTheDocument();
@@ -78,19 +78,55 @@ it("formats a streamed LLM completion beside its captured prompt instead of leav
   expect(completion).toBeEnabled();
   expect(screen.getAllByText("synthetic-response")).toHaveLength(1);
   expect(screen.getByRole("button", { name: "展开 Prompt" })).toBeEnabled();
+  expect(screen.getAllByText(/^请求正文 · UTF8/)).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "重新读取日志" })).not.toBeInTheDocument();
+  expect(screen.getByText("42 ms")).not.toBeVisible();
+  await userEvent.setup().click(screen.getByText("流式调用指标"));
+  expect(screen.getByText("42 ms")).toBeVisible();
   await userEvent.setup().click(completion);
   expect(screen.getByRole("dialog", { name: "Completion" })).toHaveTextContent("Synthetic public answer");
   await userEvent.setup().keyboard("{Escape}");
-  await userEvent.setup().click(screen.getByRole("button", { name: "原始内容" }));
+  await userEvent.setup().click(screen.getByRole("radio", { name: "原始内容" }));
+  expect(screen.getAllByText(/"Create synthetic text"/)).toHaveLength(1);
   expect(screen.queryByText(/Synthetic legacy SSE/)).not.toBeInTheDocument();
   expect(screen.getAllByText(/模型响应（JSON）/)).toHaveLength(1);
+});
+
+it("retains each HTTP request and its identifiers without repeating the prompt paired with the stream response", async () => {
+  const firstRequest = JSON.stringify({ messages: [{ role: "user", content: "First synthetic request" }] });
+  const finalRequest = JSON.stringify({ messages: [{ role: "user", content: "Final synthetic request" }] });
+  server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true,
+    exchanges: [
+      { method: "POST", url: "https://provider.invalid/first", responseStatus: 503,
+        responseIdentifiers: { "x-request-id": "synthetic-first" },
+        requestBody: { content: firstRequest, encoding: "UTF8", truncated: false }, responseBody: null },
+      { method: "POST", url: "https://provider.invalid/final", responseStatus: 200,
+        responseIdentifiers: { "x-request-id": "synthetic-final" },
+        requestBody: { content: finalRequest, encoding: "UTF8", truncated: false }, responseBody: null },
+    ],
+    llmStream: { metrics: streamMetrics, content: { response: '{"choices":[{"message":{"role":"assistant","content":"Synthetic answer"}}]}', truncated: false } },
+  })));
+  show();
+  expect(await screen.findByText(/请求 1 · POST · HTTP 503/)).toBeInTheDocument();
+  expect(screen.getByText(/请求 2 · POST · HTTP 200/)).toBeInTheDocument();
+  expect(screen.getAllByText(/^请求正文 · UTF8/)).toHaveLength(2);
+  const user = userEvent.setup();
+  await user.click(screen.getByText(/请求 1 · POST · HTTP 503/));
+  expect(screen.getByText("synthetic-first")).toBeVisible();
+  await user.click(screen.getByText(/请求 2 · POST · HTTP 200/));
+  expect(screen.getByText("synthetic-final")).toBeVisible();
+  await user.click(screen.getByRole("radio", { name: "原始内容" }));
+  expect(screen.getAllByText(firstRequest)).toHaveLength(1);
+  expect(screen.getAllByText(finalRequest)).toHaveLength(1);
 });
 
 it("shows one partial model response and timing without delivery progress or remote rendering", async () => {
   server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: true, exchanges: [],
     llmStream: { metrics: streamMetrics, content: { response: JSON.stringify({ generations: [{ assistant: { text: '<script>received tail</script> https://example.invalid/image.png' } }] }), truncated: false } } })));
   const { unmount, client } = show();
-  expect(await screen.findByText("首字延迟")).toBeInTheDocument();
+  expect(await screen.findByText("流式调用指标")).toBeInTheDocument();
+  await userEvent.setup().click(screen.getByText("流式调用指标"));
+  expect(screen.getByText("首字延迟")).toBeVisible();
   expect(screen.getByText("42 ms")).toBeInTheDocument();
   expect(screen.queryByText("首次输出延迟")).not.toBeInTheDocument();
   expect(screen.queryByText("展示输出")).not.toBeInTheDocument();
@@ -104,15 +140,18 @@ it("shows one partial model response and timing without delivery progress or rem
   expect(client.getQueryData(["call-debug", "log"])).toBeUndefined();
 });
 
-it("shows metrics with debug disabled and lets an asynchronously completed log be reloaded", async () => {
+it("reads asynchronously saved metrics on reopening without a reload button", async () => {
   let saved = false;
   server.use(http.get("/api/v1/call-logs/log/debug", () => HttpResponse.json({ id: "log", captured: false, exchanges: [],
     llmStream: saved ? { metrics: streamMetrics, content: null } : null })));
-  show();
+  const { unmount } = show();
   expect(await screen.findByText(/本次调用尚无 debug 正文/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "重新读取日志" })).not.toBeInTheDocument();
+  unmount();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   saved = true;
-  await userEvent.setup().click(screen.getByRole("button", { name: "重新读取日志" }));
-  expect(await screen.findByText("首字延迟")).toBeInTheDocument();
+  show();
+  expect(await screen.findByText("首字延迟")).toBeVisible();
   expect(screen.getByText("本次只记录指标。查看模型响应需在调用前开启 debug 模式。")).toBeInTheDocument();
   expect(screen.queryByText("模型响应（JSON）")).not.toBeInTheDocument();
 });
@@ -125,7 +164,7 @@ it("switches a semantic-only response to exact captured JSON without inventing a
   expect(await screen.findByRole("button", { name: "展开 Completion" })).toBeEnabled();
   expect(screen.getByRole("button", { name: "展开 Prompt" })).toBeDisabled();
   expect(screen.getByText(/实际 LLM 请求与响应正文保留/)).toHaveTextContent(/仅省略结构化图片字段字节/);
-  await userEvent.setup().click(screen.getByRole("button", { name: "原始内容" }));
+  await userEvent.setup().click(screen.getByRole("radio", { name: "原始内容" }));
   expect(screen.getByText(response)).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "展开 Completion" })).not.toBeInTheDocument();
   expect(document.querySelector("think")).toBeNull();

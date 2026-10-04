@@ -152,6 +152,8 @@
 
 2026-10-02 视频比例修正：视频结果按当前展示 Asset 的实际宽高贴合节点，保持长边并锁定缩放比例；切换版本、拖动保存与刷新后继续适配，草稿占位和尺寸失败保留既有布局，读取失败支持重试。比例查询由图片扩展为图片/视频共用，图片草稿比例联动保留。5 个相关测试文件共 144 项通过，类型检查、定向 ESLint 与四语言文案检查通过；无 API 合约或数据库迁移。未运行全量测试、浏览器视觉验收或真实 Provider，见 专项证据（开发记录不随源码公开）。
 
+2026-10-04 视频悬停播放：取消节点内播放和关闭预览按钮，初始只加载封面，悬停后有声播放、移开暂停，再次进入继续。自定义进度条和声音开关隔离节点选中、拖动及平移，拖进度不打开工具栏或编辑栏；点击画面仍选中节点，视频画面仍可拖动节点。保留加载、缓冲、封面及播放失败重试，切换结果和卸载停止旧播放；浏览器阻止有声播放时不静音降级。同步规格与 ADR 0005，无 API、数据库或依赖变更。4 个定向文件 127 项测试、TypeScript、修改文件 ESLint、四语言和主题静态检查及生产构建通过；本地 Chromium 使用合成音视频验证有声播放状态、进度拖动不选中、移开暂停及画面点击打开交互区，真实 React Flow 的选择和拖动由组件测试验证。未运行全量、后端或真实 Provider 测试，未验收移动端和其他浏览器。
+
 2026-09-30 图片比例联动：底部编辑栏选择明确比例后，图片节点立即保持长边并调整尺寸；已保存草稿刷新后恢复，失败保留本地预览。AUTO/未设置时仍使用原图比例或既有空态尺寸，已有结果完整展示。无 API 或数据库迁移，定向检查见 联动证据（开发记录不随源码公开）。
 
 2026-09-30 比例保存关闭路径修正：点击画布或关闭编辑器会立即提交未保存草稿，保存中保留比例预览；已有请求不重复提交，后续修改使用已确认版本串行保存。关闭后失败保留完整本地输入，重开显示错误并允许重试，保存未完成时显示等待。定向回归与检查见 联动证据（开发记录不随源码公开）。
@@ -1340,6 +1342,16 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [ ] 全量测试、浏览器端到端、真实 LLM/Provider 与部署未运行。当前实际接入消费入口为 Agent 预设创建和文字卡片生成；其他功能按稳定 key 显式接入，诊断协议及服务端权限/工具规则不作为管理员创作提示词。
 
 
+### 2026-10-04 三视图提示词统一管理
+
+- [x] 角色、脸部、道具三视图与场景宫格接入现有提示词管理，分别使用 `image.three-view.character`、`image.three-view.face`、`image.three-view.prop`、`image.three-view.scene-grid` 四条内置 FUNCTION 条目。管理员可编辑名称/说明/正文，沿用 CAS、搜索/用途筛选、草稿保留和内置删除保护；四语言用途说明同步。
+- [x] 新增 V6__three_view_function_prompts.sql 数据迁移，最初四条英文正文与原 Java 字符串逐一核对完全相同，随后按用户要求直接修改未发布 DML 的角色默认正文：英文描述正面半身大头照与全身站立三视图，保持同一角色，16:9 纯白背景、影棚柔光、角色设定集风格、高分辨率及电影级质感。其余三条正文保留；从 ImageOperationSpec 移除固定三视图正文。迁移不改变表结构或现有提示词，不修改 V5，无 jOOQ 结构变化。
+- [x] 新图片后处理 Task schema 7 在首次受理时读取所选类型对应的当前提示词，追加可选主体说明，冻结最终正文与 promptKey/promptVersion。Worker、恢复和同键重放继续消费原冻结输入，配置修改只影响新命令；非三视图操作沿用原指令，派生节点、画幅、权限/能力及 UNKNOWN 规则保持。
+- [x] 后端 6 类 56 项定向检查通过：ImageOperationSpecTest 7、ImageOperationValidationTest 30、ApprovedMediaAcceptanceTest 9、ThreeViewPromptPostgresIT 4、PromptManagementPostgresIT 5、ImageOperationDerivationPostgresIT 1。首次命令 `./mvnw -q -Dtest=ImageOperationSpecTest,ImageOperationValidationTest,ApprovedMediaAcceptanceTest,ThreeViewPromptPostgresIT,PromptManagementPostgresIT,ImageOperationDerivationPostgresIT test`；新集成测试的 multipart 断言修正后，`./mvnw -q -Dtest=ThreeViewPromptPostgresIT -Dlogging.level.root=WARN test` 4 项通过，其余 52 项首次已通过。真实 PostgreSQL 与回环模拟 OpenAI HTTP 验证初始化、管理 API、CAS/删除保护、四类型选用、同键同参重放/异参冲突、旧任务冻结及新任务更新；模拟端收到正确正文并完成合成 PNG 归档，没有真实 Provider 调用。
+- [x] 前端 PromptManagementSection、SystemSettingsPage、MediaCanvasCard 共 3 文件 98 项定向 Vitest 测试通过；新增四条提示词的筛选/搜索、独立草稿、管理保存与内置保护覆盖。TypeScript、修改测试文件 ESLint、四语言语义文案检查通过；按冻结锁文件安装依赖，无依赖变更。OpenAPI 行为说明及生成 TypeScript、MVP 与 ADR 0015 同步，差异空白检查通过。
+- [x] 角色默认 DML 正文修订后，`./mvnw -q -Dtest=ImageOperationSpecTest,ThreeViewPromptPostgresIT -Dlogging.level.root=WARN test` 共 11 项通过；英文正文包含全部九项用户指定的构图/一致性/画幅/背景/布光/风格/质量要素，四条 DML 记录保留。没有接口或表结构变更；未执行应用数据库迁移及真实 Provider 调用。
+- [ ] 全量测试、浏览器端到端、真实 Provider、应用数据库迁移和部署未运行。V6 已在一次性 PostgreSQL 中执行，测试容器与本任务临时媒体目录已清理；发布时服务须执行 V6 才会出现四条功能配置。
+
 ### 2026-10-03 统一提示词与导演 Agent 合并 main 复验
 
 - [x] 保留 main 的 Agent 回答 Markdown、按需读取图片及 Skill 界面改动；解决上下文规则、合约、语言目录和任务清单冲突。新 Run 使用 systemPromptVersion=6，将导演创作系统提示词与按需读图规则组合；历史 1–5 的规则和消息角色保持。Flyway 仍为统一提示词 V5，不修改 main 已有 V1–V4。
@@ -1485,3 +1497,13 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [x] 后端定向单元测试四类共 13 项、真实 PostgreSQL 集成两类共 8 项通过：MediaFunctionServiceTest、LocalImageProcessorAdapterTest、MediaAdapterRegistryVideoModesTest、CanvasTaskResultSelectionTest、VideoOperationPostgresIT、ImageOperationDerivationPostgresIT。覆盖真实本地音频与深度、无音轨、幂等异参、来源与能力冲突、空白草稿、新音频身份、派生线删除、设置 CAS/鉴权/CSRF、RunningHub 冻结与固定来源；第三方样例为合成配置且未调用真实 Provider。音频尺寸调整后再次运行视频集成整类与相关单元测试通过。
 - [x] 前端五类定向测试去重 116 项通过；最新视频工具整类 85 项与设置页两项复验通过。TypeScript、相关文件 ESLint、四语文案检查、主题颜色检查和 Vite 生产构建通过，保留既有大 chunk 提示。浏览器以合成账号/素材验证菜单、未配置入口、功能保存/恢复、本地音频分离与深度生成及派生结果；宽屏工具栏与窄屏设置页面检查完成。设计核对见根目录 design-qa.md，截图与运行资料在仓库外私有保存。差异空白检查通过，本次修改/新增的 59 个文本文件新增内容经凭据格式、私有路径、私钥与邮箱定向扫描无候选；本次未增加待提交媒体文件。
 - [ ] 全量测试、专门读屏/高倍缩放、真实第三方 AI 超分、ComfyUI 视频处理和其他第三方处理适配未运行/未接入；没有选择并验证具体视频超分模型。未部署到用户现有运行环境。
+
+### 2026-10-04 调用日志详情排版与请求正文去重
+
+- [x] 标题与显示模式同行，采集说明前置；流式指标有正文时默认折叠、只有指标时展开；Prompt / Completion 宽屏并列、窄屏纵向。最后一次 HTTP 请求正文与单份模型响应集中展示，下方 HTTP 请求默认折叠，仅保留该次请求的地址、状态及第三方关联 ID；多次请求的其余正文各自保留。没有聚合响应时仍完整展示 HTTP 正文。移除“重新读取日志”按钮，读取失败保留重试入口，关闭再打开读取最新异步日志。
+- [x] 更新 CallDebugDetails、LlmStreamDetails、FormattedCallExchange、局部 CSS 及四语文案，同步 MVP 与 ADR 0020；无后端、API、数据库迁移、生成文件或依赖版本改动。
+- [x] 合成回归先复现单次与多次请求正文重复及重读按钮仍存在；四个文件共 38 项定向测试通过（CallDebugDetails 8、FormattedCallExchange 6、CallLogsPage 19、callLogFormatting 5），指标折叠微调后增量复验 CallDebugDetails 8 项通过。覆盖格式化/原始单份正文、多个请求与关联 ID 保留、历史双份响应隐藏、指标展开、异步日志重新打开、读取失败重试、会话过期和关闭缓存清理。
+- [x] TypeScript、相关 TS/TSX 的 ESLint、四语 i18n、主题颜色检查和 Vite 生产构建通过，构建保留既有大 chunk 提示。独立合成日志浏览器预览验证宽屏并列、390 像素窄屏单列且无横向溢出；浏览器原始模式请求正文计数为 1、重读按钮计数为 0。预览未调用真实模型或媒体 Provider，临时预览源码已移除。差异空白检查通过，新增文本凭据/私人路径/邮箱形状定向扫描无候选；截图仅包含合成内容，保存在仓库外私有目录。
+- [ ] 未运行全量测试、真实日志的端到端验收、真实模型/Provider 调用或部署更新。
+
+视频工具合并 main 复验：保留视频悬停播放、统一三视图提示词管理与调用日志排版；功能设置迁移使用 V7，保留 main 的 V6 三视图提示词种子。OpenAPI 类型重新生成，隔离 PostgreSQL 执行合并迁移并重新生成 jOOQ，结果一致。前端五类 134 项、后端七类单元测试 59 项与三类真实 PostgreSQL 集成测试 12 项通过，无失败或跳过；本地深度用固定 Depth Anything V2 Small 模型验证，素材与 Provider 配置为合成夹具。TypeScript、相关文件 ESLint、四语文案、主题颜色与 Vite 生产构建通过，保留既有大 chunk 提示。提交差异空白与新增内容凭据/私人路径扫描无候选。全量测试、真实第三方调用及部署未运行。

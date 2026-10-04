@@ -4,6 +4,7 @@ import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -36,9 +37,12 @@ public final class ImageOperationSpec {
             "SOFT_STUDIO", "soft studio", "NEON_NIGHT", "colorful neon-night");
     private static final Map<String, String> LAYER_RESULT_LABELS = Map.of(
             DEFAULT_LAYER_TARGET, "主体图层", "BACKGROUND", "背景图层");
-    private static final Map<String, String> THREE_VIEW_RESULT_LABELS = Map.of(
-            "CHARACTER", "角色三视图", "FACE", "脸部三视图",
-            "PROP", "道具三视图", "SCENE_GRID", "场景宫格图");
+    private record ThreeViewDefinition(String resultLabel, String promptKey) {}
+    private static final Map<String, ThreeViewDefinition> THREE_VIEW_DEFINITIONS = Map.of(
+            "CHARACTER", new ThreeViewDefinition("角色三视图", "image.three-view.character"),
+            "FACE", new ThreeViewDefinition("脸部三视图", "image.three-view.face"),
+            "PROP", new ThreeViewDefinition("道具三视图", "image.three-view.prop"),
+            "SCENE_GRID", new ThreeViewDefinition("场景宫格图", "image.three-view.scene-grid"));
     private static final Map<String, String> VIEW_ANGLES = Map.of(
             DEFAULT_VIEW_ANGLE, "a straight-on front view",
             "LEFT_THREE_QUARTER", "a left three-quarter view",
@@ -129,7 +133,7 @@ public final class ImageOperationSpec {
                 result.put("aspectRatio", ratio);
                 if (operation == ImageOperation.THREE_VIEW) {
                     String type = source.path("threeViewType").asText("");
-                    if (!THREE_VIEW_RESULT_LABELS.containsKey(type)) {
+                    if (!THREE_VIEW_DEFINITIONS.containsKey(type)) {
                         throw invalid(ApiMessage.of("api.direct-media-task-service.three-view-types-are-not-supported"));
                     }
                     result.put("threeViewType", type);
@@ -152,13 +156,21 @@ public final class ImageOperationSpec {
     /** Parameters have already been normalized and validated before naming the result node. */
     public String resultLabel() {
         return switch (operation) {
-            case THREE_VIEW -> THREE_VIEW_RESULT_LABELS.get(parameters.path("threeViewType").asText());
+            case THREE_VIEW -> THREE_VIEW_DEFINITIONS.get(parameters.path("threeViewType").asText()).resultLabel();
             case LAYER_SPLIT -> LAYER_RESULT_LABELS.get(parameters.path("layerTarget").asText());
             default -> operation.resultLabel();
         };
     }
 
-    public String prompt(String instruction) {
+    /** A registered function key is selected by the validated operation, never by user input. */
+    public String promptKey() {
+        return operation == ImageOperation.THREE_VIEW
+                ? THREE_VIEW_DEFINITIONS.get(parameters.path("threeViewType").asText()).promptKey()
+                : null;
+    }
+
+    /** Managed content is required for three views; other operations retain their fixed instructions. */
+    public String prompt(String instruction, String managedContent) {
         return switch (operation) {
             case SMART_EDIT -> "Edit the provided image according to this instruction. Preserve all "
                     + "unmentioned subjects, identity, composition, and visual style. Instruction: "
@@ -178,7 +190,7 @@ public final class ImageOperationSpec {
                     + parameters.path("aspectRatio").asText() + ". Preserve the original image exactly "
                     + "inside the expanded canvas and continue its scene, perspective, lighting, and style."
                     + (instruction.isBlank() ? "" : " Additional instruction: " + instruction);
-            case THREE_VIEW -> threeViewPrompt(parameters.path("threeViewType").asText())
+            case THREE_VIEW -> Objects.requireNonNull(managedContent, "Three views require a managed prompt")
                     + (instruction.isBlank() ? "" : " Subject guidance: " + instruction);
             case LAYER_SPLIT -> "FOREGROUND".equals(parameters.path("layerTarget").asText())
                     ? "Extract the primary foreground subject from the provided image as a clean isolated "
@@ -217,34 +229,6 @@ public final class ImageOperationSpec {
         return operation == ImageOperation.REMOVE_BACKGROUND
                 || operation == ImageOperation.LAYER_SPLIT
                         && "FOREGROUND".equals(parameters.path("layerTarget").asText());
-    }
-
-    private static String threeViewPrompt(String type) {
-        return switch (type) {
-            case "CHARACTER" -> "Create one clean professional full-body character turnaround sheet from "
-                    + "the provided image. Show the same character at equal scale in straight front, exact "
-                    + "side profile, and straight back orthographic views. Keep a neutral standing pose and "
-                    + "preserve identity, body proportions, hairstyle, clothing construction, accessories, "
-                    + "materials, and colors. Use a simple neutral background, even lighting, clear separation "
-                    + "between views, and no labels or unrelated objects.";
-            case "FACE" -> "Create one clean professional facial turnaround sheet from the provided image. "
-                    + "Show the same head and shoulders at equal scale in straight front, three-quarter, and "
-                    + "exact side profile views. Preserve facial identity, skull and face proportions, skin "
-                    + "tone, hairstyle, makeup, expression, and accessories. Use a simple neutral background, "
-                    + "even lighting, aligned eye level, clear separation between views, and no labels.";
-            case "PROP" -> "Create one clean professional prop turnaround sheet from the provided image. "
-                    + "Show the exact same object at equal scale in straight front, exact side, and straight "
-                    + "back orthographic views. Preserve geometry, construction, materials, textures, colors, "
-                    + "wear, and functional details. Use a simple neutral background, even lighting, clear "
-                    + "separation between views, and do not add hands, people, labels, or unrelated objects.";
-            case "SCENE_GRID" -> "Create one coherent 2 by 2 environment reference grid from the provided "
-                    + "scene. The four panels must show the same location as a wide establishing view, a "
-                    + "reverse view, a medium view, and a key-detail view. Preserve the spatial layout, "
-                    + "architecture, landmarks, materials, colors, time of day, weather, and lighting across "
-                    + "all panels. Use clean equal gutters and do not add labels, characters, or unrelated "
-                    + "objects unless they are already essential to the source scene.";
-            default -> throw invalid(ApiMessage.of("api.direct-media-task-service.three-view-types-are-not-supported"));
-        };
     }
 
     private static ApiProblemException invalid(ApiMessage detail) {

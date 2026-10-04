@@ -25,10 +25,10 @@ class ImageOperationValidationTest {
                 """));
         supplied.put("lightingPreset", "NEON_NIGHT");
         relight.parameters().put("lightingPreset", "MOONLIGHT");
-        assertThat(relight.prompt("")).contains("warm golden-hour", "brightness adjustment 10", "3200K", "(0.15, 0.75)");
+        assertThat(relight.prompt("", null)).contains("warm golden-hour", "brightness adjustment 10", "3200K", "(0.15, 0.75)");
         assertThat(ImageOperationSpec.parse(mapper, ImageOperation.CROP, null).parameters())
                 .isEqualTo(mapper.readTree("{\"x\":0.0,\"y\":0.0,\"width\":1.0,\"height\":1.0}"));
-        assertThat(ImageOperationSpec.parse(mapper, ImageOperation.UPSCALE, null).prompt(""))
+        assertThat(ImageOperationSpec.parse(mapper, ImageOperation.UPSCALE, null).prompt("", null))
                 .isEqualTo("Local 2x upscale");
         assertThat(ImageOperationSpec.parse(mapper, ImageOperation.ROTATE, null).parameters().path("quarterTurns").asInt())
                 .isEqualTo(1);
@@ -38,7 +38,7 @@ class ImageOperationValidationTest {
     @MethodSource("presetPrompts")
     void presetAndCameraInstructionsRemainSupported(ImageOperation operation, String field, String value, String instruction) {
         var spec = ImageOperationSpec.parse(mapper, operation, mapper.createObjectNode().put(field, value));
-        assertThat(spec.prompt("keep identity")).contains(instruction, "keep identity");
+        assertThat(spec.prompt("keep identity", null)).contains(instruction, "keep identity");
     }
 
     static Stream<Arguments> presetPrompts() {
