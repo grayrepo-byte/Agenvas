@@ -610,13 +610,10 @@ button:disabled {
   color: #fff;
   background: #17171799;
 }
-.media-play-button { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: grid; place-items: center; width: 56px; height: 56px; border: 1px solid #ffffff55; border-radius: 50%; background: #111a; color: white; cursor: pointer; }
-.media-play-button:hover { background: #242424e8; border-color: #ffffff99; }
 .media-playback-loading { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; background: #171717b8; }
 .media-playback-error { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 20px; background: #202020f5; text-align: center; }
 .media-playback-error p { margin: 0; font-size: 14px; }
 .media-playback-error > span { color: #aaa; font-size: 11px; }
-.media-stop-preview { position: absolute; z-index: 1; top: 8px; right: 43px; display: grid; place-items: center; width: 29px; height: 29px; border: 0; border-radius: 7px; background: #171717cc; color: #eee; cursor: pointer; }
 .media-demo-badge { position: absolute; bottom: 8px; left: 8px; border: 1px solid #aa8c44; border-radius: 5px; padding: 3px 6px; background: #272316e8; color: #efd392; font-size: 10px; }
 .media-card-state { display: flex; flex-direction: column; gap: 6px; text-align: center; font-size: 13px; color: #ddd; overflow-wrap: anywhere; }
 .media-card-state small, .media-card-error { font-size: 11px; color: #b9b9b9; }

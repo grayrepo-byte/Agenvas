@@ -96,7 +96,7 @@ describe("MediaCanvasCard", () => {
     });
     expect(await screen.findByRole("img", { name: "湖边 的视频封面" })).toHaveAttribute("src",
       "/api/v1/projects/project-1/assets/completed-asset/thumbnail");
-    expect(screen.getByRole("button", { name: "播放视频" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "播放视频" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("湖边 的视频")).not.toBeInTheDocument();
     expect(generate).not.toHaveBeenCalled();
   });
@@ -878,7 +878,7 @@ describe("MediaCanvasCard", () => {
     act(() => client.setQueryData(["media-draft", "project-1", "item-1"], {
       projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 2,
     }));
-    await screen.findByRole("button", { name: "播放视频" });
+    await screen.findByRole("img", { name: "湖边 的视频封面" });
     expect(screen.queryByRole("region", { name: "图片引用" })).not.toBeInTheDocument();
     expect(document.querySelector(".video-card-with-references")).toBeNull();
   });
@@ -890,7 +890,9 @@ describe("MediaCanvasCard", () => {
     expect(screen.queryByRole("button", { name: /上传/ })).not.toBeInTheDocument();
   });
 
-  it("loads only the video poster until explicit playback, then handles loading, retry and close", async () => {
+  it("loads only the video poster until hover, then handles loading, retry and pause on leave", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     const videoArtifact: Artifact = { ...artifact, kind: "VIDEO", resourceDefaultVersionId: "video-version",
       resourceDefaultVersion: { id: "video-version", versionNo: 1, schemaVersion: 1,
         content: { assetId: "video-asset", prompt: "A camera movement",
@@ -909,10 +911,13 @@ describe("MediaCanvasCard", () => {
     expect(screen.getByText("演示视频")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "打开视频文件" })).toHaveAttribute("target", "_blank");
 
-    await clickControl(screen.getByRole("button", { name: "播放视频" }));
+    expect(screen.queryByRole("button", { name: "播放视频" })).not.toBeInTheDocument();
+    const preview = poster.parentElement!;
+    fireEvent.mouseEnter(preview);
     const video = screen.getByLabelText("湖边 的视频");
-    expect(video).toHaveAttribute("controls");
-    expect(video).toHaveAttribute("autoplay");
+    expect(video).not.toHaveAttribute("controls");
+    expect(video).toHaveProperty("muted", false);
+    expect(play).toHaveBeenCalledOnce();
     expect(video.getAttribute("src")).toContain("/content");
     expect(screen.getByRole("status", { name: "正在加载视频" })).toBeInTheDocument();
     fireEvent.canPlay(video);
@@ -924,9 +929,11 @@ describe("MediaCanvasCard", () => {
     expect(screen.queryByRole("status", { name: "正在加载视频" })).not.toBeInTheDocument();
     await clickControl(screen.getByRole("button", { name: "重试播放" }));
     expect(screen.getByLabelText("湖边 的视频")).not.toBe(video);
-    await clickControl(screen.getByRole("button", { name: "关闭视频预览" }));
-    expect(screen.queryByLabelText("湖边 的视频")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "播放视频" })).toBeInTheDocument();
+    pause.mockClear();
+    fireEvent.mouseLeave(preview);
+    expect(pause).toHaveBeenCalled();
+    expect(screen.queryByRole("status", { name: "正在加载视频" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "关闭视频预览" })).not.toBeInTheDocument();
   });
 
   it("routes an unresolved video task to the editor without resubmitting it", async () => {

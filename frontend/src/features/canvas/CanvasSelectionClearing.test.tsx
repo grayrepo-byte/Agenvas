@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act,createEvent,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
+import { act,cleanup,createEvent,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import type { NodeSelectionChange,ReactFlowInstance,ReactFlowProps } from "@xyflow/react";
 import { http,HttpResponse } from "msw";
 import { useLayoutEffect } from "react";
@@ -92,7 +92,7 @@ function snapshot(): ProjectSnapshot {
     canvas: { items }, connections: [], agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
 }
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 beforeEach(() => {
   flowProps = {};
@@ -230,6 +230,55 @@ async function renderInteractiveFlow() {
   await renderFlow();
   await waitFor(() => expect(nodeElement("image-card")).toBeInTheDocument());
 }
+
+describe("video hover controls", () => {
+  it("keeps the editor closed when hovering and seeking, then opens it on a picture click", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    const source = items[0]!;
+    const version = source.artifact!.resourceDefaultVersion!;
+    const videoVersion = { ...version, content: { sourceType: "UPLOAD", assetId: "synthetic-video" } };
+    const videoItems = items.map((item) => item.id === source.id ? {
+      ...item, selectedVersionId: videoVersion.id, selectedVersion: videoVersion,
+      artifact: { ...source.artifact!, kind: "VIDEO" as const, resourceDefaultVersion: videoVersion },
+    } : item);
+    server.use(
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: videoItems } })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: videoItems })),
+    );
+    await renderInteractiveFlow();
+    const poster = await screen.findByRole("img", { name: "参考图 的视频封面" });
+    fireEvent.mouseEnter(poster.parentElement!);
+    const video = screen.getByLabelText("参考图 的视频") as HTMLVideoElement;
+    expect(play).toHaveBeenCalledOnce();
+    expect(video.muted).toBe(false);
+    Object.defineProperty(video, "duration", { configurable: true, value: 10 });
+    fireEvent.loadedMetadata(video);
+    const seek = screen.getByRole("slider", { name: "视频播放进度" });
+    fireEvent.pointerDown(seek);
+    fireEvent.mouseDown(seek);
+    fireEvent.change(seek, { target: { value: "5" } });
+    fireEvent.mouseUp(seek);
+    fireEvent.click(seek);
+    expect(video.currentTime).toBe(5);
+    expect(selectedIds()).toEqual([]);
+    expect(screen.queryByLabelText("媒体卡片操作")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    // Hover playback must still allow dragging the picture; only its controls opt out.
+    nodeMouseGesture("mouseDown", video, 0);
+    nodeMouseGesture("mouseMove", video, CANVAS_POINTER_THRESHOLD + 1);
+    expect(nodeElement(source.id).querySelector(".artifact-canvas-card")).toHaveClass("is-selected");
+    expect(selectedIds()).toEqual([]);
+    nodeMouseGesture("mouseUp", video, 0);
+    fireEvent.click(video);
+    expect(selectedIds()).toEqual([]);
+    await act(async () => {});
+    fireEvent.click(video);
+    expect(selectedIds()).toEqual([source.id]);
+    expect(await screen.findByLabelText("媒体卡片操作")).toBeVisible();
+    expect(await screen.findByLabelText("所选卡片编辑区")).toBeVisible();
+  });
+});
 
 describe("connection gesture overlays", () => {
   function startConnection() {

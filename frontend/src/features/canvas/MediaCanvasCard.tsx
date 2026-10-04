@@ -44,6 +44,7 @@ import { MediaVersionPicker } from "./MediaVersionPicker";
 import { RelightPanel } from "./RelightPanel";
 import { SmartEditDialog } from "./SmartEditDialog";
 import { taskErrorMessage } from "./taskErrorMessages";
+import { VideoPreview } from "./VideoPreview";
 
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
   // Synchronous providers generate before returning, so SUBMITTING also covers generation time.
@@ -425,59 +426,30 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
 
 /**
  * Image cards load the archived original so a resized node stays sharp; the archived 480px
- * preview is kept for later list-style surfaces and is not used here. Videos keep loading only
- * the cover frame until the user explicitly plays the original.
+ * preview is kept for later list-style surfaces and is not used here. Videos load only their
+ * cover frame until the pointer enters the preview.
  */
 function MediaPreview({ artifact, assetId, title, audioDescription, demo, selected }: {
   artifact: Artifact; assetId: string; title: string; audioDescription: string; demo: boolean; selected: boolean;
 }) {
   useLocale();
   const [failed, setFailed] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [playbackFailed, setPlaybackFailed] = useState(false);
-  const [buffering, setBuffering] = useState(false);
-  const [playbackAttempt, setPlaybackAttempt] = useState(0);
   const [expanded, setExpanded] = useState(false);
-  const video = artifact.kind === "VIDEO";
-
-  function startPlayback() {
-    setPlaybackFailed(false);
-    setBuffering(true);
-    setPlaybackAttempt((attempt) => attempt + 1);
-    setPlaying(true);
-  }
 
   if (artifact.kind === "AUDIO") return <AudioPlayer key={assetId} src={assetContentUrl(artifact.projectId, assetId)} title={title}
     description={audioDescription || title} selected={selected} demo={demo} />;
+  if (artifact.kind === "VIDEO") return <VideoPreview key={assetId} title={title} demo={demo}
+    src={assetContentUrl(artifact.projectId, assetId)} posterSrc={assetThumbnailUrl(artifact.projectId, assetId)} />;
   return <div className="media-card-preview">
-    {video && playing && !playbackFailed ? <video key={playbackAttempt} className="nodrag nowheel nopan" aria-label={t("media.card.videoLabel", { "0": title })}
-      controls autoPlay playsInline preload="metadata" src={assetContentUrl(artifact.projectId, assetId)}
-      onCanPlay={() => setBuffering(false)} onPlaying={() => setBuffering(false)} onWaiting={() => setBuffering(true)}
-      onError={() => { setPlaybackFailed(true); setBuffering(false); }} />
-      : !failed ? <img alt={t("media.card.mediaLabel", { "0": title, "1": video ? t("media.card.videoPoster") : t("media.card.preview") })}
+    {!failed ? <img alt={t("media.card.mediaLabel", { "0": title, "1": t("media.card.preview") })}
         decoding="async" draggable={false} loading="lazy" onError={() => setFailed(true)}
-        src={video ? assetThumbnailUrl(artifact.projectId, assetId)
-          : assetContentUrl(artifact.projectId, assetId)} />
-        : <div className="media-card-empty">{video ? <VideoCamera size={36} /> : <ImageIcon size={36} />}<span>{video ? t("media.card.posterUnavailable") : t("media.card.previewUnavailable")}</span>
+        src={assetContentUrl(artifact.projectId, assetId)} />
+        : <div className="media-card-empty"><ImageIcon size={36} /><span>{t("media.card.previewUnavailable")}</span>
           <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={() => setFailed(false)}>{t("media.card.retryPreview")}</Button></div>}
-    {video && playing && buffering ? <div className="media-playback-loading">
-      <CanvasLoadingState compact label={t("media.card.videoLoading")} />
-    </div> : null}
-    {video && playbackFailed ? <div className="media-playback-error nodrag nowheel nopan" role="alert">
-      <VideoCamera size={28} /><p>{t("media.card.videoPlaybackFailed")}</p><span>{t("media.card.videoRetryHint")}</span>
-      <Button variant="ghost" type="button" className="media-upload-button" onClick={startPlayback}><ArrowClockwise size={15} />{t("media.retryPlayback")}</Button>
-    </div> : null}
-    {video && playing ? <Button variant="ghost" type="button" className="media-stop-preview nodrag" aria-label={t("media.card.closeVideo")}
-      title={t("media.card.closeVideo")} onClick={() => { setPlaying(false); setBuffering(false); setPlaybackFailed(false); }}><X size={17} /></Button> : null}
-    {demo ? <span className="media-demo-badge">{video ? t("media.card.mockVideo") : t("media.card.mockAsset")}</span> : null}
-    {video ? <a className="media-expand-button nodrag" href={assetContentUrl(artifact.projectId, assetId)}
-      aria-label={t("media.card.openVideo")} title={t("media.card.openVideo")}
-      rel="noopener noreferrer" target="_blank"><ArrowsOutSimple size={19} /></a>
-      : <Button variant="ghost" className="media-expand-button nodrag" type="button" aria-label={t("media.card.upscale")} title={t("media.card.upscale")}
-        onClick={(event) => { event.stopPropagation(); setExpanded(true); }}><ArrowsOutSimple size={19} /></Button>}
-    {!video && expanded ? <ImagePreviewDialog title={title}
+    {demo ? <span className="media-demo-badge">{t("media.card.mockAsset")}</span> : null}
+    <Button variant="ghost" className="media-expand-button nodrag" type="button" aria-label={t("media.card.upscale")} title={t("media.card.upscale")}
+        onClick={(event) => { event.stopPropagation(); setExpanded(true); }}><ArrowsOutSimple size={19} /></Button>
+    {expanded ? <ImagePreviewDialog title={title}
       sourceUrl={assetContentUrl(artifact.projectId, assetId)} onClose={() => setExpanded(false)} /> : null}
-    {video && !playing ? <Button variant="ghost" className="media-play-button nodrag" type="button"
-      aria-label={t("media.card.playVideo")} onClick={startPlayback}><Play size={28} weight="fill" /><span className="sr-only">{t("media.card.playVideo")}</span></Button> : null}
   </div>;
 }
