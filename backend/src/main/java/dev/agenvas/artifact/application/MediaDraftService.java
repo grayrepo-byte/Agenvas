@@ -350,6 +350,14 @@ public class MediaDraftService {
     public MediaDraft addConnectionInputWithinChange(UUID ownerId, UUID projectId,
             UUID canvasItemId, long expectedVersion, UUID imageVersionId, UUID connectionId,
             boolean replaceManualSource) {
+        return addConnectionInputWithinChange(ownerId, projectId, canvasItemId, expectedVersion,
+                imageVersionId, connectionId, replaceManualSource, null);
+    }
+
+    /** The named slot is validated and assigned in the same write as its exact-version source. */
+    public MediaDraft addConnectionInputWithinChange(UUID ownerId, UUID projectId,
+            UUID canvasItemId, long expectedVersion, UUID imageVersionId, UUID connectionId,
+            boolean replaceManualSource, String slotKey) {
         Artifact.Kind kind = requireMediaCanvas(ownerId, projectId, canvasItemId).kind();
         ArtifactRepository.VersionTarget target = artifacts
                 .findVersionTarget(projectId, imageVersionId)
@@ -363,6 +371,8 @@ public class MediaDraftService {
         if (before.version() != expectedVersion) {
             throw draftConflict(ApiMessage.of("api.media-draft-service.the-target-draft-changed-before-the-connection-was-established"));
         }
+        ObjectNode parameters = connectionParameters(kind, before, target.kind(), imageVersionId, slotKey);
+        boolean workflow = parameters != null;
         List<MediaDraft.MediaInput> inputs = new ArrayList<>(before.mediaInputs());
         int existingIndex = java.util.stream.IntStream.range(0, inputs.size())
                 .filter(index -> inputs.get(index).versionId().equals(imageVersionId))
@@ -372,8 +382,10 @@ public class MediaDraftService {
             List<MediaDraft.InputSource> sources = new ArrayList<>(existing.sources().stream()
                     .filter(source -> !replaceManualSource || source.type() != MediaDraft.SourceType.MANUAL)
                     .toList());
-            sources.add(new MediaDraft.InputSource(UUID.randomUUID(),
-                    MediaDraft.SourceType.CONNECTION, connectionId));
+            if (sources.stream().noneMatch(source -> connectionId.equals(source.connectionId()))) {
+                sources.add(new MediaDraft.InputSource(UUID.randomUUID(),
+                        MediaDraft.SourceType.CONNECTION, connectionId));
+            }
             inputs.set(existingIndex, new MediaDraft.MediaInput(existing.versionId(),
                     existing.artifactId(), existing.role(), existing.order(), existing.color(),
                     List.copyOf(sources)));
@@ -381,14 +393,15 @@ public class MediaDraftService {
             if (inputs.size() >= MAX_MEDIA_INPUTS) {
                 throw invalid(ApiMessage.of("api.media-draft-service.image-input-has-reached-the-current-card-limit"));
             }
-            if (target.kind() == Artifact.Kind.AUDIO && kind != Artifact.Kind.AUDIO && (kind != Artifact.Kind.VIDEO
+            if (!workflow && target.kind() == Artifact.Kind.AUDIO && kind != Artifact.Kind.AUDIO && (kind != Artifact.Kind.VIDEO
                     || before.videoInputMode() == MediaDraft.VideoInputMode.START_END))
                 throw invalid(ApiMessage.of("api.media-draft-service.audio-can-only-be-connected-to-video-omni-reference-mode"));
-            if (target.kind() == Artifact.Kind.VIDEO && (kind != Artifact.Kind.VIDEO
+            if (!workflow && target.kind() == Artifact.Kind.VIDEO && (kind != Artifact.Kind.VIDEO
                     || before.videoInputMode() == MediaDraft.VideoInputMode.START_END))
                 throw invalid(ApiMessage.of("api.media-relay.video-general-mode-required"));
             MediaDraft.InputRole role = target.kind() == Artifact.Kind.VIDEO ? MediaDraft.InputRole.VIDEO_REFERENCE : target.kind() == Artifact.Kind.AUDIO
-                    ? MediaDraft.InputRole.AUDIO_REFERENCE : nextConnectionRole(kind, before, inputs);
+                    ? MediaDraft.InputRole.AUDIO_REFERENCE : workflow
+                            ? MediaDraft.InputRole.REFERENCE : nextConnectionRole(kind, before, inputs);
             String color = INPUT_COLORS.stream()
                     .filter(candidate -> inputs.stream().noneMatch(input ->
                             input.color().equals(candidate)))
@@ -397,7 +410,84 @@ public class MediaDraftService {
                     inputs.size(), color, List.of(new MediaDraft.InputSource(UUID.randomUUID(),
                             MediaDraft.SourceType.CONNECTION, connectionId))));
         }
-        return replaceInputsWithinChange(before, inputs, before.mentions());
+        return replaceInputsWithinChange(before, inputs, before.mentions(),
+                parameters == null ? before.parameters() : parameters);
+    }
+
+    private ObjectNode connectionParameters(Artifact.Kind kind, MediaDraft draft,
+            Artifact.Kind sourceKind, UUID versionId, String slotKey) {
+        var assignment = workflowSlotParameters(kind, draft.parameters(), draft.prompt(), draft.durationSeconds(),
+                draft.capabilityId(), draft.mediaInputs().stream().map(MediaDraft.MediaInput::versionId).toList(),
+                sourceKind, versionId, slotKey, false);
+        return assignment == null ? null : assignment.parameters();
+    }
+
+    public record WorkflowSlotAssignment(ObjectNode parameters, UUID removedVersionId) {}
+
+    /** Library transfer completion supplies its new project-local identity before saving the draft. */
+    public WorkflowSlotAssignment assignWorkflowSlotParameters(UUID ownerId, UUID projectId, UUID canvasItemId,
+            JsonNode parameters, String prompt, Integer durationSeconds, UUID capabilityId,
+            List<SaveMediaInput> inputs, Artifact.Kind sourceKind, UUID versionId, String slotKey) {
+        Artifact.Kind kind = requireMediaCanvas(ownerId, projectId, canvasItemId).kind();
+        return workflowSlotParameters(kind, parameters == null ? mapper.createObjectNode() : parameters,
+                prompt, durationSeconds, capabilityId,
+                inputs == null ? List.of() : inputs.stream().map(SaveMediaInput::versionId).toList(),
+                sourceKind, versionId, slotKey, true);
+    }
+
+    private WorkflowSlotAssignment workflowSlotParameters(Artifact.Kind kind, JsonNode draftParameters,
+            String prompt, Integer durationSeconds, UUID selectedCapabilityId, List<UUID> positionalVersions,
+            Artifact.Kind sourceKind, UUID versionId, String slotKey, boolean replaceSelectedSlot) {
+        UUID capabilityId = selectedCapabilityId == null
+                ? capabilities.defaultCapabilityId(Task.Kind.valueOf(kind.name() + "_GENERATION"))
+                : selectedCapabilityId;
+        var binding = capabilityId == null ? null : capabilities.forDraft(capabilityId,
+                Task.Kind.valueOf(kind.name() + "_GENERATION"));
+        var definition = binding == null ? null : capabilities.runningHubDefinition(binding);
+        var comfy = binding == null ? null : capabilities.comfyWorkflowDefinition(binding);
+        if (definition == null && comfy == null) {
+            if (slotKey != null) throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
+            return null;
+        }
+        List<RunningHubDefinition.Field> fields = definition == null ? comfy.inputs() : definition.fields();
+        if (!draftParameters.isObject()) throw invalid(ApiMessage.of("api.media-draft-service.media-parameters-must-be-objects"));
+        ObjectNode parameters = (ObjectNode) draftParameters.deepCopy();
+        ObjectNode values = comfy == null ? parameters.has(RunningHubDefinition.VALUES_PROPERTY)
+                ? (ObjectNode) parameters.path(RunningHubDefinition.VALUES_PROPERTY).deepCopy() : mapper.createObjectNode()
+                : comfy.values(mapper, parameters, prompt, durationSeconds, positionalVersions, false);
+        ObjectNode effective = RunningHubDefinition.inputValues(mapper, fields, values,
+                prompt, durationSeconds, false);
+        List<RunningHubDefinition.Field> candidates = fields.stream().filter(field -> field.media()
+                && field.type().name().equals(sourceKind.name()) && activeSlot(fields, effective, field)
+                && (slotKey == null || field.key().equals(slotKey))
+                && (replaceSelectedSlot && slotKey != null || !values.hasNonNull(field.key()) || values.path(field.key()).asText().isBlank()
+                        || values.path(field.key()).asText().equals(versionId.toString()))).toList();
+        if (candidates.isEmpty()) throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
+        if (slotKey == null && candidates.stream().anyMatch(field ->
+                versionId.toString().equals(values.path(field.key()).asText()))) {
+            // An already assigned manual/proposal version only gains another source; its slots stay intact.
+            parameters.set(RunningHubDefinition.VALUES_PROPERTY, values);
+            return new WorkflowSlotAssignment(parameters, null);
+        }
+        // A canvas drag follows published slot order; occupied fields are never overwritten.
+        String key = candidates.getFirst().key();
+        String previous = values.path(key).asText("");
+        values.put(key, versionId.toString());
+        parameters.set(RunningHubDefinition.VALUES_PROPERTY, values);
+        UUID removedVersion = previous.isBlank() || fields.stream().anyMatch(field -> field.media()
+                && previous.equals(values.path(field.key()).asText())) ? null : UUID.fromString(previous);
+        return new WorkflowSlotAssignment(parameters, removedVersion);
+    }
+
+    /** Conditional slots follow the same effective scalar defaults that the editor displays. */
+    private boolean activeSlot(List<RunningHubDefinition.Field> fields, JsonNode effective,
+            RunningHubDefinition.Field slot) {
+        if (slot.enabledWhen() == null) return true;
+        String key = slot.enabledWhen().field();
+        JsonNode value = effective.get(key);
+        if (value == null) value = fields.stream().filter(field -> field.key().equals(key))
+                .findFirst().map(RunningHubDefinition.Field::defaultValue).orElse(null);
+        return RunningHubDefinition.scalarEquals(value, slot.enabledWhen().value());
     }
 
     /** Removes only one connection reason; manual or other connection sources keep the input. */
@@ -454,6 +544,25 @@ public class MediaDraftService {
 
     private MediaDraft replaceInputsWithinChange(MediaDraft before,
             List<MediaDraft.MediaInput> inputs, List<MediaDraft.PromptMention> mentions) {
+        ObjectNode parameters = (ObjectNode) before.parameters().deepCopy();
+        Set<String> removed = new HashSet<>();
+        before.mediaInputs().stream().filter(old -> inputs.stream().noneMatch(input ->
+                input.versionId().equals(old.versionId()))).forEach(old -> removed.add(old.versionId().toString()));
+        if (parameters.path(RunningHubDefinition.VALUES_PROPERTY) instanceof ObjectNode values) {
+            Set<String> mediaSlots = before.capabilityId() == null ? Set.of()
+                    : capabilities.declaredDraftInputs(before.capabilityId()).stream()
+                            .filter(RunningHubDefinition.Field::media).map(RunningHubDefinition.Field::key)
+                            .collect(java.util.stream.Collectors.toSet());
+            List<String> keys = values.propertyNames().stream().filter(key ->
+                    mediaSlots.contains(key) && values.path(key).isTextual()
+                            && removed.contains(values.path(key).asText())).toList();
+            keys.forEach(values::remove);
+        }
+        return replaceInputsWithinChange(before, inputs, mentions, parameters);
+    }
+
+    private MediaDraft replaceInputsWithinChange(MediaDraft before,
+            List<MediaDraft.MediaInput> inputs, List<MediaDraft.PromptMention> mentions, JsonNode parameters) {
         Instant now = clock.instant();
         String prompt = pruneRemovedMentions(before.prompt(), before.mentions(), mentions);
         MediaDraft.VideoInputMode mode = before.videoInputMode();
@@ -462,7 +571,7 @@ public class MediaDraftService {
             mode = MediaDraft.VideoInputMode.GENERAL_REFERENCE;
         }
         MediaDraft update = new MediaDraft(before.projectId(), before.canvasItemId(),
-                prompt, before.parameters(), before.durationSeconds(),
+                prompt, parameters, before.durationSeconds(),
                 before.capabilityId(), before.styleId(), mode, List.copyOf(inputs),
                 List.copyOf(mentions), before.displayMode(), before.version() + 1,
                 before.createdAt(), now);
@@ -473,7 +582,8 @@ public class MediaDraftService {
         return update;
     }
 
-    private String pruneRemovedMentions(String prompt,
+    /** Keeps submitted prompt edits while pruning only the structured mentions whose input was removed. */
+    public String pruneRemovedMentions(String prompt,
             List<MediaDraft.PromptMention> beforeMentions,
             List<MediaDraft.PromptMention> remainingMentions) {
         StringBuilder result = new StringBuilder(prompt.length());

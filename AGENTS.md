@@ -118,7 +118,7 @@
 
 启用 TS strict 和 noUncheckedIndexedAccess。禁止随意 any、ts-ignore、关闭 lint 或复制生成类型来逃避错误。
 
-TanStack Query 管服务器数据；Zustand 只管交互草稿与 UI 状态；React Flow 数据由业务投影生成。
+Zustand 只管交互草稿与 UI 状态；React Flow 数据由业务投影生成。
 
 拖拽结束批量保存。错误时保留草稿并显示保存失败；不能只更新 UI 假装服务端成功。
 
@@ -126,7 +126,7 @@ TanStack Query 管服务器数据；Zustand 只管交互草稿与 UI 状态；Re
 
 API 类型从合约生成；生成文件禁止手改。组件不包含 Key，不直接访问媒体或 LLM Provider。
 
-预览用缩略图；视频默认不自动播放；避免整个画布的无关重渲染。文本输入期间不得误触画布删除快捷键。
+尽量复用组件，如果没有特殊说明，禁止创建新的交互方式。
 
 ## 10. 后端规范
 

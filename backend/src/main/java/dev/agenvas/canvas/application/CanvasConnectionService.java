@@ -67,7 +67,7 @@ public class CanvasConnectionService {
             CanvasConnection.RelationType relationType, Long expectedTargetDraftVersion,
             Long expectedTargetAgentVersion) {
         return connect(ownerId, projectId, sourceItemId, targetItemId, sourceVersionId,
-                relationType, expectedTargetDraftVersion, expectedTargetAgentVersion, false);
+                relationType, expectedTargetDraftVersion, expectedTargetAgentVersion, false, null);
     }
 
     /** Connects a validated proposal input, retaining its role, order and fixed version. */
@@ -79,12 +79,13 @@ public class CanvasConnectionService {
             throw invalid(ApiMessage.of("api.canvas-connection-service.the-image-entry-does-not-exist-in-the-media-draft"));
         }
         return connect(ownerId, projectId, sourceItemId, targetItemId, sourceVersionId,
-                CanvasConnection.RelationType.MEDIA_INPUT, expectedDraftVersion, null, true);
+                CanvasConnection.RelationType.MEDIA_INPUT, expectedDraftVersion, null, true, null);
     }
 
     private ConnectionResult connect(UUID ownerId, UUID projectId, UUID sourceItemId,
             UUID targetItemId, UUID sourceVersionId, CanvasConnection.RelationType relationType,
-            Long expectedTargetDraftVersion, Long expectedTargetAgentVersion, boolean replaceManualSource) {
+            Long expectedTargetDraftVersion, Long expectedTargetAgentVersion, boolean replaceManualSource,
+            String slotKey) {
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             CanvasItem source = canvasItems.requireArtifactItem(ownerId, projectId,
@@ -131,7 +132,7 @@ public class CanvasConnectionService {
                 }
                 draft = drafts.addConnectionInputWithinChange(ownerId, projectId,
                         targetItemId, expectedTargetDraftVersion, sourceVersionId,
-                        connection.id(), replaceManualSource);
+                        connection.id(), replaceManualSource, slotKey);
             } else if (relationType == CanvasConnection.RelationType.AGENT_IMAGE_INPUT) {
                 CanvasItem target = canvasItems.requireAgentItem(ownerId, projectId, targetItemId);
                 if (expectedTargetAgentVersion == null) {

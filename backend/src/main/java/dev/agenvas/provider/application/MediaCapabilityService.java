@@ -518,6 +518,15 @@ public class MediaCapabilityService {
                 registry.declaration(binding.adapterId()).kind());
     }
 
+    /** Reference cleanup needs input types even when the selected capability is disabled. */
+    public List<RunningHubDefinition.Field> declaredDraftInputs(UUID capabilityId) {
+        MediaCapabilityBinding selected = binding(capabilitySnapshot(capabilityId));
+        RunningHubDefinition runningHub = runningHubDefinition(selected);
+        if (runningHub != null) return runningHub.fields();
+        ComfyUiWorkflowDefinition comfy = comfyWorkflowDefinition(selected);
+        return comfy == null ? List.of() : comfy.inputs();
+    }
+
     public JsonNode settings(MediaCapabilityBinding binding) {
         return settings(pinnedSnapshot(binding));
     }

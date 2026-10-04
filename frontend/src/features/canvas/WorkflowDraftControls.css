@@ -6,28 +6,10 @@
 .workflow-media-slot { flex: none; width: auto; gap: 0; }
 .workflow-media-filled-trigger { display: grid; place-items: center; width: 100%; height: 100%; padding: 0; border-radius: inherit; }
 .workflow-media-tile[aria-invalid="true"] { border-color: var(--ui-warning); }
+.workflow-media-tile-wrap .media-draft-popover-anchor { width: 100%; height: 100%; }
 .workflow-media-tile > img { width: 100%; height: 100%; object-fit: cover; }
 .workflow-media-warning, .workflow-media-status { color: var(--ui-warning); font-size: var(--ui-text-xs); text-align: center; }
 .workflow-media-error { width: 100%; overflow-wrap: anywhere; font-size: var(--ui-text-xs); }
-.workflow-input-picker.app-page {
-  width: min(430px, calc(100vw - var(--ui-space-6))); min-height: 0; max-height: min(540px, calc(100dvh - var(--ui-space-6)));
-  display: flex; flex-direction: column; gap: var(--ui-space-3); padding: var(--ui-space-4);
-  background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); box-shadow: var(--ui-menu-shadow);
-  z-index: var(--ui-z-popup);
-}
-.workflow-input-picker-header { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-3); }
-.workflow-input-picker-body { display: flex; flex-direction: column; gap: var(--ui-space-4); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.workflow-input-section > h4 { margin: 0 0 var(--ui-space-2); color: var(--ui-text-muted); font-size: var(--ui-text-sm); font-weight: 500; }
-.workflow-input-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ui-space-2); }
-.workflow-input-choice { display: flex; flex-direction: column; align-items: stretch; height: auto; min-width: 0; padding: var(--ui-space-1); gap: var(--ui-space-1); }
-.workflow-input-choice[aria-pressed="true"] { border-color: var(--ui-focus); }
-.workflow-input-choice-preview { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: var(--ui-radius-sm); background: var(--ui-field); }
-.workflow-input-choice-preview > img { width: 100%; height: 100%; object-fit: cover; }
-.workflow-input-choice > span:not(:first-child) { font-size: var(--ui-text-xs); }
-.workflow-input-choice-note { color: var(--ui-warning); }
-.workflow-input-empty { padding: var(--ui-space-3); }
-.workflow-input-upload { flex: none; }
-.workflow-input-status { margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
 .workflow-parameters-dialog { --ui-dialog-width: 860px; }
 .workflow-parameters-dialog .ui-dialog-body { padding: var(--ui-space-4); }
 .workflow-parameters-table { table-layout: fixed; min-width: 650px; }

@@ -1,7 +1,6 @@
-import { Image as ImageIcon, MusicNotes, Plus, UploadSimple, VideoCamera, X } from "@phosphor-icons/react";
-import { Popover } from "radix-ui";
+import { Image as ImageIcon, MusicNotes, VideoCamera, X } from "@phosphor-icons/react";
 import { cn } from "cn";
-import { useId, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import type { RunningHubDefinition, RunningHubField } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
@@ -14,6 +13,7 @@ import { Input } from "../../shared/ui/primitives/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../shared/ui/primitives/table";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { runningHubFieldValue, type RunningHubChoice, type RunningHubValue } from "./RunningHubForm";
+import { MediaReferenceSourceMenu, type MediaReferenceSource } from "./MediaReferenceSourceMenu";
 import "./WorkflowDraftControls.css";
 
 const MIN_DURATION_SECONDS = 1;
@@ -35,6 +35,9 @@ export type WorkflowMediaInputsProps = WorkflowValuesProps & {
   canvasChoices?: WorkflowMediaChoice[];
   onUpload?: (field: RunningHubField, file: File) => Promise<void>;
   onBusy?: (busy: boolean) => void;
+  libraryDisabled?: boolean;
+  pickerOpen?: boolean;
+  onChooseSource: (field: RunningHubField, source: Exclude<MediaReferenceSource, "upload">, trigger: HTMLButtonElement) => void;
 };
 export type WorkflowParametersDialogProps = WorkflowValuesProps & {
   open: boolean;
@@ -54,16 +57,18 @@ function MediaPreview({ choice, kind }: { choice?: WorkflowMediaChoice; kind: Ru
   return <Icon aria-hidden="true" />;
 }
 
-function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabled, onChange, onUpload, onBusy }: {
+function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabled, onChange, onUpload, onBusy, onChooseSource, libraryDisabled, pickerOpen }: {
   index: number;
   field: RunningHubField; value: RunningHubValue | undefined; choices: WorkflowMediaChoice[]; canvasChoices: WorkflowMediaChoice[];
   disabled: boolean; onChange: WorkflowValuesProps["onChange"]; onUpload?: WorkflowMediaInputsProps["onUpload"];
   onBusy: (busy: boolean) => void;
+  onChooseSource: WorkflowMediaInputsProps["onChooseSource"]; libraryDisabled?: boolean; pickerOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
+  // Choosing another source replaces a failed upload; cancelling a picker retains its retry.
+  useEffect(() => { setFile(null); setError(""); }, [value]);
   const fileInput = useRef<HTMLInputElement>(null);
   const labelId = useId();
   const choice = [...choices, ...canvasChoices].find((item) => item.id === value && item.kind === field.type);
@@ -73,50 +78,24 @@ function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabl
   async function upload(selected: File) {
     if (!onUpload || locked) return;
     setFile(selected); setBusy(true); setError(""); onBusy(true);
-    try { await onUpload(field, selected); setFile(null); setOpen(false); }
+    try { await onUpload(field, selected); setFile(null); }
     catch (failure) { setError(failure instanceof Error ? failure.message : t("media.runningHub.uploadFailed")); }
     finally { setBusy(false); onBusy(false); }
-  }
-  function resources(items: WorkflowMediaChoice[], label: string) {
-    const matching = [...new Map(items.filter((item) => item.kind === field.type).map((item) => [item.id, item])).values()];
-    return <section className="workflow-input-section" aria-label={label}>
-      <h4>{label}</h4>
-      {matching.length ? <div className="workflow-input-grid">{matching.map((item) => <Button key={item.id} type="button" variant="outline"
-        className="workflow-input-choice" disabled={locked || !item.available} aria-pressed={item.id === value}
-        title={item.label} aria-label={item.label} onClick={() => { onChange(field.key, item.id); setOpen(false); setError(""); setFile(null); }}>
-        <span className="workflow-input-choice-preview"><MediaPreview choice={item} kind={field.type} /></span>
-        <span className="truncate">{item.title ?? item.label}</span>
-        {!item.available ? <span className="workflow-input-choice-note">{t("media.workflow.unavailable")}</span> : null}
-      </Button>)}</div> : <Empty className="workflow-input-empty"><EmptyHeader><EmptyDescription>{t("media.workflow.noMatchingMedia")}</EmptyDescription></EmptyHeader></Empty>}
-    </section>;
   }
   return <Field className="workflow-media-slot" aria-labelledby={labelId} data-disabled={disabled} data-invalid={unavailable || !!error}>
     <div className={cn("workflow-media-tile-wrap media-draft-popover-anchor", hasValue && "media-draft-reference-chip")}
       style={hasValue ? { "--reference-color": "var(--ui-accent)" } as CSSProperties : undefined}>
-      <Popover.Root open={open} onOpenChange={(next) => { if (!locked || !next) setOpen(next); }}>
-        <Popover.Trigger asChild><Button type="button" variant="ghost"
-          className={cn("workflow-media-tile", hasValue ? "workflow-media-filled-trigger" : "media-draft-reference-add")} disabled={locked}
-          aria-label={t("media.workflow.chooseSlot", { "0": field.label })} aria-invalid={unavailable || !!error}
-          title={`${field.label}${field.required ? " *" : ""}${choice ? ` · ${choice.label}` : hasValue ? ` · ${t("media.runningHub.savedVersionPending")}` : field.description ? ` · ${field.description}` : ""}`}>
-          {hasValue ? <MediaPreview choice={choice} kind={field.type} /> : <Plus size={20} aria-hidden="true" />}
-        </Button></Popover.Trigger>
-        <Popover.Portal><Popover.Content side="top" align="start" sideOffset={8} collisionPadding={12}
-          className="workflow-input-picker app-page nodrag nowheel nopan" aria-label={t("media.workflow.chooseSlot", { "0": field.label })}
-          onEscapeKeyDown={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
-          <header className="workflow-input-picker-header"><strong>{field.label}</strong>
-            <Popover.Close asChild><Button type="button" variant="ghost" size="icon-xs" aria-label={t("common.close")}><X /></Button></Popover.Close>
-          </header>
-          <div className="workflow-input-picker-body">
-            {resources(choices, t("media.workflow.projectResources"))}
-            {resources(canvasChoices, t("media.workflow.canvasResources"))}
-          </div>
-          {onUpload ? <Button type="button" variant="outline" disabled={locked} className="workflow-input-upload"
-            onClick={() => fileInput.current?.click()}><UploadSimple data-icon="inline-start" />{t("media.editor.upload")}</Button> : null}
-          {busy ? <p role="status" className="workflow-input-status">{t("media.runningHub.uploading")}</p> : null}
-          {error ? <FieldError>{error}{file ? <Button type="button" variant="ghost" disabled={locked}
-            onClick={() => void upload(file)}>{t("media.retryUpload")}</Button> : null}</FieldError> : null}
-        </Popover.Content></Popover.Portal>
-      </Popover.Root>
+      <MediaReferenceSourceMenu label={t("media.workflow.chooseSlot", { "0": field.label })}
+        className={cn("workflow-media-tile", hasValue ? "workflow-media-filled-trigger" : "media-draft-reference-add")}
+        disabled={locked} invalid={unavailable || !!error} libraryDisabled={libraryDisabled} uploadDisabled={!onUpload}
+        suspended={pickerOpen}
+        title={`${field.label}${field.required ? " *" : ""}${choice ? ` · ${choice.label}` : hasValue ? ` · ${t("media.runningHub.savedVersionPending")}` : field.description ? ` · ${field.description}` : ""}`}
+        onChoose={(source, trigger) => {
+          if (source === "upload") fileInput.current?.click();
+          else onChooseSource(field, source, trigger);
+        }}>
+        {hasValue ? <MediaPreview choice={choice} kind={field.type} /> : undefined}
+      </MediaReferenceSourceMenu>
       {hasValue ? <><span className="media-draft-reference-index pointer-events-none" aria-hidden="true">{index + 1}</span>
         <Button type="button" variant="ghost" className="media-draft-reference-remove" disabled={locked}
           aria-label={t("media.workflow.clearSlot", { "0": field.label })} onClick={() => onChange(field.key, undefined)}><X size={13} /></Button></> : null}
@@ -126,8 +105,8 @@ function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabl
       tabIndex={-1} disabled={locked} accept={MEDIA_FILE_ACCEPT[field.type as keyof typeof MEDIA_FILE_ACCEPT]}
       onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ""; if (selected) void upload(selected); }} /> : null}
     {unavailable ? <span className="workflow-media-warning" title={t("media.runningHub.savedVersionPending")}>{field.label} · {t("media.workflow.unavailable")}</span> : null}
-    {busy && !open ? <span role="status" className="workflow-media-status">{field.label} · {t("media.workflow.uploading")}</span> : null}
-    {error && !open ? <FieldError className="workflow-media-error">{field.label} · {error}{file ? <Button type="button" variant="ghost" disabled={locked}
+    {busy ? <span role="status" className="workflow-media-status">{field.label} · {t("media.workflow.uploading")}</span> : null}
+    {error ? <FieldError className="workflow-media-error">{field.label} · {error}{file ? <Button type="button" variant="ghost" disabled={locked}
       onClick={() => void upload(file)}>{t("media.retryUpload")}</Button> : null}</FieldError> : null}
   </Field>;
 }
@@ -146,6 +125,7 @@ export function WorkflowMediaInputs(props: WorkflowMediaInputsProps) {
     return <WorkflowMediaSlot key={field.key} field={field} index={index}
       value={runningHubFieldValue(field, props.values, props.prompt, props.durationSeconds)} choices={props.choices}
       canvasChoices={props.canvasChoices ?? []} disabled={props.disabled ?? false} onChange={props.onChange} onUpload={props.onUpload}
+      onChooseSource={props.onChooseSource} libraryDisabled={props.libraryDisabled} pickerOpen={props.pickerOpen}
       onBusy={(busy) => { if (busy) uploads.current.add(field.key); else uploads.current.delete(field.key); props.onBusy?.(uploads.current.size > 0); }} />;
   }
   return <div className="media-draft-reference-row workflow-media-inputs" aria-label={t("media.workflow.mediaInputs")}>

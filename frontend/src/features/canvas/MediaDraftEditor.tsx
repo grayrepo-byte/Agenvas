@@ -3,11 +3,10 @@ import { ToggleGroup, ToggleGroupItem } from "../../shared/ui/primitives/toggle-
 import { FieldSet, FieldLegend } from "../../shared/ui/primitives/field";
 import { Switch } from "../../shared/ui/primitives/switch";
 import {
-ArrowUp,BoundingBox,CaretDown,Check,Coins,Cube,
+ArrowUp,CaretDown,Check,Coins,Cube,
 ImageSquare,
-ImagesSquare,
 MusicNotes,
-PaintBrush,Plus,SlidersHorizontal,UploadSimple,VideoCamera,
+PaintBrush,SlidersHorizontal,VideoCamera,
 X
 } from "@phosphor-icons/react";
 import { useMutation,useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
@@ -49,6 +48,7 @@ import { AudioPromptTools } from "./AudioPromptTools";
 import "./MediaDraftEditor.css";
 import { runningHubErrors,runningHubUsedVersions,runningHubFieldValue,type RunningHubValue } from "./RunningHubForm";
 import { WorkflowMediaInputs, WorkflowParametersDialog } from "./WorkflowDraftControls";
+import { MediaReferenceSourceMenu } from "./MediaReferenceSourceMenu";
 import { workflowDefinition, workflowDraftValues } from "./workflowDraft";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { VoiceLibrary } from "./VoiceLibrary";
@@ -68,7 +68,6 @@ import { mediaStylesQueryOptions } from "../../shared/mediaStyles";
 import { MediaStylePicker } from "./MediaStylePicker";
 
 const AUTOSAVE_DELAY_MS = 650;
-const REFERENCE_SOURCE_CLOSE_DELAY_MS = 120;
 const MAX_PROMPT_LENGTH = 20000;
 const MAX_AUDIO_PROMPT_LENGTH = 3000;
 const MAX_MEDIA_INPUTS = 14;
@@ -76,6 +75,8 @@ const MAX_RUNNINGHUB_INPUT_BYTES = 30 * 1024 * 1024;
 const MIN_VIDEO_SECONDS = 1;
 const MAX_VIDEO_SECONDS = 30;
 const MAX_ARTIFACT_TITLE_LENGTH = 160;
+const REFERENCE_PICKER_GAP_PX = 10;
+const PICKER_VIEWPORT_MARGIN_PX = 12;
 const INPUT_COLORS = [
   "#F15CAF", "#67C7F3", "#F1B95C", "#8DD17E", "#A98AF7", "#F27979", "#56C8B5",
   "#D98BD9", "#E56B3F", "#4DB6E5", "#B8D84A", "#8C7AE6", "#E7A93D", "#4FC38D",
@@ -235,10 +236,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const [templateBusy, setTemplateBusy] = useState(false);
   const [popover, setPopover] = useState<Popover | null>(null);
   const [referenceSourcesOpen, setReferenceSourcesOpen] = useState(false);
-  const referenceSourcesHoverOpened = useRef(false);
   const [submissionTipOpen, setSubmissionTipOpen] = useState(false);
-  const referenceSourcesCloseTimer = useRef<number | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const referencePickerAnchorRef = useRef<HTMLDivElement>(null);
   const focusModelMenu = useCallback((element: HTMLDivElement | null) => {
     popoverRef.current = element;
     if (element) queueMicrotask(() => element.querySelector<HTMLElement>("[aria-checked=true]")?.focus());
@@ -250,6 +250,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const [uploading, setUploading] = useState(false);
   const [failedUploads, setFailedUploads] = useState<File[]>([]);
   const [uploadError, setUploadError] = useState<Error | null>(null);
+  const [workflowPickerField, setWorkflowPickerField] = useState<RunningHubField | null>(null);
   const [assetSearch, setAssetSearch] = useState("");
   const [assetSelection, setAssetSelection] = useState<string[]>([]);
   const [assetSelectionError, setAssetSelectionError] = useState<Error | null>(null);
@@ -276,39 +277,22 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     enabled: popover === "canvasReferences" || Boolean(workflow),
   });
 
-  useEffect(() => () => {
-    if (referenceSourcesCloseTimer.current !== null) {
-      window.clearTimeout(referenceSourcesCloseTimer.current);
-    }
-  }, []);
-
   useEffect(() => {
     if (popover) setReferenceSourcesOpen(false);
   }, [popover]);
 
-  useEffect(() => {
-    if (!referenceSourcesOpen || popover) return;
-    function closeAndRestoreFocus() {
-      setReferenceSourcesOpen(false);
-      triggerRef.current?.focus();
+  useLayoutEffect(() => {
+    if (popover !== "assetReferences" && popover !== "canvasReferences" && popover !== "libraryReferences") return;
+    function fitPicker() {
+      const anchor = referencePickerAnchorRef.current;
+      if (!anchor) return;
+      const space = anchor.getBoundingClientRect().top - REFERENCE_PICKER_GAP_PX - PICKER_VIEWPORT_MARGIN_PX;
+      if (space > 0) anchor.style.setProperty("--media-reference-picker-space", `${space}px`);
     }
-    function onPointerDown(event: PointerEvent) {
-      if (event.target instanceof Node && !popoverRef.current?.contains(event.target)
-        && !triggerRef.current?.contains(event.target)) setReferenceSourcesOpen(false);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      closeAndRestoreFocus();
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [popover, referenceSourcesOpen]);
+    fitPicker();
+    window.addEventListener("resize", fitPicker);
+    return () => window.removeEventListener("resize", fitPicker);
+  }, [popover]);
 
   useEffect(() => {
     if (!popover || popover === "models" || popover === "modes") return;
@@ -474,6 +458,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   useEffect(() => {
     if (!editorReadOnly) return;
     setPopover(null);
+    setWorkflowPickerField(null);
     setReferenceSourcesOpen(false);
     setStylePickerOpen(false);
     setTemplateOpen(false);
@@ -630,6 +615,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       resolvedCapabilityId, previous: chosenCapability, next });
     if (change.confirmation && !window.confirm(change.confirmation)) return;
     edit(change.fields);
+    setWorkflowPickerField(null);
     setPopover(null);
     triggerRef.current?.focus();
   }
@@ -763,9 +749,13 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     : chosenCapability?.settings.quality ? t("media.editor.qualityLabel", { "0": QUALITY_LABELS[chosenCapability.settings.quality] }) : t("media.editor.defaultQuality");
   const historyError = imageHistories.find((history) => history.error)?.error;
   const normalizedAssetSearch = assetSearch.trim().toLocaleLowerCase();
+  const pickerField = workflow?.fields.find((field) => field.key === workflowPickerField?.key);
+  const pickerChoices = pickerField ? imageChoices.filter((choice) => choice.kind === pickerField.type) : imageChoices;
+  const pickerCanvasChoices = pickerField ? canvasChoices.filter((choice) => choice.kind === pickerField.type) : canvasChoices;
+  const mixedPicker = pickerField ? pickerField.type !== "IMAGE" : audioCapacity > 0 || videoCapacity > 0;
   const filteredImageChoices = normalizedAssetSearch
-    ? imageChoices.filter((choice) => choice.label.toLocaleLowerCase().includes(normalizedAssetSearch))
-    : imageChoices;
+    ? pickerChoices.filter((choice) => choice.label.toLocaleLowerCase().includes(normalizedAssetSearch))
+    : pickerChoices;
   const remainingAssetCapacity = Math.max(0, mediaCapacity - fields.mediaInputs.length);
   const saveLabel = removeConnectedInput.isPending ? t("media.editor.removingInput")
     : failedRemovalVersionId ? t("media.editor.removeInputFailed")
@@ -901,6 +891,13 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     setAssetSelection([]);
     setAssetSelectionError(null);
     setPopover("assetReferences");
+  }
+
+  function chooseWorkflowReference(versionId: string) {
+    if (!pickerField || editorReadOnlyRef.current || libraryBusy || referenceKind(versionId) !== pickerField.type) return;
+    changeDynamicField(pickerField.key, versionId);
+    setPopover(null);
+    triggerRef.current?.focus();
   }
 
   function toggleAssetReference(versionId: string) {
@@ -1081,176 +1078,25 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       seedImages={selectedReferences.flatMap(({ input, choice }) => choice?.kind === "IMAGE" ? [{ versionId: input.versionId,
         title: choice.title, thumbnailUrl: assetThumbnailUrl(artifact.projectId, choice.assetId) }] : [])}
       onApply={applyTemplate} onBusy={setTemplateBusy} onClose={() => setTemplateOpen(false)} /> : null}
+    <div ref={referencePickerAnchorRef} className="media-draft-reference-picker-anchor">
     {!workflow ? <div className="media-draft-reference-row" aria-label={audioCapacity > 0 ? t("media.editor.mixedInputs") : t("media.editor.imageInputs")}>
-      <DropdownMenu open={referenceSourcesOpen && !popover} onOpenChange={setReferenceSourcesOpen} modal={false}><div className="media-draft-popover-anchor"
-        onPointerEnter={(event) => {
-          if (referenceSourcesCloseTimer.current !== null) {
-            window.clearTimeout(referenceSourcesCloseTimer.current);
-            referenceSourcesCloseTimer.current = null;
-          }
-          if (editorReadOnly || popover) return;
-          if (event.currentTarget.querySelector("button")?.hasAttribute("disabled")) return;
-          triggerRef.current = event.currentTarget.querySelector("button");
-          if (!referenceSourcesOpen) referenceSourcesHoverOpened.current = true;
-          setReferenceSourcesOpen(true);
-        }}
-        onPointerLeave={() => {
-          referenceSourcesCloseTimer.current = window.setTimeout(() => {
-            setReferenceSourcesOpen(false);
-            referenceSourcesCloseTimer.current = null;
-          }, REFERENCE_SOURCE_CLOSE_DELAY_MS);
-        }}>
+      <div className="media-draft-popover-anchor">
         <Input ref={uploadInputRef} className="media-draft-upload-input" type="file"
           accept={[MEDIA_FILE_ACCEPT.IMAGE, ...(audioCapacity > 0 ? [MEDIA_FILE_ACCEPT.AUDIO] : []), ...(videoCapacity > 0 ? [MEDIA_FILE_ACCEPT.VIDEO] : [])].join(",")} multiple aria-label={videoCapacity > 0 ? t("media.editor.chooseLocalAllMedia") : audioCapacity > 0 ? t("media.editor.chooseLocalMedia") : t("media.editor.chooseLocalImage")} onChange={handleUploadSelection} />
-        <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-reference-add" type="button"
-          disabled={editorReadOnly || !chosenCapability || referenceLimitReached || uploading
-            || commitAssetReferences.isPending}
-          aria-label={videoCapacity > 0 ? t("media.editor.addVideoMediaInput") : audioCapacity > 0 ? t("media.editor.addMixedInput") : t("media.editor.addImageInput")}
+        <MediaReferenceSourceMenu open={referenceSourcesOpen && !popover} onOpenChange={setReferenceSourcesOpen} suspended={Boolean(popover)}
+          disabled={editorReadOnly || !chosenCapability || referenceLimitReached || uploading || commitAssetReferences.isPending}
+          libraryDisabled={save.isPending || expectedVersion === null}
+          label={videoCapacity > 0 ? t("media.editor.addVideoMediaInput") : audioCapacity > 0 ? t("media.editor.addMixedInput") : t("media.editor.addImageInput")}
           title={uploading ? t("media.editor.assetUploading") : videoCapacity > 0 ? t("media.editor.videoReferenceLimits", { "0": imageCapacity, "1": videoCapacity, "2": audioCapacity }) : t("media.editor.referenceLimits", { "0": imageCapacity, "1": audioCapacity })}
-          aria-haspopup="menu"
-          aria-expanded={referenceSourcesOpen && !popover}
-          aria-controls={`${id}-reference-sources`}
-          onFocus={(event) => {
-            triggerRef.current = event.currentTarget;
-          }}
-          onKeyDown={(event) => { if (event.key === "Escape") setReferenceSourcesOpen(false); }}
-          onPointerDown={(event) => event.preventDefault()}
-          onClick={(event) => {
-            triggerRef.current = event.currentTarget;
-            setReferenceSourcesOpen(!referenceSourcesOpen || referenceSourcesHoverOpened.current);
-            referenceSourcesHoverOpened.current = false;
-          }}>
-          <Plus size={20} />
-        </Button></DropdownMenuTrigger>
-        {referenceSourcesOpen && !popover ? <DropdownMenuContent onCloseAutoFocus={(event) => event.preventDefault()}
-          // The trigger handles its own click toggle; dismissing on its pointerdown would reopen on click.
-          onPointerDownOutside={(event) => {
-            if (event.detail.originalEvent.target instanceof Node && triggerRef.current?.contains(event.detail.originalEvent.target)) event.preventDefault();
-          }} aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-reference-sources"
-          onPointerEnter={() => {
-            if (referenceSourcesCloseTimer.current !== null) window.clearTimeout(referenceSourcesCloseTimer.current);
-            referenceSourcesCloseTimer.current = null;
-          }}
-          onPointerLeave={() => {
-            referenceSourcesCloseTimer.current = window.setTimeout(() => {
-              setReferenceSourcesOpen(false);
-              referenceSourcesCloseTimer.current = null;
-            }, REFERENCE_SOURCE_CLOSE_DELAY_MS);
-          }}
-          ref={popoverRef} id={`${id}-reference-sources`} role="menu" aria-label={t("media.editor.imageSource")}><DropdownMenuGroup>
-          <DropdownMenuItem role="menuitem" onSelect={(event) => { event.preventDefault();
-            setReferenceSourcesOpen(false);
-            uploadInputRef.current?.click();
-           }}><UploadSimple size={17} /><span>{t("media.editor.upload")}</span></DropdownMenuItem>
-          <DropdownMenuItem role="menuitem" onSelect={(event) => { event.preventDefault();
-            setReferenceSourcesOpen(false);
-            openAssetReferences();
-           }}>
-            <ImagesSquare size={17} /><span>{t("media.editor.chooseResources")}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem role="menuitem" onSelect={(event) => { event.preventDefault();
-            setReferenceSourcesOpen(false);
-            setPopover("canvasReferences");
-           }}>
-            <BoundingBox size={17} /><span>{t("media.editor.chooseCanvas")}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem role="menuitem" disabled={save.isPending || expectedVersion === null} onSelect={(event) => { event.preventDefault();
-            setReferenceSourcesOpen(false); setPopover("libraryReferences");
-           }}><ImagesSquare size={17} /><span>{t("media.editor.chooseLibrary")}</span></DropdownMenuItem>
-          <DropdownMenuItem role="menuitem" disabled aria-disabled="true" aria-label={t("media.editor.sketchUnavailableLabel")} title={t("media.editor.sketchUnavailable")} onSelect={(event) => event.preventDefault()}>
-            <PaintBrush size={17} /><span>{t("media.editor.sketchReference")}</span><small>{t("media.editor.notAvailable")}</small>
-          </DropdownMenuItem>
-        </DropdownMenuGroup></DropdownMenuContent> : null}
-        {popover === "libraryReferences" && expectedVersion !== null ? <div className="ui-popover-surface media-draft-popover media-draft-library-popover" ref={popoverRef} role="dialog" aria-label={t("media.editor.libraryReferences")}>
-          <Button variant="ghost" type="button" disabled={libraryBusy} onClick={() => setPopover(null)}>{t("media.editor.closePicker")}</Button>
-          <LibraryReferencePicker projectId={artifact.projectId} itemId={canvasItemId}
-            kinds={["IMAGE", ...(audioCapacity > 0 ? ["AUDIO" as const] : []), ...(videoCapacity > 0 ? ["VIDEO" as const] : [])]} draft={{ ...fields, expectedVersion }} onBusy={setLibraryBusy}
-            plan={(entry) => {
-              if (!canAddReference(entry.kind, fields.mediaInputs)) return null;
-              const audio = entry.kind === "AUDIO";
-              const mode = modeForAddedReference(fields);
-              const role = entry.kind === "VIDEO" ? (mode === "GENERAL_REFERENCE" ? "VIDEO_REFERENCE" as const : null) : audio ? (isAudio || mode === "GENERAL_REFERENCE" ? "AUDIO_REFERENCE" as const : null) : nextRole(fields.mediaInputs, mode);
-              if (!role || role === "END_FRAME" && !chosenCapability?.supportsEndFrame) return null;
-              const color = INPUT_COLORS.find((candidate) => !fields.mediaInputs.some((input) => input.color === candidate)) ?? INPUT_COLORS[0];
-              return { role, color, videoInputMode: mode };
-            }} onApplied={(saved, submitted) => {
-              const latest = fieldsRef.current;
-              const changed = latest !== null && JSON.stringify(latest) !== JSON.stringify(Object.fromEntries(Object.entries(submitted).filter(([name]) => name !== "expectedVersion")));
-              const savedFields = fieldsFromDraft(saved);
-              const oldVersions = new Set(submitted.mediaInputs.map((input) => input.versionId));
-              const next = changed ? { ...latest, videoInputMode: saved.videoInputMode,
-                mediaInputs: [...latest.mediaInputs, ...savedFields.mediaInputs.filter((input) => !oldVersions.has(input.versionId))] } : savedFields;
-              fieldsRef.current = next; setFields(next); setExpectedVersion(saved.version); setDirty(changed); setError(null);
-              queryClient.setQueryData(key, saved); setPopover(null);
-              void queryClient.invalidateQueries({ queryKey: ["artifacts", artifact.projectId] });
-            }} />
-        </div> : null}
-        {popover === "assetReferences" ? <div className="ui-popover-surface media-draft-popover media-draft-references" ref={popoverRef}
-          id={`${id}-asset-references`} role="dialog" aria-label={audioCapacity > 0 ? t("media.editor.inputMediaVersions") : t("media.editor.inputImageVersions")}>
-          <p className="media-draft-popover-title">{audioCapacity > 0 ? t("media.editor.chooseMixedVersion") : t("media.editor.chooseImageVersion")}</p>
-          <label htmlFor={`${id}-asset-search`}>{audioCapacity > 0 ? t("media.editor.searchMedia") : t("media.editor.searchImages")}</label>
-          <Input id={`${id}-asset-search`} type="search" value={assetSearch}
-            placeholder={t("media.editor.searchPlaceholder")}
-            onChange={(event) => setAssetSearch(event.target.value)} />
-          <div className="media-draft-reference-options" role="group" aria-label={audioCapacity > 0 ? t("media.editor.mediaVersions") : t("media.editor.imageVersions")}>
-            {filteredImageChoices.map((choice) => {
-              const alreadyAdded = fields.mediaInputs.some((input) => input.versionId === choice.id);
-              const selected = assetSelection.includes(choice.id);
-              const selectionFull = !selected && !canAddReference(referenceKind(choice.id), fieldsWithReferences(assetSelection).mediaInputs);
-              return <button key={choice.id} type="button" role="checkbox"
-              className="media-draft-reference-option" aria-label={t("media.editor.selectNamed", { "0": choice.label })}
-              aria-checked={alreadyAdded || selected}
-              disabled={!choice.available || alreadyAdded || selectionFull || commitAssetReferences.isPending}
-              onClick={() => toggleAssetReference(choice.id)}>
-              {/* Video references use archived covers; images preserve their existing preview. */}
-              {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={(choice.kind === "VIDEO" ? assetThumbnailUrl : assetContentUrl)(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
-              <span><strong>{choice.title}</strong><small>v{choice.versionNo} · {choice.current ? t("media.editor.selectedVersion") : t("media.editor.historicalVersions")}</small></span>
-              {alreadyAdded || selected ? <Check size={15} /> : null}
-            </button>;
-            })}
-          </div>
-          {historyPending ? <CanvasLoadingState compact label={t("media.editor.imageVersionsLoading")} /> : null}
-          {!historyPending && !resources.error && !historyError && !imageChoices.length ? <p>{t("media.editor.imagesEmpty")}</p> : null}
-          {!historyPending && !resources.error && !historyError && imageChoices.length > 0
-            && !filteredImageChoices.length ? <p>{t("media.editor.imageVersionsEmpty")}</p> : null}
-          {resources.error || historyError ? <div role="alert">{t("media.editor.imageVersionsFailed")}<Button variant="ghost" className="media-draft-text-action" onClick={() => {
-              void resources.refetch();
-              imageHistories.forEach((history) => { void history.refetch(); });
-            }} type="button">{t("media.editor.retryImages")}</Button></div> : null}
-          {assetSelectionError ? <div className="media-draft-reference-error" role="alert">
-            {t("media.editor.batchSelectionFailed")}</div> : null}
-          <p>{t("media.editor.selectionOrderHint", { "0": Math.max(0,
-            remainingAssetCapacity - assetSelection.length) })}</p>
-          <div className="media-draft-reference-actions">
-            <Button variant="ghost" type="button" disabled={commitAssetReferences.isPending} onClick={() => setPopover(null)}>{t("common.cancel")}</Button>
-            <Button variant="ghost" type="button" className="is-primary"
-              disabled={!assetSelection.length || save.isPending || commitAssetReferences.isPending}
-              onClick={confirmAssetReferences}>
-              {commitAssetReferences.isPending ? t("common.adding") : t("media.editor.addSelected", { "0": audioCapacity > 0 ? t("media.editor.assets") : t("common.image"), "1": assetSelection.length })}
-            </Button>
-          </div>
-        </div> : null}
-        {popover === "canvasReferences" ? <div className="ui-popover-surface media-draft-popover media-draft-references" ref={popoverRef}
-          id={`${id}-canvas-references`} role="dialog" aria-label={audioCapacity > 0 ? t("media.editor.chooseCanvasMedia") : t("media.editor.chooseCanvasImage")}>
-          <p className="media-draft-popover-title">{audioCapacity > 0 || videoCapacity > 0 ? t("media.editor.canvasMedia") : t("media.editor.otherCanvasImages")}</p>
-          <div className="media-draft-reference-options">
-            {canvasChoices.map((choice) => <Button variant="ghost" key={choice.canvasItemId} type="button"
-              className="media-draft-reference-option" aria-label={t("media.editor.useCanvasMedia", { "0": choice.kind === "VIDEO" ? t("common.video") : choice.kind === "AUDIO" ? t("common.audio") : t("common.image"), "1": choice.title })}
-              aria-pressed={fields.mediaInputs.some((input) => input.versionId === choice.versionId)}
-              disabled={fields.mediaInputs.some((input) => input.versionId === choice.versionId) || !canAddReference(referenceKind(choice.versionId), fields.mediaInputs)}
-              onClick={() => appendReferences([choice.versionId])}>
-              {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={(choice.kind === "VIDEO" ? assetThumbnailUrl : assetContentUrl)(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
-              <span><strong>{choice.title}</strong><small>{t("media.editor.canvasSelectedVersion", { "0": choice.versionNo })}</small></span>
-              {fields.mediaInputs.some((input) => input.versionId === choice.versionId) ? <Check size={15} /> : null}
-            </Button>)}
-          </div>
-          {canvas.isPending ? <CanvasLoadingState compact label={t("media.editor.canvasImagesLoading")} /> : null}
-          {canvas.isSuccess && !canvasChoices.length ? <p>{t("media.editor.canvasImagesEmpty")}</p> : null}
-          {canvas.error ? <div role="alert">{t("media.editor.canvasImagesFailed")}<Button variant="ghost" className="media-draft-text-action" onClick={() => void canvas.refetch()}
-              type="button">{t("media.editor.retryCanvas")}</Button></div> : null}
-          <p>{t("media.editor.selectedCanvasVersionsHint")}</p>
-        </div> : null}
-      </div></DropdownMenu>
+          onTrigger={(trigger) => { triggerRef.current = trigger; }}
+          onChoose={(source) => {
+            setWorkflowPickerField(null);
+            if (source === "upload") uploadInputRef.current?.click();
+            else if (source === "resources") openAssetReferences();
+            else setPopover(source === "canvas" ? "canvasReferences" : "libraryReferences");
+          }} />
+      </div>
+
       <div className="media-draft-reference-list" role="list" aria-label={audioCapacity > 0 ? t("media.editor.selectedReferences") : t("media.editor.selectedImages")}>
         {selectedReferences.map(({ input, choice }, index) => <MediaReferenceThumbnail
           key={input.versionId} index={index} audio={input.role === "AUDIO_REFERENCE"} color={input.color}
@@ -1276,8 +1122,120 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         thumbnailUrl: choice.kind === "AUDIO" ? undefined : assetThumbnailUrl(artifact.projectId, choice.assetId) }))}
       canvasChoices={canvasChoices.map((choice) => ({ id: choice.versionId, label: `${choice.title} · v${choice.versionNo}`,
         kind: choice.kind, available: true, thumbnailUrl: choice.kind === "AUDIO" ? undefined : assetThumbnailUrl(artifact.projectId, choice.assetId) }))}
-      disabled={editorReadOnly || run.isPending || removeConnectedInput.isPending}
-      onChange={changeDynamicField} onUpload={uploadDynamicSlot} />}
+      disabled={editorReadOnly || run.isPending || removeConnectedInput.isPending || libraryBusy}
+      libraryDisabled={save.isPending || expectedVersion === null || workflowUploading} pickerOpen={Boolean(popover)}
+      onChooseSource={(field, source, trigger) => {
+        if (source === "library" && workflowUploads.current.size > 0) return;
+        triggerRef.current = trigger; setWorkflowPickerField(field);
+        if (source === "resources") openAssetReferences();
+        else setPopover(source === "canvas" ? "canvasReferences" : "libraryReferences");
+      }} onChange={changeDynamicField} onUpload={uploadDynamicSlot} />}
+        {popover === "libraryReferences" && expectedVersion !== null ? <div className="ui-popover-surface media-draft-popover media-draft-library-popover" ref={popoverRef} role="dialog" aria-label={t("media.editor.libraryReferences")}>
+          <Button variant="ghost" type="button" disabled={libraryBusy} onClick={() => setPopover(null)}>{t("media.editor.closePicker")}</Button>
+          <LibraryReferencePicker key={pickerField?.key ?? "references"} projectId={artifact.projectId} itemId={canvasItemId}
+            slotKey={pickerField?.key}
+            kinds={pickerField ? [pickerField.type as Artifact["kind"]] : ["IMAGE", ...(audioCapacity > 0 ? ["AUDIO" as const] : []), ...(videoCapacity > 0 ? ["VIDEO" as const] : [])]} draft={{ ...fields, expectedVersion }} onBusy={setLibraryBusy}
+            plan={(entry) => {
+              if (pickerField) {
+                if (entry.kind !== pickerField.type) return null;
+                const color = INPUT_COLORS.find((candidate) => !fields.mediaInputs.some((input) => input.color === candidate)) ?? INPUT_COLORS[0];
+                return { role: entry.kind === "VIDEO" ? "VIDEO_REFERENCE" : entry.kind === "AUDIO" ? "AUDIO_REFERENCE" : "REFERENCE",
+                  color, videoInputMode: fields.videoInputMode };
+              }
+              if (!canAddReference(entry.kind, fields.mediaInputs)) return null;
+              const audio = entry.kind === "AUDIO";
+              const mode = modeForAddedReference(fields);
+              const role = entry.kind === "VIDEO" ? (mode === "GENERAL_REFERENCE" ? "VIDEO_REFERENCE" as const : null) : audio ? (isAudio || mode === "GENERAL_REFERENCE" ? "AUDIO_REFERENCE" as const : null) : nextRole(fields.mediaInputs, mode);
+              if (!role || role === "END_FRAME" && !chosenCapability?.supportsEndFrame) return null;
+              const color = INPUT_COLORS.find((candidate) => !fields.mediaInputs.some((input) => input.color === candidate)) ?? INPUT_COLORS[0];
+              return { role, color, videoInputMode: mode };
+            }} onApplied={(saved, submitted) => {
+              const latest = fieldsRef.current;
+              const changed = latest !== null && JSON.stringify(latest) !== JSON.stringify(Object.fromEntries(Object.entries(submitted).filter(([name]) => name !== "expectedVersion")));
+              const savedFields = fieldsFromDraft(saved);
+              const oldVersions = new Set(submitted.mediaInputs.map((input) => input.versionId));
+              let next = savedFields;
+              if (changed && latest) {
+                if (pickerField) {
+                  const values = workflowDraftValues(chosenCapability, latest);
+                  const savedValue = workflowDraftValues(chosenCapability, savedFields)[pickerField.key];
+                  if (savedValue === undefined) delete values[pickerField.key]; else values[pickerField.key] = savedValue;
+                  next = { ...latest, videoInputMode: saved.videoInputMode,
+                    parameters: { ...latest.parameters, dynamicValues: values }, mediaInputs: savedFields.mediaInputs };
+                } else next = { ...latest, videoInputMode: saved.videoInputMode,
+                  mediaInputs: [...latest.mediaInputs, ...savedFields.mediaInputs.filter((input) => !oldVersions.has(input.versionId))] };
+              }
+              fieldsRef.current = next; setFields(next); setExpectedVersion(saved.version); setDirty(changed); setError(null);
+              queryClient.setQueryData(key, saved); setPopover(null);
+              void queryClient.invalidateQueries({ queryKey: ["artifacts", artifact.projectId] });
+            }} />
+        </div> : null}
+        {popover === "assetReferences" ? <div className="ui-popover-surface media-draft-popover media-draft-references" ref={popoverRef}
+          id={`${id}-asset-references`} role="dialog" aria-label={mixedPicker ? t("media.editor.inputMediaVersions") : t("media.editor.inputImageVersions")}>
+          <p className="media-draft-popover-title">{pickerField?.label ?? (mixedPicker ? t("media.editor.chooseMixedVersion") : t("media.editor.chooseImageVersion"))}</p>
+          <label htmlFor={`${id}-asset-search`}>{mixedPicker ? t("media.editor.searchMedia") : t("media.editor.searchImages")}</label>
+          <Input id={`${id}-asset-search`} type="search" value={assetSearch}
+            placeholder={t("media.editor.searchPlaceholder")}
+            onChange={(event) => setAssetSearch(event.target.value)} />
+          <div className="media-draft-reference-options" role="group" aria-label={mixedPicker ? t("media.editor.mediaVersions") : t("media.editor.imageVersions")}>
+            {filteredImageChoices.map((choice) => {
+              const alreadyAdded = pickerField ? workflowValues[pickerField.key] === choice.id : fields.mediaInputs.some((input) => input.versionId === choice.id);
+              const selected = assetSelection.includes(choice.id);
+              const selectionFull = !pickerField && !selected && !canAddReference(referenceKind(choice.id), fieldsWithReferences(assetSelection).mediaInputs);
+              return <button key={choice.id} type="button" role={pickerField ? "button" : "checkbox"}
+              className="media-draft-reference-option" aria-label={t("media.editor.selectNamed", { "0": choice.label })}
+              {...(pickerField ? { "aria-pressed": alreadyAdded } : { "aria-checked": alreadyAdded || selected })}
+              disabled={editorReadOnly || !choice.available || (!pickerField && alreadyAdded) || selectionFull || commitAssetReferences.isPending}
+              onClick={() => pickerField ? chooseWorkflowReference(choice.id) : toggleAssetReference(choice.id)}>
+              {/* Video references use archived covers; images preserve their existing preview. */}
+              {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={(choice.kind === "VIDEO" ? assetThumbnailUrl : assetContentUrl)(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
+              <span><strong>{choice.title}</strong><small>v{choice.versionNo} · {choice.current ? t("media.editor.selectedVersion") : t("media.editor.historicalVersions")}</small></span>
+              {alreadyAdded || selected ? <Check size={15} /> : null}
+            </button>;
+            })}
+          </div>
+          {historyPending ? <CanvasLoadingState compact label={t("media.editor.imageVersionsLoading")} /> : null}
+          {!historyPending && !resources.error && !historyError && !pickerChoices.length ? <p>{t("media.editor.imagesEmpty")}</p> : null}
+          {!historyPending && !resources.error && !historyError && pickerChoices.length > 0
+            && !filteredImageChoices.length ? <p>{t("media.editor.imageVersionsEmpty")}</p> : null}
+          {resources.error || historyError ? <div role="alert">{t("media.editor.imageVersionsFailed")}<Button variant="ghost" className="media-draft-text-action" onClick={() => {
+              void resources.refetch();
+              imageHistories.forEach((history) => { void history.refetch(); });
+            }} type="button">{t("media.editor.retryImages")}</Button></div> : null}
+          {assetSelectionError ? <div className="media-draft-reference-error" role="alert">
+            {t("media.editor.batchSelectionFailed")}</div> : null}
+          {!pickerField ? <p>{t("media.editor.selectionOrderHint", { "0": Math.max(0,
+            remainingAssetCapacity - assetSelection.length) })}</p> : null}
+          <div className="media-draft-reference-actions">
+            <Button variant="ghost" type="button" disabled={commitAssetReferences.isPending} onClick={() => setPopover(null)}>{t("common.cancel")}</Button>
+            {!pickerField ? <Button variant="ghost" type="button" className="is-primary"
+              disabled={!assetSelection.length || save.isPending || commitAssetReferences.isPending}
+              onClick={confirmAssetReferences}>
+              {commitAssetReferences.isPending ? t("common.adding") : t("media.editor.addSelected", { "0": mixedPicker ? t("media.editor.assets") : t("common.image"), "1": assetSelection.length })}
+            </Button> : null}
+          </div>
+        </div> : null}
+        {popover === "canvasReferences" ? <div className="ui-popover-surface media-draft-popover media-draft-references" ref={popoverRef}
+          id={`${id}-canvas-references`} role="dialog" aria-label={mixedPicker ? t("media.editor.chooseCanvasMedia") : t("media.editor.chooseCanvasImage")}>
+          <p className="media-draft-popover-title">{pickerField?.label ?? (mixedPicker ? t("media.editor.canvasMedia") : t("media.editor.otherCanvasImages"))}</p>
+          <div className="media-draft-reference-options">
+            {pickerCanvasChoices.map((choice) => <Button variant="ghost" key={choice.canvasItemId} type="button"
+              className="media-draft-reference-option" aria-label={t("media.editor.useCanvasMedia", { "0": choice.kind === "VIDEO" ? t("common.video") : choice.kind === "AUDIO" ? t("common.audio") : t("common.image"), "1": choice.title })}
+              aria-pressed={pickerField ? workflowValues[pickerField.key] === choice.versionId : fields.mediaInputs.some((input) => input.versionId === choice.versionId)}
+              disabled={editorReadOnly || !pickerField && (fields.mediaInputs.some((input) => input.versionId === choice.versionId) || !canAddReference(referenceKind(choice.versionId), fields.mediaInputs))}
+              onClick={() => pickerField ? chooseWorkflowReference(choice.versionId) : appendReferences([choice.versionId])}>
+              {choice.kind === "AUDIO" ? <MusicNotes size={24} /> : <img src={(choice.kind === "VIDEO" ? assetThumbnailUrl : assetContentUrl)(artifact.projectId, choice.assetId)} alt="" loading="lazy" />}
+              <span><strong>{choice.title}</strong><small>{t("media.editor.canvasSelectedVersion", { "0": choice.versionNo })}</small></span>
+              {(pickerField ? workflowValues[pickerField.key] === choice.versionId : fields.mediaInputs.some((input) => input.versionId === choice.versionId)) ? <Check size={15} /> : null}
+            </Button>)}
+          </div>
+          {canvas.isPending ? <CanvasLoadingState compact label={t("media.editor.canvasImagesLoading")} /> : null}
+          {canvas.isSuccess && !pickerCanvasChoices.length ? <p>{t("media.editor.canvasImagesEmpty")}</p> : null}
+          {canvas.error ? <div role="alert">{t("media.editor.canvasImagesFailed")}<Button variant="ghost" className="media-draft-text-action" onClick={() => void canvas.refetch()}
+              type="button">{t("media.editor.retryCanvas")}</Button></div> : null}
+          <p>{t("media.editor.selectedCanvasVersionsHint")}</p>
+        </div> : null}
+    </div>
     <PromptMentionEditor id={`${id}-prompt`}
       label={isAudio ? t("media.editor.audioPrompt") : artifact.kind === "IMAGE" ? t("media.editor.imagePrompt") : t("media.editor.videoPrompt")}
       placeholder={!promptEnabled ? t("media.workflow.noPrompt") : promptField?.description || (isAudio ? t("media.editor.audioPromptPlaceholder") : artifact.kind === "IMAGE" ? t("media.editor.imagePromptPlaceholder") : t("media.editor.videoPromptPlaceholder"))}
@@ -1285,7 +1243,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       maxLength={promptField?.maxLength ?? MAX_PROMPT_LENGTH}
       onChange={(prompt, mentions) => edit({ prompt, mentions })} />
     <div className="media-draft-toolbar">
-      {!runningHub && artifact.kind === "VIDEO" ? <DropdownMenu open={popover === "modes"} onOpenChange={(open) => { if (!editorReadOnly && !libraryBusy) setPopover(open ? "modes" : null); }} modal={false}><div className="media-draft-popover-anchor media-draft-mode-anchor">
+      {!workflow && artifact.kind === "VIDEO" ? <DropdownMenu open={popover === "modes"} onOpenChange={(open) => { if (!editorReadOnly && !libraryBusy) setPopover(open ? "modes" : null); }} modal={false}><div className="media-draft-popover-anchor media-draft-mode-anchor">
         <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-toolbar-button media-draft-mode-trigger" type="button"
           disabled={editorReadOnly} aria-label={t("media.editor.chooseVideoMode")} aria-haspopup="menu" aria-expanded={popover === "modes"}
           aria-controls={`${id}-modes`} onPointerDown={(event) => { triggerRef.current = event.currentTarget; }}>

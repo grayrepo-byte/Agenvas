@@ -11,6 +11,7 @@ import dev.agenvas.asset.application.PrivateMediaArchive;
 import dev.agenvas.asset.application.PrivateMediaArchive.Media;
 import dev.agenvas.canvas.application.CanvasItemQueryService;
 import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.library.domain.LibraryCommand;
 import dev.agenvas.library.domain.LibraryEntry;
 import dev.agenvas.library.infrastructure.LibraryRepository;
@@ -52,6 +53,7 @@ public class LibraryService {
     private final ArtifactService artifacts;
     private final CanvasItemQueryService items;
     private final CanvasService canvas;
+    private final CanvasConnectionService connections;
     private final MediaDraftService drafts;
     private final ProjectService projects;
     private final dev.agenvas.task.application.DirectMediaTaskService mediaTasks;
@@ -63,11 +65,11 @@ public class LibraryService {
     private final TransactionTemplate reads;
 
     public LibraryService(LibraryRepository repository, PrivateMediaArchive archive, AssetService assets,
-            ArtifactService artifacts, CanvasItemQueryService items, CanvasService canvas,
+            ArtifactService artifacts, CanvasItemQueryService items, CanvasService canvas, CanvasConnectionService connections,
             MediaDraftService drafts, ProjectService projects, dev.agenvas.task.application.DirectMediaTaskService mediaTasks, dev.agenvas.event.application.ProjectEventService events, Clock clock, ObjectMapper mapper, dev.agenvas.shared.lifecycle.ShutdownGate shutdown,
             PlatformTransactionManager transactions) {
         this.repository = repository; this.archive = archive; this.assets = assets; this.artifacts = artifacts;
-        this.items = items; this.canvas = canvas; this.drafts = drafts; this.projects = projects;
+        this.items = items; this.canvas = canvas; this.connections = connections; this.drafts = drafts; this.projects = projects;
         this.clock = clock; this.mapper = mapper; this.mediaTasks = mediaTasks; this.events = events; this.shutdown = shutdown;
         tx = new TransactionTemplate(transactions);
         reads = new TransactionTemplate(transactions);
@@ -183,8 +185,15 @@ public class LibraryService {
             List<MediaDraft.PromptMention> mentions, UUID styleId) {}
     public LibraryCommand reference(UUID owner, UUID project, UUID item, UUID entryId, long expected,
             ReferenceDraft draft, MediaDraft.InputRole role, String color, String key) {
+        return reference(owner, project, item, entryId, expected, draft, role, color, key, null);
+    }
+
+    public LibraryCommand reference(UUID owner, UUID project, UUID item, UUID entryId, long expected,
+            ReferenceDraft draft, MediaDraft.InputRole role, String color, String key, String slotKey) {
         key = key(key);
-        String hash = Sha256.hex(mapper.writeValueAsString(List.of("REFERENCE", project, item, entryId, expected, draft, role, color)));
+        var payload = new java.util.ArrayList<Object>(List.of("REFERENCE", project, item, entryId, expected, draft, role, color));
+        if (slotKey != null) payload.add(slotKey);
+        String hash = Sha256.hex(mapper.writeValueAsString(payload));
         var replay = replay(owner, key, hash); if (replay != null) return replay;
         LibraryEntry entry = require(owner, entryId); checkEntry(entry, expected);
         if (entry.kind() != Artifact.Kind.IMAGE && entry.kind() != Artifact.Kind.AUDIO && entry.kind() != Artifact.Kind.VIDEO)
@@ -193,6 +202,7 @@ public class LibraryService {
         UUID id = UUID.randomUUID();
         ObjectNode input = importInput(owner, id, project, entry).put("itemId", item.toString())
                 .put("role", role.name()).put("color", color);
+        if (slotKey != null) input.put("slotKey", slotKey);
         input.set("draft", mapper.valueToTree(draft));
         return acceptPinned(owner, id, key, hash, LibraryCommand.Kind.REFERENCE, input, () -> {
             checkEntry(requireLocked(owner, entryId), expected);
@@ -474,8 +484,33 @@ public class LibraryService {
             inputs.add(new MediaDraftService.SaveMediaInput(created.resourceDefaultVersion().id(),
                     MediaDraft.InputRole.valueOf(input.path("role").asText()), input.path("color").asText()));
             Artifact.Kind kind = artifacts.get(command.ownerId(), project, items.requireArtifactItem(command.ownerId(), project, item).subjectId()).artifact().kind();
-            var saved = drafts.save(command.ownerId(), project, item, draft.expectedVersion(), draft.prompt(), draft.parameters(),
-                    draft.durationSeconds(), draft.capabilityId(), draft.videoInputMode(), inputs, draft.mentions(), draft.styleId());
+            var assignment = input.hasNonNull("slotKey")
+                    ? drafts.assignWorkflowSlotParameters(command.ownerId(), project, item,
+                            draft.parameters(), draft.prompt(), draft.durationSeconds(), draft.capabilityId(),
+                            draft.mediaInputs(), Artifact.Kind.valueOf(input.path("kind").asText()),
+                            created.resourceDefaultVersion().id(), input.path("slotKey").asText())
+                    : null;
+            JsonNode parameters = assignment == null ? draft.parameters() : assignment.parameters();
+            long expectedDraftVersion = draft.expectedVersion();
+            List<MediaDraft.PromptMention> mentions = draft.mentions() == null ? List.of() : draft.mentions();
+            String prompt = draft.prompt();
+            if (assignment != null && assignment.removedVersionId() != null) {
+                UUID removed = assignment.removedVersionId();
+                inputs.removeIf(reference -> reference.versionId().equals(removed));
+                var retainedMentions = mentions.stream().filter(mention -> !mention.versionId().equals(removed)).toList();
+                prompt = drafts.pruneRemovedMentions(prompt, mentions, retainedMentions);
+                mentions = retainedMentions;
+                var persisted = drafts.get(command.ownerId(), project, item);
+                if (persisted.version() != expectedDraftVersion) throw conflict();
+                if (persisted.mediaInputs().stream().anyMatch(reference -> reference.versionId().equals(removed))) {
+                    expectedDraftVersion = connections.removeMediaInput(command.ownerId(), project, item,
+                            removed, expectedDraftVersion).version();
+                }
+            }
+            MediaDraft.VideoInputMode mode = input.hasNonNull("slotKey") && kind == Artifact.Kind.VIDEO
+                    ? MediaDraft.VideoInputMode.GENERAL_REFERENCE : draft.videoInputMode();
+            var saved = drafts.save(command.ownerId(), project, item, expectedDraftVersion, prompt, parameters,
+                    draft.durationSeconds(), draft.capabilityId(), mode, inputs, mentions, draft.styleId());
             mediaTasks.validateLibraryReference(command.ownerId(), project, kind, saved);
             result.put("draftVersion", saved.version()).put("canvasItemId", item.toString());
         } else {
