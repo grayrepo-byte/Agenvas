@@ -355,7 +355,7 @@ public class DirectMediaTaskService {
         int seconds = kind == Task.Kind.VIDEO_GENERATION && duration != null ? duration : 0;
         MediaCapabilityBinding binding = capabilities.resolve(selected.capabilityId(), kind, seconds);
         if (!selected.equals(binding)) throw conflict(ApiMessage.of("api.direct-media-task-service.the-media-configuration-has-changed-please-refresh-and-try-again"));
-        if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
+        if (MediaAdapterRegistry.localProcessor(binding.adapterId())) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.local-image-processing-capabilities-can-only-be-used-from-the"));
         }
         ObjectNode dynamicParameters = null;

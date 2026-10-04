@@ -2159,6 +2159,87 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/artifacts/{artifactId}/video-operations:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/ArtifactId"}
+    post:
+      operationId: runVideoOperation
+      summary: 按功能设置固定来源视频并创建独立处理结果节点与任务
+      description: 深度视频和视频高清派生同一视频产物的独立节点；音频分离创建独立音频产物和节点。所有结果使用空白草稿及可删除派生线，来源选择不变。固定功能设置版本、能力版本、来源视频版本及参数；同键异参冲突。视频高清只执行管理员绑定的兼容 AI 能力。本地深度输出最长边 518px、12fps、无音轨的相对深度视频；本地音频分离读取第一音轨为双声道 48kHz PCM WAV。两类本地输入限 30 秒、200MiB、3840×2160 像素数。RunningHub 使用已发布的单视频输入契约，不接受任意工作流或请求。
+      tags: [Tasks]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RunVideoOperationRequest"}
+      responses:
+        "200":
+          description: 已受理或相同幂等键的原任务
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/ValidationError"}
+  /api/v1/settings/media-functions:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    get:
+      operationId: listMediaFunctions
+      summary: 查询视频工具功能设置（独立于媒体生成默认模型）
+      tags: [Settings]
+      responses:
+        "200":
+          description: 管理员选择的功能处理能力
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/MediaFunctionSetting"}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/settings/media-functions/{operation}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: operation
+        in: path
+        required: true
+        schema: {$ref: "#/components/schemas/VideoOperation"}
+    put:
+      operationId: updateMediaFunction
+      summary: 通过 CAS 为视频功能绑定已发布且输入输出兼容的能力
+      description: capabilityId=null 停用入口执行；深度和音轨分离可选内置本地能力，视频高清必须绑定兼容的第三方 AI 能力。当前云端支持 RunningHub 的单视频输入及匹配主输出类型，固定 ComfyUI 图生视频模板不兼容，不伪装成视频后处理。新适配器须实现并声明兼容协议后才可绑定。
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedVersion, capabilityId]
+              properties:
+                expectedVersion: {type: integer, format: int64, minimum: 0}
+                capabilityId: {type: [string, "null"], format: uuid}
+      responses:
+        "200":
+          description: 保存后的所有功能设置
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/MediaFunctionSetting"}}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/ValidationError"}
   /api/v1/projects/{projectId}/tasks/{taskId}/cancel-queued:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -5361,6 +5442,35 @@ components:
       properties:
         canvasItemId: {type: string, format: uuid}
         expectedDraftVersion: {type: integer, format: int64, minimum: 0}
+    VideoOperation:
+      type: string
+      enum: [DEPTH_MAP, EXTRACT_AUDIO, UPSCALE]
+    MediaFunctionSetting:
+      type: object
+      required: [operation, capabilityId, version]
+      properties:
+        operation: {$ref: "#/components/schemas/VideoOperation"}
+        capabilityId: {type: [string, "null"], format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+    RunVideoOperationRequest:
+      type: object
+      additionalProperties: false
+      required: [canvasItemId, sourceVersionId, expectedCanvasItemVersion, operation, expectedFunctionVersion, expectedCapabilityVersion, parameters]
+      properties:
+        canvasItemId: {type: string, format: uuid}
+        sourceVersionId: {type: string, format: uuid}
+        expectedCanvasItemVersion: {type: integer, format: int64, minimum: 0}
+        operation: {$ref: "#/components/schemas/VideoOperation"}
+        expectedFunctionVersion: {type: integer, format: int64, minimum: 0}
+        expectedCapabilityVersion: {type: integer, minimum: 1}
+        prompt: {type: [string, "null"], maxLength: 4000}
+        parameters:
+          type: object
+          additionalProperties: false
+          properties:
+            dynamicValues:
+              type: object
+              additionalProperties: {type: [string, number, boolean]}
     RunImageOperationRequest:
       type: object
       additionalProperties: false

@@ -58,6 +58,11 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get OPENAI_IMAGE_REJECTED() { return t("tasks.errors.imageRequestRejected"); },
   get GOOGLE_IMAGE_REJECTED() { return t("tasks.errors.imageRequestRejected"); },
   get LOCAL_DEPTH_MODEL_UNAVAILABLE() { return t("tasks.errors.depthModelUnavailable"); },
+  get VIDEO_AUDIO_TRACK_MISSING() { return t("tasks.errors.videoAudioMissing"); },
+  get LOCAL_VIDEO_PROCESSING_FAILED() { return t("tasks.errors.localVideoFailed"); },
+  get LOCAL_VIDEO_PROCESSING_TIMEOUT() { return t("tasks.errors.localVideoTimeout"); },
+  get LOCAL_VIDEO_LIMIT_EXCEEDED() { return t("tasks.errors.localVideoLimits"); },
+  get LOCAL_VIDEO_PROCESSING_CANCELED() { return t("tasks.errors.localVideoCanceled"); },
   get LOCAL_IMAGE_PROCESSING_FAILED() { return t("tasks.errors.localProcessingFailed"); },
   get LOCAL_IMAGE_ENCODING_FAILED() { return t("tasks.errors.localEncodingFailed"); },
 };

@@ -1,0 +1,5 @@
+.media-function-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 1fr); gap: var(--ui-space-6); padding: var(--ui-space-6) 0; border-bottom: 1px solid var(--ui-border); }
+.media-function-row h3 { margin: 0 0 var(--ui-space-2); }
+.media-function-row p { margin: 0; line-height: 1.6; }
+.media-function-save { align-self: flex-start; }
+@media (max-width: 720px) { .media-function-row { grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-4); } }

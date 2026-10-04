@@ -53,6 +53,9 @@ public class CanvasService {
     private static final BigDecimal OUTPUT_WIDTH = new BigDecimal("300");
     /** 自动放置生成产物时使用的卡片高度。 */
     private static final BigDecimal OUTPUT_HEIGHT = new BigDecimal("300");
+    // Match ordinary audio-node defaults so completed audio uses the compact player projection.
+    private static final BigDecimal AUDIO_OUTPUT_WIDTH = new BigDecimal("430");
+    private static final BigDecimal AUDIO_OUTPUT_HEIGHT = new BigDecimal("240");
     /** 自动放置卡片之间保留的最小空隙。 */
     private static final BigDecimal OUTPUT_GAP = new BigDecimal("24");
     private static final int MAX_OUTPUT_PLACEMENT_ATTEMPTS = 100;
@@ -353,6 +356,41 @@ public class CanvasService {
         return target;
     }
 
+    /** Audio extraction has its own Artifact identity; a video version cannot belong to an audio node. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CanvasItem forkAudioDerivationWithinChange(UUID ownerId, UUID projectId,
+            UUID sourceItemId, String resultLabel) {
+        projects.requireActiveProject(ownerId, projectId);
+        CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
+                .orElseThrow(this::notFound);
+        if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT
+                || source.selectedVersionId() == null
+                || artifacts.get(ownerId, projectId, source.subjectId()).artifact().kind()
+                        != Artifact.Kind.VIDEO) throw conflict();
+        String title = derivationTitle(source.title(), resultLabel);
+        var audio = artifacts.create(ownerId, projectId, Artifact.Kind.AUDIO, title, null);
+        List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
+        BigDecimal x = source.x().add(source.width()).add(OUTPUT_GAP);
+        BigDecimal y = source.y();
+        for (int attempt = 0; attempt < MAX_OUTPUT_PLACEMENT_ATTEMPTS
+                && overlapsAny(x, y, AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, existing); attempt++) y = y.add(AUDIO_OUTPUT_HEIGHT).add(OUTPUT_GAP);
+        int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex).max().orElse(-1) + 1);
+        validateGeometry(x, y, AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, zIndex);
+        if (overlapsAny(x, y, AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, existing)) throw conflict();
+        CanvasItem target = placement(UUID.randomUUID(), projectId, CanvasItem.SubjectType.ARTIFACT,
+                audio.artifact().id(), null, title, x, y, AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, zIndex,
+                source.groupId(), false);
+        if (!canvasItems.create(target)) throw conflict();
+        mediaDrafts.initializeWithinChange(projectId, target.id(), false);
+        connections.createMediaDerivationWithinChange(ownerId, projectId, sourceItemId,
+                target.id(), source.selectedVersionId());
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.putArray("itemIds").add(target.id().toString());
+        events.append(ownerId, projectId, new ProjectEventService.EventDraft(
+                "canvas.items.changed", 1, projectId, 0, payload));
+        return target;
+    }
+
     /**
      * 在调用方任务事务内将新产物放入 Agent 输出分组；已有卡片包括锁定卡片均不移动、不修改。
      */
@@ -477,6 +515,13 @@ public class CanvasService {
                 && x.add(OUTPUT_WIDTH).add(OUTPUT_GAP).compareTo(existing.x()) > 0
                 && y.compareTo(existing.y().add(existing.height()).add(OUTPUT_GAP)) < 0
                 && y.add(OUTPUT_HEIGHT).add(OUTPUT_GAP).compareTo(existing.y()) > 0;
+    }
+
+    private boolean overlapsAny(BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, List<CanvasItem> existing) {
+        return existing.stream().anyMatch(item -> x.compareTo(item.x().add(item.width()).add(OUTPUT_GAP)) < 0
+                && x.add(width).add(OUTPUT_GAP).compareTo(item.x()) > 0
+                && y.compareTo(item.y().add(item.height()).add(OUTPUT_GAP)) < 0
+                && y.add(height).add(OUTPUT_GAP).compareTo(item.y()) > 0);
     }
 
     private boolean overlapsAny(BigDecimal x, BigDecimal y, List<CanvasItem> existing) {

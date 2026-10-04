@@ -10,6 +10,7 @@ import dev.agenvas.db.tables.MediaCapabilityCreateKey.MediaCapabilityCreateKeyPa
 import dev.agenvas.db.tables.MediaCapabilityVersion.MediaCapabilityVersionPath;
 import dev.agenvas.db.tables.MediaDefault.MediaDefaultPath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
+import dev.agenvas.db.tables.MediaFunctionSetting.MediaFunctionSettingPath;
 import dev.agenvas.db.tables.MediaProviderConnection.MediaProviderConnectionPath;
 import dev.agenvas.db.tables.ProviderAttempt.ProviderAttemptPath;
 import dev.agenvas.db.tables.Task.TaskPath;
@@ -280,6 +281,19 @@ public class MediaCapability extends TableImpl<MediaCapabilityRecord> {
             _mediaDefault = new MediaDefaultPath(this, null, Keys.MEDIA_DEFAULT__MEDIA_DEFAULT_CAPABILITY_ID_FKEY.getInverseKey());
 
         return _mediaDefault;
+    }
+
+    private transient MediaFunctionSettingPath _mediaFunctionSetting;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.media_function_setting</code> table
+     */
+    public MediaFunctionSettingPath mediaFunctionSetting() {
+        if (_mediaFunctionSetting == null)
+            _mediaFunctionSetting = new MediaFunctionSettingPath(this, null, Keys.MEDIA_FUNCTION_SETTING__MEDIA_FUNCTION_SETTING_CAPABILITY_ID_FKEY.getInverseKey());
+
+        return _mediaFunctionSetting;
     }
 
     @Override

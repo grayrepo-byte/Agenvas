@@ -157,11 +157,15 @@ public class CanvasConnectionService {
         CanvasItem target = canvasItems.requireArtifactItem(ownerId, projectId, targetItemId);
         Artifact sourceArtifact = artifacts.get(ownerId, projectId, source.subjectId()).artifact();
         Artifact targetArtifact = artifacts.get(ownerId, projectId, target.subjectId()).artifact();
-        if (sourceArtifact.kind() == Artifact.Kind.TEXT
-                || targetArtifact.kind() != sourceArtifact.kind()
-                || !source.subjectId().equals(target.subjectId())
-                || !sourceVersionId.equals(source.selectedVersionId())
-                || !sourceVersionId.equals(target.selectedVersionId())) {
+        boolean sameMediaBranch = sourceArtifact.kind() != Artifact.Kind.TEXT
+                && targetArtifact.kind() == sourceArtifact.kind()
+                && source.subjectId().equals(target.subjectId())
+                && sourceVersionId.equals(target.selectedVersionId());
+        boolean audioExtraction = sourceArtifact.kind() == Artifact.Kind.VIDEO
+                && targetArtifact.kind() == Artifact.Kind.AUDIO
+                && target.selectedVersionId() == null;
+        if (!sourceVersionId.equals(source.selectedVersionId())
+                || !(sameMediaBranch || audioExtraction)) {
             throw invalid(ApiMessage.of("api.canvas-connection-service.media-derivation-lines-must-connect-fixed-source-versions-and-new"));
         }
         Instant now = clock.instant();
