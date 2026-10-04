@@ -1,6 +1,6 @@
 import {
-ArrowClockwise,ArrowCounterClockwise,BoundingBox,Eraser,Image as ImageIcon,
-PaintBrush,PaperPlaneTilt,Plus,UploadSimple,X
+ArrowClockwise,ArrowCounterClockwise,ArrowUp,BoundingBox,Coins,Cube,Eraser,
+PaintBrush,Plus,UploadSimple,X
 } from "@phosphor-icons/react";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import {
@@ -13,6 +13,7 @@ type MediaCapability
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
+import { estimatedMediaCost } from "../../shared/mediaPricing";
 import { Button } from "../../shared/ui/primitives/button";
 import { DialogContent, Dialog as DialogRoot, DialogTitle } from "../../shared/ui/primitives/dialog";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -308,7 +309,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
   }
 
   return <DialogRoot open onOpenChange={(open) => { if (!open) requestClose(); }}>
-    <DialogContent ref={setMenuContainer} className="smart-edit-dialog nodrag nowheel nopan" showCloseButton={false}
+    <DialogContent ref={setMenuContainer} className="smart-edit-dialog nodrag nowheel nopan" showCloseButton={false} fullscreen
       aria-describedby={undefined}
       onKeyDown={(event) => event.stopPropagation()}
       onEscapeKeyDown={(event) => { event.stopPropagation(); if (busy || uploading) event.preventDefault(); }}
@@ -388,21 +389,24 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
           aria-label={t("image.smartEdit.prompt")}
           placeholder={t("image.smartEdit.promptPlaceholder")}
           onChange={(event) => setInstruction(event.target.value)} />
+        <span className="smart-edit-mask-hint">{hasMask ? t("image.smartEdit.transparencyHint") : t("image.smartEdit.noMaskHint")}</span>
         {extraControls}
         <div className="smart-edit-footer">
-          <label><span className="sr-only">{t("media.imageCapability")}</span>
-            <Select variant="ghost" density="compact" icon={<ImageIcon />} value={selectedCapabilityId} disabled={configuredMethod} portalContainer={menuContainer}
+          <label className="smart-edit-model"><span className="sr-only">{t("media.imageCapability")}</span>
+            <Select variant="ghost" density="compact" icon={<Cube size={17} />} value={selectedCapabilityId} disabled={configuredMethod} portalContainer={menuContainer}
               optionDetails={Object.fromEntries(eligibleCapabilities.map((capability) => [capability.id, mediaModelDetails(capability)]))}
               onChange={(event) => setCapabilityId(event.target.value)}>
               {eligibleCapabilities.length ? eligibleCapabilities.map((capability) =>
                 <option key={capability.id} value={capability.id}>{capability.name}</option>)
                 : <option value="">{hasMask ? t("image.smartEdit.configureMaskCapability") : t("image.smartEdit.configureCapability")}</option>}
             </Select></label>
-          <span>{hasMask ? t("image.smartEdit.transparencyHint") : t("image.smartEdit.noMaskHint")}</span>
+          <span className="smart-edit-cost" title={t("media.editor.estimateHint")}>
+            <Coins size={16} /><span>{estimatedMediaCost(selectedCapability, 1, null)}</span>
+          </span>
           <Button variant="ghost" type="button" className="smart-edit-submit" aria-label={t("image.smartEdit.start")}
             disabled={!canSubmit} onClick={() => void submit()}>
             {busy || uploading ? <span className="smart-edit-submit-progress">…</span>
-              : <PaperPlaneTilt size={18} weight="fill" />}</Button>
+              : <ArrowUp size={21} weight="bold" />}</Button>
         </div>
         {references.length > referenceCapacity ? <p role="alert">{t("image.smartEdit.extraReferenceLimit", { "0": referenceCapacity })}</p> : null}
         {localError ? <p role="alert">{localError}</p> : null}
