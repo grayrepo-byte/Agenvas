@@ -515,23 +515,30 @@ describe("MediaDraftEditor", () => {
         outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
       } } };
     let finishUpload: (() => void) | undefined;
+    const uploadPath = `/api/v1/projects/${PROJECT_ID}/assets`;
+    const interceptedFetch = globalThis.fetch;
+    // Intercept multipart before Node fetch tries to serialize jsdom File objects.
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === uploadPath) {
+        expect(init?.body).toBeInstanceOf(FormData);
+        await new Promise<void>((resolve) => { finishUpload = resolve; });
+        return HttpResponse.json({ id: "pending-upload-asset", mediaKind: "IMAGE" }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
     setup({ draft: { ...initialDraft, capabilityId: capability.id },
       settings: { connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
         defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] },
-      handlers: [http.post(`/api/v1/projects/${PROJECT_ID}/assets`, async () => {
-          await new Promise<void>((resolve) => { finishUpload = resolve; });
-          return HttpResponse.json({ id: "pending-upload-asset", mediaKind: "IMAGE" }, { status: 201 });
-        }),
-        http.post(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ ...artifact, id: "pending-upload", resourceDefaultVersionId: "pending-upload-version" })),
+      handlers: [http.post(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ ...artifact, id: "pending-upload", resourceDefaultVersionId: "pending-upload-version" })),
       ] });
     const user = userEvent.setup();
     await screen.findByRole("button", { name: "选择hero" });
     await changeControl(screen.getByLabelText("上传hero"), { target: { files: [new File(["synthetic"], "hero.png", { type: "image/png" })] } });
     await waitFor(() => expect(finishUpload).toBeDefined());
     await user.click(screen.getByRole("button", { name: "选择detail" }));
-    expect(screen.getByRole("menuitem", { name: "从我的资产选择" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "从我的资产选择" })).toHaveAttribute("aria-disabled", "true");
     finishUpload?.();
-    await waitFor(() => expect(screen.getByRole("menuitem", { name: "从我的资产选择" })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: "从我的资产选择" })).not.toHaveAttribute("aria-disabled", "true"));
     expect(screen.queryByRole("dialog", { name: "我的资产参考" })).not.toBeInTheDocument();
   });
 
