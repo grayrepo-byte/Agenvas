@@ -58,6 +58,20 @@ docker compose up -d --wait
 | `AGENVAS_DB_PASSWORD` | 32 字节随机值转为 64 字符十六进制数据库密码 | `database-password` |
 | `AGENVAS_CREDENTIAL_MASTER_KEY` | 32 字节随机密钥的 Base64 编码 | `credential-master-key` |
 
+需要查看数据库密码时，在 Compose 文件所在目录、`postgres` 容器运行期间执行：
+
+```sh
+docker compose exec -u 0 postgres cat /run/agenvas/credentials/installation/database-password
+```
+
+服务名为 `postgres`。若启动时使用了 `-f` 或 `-p`，查看时也须使用相同参数，例如源码构建环境：
+
+```sh
+docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/credentials/installation/database-password
+```
+
+若提示 `no configuration file provided: not found`，请切换到 Compose 文件所在目录，或用 `-f` 指定正确的文件路径。
+
 密钥不会写入 Compose、Git 或启动日志。备份时须另外加密保管 `credentials-data`；不要执行 `down -v`，它会删除数据和密钥。已有数据库升级到此入口时，须先恢复密钥卷或通过仓库外私有 Compose 配置导入原数据库密码和主密钥；缺失时启动会停止，避免旧凭证无法解密。详见[备份与恢复](docs/operations/backup-restore.md)。
 
 ### 3. 配置模型，开始创作

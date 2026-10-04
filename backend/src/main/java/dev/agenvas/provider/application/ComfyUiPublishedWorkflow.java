@@ -79,12 +79,12 @@ public class ComfyUiPublishedWorkflow {
                 requestKey.getMostSignificantBits() & Long.MAX_VALUE,
                 new ComfyUiWorkflowDefinition.Dimensions(frozen.path("width").intValue(), frozen.path("height").intValue()),
                 task.input().path("durationSeconds").asInt(0), uploaded, values);
-        return new Submission.Accepted(client.submit(graph, requestKey).toString());
+        return new Submission.Accepted(client.submit(graph, requestKey));
     }
 
     public Submission reconcile(AttemptContext context, ComfyUiClient client, JsonNode settings) {
         var definition = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), context.lease().kind());
-        UUID promptId = UUID.fromString(context.originalRequestId());
+        String promptId = context.originalRequestId();
         try {
             return switch (ComfyUiHistory.published(client.history(promptId), promptId, definition.output(), context.lease().kind())) {
                 case ComfyUiHistory.PublishedPending ignored -> new Submission.Pending(clock.instant().plusSeconds(POLL_SECONDS));

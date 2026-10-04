@@ -70,10 +70,10 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         String uploaded = client.uploadImage(requestKey,
                 inputImage(context.ownerId(), task, reference), "png");
         long seed = requestKey.getMostSignificantBits() & Long.MAX_VALUE;
-        UUID promptId = client.submit(workflow.render(task.input().path("prompt").asText(),
+        String promptId = client.submit(workflow.render(task.input().path("prompt").asText(),
                 task.input().path("negativePrompt").asText(""), seed, uploaded,
                 reference), requestKey);
-        return new Submission.Accepted(promptId.toString());
+        return new Submission.Accepted(promptId);
     }
 
     @Override public Submission reconcile(AttemptContext context) {
@@ -81,7 +81,7 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         ComfyUiClient client = client(snapshot);
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
         if (ComfyUiWorkflowDefinition.configured(settings)) return published.reconcile(context, client, settings);
-        UUID promptId = UUID.fromString(context.originalRequestId());
+        String promptId = context.originalRequestId();
         try {
             return switch (client.imageStatus(promptId, ComfyUiImageWorkflow.OUTPUT_NODE_ID)) {
                 case ComfyUiHistory.Pending ignored ->

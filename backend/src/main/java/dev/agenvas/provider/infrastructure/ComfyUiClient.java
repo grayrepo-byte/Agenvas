@@ -35,6 +35,10 @@ public class ComfyUiClient {
     private static final int MAX_OUTPUT_BYTES = 500 * 1024 * 1024;
     /** ComfyUI 文件名白名单；禁止路径、目录和控制字符。 */
     private static final Pattern FILE_NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,159}");
+    /** 与 provider_attempt.provider_request_id 的持久长度上限保持一致。 */
+    private static final int MAX_PROMPT_ID_CHARACTERS = 240;
+    /** 不透明的远程 ID 只能占一个非目录路径片段，禁止编码、查询参数和控制字符。 */
+    private static final Pattern PROMPT_ID = Pattern.compile("[A-Za-z0-9_-]+");
     /** 启动时校验并固定的 HTTP(S) origin，请求不得更换主机或端口。 */
     private final URI origin;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
@@ -62,8 +66,8 @@ public class ComfyUiClient {
         }
     }
 
-    /** 只提交一次，并将已落库 requestKey 同时用作 client_id 和 prompt_id。 */
-    public UUID submit(JsonNode fixedWorkflow, UUID requestKey) {
+    /** 只提交一次；请求保留本地 requestKey，查询使用上游实际受理的原始 prompt_id。 */
+    public String submit(JsonNode fixedWorkflow, UUID requestKey) {
         if (fixedWorkflow == null || !fixedWorkflow.isObject() || requestKey == null) {
             throw new IllegalArgumentException("Fixed workflow and request key are required");
         }
@@ -72,31 +76,27 @@ public class ComfyUiClient {
         body.put("client_id", requestKey.toString());
         body.put("prompt_id", requestKey.toString());
         JsonNode response = json("POST", "/prompt", body.toString());
-        try {
-            UUID acknowledged = UUID.fromString(response.path("prompt_id").asText());
-            if (!requestKey.equals(acknowledged)) {
-                // 外部任务可能已经运行；ID 不符属于结果不确定，不能当作安全拒绝再提交。
-                throw new ProtocolFailure("ComfyUI acknowledged a different prompt_id");
-            }
-            return acknowledged;
-        } catch (IllegalArgumentException failure) {
-            throw new ProtocolFailure("ComfyUI did not return a valid prompt_id", failure);
+        JsonNode acknowledged = response.path("prompt_id");
+        if (!acknowledged.isString() || !safePromptId(acknowledged.stringValue())) {
+            // 外部可能已经受理；无可安全查询的回执仍不能自动重新提交。
+            throw new ProtocolFailure("ComfyUI did not return a valid prompt_id");
         }
+        return acknowledged.stringValue();
     }
 
     /** 读取原 prompt 历史；空历史表示暂无证据，不代表拒绝或允许重提。 */
-    public JsonNode history(UUID promptId) {
-        if (promptId == null) throw new IllegalArgumentException("promptId is required");
+    public JsonNode history(String promptId) {
+        if (!safePromptId(promptId)) throw new IllegalArgumentException("A safe promptId is required");
         return json("GET", "/history/" + promptId, null);
     }
 
     /** 查询已保存 prompt ID，并只解析固定模板声明的图片输出节点。 */
-    public ComfyUiHistory.ImageResult imageStatus(UUID promptId, String outputNodeId) {
+    public ComfyUiHistory.ImageResult imageStatus(String promptId, String outputNodeId) {
         return ComfyUiHistory.image(history(promptId), promptId, outputNodeId);
     }
 
     /** 视频查询也只使用原 prompt ID，并要求固定模板中的动画 MP4 输出节点。 */
-    public ComfyUiHistory.VideoResult videoStatus(UUID promptId, String outputNodeId) {
+    public ComfyUiHistory.VideoResult videoStatus(String promptId, String outputNodeId) {
         return ComfyUiHistory.video(history(promptId), promptId, outputNodeId);
     }
 
@@ -241,6 +241,12 @@ public class ComfyUiClient {
     private boolean safeFilename(String filename) {
         return filename != null && FILE_NAME.matcher(filename).matches()
                 && !filename.contains("..");
+    }
+
+    /** 同时约束提交回执、持久 ID 的历史请求和纯历史解析器，始终保留 ID 原文。 */
+    static boolean safePromptId(String promptId) {
+        return promptId != null && promptId.length() <= MAX_PROMPT_ID_CHARACTERS
+                && PROMPT_ID.matcher(promptId).matches();
     }
 
     /** Shared validation keeps saved addresses and execution transport in agreement. */
