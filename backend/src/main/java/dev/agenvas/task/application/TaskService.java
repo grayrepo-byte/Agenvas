@@ -593,6 +593,8 @@ public class TaskService {
         for (int index = 0; index < manifest.results().size(); index++) {
             var result = manifest.results().get(index);
             if (result.ordinal() != index || result.kind() == null || result.url() == null || result.url().isBlank()
+                    || result.archiveEntry() != null && (result.archiveEntry().name() == null || result.archiveEntry().name().isBlank()
+                        || result.archiveEntry().sha256() == null || !result.archiveEntry().sha256().matches("[0-9a-f]{64}"))
                     || result.primary() && !lease.kind().name().equals(result.kind().name() + "_GENERATION"))
                 throw validation(ApiMessage.of("api.task-service.the-result-list-has-an-invalid-order-or-media-type"));
         }
