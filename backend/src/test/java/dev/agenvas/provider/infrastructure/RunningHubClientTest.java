@@ -9,6 +9,8 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
@@ -48,12 +50,54 @@ class RunningHubClientTest {
         }
     }
     @Test void queryUsesSavedTaskIdAndAppDiscoveryNeverPutsKeyInUrl() throws Exception {
-        try (var fixture = new Server(200, "{\"status\":\"RUNNING\",\"data\":{\"nodeInfoList\":[]}}")) {
+        try (var fixture = new Server(200, "{\"status\":\"RUNNING\",\"data\":{\"nodeInfoList\":[{\"nodeId\":\"1\",\"fieldName\":\"text\"}]}}")) {
             var client = new RunningHubClient(mapper);
             client.query(fixture.origin(), "test-key", "original-task");
             assertThat(mapper.readTree(fixture.body.get()).path("taskId").asText()).isEqualTo("original-task");
             client.metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.AI_APP, "123");
             assertThat(fixture.path.get()).isEqualTo("/api/webapp/apiCallDemo?webappId=123").doesNotContain("test-key");
+        }
+    }
+    @Test void unavailableEmptyAndWrongAppDetailsFallBackToBearerDemoWithoutAQueryKey() throws Exception {
+        for (String detail : List.of("{\"code\":403,\"data\":null}", "{\"code\":0,\"data\":{\"id\":\"123\",\"inputNodes\":[]}}",
+                "{\"code\":0,\"data\":{\"id\":\"456\",\"inputNodes\":[{}]}}", "not json")) {
+            try (var fixture = new Server(200, "{\"code\":0,\"data\":{\"nodeInfoList\":[{\"nodeId\":\"1\",\"fieldName\":\"text\"}],\"curl\":\"ignore\"}}")) {
+                fixture.replies.put("/api/webapp/detail", detail);
+                assertThat(new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.AI_APP, "123").path("nodeInfoList")).hasSize(1);
+                assertThat(fixture.path.get()).isEqualTo("/api/webapp/apiCallDemo?webappId=123").doesNotContain("test-key");
+                assertThat(fixture.authorization.get()).isEqualTo("Bearer test-key");
+                assertThat(fixture.calls).hasValue(2);
+            }
+        }
+    }
+    @Test void missingOrEmptyDemoInputsFailDiscoveryInsteadOfReturningAnEmptyContract() throws Exception {
+        for (String data : List.of("{}", "{\"nodeInfoList\":[]}", "{\"nodeInfoList\":null}")) {
+            try (var fixture = new Server(200, "{\"code\":0,\"data\":" + data + "}")) {
+                assertThatThrownBy(() -> new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.AI_APP, "123"))
+                        .isInstanceOf(RunningHubClient.ProtocolFailure.class);
+                assertThat(fixture.calls).hasValue(2);
+            }
+        }
+    }
+    @Test void publicAppInputsAreDiscoveredWhenApiCallDemoRequiresAQueryKey() throws Exception {
+        try (var fixture = new Server(200, "{\"code\":500,\"msg\":\"UNKNOWN_ERROR\",\"data\":null}")) {
+            fixture.replies.put("/api/webapp/detail", """
+                    {"code":0,"data":{"id":"123","inputNodes":[
+                      {"nodeId":"150","nodeName":"Prompt","fieldName":"value","fieldType":"STRING","fieldValue":"A synthetic shape"},
+                      {"nodeId":"115","fieldName":"aspect_ratio","fieldType":"LIST","fieldValue":"16:9",
+                       "fieldData":["COMBO",{"options":["1:1","16:9"]}]}],
+                      "curl":"private demo must not be retained","owner":{"name":"unrelated metadata"}}}
+                    """);
+            var metadata = new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.AI_APP, "123");
+            assertThat(metadata.path("nodeInfoList")).hasSize(2);
+            assertThat(metadata.path("nodeInfoList").get(1).path("fieldData").get(1).path("options")).hasSize(2);
+            assertThat(metadata.has("curl")).isFalse();
+            assertThat(metadata.has("owner")).isFalse();
+            assertThat(fixture.path.get()).isEqualTo("/api/webapp/detail").doesNotContain("test-key");
+            assertThat(fixture.method.get()).isEqualTo("POST");
+            assertThat(mapper.readTree(fixture.body.get())).isEqualTo(mapper.readTree("{\"webappId\":\"123\"}"));
+            assertThat(fixture.authorization.get()).isNull();
+            assertThat(fixture.calls).hasValue(1);
         }
     }
     @Test void workflowPromptStringIsDecodedTwice() throws Exception {
@@ -91,16 +135,19 @@ class RunningHubClientTest {
     private static final class Server implements AutoCloseable {
         final HttpServer server;
         final AtomicInteger calls = new AtomicInteger();
+        final Map<String, String> replies = new ConcurrentHashMap<>();
+        final AtomicReference<String> method = new AtomicReference<>();
         final AtomicReference<String> path = new AtomicReference<>(), body = new AtomicReference<>(), authorization = new AtomicReference<>(), reply;
         Server(int status, String response) throws IOException {
             reply = new AtomicReference<>(response);
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/", exchange -> {
                 calls.incrementAndGet(); path.set(exchange.getRequestURI().toString()); body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                method.set(exchange.getRequestMethod());
                 authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
                 exchange.getResponseHeaders().set("Retry-After", "0");
                 exchange.getResponseHeaders().set("Location", origin() + "/redirected");
-                byte[] bytes = reply.get().getBytes(StandardCharsets.UTF_8);
+                byte[] bytes = replies.getOrDefault(exchange.getRequestURI().getPath(), reply.get()).getBytes(StandardCharsets.UTF_8);
                 exchange.sendResponseHeaders(status, bytes.length); exchange.getResponseBody().write(bytes); exchange.close();
             }); server.start();
         }

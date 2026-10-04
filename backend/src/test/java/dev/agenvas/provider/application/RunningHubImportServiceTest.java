@@ -2,14 +2,66 @@ package dev.agenvas.provider.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import com.sun.net.httpserver.HttpServer;
+import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.RunningHubDefinition;
+import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
+import dev.agenvas.provider.infrastructure.RunningHubClient;
+import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class RunningHubImportServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final RunningHubImportService imports = new RunningHubImportService(null, null, null, mapper);
+    @Test void automaticPublicAppDiscoveryProducesAValidVideoContractWithoutSendingCredentialsOrGenerating() throws Exception {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        var calls = new AtomicInteger();
+        try (var input = getClass().getResourceAsStream("/runninghub/minimax-h3-app-inputs.json")) {
+            assertThat(input).isNotNull();
+            var payload = mapper.createObjectNode();
+            payload.put("code", 0);
+            payload.putObject("data").put("id", "2084320751339032577").set("inputNodes", mapper.readTree(input));
+            server.createContext("/api/webapp/detail", exchange -> {
+                calls.incrementAndGet();
+                assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+                assertThat(mapper.readTree(exchange.getRequestBody().readAllBytes()).path("webappId").asText()).isEqualTo("2084320751339032577");
+                byte[] bytes = payload.toString().getBytes(StandardCharsets.UTF_8);
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+                exchange.close();
+            });
+            server.start();
+            var repository = mock(JooqMediaCapabilityRepository.class);
+            var cipher = mock(CredentialCipher.class);
+            var connectionId = UUID.randomUUID();
+            when(repository.connection(connectionId)).thenReturn(Optional.of(new JooqMediaCapabilityRepository.Connection(
+                    connectionId, "Synthetic app connection", MediaPlatform.RUNNINGHUB, true, 1, 1)));
+            when(repository.connectionVersion(connectionId, 1)).thenReturn(Optional.of(new JooqMediaCapabilityRepository.ConnectionVersion(
+                    connectionId, 1, "http://127.0.0.1:" + server.getAddress().getPort(), "synthetic", new byte[0], new byte[0], 1, "test")));
+            when(cipher.decryptMedia(eq(connectionId), eq(1), any(CredentialCipher.Encrypted.class))).thenReturn("synthetic-key");
+            var preview = new RunningHubImportService(repository, cipher, new RunningHubClient(mapper), mapper)
+                    .preview(connectionId, RunningHubDefinition.TargetType.AI_APP, "2084320751339032577", Task.Kind.VIDEO_GENERATION, null);
+            assertThat(preview.definition().fields()).hasSize(21);
+            assertThat(preview.definition().fields()).anyMatch(field -> field.fieldName().equals("aspect_ratio") && field.options().size() == 8);
+            assertThat(preview.definition().outputs().getFirst().kind()).isEqualTo(RunningHubDefinition.OutputKind.VIDEO);
+            preview.definition().validate(Task.Kind.VIDEO_GENERATION);
+            assertThat(mapper.writeValueAsString(preview)).doesNotContain("synthetic-key");
+            assertThat(calls).hasValue(1);
+        } finally {
+            server.stop(0);
+        }
+    }
     @Test void workflowImportExcludesConnectionsAndDoesNotInferPromptOrImageFromFieldNames() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("{\"6\":{\"class_type\":\"Text\",\"inputs\":{\"text\":\"draw\",\"model\":[\"4\",0]}},\"10\":{\"inputs\":{\"image\":\"remote.png\"}}}"));
