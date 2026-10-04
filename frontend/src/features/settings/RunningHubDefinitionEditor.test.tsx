@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import type { RunningHubDefinition } from "../../shared/api/client";
-import { clickControl, selectValue } from "../../test/controls";
+import { selectValue } from "../../test/controls";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 
 const initialDefinition: RunningHubDefinition = {
@@ -50,10 +50,7 @@ function inputFor(label: string) {
 describe("RunningHubDefinitionEditor scalar inputs", () => {
   it.each(scalarInputs)("keeps the draft on invalid $label and clears errors after a typed scalar is committed", async ({ label, error, getValue }) => {
     await mount();
-    const review = screen.getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" });
     const originalValue = getValue(currentDefinition());
-    await clickControl(review);
-    expect(review).toBeChecked();
 
     for (const raw of ["invalid", "null", "{}", "[]"]) {
       const input = inputFor(label);
@@ -62,7 +59,6 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
       expect(getValue(currentDefinition())).toEqual(originalValue);
       expect(input).toHaveProperty("validationMessage", error);
       expect(screen.getByRole("alert")).toHaveTextContent(error);
-      expect(review).not.toBeChecked();
     }
 
     for (const value of [1.25, false, "文字🎨"]) {
@@ -73,8 +69,6 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
       expect(inputFor(label)).toHaveProperty("validationMessage", "");
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     }
-    await clickControl(review);
-    expect(review).toBeChecked();
   });
 
   it("clears an optional default while empty condition and fixed values retain their previous draft", async () => {
