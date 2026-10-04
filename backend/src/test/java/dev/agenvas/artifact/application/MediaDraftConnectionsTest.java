@@ -263,7 +263,7 @@ class MediaDraftConnectionsTest {
         when(capabilities.declaredDraftInputs(capability)).thenReturn(fields);
         when(capabilities.runningHubDefinition(binding)).thenReturn(new RunningHubDefinition(1,
                 "V2", RunningHubDefinition.TargetType.WORKFLOW, "123456", fields, List.of(), List.of(),
-                "default", false, false, null, null));
+                "default", false, false, null, null, null));
     }
 
     private void draft(ObjectNode parameters, List<MediaDraft.MediaInput> inputs) {

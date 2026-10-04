@@ -65,12 +65,18 @@ public final class RunningHubImportService {
         if (source.has("nodeInfoList")) source = source.path("nodeInfoList");
         rejectCredentials(source);
         List<RunningHubDefinition.Field> fields = new ArrayList<>();
+        List<RunningHubDefinition.NodeOption> nodeOptions = new ArrayList<>();
         List<ApiMessage> warnings = new ArrayList<>();
         warnings.add(ApiMessage.of("api.running-hub-import-service.the-imported-results-are-candidate-fields-please-confirm-the-open"));
         if (type == RunningHubDefinition.TargetType.WORKFLOW) {
             if (!source.isObject()) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.workflow-requires-comfyui-api-format-object"));
             for (var node : source.properties()) {
                 if (!node.getKey().matches("[0-9]{1,32}")) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.invalid-workflow-node-id"));
+                // Preserve names only, never the graph or connected inputs, for the output picker.
+                String title = node.getValue().path("_meta").path("title").asText("").strip();
+                if (title.isBlank()) title = node.getValue().path("class_type").asText("").strip();
+                if (title.isBlank()) title = "节点 " + node.getKey();
+                nodeOptions.add(new RunningHubDefinition.NodeOption(node.getKey(), boundedLabel(title)));
                 for (var input : node.getValue().path("inputs").properties()) {
                     JsonNode value = input.getValue();
                     // Connections, arrays and nested node configurations are never exposed as editable fields.
@@ -119,7 +125,8 @@ public final class RunningHubImportService {
         if (fields.size() > RunningHubDefinition.MAX_FIELDS) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.there-are-more-than-64-fields-please-import-the-selected"));
         RunningHubDefinition definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION, RunningHubDefinition.PROTOCOL_VERSION, type, targetId,
                 List.copyOf(fields), List.of(), List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.valueOf(kind.name().replace("_GENERATION", "")), true, 1)),
-                "default", false, false, null, Sha256.hex(source.toString()));
+                "default", false, false, null, Sha256.hex(source.toString()),
+                type == RunningHubDefinition.TargetType.WORKFLOW ? List.copyOf(nodeOptions) : null);
         definition.validate(kind);
         return new Preview(definition, List.copyOf(warnings));
     }
@@ -133,8 +140,11 @@ public final class RunningHubImportService {
         String label = input.path("description").asText("").strip();
         if (label.isBlank()) label = input.path("nodeName").asText("").strip();
         if (label.isBlank()) label = fieldName;
+        return boundedLabel(label);
+    }
+    private String boundedLabel(String label) {
         if (label.length() <= RunningHubDefinition.MAX_LABEL_LENGTH) return label;
-        // Keep the full description separately and avoid cutting a supplementary character in half.
+        // Avoid cutting a supplementary character in half at the shared display-label limit.
         int end = RunningHubDefinition.MAX_LABEL_LENGTH;
         if (Character.isHighSurrogate(label.charAt(end - 1))) end--;
         return label.substring(0, end);

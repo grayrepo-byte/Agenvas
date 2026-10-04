@@ -79,6 +79,22 @@ class RunningHubImportServiceTest {
         assertThat(preview.definition().fields().get(1).type()).isEqualTo(RunningHubDefinition.FieldType.STRING);
         assertThat(preview.definition().sourceSha256()).hasSize(64);
     }
+    @Test void workflowCatalogRetainsOutputOnlyNodesAndSurvivesContractRoundTripWithoutTheGraph() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
+                mapper.readTree("""
+                    {"6":{"class_type":"Text","inputs":{"text":"draw"}},
+                     "20":{"class_type":"SaveImage","_meta":{"title":"保存图片"},"inputs":{"images":["6",0]}},
+                     "30":{"class_type":"PreviewImage","_meta":{"title":"  "},"inputs":{}}}
+                    """));
+        assertThat(preview.definition().fields()).hasSize(1);
+        assertThat(preview.definition().nodeOptions()).containsExactly(
+                new RunningHubDefinition.NodeOption("6", "Text"),
+                new RunningHubDefinition.NodeOption("20", "保存图片"),
+                new RunningHubDefinition.NodeOption("30", "PreviewImage"));
+        var json = mapper.valueToTree(preview.definition());
+        assertThat(json.toString()).doesNotContain("class_type", "images", "inputs");
+        assertThat(RunningHubDefinition.parse(mapper, json, Task.Kind.IMAGE_GENERATION)).isEqualTo(preview.definition());
+    }
     @Test void appListPreservesValuesAndMediaDefaultsAreNotRemoteUrls() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION, mapper.readTree("""
             [{"nodeId":"1","nodeName":"尺寸","fieldName":"size","fieldType":"LIST","fieldValue":"wide","fieldData":"{\\"options\\":[{\\"label\\":\\"宽屏\\",\\"value\\":\\"wide\\"}]}"},

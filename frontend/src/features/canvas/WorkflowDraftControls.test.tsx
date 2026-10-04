@@ -236,7 +236,7 @@ describe("WorkflowParametersDialog", () => {
 
   it("keeps string limits, integer bounds, source duration bounds and parameter mappings", () => {
     render(<ValuesHarness dialog />);
-    expect(screen.getByRole("textbox", { name: "LoRA" })).toHaveAttribute("maxlength", "20");
+    expect(screen.getByRole("textbox", { name: "附加风格" })).toHaveAttribute("maxlength", "20");
     const seed = screen.getByRole("spinbutton", { name: "种子 *" });
     expect(seed).toHaveAttribute("min", "0");
     expect(seed).toHaveAttribute("max", "100");
@@ -245,8 +245,8 @@ describe("WorkflowParametersDialog", () => {
     expect(seconds).toHaveValue(45);
     expect(seconds).toHaveAttribute("min", "1");
     expect(seconds).toHaveAttribute("max", "60");
-    expect(screen.getByText("10.name")).toBeInTheDocument();
-    expect(screen.getByText("附加风格")).toBeInTheDocument();
+    expect(screen.queryByText("10.name")).not.toBeInTheDocument();
+    expect(screen.getByText("附加风格", { selector: "strong" })).toHaveAttribute("title", "LoRA · 10.name");
   });
 
   it("allows inspecting running-task values but disables every portal control and keeps close usable", async () => {
@@ -256,7 +256,7 @@ describe("WorkflowParametersDialog", () => {
     const dialog = screen.getByRole("dialog", { name: "扩展参数" });
     for (const control of within(dialog).getAllByRole("combobox")) expect(control).toBeDisabled();
     for (const control of within(dialog).getAllByRole("spinbutton")) expect(control).toBeDisabled();
-    expect(screen.getByRole("textbox", { name: "LoRA" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "附加风格" })).toBeDisabled();
     expect(screen.getByRole("spinbutton", { name: "变化强度 *" })).toHaveValue(0.75);
     await clickControl(within(dialog).getByRole("button", { name: "关闭" }));
     expect(close).toHaveBeenCalledWith(false);

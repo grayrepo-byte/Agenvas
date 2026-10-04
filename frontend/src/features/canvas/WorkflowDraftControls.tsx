@@ -8,13 +8,14 @@ import { Dialog } from "../../shared/ui/Dialog";
 import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
 import { Empty, EmptyDescription, EmptyHeader } from "../../shared/ui/primitives/empty";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../shared/ui/primitives/table";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { runningHubFieldValue, type RunningHubChoice, type RunningHubValue } from "./RunningHubForm";
 import { MediaReferenceSourceMenu, type MediaReferenceSource } from "./MediaReferenceSourceMenu";
 import { activeWorkflowMediaFields } from "./workflowDraft";
+import { workflowFieldHint, workflowFieldLabel } from "./workflowFieldPresentation";
 import "./WorkflowDraftControls.css";
 
 const MIN_DURATION_SECONDS = 1;
@@ -212,7 +213,7 @@ function numericBounds(field: RunningHubField) {
 function WorkflowParameterControl({ field, value, disabled, onChange }: {
   field: RunningHubField; value: RunningHubValue | undefined; disabled: boolean; onChange: WorkflowValuesProps["onChange"];
 }) {
-  const label = `${field.label}${field.required ? " *" : ""}`;
+  const label = `${workflowFieldLabel(field)}${field.required ? " *" : ""}`;
   const id = useId();
   let control;
   if (field.type === "SELECT") control = <Select id={id} value={value === undefined ? "" : String(field.options?.findIndex((option) => option.value === value) ?? -1)}
@@ -254,10 +255,10 @@ export function WorkflowParametersDialog({ open, onOpenChange, disabled = false,
     {fields.length ? <Table className="workflow-parameters-table"><TableHeader><TableRow>
       <TableHead>{t("media.workflow.parameter")}</TableHead><TableHead>{t("media.workflow.value")}</TableHead><TableHead>{t("media.workflow.constraints")}</TableHead>
     </TableRow></TableHeader><TableBody>{fields.map((field) => <TableRow key={field.key}>
-      <TableCell><strong>{field.label}{field.required ? " *" : ""}</strong>{field.description ? <FieldDescription>{field.description}</FieldDescription> : null}</TableCell>
+      <TableCell><strong title={workflowFieldHint(field)}>{workflowFieldLabel(field)}{field.required ? " *" : ""}</strong></TableCell>
       <TableCell><WorkflowParameterControl field={field} value={runningHubFieldValue(field, props.values, props.prompt, props.durationSeconds)}
         disabled={disabled} onChange={props.onChange} /></TableCell>
-      <TableCell><span>{parameterConstraints(field)}</span><code title={`${field.nodeId}.${field.fieldName}`}>{field.nodeId}.{field.fieldName}</code></TableCell>
+      <TableCell><span>{parameterConstraints(field)}</span></TableCell>
     </TableRow>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyDescription>{t("media.workflow.noParameters")}</EmptyDescription></EmptyHeader></Empty>}
   </Dialog>;
 }

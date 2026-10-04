@@ -34,7 +34,9 @@ function nodeLabel(nodeId: string, definition: RunningHubDefinition) {
       return `${idLabel}${NODE_LABEL_SEPARATOR}${name}`;
     }
   }
-  return idLabel;
+  const importedName = definition.nodeOptions?.find((node) => node.nodeId === nodeId)?.label.trim();
+  return importedName && !SUPPORTED_LOCALES.some((locale) => importedName === translate(locale, "settings.runningHub.nodeOption", { "0": nodeId }))
+    ? `${idLabel}${NODE_LABEL_SEPARATOR}${importedName}` : idLabel;
 }
 
 /** With several visible nodes, the administrator explicitly chooses where a new binding belongs. */
@@ -76,21 +78,31 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
   const [expandedField, setExpandedField] = useState<number | null>(null);
   // Saved mappings must be visible without rediscovering and replacing the published contract.
   const [nodeSelection, setNodeSelection] = useState<string[]>(() => inputNodeIds(definition));
+  // Legacy definitions may know output IDs that are absent from every input mapping.
+  const [savedOutputNodeIds, setSavedOutputNodeIds] = useState(() => definition.outputs.flatMap((output) => output.nodeId ? [output.nodeId] : []));
   const nodePickerId = useId();
   const nodePickerHintId = useId();
   const executionOptionsId = useId();
   const nodePickerTrigger = useRef<HTMLButtonElement>(null);
   const invalidParameter = useRef<HTMLElement | null>(null);
   const nodeIds = inputNodeIds(definition);
+  // Output-only nodes have no editable input fields. Retain the imported catalog and
+  // saved IDs regardless of the parameter view's selection or removed bindings.
+  const outputNodeIds = [...new Set([
+    ...(definition.nodeOptions ?? []).map((node) => node.nodeId),
+    ...nodeIds, ...savedOutputNodeIds, ...definition.outputs.map((output) => output.nodeId),
+  ].filter((nodeId): nodeId is string => !!nodeId))]
+    .sort((first, second) => first.localeCompare(second, undefined, { numeric: true }));
   const selectedNodes = nodeIds.filter((nodeId) => nodeSelection.includes(nodeId));
   const getNodeLabel = (nodeId: string) => nodeLabel(nodeId, definition);
+  const outputNodeOptions = outputNodeIds.map((nodeId) => ({ nodeId, label: getNodeLabel(nodeId) }));
   const nodeSummary = selectedNodes.map(getNodeLabel).join(NODE_LABEL_SEPARATOR);
   useEffect(() => { if (!value) onChange(emptyDefinition(adapterId)); }, [adapterId, value, onChange]);
   const imported = useMutation({
     mutationFn: () => previewRunningHubImport(connectionId, { targetType: definition.targetType,
       targetId: definition.targetId, kind: adapterId === "RUNNINGHUB_VIDEO" ? "VIDEO_GENERATION" : adapterId === "RUNNINGHUB_AUDIO" ? "AUDIO_GENERATION" : "IMAGE_GENERATION",
       ...(source.trim() ? { source: JSON.parse(source) as unknown } : {}) }),
-    onSuccess: (result) => { onChange(result.definition); setWarnings(result.warnings); setLocalError(""); setPreviewValues({}); setExpandedField(null); setNodeSelection(inputNodeIds(result.definition)); },
+    onSuccess: (result) => { onChange(result.definition); setWarnings(result.warnings); setLocalError(""); setPreviewValues({}); setExpandedField(null); setNodeSelection(inputNodeIds(result.definition)); setSavedOutputNodeIds(result.definition.outputs.flatMap((output) => output.nodeId ? [output.nodeId] : [])); },
   });
   function update(next: RunningHubDefinition) { onChange(next); }
   function revealNode(nodeId: string) { setNodeSelection((selected) => selected.includes(nodeId) ? selected : [...selected, nodeId]); }
@@ -256,7 +268,10 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
       <Table className="runninghub-secondary-table" aria-label={t("settings.runningHub.outputMappings")}>
       <TableHeader><TableRow><TableHead scope="col">{t("settings.runningHub.outputNode")}</TableHead><TableHead scope="col">{t("media.kind")}</TableHead><TableHead scope="col">{t("settings.runningHub.resultLimit")}</TableHead><TableHead scope="col">{t("settings.runningHub.mappingActions")}</TableHead></TableRow></TableHeader><TableBody>
       {definition.outputs.map((output, index) => <TableRow key={index}>
-        <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.outputNode")}</span><Input pattern="[0-9]{1,32}" value={output.nodeId ?? ""} onChange={(event) => update({ ...definition, outputs: definition.outputs.map((item, i) => i === index ? { ...item, nodeId: event.target.value || null } : item) })} /></FieldLabel></Field></TableCell>
+        <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.outputNode")}</span><Select value={output.nodeId ?? ""} onChange={(event) => update({ ...definition, outputs: definition.outputs.map((item, i) => i === index ? { ...item, nodeId: event.target.value || null } : item) })}>
+          <option value="">{t("settings.runningHub.matchOutputKind")}</option>
+          {outputNodeOptions.map(({ nodeId, label }) => <option key={nodeId} value={nodeId}><span className="block max-w-[min(480px,calc(100vw-4rem))] whitespace-normal break-words" title={label}>{label}</span></option>)}
+        </Select></FieldLabel></Field></TableCell>
         <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("media.kind")}</span><Select value={output.kind} onChange={(event) => {
           const kind = event.target.value as OutputKind;
           onChange({ ...definition, outputs: definition.outputs.map((item, i) => i === index ? { ...item, kind } : item) }, output.primary ? kind : undefined);
@@ -266,6 +281,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
       </TableRow>)}
       </TableBody></Table>
       <Button variant="ghost" type="button" disabled={definition.outputs.length >= MAX_OUTPUTS} onClick={() => update({ ...definition, outputs: [...definition.outputs, { kind: "IMAGE", primary: false, maxCount: 1 }] })}>{t("settings.runningHub.addOutputMapping")}</Button>
+      <p className="ui-muted">{t("settings.runningHub.outputNodeHint")}</p>
       <p>{t("settings.runningHub.outputLimitsHint")}</p>
       <p className="ui-muted">{t("settings.runningHub.outputKindChangeHint")}</p>
     </fieldset>

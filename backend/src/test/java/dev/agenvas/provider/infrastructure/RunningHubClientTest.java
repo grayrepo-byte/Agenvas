@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 class RunningHubClientTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private RunningHubDefinition definition(RunningHubDefinition.TargetType type) {
-        return new RunningHubDefinition(1, "V2", type, "123", List.of(), List.of(), List.of(), "default", false, false, null, null);
+        return new RunningHubDefinition(1, "V2", type, "123", List.of(), List.of(), List.of(), "default", false, false, null, null, null);
     }
     @Test void workflowAndAppUseSeparatePathsBearerAndBooleanOptions() throws Exception {
         try (var fixture = new Server(200, "{\"taskId\":\"task-1\",\"status\":\"QUEUED\"}")) {

@@ -4,7 +4,7 @@ import { PlusCircle, type Icon } from "@phosphor-icons/react";
 import { useRef, type PointerEvent } from "react";
 
 /** 图标静止尺寸；悬停与连接态只做 CSS 缩放，不再改这个值。 */
-const HANDLE_ICON_SIZE = 22;
+const HANDLE_ICON_SIZE = 32;
 const HANDLE_HOVER_RADIUS = 28;
 const HANDLE_MAX_OFFSET = 6;
 const HANDLE_FOLLOW_FACTOR = 0.35;

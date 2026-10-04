@@ -6,6 +6,8 @@
 
 <p align="center"><strong>可自托管的 AI 创作画布</strong><br />文字、图片、视频、音频与 Agent，一个工作空间。</p>
 
+<p align="center">Agenvas 希望让个人用户能够使用最低的代价体验商业画布的体验，而不用依赖昂贵的会员或者顶尖的模型，将低价的选择权掌握在自己手中</p>
+
 <p align="center">
   <a href="README.en.md">English</a> ·
   <a href="#快速开始">快速开始</a> ·
@@ -14,7 +16,8 @@
   <a href="LICENSE">MIT</a>
 </p>
 
-> 当前为开发版本，面向单管理员自托管使用。真实模型兼容性与发布验收进度见[开发清单](docs/DEVELOPMENT-CHECKLIST.md)。
+> 当前为开发版本，面向单管理员自托管使用。不保证后续版本的数据兼容
+
 
 ## 功能
 

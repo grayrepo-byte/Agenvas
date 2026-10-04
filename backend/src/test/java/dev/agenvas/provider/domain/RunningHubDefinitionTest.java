@@ -67,6 +67,28 @@ class RunningHubDefinitionTest {
         var schema = schema(); ((ObjectNode) schema.path("outputs").get(0)).put("primary", false);
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("主输出");
     }
+    @Test void optionalNodeCatalogIsBoundedAndNeverRestrictsLegacyOutputMappings() {
+        var schema = schema();
+        assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).nodeOptions()).isNull();
+        var nodes = schema.putArray("nodeOptions");
+        nodes.addObject().put("nodeId", "20").put("label", "保存图片");
+        ((ObjectNode) schema.path("outputs").get(0)).put("nodeId", "99");
+        var parsed = RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION);
+        assertThat(parsed.nodeOptions()).containsExactly(new RunningHubDefinition.NodeOption("20", "保存图片"));
+        assertThat(parsed.outputs().getFirst().nodeId()).isEqualTo("99");
+        for (String invalid : new String[]{
+                "[{\"nodeId\":\"20\",\"label\":\"A\"},{\"nodeId\":\"20\",\"label\":\"B\"}]",
+                "[{\"nodeId\":\"bad\",\"label\":\"A\"}]", "[{\"nodeId\":\"20\",\"label\":\"\"}]",
+                "[{\"nodeId\":\"20\",\"label\":\"A\",\"inputs\":{}}]", "[null]"}) {
+            schema.set("nodeOptions", mapper.readTree(invalid));
+            assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                    .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        }
+        nodes = schema.putArray("nodeOptions");
+        for (int index = 0; index <= RunningHubDefinition.MAX_NODE_OPTIONS; index++) nodes.addObject().put("nodeId", Integer.toString(index)).put("label", "节点");
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+    }
 
     @Test void overlappingOutputsAndCombinedLimitsCannotBePublished() {
         var overlapping = schema();

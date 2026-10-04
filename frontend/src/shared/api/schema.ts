@@ -3756,6 +3756,11 @@ export interface components {
             /** @description Real workflowId/webappId */
             targetId: string;
             sourceSha256?: string | null;
+            /** @description Display-only imported workflow node catalog, including nodes without editable inputs. Does not infer output media types or authorize execution. Older definitions may omit it. */
+            nodeOptions?: {
+                nodeId: string;
+                label: string;
+            }[] | null;
             /** @enum {string|null} */
             instanceType?: "default" | "plus" | "ultra" | null;
             /** @default false */

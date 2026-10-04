@@ -17,10 +17,11 @@ import tools.jackson.databind.node.ObjectNode;
 public record RunningHubDefinition(int schemaVersion, String protocolVersion, TargetType targetType,
         String targetId, List<Field> fields, List<FixedBinding> fixedBindings, List<Output> outputs,
         String instanceType, boolean usePersonalQueue, boolean addMetadata, Integer retainSeconds,
-        String sourceSha256) {
+        String sourceSha256, List<NodeOption> nodeOptions) {
     public static final int SCHEMA_VERSION = 1;
     public static final String PROTOCOL_VERSION = "V2";
     public static final int MAX_FIELDS = 64;
+    public static final int MAX_NODE_OPTIONS = 2048;
     public static final int MAX_OUTPUTS = 16;
     public static final int MAX_TEXT_LENGTH = 20_000;
     public static final int MAX_OPTIONS = 100;
@@ -33,7 +34,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     private static final Set<String> INSTANCES = Set.of("default", "plus", "ultra");
     private static final Set<String> ROOT_FIELDS = Set.of("schemaVersion", "protocolVersion",
             "targetType", "targetId", "fields", "fixedBindings", "outputs", "instanceType",
-            "usePersonalQueue", "addMetadata", "retainSeconds", "sourceSha256");
+            "usePersonalQueue", "addMetadata", "retainSeconds", "sourceSha256", "nodeOptions");
     private static final Set<String> FIELD_FIELDS = Set.of("key", "label", "description", "type",
             "required", "defaultValue", "minimum", "maximum", "maxLength", "options",
             "advanced", "nodeId", "fieldName", "source", "encoding", "resourceFormat", "enabledWhen");
@@ -59,6 +60,9 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     }
     public record FixedBinding(String nodeId, String fieldName, JsonNode value, Encoding encoding) {}
     public record Output(String nodeId, OutputKind kind, boolean primary, int maxCount) {}
+    /** Display-only imported node catalog, including nodes without editable scalar inputs.
+     * It neither authorizes bindings nor determines which nodes actually return media. */
+    public record NodeOption(String nodeId, String label) {}
 
     public static RunningHubDefinition parse(ObjectMapper mapper, JsonNode value, Task.Kind kind) {
         requireObject(value, ROOT_FIELDS);
@@ -71,6 +75,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         }
         for (JsonNode binding : value.path("fixedBindings")) requireObject(binding, Set.of("nodeId", "fieldName", "value", "encoding"));
         for (JsonNode output : value.path("outputs")) requireObject(output, Set.of("nodeId", "kind", "primary", "maxCount"));
+        for (JsonNode node : value.path("nodeOptions")) requireObject(node, Set.of("nodeId", "label"));
         RunningHubDefinition definition;
         ObjectNode normalized = (ObjectNode) value.deepCopy();
         for (String flag : List.of("usePersonalQueue", "addMetadata")) if (!normalized.has(flag)) normalized.put(flag, false);
@@ -95,6 +100,15 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
                 || sourceSha256 != null && !sourceSha256.matches("[0-9a-f]{64}"))
             throw invalid(ApiMessage.of("api.running-hub-definition.invalid-instance-option-or-source-summary"));
         Set<String> bindings = new HashSet<>();
+        if (nodeOptions != null) {
+            if (nodeOptions.size() > MAX_NODE_OPTIONS) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-capability-field-or-output-quantity"));
+            Set<String> nodeIds = new HashSet<>();
+            for (NodeOption node : nodeOptions) {
+                if (node == null || node.nodeId() == null || !node.nodeId().matches("[0-9]{1,32}") || !nodeIds.add(node.nodeId()))
+                    throw invalid(ApiMessage.of("api.running-hub-definition.invalid-output-map"));
+                label(node.label());
+            }
+        }
         validateFields(fields);
         for (Field field : fields) binding(field.nodeId(), field.fieldName(), bindings);
         if (fixedBindings != null) for (FixedBinding fixed : fixedBindings) {

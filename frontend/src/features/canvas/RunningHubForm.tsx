@@ -1,4 +1,4 @@
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { useId, useState } from "react";
 import type { RunningHubDefinition,RunningHubField } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -7,6 +7,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Select } from "../../shared/ui/Select";
+import { workflowFieldHint, workflowFieldLabel } from "./workflowFieldPresentation";
 import "./RunningHubForm.css";
 
 export type RunningHubValue = string | number | boolean;
@@ -30,7 +31,7 @@ export function runningHubErrors(definition: Pick<RunningHubDefinition, "fields"
   for (const field of definition.fields) {
     if (field.enabledWhen && effective[field.enabledWhen.field] !== field.enabledWhen.value) continue;
     const value = effective[field.key];
-    if (value === undefined || value === "") { if (field.required) errors.push(t("media.runningHub.requiredField", { "0": field.label })); continue; }
+    if (value === undefined || value === "") { if (field.required) errors.push(t("media.runningHub.requiredField", { "0": workflowFieldLabel(field) })); continue; }
     const valid = field.type === "STRING" ? typeof value === "string" && value.length <= (field.maxLength ?? 20000)
       : field.type === "BOOLEAN" ? typeof value === "boolean"
       : field.type === "NUMBER" || field.type === "INTEGER" ? typeof value === "number" && Number.isFinite(value)
@@ -38,7 +39,7 @@ export function runningHubErrors(definition: Pick<RunningHubDefinition, "fields"
         && (field.source !== "DURATION_SECONDS" || value >= MIN_DURATION_SECONDS && value <= MAX_DURATION_SECONDS)
       : field.type === "SELECT" ? field.options?.some((option) => option.value === value)
       : choices.some((choice) => choice.id === value && choice.kind === field.type && choice.available);
-    if (!valid) errors.push(t("media.runningHub.invalidValue", { "0": field.label }));
+    if (!valid) errors.push(t("media.runningHub.invalidValue", { "0": workflowFieldLabel(field) }));
   }
   if (Object.keys(values).some((key) => !definition.fields.some((field) => field.key === key))) errors.push(t("media.runningHub.fieldsChanged"));
   return errors;
@@ -57,7 +58,7 @@ function UploadSlot({ field, disabled, onUpload }: { field: RunningHubField; dis
     finally { setBusy(false); }
   }
   return <Field data-disabled={disabled || busy}>
-    <FieldLabel htmlFor={inputId}>{t("media.runningHub.uploadNamed", { "0": field.label })}</FieldLabel><Input id={inputId} type="file" disabled={disabled || busy}
+    <FieldLabel htmlFor={inputId} title={workflowFieldHint(field)}>{t("media.runningHub.uploadNamed", { "0": workflowFieldLabel(field) })}</FieldLabel><Input id={inputId} type="file" disabled={disabled || busy}
       accept={field.type === "IMAGE" ? MEDIA_FILE_ACCEPT.IMAGE : field.type === "VIDEO" ? MEDIA_FILE_ACCEPT.VIDEO : "audio/mpeg,audio/wav,audio/flac"}
       onChange={(event) => { const selected = event.target.files?.[0]; event.target.value = ""; if (selected) void upload(selected); }} />
     {busy ? <p role="status">{t("media.runningHub.uploading")}</p> : null}
@@ -79,11 +80,10 @@ export function RunningHubForm({ definition, values, prompt, durationSeconds, ch
     const value = effective[field.key];
     const isMedia = ["IMAGE", "AUDIO", "VIDEO"].includes(field.type);
     const inputId = `${formId}-${field.key}`;
-    const descriptionId = field.description ? `${inputId}-description` : undefined;
-    const controlProps = { id: inputId, "aria-describedby": descriptionId, disabled };
+    const controlProps = { id: inputId, disabled };
     return <FieldGroup className="runninghub-form-slot" key={field.key}>
       <Field data-disabled={disabled}>
-        <FieldLabel htmlFor={inputId}>{field.label}{field.required ? " *" : ""}</FieldLabel>
+        <FieldLabel htmlFor={inputId} title={workflowFieldHint(field)}>{workflowFieldLabel(field)}{field.required ? " *" : ""}</FieldLabel>
         {isMedia ? <Select {...controlProps} value={typeof value === "string" ? value : ""} onChange={(event) => onChange(field.key, event.target.value || undefined)}>
           <option value="">{t("media.runningHub.selectVersion", { "0": field.type === "IMAGE" ? t("common.image") : field.type === "AUDIO" ? t("common.audio") : t("common.video") })}</option>
           {choices.filter((choice) => choice.kind === field.type).map((choice) => <option key={choice.id} value={choice.id} disabled={!choice.available}>{choice.label}</option>)}
@@ -98,7 +98,6 @@ export function RunningHubForm({ definition, values, prompt, durationSeconds, ch
           min={field.source === "DURATION_SECONDS" ? Math.max(MIN_DURATION_SECONDS, field.minimum ?? MIN_DURATION_SECONDS) : field.minimum ?? undefined}
           max={field.source === "DURATION_SECONDS" ? Math.min(MAX_DURATION_SECONDS, field.maximum ?? MAX_DURATION_SECONDS) : field.maximum ?? undefined} step={field.type === "INTEGER" ? 1 : "any"}
           onChange={(event) => onChange(field.key, event.target.value ? Number(event.target.value) : undefined)} />}
-        {field.description ? <FieldDescription id={descriptionId}>{field.description}</FieldDescription> : null}
       </Field>
       {isMedia && onUpload ? <UploadSlot field={field} disabled={disabled} onUpload={onUpload} /> : null}
     </FieldGroup>;

@@ -380,10 +380,10 @@ button:disabled {
    落点 (--in) 保持 pointer-events: none，靠 connectionRadius 的距离判定成立。 */
 .workspace-shell {
   --canvas-handle-anchor: 4px;
-  --canvas-handle-dot: 22px;
+  --canvas-handle-dot: 32px;
   --canvas-handle-gap: 10px;
-  --canvas-handle-hit-inset: -22px;
-  --canvas-handle-hit-outset: -40px;
+  --canvas-handle-hit-inset: -30px;
+  --canvas-handle-hit-outset: -56px;
   --canvas-handle-hover-scale: 1.09;
   --canvas-handle-invalid: #ff4d4f;
 }

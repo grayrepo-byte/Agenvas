@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import type { RunningHubDefinition } from "../../shared/api/client";
-import { clickControl } from "../../test/controls";
+import { clickControl, selectValue } from "../../test/controls";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 
 const initialDefinition: RunningHubDefinition = {
@@ -53,6 +53,53 @@ const scalarInputs = [
   { label: "条件值（JSON 标量）", error: "显示条件需要有效的 JSON 标量。", getValue: (definition: RunningHubDefinition) => definition.fields[1]?.enabledWhen?.value },
   { label: "固定值（JSON 标量）", error: "固定值需要有效的 JSON 文字、数字或布尔值。", getValue: (definition: RunningHubDefinition) => definition.fixedBindings?.[0]?.value },
 ];
+
+describe("RunningHubDefinitionEditor output node selection", () => {
+  it("selects output-only imported nodes and keeps choices independent of parameter visibility", async () => {
+    const definition: RunningHubDefinition = {
+      ...initialDefinition,
+      nodeOptions: [{ nodeId: "20", label: "保存图片" }, { nodeId: "3", label: "预览图片" }],
+      outputs: [{ kind: "IMAGE", primary: true, maxCount: 2 }, { nodeId: "99", kind: "AUDIO", primary: false, maxCount: 1 }],
+    };
+    await mount(false, definition);
+    await showNodes();
+    const table = screen.getByRole("table", { name: "输出映射" });
+    expect(within(table).queryByRole("textbox")).not.toBeInTheDocument();
+    const [primary, extra] = within(table).getAllByRole("combobox", { name: "输出节点" });
+    expect(extra).toHaveTextContent("节点 99");
+    await clickControl(primary!);
+    expect(screen.getAllByRole("option").map((item) => item.textContent)).toEqual([
+      "按媒体类型匹配（不限节点）", "节点 1 · 模式", "节点 2 · 强度", "节点 3 · 预览图片", "节点 20 · 保存图片", "节点 99",
+    ]);
+    await clickControl(screen.getByRole("option", { name: "节点 20 · 保存图片" }));
+    expect(currentDefinition().outputs).toEqual([{ ...definition.outputs[0], nodeId: "20" }, definition.outputs[1]]);
+    expect(currentDefinition().nodeOptions).toEqual(definition.nodeOptions);
+    await selectValue(primary!, "");
+    expect(currentDefinition().outputs[0]?.nodeId).toBeNull();
+    expect(currentDefinition().outputs[1]).toEqual(definition.outputs[1]);
+  });
+
+  it("adds extra mappings with a node picker and changes only the chosen row", async () => {
+    await mount(false);
+    await clickControl(screen.getByRole("button", { name: "添加额外输出映射" }));
+    const pickers = within(screen.getByRole("table", { name: "输出映射" })).getAllByRole("combobox", { name: "输出节点" });
+    await selectValue(pickers[1]!, "2");
+    expect(currentDefinition().outputs[1]).toEqual({ nodeId: "2", kind: "IMAGE", primary: false, maxCount: 1 });
+    expect(currentDefinition().outputs[0]).toEqual(initialDefinition.outputs[0]);
+    expect(currentDefinition().fields).toEqual(initialDefinition.fields);
+    await clickControl(screen.getByRole("button", { name: "移除额外输出" }));
+    expect(currentDefinition().outputs).toEqual(initialDefinition.outputs);
+  });
+
+  it("retains legacy saved output IDs as choices after changing to another node", async () => {
+    const definition: RunningHubDefinition = { ...initialDefinition, outputs: [{ nodeId: "99", kind: "IMAGE", primary: true, maxCount: 1 }] };
+    await mount(false, definition);
+    const picker = screen.getByRole("combobox", { name: "输出节点" });
+    await selectValue(picker, "2");
+    await selectValue(picker, "99");
+    expect(currentDefinition()).toEqual(definition);
+  });
+});
 
 function inputFor(label: string) {
   const scope = label === "默认值" ? within(screen.getByRole("row", { name: "强度" })) : screen;

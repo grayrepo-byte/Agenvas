@@ -266,9 +266,11 @@ describe("MediaSettingsPage", () => {
       fixedBindings: [{ nodeId: "30", fieldName: "enabled", value: false, encoding: "NATIVE" }],
       outputs: [{ nodeId: "99", kind: "VIDEO", primary: true, maxCount: 2 },
         { nodeId: "100", kind: "AUDIO", primary: false, maxCount: 1 }],
+      nodeOptions: [{ nodeId: "99", label: "原视频输出" }, { nodeId: "101", label: "新视频输出" }],
     };
     const savedDefinition = { ...definition, fields: definition.fields.map((field) => field.key === "prompt"
-      ? { ...field, defaultValue: "修改后的合成提示" } : field) };
+      ? { ...field, defaultValue: "修改后的合成提示" } : field),
+      outputs: definition.outputs.map((output) => output.primary ? { ...output, nodeId: "101" } : output) };
     let fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub" }, {
       adapterId: "RUNNINGHUB_VIDEO", kind: "VIDEO_GENERATION", settings: { runningHub: definition },
     });
@@ -313,12 +315,13 @@ describe("MediaSettingsPage", () => {
     expect(within(dialog).getByRole("textbox", { name: "固定字段" })).toHaveValue("enabled");
     expect(within(dialog).getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue("false");
     const outputs = within(dialog).getByRole("table", { name: "输出映射" });
-    expect(within(outputs).getAllByRole("textbox", { name: "输出节点（留空匹配此类型）" }).map((input) => (input as HTMLInputElement).value)).toEqual(["99", "100"]);
+    expect(within(outputs).getAllByRole("combobox", { name: "输出节点" }).map((input) => (input as HTMLInputElement).value)).toEqual(["99", "100"]);
     expect(within(outputs).getAllByRole("combobox", { name: "媒体类型" }).map((input) => (input as HTMLInputElement).value)).toEqual(["VIDEO", "AUDIO"]);
     expect(within(outputs).getAllByRole("spinbutton", { name: "最多结果数" }).map((input) => (input as HTMLInputElement).value)).toEqual(["2", "1"]);
     expect(discoveryRequests).toEqual([]);
 
     await user.clear(promptDefault); await user.type(promptDefault, "修改后的合成提示");
+    await selectValue(within(outputs).getAllByRole("combobox", { name: "输出节点" })[0]!, "101");
     await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(writes).toEqual([{ expectedVersion: 4, name: "Portrait", enabled: true,
@@ -328,6 +331,10 @@ describe("MediaSettingsPage", () => {
     expect(within(reopened).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 10 · 画面提示 · 节点 20 · 视频时长 · 节点 30");
     expect(within(within(reopened).getByRole("row", { name: "画面提示" })).getByRole("textbox", { name: "默认值" })).toHaveValue("修改后的合成提示");
     expect(within(reopened).getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue("false");
+    expect(within(reopened).getAllByRole("combobox", { name: "输出节点" })[0]).toHaveTextContent("节点 101 · 新视频输出");
+    await clickControl(within(reopened).getAllByRole("combobox", { name: "输出节点" })[0]!);
+    expect(screen.getByRole("option", { name: "节点 99 · 原视频输出" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
     expect(discoveryRequests).toEqual([]);
   });
 

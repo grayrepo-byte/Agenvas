@@ -61,16 +61,24 @@ async function waitFor(fn, ...args) {
 }
 
 async function pointerClick(selector) {
-  await waitFor((target) => {
+  function visiblePoint(target) {
     const element = document.querySelector(target);
     if (!element) return false;
     const bounds = element.getBoundingClientRect();
-    return element.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
-  }, selector);
-  const point = await page((target) => {
-    const bounds = document.querySelector(target).getBoundingClientRect();
-    return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
-  }, selector);
+    const left = Math.max(0, bounds.left), right = Math.min(innerWidth, bounds.right);
+    const top = Math.max(0, bounds.top), bottom = Math.min(innerHeight, bounds.bottom);
+    if (right <= left || bottom <= top) return false;
+    const x = (left + right) / 2;
+    // A wrapped option can be taller than the popup's scroll viewport. Click its
+    // visible portion, accounting for clipping and the select's scroll buttons.
+    const candidates = [(top + bottom) / 2];
+    for (let y = top + 4; y < bottom; y += 8) candidates.push(y);
+    const y = candidates.find((candidate) => element.contains(document.elementFromPoint(x, candidate)));
+    return y === undefined ? false : { x, y };
+  }
+  await waitFor(visiblePoint, selector);
+  const point = await page(visiblePoint, selector);
+  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
   await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
   await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
 }
@@ -167,6 +175,30 @@ try {
     await waitFor(() => !document.querySelector('[role="menu"][aria-label="选择节点"]'));
     assert.equal(await page(() => Boolean(document.querySelector('[role="dialog"]'))),true,"Escape must close only the node menu");
     await waitFor(() => document.activeElement?.getAttribute("aria-label") === "选择节点");
+    const outputPicker = "button[role='combobox'][aria-label='输出节点']";
+    await page((selector) => document.querySelector(selector).scrollIntoView({ block: "center", inline: "center" }), outputPicker);
+    await pointerClick(outputPicker);
+    await waitFor(() => Boolean(document.querySelector('[role="listbox"]')));
+    // Wait for the popup's opening transform before measuring and clicking items.
+    await waitFor(() => document.querySelector('[role="listbox"]').getAnimations({ subtree: true })
+      .every((animation) => animation.playState !== "running"));
+    const bounds = await page(() => {
+      const rect = document.querySelector('[role="listbox"]').getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right };
+    });
+    assert.ok(bounds.top >= 0 && bounds.bottom <= viewport.height && bounds.left >= 0 && bounds.right <= viewport.width,
+      "Output node list must fit in the viewport");
+    await page(() => document.querySelector('[role="option"][data-value="102"]').scrollIntoView({ block: "nearest" }));
+    await pointerClick('[role="option"][data-value="102"]');
+    await waitFor((selector) => document.querySelector(selector).textContent.includes("节点 102 · 保存图片"), outputPicker);
+    assert.equal(await page((selector) => document.querySelector(selector).getAttribute("value"), outputPicker), "102",
+      "Selecting an output-only node must store its exact ID");
+    await pointerClick(outputPicker);
+    await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+    await waitFor(() => !document.querySelector('[role="listbox"]'));
+    await waitFor((selector) => document.activeElement === document.querySelector(selector), outputPicker);
+    assert.equal(await page(() => Boolean(document.querySelector('[role="dialog"]'))), true, "Escape must leave the editor open");
     console.log(JSON.stringify({viewport,before,down,up}));
   }
   console.log("RunningHub node picker mouse wheel regression passed (four production-CSS viewports)");

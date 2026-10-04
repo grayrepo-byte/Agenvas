@@ -20,6 +20,25 @@ function Form() {
     <output>{JSON.stringify(values)}</output></>;
 }
 describe("RunningHubForm", () => {
+  it("uses descriptions to distinguish identical node types in saved contracts, keeping technical names on hover", async () => {
+    const saved: RunningHubDefinition = { ...definition, fields: [
+      { key: "sound", label: "PrimitiveBoolean", description: "是否有声音", type: "BOOLEAN", nodeId: "2", fieldName: "value", required: false, advanced: false, defaultValue: true },
+      { key: "cache", label: "PrimitiveBoolean", description: "如报错就打开这个开关，关闭会变慢", type: "BOOLEAN", nodeId: "3", fieldName: "value", required: false, advanced: false, defaultValue: false },
+      { key: "scale", label: "放大倍数", description: "  ", type: "INTEGER", nodeId: "4", fieldName: "scale", required: true, advanced: false },
+    ] };
+    const changes: Record<string, RunningHubValue | undefined> = {};
+    render(<RunningHubForm definition={saved} values={{}} prompt="" durationSeconds={null} choices={[]}
+      onChange={(key, value) => { changes[key] = value; }} />);
+    expect(screen.queryByText("PrimitiveBoolean")).not.toBeInTheDocument();
+    expect(screen.getByText("是否有声音")).toHaveAttribute("title", "PrimitiveBoolean · 2.value");
+    expect(screen.getByRole("combobox", { name: "是否有声音" })).toHaveValue("true");
+    const cache = screen.getByRole("combobox", { name: "如报错就打开这个开关，关闭会变慢" });
+    expect(cache).toHaveValue("false");
+    await changeControl(cache, { target: { value: "true" } });
+    expect(changes).toEqual({ cache: true });
+    expect(screen.getByRole("spinbutton", { name: "放大倍数 *" })).toBeInTheDocument();
+    expect(runningHubErrors(saved, { sound: "invalid", scale: 2 }, "", null, [])).toEqual(["“是否有声音”的值或素材版本不可用"]);
+  });
   it("renders typed enums and false defaults, conditionally reveals advanced fields and chooses an exact video version", async () => {
     render(<Form />);
     expect(screen.getByRole("combobox", { name: "模式 *" })).toHaveValue("0");

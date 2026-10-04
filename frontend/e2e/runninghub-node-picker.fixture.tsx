@@ -15,6 +15,7 @@ const initial: RunningHubDefinition = {
     key: `reference${index + 1}`, label: `参考图${index + 1}`, type: "IMAGE",
     nodeId: String(index + 1), fieldName: "image", required: false,
   })), outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+  nodeOptions: [{ nodeId: "101", label: "预览图片" }, { nodeId: "102", label: `保存图片 · ${"较长输出节点名称".repeat(18)}` }],
 };
 function Fixture() {
   const [open, setOpen] = useState(false);

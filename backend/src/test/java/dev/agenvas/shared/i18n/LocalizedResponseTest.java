@@ -59,7 +59,7 @@ class LocalizedResponseTest {
         var definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION, RunningHubDefinition.PROTOCOL_VERSION,
                 RunningHubDefinition.TargetType.WORKFLOW, "123", List.of(), List.of(),
                 List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.IMAGE, true, 1)),
-                "default", false, false, null, "source-hash");
+                "default", false, false, null, "source-hash", List.of(new RunningHubDefinition.NodeOption("20", "保存图片")));
         var warning = ApiMessage.of("api.running-hub-import-service.node-field-uses-an-unsupported-mapping-format-and-was-skipped", "6", "用户字段");
         when(service.preview(eq(connectionId), eq(definition.targetType()), eq("123"), eq(Task.Kind.IMAGE_GENERATION), any()))
                 .thenReturn(new RunningHubImportService.Preview(definition, List.of(warning)));
@@ -71,6 +71,9 @@ class LocalizedResponseTest {
             assertThat(response.getBody().warnings()).containsExactly(messages.text(warning, locale));
             assertThat(response.getBody().warnings().getFirst()).contains("6", "用户字段");
             assertThat(mapper.valueToTree(response.getBody()).path("warnings").get(0).isTextual()).isTrue();
+            var nodes = mapper.valueToTree(response.getBody()).path("definition").path("nodeOptions");
+            assertThat(nodes.get(0).path("nodeId").asText()).isEqualTo("20");
+            assertThat(nodes.get(0).path("label").asText()).isEqualTo("保存图片");
         }
     }
 

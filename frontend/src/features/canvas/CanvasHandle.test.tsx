@@ -36,12 +36,13 @@ function showHandle(scale = 1, selector = ".canvas-handle--out") {
   const handle = container.querySelector<HTMLDivElement>(selector)!;
   const home = handle.querySelector<HTMLSpanElement>(".canvas-handle-home")!;
   // jsdom 没有布局；只替换静止 home 的几何，保留真实 React Flow Handle 和指针事件。
-  Object.defineProperty(home, "offsetWidth", { value: 22 });
-  vi.spyOn(home, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 22 * scale, 22 * scale));
+  const size = Number(home.querySelector("svg")!.getAttribute("width"));
+  Object.defineProperty(home, "offsetWidth", { value: size });
+  vi.spyOn(home, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, size * scale, size * scale));
   function move(dx: number, dy: number, init: PointerEventInit = {}) {
     fireEvent.pointerMove(handle, {
-      clientX: 100 + (11 + dx) * scale,
-      clientY: 100 + (11 + dy) * scale,
+      clientX: 100 + (size / 2 + dx) * scale,
+      clientY: 100 + (size / 2 + dy) * scale,
       ...init,
     });
   }

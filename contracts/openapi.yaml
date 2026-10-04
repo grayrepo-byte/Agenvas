@@ -4924,6 +4924,17 @@ components:
         targetType: {type: string, enum: [WORKFLOW, AI_APP]}
         targetId: {type: string, pattern: "^[0-9]{1,32}$", description: Real workflowId/webappId, not API directory SKU.}
         sourceSha256: {type: [string, "null"], pattern: "^[0-9a-f]{64}$"}
+        nodeOptions:
+          type: [array, "null"]
+          maxItems: 2048
+          description: Display-only imported workflow node catalog, including nodes without editable inputs. Does not infer output media types or authorize execution. Older definitions may omit it.
+          items:
+            type: object
+            additionalProperties: false
+            required: [nodeId, label]
+            properties:
+              nodeId: {type: string, pattern: "^[0-9]{1,32}$"}
+              label: {type: string, minLength: 1, maxLength: 160}
         instanceType: {type: [string, "null"], enum: [default, plus, ultra, null]}
         usePersonalQueue: {type: boolean, default: false}
         addMetadata: {type: boolean, default: false}

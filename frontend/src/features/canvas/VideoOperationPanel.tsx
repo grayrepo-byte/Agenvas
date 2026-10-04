@@ -7,6 +7,7 @@ import { MEDIA_FUNCTIONS_QUERY_KEY, videoOperationLabel, videoFunctionChoices, v
 import { estimatedMediaCost } from "../../shared/mediaPricing";
 import { Button } from "../../shared/ui/primitives/button";
 import { RunningHubForm, runningHubErrors, type RunningHubValue } from "./RunningHubForm";
+import "./VideoOperationPanel.css";
 
 type SubmissionInput = Pick<RunVideoOperationRequest, "expectedFunctionVersion" | "expectedCapabilityVersion" | "prompt" | "parameters">;
 
@@ -23,7 +24,7 @@ export function VideoOperationPanel({ operation, sourceVersionId, sourceTitle, b
     ? videoFunctionChoices(settings.data, operation).find(({ capability }) => capability.id === setting.capabilityId) : undefined;
   return <div className="media-operation-panel video-operation-panel nodrag nowheel nopan" role="dialog" aria-label={videoOperationLabel(operation)}>
     <header><strong>{videoOperationLabel(operation)}</strong><Button variant="ghost" type="button" aria-label={t("common.close")} disabled={busy} onClick={onClose}><X size={16} /></Button></header>
-    <p className="ui-muted">{t("media.video.source", { "0": sourceTitle })}</p>
+    <p className="video-operation-source">{t("media.video.source", { "0": sourceTitle })}</p>
     {functions.isPending || settings.isPending ? <p role="status">{t("app.pageLoading")}</p>
       : functions.error || settings.error ? <p role="alert">{(functions.error ?? settings.error)?.message}
         <Button variant="ghost" type="button" onClick={() => { void functions.refetch(); void settings.refetch(); }}>{t("common.retry")}</Button></p>
@@ -53,17 +54,17 @@ function ConfiguredOperation({ operation, sourceVersionId, sourceTitle, settingV
   const errors = definition ? runningHubErrors(definition, fixedValues, typeof prompt === "string" ? prompt : "",
     typeof durationValue === "number" ? durationValue : null, choices) : [];
   return <>
-    <p className="ui-muted">{configured.label}</p>
+    <p className="video-operation-method" title={configured.label}>{configured.capability.name}</p>
     {!definition ? <p>{operation === "DEPTH_MAP" ? t("media.video.depthHint") : t("media.video.audioHint")}</p> : null}
     {formDefinition ? <div className="video-operation-fields"><RunningHubForm definition={formDefinition} values={values} prompt="" durationSeconds={null}
       choices={choices} disabled={busy} onChange={(key, value) => setValues((current) => {
         const next = { ...current }; if (value === undefined) delete next[key]; else next[key] = value; return next;
       })} /></div> : null}
-    <p className="ui-muted">{t("media.video.resultHint")}</p>
-    <p>{definition ? estimatedMediaCost(configured.capability, 1, typeof durationValue === "number" ? durationValue : null) : t("media.video.localCost")}</p>
+    <p className="video-operation-result-hint">{t("media.video.resultHint")}</p>
     {error ? <p role="alert">{error.message}</p> : null}
     {errors.length ? <p role="status">{errors[0]}</p> : null}
-    <footer><Button variant="ghost" type="button" className="is-primary" disabled={busy || errors.length > 0}
+    <footer><p className="video-operation-cost">{definition ? estimatedMediaCost(configured.capability, 1, typeof durationValue === "number" ? durationValue : null) : t("media.video.localCost")}</p>
+      <Button variant="ghost" type="button" className="is-primary" disabled={busy || errors.length > 0}
       onClick={() => {
         onSubmit({ expectedFunctionVersion: settingVersion, expectedCapabilityVersion: configured.capability.capabilityVersion, prompt: typeof prompt === "string" ? prompt : "",
           parameters: definition ? { dynamicValues: fixedValues } : {} });

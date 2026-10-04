@@ -1,0 +1,18 @@
+.media-operation-panel.video-operation-panel { gap: var(--ui-space-3); }
+.video-operation-panel .video-operation-source { overflow-wrap: anywhere; }
+.video-operation-panel .video-operation-method { color: var(--ui-text); font-size: var(--ui-text-sm); font-weight: 500; overflow-wrap: anywhere; }
+.video-operation-panel .video-operation-fields { padding-block: var(--ui-space-3); border-block: 1px solid var(--ui-border); }
+.video-operation-fields .runninghub-form { gap: var(--ui-space-4); }
+.video-operation-fields [data-slot="field-label"] { font-size: var(--ui-text-sm); font-weight: 500; line-height: 1.5; white-space: normal; }
+/* Toolbar action styles also reach nested Select buttons; parameter controls need their own surface. */
+.artifact-card-toolbar .video-operation-fields [data-slot="select-trigger"] {
+  width: 100%; min-width: 0; height: var(--ui-control-height); justify-content: space-between;
+  padding: 0 var(--ui-space-3); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md);
+  background: var(--ui-field); color: var(--ui-text); font-size: var(--ui-text-sm); font-weight: 400;
+}
+.artifact-card-toolbar .video-operation-fields [data-slot="select-trigger"]:hover:not(:disabled) { background: var(--ui-hover); }
+.video-operation-fields [data-slot="select-value"] { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.video-operation-panel .video-operation-result-hint { font-size: var(--ui-text-xs); line-height: 1.5; }
+.media-operation-panel.video-operation-panel footer { align-items: center; justify-content: space-between; gap: var(--ui-space-3); padding-top: var(--ui-space-2); }
+.video-operation-panel .video-operation-cost { min-width: 0; margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-xs); overflow-wrap: anywhere; }
+.video-operation-panel footer button { flex: none; }
