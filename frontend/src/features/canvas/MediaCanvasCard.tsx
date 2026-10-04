@@ -4,6 +4,7 @@ ArrowsOutSimple,
 Buildings,CaretDown,
 CopySimple,
 Crop,Cube,
+HighDefinition,
 DownloadSimple,
 Eraser,Image as ImageIcon,
 MagicWand,
@@ -19,8 +20,8 @@ import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState,type ReactNode } from "react";
 import {
 ApiError,assetContentUrl,assetThumbnailUrl,getMediaSettings,listDirectMediaTasks,
-runImageOperation,type Artifact,type CanvasItem,type MediaCapability,
-type RunImageOperationRequest,type Task
+runImageOperation,runVideoOperation,type Artifact,type CanvasItem,type MediaCapability,
+type RunImageOperationRequest,type RunVideoOperationRequest,type VideoOperation,type Task
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
@@ -44,6 +45,7 @@ import { MediaVersionPicker } from "./MediaVersionPicker";
 import { RelightPanel } from "./RelightPanel";
 import { SmartEditDialog } from "./SmartEditDialog";
 import { taskErrorMessage } from "./taskErrorMessages";
+import { VideoOperationPanel } from "./VideoOperationPanel";
 import { VideoPreview } from "./VideoPreview";
 
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
@@ -98,6 +100,8 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const [menuOpen, setMenuOpen] = useState(false);
   const [threeViewMenuOpen, setThreeViewMenuOpen] = useState(false);
   const [operationOpen, setOperationOpen] = useState<ImageTool | null>(null);
+  const [videoOperationOpen, setVideoOperationOpen] = useState<VideoOperation | null>(null);
+  const videoCommand = useRef<{ payload: string; key: string; input: RunVideoOperationRequest } | null>(null);
   const [threeViewType, setThreeViewType] = useState<ThreeViewType | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
@@ -122,6 +126,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const demo = Boolean(parameters && typeof parameters === "object" && "mock" in parameters && parameters.mock === true);
   const isImage = artifact.kind === "IMAGE";
   const isAudio = artifact.kind === "AUDIO";
+  const isVideo = artifact.kind === "VIDEO";
   const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, isImage || artifact.kind === "VIDEO" ? assetId : null));
   const settings = useQuery({ queryKey: ["media-settings"], queryFn: getMediaSettings,
     enabled: isImage && Boolean(assetId) });
@@ -144,7 +149,25 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     },
   });
   const toolbarActive = selected && toolbarVisible !== false;
+  const videoOperation = useMutation({
+    mutationFn: (input: RunVideoOperationRequest) => {
+      // A layout save after an uncertain response must replay the original command.
+      const payload = JSON.stringify({ ...input, expectedCanvasItemVersion: undefined });
+      if (videoCommand.current?.payload !== payload) videoCommand.current = { payload, key: crypto.randomUUID(), input };
+      return runVideoOperation(artifact.projectId, artifact.id, videoCommand.current.input, videoCommand.current.key);
+    },
+    onSuccess: async () => {
+      videoCommand.current = null;
+      setVideoOperationOpen(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["direct-media-tasks", artifact.projectId] }),
+      ]);
+    },
+  });
   const { isPending: operationPending, reset: resetOperation } = operation;
+  const { isPending: videoPending, reset: resetVideoOperation } = videoOperation;
 
   useEffect(() => {
     if (toolbarActive) return;
@@ -152,10 +175,12 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     setMenuOpen(false);
     setThreeViewMenuOpen(false);
     setOperationOpen(null);
+    setVideoOperationOpen(null);
     setThreeViewType(null);
     // Keep tracking an in-flight submission even after its panel is dismissed.
     if (!operationPending) resetOperation();
-  }, [toolbarActive, operationPending, resetOperation]);
+    if (!videoPending) resetVideoOperation();
+  }, [toolbarActive, operationPending, resetOperation, videoPending, resetVideoOperation]);
 
   function runOperation(name: ImageOperation, parameters: RunImageOperationRequest["parameters"] = {},
       instruction?: string, capabilityId?: string | null,
@@ -180,7 +205,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     titleIcon={isImage ? <ImageIcon size={16} /> : isAudio ? <MusicNotes size={16} /> : <VideoCamera size={16} />}
     className={isAudio && assetId ? "audio-canvas-card" : undefined}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible}
-    toolbarRaised={menuOpen || operationOpen !== null}
+    toolbarRaised={menuOpen || operationOpen !== null || videoOperationOpen !== null}
     editableTitle={{ projectId: artifact.projectId, item }}
     toolbarLabel={t("media.card.toolbarLabel")} toolbar={<>
         <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={!assetId} />
@@ -243,6 +268,29 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
               error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
               onSubmit={(operationParameters, instruction, capabilityId) =>
                 runOperation(operationOpen, operationParameters, instruction, capabilityId)} /> : null}
+        </> : null}
+        {isVideo ? <>
+          <span className="media-toolbar-divider" aria-hidden="true" />
+          <Button variant="ghost" type="button" disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending}
+            onClick={() => { videoOperation.reset(); setVideoOperationOpen("UPSCALE"); }}><HighDefinition size={17} />{t("media.video.upscale")}</Button>
+          <span className="media-toolbar-divider" aria-hidden="true" />
+          <Button variant="ghost" type="button" disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending}
+            onClick={() => { videoOperation.reset(); setVideoOperationOpen("DEPTH_MAP"); }}><Stack size={17} />{t("media.card.extractDepth")}</Button>
+          <span className="media-toolbar-divider" aria-hidden="true" />
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
+            <DropdownMenuTrigger asChild><Button variant="ghost" type="button"><MagicWand size={17} />{t("media.video.edit")}<CaretDown size={14} /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent aria-label={t("media.video.editTools")} className="w-max p-2 nodrag nowheel nopan"><DropdownMenuGroup>
+              <DropdownMenuItem className="py-2" disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending}
+                onSelect={() => { setMenuOpen(false); videoOperation.reset(); setVideoOperationOpen("EXTRACT_AUDIO"); }}>
+                <MusicNotes size={17} /><span>{t("media.video.extractAudio")}</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup></DropdownMenuContent>
+          </DropdownMenu>
+          {videoOperationOpen && item.selectedVersionId ? <VideoOperationPanel operation={videoOperationOpen}
+            sourceVersionId={item.selectedVersionId} sourceTitle={item.title} busy={videoPending} error={videoOperation.error}
+            onClose={() => { setVideoOperationOpen(null); videoOperation.reset(); }}
+            onSubmit={(input) => videoOperation.mutate({ ...input, operation: videoOperationOpen,
+              canvasItemId: item.id, sourceVersionId: item.selectedVersionId ?? "", expectedCanvasItemVersion: item.version })} /> : null}
         </> : null}
         {isAudio && assetId && onMakeMV ? <Button variant="ghost" type="button" onClick={onMakeMV}><VideoCamera size={17} />{t("media.card.musicVideo")}</Button> : null}
         <Button variant="ghost" type="button" onClick={onEdit} title={t("media.card.regenerateHint")}>

@@ -4,11 +4,13 @@ import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/rea
 import { http,HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { beforeEach,describe,expect,it,vi } from "vitest";
+import { MemoryRouter } from "react-router";
 import { createQueryClient } from "../../app/queryClient";
 import type { Artifact,CanvasItem } from "../../shared/api/client";
-import { changeControl,clickControl } from "../../test/controls";
+import { changeControl,clickControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { MediaCanvasCard } from "./MediaCanvasCard";
+import { videoFunctionsFixture } from "../../test/videoFunctionsFixture";
 
 // React Flow positions the toolbar; this component test exercises its actual controls and media state.
 vi.mock("@xyflow/react", () => ({ Position: { Top: "top" },
@@ -33,10 +35,10 @@ function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   const card = (selected: boolean, toolbarVisible = true) => <QueryClientProvider client={client}>
-    <div onClick={onCardClick}>
+    <MemoryRouter><div onClick={onCardClick}>
       <MediaCanvasCard artifact={shownArtifact} item={shownItem} selected={selected}
         toolbarVisible={toolbarVisible} locked={false} onEdit={onEdit}>{null}</MediaCanvasCard>
-    </div>
+    </div></MemoryRouter>
   </QueryClientProvider>;
   const view = render(card(true));
   return { onEdit, onCardClick, client,
@@ -45,6 +47,89 @@ function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
 }
 
 describe("MediaCanvasCard", () => {
+  describe("video tools", () => {
+    beforeEach(() => {
+      server.use(
+        http.get("/api/v1/settings/media-functions", () => HttpResponse.json([
+          { operation: "UPSCALE", capabilityId: null, version: 0 },
+          { operation: "DEPTH_MAP", capabilityId: "depth-cap", version: 2 },
+          { operation: "EXTRACT_AUDIO", capabilityId: "audio-cap", version: 1 },
+        ])),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json(videoFunctionsFixture())),
+        http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode: "RESULT", version: 0 })),
+        http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      );
+    });
+    function showVideo() {
+      return showCard({ ...artifact, kind: "VIDEO", resourceDefaultVersionId: "video-version", resourceDefaultVersion: {
+        id: "video-version", versionNo: 1, schemaVersion: 1, content: { sourceType: "UPLOAD", assetId: "video-asset" },
+        inputReferences: [], createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+      } });
+    }
+
+    it("provides an explicit configuration entry for unconfigured AI upscale", async () => {
+      showVideo();
+      await clickControl(screen.getByRole("button", { name: "视频高清" }));
+      const panel = await screen.findByRole("dialog", { name: "视频高清" });
+      expect(await within(panel).findByRole("link", { name: "功能设置" })).toHaveAttribute("href", "/settings/functions");
+      expect(within(panel).queryByRole("button", { name: "开始处理" })).not.toBeInTheDocument();
+    });
+
+    it("pins the video and configured function version when extracting depth", async () => {
+      let request: unknown;
+      server.use(http.post("/api/v1/projects/project-1/artifacts/image-1/video-operations", async ({ request: incoming }) => {
+        request = await incoming.json(); return HttpResponse.json({ id: "depth", status: "READY" });
+      }));
+      showVideo();
+      await clickControl(screen.getByRole("button", { name: "深度提取" }));
+      await clickControl(await screen.findByRole("button", { name: "开始处理" }));
+      await waitFor(() => expect(request).toEqual({ operation: "DEPTH_MAP", canvasItemId: "item-1", sourceVersionId: "video-version",
+        expectedCanvasItemVersion: 0, expectedFunctionVersion: 2, expectedCapabilityVersion: 1, prompt: "", parameters: {} }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("uses the configured AI upscale contract and submits its visible scale", async () => {
+      let request: unknown;
+      server.use(
+        http.get("/api/v1/settings/media-functions", () => HttpResponse.json([
+          { operation: "UPSCALE", capabilityId: "upscale-cap", version: 5 },
+        ])),
+        http.post("/api/v1/projects/project-1/artifacts/image-1/video-operations", async ({ request: incoming }) => {
+          request = await incoming.json(); return HttpResponse.json({ id: "upscale", status: "READY" });
+        }),
+      );
+      showVideo();
+      await clickControl(screen.getByRole("button", { name: "视频高清" }));
+      const panel = await screen.findByRole("dialog", { name: "视频高清" });
+      await selectValue(await within(panel).findByRole("combobox", { name: /放大倍数/ }), "1");
+      await clickControl(within(panel).getByRole("button", { name: "开始处理" }));
+      await waitFor(() => expect(request).toEqual({ operation: "UPSCALE", canvasItemId: "item-1", sourceVersionId: "video-version",
+        expectedCanvasItemVersion: 0, expectedFunctionVersion: 5, expectedCapabilityVersion: 1, prompt: "",
+        parameters: { dynamicValues: { video: "video-version", scale: 4 } } }));
+    });
+
+    it("places audio extraction in Edit and reuses the command key after an uncertain HTTP response", async () => {
+      const keys: (string | null)[] = [];
+      const requests: unknown[] = [];
+      server.use(http.post("/api/v1/projects/project-1/artifacts/image-1/video-operations", async ({ request }) => {
+        keys.push(request.headers.get("Idempotency-Key"));
+        requests.push(await request.json());
+        return keys.length === 1 ? HttpResponse.json({ title: "暂时无法读取响应", code: "TEMPORARY_FAILURE", detail: "暂时无法读取响应" }, { status: 503, headers: { "Content-Type": "application/problem+json" } })
+          : HttpResponse.json({ id: "audio", status: "READY" });
+      }));
+      const view = showVideo();
+      expect(screen.queryByRole("button", { name: "音频分离" })).not.toBeInTheDocument();
+      await clickControl(screen.getByRole("button", { name: "编辑" }));
+      await clickControl(screen.getByRole("menuitem", { name: "音频分离" }));
+      await clickControl(await screen.findByRole("button", { name: "开始处理" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法读取响应");
+      act(() => view.setItem({ ...itemFor(artifact), selectedVersionId: "video-version", version: 1 }));
+      await clickControl(screen.getByRole("button", { name: "开始处理" }));
+      await waitFor(() => expect(keys).toHaveLength(2));
+      expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
+      expect(requests[1]).toEqual(requests[0]);
+    });
+  });
   it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("offers the saved %s result instead of another generation on an empty node", async (kind) => {
     server.use(
       http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
@@ -123,7 +208,7 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
         { id: "completed-task", status: "SUCCEEDED", output: { selected: false }, createdAt: artifact.createdAt },
       ])),
-      http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", () => HttpResponse.json({}, { status: 503 })),
+      http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", () => HttpResponse.json({}, { status: 503, headers: { "Content-Type": "application/problem+json" } })),
     );
     showCard({ ...artifact, kind: "VIDEO" });
     expect(await screen.findByRole("button", { name: "重试读取" })).toBeVisible();
@@ -752,7 +837,7 @@ describe("MediaCanvasCard", () => {
         projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
       })),
       http.get("/api/v1/projects/project-1/assets/image-asset", () => metadataFailed
-        ? HttpResponse.json({ detail: "Unavailable" }, { status: 503 })
+        ? HttpResponse.json({ detail: "Unavailable" }, { status: 503, headers: { "Content-Type": "application/problem+json" } })
         : HttpResponse.json({ id: "image-asset", width: 2400, height: 1600 })),
     );
     showCard({ ...artifact, kind, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {

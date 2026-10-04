@@ -504,7 +504,7 @@ public class MediaCapabilityService {
             UUID capabilityId) {
         Task.Kind mediaKind = requireMediaKind(kind);
         Snapshot snapshot = enabledSnapshot(capabilityId);
-        if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(snapshot.adapterId())) {
+        if (MediaAdapterRegistry.localProcessor(snapshot.adapterId())) {
             throw invalid(ApiMessage.of("api.media-capability-service.local-image-processing-capabilities-cannot-be-set-as-the-default"));
         }
         if (registry.declaration(snapshot.adapterId()).kind() != mediaKind) {
@@ -551,8 +551,7 @@ public class MediaCapabilityService {
                 .flatMap(connection -> repository.capabilities(connection.id()).stream())
                 .filter(Capability::enabled)
                 .map(capability -> repository.snapshot(capability.id()).orElseThrow())
-                .filter(snapshot -> !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(
-                        snapshot.adapterId()));
+                .filter(snapshot -> !MediaAdapterRegistry.localProcessor(snapshot.adapterId()));
     }
 
     private Candidate candidate(Snapshot snapshot, MediaAdapterRegistry.Declaration policy) {

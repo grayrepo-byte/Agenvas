@@ -1,8 +1,11 @@
 package dev.agenvas.task.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -51,36 +54,41 @@ class ImageOperationSpecTest {
 
     @Test
     void buildsProviderInstructionsForEveryNewAiOperation() {
-        ObjectNode ratio = mapper.createObjectNode().put("aspectRatio", "16:9")
-                .put("threeViewType", "CHARACTER");
         ObjectNode foreground = mapper.createObjectNode().put("layerTarget", "FOREGROUND");
         ObjectNode angle = mapper.createObjectNode().put("viewAngle", "RIGHT_PROFILE");
 
-        assertThat(parse(ImageOperation.THREE_VIEW, ratio).prompt("red dress"))
-                .contains("full-body character turnaround", "straight front", "exact side profile",
-                        "straight back", "red dress");
-        assertThat(parse(ImageOperation.THREE_VIEW,
-                ratio.put("threeViewType", "FACE")).prompt("same person"))
-                .contains("facial turnaround", "three-quarter", "side profile", "same person");
-        assertThat(parse(ImageOperation.THREE_VIEW,
-                ratio.put("threeViewType", "PROP")).prompt("antique sword"))
-                .contains("prop turnaround", "orthographic views", "antique sword");
-        assertThat(parse(ImageOperation.THREE_VIEW,
-                ratio.put("threeViewType", "SCENE_GRID")).prompt("empty courtyard"))
-                .contains("2 by 2 environment reference grid", "reverse view", "key-detail view",
-                        "empty courtyard");
-        assertThat(parse(ImageOperation.THREE_VIEW, ratio).resultLabel())
-                .isEqualTo("场景宫格图");
-        assertThat(parse(ImageOperation.LAYER_SPLIT, foreground).prompt("main person"))
+        assertThat(parse(ImageOperation.LAYER_SPLIT, foreground).prompt("main person", null))
                 .contains("fully transparent background", "main person");
         assertThat(parse(ImageOperation.EXPRESSION_EDIT,
-                mapper.createObjectNode()).prompt("gentle smile")).contains("facial expression", "gentle smile");
+                mapper.createObjectNode()).prompt("gentle smile", null)).contains("facial expression", "gentle smile");
         assertThat(parse(ImageOperation.REMOVE_BACKGROUND,
-                mapper.createObjectNode()).prompt("keep flowers")).contains("fully transparent background", "keep flowers");
+                mapper.createObjectNode()).prompt("keep flowers", null)).contains("fully transparent background", "keep flowers");
         assertThat(parse(ImageOperation.OBJECT_REMOVE,
-                mapper.createObjectNode()).prompt("right-hand person")).contains("reconstruct", "right-hand person");
-        assertThat(parse(ImageOperation.VIEW_ANGLE, angle).prompt("same framing"))
+                mapper.createObjectNode()).prompt("right-hand person", null)).contains("reconstruct", "right-hand person");
+        assertThat(parse(ImageOperation.VIEW_ANGLE, angle).prompt("same framing", null))
                 .contains("right profile view", "same framing");
+        assertThat(parse(ImageOperation.LAYER_SPLIT, foreground).promptKey()).isNull();
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "CHARACTER, image.three-view.character, 角色三视图",
+            "FACE, image.three-view.face, 脸部三视图",
+            "PROP, image.three-view.prop, 道具三视图",
+            "SCENE_GRID, image.three-view.scene-grid, 场景宫格图"
+    })
+    void usesManagedContentForEachTypeAndAppendsOnlyNonBlankSubjectGuidance(
+            String type, String key, String label) {
+        var spec = parse(ImageOperation.THREE_VIEW, mapper.createObjectNode()
+                .put("aspectRatio", "16:9").put("threeViewType", type));
+        String managedContent = "Synthetic custom instruction for " + type;
+        assertThat(spec.promptKey()).isEqualTo(key);
+        assertThat(spec.resultLabel()).isEqualTo(label);
+        assertThat(spec.prompt("retain accessories", managedContent))
+                .isEqualTo(managedContent + " Subject guidance: retain accessories");
+        assertThat(spec.prompt("", managedContent)).isEqualTo(managedContent);
+        assertThat(spec.prompt("  ", managedContent)).isEqualTo(managedContent);
+        assertThatThrownBy(() -> spec.prompt("", null)).isInstanceOf(NullPointerException.class);
     }
 
     private ImageOperationSpec parse(ImageOperation operation, ObjectNode parameters) {

@@ -654,6 +654,10 @@ button:disabled {
 .media-operation-panel .media-three-view-types label.is-selected small { color: var(--ui-text-secondary); }
 .media-operation-panel > p { margin: 0; color: #ff9aa1; font-size: 11px; line-height: 1.4; }
 .media-operation-panel footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+.video-operation-panel { width: min(400px, calc(100vw - 48px)); max-height: calc(100vh - 160px); overflow-y: auto; }
+.video-operation-panel > p { color: var(--ui-text-secondary); }
+.video-operation-panel > [role="alert"] { color: var(--ui-danger); }
+.video-operation-fields { min-width: 0; }
 .artifact-card-toolbar .media-operation-panel footer button { height: 34px; border-radius: 9px; background: #333; }
 .artifact-card-toolbar .media-operation-panel footer button.is-primary { background: var(--ui-accent); color: var(--ui-accent-foreground); }
 .artifact-card-toolbar .media-operation-panel footer button.is-primary:hover:not(:disabled) { background: var(--ui-accent-hover); }
@@ -1110,3 +1114,5 @@ button:disabled {
 .media-version-menu {    width: 230px; max-height: 320px; }
 
 .media-version-menu > button { justify-content: space-between; }
+
+.media-toolbar-divider { width: 1px; height: 24px; flex: 0 0 1px; margin: 0 4px; background: var(--ui-border-strong); }

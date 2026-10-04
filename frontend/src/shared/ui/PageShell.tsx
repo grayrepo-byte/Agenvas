@@ -18,6 +18,7 @@ const NAVIGATION = [
   { to: "/skills", get label() { return t("skills.title"); }, icon: Sparkle },
   { to: "/settings/providers", get label() { return t("settings.providerTitle"); }, icon: PlugsConnected },
   { to: "/settings/media", get label() { return t("ui.pageShell.mediaSettings"); }, icon: FilmStrip },
+  { to: "/settings/functions", get label() { return t("media.functions.title"); }, icon: Sparkle },
   { to: "/settings/storage", get label() { return t("settings.storage.title"); }, icon: HardDrives },
   { to: "/settings/calls", get label() { return t("common.callLogs"); }, icon: ListMagnifyingGlass },
   { to: "/settings/logs", get label() { return t("settings.systemLogs.title"); }, icon: TerminalWindow },

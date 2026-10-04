@@ -8,6 +8,8 @@ export const mediaAdapters = {
   RUNNINGHUB_AUDIO: { get label() { return t("settings.adapters.runningHubAudio"); }, kind: "AUDIO_GENERATION", references: 14, minimum: 0, maximum: 0 },
   AUTODL_COMFY_VIDEO: { get label() { return t("settings.adapters.autoDl"); }, kind: "VIDEO_GENERATION", references: 9, minimum: 1, maximum: 15 },
   LOCAL_IMAGE_PROCESSOR: { get label() { return t("settings.adapters.localImage"); }, kind: "IMAGE_GENERATION", references: 1, minimum: 0, maximum: 0 },
+  LOCAL_VIDEO_PROCESSOR: { get label() { return t("settings.adapters.localVideoDepth"); }, kind: "VIDEO_GENERATION", references: 0, minimum: 0, maximum: 30 },
+  LOCAL_VIDEO_AUDIO_EXTRACTOR: { get label() { return t("settings.adapters.localVideoAudio"); }, kind: "AUDIO_GENERATION", references: 0, minimum: 0, maximum: 0 },
   MOCK_IMAGE: { get label() { return t("settings.adapters.mockImage"); }, kind: "IMAGE_GENERATION", references: 4, minimum: 0, maximum: 0 },
   MOCK_AUDIO: { get label() { return t("settings.adapters.mockAudio"); }, kind: "AUDIO_GENERATION", references: 1, minimum: 0, maximum: 0 },
   VOLC_SEED_AUDIO_1: { get label() { return t("settings.adapters.seedAudio"); }, model: "seed-audio-1.0", kind: "AUDIO_GENERATION", references: 1, minimum: 0, maximum: 0 },

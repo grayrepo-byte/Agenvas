@@ -27,6 +27,7 @@ import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.settings.application.MediaStyleService;
+import dev.agenvas.settings.application.PromptService;
 import dev.agenvas.task.domain.ImageOperation;
 import dev.agenvas.task.domain.ImageOperationSpec;
 import dev.agenvas.usage.application.UsageService;
@@ -55,7 +56,7 @@ public class DirectMediaTaskService {
     private static final int MAX_COMMAND_KEY_LENGTH = 160;
     private static final int MAX_IMAGE_OPERATION_INSTRUCTION_LENGTH = 4000;
     private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 5;
-    private static final int IMAGE_OPERATION_INPUT_SCHEMA_VERSION = 6;
+    private static final int IMAGE_OPERATION_INPUT_SCHEMA_VERSION = 7;
     private static final int TASK_EVENT_SCHEMA_VERSION = 1;
     private static final int BATCH_KEY_DIGEST_LENGTH = 32;
     private static final String LOCAL_COST_SOURCE = "LOCAL_NO_COST";
@@ -79,6 +80,7 @@ public class DirectMediaTaskService {
     private final ProjectService projects;
     private final AgentRunService runs;
     private final MediaStyleService styles;
+    private final PromptService prompts;
     private final dev.agenvas.asset.storage.MediaRelayService relay;
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
@@ -86,7 +88,8 @@ public class DirectMediaTaskService {
             CanvasService canvas,
             MediaCapabilityService capabilities,
             ProjectEventService events, UsageService usage,
-            ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles, dev.agenvas.asset.storage.MediaRelayService relay) {
+            ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles, dev.agenvas.asset.storage.MediaRelayService relay,
+            PromptService prompts) {
         this.tasks = tasks;
         this.drafts = drafts;
         this.artifacts = artifacts;
@@ -102,6 +105,7 @@ public class DirectMediaTaskService {
         this.runs = runs;
         this.styles = styles;
         this.relay = relay;
+        this.prompts = prompts;
     }
 
     @Transactional
@@ -355,7 +359,7 @@ public class DirectMediaTaskService {
         int seconds = kind == Task.Kind.VIDEO_GENERATION && duration != null ? duration : 0;
         MediaCapabilityBinding binding = capabilities.resolve(selected.capabilityId(), kind, seconds);
         if (!selected.equals(binding)) throw conflict(ApiMessage.of("api.direct-media-task-service.the-media-configuration-has-changed-please-refresh-and-try-again"));
-        if (MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {
+        if (MediaAdapterRegistry.localProcessor(binding.adapterId())) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.local-image-processing-capabilities-can-only-be-used-from-the"));
         }
         ObjectNode dynamicParameters = null;
@@ -645,7 +649,12 @@ public class DirectMediaTaskService {
             if (transparentOutput && !inputPolicy.supportsTransparentBackground()) {
                 throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-transparent-background"));
             }
-            String prompt = operationSpec.prompt(normalizedInstruction);
+            // Read only on first acceptance: replay and Workers keep the original frozen content.
+            String promptKey = operationSpec.promptKey();
+            PromptService.Prompt functionPrompt = promptKey == null ? null
+                    : prompts.require(promptKey, PromptService.Kind.FUNCTION);
+            String prompt = operationSpec.prompt(normalizedInstruction,
+                    functionPrompt == null ? null : functionPrompt.content());
             if (!referenceVersions.isEmpty()) {
                 prompt += " Image 1 is the source to edit. Images 2 through "
                         + (referenceVersions.size() + 1)
@@ -673,6 +682,10 @@ public class DirectMediaTaskService {
             input.put("resultDraftVersion", drafts.get(ownerId, projectId, outputCard.id()).version());
             input.put("parentVersionId", sourceVersionId.toString());
             input.put("prompt", prompt);
+            if (functionPrompt != null) {
+                input.put("promptKey", functionPrompt.key());
+                input.put("promptVersion", functionPrompt.version());
+            }
             JsonNode operationSettings = capabilities.settings(binding);
             if (operationSettings.has("pricing")
                     && !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())) {

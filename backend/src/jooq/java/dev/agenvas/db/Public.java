@@ -42,6 +42,7 @@ import dev.agenvas.db.tables.MediaCapabilityVersion;
 import dev.agenvas.db.tables.MediaConnectionCreateKey;
 import dev.agenvas.db.tables.MediaDefault;
 import dev.agenvas.db.tables.MediaDraft;
+import dev.agenvas.db.tables.MediaFunctionSetting;
 import dev.agenvas.db.tables.MediaProviderConnection;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion;
 import dev.agenvas.db.tables.MediaRelayObject;
@@ -286,6 +287,12 @@ public class Public extends SchemaImpl {
     public final MediaDraft MEDIA_DRAFT = MediaDraft.MEDIA_DRAFT;
 
     /**
+     * Administrator-selected video processing capabilities, independent of
+     * generation defaults
+     */
+    public final MediaFunctionSetting MEDIA_FUNCTION_SETTING = MediaFunctionSetting.MEDIA_FUNCTION_SETTING;
+
+    /**
      * 管理员媒体连接身份、平台和当前不可变连接版本
      */
     public final MediaProviderConnection MEDIA_PROVIDER_CONNECTION = MediaProviderConnection.MEDIA_PROVIDER_CONNECTION;
@@ -495,6 +502,7 @@ public class Public extends SchemaImpl {
             MediaConnectionCreateKey.MEDIA_CONNECTION_CREATE_KEY,
             MediaDefault.MEDIA_DEFAULT,
             MediaDraft.MEDIA_DRAFT,
+            MediaFunctionSetting.MEDIA_FUNCTION_SETTING,
             MediaProviderConnection.MEDIA_PROVIDER_CONNECTION,
             MediaProviderConnectionVersion.MEDIA_PROVIDER_CONNECTION_VERSION,
             MediaRelayObject.MEDIA_RELAY_OBJECT,

@@ -92,6 +92,42 @@ describe("PromptManagementSection", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: /Summary/ })).not.toBeInTheDocument());
     expect(deletions).toEqual(["1"]);
   });
+  it("finds and edits the four built-in view prompts independently", async () => {
+    const viewPrompts = [
+      { id: "character", key: "image.three-view.character", name: "角色三视图" },
+      { id: "face", key: "image.three-view.face", name: "脸部三视图" },
+      { id: "prop", key: "image.three-view.prop", name: "道具三视图" },
+      { id: "scene", key: "image.three-view.scene-grid", name: "场景宫格图" },
+    ].map((entry) => ({ ...defaults, ...entry, kind: "FUNCTION", content: `Synthetic ${entry.id} views` }));
+    const writes: unknown[] = [];
+    const face = viewPrompts[1]!;
+    server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults, ...viewPrompts] })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
+      http.put("/api/v1/settings/prompts/face", async ({ request }) => {
+        writes.push(await request.json());
+        return HttpResponse.json({ ...face, content: "Synthetic customized facial views", version: 2 });
+      }));
+    show(); await screen.findByDisplayValue(defaults.content);
+    const user = userEvent.setup();
+    await selectValue(screen.getByRole("combobox", { name: "筛选用途" }), "FUNCTION");
+    for (const entry of viewPrompts) expect(screen.getByRole("button", { name: new RegExp(entry.name) })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /角色三视图/ }));
+    fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "Synthetic character draft" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索名称、标识或说明" }), { target: { value: "image.three-view.face" } });
+    expect(screen.queryByRole("button", { name: /角色三视图/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /脸部三视图/ }));
+    expect(screen.getByLabelText("用途标识")).toHaveValue(face.key);
+    expect(screen.getByLabelText("用途标识")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "删除提示词" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "Synthetic customized facial views" } });
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    await screen.findByText("提示词已保存。");
+    expect(writes).toEqual([{ name: face.name, description: face.description,
+      content: "Synthetic customized facial views", expectedVersion: face.version }]);
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索名称、标识或说明" }), { target: { value: "" } });
+    await user.click(screen.getByRole("button", { name: /角色三视图/ }));
+    expect(screen.getByLabelText("提示词正文")).toHaveValue("Synthetic character draft");
+  });
   it("keeps a new prompt draft after a duplicate key and allows correcting that key", async () => {
     let creates = 0;
     server.use(http.get("/api/v1/settings/prompts", () => HttpResponse.json({ items: [defaults] })),

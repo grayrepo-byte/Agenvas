@@ -234,7 +234,8 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         return output;
     }
 
-    private BufferedImage depth(BufferedImage source) {
+    /** Shared genuine depth inference for archived image and video-frame processing. */
+    BufferedImage depth(BufferedImage source) {
         OrtSession session = depthSession();
         String inputName = session.getInputNames().iterator().next();
         NodeInfo node;
@@ -275,6 +276,11 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         } catch (OrtException failure) {
             throw new IllegalStateException("Depth model inference failed", failure);
         }
+    }
+
+    boolean depthModelAvailable() {
+        Path model = properties.depthModelPath();
+        return model != null && Files.isRegularFile(model) && Files.isReadable(model);
     }
 
     private synchronized OrtSession depthSession() {

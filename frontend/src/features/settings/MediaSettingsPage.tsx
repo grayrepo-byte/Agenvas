@@ -357,7 +357,7 @@ function ConnectionCapabilities({ connection, settings, apply }: {
     {connection.capabilities.map((capability) => systemManaged ? <TableRow key={capability.id}>
       <TableCell><strong>{capability.name}</strong><small>{connection.name}</small></TableCell>
       <TableCell><strong>{adapterLabel(capability.adapterId)}</strong><small>{t("settings.mediaSettings.builtin")}</small></TableCell>
-      <TableCell>{t("settings.mediaSettings.imageProcessing")}<small>{t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages })}</small></TableCell>
+      <TableCell>{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.imageProcessing") : t("media.functions.videoTools")}<small>{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages }) : t("common.video")}</small></TableCell>
       <TableCell>{t("settings.mediaSettings.localExecution")}</TableCell><TableCell><StatusBadge tone="success">{t("settings.mediaSettings.enabled")}</StatusBadge></TableCell><TableCell className="ui-muted">{t("settings.mediaSettings.administration")}</TableCell>
     </TableRow> : <CapabilityRow key={capability.id} connectionId={connection.id} connectionName={connection.name}
       capability={capability} isDefault={settings.defaults.some((item) => item.kind === capability.kind && item.capabilityId === capability.id)}
@@ -465,7 +465,7 @@ function ConnectionRow({ connection, settings, apply }: {
     <TableRow>
       <TableCell><strong>{connection.name}</strong><small>{t("settings.mediaSettings.capabilityCount", { "0": connection.platform, "1": connection.capabilities.length })}</small></TableCell>
       <TableCell><span className="media-table-endpoint">{connection.origin || (connection.platform === "ARK" ? "https://ark.cn-beijing.volces.com/api/v3" : systemManaged ? t("settings.mediaSettings.builtin") : t("settings.mediaSettings.platformDefaultUrl"))}</span>
-        <small>{connection.keyMask ? t("settings.mediaSettings.credentialPrefix", { "0": connection.keyMask }) : ""}{systemManaged ? t("settings.mediaSettings.localImageProcessing") : t("common.configured")}</small>
+        <small>{connection.keyMask ? t("settings.mediaSettings.credentialPrefix", { "0": connection.keyMask }) : ""}{systemManaged ? t("media.functions.localMedia") : t("common.configured")}</small>
         {connection.platform === "GOOGLE" ? <small>{googleImageApiLabel(connection.origin)}</small> : null}</TableCell>
       <TableCell><StatusBadge tone={connection.enabled ? "success" : "warning"}>{connection.enabled ? t("settings.mediaSettings.enabled") : t("settings.mediaSettings.disabled")}</StatusBadge></TableCell>
       <TableCell>{systemManaged ? <span className="ui-muted">{t("settings.mediaSettings.administration")}</span> : <div className="media-table-actions">

@@ -218,6 +218,7 @@ public class UsageService {
                                                 task.errorCode())
                                         && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(task.errorCode())
                                         && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(task.errorCode())
+                                        && !"VIDEO_AUDIO_TRACK_MISSING".equals(task.errorCode())
                                         && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(task.errorCode())
                                         && !"MEDIA_RELAY_REQUIRED".equals(task.errorCode())
                                         && !"MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED".equals(task.errorCode()))))
@@ -251,6 +252,8 @@ public class UsageService {
             case AUDIO_GENERATION -> {
                 quantity.put("audioCount", 1);
                 if (runningHub) quantity.putNull("audioSeconds");
+                else if ("LOCAL_NO_COST".equals(source) && task.input().has("sourceDurationMs"))
+                    quantity.put("audioSeconds", BigDecimal.valueOf(task.input().path("sourceDurationMs").asLong(), 3));
                 else quantity.put("audioSeconds", dev.agenvas.artifact.domain.AudioGenerationParameters.MAX_GENERATION_SECONDS);
                 quantity.put("imageCount", 0); quantity.put("videoCount", 0);
                 quantity.put("videoSeconds", "0");
@@ -263,7 +266,9 @@ public class UsageService {
             case VIDEO_GENERATION -> {
                 String durationText;
                 JsonNode seconds = task.input().path("durationSeconds");
-                if (runningHub && seconds.isMissingNode()) durationText = null;
+                if ("LOCAL_NO_COST".equals(source) && task.input().has("sourceDurationMs")) {
+                    durationText = BigDecimal.valueOf(task.input().path("sourceDurationMs").asLong(), 3).toPlainString();
+                } else if (runningHub && seconds.isMissingNode()) durationText = null;
                 else {
                     int maxSeconds = runningHub
                             ? dev.agenvas.provider.domain.MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS

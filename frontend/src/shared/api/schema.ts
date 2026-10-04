@@ -508,7 +508,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 统一提示词管理列表（仅管理员） */
+        /**
+         * 统一提示词管理列表（仅管理员）
+         * @description 内置功能提示词包括文字生成及角色、脸部、道具三视图和场景宫格；可编辑但不可删除。四种视图分别由固定用途标识 image.three-view.character、image.three-view.face、image.three-view.prop 和 image.three-view.scene-grid 消费。
+         */
         get: operations["listPrompts"];
         put?: never;
         /** 新建独立提示词 */
@@ -1732,9 +1735,89 @@ export interface paths {
         put?: never;
         /**
          * 固定来源图片并创建相连的独立结果节点后受理图片后处理任务
-         * @description 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。节点标题为来源节点当前标题加「 · 操作名称」，超长时截短来源部分以保留操作后缀；完成或重放不覆盖后续改名。
+         * @description 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。节点标题为来源节点当前标题加「 · 操作名称」，超长时截短来源部分以保留操作后缀；完成或重放不覆盖后续改名。THREE_VIEW 首次受理按类型读取统一管理的内置功能提示词，追加可选主体说明，冻结最终正文及 promptKey/promptVersion；修改管理配置只影响新命令，同键重放及在途任务保留原输入。
          */
         post: operations["runImageOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/artifacts/{artifactId}/video-operations": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 按功能设置固定来源视频并创建独立处理结果节点与任务
+         * @description 深度视频和视频高清派生同一视频产物的独立节点；音频分离创建独立音频产物和节点。所有结果使用空白草稿及可删除派生线，来源选择不变。固定功能设置版本、能力版本、来源视频版本及参数；同键异参冲突。视频高清只执行管理员绑定的兼容 AI 能力。本地深度输出最长边 518px、12fps、无音轨的相对深度视频；本地音频分离读取第一音轨为双声道 48kHz PCM WAV。两类本地输入限 30 秒、200MiB、3840×2160 像素数。RunningHub 使用已发布的单视频输入契约，不接受任意工作流或请求。
+         */
+        post: operations["runVideoOperation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-functions": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** 查询视频工具功能设置（独立于媒体生成默认模型） */
+        get: operations["listMediaFunctions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-functions/{operation}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                operation: components["schemas"]["VideoOperation"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 通过 CAS 为视频功能绑定已发布且输入输出兼容的能力
+         * @description capabilityId=null 停用入口执行；深度和音轨分离可选内置本地能力，视频高清必须绑定兼容的第三方 AI 能力。当前云端支持 RunningHub 的单视频输入及匹配主输出类型，固定 ComfyUI 图生视频模板不兼容，不伪装成视频后处理。新适配器须实现并声明兼容协议后才可绑定。
+         */
+        put: operations["updateMediaFunction"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4137,6 +4220,33 @@ export interface components {
             canvasItemId: string;
             /** Format: int64 */
             expectedDraftVersion: number;
+        };
+        /** @enum {string} */
+        VideoOperation: "DEPTH_MAP" | "EXTRACT_AUDIO" | "UPSCALE";
+        MediaFunctionSetting: {
+            operation: components["schemas"]["VideoOperation"];
+            /** Format: uuid */
+            capabilityId: string | null;
+            /** Format: int64 */
+            version: number;
+        };
+        RunVideoOperationRequest: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            sourceVersionId: string;
+            /** Format: int64 */
+            expectedCanvasItemVersion: number;
+            operation: components["schemas"]["VideoOperation"];
+            /** Format: int64 */
+            expectedFunctionVersion: number;
+            expectedCapabilityVersion: number;
+            prompt?: string | null;
+            parameters: {
+                dynamicValues?: {
+                    [key: string]: string | number | boolean;
+                };
+            };
         };
         RunImageOperationRequest: {
             /** Format: uuid */
@@ -8706,6 +8816,116 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    runVideoOperation: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunVideoOperationRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理或相同幂等键的原任务 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    listMediaFunctions: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 管理员选择的功能处理能力 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaFunctionSetting"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateMediaFunction: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                operation: components["schemas"]["VideoOperation"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: int64 */
+                    expectedVersion: number;
+                    /** Format: uuid */
+                    capabilityId: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description 保存后的所有功能设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaFunctionSetting"][];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     cancelQueuedDirectMediaTask: {

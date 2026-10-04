@@ -35,6 +35,9 @@ export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest
 export type RemoveMediaDraftMediaInputRequest = components["schemas"]["RemoveMediaDraftMediaInputRequest"];
 export type RunMediaDraftRequest = components["schemas"]["RunMediaDraftRequest"];
 export type RunImageOperationRequest = components["schemas"]["RunImageOperationRequest"];
+export type VideoOperation = components["schemas"]["VideoOperation"];
+export type MediaFunctionSetting = components["schemas"]["MediaFunctionSetting"];
+export type RunVideoOperationRequest = components["schemas"]["RunVideoOperationRequest"];
 export type RunTextGenerationRequest = components["schemas"]["RunTextGenerationRequest"];
 export type DirectMediaQueueStatus = components["schemas"]["DirectMediaQueueStatus"];
 export type Asset = components["schemas"]["Asset"];
@@ -547,6 +550,22 @@ export async function runImageOperation(projectId: string, artifactId: string,
     { method: "POST", headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(input) },
   );
+}
+
+export function getMediaFunctions(): Promise<MediaFunctionSetting[]> {
+  return readJson("/api/v1/settings/media-functions", t("api.errors.mediaSettingsUnavailable"));
+}
+
+export function updateMediaFunction(operation: VideoOperation, expectedVersion: number, capabilityId: string | null): Promise<MediaFunctionSetting[]> {
+  return writeJson(`/api/v1/settings/media-functions/${operation}`, {
+    method: "PUT", body: JSON.stringify({ expectedVersion, capabilityId }),
+  });
+}
+
+export function runVideoOperation(projectId: string, artifactId: string, input: RunVideoOperationRequest, commandKey: string): Promise<Task> {
+  return writeJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/video-operations`, {
+    method: "POST", headers: { "Idempotency-Key": commandKey }, body: JSON.stringify(input),
+  });
 }
 
 /** Card media history includes direct requests and user-approved Agent tasks. */

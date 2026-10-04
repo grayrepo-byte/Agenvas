@@ -728,7 +728,7 @@ public class TaskService {
             payload.put("artifactId", artifactId.toString());
             payload.put("artifactVersionId", result.versionId().toString());
             payload.put("selected", result.selected());
-            payload.put("possibleExternalCost", !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(
+            payload.put("possibleExternalCost", !MediaAdapterRegistry.localProcessor(
                     tasks.mediaBinding(lease.id()).map(binding -> binding.adapterId()).orElse(null)));
             events.append(ownerId, lease.projectId(),
                     new ProjectEventService.EventDraft("task.status.changed", 1,
@@ -833,6 +833,7 @@ public class TaskService {
                 && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(errorCode)
                 && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(errorCode)
                 && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(errorCode)
+                && !"VIDEO_AUDIO_TRACK_MISSING".equals(errorCode)
                 && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(errorCode)
                 && !"MEDIA_RELAY_REQUIRED".equals(errorCode)
                 && !"MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED".equals(errorCode)) {
@@ -1148,7 +1149,9 @@ public class TaskService {
         payload.put("taskId", task.id().toString());
         payload.put("status", task.status().name());
         payload.put("cancelRequested", task.cancelRequested());
-        payload.put("possibleExternalCost", possibleExternalCost
+        boolean localProcessing = tasks.mediaBinding(task.id()).map(binding ->
+                MediaAdapterRegistry.localProcessor(binding.adapterId())).orElse(false);
+        payload.put("possibleExternalCost", !localProcessing && (possibleExternalCost
                 || task.providerRequestId() != null
                 || ((task.kind() == Task.Kind.IMAGE_GENERATION
                         || task.kind() == Task.Kind.VIDEO_GENERATION
@@ -1156,7 +1159,7 @@ public class TaskService {
                         && (task.status() == Task.Status.SUBMITTING
                                 || task.status() == Task.Status.WAITING_PROVIDER
                                 || task.status() == Task.Status.UNKNOWN
-                                || task.status() == Task.Status.CANCELED)));
+                                || task.status() == Task.Status.CANCELED))));
         return new ProjectEventService.EventDraft("task.status.changed", 1,
                 task.id(), task.version(), payload);
     }
@@ -1171,6 +1174,16 @@ public class TaskService {
      */
     private boolean pinnedMediaInputsCurrent(UUID ownerId, Task task) {
         JsonNode input = task.input();
+        if (input.has("videoOperation")) {
+            try {
+                artifacts.requireMediaVersionForTask(ownerId, task.projectId(), UUID.fromString(
+                        input.path("videoOperation").path("sourceVersionId").asText()),
+                        dev.agenvas.artifact.domain.Artifact.Kind.VIDEO);
+                return true;
+            } catch (ApiProblemException | IllegalArgumentException unavailable) {
+                return false;
+            }
+        }
         if (input.has("imageOperation")) {
             try {
                 artifacts.requireImageVersionForTask(ownerId, task.projectId(), UUID.fromString(

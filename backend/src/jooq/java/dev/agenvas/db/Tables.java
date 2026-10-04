@@ -42,6 +42,7 @@ import dev.agenvas.db.tables.MediaCapabilityVersion;
 import dev.agenvas.db.tables.MediaConnectionCreateKey;
 import dev.agenvas.db.tables.MediaDefault;
 import dev.agenvas.db.tables.MediaDraft;
+import dev.agenvas.db.tables.MediaFunctionSetting;
 import dev.agenvas.db.tables.MediaProviderConnection;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion;
 import dev.agenvas.db.tables.MediaRelayObject;
@@ -270,6 +271,12 @@ public class Tables {
      * 媒体卡片独立草稿、参数、能力、风格和引用提及
      */
     public static final MediaDraft MEDIA_DRAFT = MediaDraft.MEDIA_DRAFT;
+
+    /**
+     * Administrator-selected video processing capabilities, independent of
+     * generation defaults
+     */
+    public static final MediaFunctionSetting MEDIA_FUNCTION_SETTING = MediaFunctionSetting.MEDIA_FUNCTION_SETTING;
 
     /**
      * 管理员媒体连接身份、平台和当前不可变连接版本
