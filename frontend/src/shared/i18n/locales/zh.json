@@ -333,6 +333,7 @@
   "canvas.displayPreferences.saveFailed": "画布设置未能保存，当前页面仍保留你的选择。",
   "canvas.place": "放到画布",
   "canvas.selection.count": "{0} 张卡片已选中",
+  "canvas.selection.selectCard": "选择卡片：{0}",
   "canvas.settings.alwaysShowConnections": "始终显示连线",
   "canvas.settings.connections": "连线显示",
   "canvas.settings.flowAnimation": "连线流光效果",

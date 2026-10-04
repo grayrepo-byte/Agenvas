@@ -333,6 +333,7 @@
   "canvas.displayPreferences.saveFailed": "キャンバス設定を保存できませんでした。選択内容は現在のページに残ります。",
   "canvas.place": "キャンバスに置く",
   "canvas.selection.count": "{0} 枚のカードが選択されました",
+  "canvas.selection.selectCard": "カードを選択：{0}",
   "canvas.settings.alwaysShowConnections": "接続を常に表示する",
   "canvas.settings.connections": "接続表示",
   "canvas.settings.flowAnimation": "有線ストリーマーエフェクト",

@@ -64,6 +64,7 @@ import { CanvasHandle } from "./CanvasHandle";
 import { CanvasPaneMenu } from "./CanvasPaneMenu";
 import { CanvasRelationEdge } from "./CanvasRelationEdge";
 import { CanvasSettingsMenu } from "./CanvasSettingsMenu";
+import { CanvasSelectionCheckbox } from "./CanvasSelectionCheckbox";
 import { CanvasToolMenu } from "./CanvasToolMenu";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 import { MediaCanvasCard } from "./MediaCanvasCard";
@@ -77,7 +78,7 @@ agentImageConnection,canvasRelationRemoval,canvasTargetHandleId,inputConnectionU
 isCanvasConnectionValid,mediaInputConnection,projectCanvasRelations,
 type CanvasRelationRemoval
 } from "./canvasRelations";
-import { useCanvasStore } from "./canvasStore";
+import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 import { CANVAS_MAX_SIZE,imageNodeResizeBounds,persistableNodeSize,projectImageNodeSize } from "./imageNodeLayout";
 import { AUDIO_CARD_HEIGHT,AUDIO_CARD_WIDTH,prepareMediaNode,type PreparedMediaNode } from "./mediaNodeActions";
 import { subscribeProjectEvents,type EventSyncStatus } from "./projectEvents";
@@ -160,6 +161,8 @@ type CanvasNodeData = {
   mediaAspectRatio: number | undefined;
   dragging: boolean;
   toolbarVisible: boolean;
+  multiSelecting: boolean;
+  onToggleSelection: (itemId: string) => void;
   /** Connection gesture feedback: this card is under the pointer and will accept, or reject, the line. */
   connectionTarget: "valid" | "invalid" | null;
 };
@@ -206,6 +209,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [draggingIds, setDraggingIds] = useState<string[]>([]);
   const saveState = useCanvasStore((state) => state.saveState);
   const selectedIds = useCanvasStore((state) => state.selectedIds);
+  const selectionMode = useCanvasStore((state) => state.selectionMode);
+  const multiSelecting = selectionMode === CANVAS_SELECTION_MODE.MULTIPLE || selectedIds.length > 1;
   const updateDraft = useCanvasStore((state) => state.updateDraft);
   const clearDraft = useCanvasStore((state) => state.clearDraft);
   const setSaveState = useCanvasStore((state) => state.setSaveState);
@@ -840,6 +845,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setSelectedIds(outputs.map((item) => item.id));
     if (outputs.length) void flow.current?.fitView({ nodes: outputs, padding: 0.2 });
   }, [canvas.data?.items, setSelectedIds]);
+  const handleToggleSelection = useCallback((itemId: string) => {
+    const current = useCanvasStore.getState().selectedIds;
+    setSelectedIds(current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId],
+      CANVAS_SELECTION_MODE.MULTIPLE);
+  }, [setSelectedIds]);
   const nodes = useMemo<CanvasNode[]>(
     () =>
       (canvas.data?.items ?? [])
@@ -876,7 +886,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               updateAgentError: editAgent.error,
               mediaAspectRatio: mediaRatios[item.id],
               dragging: draggingIds.includes(item.id),
-              toolbarVisible: nodeActionsVisible,
+              toolbarVisible: nodeActionsVisible && !multiSelecting,
+              multiSelecting,
+              onToggleSelection: handleToggleSelection,
               connectionTarget: connectionTarget?.itemId === item.id
                 ? (connectionTarget.valid ? "valid" : "invalid")
                 : null,
@@ -888,6 +900,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       drafts,
       draggingIds,
       nodeActionsVisible,
+      multiSelecting,
+      handleToggleSelection,
       editAgent.isPending,
       editAgent.error,
       effectiveNodeSize,
@@ -969,7 +983,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     (changes: NodeChange<CanvasNode>[]) => {
       const selectChanges = changes.filter((change) => change.type === "select");
       if (selectChanges.length) {
-        const current = useCanvasStore.getState().selectedIds;
+        const { selectedIds: current, selectionMode: mode } = useCanvasStore.getState();
         const next = new Set(current);
         for (const change of selectChanges) {
           if (change.selected) next.add(change.id);
@@ -977,7 +991,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         }
         const ids = [...next];
         if (ids.length !== current.length || ids.some((id) => !current.includes(id))) {
-          setSelectedIds(ids);
+          setSelectedIds(ids, mode);
         }
       }
       for (const change of changes) {
@@ -1067,7 +1081,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
 
   const selectedItems = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
-  const selectedMedia = draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact
+  const selectedMedia = !multiSelecting && draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact
     ? selectedItems[0] : undefined;
   const mediaFocus = useRef<string | null>(null);
   const selectedMediaId = selectedMedia?.id;
@@ -1227,7 +1241,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           </div> : null}
       </aside> : null}
 
-      <section className={`workspace-canvas${selecting ? " is-select-tool" : " is-hand-tool"}`} aria-label={t("canvas.workspace.canvasTitle")} ref={canvasElement}
+      <section className={`workspace-canvas${selecting ? " is-select-tool" : " is-hand-tool"}${multiSelecting ? " is-multi-select" : ""}`} aria-label={t("canvas.workspace.canvasTitle")} ref={canvasElement}
         onDoubleClickCapture={(event) => {
           if (selecting && (event.target as HTMLElement).classList.contains("react-flow__pane")) {
             openCreationMenu(event.clientX, event.clientY);
@@ -1316,14 +1330,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           }}
           onNodeClick={(event, node) => {
             if (!selecting || event.metaKey || event.ctrlKey || event.shiftKey) return;
-            const current = useCanvasStore.getState().selectedIds;
-            // React Flow retains the group when clicking an already-selected node.
-            // Only this case needs extra deselection; ordinary selection comes from onNodesChange.
-            if (current.length > 1 && current.includes(node.id)) {
-              handleNodesChange(current.filter((id) => id !== node.id)
-                .map((id) => ({ id, type: "select", selected: false })));
-            }
+            // An ordinary click explicitly focuses a card, even if it was the only box-selected card.
+            setSelectedIds([node.id]);
           }}
+          onPaneClick={clearSelection}
+          onSelectionStart={() => setSelectedIds([], CANVAS_SELECTION_MODE.MULTIPLE)}
           onPaneContextMenu={(event) => {
             event.preventDefault();
             const rect = canvasElement.current?.getBoundingClientRect();
@@ -1351,7 +1362,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           }}
           zoomOnDoubleClick={false}
         >
-          {draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact ?
+          {!multiSelecting && draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact ?
             <NodeToolbar nodeId={selectedItems[0].id} isVisible position={Position.Bottom} offset={EDITOR_NODE_GAP}
               style={{
                 // Keep the editor mounted while connecting so unsaved prompts survive the gesture.
@@ -1408,11 +1419,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             <CreationIcon size={20} aria-hidden="true" /><span>{label}</span>
           </CommandItem>)}
         </CommandGroup></CommandList></Command> : null}
-        {nodeActionsVisible && selectedItems.length > 1 ? <div className="workspace-selection-toolbar nodrag nowheel nopan" role="group" aria-label={t("canvas.workspace.bulkActions")}>
+        {nodeActionsVisible && multiSelecting && selectedItems.length > 0 ? <div className="workspace-selection-toolbar nodrag nowheel nopan" role="group" aria-label={t("canvas.workspace.bulkActions")}>
           <span className="workspace-selection-count"><SelectionAll aria-hidden />{t("canvas.selection.count", { "0": selectedItems.length })}</span>
           <Separator orientation="vertical" className="data-[orientation=vertical]:h-5" />
           <div className="workspace-selection-actions">
-            <Button variant="ghost" size="sm" className="rounded-full" disabled={alignSelected.isPending}
+            <Button variant="ghost" size="sm" className="rounded-full" disabled={selectedItems.length < 2 || alignSelected.isPending}
               onClick={() => alignSelected.mutate()} type="button"><AlignLeftSimple data-icon="inline-start" />{t("canvas.workspace.alignLeft")}</Button>
             {canBindSelection ? <Button variant="ghost" size="sm" className="rounded-full" disabled={bindSelection.isPending}
               onClick={() => bindSelection.mutate()} type="button"><LinkSimple data-icon="inline-start" />{t("canvas.workspace.bindAgent")}</Button> : null}
@@ -1434,7 +1445,10 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
   const halo = data.connectionTarget
     ? <span className={`canvas-connection-halo canvas-connection-halo--${data.connectionTarget}`} />
     : null;
-  if (data.item.agent) return <>{halo}<AgentChatCard data={data} selected={selected || data.dragging} /></>;
+  const selectionControl = data.multiSelecting ? <CanvasSelectionCheckbox title={data.item.title}
+    selected={selected} inline={Boolean(data.item.agent)} onToggle={() => data.onToggleSelection(data.item.id)} /> : null;
+  if (data.item.agent) return <>{halo}<AgentChatCard data={data} selected={selected || data.dragging}
+    selectionControl={selectionControl} resizeVisible={data.toolbarVisible} /></>;
   const artifact = data.item.artifact;
   if (!artifact) return null;
   const cardProps = {
@@ -1453,6 +1467,7 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
       <CanvasHandle id="artifact-input" />
       <CanvasHandle id="artifact-output" />
       {halo}
+      {selectionControl}
       {artifact.kind === "IMAGE" || artifact.kind === "VIDEO" || artifact.kind === "AUDIO"
         ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor}
           onDuplicate={() => data.onDuplicate(data.item)} onMakeMV={() => data.onMakeMV(data.item)} />

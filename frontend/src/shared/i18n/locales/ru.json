@@ -333,6 +333,7 @@
   "canvas.displayPreferences.saveFailed": "Не удалось сохранить настройки холста. Ваш выбор останется на текущей странице.",
   "canvas.place": "положить на холст",
   "canvas.selection.count": "Выбрано {0} карточек",
+  "canvas.selection.selectCard": "Выбрать карточку: {0}",
   "canvas.settings.alwaysShowConnections": "Всегда показывать связи",
   "canvas.settings.connections": "дисплей подключения",
   "canvas.settings.flowAnimation": "Проводной стримерный эффект",

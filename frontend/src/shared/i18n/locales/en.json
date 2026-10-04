@@ -333,6 +333,7 @@
   "canvas.displayPreferences.saveFailed": "Canvas settings failed to save, your selections remain on the current page.",
   "canvas.place": "put on canvas",
   "canvas.selection.count": "{0} cards selected",
+  "canvas.selection.selectCard": "Select card: {0}",
   "canvas.settings.alwaysShowConnections": "Always show connections",
   "canvas.settings.connections": "connection display",
   "canvas.settings.flowAnimation": "Wired streamer effect",
