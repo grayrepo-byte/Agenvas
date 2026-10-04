@@ -152,7 +152,7 @@ describe("MediaSettingsPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
     await waitFor(() => expect(posted).toEqual([{ name: "RunningHub", platform: "RUNNINGHUB", origin: "https://custom-api.example.com", apiKey: "fixture-key" }]));
   });
-  it("imports a RunningHub app, previews its fields and publishes only after field review", async () => {
+  it("imports a RunningHub app, previews its fields and publishes on explicit submit without a review option", async () => {
     const fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub", origin: "https://www.runninghub.ai", capabilities: [] });
     const published: unknown[] = [];
     const definition = { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false, addMetadata: false,
@@ -184,14 +184,14 @@ describe("MediaSettingsPage", () => {
     await user.click(within(dialog).getByRole("combobox", { name: "创作风格 *" }));
     expect(screen.getByRole("option", { name: "写实" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
-    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
+    expect(within(dialog).queryByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" })).not.toBeInTheDocument();
     expect(published).toEqual([]);
-    await user.click(within(dialog).getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" }));
+    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(published).toEqual([{ name: "背景应用", adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition } }]));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
-  it("validates and saves an edited workflow on review, preserving failed drafts until an explicit retry", async () => {
+  it("validates and saves an edited workflow on explicit submit, preserving failed drafts until an explicit retry", async () => {
     const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
       schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
       fields: [], outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
@@ -220,14 +220,15 @@ describe("MediaSettingsPage", () => {
     await user.clear(name); await user.type(name, "Updated workflow");
     const target = within(dialog).getByRole("textbox", { name: "真实目标 ID" });
     await user.clear(target); await user.type(target, "invalid");
-    const review = within(dialog).getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" });
-    await user.click(review);
+    expect(within(dialog).queryByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" })).not.toBeInTheDocument();
+    const save = within(dialog).getByRole("button", { name: "保存能力" });
+    await user.click(save);
     expect(target).toBeInvalid();
     expect(writes).toEqual([]);
 
     await user.clear(target); await user.type(target, "321");
-    expect(review).not.toBeChecked();
-    await user.click(review);
+    expect(writes).toEqual([]);
+    await user.click(save);
     expect(await within(dialog).findByText("Unavailable")).toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBe(dialog);
     expect(name).toHaveValue("Updated workflow");
@@ -235,9 +236,8 @@ describe("MediaSettingsPage", () => {
     expect(writes).toEqual([{ expectedVersion: 4, name: "Updated workflow", enabled: true,
       adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: { ...definition, targetId: "321" } } }]);
 
-    await user.click(review);
     expect(writes).toHaveLength(1);
-    await user.click(review);
+    await user.click(save);
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(writes).toHaveLength(2);
     expect(writes[1]).toEqual(writes[0]);
@@ -274,20 +274,19 @@ describe("MediaSettingsPage", () => {
     const dialog = screen.getByRole("dialog");
     const outputs = within(dialog).getByRole("table", { name: "输出映射" });
     const target = within(dialog).getByRole("textbox", { name: "真实目标 ID" });
-    const review = within(dialog).getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" });
+    const save = within(dialog).getByRole("button", { name: "保存能力" });
     await user.clear(target);
-    await user.click(review);
-    expect(review).toBeChecked();
+    await user.click(save);
     expect(writes).toEqual([]);
     await selectValue(within(dialog).getByRole("combobox", { name: "主输出类型" }), `RUNNINGHUB_${kind}`);
-    expect(review).not.toBeChecked();
     expect(within(outputs).getByRole("combobox", { name: "媒体类型" })).toHaveValue(kind);
     await user.type(target, "123");
     await selectValue(within(outputs).getByRole("combobox", { name: "媒体类型" }), "IMAGE");
     await selectValue(within(outputs).getByRole("combobox", { name: "媒体类型" }), kind);
     expect(within(dialog).getByRole("combobox", { name: "主输出类型" })).toHaveValue(`RUNNINGHUB_${kind}`);
     expect(within(dialog).getByRole("spinbutton", { name: "单位价格" })).toHaveValue(null);
-    await user.click(within(dialog).getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" }));
+    expect(writes).toEqual([]);
+    await user.click(save);
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(writes).toEqual([{ expectedVersion: 4, name: "Portrait", enabled: true,
       adapterId: `RUNNINGHUB_${kind}`, settings: { runningHub: updatedDefinition } }]);

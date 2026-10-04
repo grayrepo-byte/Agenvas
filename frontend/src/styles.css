@@ -321,6 +321,9 @@ button:disabled {
 .workspace-canvas.is-hand-tool .react-flow__node { cursor: grab; }
 .workspace-canvas.is-hand-tool .react-flow__pane.dragging { cursor: grabbing; }
 
+/* The group outline must not cover unchecked cards or their toggles. Drag a selected card to move the group. */
+.workspace-canvas.is-multi-select .react-flow__nodesselection-rect { pointer-events: none; }
+
 .workspace-selection-toolbar {
   position: absolute;
   z-index: 10;
@@ -661,7 +664,7 @@ button:disabled {
 .artifact-card-toolbar .media-operation-panel footer button { height: 34px; border-radius: 9px; background: #333; }
 .artifact-card-toolbar .media-operation-panel footer button.is-primary { background: var(--ui-accent); color: var(--ui-accent-foreground); }
 .artifact-card-toolbar .media-operation-panel footer button.is-primary:hover:not(:disabled) { background: var(--ui-accent-hover); }
-.smart-edit-dialog { position: fixed; inset: 0; width: 100%; max-width: none; height: 100dvh; transform: none; translate: none; border: 0; border-radius: 0; background: var(--ui-bg); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 18px; padding: 14px 24px 20px; color: #f4f4f4; }
+.smart-edit-dialog { position: fixed; inset: 0; width: 100%; max-width: none; height: 100dvh; border: 0; border-radius: 0; background: var(--ui-bg); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 18px; padding: 14px 24px 20px; color: #f4f4f4; }
 .smart-edit-toolbar { justify-self: center; display: flex; align-items: center; gap: 5px; min-height: 50px; padding: 7px 10px; border: 1px solid #3d3d3d; border-radius: 25px; background: #262626; box-shadow: 0 14px 34px #0009; }
 .smart-edit-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: transparent; color: #cfcfcf; font-size: 12px; cursor: pointer; }
 .smart-edit-toolbar button:hover:not(:disabled) { background: #363636; color: #fff; }
@@ -697,11 +700,14 @@ button:disabled {
 .smart-edit-references button { position: absolute; top: -4px; right: -4px; display: grid; place-items: center; width: 17px; height: 17px; padding: 0; border: 0; border-radius: 9px; background: #333; color: #fff; cursor: pointer; }
 .smart-edit-composer textarea { width: 100%; min-height: 52px; padding: 0; resize: none; border: 0; background: transparent; color: #f0f0f0; font: inherit; font-size: 13px; line-height: 1.55; outline: none; }
 .smart-edit-composer textarea::placeholder { color: #737373; }
-.smart-edit-footer { display: flex; align-items: center; gap: 10px; }
-.smart-edit-footer label { display: inline-flex; align-items: center; gap: 4px; min-width: 0; color: #ddd; }
-.smart-edit-footer .ui-select { max-width: 190px; }
-.smart-edit-footer > span { margin-left: auto; color: #888; font-size: 10px; }
-.smart-edit-submit { display: grid; flex: 0 0 35px; place-items: center; width: 35px; height: 35px; padding: 0; border: 0; border-radius: 18px; background: var(--ui-accent); color: var(--ui-accent-foreground); cursor: pointer; }
+.smart-edit-mask-hint { color: #888; font-size: 10px; }
+.smart-edit-footer { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.smart-edit-model { display: inline-flex; flex: 1; align-items: center; min-width: 0; color: #e8e8eb; }
+.smart-edit-model .ui-select { width: 100%; max-width: 220px; }
+.smart-edit-model [data-slot="select-trigger"] { min-width: 0; gap: 5px; padding: 0 5px; font-size: 12px; }
+.smart-edit-model [data-slot="select-value"] { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.smart-edit-cost { display: inline-flex; flex-shrink: 0; align-items: center; gap: 5px; margin-left: auto; color: #aaaab0; font-size: 10px; white-space: nowrap; }
+.smart-edit-submit { display: grid; flex: 0 0 33px; place-items: center; width: 33px; height: 33px; padding: 0; border: 0; border-radius: 50%; background: var(--ui-accent); color: var(--ui-accent-foreground); cursor: pointer; }
 .smart-edit-submit:hover:not(:disabled) { background: var(--ui-accent-hover); }
 .smart-edit-submit:disabled { opacity: .38; cursor: not-allowed; }
 .smart-edit-submit-progress { font-size: 16px; letter-spacing: 1px; }

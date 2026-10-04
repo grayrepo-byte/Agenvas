@@ -1,7 +1,7 @@
 import { ArrowSquareOut,ArrowUp,ClockCounterClockwise,GearSix,Plus,Sparkle,Square } from "@phosphor-icons/react";
 import { useInfiniteQuery,useMutation,useQuery,useQueryClient,type InfiniteData } from "@tanstack/react-query";
 import { NodeResizer,type ResizeParams } from "@xyflow/react";
-import { useEffect,useRef,useState,type FormEvent } from "react";
+import { useEffect,useRef,useState,type FormEvent,type ReactNode } from "react";
 import {
 ApiError,cancelRun,
 createAgentConversation,
@@ -55,7 +55,9 @@ const EMPTY_CONVERSATION_DRAFT = "new-conversation";
 const EMPTY_DRAFT = { instruction: "" };
 type ConversationDraft = typeof EMPTY_DRAFT;
 /** Conversations persist across messages; each submitted message retains its own Run. */
-export function AgentChatCard({ data, selected }: { data: AgentChatCardData; selected: boolean }) {
+export function AgentChatCard({ data, selected, selectionControl, resizeVisible = true }: {
+  data: AgentChatCardData; selected: boolean; selectionControl?: ReactNode; resizeVisible?: boolean;
+}) {
   useLocale();
   const queryClient = useQueryClient();
   const agent = data.item.agent;
@@ -316,10 +318,10 @@ export function AgentChatCard({ data, selected }: { data: AgentChatCardData; sel
     <CanvasHandle id="agent-input" />
     <CanvasHandle id="agent-output" />
     <article aria-label={t("agent.chat.cardLabel", { "0": agent.name })} className={`agent-chat-card ${selected ? "agent-chat-card--selected" : ""}`}>
-      <NodeResizer isVisible={selected && !data.item.locked} minHeight={AGENT_CHAT_MIN_HEIGHT}
+      <NodeResizer isVisible={selected && resizeVisible && !data.item.locked} minHeight={AGENT_CHAT_MIN_HEIGHT}
         minWidth={AGENT_CHAT_MIN_WIDTH} onResizeEnd={(_, layout) => data.onResizeEnd(data.item.id, layout)} />
       <header className="agent-chat-header">
-        <span className="agent-chat-avatar"><Sparkle weight="fill" size={18} /></span>
+        {selectionControl ?? <span className="agent-chat-avatar"><Sparkle weight="fill" size={18} /></span>}
         <div className="agent-chat-heading"><h3>{agent.name}</h3>
           <span>{pendingApprovals.length ? t("agent.trace.waitingApproval") : retryTask ? t(retryTask.status === "READY" ? "agent.retry.waiting" : "agent.retry.running") : ownRun ? RUN_STATUS_LABELS[ownRun.status] : projectActiveRun ? t("agent.chat.otherAgentRunning") : preparing ? t("agent.chat.starting") : failedRun ? RUN_STATUS_LABELS[failedRun.status] : t("agent.chat.ready")}</span>
         </div>

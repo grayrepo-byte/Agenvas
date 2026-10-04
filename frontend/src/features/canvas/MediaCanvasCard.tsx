@@ -258,10 +258,10 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
               onClose={() => { setOperationOpen(null); operation.reset(); }}
               onSubmit={(input) => operation.mutate({ ...input, canvasItemId: item.id,
                 sourceVersionId: item.selectedVersionId ?? "", expectedCanvasItemVersion: item.version, operation: operationOpen })}>
-              {({ capability, controls, submitDisabled, submit }) => operationOpen === "SMART_EDIT" ? <SmartEditDialog
+              {({ capability, controls, parameterControls, submitDisabled, submit }) => operationOpen === "SMART_EDIT" ? <SmartEditDialog
                 projectId={artifact.projectId} sourceVersionId={item.selectedVersionId ?? ""} sourceTitle={item.title}
                 sourceUrl={assetContentUrl(artifact.projectId, assetId)} capabilities={[capability]} configuredMethod
-                extraControls={controls} submitDisabled={submitDisabled} busy={operation.isPending} error={operation.error}
+                extraControls={parameterControls} submitDisabled={submitDisabled} busy={operation.isPending} error={operation.error}
                 onClose={() => { setOperationOpen(null); operation.reset(); }}
                 onSubmit={(input) => submit({}, input.instruction, { referenceVersionIds: input.referenceVersionIds, maskAssetId: input.maskAssetId ?? null })} />
                 : operationOpen === "RELIGHT" ? <RelightPanel sourceUrl={assetContentUrl(artifact.projectId, assetId)}

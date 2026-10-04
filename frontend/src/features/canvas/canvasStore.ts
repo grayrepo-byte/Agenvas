@@ -12,9 +12,14 @@ type LayoutDraft = {
 
 type SaveState = "saved" | "saving" | "failed" | "conflict";
 
+export const CANVAS_SELECTION_MODE = { SINGLE: "single", MULTIPLE: "multiple" } as const;
+type CanvasSelectionMode = typeof CANVAS_SELECTION_MODE[keyof typeof CANVAS_SELECTION_MODE];
+
 type CanvasInteractionState = {
   drafts: Record<string, LayoutDraft>;
   selectedIds: string[];
+  /** Box selection remains a group gesture even when it contains only one card. */
+  selectionMode: CanvasSelectionMode;
   saveState: SaveState;
   imageRatioDrafts: Record<string, ImageGenerationParameters["aspectRatio"]>;
   setImageRatioDraft: (key: string, ratio: ImageGenerationParameters["aspectRatio"]) => void;
@@ -24,7 +29,7 @@ type CanvasInteractionState = {
   clearMediaDraftRecovery: (key: string) => void;
   updateDraft: (itemId: string, patch: LayoutDraft) => void;
   clearDraft: (itemId: string) => void;
-  setSelectedIds: (itemIds: string[]) => void;
+  setSelectedIds: (itemIds: string[], mode?: CanvasSelectionMode) => void;
   setSaveState: (saveState: SaveState) => void;
 };
 
@@ -32,6 +37,7 @@ type CanvasInteractionState = {
 export const useCanvasStore = create<CanvasInteractionState>((set) => ({
   drafts: {},
   selectedIds: [],
+  selectionMode: CANVAS_SELECTION_MODE.SINGLE,
   saveState: "saved",
   imageRatioDrafts: {},
   mediaDraftRecoveries: {},
@@ -65,12 +71,14 @@ export const useCanvasStore = create<CanvasInteractionState>((set) => ({
       void ignored;
       return { drafts: remaining };
     }),
-  setSelectedIds: (selectedIds) =>
-    set((state) =>
-      state.selectedIds.length === selectedIds.length &&
-      state.selectedIds.every((itemId, index) => itemId === selectedIds[index])
+  setSelectedIds: (selectedIds, mode) =>
+    set((state) => {
+      const selectionMode = selectedIds.length > 1 ? CANVAS_SELECTION_MODE.MULTIPLE
+        : mode ?? CANVAS_SELECTION_MODE.SINGLE;
+      return state.selectionMode === selectionMode && state.selectedIds.length === selectedIds.length &&
+        state.selectedIds.every((itemId, index) => itemId === selectedIds[index])
         ? state
-        : { selectedIds },
-    ),
+        : { selectedIds, selectionMode };
+    }),
   setSaveState: (saveState) => set({ saveState }),
 }));

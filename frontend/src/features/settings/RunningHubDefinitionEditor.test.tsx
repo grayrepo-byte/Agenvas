@@ -60,10 +60,7 @@ function inputFor(label: string) {
 describe("RunningHubDefinitionEditor scalar inputs", () => {
   it.each(scalarInputs)("keeps the draft on invalid $label and clears errors after a typed scalar is committed", async ({ label, error, getValue }) => {
     await mount();
-    const review = screen.getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" });
     const originalValue = getValue(currentDefinition());
-    await clickControl(review);
-    expect(review).toBeChecked();
 
     for (const raw of ["invalid", "null", "{}", "[]"]) {
       const input = inputFor(label);
@@ -72,7 +69,6 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
       expect(getValue(currentDefinition())).toEqual(originalValue);
       expect(input).toHaveProperty("validationMessage", error);
       expect(screen.getByRole("alert")).toHaveTextContent(error);
-      expect(review).not.toBeChecked();
     }
 
     for (const value of [1.25, false, "文字🎨"]) {
@@ -83,8 +79,6 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
       expect(inputFor(label)).toHaveProperty("validationMessage", "");
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     }
-    await clickControl(review);
-    expect(review).toBeChecked();
   });
 
   it("clears an optional default while empty condition and fixed values retain their previous draft", async () => {
@@ -110,8 +104,6 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
 describe("RunningHubDefinitionEditor mapping table", () => {
   it("selects multiple nodes in one open menu and shows their editable and fixed parameters together", async () => {
     await mount(false);
-    const review = screen.getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" });
-    await clickControl(review);
     await clickControl(screen.getByRole("button", { name: "选择节点" }));
     await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 1" }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
@@ -122,7 +114,6 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
     expect(screen.getByRole("textbox", { name: "固定值（JSON 标量）" })).toBeVisible();
     expect(currentDefinition()).toEqual(initialDefinition);
-    expect(review).toBeChecked();
     await userEvent.setup().keyboard("{Escape}");
     expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 节点 2");
   });
@@ -142,7 +133,8 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     await showNodes("1", "2");
     expect(inputFor("默认值")).toBe(input);
     expect(input).toHaveValue("invalid");
-    expect(input).toBeInvalid();
+    // checkValidity() dispatches invalid and moves focus; inspect draft validity without submitting.
+    expect(input).toHaveProperty("validity.valid", false);
     expect(currentDefinition().fields[1]?.defaultValue).toBe(0);
     await showNodes("2");
     fireEvent.click(screen.getByRole("button", { name: "手动添加字段" }));

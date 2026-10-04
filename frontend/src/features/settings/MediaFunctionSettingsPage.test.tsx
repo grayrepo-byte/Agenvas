@@ -30,6 +30,7 @@ describe("MediaFunctionSettingsPage", () => {
       request = await incoming.json(); return HttpResponse.json([{ operation: "VIDEO_UPSCALE", capabilityId: "upscale-cap", version: 5 }]);
     }));
     mount();
+    expect(await screen.findByRole("link", { name: "功能设置" })).toHaveAttribute("href", "/settings/functions");
     const row = await screen.findByRole("region", { name: "视频高清" });
     await selectValue(within(row).getByRole("combobox"), "upscale-cap");
     await clickControl(within(row).getByRole("button", { name: "保存配置" }));

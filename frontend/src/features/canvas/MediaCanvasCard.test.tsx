@@ -68,11 +68,12 @@ describe("MediaCanvasCard", () => {
       } });
     }
 
-    it("provides an explicit configuration entry for unconfigured AI upscale", async () => {
+    it("explains unconfigured AI upscale without a settings shortcut", async () => {
       showVideo();
       await clickControl(screen.getByRole("button", { name: "视频高清" }));
       const panel = await screen.findByRole("dialog", { name: "视频高清" });
-      expect(await within(panel).findByRole("link", { name: "功能设置" })).toHaveAttribute("href", "/settings/functions");
+      expect(await within(panel).findByText("尚未配置处理能力，请先前往功能设置。")).toBeVisible();
+      expect(within(panel).queryByRole("link", { name: "功能设置" })).not.toBeInTheDocument();
       expect(within(panel).queryByRole("button", { name: "开始处理" })).not.toBeInTheDocument();
     });
 
@@ -279,7 +280,9 @@ describe("MediaCanvasCard", () => {
           await clickControl(screen.getByRole("menuitem", { name: /脸部三视图/ }));
         } else await clickControl(screen.getByRole("menuitem", { name: new RegExp(`${label}.*(?:AI|本地)`) }));
       } else await clickControl(screen.getByRole("button", { name: "智能编辑" }));
-      expect(screen.getByRole("dialog", { name: dialogName })).toBeInTheDocument();
+      const dialog = screen.getByRole("dialog", { name: dialogName });
+      expect(dialog).toBeInTheDocument();
+      expect(within(dialog).queryByRole("link", { name: "功能设置" })).not.toBeInTheDocument();
       closeToolbar();
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
       reopenToolbar();
@@ -567,7 +570,8 @@ describe("MediaCanvasCard", () => {
         http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
         connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
           id: "smart-capability", name: "GPT Image", enabled: true,
-         adapterId: "OPENAI_GPT_IMAGE_2", capabilityVersion: 1, settings: {},
+          adapterId: "OPENAI_GPT_IMAGE_2", capabilityVersion: 1,
+          settings: { pricing: { amount: "0.03", currency: "CNY", unit: "IMAGE" } },
           kind: "IMAGE_GENERATION", maxReferenceImages: 4,
           supportsTransparentBackground: true, supportsImageMask: true,
         }] }], defaults: [],
@@ -609,7 +613,11 @@ describe("MediaCanvasCard", () => {
     } });
 
     await clickControl(await screen.findByRole("button", { name: "智能编辑" }));
-    expect(screen.getByRole("dialog", { name: "智能编辑图片" })).toBeInTheDocument();
+    const smartDialog = screen.getByRole("dialog", { name: "智能编辑图片" });
+    expect(smartDialog).toBeInTheDocument();
+    expect(within(smartDialog).getAllByText("预计 CNY 0.03")).toHaveLength(1);
+    expect(within(smartDialog).getByRole("combobox", { name: "图片能力" })).toBeDisabled();
+    expect(within(smartDialog).queryByText(/OPENAI ·/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "涂抹" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "框选" })).toBeEnabled();
     await clickControl(screen.getByRole("button", { name: "引用" }));
@@ -779,14 +787,15 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode: "RESULT", version: 0 })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
     ));
-    it("shows configuration instead of silently choosing a model for a disabled image function", async () => {
+    it("explains a disabled image function without choosing a model or showing a settings shortcut", async () => {
       let submissions = 0;
       server.use(http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings().map((entry) =>
         entry.operation === "IMAGE_SMART_EDIT" ? { ...entry, capabilityId: null } : entry))),
       http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", () => { submissions++; return HttpResponse.json({}); }));
       showCard(image());
       await clickControl(screen.getByRole("button", { name: "智能编辑" }));
-      expect(await screen.findByRole("link", { name: "功能设置" })).toHaveAttribute("href", "/settings/functions");
+      expect(await screen.findByText("请先在功能设置中为此图片工具选择处理方式。")).toBeVisible();
+      expect(screen.queryByRole("link", { name: "功能设置" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "开始智能编辑" })).not.toBeInTheDocument();
       expect(submissions).toBe(0);
     });

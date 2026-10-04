@@ -1,7 +1,6 @@
 import { X } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { Link } from "react-router";
 import { getMediaFunctions, getMediaSettings, type RunVideoOperationRequest, type VideoOperation } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { MEDIA_FUNCTIONS_QUERY_KEY, videoOperationLabel, videoFunctionChoices, videoFunction } from "../../shared/mediaFunctions";
@@ -31,8 +30,7 @@ export function VideoOperationPanel({ operation, sourceVersionId, sourceTitle, b
       : configured && setting ? <ConfiguredOperation key={`${configured.capability.id}:${configured.capability.capabilityVersion}:${setting.version}`}
         operation={operation} sourceVersionId={sourceVersionId} sourceTitle={sourceTitle} settingVersion={setting.version}
         configured={configured} busy={busy} error={error} onSubmit={onSubmit} />
-      : <><p>{setting?.capabilityId ? t("media.functions.unavailable") : t("media.video.configureFirst")}</p>
-        <Link className="secondary-button" to="/settings/functions">{t("media.functions.title")}</Link></>}
+      : <p>{setting?.capabilityId ? t("media.functions.unavailable") : t("media.video.configureFirst")}</p>}
   </div>;
 }
 
