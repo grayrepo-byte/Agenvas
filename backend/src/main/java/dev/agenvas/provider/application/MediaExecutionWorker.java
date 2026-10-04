@@ -206,21 +206,23 @@ public class MediaExecutionWorker {
     private List<TaskService.ArchivedProviderResult> archiveResults(AttemptContext attempt, MediaAdapter adapter,
             dev.agenvas.provider.domain.ProviderResultManifest manifest) {
         List<TaskService.ArchivedProviderResult> archived = new java.util.ArrayList<>();
-        for (var result : manifest.results()) {
-            // This is an archive identity, not a new Task or a new provider generation.
-            UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:provider-output:v1:" + attempt.lease().id() + ":" + result.ordinal())
-                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            java.util.function.Supplier<java.io.InputStream> input = () -> adapter.downloadResult(attempt, result).stream();
-            Asset asset = switch (result.kind()) {
-                case IMAGE -> assets.archiveTaskImage(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
-                case AUDIO -> assets.archiveTaskAudio(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
-                case VIDEO -> assets.archiveTaskVideo(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
-            };
-            ObjectNode content = resultContent(attempt, asset);
-            content.withObject("parameters").put("providerOutputOrdinal", result.ordinal()).put("providerOutputNodeId", result.nodeId());
-            content.withObject("parameters").set("providerUsage", manifest.usage());
-            archived.add(new TaskService.ArchivedProviderResult(result.ordinal(),
-                    dev.agenvas.artifact.domain.Artifact.Kind.valueOf(result.kind().name()), result.primary(), content));
+        try (var downloads = adapter.openResultDownloads(attempt)) {
+            for (var result : manifest.results()) {
+                // This is an archive identity, not a new Task or a new provider generation.
+                UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:provider-output:v1:" + attempt.lease().id() + ":" + result.ordinal())
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                java.util.function.Supplier<java.io.InputStream> input = () -> downloads.download(result).stream();
+                Asset asset = switch (result.kind()) {
+                    case IMAGE -> assets.archiveTaskImage(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
+                    case AUDIO -> assets.archiveTaskAudio(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
+                    case VIDEO -> assets.archiveTaskVideo(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
+                };
+                ObjectNode content = resultContent(attempt, asset);
+                content.withObject("parameters").put("providerOutputOrdinal", result.ordinal()).put("providerOutputNodeId", result.nodeId());
+                content.withObject("parameters").set("providerUsage", manifest.usage());
+                archived.add(new TaskService.ArchivedProviderResult(result.ordinal(),
+                        dev.agenvas.artifact.domain.Artifact.Kind.valueOf(result.kind().name()), result.primary(), content));
+            }
         }
         return List.copyOf(archived);
     }

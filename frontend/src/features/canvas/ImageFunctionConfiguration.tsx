@@ -1,7 +1,6 @@
 import { X } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
-import { Link } from "react-router";
 import { getMediaFunctions, getMediaSettings, type ImageOperation, type MediaCapability, type RunImageOperationRequest } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { MEDIA_FUNCTIONS_QUERY_KEY, imageFunction, imageOperationLabel, mediaFunctionChoices } from "../../shared/mediaFunctions";
@@ -13,6 +12,7 @@ type Submission = Pick<RunImageOperationRequest, "expectedFunctionVersion" | "ex
 type Configuration = {
   capability: MediaCapability;
   controls: ReactNode;
+  parameterControls: ReactNode;
   submitDisabled: boolean;
   submit: (parameters: RunImageOperationRequest["parameters"], instruction?: string,
     extras?: Pick<RunImageOperationRequest, "referenceVersionIds" | "maskAssetId">) => void;
@@ -36,8 +36,7 @@ export function ImageFunctionConfiguration({ operation, sourceVersionId, busy, o
     {functions.isPending || settings.isPending ? <p role="status">{t("app.pageLoading")}</p>
       : functions.error || settings.error ? <p role="alert">{(functions.error ?? settings.error)?.message}
         <Button variant="ghost" type="button" onClick={() => { void functions.refetch(); void settings.refetch(); }}>{t("common.retry")}</Button></p>
-      : <><p>{setting?.capabilityId ? t("media.functions.unavailable") : t("media.functions.configureImageFirst")}</p>
-        <Link className="secondary-button" to="/settings/functions">{t("media.functions.title")}</Link></>}
+      : <p>{setting?.capabilityId ? t("media.functions.unavailable") : t("media.functions.configureImageFirst")}</p>}
   </div>;
 }
 
@@ -52,18 +51,20 @@ function ConfiguredImageFunction({ configured, version, sourceVersionId, busy, o
   // The backend renders the operation's instruction; it owns PROMPT and the pinned source slot.
   const ordinary = definition ? { ...definition, fields: definition.fields.filter((field) => field.type !== "IMAGE" && field.source !== "PROMPT") } : undefined;
   const errors = ordinary ? runningHubErrors(ordinary, values, "", null, []) : [];
-  const controls = <div className="image-function-controls ui-stack">
-    <p className="ui-muted">{configured.label}</p>
-    {ordinary ? <RunningHubForm definition={ordinary} values={values} prompt="" durationSeconds={null} choices={[]}
+  const parameterControls = ordinary?.fields.length ? <div className="image-function-controls ui-stack">
+    <RunningHubForm definition={ordinary} values={values} prompt="" durationSeconds={null} choices={[]}
       disabled={busy} onChange={(key, value) => setValues((current) => {
         const next = { ...current }; if (value === undefined) delete next[key]; else next[key] = value; return next;
-      })} /> : null}
+      })} />
+    {errors.length ? <p role="status">{errors[0]}</p> : null}
+  </div> : null;
+  const controls = <div className="image-function-controls ui-stack">
+    <p className="ui-muted">{configured.label}</p>
+    {parameterControls}
     <p className="ui-muted">{configured.capability.adapterId === "LOCAL_IMAGE_PROCESSOR"
       ? t("media.video.localCost") : estimatedMediaCost(configured.capability, 1, null)}</p>
-    {errors.length ? <p role="status">{errors[0]}</p> : null}
-    <Link to="/settings/functions">{t("media.functions.title")}</Link>
   </div>;
-  return children({ capability: configured.capability, controls, submitDisabled: errors.length > 0,
+  return children({ capability: configured.capability, controls, parameterControls, submitDisabled: errors.length > 0,
     submit: (parameters, instruction, extras = {}) => {
       if (busy || errors.length) return;
       onSubmit({ parameters: definition ? { ...parameters, dynamicValues: fixedValues } : parameters,

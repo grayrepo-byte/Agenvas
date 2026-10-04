@@ -1,10 +1,11 @@
-import { SlidersHorizontal,Trash } from "@phosphor-icons/react";
-import { Field, FieldContent, FieldDescription, FieldLabel } from "../../shared/ui/primitives/field";
+import { CaretDown,SlidersHorizontal,Trash } from "@phosphor-icons/react";
+import { Field, FieldDescription, FieldLabel } from "../../shared/ui/primitives/field";
 import { useMutation } from "@tanstack/react-query";
 import { Fragment,useEffect,useId,useRef,useState,type FormEvent } from "react";
 import { previewRunningHubImport,type RunningHubDefinition,type RunningHubField } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
+import { DropdownMenu,DropdownMenuCheckboxItem,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuSeparator,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
@@ -17,15 +18,31 @@ const MAX_FIELDS = 64;
 const FIELD_TABLE_COLUMNS = 9;
 const MAX_OUTPUTS = 16;
 const MAX_IMPORT_SOURCE_CHARACTERS = 256 * 1024;
-const NO_SELECTED_NODE = "__SELECT_NODE__";
 type OutputKind = RunningHubDefinition["outputs"][number]["kind"];
+function nodeLabel(nodeId: string) { return nodeId ? t("settings.runningHub.nodeOption", { "0": nodeId }) : t("settings.runningHub.unassignedNode"); }
+
+/** With several visible nodes, the administrator explicitly chooses where a new binding belongs. */
+function NodeParameterAction({ nodeIds, label, onAdd, disabled = false, variant = "outline" }: {
+  nodeIds: string[]; label: string; onAdd: (nodeId: string) => void; disabled?: boolean; variant?: "outline" | "ghost";
+}) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const firstNode = nodeIds[0];
+  if (firstNode === undefined) return null;
+  if (nodeIds.length === 1) return <Button variant={variant} type="button" disabled={disabled} onClick={() => onAdd(firstNode)}>{label}</Button>;
+  return <DropdownMenu modal={false}>
+    <DropdownMenuTrigger asChild><Button ref={trigger} variant={variant} type="button" disabled={disabled}>{label}<CaretDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
+    <DropdownMenuContent aria-label={label} aria-labelledby={undefined} align="start"><DropdownMenuGroup>
+      {nodeIds.map((nodeId) => <DropdownMenuItem key={nodeId} onSelect={() => { if (!trigger.current?.matches(":disabled")) onAdd(nodeId); }}>{nodeLabel(nodeId)}</DropdownMenuItem>)}
+    </DropdownMenuGroup></DropdownMenuContent>
+  </DropdownMenu>;
+}
 function emptyDefinition(adapterId: string): RunningHubDefinition {
   const kind = adapterId === "RUNNINGHUB_VIDEO" ? "VIDEO" : adapterId === "RUNNINGHUB_AUDIO" ? "AUDIO" : "IMAGE";
   return { schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "", fields: [],
     fixedBindings: [], outputs: [{ kind, primary: true, maxCount: 1 }], instanceType: "default", usePersonalQueue: false, addMetadata: false };
 }
 
-/** Candidate import, human field review and the same form used on the canvas. No generation occurs here. */
+/** Candidate import, field editing and the same form used on the canvas. No generation occurs here. */
 export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onChange }: {
   connectionId: string; adapterId: string; value?: RunningHubDefinition; onChange: (value: RunningHubDefinition, primaryKind?: OutputKind) => void;
 }) {
@@ -35,37 +52,33 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
   const [localError, setLocalError] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
   const [previewValues, setPreviewValues] = useState<Record<string, string | number | boolean>>({});
-  const [reviewedDefinition, setReviewedDefinition] = useState<RunningHubDefinition | null>(null);
-  const reviewed = reviewedDefinition === definition;
-  function setReviewed(checked: boolean) { setReviewedDefinition(checked ? definition : null); }
-  const reviewId = useId();
-  const reviewControl = useRef<HTMLButtonElement>(null);
   const [expandedField, setExpandedField] = useState<number | null>(null);
-  const [nodeSelection, setNodeSelection] = useState<string | null>(null);
+  const [nodeSelection, setNodeSelection] = useState<string[]>([]);
+  const nodePickerId = useId();
+  const nodePickerHintId = useId();
+  const nodePickerTrigger = useRef<HTMLButtonElement>(null);
   const invalidParameter = useRef<HTMLElement | null>(null);
   const nodeIds = [...new Set([...definition.fields, ...(definition.fixedBindings ?? [])].map((item) => item.nodeId))]
     .sort((first, second) => first.localeCompare(second, undefined, { numeric: true }));
-  const selectedNode = nodeIds.find((nodeId) => nodeId === nodeSelection) ?? null;
+  const selectedNodes = nodeIds.filter((nodeId) => nodeSelection.includes(nodeId));
+  const nodeSummary = selectedNodes.map(nodeLabel).join(" · ");
   useEffect(() => { if (!value) onChange(emptyDefinition(adapterId)); }, [adapterId, value, onChange]);
-  useEffect(() => {
-    // Wait for the controlled checkbox's native form value before running validation and saving.
-    if (reviewed) reviewControl.current?.form?.requestSubmit();
-  }, [reviewed]);
   const imported = useMutation({
     mutationFn: () => previewRunningHubImport(connectionId, { targetType: definition.targetType,
       targetId: definition.targetId, kind: adapterId === "RUNNINGHUB_VIDEO" ? "VIDEO_GENERATION" : adapterId === "RUNNINGHUB_AUDIO" ? "AUDIO_GENERATION" : "IMAGE_GENERATION",
       ...(source.trim() ? { source: JSON.parse(source) as unknown } : {}) }),
-    onSuccess: (result) => { onChange(result.definition); setWarnings(result.warnings); setReviewed(false); setLocalError(""); setPreviewValues({}); setExpandedField(null); setNodeSelection(null); },
+    onSuccess: (result) => { onChange(result.definition); setWarnings(result.warnings); setLocalError(""); setPreviewValues({}); setExpandedField(null); setNodeSelection([]); },
   });
-  function update(next: RunningHubDefinition) { setReviewed(false); onChange(next); }
+  function update(next: RunningHubDefinition) { onChange(next); }
+  function revealNode(nodeId: string) { setNodeSelection((selected) => selected.includes(nodeId) ? selected : [...selected, nodeId]); }
   function field(index: number, patch: Partial<RunningHubField>) {
-    if (patch.nodeId !== undefined) setNodeSelection(patch.nodeId);
+    if (patch.nodeId !== undefined) revealNode(patch.nodeId);
     update({ ...definition, fields: definition.fields.map((item, i) => i === index ? { ...item, ...patch } : item) });
   }
-  function addField(nodeId = selectedNode ?? "") {
+  function addField(nodeId: string) {
     let ordinal = definition.fields.length + 1;
     while (definition.fields.some((item) => item.key === `field${ordinal}`)) ordinal += 1;
-    setNodeSelection(nodeId);
+    revealNode(nodeId);
     update({ ...definition, fields: [...definition.fields, { key: `field${ordinal}`, label: t("settings.runningHub.newParameter"),
       type: "STRING", nodeId, fieldName: "", required: true, advanced: false, source: "PARAMETER" }] });
   }
@@ -78,7 +91,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
     // Native validation visits every invalid control; reveal and focus the first one only.
     if (invalidParameter.current) return;
     invalidParameter.current = input;
-    setNodeSelection(row.dataset.parameterNode ?? "");
+    revealNode(row.dataset.parameterNode ?? "");
     if (row.dataset.parameterIndex !== undefined) setExpandedField(Number(row.dataset.parameterIndex));
     requestAnimationFrame(() => { input.focus(); invalidParameter.current = null; });
   }
@@ -114,18 +127,34 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
     {warnings.map((warning) => <p className="ui-muted" key={warning}>{warning}</p>)}
     <fieldset className="ui-stack" onInvalidCapture={revealInvalidParameter}><legend>{t("settings.runningHub.mappingTable")}</legend>
       <p className="ui-muted">{t("settings.runningHub.mappingHint")}</p>
-      <Field className="runninghub-node-picker"><FieldLabel className="ui-field block">{t("settings.runningHub.selectNode")}<Select value={selectedNode ?? NO_SELECTED_NODE}
-        onChange={(event) => { setNodeSelection(event.target.value === NO_SELECTED_NODE ? null : event.target.value); setExpandedField(null); }}>
-        <option value={NO_SELECTED_NODE}>{t("settings.runningHub.selectNodePlaceholder")}</option>
-        {nodeIds.map((nodeId) => <option key={nodeId} value={nodeId}>{nodeId ? t("settings.runningHub.nodeOption", { "0": nodeId }) : t("settings.runningHub.unassignedNode")}</option>)}
-      </Select></FieldLabel><FieldDescription>{t("settings.runningHub.selectNodeHint")}</FieldDescription></Field>
+      <Field className="runninghub-node-picker"><FieldLabel htmlFor={nodePickerId}>{t("settings.runningHub.selectNode")}</FieldLabel>
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild><Button ref={nodePickerTrigger} id={nodePickerId} variant="outline" type="button" className="w-full justify-between"
+            aria-label={t("settings.runningHub.selectNode")} aria-describedby={nodePickerHintId} disabled={!nodeIds.length} title={nodeSummary || undefined}>
+            <span className="truncate">{nodeSummary || t("settings.runningHub.selectNodePlaceholder")}</span><CaretDown data-icon="inline-end" />
+          </Button></DropdownMenuTrigger>
+          <DropdownMenuContent aria-label={t("settings.runningHub.selectNode")} aria-labelledby={undefined} align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+            <DropdownMenuGroup>
+              <DropdownMenuItem onSelect={(event) => { event.preventDefault(); if (!nodePickerTrigger.current?.matches(":disabled")) setNodeSelection(nodeIds); }}>{t("settings.runningHub.selectAllNodes")}</DropdownMenuItem>
+              <DropdownMenuItem disabled={!selectedNodes.length} onSelect={(event) => { event.preventDefault(); if (!nodePickerTrigger.current?.matches(":disabled")) setNodeSelection([]); }}>{t("settings.runningHub.clearNodeSelection")}</DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>{nodeIds.map((nodeId) => <DropdownMenuCheckboxItem key={nodeId} checked={selectedNodes.includes(nodeId)}
+              onSelect={(event) => event.preventDefault()} onCheckedChange={(checked) => {
+                if (nodePickerTrigger.current?.matches(":disabled")) return;
+                setNodeSelection((selected) => checked ? selected.includes(nodeId) ? selected : [...selected, nodeId] : selected.filter((id) => id !== nodeId));
+              }}>{nodeLabel(nodeId)}</DropdownMenuCheckboxItem>)}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <FieldDescription id={nodePickerHintId}>{t("settings.runningHub.selectNodeHint")}</FieldDescription></Field>
       <Button variant="outline" type="button" disabled={definition.fields.length >= MAX_FIELDS} onClick={() => addField("")}>{t("settings.runningHub.addNode")}</Button>
-      <div hidden={selectedNode === null || !definition.fields.some((item) => item.nodeId === selectedNode)} className="runninghub-mapping-scroll" role="region" aria-label={t("settings.runningHub.mappingTable")} tabIndex={0}>
+      <div hidden={!definition.fields.some((item) => selectedNodes.includes(item.nodeId))} className="runninghub-mapping-scroll" role="region" aria-label={t("settings.runningHub.mappingTable")} tabIndex={0}>
       <Table className="runninghub-mapping-table" aria-label={t("settings.runningHub.mappingTable")}>
         <TableHeader><TableRow><TableHead scope="col">{t("settings.runningHub.nodeId")}</TableHead><TableHead scope="col">{t("settings.runningHub.nodeField")}</TableHead><TableHead scope="col">{t("settings.runningHub.label")}</TableHead><TableHead scope="col">{t("settings.runningHub.fieldKey")}</TableHead><TableHead scope="col">{t("settings.runningHub.type")}</TableHead><TableHead scope="col">{t("settings.runningHub.inputSource")}</TableHead><TableHead scope="col">{t("settings.runningHub.defaultOrFormat")}</TableHead><TableHead scope="col">{t("settings.runningHub.requiredSuffix")}</TableHead><TableHead scope="col">{t("settings.runningHub.mappingActions")}</TableHead></TableRow></TableHeader>
         <TableBody>
         {definition.fields.map((item, index) => <Fragment key={index}>
-          <TableRow hidden={item.nodeId !== selectedNode} data-parameter-node={item.nodeId} aria-label={item.label || t("settings.runningHub.fieldLabel", { "0": index + 1 })}>
+          <TableRow hidden={!selectedNodes.includes(item.nodeId)} data-parameter-node={item.nodeId} aria-label={item.label || t("settings.runningHub.fieldLabel", { "0": index + 1 })}>
             <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.nodeId")}</span><Input required pattern="[0-9]{1,32}" value={item.nodeId} onChange={(event) => field(index, { nodeId: event.target.value })} /></FieldLabel></Field></TableCell>
             <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.nodeField")}</span><Input required pattern="[A-Za-z_][A-Za-z0-9_]{0,79}" value={item.fieldName} onChange={(event) => field(index, { fieldName: event.target.value })} /></FieldLabel></Field></TableCell>
             <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.label")}</span><Input required maxLength={160} value={item.label} onChange={(event) => field(index, { label: event.target.value })} /></FieldLabel></Field></TableCell>
@@ -140,7 +169,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
             <option value="FILE_NAME">{t("settings.runningHub.filenameReference")}</option><option value="URL">{t("settings.runningHub.urlReference")}</option>
           </Select></FieldLabel></Field> : <Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.defaultValue")}</span>{item.type === "BOOLEAN" ? <Select value={item.defaultValue == null ? "" : String(item.defaultValue)} onChange={(event) => field(index, { defaultValue: event.target.value ? event.target.value === "true" : null })}><option value="">{t("settings.runningHub.noDefault")}</option><option value="true">{t("common.enabled")}</option><option value="false">{t("common.close")}</option></Select>
             : item.type === "STRING" ? <Input value={String(item.defaultValue ?? "")} onChange={(event) => field(index, { defaultValue: event.target.value })} />
-            : <Input key={JSON.stringify(item.defaultValue)} defaultValue={item.defaultValue == null ? "" : JSON.stringify(item.defaultValue)} onChange={() => setReviewed(false)} onBlur={(event) => {
+            : <Input key={JSON.stringify(item.defaultValue)} defaultValue={item.defaultValue == null ? "" : JSON.stringify(item.defaultValue)} onBlur={(event) => {
               const raw = event.target.value;
               if (!raw) { event.target.setCustomValidity(""); field(index, { defaultValue: null }); setLocalError(""); return; }
               commitScalar(event.target, t("settings.runningHub.invalidDefault"), (defaultValue) => field(index, { defaultValue }));
@@ -154,7 +183,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
                 onClick={() => { setExpandedField(null); update({ ...definition, fields: definition.fields.filter((_, i) => i !== index) }); }}><Trash /></Button>
             </div></TableCell>
           </TableRow>
-          <TableRow data-parameter-node={item.nodeId} data-parameter-index={index} aria-label={`${t("settings.runningHub.moreSettings")} · ${item.label}`} hidden={item.nodeId !== selectedNode || expandedField !== index}>
+          <TableRow data-parameter-node={item.nodeId} data-parameter-index={index} aria-label={`${t("settings.runningHub.moreSettings")} · ${item.label}`} hidden={!selectedNodes.includes(item.nodeId) || expandedField !== index}>
             <TableCell colSpan={FIELD_TABLE_COLUMNS} className="whitespace-normal">
               <fieldset className="runninghub-field-details ui-stack"><legend>{item.label || t("settings.runningHub.fieldLabel", { "0": index + 1 })}</legend>
                 <div className="ui-form-grid">
@@ -165,7 +194,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
                   <Field><FieldLabel className="ui-field block">{t("settings.runningHub.visibilityCondition")}<Select value={item.enabledWhen?.field ?? ""} onChange={(event) => field(index, { enabledWhen: event.target.value ? { field: event.target.value, value: definition.fields.find((parent) => parent.key === event.target.value)?.defaultValue ?? "" } : null })}>
                     <option value="">{t("settings.runningHub.alwaysVisible")}</option>{definition.fields.filter((parent) => parent.key !== item.key && !parent.enabledWhen && !["IMAGE", "AUDIO", "VIDEO"].includes(parent.type)).map((parent) => <option key={parent.key} value={parent.key}>{parent.label}</option>)}
                   </Select></FieldLabel></Field>
-                  {item.enabledWhen ? <Field><FieldLabel className="ui-field block">{t("settings.runningHub.conditionValue")}<Input key={JSON.stringify(item.enabledWhen)} defaultValue={JSON.stringify(item.enabledWhen.value)} onChange={() => setReviewed(false)} onBlur={(event) => {
+                  {item.enabledWhen ? <Field><FieldLabel className="ui-field block">{t("settings.runningHub.conditionValue")}<Input key={JSON.stringify(item.enabledWhen)} defaultValue={JSON.stringify(item.enabledWhen.value)} onBlur={(event) => {
                     commitScalar(event.target, t("settings.runningHub.invalidCondition"), (value) => field(index, { enabledWhen: { field: item.enabledWhen!.field, value } }));
                   }} /></FieldLabel></Field> : null}
                   <Field><FieldLabel className="ui-field block">{t("settings.runningHub.encoding")}<Select value={item.encoding ?? "NATIVE"} onChange={(event) => field(index, { encoding: event.target.value as RunningHubField["encoding"] })}><option value="NATIVE">{t("settings.runningHub.preserveType")}</option><option value="STRING">{t("settings.runningHub.stringEncoding")}</option></Select></FieldLabel></Field>
@@ -179,15 +208,15 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
         </TableBody>
       </Table>
       </div>
-      <Button hidden={selectedNode === null} variant="outline" type="button" disabled={definition.fields.length >= MAX_FIELDS} onClick={() => addField()}>{t("settings.runningHub.addField")}</Button>
-      <p hidden={selectedNode === null}>{t("settings.runningHub.fixedParametersHint")}</p>
-      <div hidden={selectedNode === null || !definition.fixedBindings?.some((item) => item.nodeId === selectedNode)} className="runninghub-mapping-scroll">
+      <NodeParameterAction nodeIds={selectedNodes} label={t("settings.runningHub.addField")} disabled={definition.fields.length >= MAX_FIELDS} onAdd={addField} />
+      <p hidden={!selectedNodes.length}>{t("settings.runningHub.fixedParametersHint")}</p>
+      <div hidden={!definition.fixedBindings?.some((item) => selectedNodes.includes(item.nodeId))} className="runninghub-mapping-scroll">
       <Table className="runninghub-secondary-table" aria-label={t("settings.runningHub.fixedParametersHint")}>
       <TableHeader><TableRow><TableHead scope="col">{t("settings.runningHub.fixedNodeId")}</TableHead><TableHead scope="col">{t("settings.runningHub.fixedFields")}</TableHead><TableHead scope="col">{t("settings.runningHub.fixedValue")}</TableHead><TableHead scope="col">{t("settings.runningHub.mappingActions")}</TableHead></TableRow></TableHeader><TableBody>
-      {(definition.fixedBindings ?? []).map((binding, index) => <TableRow key={index} hidden={binding.nodeId !== selectedNode} data-parameter-node={binding.nodeId}>
-        <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.fixedNodeId")}</span><Input required pattern="[0-9]{1,32}" value={binding.nodeId} onChange={(event) => { setNodeSelection(event.target.value); update({ ...definition, fixedBindings: definition.fixedBindings?.map((item, i) => i === index ? { ...item, nodeId: event.target.value } : item) }); }} /></FieldLabel></Field></TableCell>
+      {(definition.fixedBindings ?? []).map((binding, index) => <TableRow key={index} hidden={!selectedNodes.includes(binding.nodeId)} data-parameter-node={binding.nodeId}>
+        <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.fixedNodeId")}</span><Input required pattern="[0-9]{1,32}" value={binding.nodeId} onChange={(event) => { revealNode(event.target.value); update({ ...definition, fixedBindings: definition.fixedBindings?.map((item, i) => i === index ? { ...item, nodeId: event.target.value } : item) }); }} /></FieldLabel></Field></TableCell>
         <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.fixedFields")}</span><Input required pattern="[A-Za-z_][A-Za-z0-9_]{0,79}" value={binding.fieldName} onChange={(event) => update({ ...definition, fixedBindings: definition.fixedBindings?.map((item, i) => i === index ? { ...item, fieldName: event.target.value } : item) })} /></FieldLabel></Field></TableCell>
-        <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.fixedValue")}</span><Input key={JSON.stringify(binding.value)} defaultValue={JSON.stringify(binding.value)} onChange={() => setReviewed(false)} onBlur={(event) => {
+        <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.fixedValue")}</span><Input key={JSON.stringify(binding.value)} defaultValue={JSON.stringify(binding.value)} onBlur={(event) => {
           commitScalar(event.target, t("settings.runningHub.invalidFixedValue"), (value) => update({ ...definition,
             fixedBindings: definition.fixedBindings?.map((item, i) => i === index ? { ...item, value } : item) }));
         }} /></FieldLabel></Field></TableCell>
@@ -195,7 +224,9 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
       </TableRow>)}
       </TableBody></Table>
       </div>
-      <Button hidden={selectedNode === null} variant="ghost" type="button" onClick={() => { const nodeId = selectedNode ?? ""; setNodeSelection(nodeId); update({ ...definition, fixedBindings: [...(definition.fixedBindings ?? []), { nodeId, fieldName: "", value: "", encoding: "NATIVE" }] }); }}>{t("settings.runningHub.addFixedMapping")}</Button>
+      <NodeParameterAction nodeIds={selectedNodes} label={t("settings.runningHub.addFixedMapping")} variant="ghost" onAdd={(nodeId) => {
+        revealNode(nodeId); update({ ...definition, fixedBindings: [...(definition.fixedBindings ?? []), { nodeId, fieldName: "", value: "", encoding: "NATIVE" }] });
+      }} />
     </fieldset>
     <fieldset className="ui-stack"><legend>{t("settings.runningHub.outputMappings")}</legend>
       <Table className="runninghub-secondary-table" aria-label={t("settings.runningHub.outputMappings")}>
@@ -204,7 +235,6 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
         <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.outputNode")}</span><Input pattern="[0-9]{1,32}" value={output.nodeId ?? ""} onChange={(event) => update({ ...definition, outputs: definition.outputs.map((item, i) => i === index ? { ...item, nodeId: event.target.value || null } : item) })} /></FieldLabel></Field></TableCell>
         <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("media.kind")}</span><Select value={output.kind} onChange={(event) => {
           const kind = event.target.value as OutputKind;
-          setReviewed(false);
           onChange({ ...definition, outputs: definition.outputs.map((item, i) => i === index ? { ...item, kind } : item) }, output.primary ? kind : undefined);
         }}><option value="IMAGE">{t("common.image")}</option><option value="VIDEO">{t("common.video")}</option><option value="AUDIO">{t("common.audio")}</option></Select></FieldLabel></Field></TableCell>
         <TableCell><Field><FieldLabel className="ui-field block"><span className="sr-only">{t("settings.runningHub.resultLimit")}</span><Input type="number" min={1} max={MAX_OUTPUTS} value={output.maxCount} onChange={(event) => update({ ...definition, outputs: definition.outputs.map((item, i) => i === index ? { ...item, maxCount: Number(event.target.value) } : item) })} /></FieldLabel></Field></TableCell>
@@ -226,12 +256,5 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
       onChange={(key, next) => setPreviewValues((current) => { const values = { ...current }; if (next === undefined) delete values[key]; else values[key] = next; return values; })} /></details>
     <p className="ui-muted">{t("settings.runningHub.contractVersionHint")}</p>
     {localError ? <p role="alert">{localError}</p> : null}
-    <Field orientation="horizontal">
-      <Checkbox id={reviewId} ref={reviewControl} required checked={reviewed && !localError} onCheckedChange={(event) => setReviewed(event === true)} />
-      <FieldContent>
-        <FieldLabel htmlFor={reviewId}>{t("settings.runningHub.reviewedContractLabel")}</FieldLabel>
-        <FieldDescription>{t("settings.runningHub.reviewAndSaveHint")}</FieldDescription>
-      </FieldContent>
-    </Field>
   </div>;
 }

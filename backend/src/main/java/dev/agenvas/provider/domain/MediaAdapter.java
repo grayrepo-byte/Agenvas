@@ -11,4 +11,12 @@ public interface MediaAdapter {
     default MediaPayload downloadResult(AttemptContext context, ProviderResultManifest.Result result) {
         throw new UnsupportedOperationException("Adapter has no result download protocol");
     }
+    /** One archive pass may share temporary downloads; closing it releases all private scratch files. */
+    default ResultDownloads openResultDownloads(AttemptContext context) {
+        return result -> downloadResult(context, result);
+    }
+    interface ResultDownloads extends AutoCloseable {
+        MediaPayload download(ProviderResultManifest.Result result);
+        @Override default void close() {}
+    }
 }

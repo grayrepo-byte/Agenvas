@@ -37,6 +37,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -89,7 +91,7 @@ class RunningHubPostgresIT {
     private static UUID owner;
     @BeforeEach void owner() { if (owner == null) owner = identities.setup("rh-admin", "runninghub-password-123").userId(); }
 
-    @Test void archivesMultipleMediaOutputsSkipsCompanionZipResumesFromManifestAndPreservesANewerDraft() throws Exception {
+    @Test void archivesMultipleMediaOutputsReadsCompanionZipResumesFromManifestAndPreservesANewerDraft() throws Exception {
         try (var provider = new Fake(2, true, false)) {
             var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
             Task task = accept(fixture, "");
@@ -114,7 +116,7 @@ class RunningHubPostgresIT {
             assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
             assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
             assertThat(provider.firstDownloads).hasValue(1); assertThat(provider.secondDownloads).hasValue(2);
-            assertThat(provider.zipDownloads).hasValue(0);
+            assertThat(provider.zipDownloads).hasValue(1);
             assertThat(completed.output().path("additionalResults")).hasSize(1);
             assertThat(completed.output().path("selected").asBoolean()).isFalse();
             assertThat(drafts.get(owner, fixture.project.id(), fixture.card).prompt()).isEqualTo("new local draft");
@@ -124,6 +126,115 @@ class RunningHubPostgresIT {
             assertThat(canvas.list(owner, fixture.project.id())).hasSize(2);
             assertThat(completed.output().path("providerUsage").path("consumeMoney").isNull()).isTrue();
         }
+    }
+
+    @Test void zipOnlyOutputsBecomeResourcesAndResumeWithoutQueryingOrSubmittingAgain() throws Exception {
+        try (var provider = new Fake(2, false, false)) {
+            provider.zipOnly = true;
+            provider.failZipArchiveOnce = true;
+            provider.zipBytes = zip(new String[] { "output/图片一.png", "output/图片二.png" }, new byte[][] { provider.imageBytes, provider.imageBytes });
+            var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
+            Task task = accept(fixture, "ZIP results"); worker.submitOnce("rh-zip-submit");
+            due(task.id()); worker.pollOnce("rh-zip-first");
+            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+            var manifest = tasks.providerResultManifest(task).orElseThrow();
+            assertThat(manifest.results()).hasSize(2);
+            assertThat(manifest.results().getFirst().archiveEntry().name()).isEqualTo("output/图片一.png");
+            // Model a crash after the first member has already been published as a READY asset.
+            UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:provider-output:v1:" + task.id() + ":0").getBytes(StandardCharsets.UTF_8));
+            var first = assets.archiveTaskImage(owner, fixture.project.id(), archiveId, () -> new ByteArrayInputStream(provider.imageBytes));
+            var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs);
+            due(task.id()); restarted.pollOnce("rh-zip-resumed");
+            var completed = tasks.get(owner, fixture.project.id(), task.id());
+            assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+            var primaryVersion = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
+                    UUID.fromString(completed.output().path("artifactVersionId").asText()), Artifact.Kind.IMAGE);
+            assertThat(primaryVersion.content().path("assetId").asText()).isEqualTo(first.id().toString());
+            assertThat(completed.output().path("additionalResults")).hasSize(1);
+            var extraVersion = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
+                    UUID.fromString(completed.output().path("additionalResults").get(0).path("artifactVersionId").asText()), Artifact.Kind.IMAGE);
+            UUID extraAsset = UUID.fromString(extraVersion.content().path("assetId").asText());
+            assertThat(assets.get(owner, fixture.project.id(), extraAsset).asset().mediaKind().name()).isEqualTo("IMAGE");
+            assertThat(canvas.list(owner, fixture.project.id())).hasSize(2);
+            assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
+            assertThat(provider.zipDownloads).hasValue(3); assertThat(provider.firstDownloads).hasValue(0);
+            assertThat(mapper.writeValueAsString(completed)).doesNotContain(provider.origin(), ".zip", "图片一", "archiveEntry", "fake-runninghub-key");
+            assertThat(restarted.pollOnce("rh-zip-repeat")).isZero();
+        }
+    }
+
+    @Test void zipMixedMediaUsesExistingAssetValidationAndCreatesDifferentArtifactKinds() throws Exception {
+        try (var provider = new Fake(2, false, false)) {
+            var audio = Files.createTempFile("rh-zip-audio-", ".wav");
+            try {
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono", "-t", "1", "-y", audio.toString()));
+                provider.zipOnly = true; provider.secondType = "wav";
+                provider.zipBytes = zip(new String[] { "image.png", "audio.wav", "README.txt" },
+                        new byte[][] { provider.imageBytes, Files.readAllBytes(audio), "synthetic metadata".getBytes(StandardCharsets.UTF_8) });
+                var fixture = fixture(provider, Artifact.Kind.IMAGE, "AI_APP", false);
+                Task task = accept(fixture, "Mixed ZIP"); worker.submitOnce("rh-zip-mixed-submit");
+                due(task.id()); worker.pollOnce("rh-zip-mixed-poll");
+                var completed = tasks.get(owner, fixture.project.id(), task.id());
+                assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+                var extra = completed.output().path("additionalResults").get(0);
+                assertThat(artifacts.get(owner, fixture.project.id(), UUID.fromString(extra.path("artifactId").asText())).artifact().kind()).isEqualTo(Artifact.Kind.AUDIO);
+                var audioVersion = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
+                        UUID.fromString(extra.path("artifactVersionId").asText()), Artifact.Kind.AUDIO);
+                assertThat(assets.get(owner, fixture.project.id(), UUID.fromString(audioVersion.content().path("assetId").asText())).asset().contentType()).isEqualTo("audio/wav");
+                assertThat(drafts.get(owner, fixture.project.id(), UUID.fromString(extra.path("canvasItemId").asText())).prompt()).isEmpty();
+                assertThat(canvas.list(owner, fixture.project.id())).hasSize(2);
+                assertThat(provider.zipDownloads).hasValue(2); assertThat(provider.submits).hasValue(1);
+            } finally { Files.deleteIfExists(audio); }
+        }
+    }
+
+    @Test void aPngFilenameInsideZipCannotBypassMediaDecodingOrCauseAnotherGeneration() throws Exception {
+        try (var provider = new Fake(1, false, false)) {
+            provider.zipOnly = true;
+            provider.zipBytes = zip(new String[] { "fake.png" }, new byte[][] { "not an image".getBytes(StandardCharsets.UTF_8) });
+            var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
+            Task task = accept(fixture, ""); worker.submitOnce("rh-zip-invalid-submit");
+            due(task.id()); worker.pollOnce("rh-zip-invalid-poll");
+            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+            assertThat(tasks.providerResultManifest(task)).isPresent();
+            due(task.id()); worker.pollOnce("rh-zip-invalid-retry");
+            assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
+            assertThat(artifacts.get(owner, fixture.project.id(), fixture.artifact.id()).resourceDefaultVersion()).isNull();
+            assertThat(jdbc.sql("select count(*) from asset where project_id=:project").param("project", fixture.project.id()).query(Integer.class).single()).isZero();
+        }
+    }
+
+    @Test void zipVideoIsDecodedAndArchivedAsTheCurrentNodeResult() throws Exception {
+        try (var provider = new Fake(1, false, false)) {
+            var video = Files.createTempFile("rh-zip-video-", ".mp4");
+            try {
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", "color=c=blue:s=64x64:r=8", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", "-y", video.toString()));
+                provider.zipOnly = true;
+                provider.zipBytes = zip(new String[] { "output/video.mp4" }, new byte[][] { Files.readAllBytes(video) });
+                var fixture = fixture(provider, Artifact.Kind.VIDEO, "WORKFLOW", false);
+                Task task = accept(fixture, "Video ZIP"); worker.submitOnce("rh-zip-video-submit");
+                due(task.id()); worker.pollOnce("rh-zip-video-poll");
+                var completed = tasks.get(owner, fixture.project.id(), task.id());
+                assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+                assertThat(completed.output().path("selected").asBoolean()).isTrue();
+                var version = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
+                        UUID.fromString(completed.output().path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
+                var asset = assets.get(owner, fixture.project.id(), UUID.fromString(version.content().path("assetId").asText())).asset();
+                assertThat(asset.contentType()).isEqualTo("video/mp4");
+                assertThat(asset.width()).isEqualTo(64); assertThat(asset.height()).isEqualTo(64);
+                assertThat(asset.durationMs()).isEqualTo(1000);
+                assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
+                assertThat(provider.zipDownloads).hasValue(2); assertThat(canvas.list(owner, fixture.project.id())).hasSize(1);
+            } finally { Files.deleteIfExists(video); }
+        }
+    }
+
+    private static byte[] zip(String[] names, byte[][] contents) throws Exception {
+        var bytes = new ByteArrayOutputStream();
+        try (var zip = new ZipOutputStream(bytes)) {
+            for (int i = 0; i < names.length; i++) { zip.putNextEntry(new ZipEntry(names[i])); zip.write(contents[i]); zip.closeEntry(); }
+        }
+        return bytes.toByteArray();
     }
 
     @Test void lostSubmissionResponseIsUnknownAndNeverAutomaticallySubmittedAgain() throws Exception {
@@ -319,9 +430,14 @@ class RunningHubPostgresIT {
         final AtomicReference<String> submissionPath = new AtomicReference<>();
         volatile String secondType = "png";
         volatile byte[] secondBytes;
+        final byte[] imageBytes;
+        volatile byte[] zipBytes;
+        volatile boolean zipOnly, failZipArchiveOnce;
         Fake(int resultCount, boolean failSecondOnce, boolean uncertain) throws Exception {
             this.resultCount = resultCount;
             var bytes = new ByteArrayOutputStream(); ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", bytes);
+            imageBytes = bytes.toByteArray();
+            zipBytes = zip(new String[] { "README.txt" }, new byte[][] { "synthetic metadata".getBytes(StandardCharsets.UTF_8) });
             server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/", exchange -> {
                 String path = exchange.getRequestURI().getPath(); byte[] response;
@@ -333,18 +449,19 @@ class RunningHubPostgresIT {
                     response = "{\"taskId\":\"original-task\",\"status\":\"QUEUED\"}".getBytes(StandardCharsets.UTF_8);
                 } else if (path.equals("/openapi/v2/query")) {
                     queries.incrementAndGet();
-                    response = ("{\"status\":\"SUCCESS\",\"results\":[{\"nodeId\":\"9\",\"outputType\":\"png\",\"url\":\"" + origin() + "/first.png\"}"
-                            + (resultCount > 1 ? ",{\"nodeId\":\"9\",\"outputType\":\"" + secondType + "\",\"url\":\"" + origin() + "/second.png\"}" : "")
-                            + ",{\"nodeId\":\"99\",\"outputType\":\"zip\",\"url\":\"" + origin() + "/companion.zip\"}"
+                    response = ("{\"status\":\"SUCCESS\",\"results\":["
+                            + (zipOnly ? "" : "{\"nodeId\":\"9\",\"outputType\":\"png\",\"url\":\"" + origin() + "/first.png\"}"
+                                + (resultCount > 1 ? ",{\"nodeId\":\"9\",\"outputType\":\"" + secondType + "\",\"url\":\"" + origin() + "/second.png\"}" : "") + ",")
+                            + "{\"nodeId\":\"99\",\"outputType\":\"zip\",\"url\":\"" + origin() + "/companion.zip\"}"
                             + "],\"usage\":{\"consumeMoney\":null,\"consumeCoins\":0.25,\"taskCostTime\":3}}").getBytes(StandardCharsets.UTF_8);
                 } else if (path.equals("/task/openapi/upload")) {
                     uploads.incrementAndGet(); exchange.getRequestBody().readAllBytes();
                     response = "{\"code\":0,\"data\":{\"fileName\":\"input/reference.mp4\"}}".getBytes(StandardCharsets.UTF_8);
                 } else {
                     if (path.equals("/first.png")) firstDownloads.incrementAndGet();
-                    else if (path.equals("/companion.zip")) zipDownloads.incrementAndGet();
+                    else if (path.equals("/companion.zip") && zipDownloads.incrementAndGet() == 2 && failZipArchiveOnce) status = 503;
                     else if (path.equals("/second.png") && secondDownloads.incrementAndGet() == 1 && failSecondOnce) status = 503;
-                    response = path.equals("/second.png") && secondBytes != null ? secondBytes : bytes.toByteArray();
+                    response = path.equals("/companion.zip") ? zipBytes : path.equals("/second.png") && secondBytes != null ? secondBytes : imageBytes;
                 }
                 exchange.sendResponseHeaders(status, response.length); exchange.getResponseBody().write(response); exchange.close();
             }); server.start();

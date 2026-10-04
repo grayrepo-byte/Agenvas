@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import type { RunningHubDefinition } from "../../shared/api/client";
-import { clickControl, selectValue } from "../../test/controls";
+import { clickControl } from "../../test/controls";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 
 const initialDefinition: RunningHubDefinition = {
@@ -27,9 +28,18 @@ async function mount(selectNode = true) {
   }
   render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
   if (selectNode) {
-    await selectValue(screen.getByRole("combobox", { name: "选择节点" }), "2");
+    await showNodes("2");
     fireEvent.click(within(screen.getByRole("row", { name: "强度" })).getByRole("button", { name: "更多设置" }));
   }
+}
+
+async function showNodes(...nodeIds: string[]) {
+  await clickControl(screen.getByRole("button", { name: "选择节点" }));
+  for (const item of screen.getAllByRole("menuitemcheckbox")) {
+    const selected = nodeIds.some((nodeId) => item.textContent === `节点 ${nodeId}`);
+    if ((item.getAttribute("aria-checked") === "true") !== selected) await clickControl(item);
+  }
+  await userEvent.setup().keyboard("{Escape}");
 }
 
 function currentDefinition() {
@@ -50,10 +60,7 @@ function inputFor(label: string) {
 describe("RunningHubDefinitionEditor scalar inputs", () => {
   it.each(scalarInputs)("keeps the draft on invalid $label and clears errors after a typed scalar is committed", async ({ label, error, getValue }) => {
     await mount();
-    const review = screen.getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" });
     const originalValue = getValue(currentDefinition());
-    await clickControl(review);
-    expect(review).toBeChecked();
 
     for (const raw of ["invalid", "null", "{}", "[]"]) {
       const input = inputFor(label);
@@ -62,7 +69,6 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
       expect(getValue(currentDefinition())).toEqual(originalValue);
       expect(input).toHaveProperty("validationMessage", error);
       expect(screen.getByRole("alert")).toHaveTextContent(error);
-      expect(review).not.toBeChecked();
     }
 
     for (const value of [1.25, false, "文字🎨"]) {
@@ -73,8 +79,6 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
       expect(inputFor(label)).toHaveProperty("validationMessage", "");
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     }
-    await clickControl(review);
-    expect(review).toBeChecked();
   });
 
   it("clears an optional default while empty condition and fixed values retain their previous draft", async () => {
@@ -98,26 +102,84 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
 
 
 describe("RunningHubDefinitionEditor mapping table", () => {
+  it("selects multiple nodes in one open menu and shows their editable and fixed parameters together", async () => {
+    await mount(false);
+    await clickControl(screen.getByRole("button", { name: "选择节点" }));
+    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 1" }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 2" }));
+    expect(screen.getByRole("menuitemcheckbox", { name: "节点 1" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemcheckbox", { name: "节点 2" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
+    expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "固定值（JSON 标量）" })).toBeVisible();
+    expect(currentDefinition()).toEqual(initialDefinition);
+    await userEvent.setup().keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 节点 2");
+  });
+
   it("shows parameters only after choosing a node and retains scalar drafts across node switches", async () => {
     await mount(false);
     expect(screen.queryByRole("table", { name: "参数绑定" })).not.toBeInTheDocument();
-    const node = screen.getByRole("combobox", { name: "选择节点" });
-    await selectValue(node, "1");
+    await showNodes("1");
     expect(screen.getByRole("row", { name: "模式" })).toBeInTheDocument();
     expect(screen.queryByRole("row", { name: "强度" })).not.toBeInTheDocument();
-    await selectValue(node, "2");
+    await showNodes("2");
     expect(screen.queryByRole("row", { name: "模式" })).not.toBeInTheDocument();
     const input = inputFor("默认值");
     fireEvent.change(input, { target: { value: "invalid" } });
     fireEvent.blur(input);
-    await selectValue(node, "1");
-    await selectValue(node, "2");
+    await showNodes("1");
+    await showNodes("1", "2");
     expect(inputFor("默认值")).toBe(input);
     expect(input).toHaveValue("invalid");
-    expect(input).toBeInvalid();
+    // checkValidity() dispatches invalid and moves focus; inspect draft validity without submitting.
+    expect(input).toHaveProperty("validity.valid", false);
     expect(currentDefinition().fields[1]?.defaultValue).toBe(0);
+    await showNodes("2");
     fireEvent.click(screen.getByRole("button", { name: "手动添加字段" }));
     expect(currentDefinition().fields.at(-1)?.nodeId).toBe("2");
+  });
+
+  it("selects all nodes and clears the view without changing parameter values", async () => {
+    await mount(false);
+    await clickControl(screen.getByRole("button", { name: "选择节点" }));
+    await clickControl(screen.getByRole("menuitem", { name: "全选节点" }));
+    expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
+    expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
+    await clickControl(screen.getByRole("menuitem", { name: "清空选择" }));
+    expect(screen.queryByRole("table", { name: "参数绑定" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "固定值（JSON 标量）" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("menuitemcheckbox")).toHaveLength(2);
+    for (const item of screen.getAllByRole("menuitemcheckbox")) expect(item).toHaveAttribute("aria-checked", "false");
+    expect(currentDefinition()).toEqual(initialDefinition);
+  });
+
+  it("requires a destination node when adding editable and fixed parameters with multiple nodes selected", async () => {
+    await mount(false);
+    await showNodes("1", "2");
+    await clickControl(screen.getByRole("button", { name: "手动添加字段" }));
+    expect(currentDefinition().fields).toHaveLength(2);
+    await clickControl(screen.getByRole("menuitem", { name: "节点 1" }));
+    expect(currentDefinition().fields.at(-1)?.nodeId).toBe("1");
+    expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
+    await clickControl(screen.getByRole("button", { name: "添加固定映射" }));
+    expect(currentDefinition().fixedBindings).toHaveLength(1);
+    await clickControl(screen.getByRole("menuitem", { name: "节点 2" }));
+    expect(currentDefinition().fixedBindings?.at(-1)).toMatchObject({ nodeId: "2", fieldName: "", value: "" });
+    expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
+  });
+
+  it("supports keyboard selection and returns focus to the picker after Escape", async () => {
+    await mount(false);
+    const picker = screen.getByRole("button", { name: "选择节点" });
+    picker.focus();
+    await userEvent.setup().keyboard("{Enter}{End} ");
+    expect(screen.getByRole("menuitemcheckbox", { name: "节点 2" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await userEvent.setup().keyboard("{Escape}");
+    expect(picker).toHaveFocus();
+    expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
   });
 
   it("edits each row independently and preserves other mappings when one is removed", async () => {
@@ -142,10 +204,11 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     fireEvent.blur(input);
     const row = screen.getByRole("row", { name: "强度" });
     fireEvent.click(within(row).getByRole("button", { name: "更多设置" }));
-    await selectValue(screen.getByRole("combobox", { name: "选择节点" }), "1");
+    await showNodes("1");
     expect(screen.queryByRole("textbox", { name: "条件值（JSON 标量）" })).not.toBeInTheDocument();
     fireEvent.invalid(input);
-    expect(screen.getByRole("combobox", { name: "选择节点" })).toHaveValue("2");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 节点 2");
+    expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
     expect(screen.getByRole("textbox", { name: "条件值（JSON 标量）" })).toBe(input);
     expect(currentDefinition().fields[1]?.enabledWhen?.value).toBe(true);
   });
