@@ -1,5 +1,5 @@
 import { queryOptions, skipToken } from "@tanstack/react-query";
-import { getAssetMetadata, getMediaDraft,
+import { getAssetMetadata, getMediaDraft, listCanvasMediaVersions,
   type CanvasItem, type MediaDraft } from "../../shared/api/client";
 import { readContentText } from "./artifactContent";
 
@@ -7,6 +7,13 @@ export function mediaDraftQueryOptions(projectId: string, canvasItemId: string) 
   return queryOptions({
     queryKey: ["media-draft", projectId, canvasItemId],
     queryFn: () => getMediaDraft(projectId, canvasItemId),
+  });
+}
+
+export function mediaVersionsQueryOptions(projectId: string, canvasItemId: string) {
+  return queryOptions({
+    queryKey: ["canvas-media-versions", projectId, canvasItemId],
+    queryFn: () => listCanvasMediaVersions(projectId, canvasItemId),
   });
 }
 

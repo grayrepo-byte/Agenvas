@@ -76,9 +76,10 @@ function renderPromptEditor(root: HTMLElement, prompt: string,
   }
 }
 
-export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, references, maxLength, onChange }: {
+export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, references, maxLength, readOnly = false, onChange }: {
   id: string; label: string; placeholder: string; prompt: string;
   mentions: DraftFields["mentions"]; references: PromptReference[]; maxLength: number;
+  readOnly?: boolean;
   onChange: (prompt: string, mentions: DraftFields["mentions"]) => void;
 }) {
   useLocale();
@@ -100,7 +101,15 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
     }
   }, [prompt, mentions, references]);
 
+  useLayoutEffect(() => {
+    if (readOnly) {
+      triggerRange.current = null;
+      setMenu(null);
+    }
+  }, [readOnly]);
+
   function update(event: FormEvent<HTMLDivElement>) {
+    if (readOnly) return;
     const editor = event.currentTarget;
     const value = readPromptEditor(editor);
     if (value.prompt.length > maxLength) {
@@ -127,6 +136,7 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
   }
 
   function insert(reference: PromptReference) {
+    if (readOnly) return;
     const editor = editorRef.current;
     const range = triggerRange.current;
     if (!editor || !range) return;
@@ -150,6 +160,7 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (readOnly) return;
     if (!menu) return;
     if (event.key === "Escape") {
       event.preventDefault();
@@ -172,9 +183,9 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
   return <div className="media-draft-prompt-shell">
     <label className="media-draft-prompt-label" htmlFor={id}>{label}</label>
     <div ref={editorRef} id={id} className="media-draft-prompt ui-multiline" role="textbox"
-      aria-label={label} aria-multiline="true" contentEditable suppressContentEditableWarning
+      aria-label={label} aria-multiline="true" aria-readonly={readOnly} contentEditable={!readOnly} suppressContentEditableWarning
       data-placeholder={placeholder} onInput={update} onKeyDown={onKeyDown} />
-    {menu ? <Command shouldFilter={false} value={references[menu.selected]?.versionId ?? ""} className="media-draft-mention-menu" aria-label={t("media.mentions.imageReferences")}
+    {menu && !readOnly ? <Command shouldFilter={false} value={references[menu.selected]?.versionId ?? ""} className="media-draft-mention-menu" aria-label={t("media.mentions.imageReferences")}
       style={{ left: menu.left, top: menu.top }}>
       <CommandList label={t("media.mentions.imageReferences")}><CommandGroup heading="Image">
       {references.map((reference, index) => <CommandItem key={reference.versionId} value={reference.versionId}

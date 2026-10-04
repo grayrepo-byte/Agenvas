@@ -2,14 +2,15 @@ import { CaretDown,Stack } from "@phosphor-icons/react";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useRef,useState } from "react";
 import {
-ApiError,listCanvasMediaVersions,selectCanvasMediaVersion,
+ApiError,selectCanvasMediaVersion,
 type CanvasItem
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
+import { mediaVersionsQueryOptions } from "./mediaDisplay";
 
-const MIN_SELECTABLE_VERSION_COUNT = 2;
+const MIN_SELECTABLE_VERSION_COUNT = 1;
 const FIRST_NODE_VERSION_NO = 1;
 
 /** Card-local result selection never restores inputs or changes a sibling's result. */
@@ -19,13 +20,13 @@ export function MediaVersionPicker({ projectId, item }: { projectId: string; ite
   const anchor = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const client = useQueryClient();
-  const history = useQuery({ queryKey: ["canvas-media-versions", projectId, item.id],
-    queryFn: () => listCanvasMediaVersions(projectId, item.id) });
+  const history = useQuery(mediaVersionsQueryOptions(projectId, item.id));
   // Artifact numbers are audit identifiers shared by sibling nodes. Display only this node's sequence.
   const versions = [...(history.data?.items ?? [])]
     .sort((a, b) => a.versionNo - b.versionNo)
     .map((version, index) => ({ version, nodeVersionNo: index + FIRST_NODE_VERSION_NO }))
     .reverse();
+  // Even a single saved result must be reachable when automatic selection was prevented.
   const canSelect = versions.length >= MIN_SELECTABLE_VERSION_COUNT;
   const menuOpen = open && canSelect;
   const selectedNumber = versions.find(({ version }) => version.id === item.selectedVersionId)?.nodeVersionNo;

@@ -248,13 +248,16 @@ public class AgentTurnWorker {
      * 穿透 Future 包装异常，保留安全配置错误码并区分网络与 Worker 等待超时。
      *
      * @param failure 模型调用或回合处理抛出的异常链
-     * @return 明确的凭证/配置/超时错误码，或通用的 {@code AGENT_TURN_FAILED}
+     * @return 明确的版本冲突/凭证/配置/超时错误码，或通用的 {@code AGENT_TURN_FAILED}
      */
     static String failureCode(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof ApiProblemException problem
                     && ("CREDENTIAL_KEY_VERSION_MISSING".equals(problem.code())
-                            || "LLM_CONFIG_UNAVAILABLE".equals(problem.code()))) {
+                            || "LLM_CONFIG_UNAVAILABLE".equals(problem.code())
+                            // Archived media may be unselected after a draft edit. Preserve
+                            // the conflict without exposing exception text or overriding the card.
+                            || "ARTIFACT_VERSION_CONFLICT".equals(problem.code()))) {
                 return problem.code();
             }
         }

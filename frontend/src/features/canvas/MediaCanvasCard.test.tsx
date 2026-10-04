@@ -28,21 +28,108 @@ function itemFor(shownArtifact: Artifact): CanvasItem {
 }
 
 function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
+  let shownItem = itemFor(shownArtifact);
   const onEdit = vi.fn();
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   const card = (selected: boolean, toolbarVisible = true) => <QueryClientProvider client={client}>
     <div onClick={onCardClick}>
-      <MediaCanvasCard artifact={shownArtifact} item={itemFor(shownArtifact)} selected={selected}
+      <MediaCanvasCard artifact={shownArtifact} item={shownItem} selected={selected}
         toolbarVisible={toolbarVisible} locked={false} onEdit={onEdit}>{null}</MediaCanvasCard>
     </div>
   </QueryClientProvider>;
   const view = render(card(true));
   return { onEdit, onCardClick, client,
+    setItem: (item: CanvasItem) => { shownItem = item; view.rerender(card(true)); },
     setToolbarState: (selected: boolean, toolbarVisible = true) => view.rerender(card(selected, toolbarVisible)) };
 }
 
 describe("MediaCanvasCard", () => {
+  it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("offers the saved %s result instead of another generation on an empty node", async (kind) => {
+    server.use(
+      http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
+        { id: "completed-task", status: "SUCCEEDED", output: { selected: false }, createdAt: artifact.createdAt },
+      ])),
+      http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", () => HttpResponse.json({ items: [{
+        id: "completed-version", versionNo: 1, schemaVersion: 1,
+        content: { assetId: "completed-asset" }, inputReferences: [], createdByKind: "TASK",
+        runId: "agent-run", createdAt: artifact.createdAt,
+      }] })),
+    );
+    showCard({ ...artifact, kind });
+    expect(await screen.findByText("生成完成，尚未选用")).toBeVisible();
+    expect(screen.getByRole("button", { name: "版本", hidden: false })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "生成视频" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上传图片" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上传音频" })).not.toBeInTheDocument();
+  });
+
+  it("selects the only saved video through CAS and displays its poster without submitting generation", async () => {
+    const video = { ...artifact, kind: "VIDEO" as const };
+    const result = { id: "completed-version", versionNo: 1, schemaVersion: 1 as const,
+      content: { assetId: "completed-asset", prompt: "Synthetic video", workflowVersion: "mock-video-v1",
+        sourceTaskId: "completed-task", parameters: { mock: true } }, inputReferences: [], createdByKind: "TASK" as const,
+      runId: "agent-run", createdAt: artifact.createdAt };
+    const selectedItem = { ...itemFor(video), selectedVersionId: result.id, selectedVersion: result, version: 1 };
+    let selection: unknown;
+    const generate = vi.fn();
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
+        { id: "completed-task", status: "SUCCEEDED", output: { selected: false }, createdAt: artifact.createdAt },
+      ])),
+      http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", () => HttpResponse.json({ items: [result] })),
+      http.post("/api/v1/projects/project-1/canvas/items/item-1/select-media-version", async ({ request }) => {
+        selection = await request.json();
+        return HttpResponse.json(selectedItem);
+      }),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/run", generate),
+    );
+    const { setItem, client } = showCard(video);
+    await clickControl(await screen.findByRole("button", { name: "版本" }));
+    await clickControl(await screen.findByRole("menuitem", { name: "v1 选用此版本" }));
+    await waitFor(() => expect(selection).toEqual({ versionId: result.id, expectedVersion: 0 }));
+    await act(async () => {
+      // The workspace supplies the server's selected node; the resource default stays empty.
+      client.setQueryData(["media-draft", "project-1", "item-1"], { displayMode: "RESULT", version: 7 });
+      setItem(selectedItem);
+    });
+    expect(await screen.findByRole("img", { name: "湖边 的视频封面" })).toHaveAttribute("src",
+      "/api/v1/projects/project-1/assets/completed-asset/thumbnail");
+    expect(screen.getByRole("button", { name: "播放视频" })).toBeVisible();
+    expect(screen.queryByLabelText("湖边 的视频")).not.toBeInTheDocument();
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("keeps UNKNOWN task controls available alongside an older saved result", async () => {
+    server.use(
+      http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
+        { id: "unknown-task", status: "UNKNOWN", errorCode: "SUBMISSION_UNKNOWN" },
+      ])),
+      http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", () => HttpResponse.json({ items: [{
+        id: "older-result", versionNo: 1, schemaVersion: 1, content: { assetId: "older-asset" },
+        inputReferences: [], createdByKind: "TASK", runId: null, createdAt: artifact.createdAt,
+      }] })),
+    );
+    const { onEdit } = showCard({ ...artifact, kind: "VIDEO" });
+    expect(await screen.findByRole("button", { name: "版本" })).toBeVisible();
+    await clickControl(await screen.findByRole("button", { name: "查看任务" }));
+    expect(onEdit).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "生成视频" })).not.toBeInTheDocument();
+  });
+
+  it("offers a read retry instead of generation when completed results fail to load", async () => {
+    server.use(
+      http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
+        { id: "completed-task", status: "SUCCEEDED", output: { selected: false }, createdAt: artifact.createdAt },
+      ])),
+      http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", () => HttpResponse.json({}, { status: 503 })),
+    );
+    showCard({ ...artifact, kind: "VIDEO" });
+    expect(await screen.findByRole("button", { name: "重试读取" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "生成视频" })).not.toBeInTheDocument();
+  });
+
   it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("removes card details from %s toolbars", (kind) => {
     showCard({ ...artifact, kind });
     expect(screen.getByLabelText("媒体卡片操作")).toBeInTheDocument();

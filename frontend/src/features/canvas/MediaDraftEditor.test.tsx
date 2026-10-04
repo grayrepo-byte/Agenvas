@@ -10,6 +10,7 @@ import { MediaDraftEditor } from "./MediaDraftEditor";
 import { useCanvasStore } from "./canvasStore";
 
 const NOW = "2026-09-26T00:00:00Z";
+const AUTOSAVE_SETTLE_MS = 750;
 const PROJECT_ID = "project-media-editor";
 const ARTIFACT_ID = "artifact-media-editor";
 const CANVAS_ITEM_ID = "canvas-item-media-editor";
@@ -117,12 +118,122 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
   });
+  it.each((["IMAGE", "VIDEO"] as const).flatMap((kind) =>
+    (["READY", "SUBMITTING", "RUNNING", "WAITING_PROVIDER"] as const).flatMap((status) =>
+      [null, "approved-agent-run"].map((runId) => ({ kind, status, runId })))))("locks $kind inputs during $status (run: $runId) and unlocks after completion", async ({ kind, status, runId }) => {
+      const active = { ...task(status), runId,
+        kind: kind === "IMAGE" ? "IMAGE_GENERATION" as const : "VIDEO_GENERATION" as const };
+      const { client, saves, setTasks } = setup({ kind, tasks: [active],
+        draft: { ...initialDraft, durationSeconds: kind === "VIDEO" ? 5 : null,
+          videoInputMode: kind === "VIDEO" ? "START_END" : null } });
+      const prompt = await screen.findByRole("textbox", { name: kind === "IMAGE" ? "图片提示词" : "视频提示词" });
+      await waitFor(() => expect(prompt).toHaveAttribute("contenteditable", "false"));
+      expect(prompt).toHaveAttribute("aria-readonly", "true");
+      expect(screen.getByRole("button", { name: "选择生成模型" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "尺寸与画质" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "模板" })).toBeDisabled();
+      expect(screen.getByLabelText("选择本地图片")).toBeDisabled();
+      if (kind === "VIDEO") expect(screen.getByRole("button", { name: "选择视频输入模式" })).toBeDisabled();
+      await userEvent.setup().click(screen.getByRole("button", { name: "选择生成模型" }));
+      expect(screen.queryByRole("menuitemradio")).not.toBeInTheDocument();
+      expect(saves).toHaveLength(0);
+      setTasks([{ ...active, status: "SUCCEEDED" }]);
+      await client.invalidateQueries({ queryKey: ["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID] });
+      await waitFor(() => expect(prompt).toHaveAttribute("contenteditable", "true"));
+      expect(screen.getByRole("button", { name: "选择生成模型" })).toBeEnabled();
+    });
+
   it("selects the actual default model without a duplicate project-default entry", async () => {
     setup(); const user = userEvent.setup();
     await screen.findByRole("textbox", { name: "图片提示词" });
     await user.click(screen.getByRole("button", { name: "选择生成模型" }));
     expect(screen.queryByRole("menuitemradio", { name: /项目默认能力/ })).not.toBeInTheDocument();
     expect(screen.getByRole("menuitemradio", { name: /细节生图/ })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("closes an already open video mode menu when an Agent task starts", async () => {
+    const { client, setTasks, saves } = setup({ kind: "VIDEO",
+      draft: { ...initialDraft, capabilityId: versatileVideoCapability.id,
+        durationSeconds: 5, videoInputMode: "TEXT" },
+      settings: { ...settings, connections: [{ ...settings.connections[0]!, capabilities: [versatileVideoCapability] }] } });
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole("button", { name: "选择视频输入模式" });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    await user.click(trigger);
+    expect(await screen.findByRole("menu", { name: "视频输入模式" })).toBeVisible();
+    setTasks([{ ...task("WAITING_PROVIDER"), kind: "VIDEO_GENERATION", runId: "agent-run" }]);
+    await client.invalidateQueries({ queryKey: ["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID] });
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "视频输入模式" })).not.toBeInTheDocument());
+    expect(trigger).toBeDisabled();
+    expect(saves).toHaveLength(0);
+  });
+
+  it("keeps inputs locked until the initial task status is known", async () => {
+    let release: () => void = () => {};
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    setup({ handlers: [http.get(`${BASE}/run`, async () => { await pending; return HttpResponse.json([]); })] });
+    const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
+    expect(prompt).toHaveAttribute("aria-readonly", "true");
+    expect(screen.getByRole("button", { name: "选择生成模型" })).toBeDisabled();
+    release();
+    await waitFor(() => expect(prompt).toHaveAttribute("aria-readonly", "false"));
+  });
+
+  it("keeps inputs locked after task status fails while allowing a read retry", async () => {
+    setup({ handlers: [http.get(`${BASE}/run`, () => HttpResponse.json({ code: "INTERNAL_ERROR" }, { status: 500 }))] });
+    const retry = await screen.findByRole("button", { name: "重试检查任务" });
+    expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveAttribute("aria-readonly", "true");
+    expect(retry).toBeEnabled();
+    server.use(http.get(`${BASE}/run`, () => HttpResponse.json([])));
+    await userEvent.setup().click(retry);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "图片提示词" }))
+      .toHaveAttribute("aria-readonly", "false"));
+  });
+
+  it("does not normalize or autosave a running video's frozen draft", async () => {
+    const { saves } = setup({ kind: "VIDEO",
+      draft: { ...initialDraft, durationSeconds: 5, videoInputMode: "TEXT" },
+      tasks: [{ ...task("RUNNING"), kind: "VIDEO_GENERATION", runId: "agent-run" }] });
+    const prompt = await screen.findByRole("textbox", { name: "视频提示词" });
+    await waitFor(() => expect(prompt).toHaveAttribute("aria-readonly", "true"));
+    // Longer than the editor's autosave debounce: opening a running draft must not save a mode repair.
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, AUTOSAVE_SETTLE_MS)); });
+    expect(saves).toHaveLength(0);
+  });
+
+  it.each(["IMAGE", "VIDEO"] as const)("locks RunningHub %s dynamic parameters during generation", async (kind) => {
+    const capability: MediaCapability = { ...(kind === "IMAGE" ? imageCapability : videoCapability),
+      id: "runninghub-locked", adapterId: kind === "IMAGE" ? "RUNNINGHUB_IMAGE" : "RUNNINGHUB_VIDEO",
+      settings: { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123",
+        usePersonalQueue: false, addMetadata: false,
+        fields: [{ key: "strength", label: "变化强度", type: "NUMBER", nodeId: "1", fieldName: "strength",
+          required: true, advanced: false, minimum: 0, maximum: 1 }],
+        outputs: [{ kind, primary: true, maxCount: 1 }] } } };
+    const { saves } = setup({ kind, draft: { ...initialDraft, capabilityId: capability.id,
+      parameters: { dynamicValues: { strength: 0.5 } } },
+      tasks: [{ ...task("RUNNING"), kind: capability.kind, runId: "agent-run" }],
+      settings: { connections: [{ ...settings.connections[0]!, platform: "RUNNINGHUB", capabilities: [capability] }],
+        defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] } });
+    const strength = await screen.findByRole("spinbutton", { name: "变化强度 *" });
+    expect(strength).toBeDisabled();
+    expect(strength).toHaveValue(0.5);
+    expect(saves).toHaveLength(0);
+  });
+
+  it("pauses pending autosave and retains local edits when a task starts before closing", async () => {
+    const { client, saves } = setup();
+    const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
+    await waitFor(() => expect(prompt).toHaveAttribute("contenteditable", "true"));
+    prompt.textContent = "Unsaved local prompt";
+    fireEvent.input(prompt);
+    act(() => { client.setQueryData(["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID],
+      [{ ...task("RUNNING"), runId: "agent-run" }]); });
+    await waitFor(() => expect(prompt).toHaveAttribute("aria-readonly", "true"));
+    cleanup();
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, AUTOSAVE_SETTLE_MS)); });
+    expect(saves).toHaveLength(0);
+    expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]?.request.prompt)
+      .toBe("Unsaved local prompt");
   });
 
   it.each([null, "versatile-video-capability"])("initializes an image-only video model in its supported reference mode (selection: %s)", async (capabilityId) => {

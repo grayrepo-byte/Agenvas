@@ -96,6 +96,18 @@ class CreativeArtifactToolServiceTest {
     }
 
     @Test
+    void unselectedArchivedVideoPlacementKeepsItsConflictReasonInTheWorker() {
+        ArtifactService.ArtifactView view = visibleArtifact(Artifact.Kind.VIDEO, null);
+        when(canvas.list(context.ownerId(), context.projectId()))
+                .thenReturn(List.of(entry(item(null, outputGroupId, false), view)));
+
+        assertThatThrownBy(this::place).isInstanceOf(ApiProblemException.class)
+                .satisfies(failure -> assertThat(AgentTurnWorker.failureCode(failure))
+                        .isEqualTo("ARTIFACT_VERSION_CONFLICT"));
+        verify(canvas, never()).placeArtifactsInAgentOutputWithinChange(any(), any(), any(), any());
+    }
+
+    @Test
     void placementRejectsAnOutputWithAStaleSelectionEvenWhenTheLibraryDefaultMatches() {
         assertPlacementSelectionConflict(UUID.randomUUID());
     }

@@ -20,6 +20,8 @@
   color-scheme: dark;
 }
 
+.media-draft-controls { display: contents; }
+
 .media-draft-initial { justify-content: center; align-items: center; }
 .media-draft-header, .media-draft-reference-row, .media-draft-toolbar { flex-shrink: 0; }
 .media-draft-header { display: flex; align-items: center; gap: 18px; min-height: 20px; padding: 0 2px; }

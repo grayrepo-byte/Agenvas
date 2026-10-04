@@ -12,6 +12,17 @@ import org.springframework.http.HttpStatus;
 /** Missing historical keys remain explicit even when model calls run in a Future. */
 class AgentTurnFailureCodeTest {
     @Test
+    void keepsVersionConflictsThroughWrappersWithoutPublishingOtherBusinessErrors() {
+        var safeMessage = dev.agenvas.shared.i18n.ApiMessage.of("problem.fallback");
+        assertThat(AgentTurnWorker.failureCode(new ExecutionException(new ApiProblemException(
+                HttpStatus.CONFLICT, "ARTIFACT_VERSION_CONFLICT", safeMessage, safeMessage, false))))
+                .isEqualTo("ARTIFACT_VERSION_CONFLICT");
+        assertThat(AgentTurnWorker.failureCode(new ApiProblemException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "SYNTHETIC_INTERNAL_CODE", safeMessage, safeMessage, false)))
+                .isEqualTo("AGENT_TURN_FAILED");
+    }
+
+    @Test
     void exposesNetworkAndWorkerTimeoutsThroughAsyncWrappers() {
         assertThat(AgentTurnWorker.failureCode(new ExecutionException(new SocketTimeoutException("synthetic"))))
                 .isEqualTo("LLM_CALL_TIMEOUT");

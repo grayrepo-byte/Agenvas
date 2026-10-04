@@ -23,6 +23,7 @@ export const PROVIDER_FAILURE_CODES = {
 } as const;
 
 const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  get ARTIFACT_VERSION_CONFLICT() { return t("agent.blocked.artifactVersionConflictDetail"); },
   get LLM_RETRY_EXHAUSTED() { return t("agent.retry.exhausted"); },
   get LLM_CONNECTION_FAILED() { return t("agent.retry.connection"); },
   get LLM_RATE_LIMITED() { return t("agent.retry.rateLimited"); },

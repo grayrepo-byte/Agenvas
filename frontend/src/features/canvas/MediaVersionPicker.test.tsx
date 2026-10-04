@@ -31,6 +31,24 @@ function setup(versions = [version("v2", 2), version("v1", 1)], selectedItem = i
 }
 
 describe("MediaVersionPicker", () => {
+  it("lets an empty node select its only completed result", async () => {
+    let request: unknown;
+    server.use(http.post(`${base}/select-media-version`, async ({ request: incoming }) => {
+      request = await incoming.json();
+      return HttpResponse.json({ ...item, selectedVersionId: "v1" });
+    }));
+    setup([version("v1", 1)], { ...item, selectedVersionId: null, selectedVersion: null });
+    await clickControl(await screen.findByRole("button", { name: "版本" }));
+    await clickControl(await screen.findByRole("menuitem", { name: "v1 选用此版本" }));
+    await waitFor(() => expect(request).toEqual({ versionId: "v1", expectedVersion: 7 }));
+  });
+
+  it("keeps the existing version button available for a single selected result", async () => {
+    setup([version("v2", 2)]);
+    await clickControl(await screen.findByRole("button", { name: "版本 v1" }));
+    expect(await screen.findByRole("menuitem", { name: "v1 当前选用" })).toBeVisible();
+  });
+
   it("numbers a derived node from v1 despite gaps in artifact audit numbers", async () => {
     let request: unknown;
     server.use(http.post(`${base}/select-media-version`, async ({ request: incoming }) => {
@@ -49,13 +67,13 @@ describe("MediaVersionPicker", () => {
     await waitFor(() => expect(request).toEqual({ versionId: "derived-later", expectedVersion: 7 }));
   });
 
-  it("hides the version button for a node with only one result", async () => {
+  it("shows the version button for a node with only one result", async () => {
     const client = setup([version("v2", 2)]);
     await act(async () => { client.setQueryData(["canvas-media-versions", "project-1", "item-1"],
       { items: [version("v2", 2)] }); });
     await waitFor(() => expect(client.getQueryData(["canvas-media-versions", "project-1", "item-1"]))
       .toEqual({ items: [version("v2", 2)] }));
-    expect(screen.queryByRole("button", { name: /^版本/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "版本 v1" })).toBeInTheDocument();
   });
   it("lists node versions and switches with the current node CAS", async () => {
     const client = setup();
@@ -95,7 +113,7 @@ describe("MediaVersionPicker", () => {
     await clickControl(await screen.findByRole("button", { name: "重试读取" }));
     await waitFor(() => expect(attempts).toBe(2));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /^版本/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "版本 v1" })).toBeInTheDocument();
   });
 
   it("closes with Escape and restores focus", async () => {
@@ -106,11 +124,11 @@ describe("MediaVersionPicker", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "版本 v2" })).toHaveFocus());
   });
 
-  it("shows the picker when a second node result arrives", async () => {
+  it("updates the existing picker when a second node result arrives", async () => {
     const client = setup([version("v2", 2)]);
     await waitFor(() => expect(client.getQueryState(["canvas-media-versions", "project-1", "item-1"])?.status)
       .toBe("success"));
-    expect(screen.queryByRole("button", { name: /^版本/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "版本 v1" })).toBeInTheDocument();
     server.use(http.get(`${base}/media-versions`, () => HttpResponse.json({
       items: [version("v5", 5), version("v2", 2)],
     })));

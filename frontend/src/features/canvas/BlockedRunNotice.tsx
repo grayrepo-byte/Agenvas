@@ -49,6 +49,8 @@ export function BlockedRunNotice({ projectId, runId, status = "BLOCKED" }: {
 /** Stable, allowlisted explanations prevent raw Provider failures from reaching the page. */
 function switchOnFailure(code: string | null | undefined): string {
   switch (code) {
+    case "ARTIFACT_VERSION_CONFLICT":
+      return t("agent.blocked.artifactVersionConflict");
     case "LLM_RETRY_EXHAUSTED":
       return t("agent.retry.exhausted");
     case "LLM_CALL_TIMEOUT":

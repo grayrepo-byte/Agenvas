@@ -53,7 +53,7 @@ import { VoiceLibrary } from "./VoiceLibrary";
 import { readContentText } from "./artifactContent";
 import { useCanvasStore } from "./canvasStore";
 import { saveClosedMediaDraft,type PendingMediaDraftSave } from "./mediaDraftCloseSave";
-import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard } from "./mediaTaskState";
+import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard,isMediaTaskRunning } from "./mediaTaskState";
 import { taskErrorDetail } from "./taskErrorMessages";
 import { VOICES } from "./voiceCatalog";
 import { ASPECT_RATIO_OPTIONS, VIDEO_ASPECT_RATIO_OPTIONS, RESOLUTION_OPTIONS, QUALITY_OPTIONS,
@@ -336,6 +336,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
 
   const save = useMutation({
     mutationFn: (input: SaveMediaDraftRequest) => {
+      if (editorReadOnlyRef.current) throw new Error(t("media.editor.editingLocked"));
       const result = saveMediaDraft(artifact.projectId, canvasItemId, input);
       pendingSaveRef.current = { request: input, result };
       return result;
@@ -353,8 +354,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     onError: (failure) => { pendingSaveRef.current = undefined; setError(failure); },
   });
   const commitAssetReferences = useMutation({
-    mutationFn: ({ request }: AssetReferenceCommit) =>
-      saveMediaDraft(artifact.projectId, canvasItemId, request),
+    mutationFn: ({ request }: AssetReferenceCommit) => {
+      if (editorReadOnlyRef.current) throw new Error(t("media.editor.editingLocked"));
+      return saveMediaDraft(artifact.projectId, canvasItemId, request);
+    },
     onMutate: () => setAssetSelectionError(null),
     onSuccess: (saved, input) => {
       const latest = fieldsRef.current;
@@ -387,6 +390,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       versionId: string; version?: number | null; allowDirty?: boolean;
       preserveLocalChanges?: boolean;
     }) => {
+      if (editorReadOnlyRef.current) throw new Error(t("media.editor.editingLocked"));
       if (!draft.data || version === null || (dirty || save.isPending) && !allowDirty) {
         throw new Error(t("media.editor.waitForSaveBeforeRemoval"));
       }
@@ -453,6 +457,22 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       ]);
     },
   });
+  // Card-scoped history includes approved Agent work. Unknown outcomes keep their
+  // explicit retry controls; active requests lock edits through local archival.
+  const editorReadOnly = !isAudio && (run.isPending || !directTasks.isSuccess
+    || Boolean(directTasks.data?.some(isMediaTaskRunning)));
+  const editorReadOnlyRef = useRef(editorReadOnly);
+  useLayoutEffect(() => { editorReadOnlyRef.current = editorReadOnly; }, [editorReadOnly]);
+  useEffect(() => {
+    if (!editorReadOnly) return;
+    setPopover(null);
+    setReferenceSourcesOpen(false);
+    setStylePickerOpen(false);
+    setTemplateOpen(false);
+    setSubmissionTipOpen(false);
+    draggedReferenceIndex.current = null;
+  }, [editorReadOnly]);
+
   const cancel = useMutation({
     mutationFn: (taskId: string) => cancelQueuedDirectMediaTask(artifact.projectId, taskId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: tasksKey }),
@@ -469,9 +489,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     if (state.dirty && state.fields && state.expectedVersion !== null) {
       const request = { ...state.fields, expectedVersion: state.expectedVersion };
       // An accepted reference owns this CAS version; closing must retain edits without racing it.
-      if (state.error || state.libraryBusy) {
+      if (editorReadOnlyRef.current || state.error || state.libraryBusy) {
         useCanvasStore.getState().setMediaDraftRecovery(ratioDraftKey,
-          { request, saving: false, error: state.error ?? new Error(t("media.editor.transferPendingHint")) });
+          { request, saving: false, error: state.error ?? new Error(t(editorReadOnlyRef.current ? "media.editor.editingLocked" : "media.editor.transferPendingHint")) });
       } else {
         void saveClosedMediaDraft(queryClient, artifact.projectId, canvasItemId,
           request, pendingSaveRef.current);
@@ -508,16 +528,16 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     run.isPending, libraryBusy, templateBusy, error, expectedVersion, recovery]);
 
   useEffect(() => {
-    if (!dirty || !fields || expectedVersion === null || save.isPending
+    if (editorReadOnly || !dirty || !fields || expectedVersion === null || save.isPending
         || commitAssetReferences.isPending
         || removeConnectedInput.isPending || libraryBusy || templateBusy || popover === "libraryReferences" || error) return;
     const timer = window.setTimeout(() => save.mutate({ ...fields, expectedVersion }), AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
   }, [dirty, fields, expectedVersion, save.isPending, commitAssetReferences.isPending,
-    removeConnectedInput.isPending, libraryBusy, templateBusy, popover, error]);
+    removeConnectedInput.isPending, libraryBusy, templateBusy, popover, error, editorReadOnly]);
 
   useEffect(() => {
-    if (!fields || !chosenCapability || dirty || save.isPending || error || run.isPending || runIntent.current
+    if (editorReadOnly || !fields || !chosenCapability || dirty || save.isPending || error || run.isPending || runIntent.current
         || commitAssetReferences.isPending || removeConnectedInput.isPending || templateBusy) return;
     const changes: Partial<DraftFields> = {};
     if (!runningHub && artifact.kind === "VIDEO") {
@@ -534,9 +554,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     }
     if (Object.keys(changes).length > 0) edit(changes);
   }, [artifact.kind, chosenCapability, runningHub, commitAssetReferences.isPending, dirty, fields,
-    removeConnectedInput.isPending, save.isPending, templateBusy, error, run.isPending]);
+    removeConnectedInput.isPending, save.isPending, templateBusy, error, run.isPending, editorReadOnly]);
 
   function edit(changes: Partial<DraftFields>) {
+    if (editorReadOnlyRef.current) return;
     setSubmissionTipOpen(false);
     runIntent.current = null;
     if (!run.isPending) run.reset();
@@ -586,12 +607,13 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function togglePopover(next: Popover, trigger: HTMLButtonElement) {
-    if (libraryBusy) return;
+    if (editorReadOnlyRef.current || libraryBusy) return;
     triggerRef.current = trigger;
     setPopover((current) => current === next ? null : next);
   }
 
   function chooseCapability(capabilityId: string) {
+    if (editorReadOnlyRef.current) return;
     if (!fields) return;
     const resolvedCapabilityId = capabilityId;
     const next = availableCapabilities.find((candidate) => candidate.id === resolvedCapabilityId);
@@ -824,6 +846,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function appendReferences(versionIds: string[], baseFields = currentFields) {
+    if (editorReadOnlyRef.current) return;
     const next = fieldsWithReferences(versionIds, baseFields);
     if (next !== baseFields) edit({ mediaInputs: next.mediaInputs,
       ...(artifact.kind === "VIDEO" ? { videoInputMode: next.videoInputMode } : {}) });
@@ -846,6 +869,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function confirmAssetReferences() {
+    if (editorReadOnlyRef.current) return;
     if (!assetSelection.length || expectedVersion === null || save.isPending
         || commitAssetReferences.isPending) return;
     const nextFields = fieldsWithReferences(assetSelection);
@@ -858,6 +882,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   async function uploadFiles(files: File[]) {
+    if (editorReadOnlyRef.current) return;
     const remaining = Math.max(0, mediaCapacity - currentFields.mediaInputs.length);
     if (files.length > remaining) {
       setUploadError(new Error(t("media.editor.remainingImageLimit", { "0": remaining })));
@@ -908,6 +933,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function removeReference(versionId: string) {
+    if (editorReadOnlyRef.current) return;
     const persisted = draft.data?.mediaInputs.find((input) => input.versionId === versionId);
     if (persisted?.sources.some((source) => source.type === "CONNECTION"
         && source.connectionId)) {
@@ -922,6 +948,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function chooseVideoMode(mode: VideoInputMode) {
+    if (editorReadOnlyRef.current) return;
     if (artifact.kind !== "VIDEO" || mode === "TEXT" && currentFields.mediaInputs.length > 0) return;
     const nextInputs = inputsForVideoMode(currentFields.mediaInputs, mode);
     if (nextInputs.length < currentFields.mediaInputs.length
@@ -932,6 +959,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function moveReferenceTo(index: number, target: number) {
+    if (editorReadOnlyRef.current) return;
     if (target < 0 || target >= currentFields.mediaInputs.length || index === target
         || effectiveMode === "START_END") return;
     const next = [...currentFields.mediaInputs];
@@ -964,6 +992,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     await Promise.all(freshResources.items.filter((item) => item.kind === "IMAGE").map((item) =>
       queryClient.fetchQuery({ queryKey: ["artifact-versions", artifact.projectId, item.id],
         queryFn: () => listArtifactVersions(artifact.projectId, item.id), staleTime: 0 })));
+    if (editorReadOnlyRef.current) throw new Error(t("media.editor.editingLocked"));
     if (imported.images.length > 0) {
       // Reference replacement and connected-line removal either commit together or leave the old draft intact.
       const acknowledged = await replaceMediaDraftInputs(artifact.projectId, canvasItemId,
@@ -982,6 +1011,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   return <div className="media-draft-editor" aria-label={t("media.editor.title")}>
     {stylePickerOpen ? <MediaStylePicker selected={fields.styleId ?? null} onClose={() => setStylePickerOpen(false)}
       onSelect={(styleId) => edit({ styleId })} /> : null}
+    <fieldset className="media-draft-controls" disabled={editorReadOnly}>
     <div className="media-draft-header">
       <span className="media-draft-tab-active">Prompt</span>
       {(artifact.kind === "IMAGE" || artifact.kind === "VIDEO") ? <Button variant="ghost" className="media-draft-tab" type="button"
@@ -1006,7 +1036,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
             window.clearTimeout(referenceSourcesCloseTimer.current);
             referenceSourcesCloseTimer.current = null;
           }
-          if (popover) return;
+          if (editorReadOnly || popover) return;
           if (event.currentTarget.querySelector("button")?.hasAttribute("disabled")) return;
           triggerRef.current = event.currentTarget.querySelector("button");
           if (!referenceSourcesOpen) referenceSourcesHoverOpened.current = true;
@@ -1021,7 +1051,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         <Input ref={uploadInputRef} className="media-draft-upload-input" type="file"
           accept={[MEDIA_FILE_ACCEPT.IMAGE, ...(audioCapacity > 0 ? [MEDIA_FILE_ACCEPT.AUDIO] : []), ...(videoCapacity > 0 ? [MEDIA_FILE_ACCEPT.VIDEO] : [])].join(",")} multiple aria-label={videoCapacity > 0 ? t("media.editor.chooseLocalAllMedia") : audioCapacity > 0 ? t("media.editor.chooseLocalMedia") : t("media.editor.chooseLocalImage")} onChange={handleUploadSelection} />
         <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-reference-add" type="button"
-          disabled={!chosenCapability || referenceLimitReached || uploading
+          disabled={editorReadOnly || !chosenCapability || referenceLimitReached || uploading
             || commitAssetReferences.isPending}
           aria-label={videoCapacity > 0 ? t("media.editor.addVideoMediaInput") : audioCapacity > 0 ? t("media.editor.addMixedInput") : t("media.editor.addImageInput")}
           title={uploading ? t("media.editor.assetUploading") : videoCapacity > 0 ? t("media.editor.videoReferenceLimits", { "0": imageCapacity, "1": videoCapacity, "2": audioCapacity }) : t("media.editor.referenceLimits", { "0": imageCapacity, "1": audioCapacity })}
@@ -1175,8 +1205,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           accessibleLabel={choice?.label ?? t("media.editor.numberedImageInput", { "0": index + 1 })}
           {...(choice && choice.kind !== "AUDIO" ? { thumbnailUrl: choice.kind === "VIDEO" ? assetThumbnailUrl(artifact.projectId, choice.assetId) : assetContentUrl(artifact.projectId, choice.assetId) } : {})}
           connected={hasConnectionSource(input.versionId)}
-          busy={removeConnectedInput.isPending || commitAssetReferences.isPending || dirty || save.isPending}
-          reorderable={effectiveMode !== "START_END"}
+          busy={editorReadOnly || removeConnectedInput.isPending || commitAssetReferences.isPending || dirty || save.isPending}
+          reorderable={!editorReadOnly && effectiveMode !== "START_END"}
           onMove={(delta) => moveReferenceTo(index, index + delta)}
           onDragStart={() => { draggedReferenceIndex.current = index; }}
           onDragEnd={() => { draggedReferenceIndex.current = null; }}
@@ -1190,16 +1220,16 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       </div>
     </div>
     : <RunningHubForm definition={runningHub} values={fields.parameters.dynamicValues ?? {}} prompt={fields.prompt}
-      durationSeconds={fields.durationSeconds} choices={imageChoices} disabled={run.isPending} onChange={changeDynamicField} onUpload={uploadDynamicSlot} />}
+      durationSeconds={fields.durationSeconds} choices={imageChoices} disabled={editorReadOnly || run.isPending} onChange={changeDynamicField} onUpload={uploadDynamicSlot} />}
     {!runningHub ? <PromptMentionEditor id={`${id}-prompt`} maxLength={MAX_PROMPT_LENGTH}
       label={isAudio ? t("media.editor.audioPrompt") : artifact.kind === "IMAGE" ? t("media.editor.imagePrompt") : t("media.editor.videoPrompt")}
       placeholder={isAudio ? t("media.editor.audioPromptPlaceholder") : artifact.kind === "IMAGE" ? t("media.editor.imagePromptPlaceholder") : t("media.editor.videoPromptPlaceholder")}
-      prompt={fields.prompt} mentions={fields.mentions} references={promptReferences}
+      prompt={fields.prompt} mentions={fields.mentions} references={promptReferences} readOnly={editorReadOnly}
       onChange={(prompt, mentions) => edit({ prompt, mentions })} /> : null}
     <div className="media-draft-toolbar">
-      {!runningHub && artifact.kind === "VIDEO" ? <DropdownMenu open={popover === "modes"} onOpenChange={(open) => { if (!libraryBusy) setPopover(open ? "modes" : null); }} modal={false}><div className="media-draft-popover-anchor media-draft-mode-anchor">
+      {!runningHub && artifact.kind === "VIDEO" ? <DropdownMenu open={popover === "modes"} onOpenChange={(open) => { if (!editorReadOnly && !libraryBusy) setPopover(open ? "modes" : null); }} modal={false}><div className="media-draft-popover-anchor media-draft-mode-anchor">
         <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-toolbar-button media-draft-mode-trigger" type="button"
-          aria-label={t("media.editor.chooseVideoMode")} aria-haspopup="menu" aria-expanded={popover === "modes"}
+          disabled={editorReadOnly} aria-label={t("media.editor.chooseVideoMode")} aria-haspopup="menu" aria-expanded={popover === "modes"}
           aria-controls={`${id}-modes`} onPointerDown={(event) => { triggerRef.current = event.currentTarget; }}>
           <VideoCamera size={17} /><span>{VIDEO_MODE_OPTIONS.find((option) => option.value === effectiveMode)?.label
             ?? t("media.editor.chooseInputMode")}</span><CaretDown size={12} />
@@ -1222,9 +1252,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           })}
         </DropdownMenuGroup></DropdownMenuContent> : null}
       </div></DropdownMenu> : null}
-      <DropdownMenu open={popover === "models"} onOpenChange={(open) => { if (!libraryBusy) setPopover(open ? "models" : null); }} modal={false}><div className="media-draft-popover-anchor media-draft-model-anchor">
+      <DropdownMenu open={popover === "models"} onOpenChange={(open) => { if (!editorReadOnly && !libraryBusy) setPopover(open ? "models" : null); }} modal={false}><div className="media-draft-popover-anchor media-draft-model-anchor">
         <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-toolbar-button media-draft-model-trigger" type="button"
-          aria-label={t("media.editor.chooseModel")} aria-haspopup="menu" aria-expanded={popover === "models"}
+          disabled={editorReadOnly} aria-label={t("media.editor.chooseModel")} aria-haspopup="menu" aria-expanded={popover === "models"}
           aria-controls={`${id}-models`} onPointerDown={(event) => { triggerRef.current = event.currentTarget; }}>
           <Cube size={17} /><span>{settings.isPending ? t("models.loading") : settings.error ? t("models.loadFailed") : chosenCapability?.name
             ?? (fields.capabilityId ? t("media.editor.modelUnavailable") : t("media.editor.defaultNotConfigured"))}</span><CaretDown size={12} />
@@ -1361,19 +1391,21 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         </PopoverPrimitive.Content></PopoverPrimitive.Portal>
       </PopoverPrimitive.Root>
     </div>
+    </fieldset>
     <div className="media-draft-feedback">
+      {editorReadOnly && directTasks.isSuccess ? <p role="status">{t("media.editor.editingLocked")}</p> : null}
       {fields.styleId && !supportsStyle ? <p role="alert">{t("styles.promptRequired")}</p> : null}
       {fields.styleId && supportsStyle && styles.isPending ? <p role="status">{t("styles.loading")}</p> : null}
       {fields.styleId && styles.error ? <div role="alert">{t("styles.loadFailed")}<Button variant="ghost" type="button"
         onClick={() => void styles.refetch()}>{t("common.retry")}</Button></div> : null}
       {fields.styleId && styles.isSuccess && !selectedStyle?.enabled ? <p role="alert">{t("styles.unavailableHint")}</p> : null}
       {runningHub ? <>
-        {fields.mediaInputs.filter((input) => !dynamicUsedVersions.has(input.versionId)).map((input) => <p key={input.versionId} role="status">{t("media.editor.unassignedSlots")}<Button variant="ghost" type="button" disabled={dirty || save.isPending || removeConnectedInput.isPending} onClick={() => removeReference(input.versionId)}>{t("media.editor.removeUnusedReferences")}</Button></p>)}
+        {fields.mediaInputs.filter((input) => !dynamicUsedVersions.has(input.versionId)).map((input) => <p key={input.versionId} role="status">{t("media.editor.unassignedSlots")}<Button variant="ghost" type="button" disabled={editorReadOnly || dirty || save.isPending || removeConnectedInput.isPending} onClick={() => removeReference(input.versionId)}>{t("media.editor.removeUnusedReferences")}</Button></p>)}
         {runningHub.retainSeconds ? <p>{t("media.editor.instanceRetentionCostHint", { "0": runningHub.retainSeconds })}</p> : null}
       </> : null}
       {uploading ? <CanvasLoadingState compact label={t("media.editor.referenceUploading")} /> : null}
       {uploadError ? <div role="alert">{t("media.editor.referenceUploadFailed", { "0": uploadError.message })}{failedUploads.length ? <Button variant="ghost" className="media-draft-text-action" type="button"
-          disabled={uploading} onClick={() => void uploadFiles(failedUploads)}>{t("media.editor.retryFailedImages")}</Button> : null}
+          disabled={editorReadOnly || uploading} onClick={() => void uploadFiles(failedUploads)}>{t("media.editor.retryFailedImages")}</Button> : null}
       </div> : null}
       {run.isPending ? <CanvasLoadingState compact label={t("media.editor.submittingTask")} /> : null}
       {run.error ? <p role="alert">{t("media.editor.runFailed", { "0": run.error.message })}</p> : null}
@@ -1397,7 +1429,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         : <p role="status">{t("tasks.status.unknown")}</p> : null}
       {error ? <div role="alert"><span>{error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT
         ? t("media.editor.draftConflict") : error.message}</span>
-        <Button variant="ghost" className="media-draft-text-action" onClick={() => void retry()} type="button">
+        <Button variant="ghost" className="media-draft-text-action" disabled={editorReadOnly} onClick={() => void retry()} type="button">
           {error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? t("media.editor.refreshVersion")
             : failedRemovalVersionId ? t("media.editor.retryRemoval") : t("common.retrySave")}</Button></div> : null}
     </div>

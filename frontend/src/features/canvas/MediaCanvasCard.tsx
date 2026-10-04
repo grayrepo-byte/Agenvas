@@ -38,7 +38,7 @@ import { BrushMarkupEditor } from "./BrushMarkupEditor";
 import { CropPanel } from "./CropPanel";
 import { ImagePreviewDialog } from "./ImagePreviewDialog";
 import { MediaCardUpload } from "./MediaCardUpload";
-import { assetMetadataQueryOptions,displayedMediaAssetId,isMediaDraftDisplayed,mediaDraftQueryOptions } from "./mediaDisplay";
+import { assetMetadataQueryOptions,displayedMediaAssetId,isMediaDraftDisplayed,mediaDraftQueryOptions,mediaVersionsQueryOptions } from "./mediaDisplay";
 import { isMediaTaskRunning,latestMediaTask,MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { MediaVersionPicker } from "./MediaVersionPicker";
 import { RelightPanel } from "./RelightPanel";
@@ -104,13 +104,17 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const queryClient = useQueryClient();
   const draft = useQuery(mediaDraftQueryOptions(artifact.projectId, item.id));
   const showDraft = isMediaDraftDisplayed(item, draft.data);
+  const history = useQuery(mediaVersionsQueryOptions(artifact.projectId, item.id));
+  const hasResults = Boolean(history.data?.items.length);
   const tasks = useQuery({ queryKey: ["direct-media-tasks", artifact.projectId, item.id],
     queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id, item.id), enabled: showDraft,
     refetchInterval: (query) => query.state.data?.some(isMediaTaskRunning)
       ? MEDIA_TASK_REFRESH_INTERVAL_MS : false });
   const latest = latestMediaTask(tasks.data);
+  const showSavedResults = hasResults || latest?.status === "SUCCEEDED" || item.selectedVersionId !== null;
   const busy = showDraft && latest && isMediaTaskRunning(latest);
-  const status = showDraft && latest ? TASK_LABELS[latest.status] : undefined;
+  const status = showDraft && latest ? latest.status === "SUCCEEDED" && item.selectedVersionId
+    ? t("media.card.draftDisplayed") : TASK_LABELS[latest.status] : undefined;
   const assetId = displayedMediaAssetId(item, draft.data);
   const content = item.selectedVersion?.content;
   const parameters = content && typeof content === "object" && "parameters" in content ? content.parameters : null;
@@ -271,6 +275,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             {isImage ? <ImageIcon className="media-empty-icon" size={44} />
               : isAudio ? <MusicNotes className="media-empty-icon" size={44} /> : <VideoCamera className="media-empty-icon" size={44} />}
             {status ? <div className="media-card-state" role="status">{status}
+              {latest?.status === "SUCCEEDED" ? <small>{t("media.card.savedResultHint")}</small> : null}
               {latest?.errorCode ? <small>{taskErrorMessage(latest.errorCode) || latest.errorCode}</small> : null}
               {latest?.status === "UNKNOWN" && !latest.runId ? <small>{t("media.card.retryEditorHint")}</small> : null}
             </div> : null}
@@ -280,7 +285,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             : latest?.status === "UNKNOWN" || latest?.status === "BLOCKED" ?
               <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={onEdit}>
                 <SlidersHorizontal size={15} />{t("media.card.viewTask")}</Button>
-              : isImage || isAudio ? <Button variant="ghost" className="media-upload-button nodrag" type="button"
+              : showSavedResults ? null : isImage || isAudio ? <Button variant="ghost" className="media-upload-button nodrag" type="button"
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => { event.stopPropagation(); uploadInput.current?.click(); }}>
               <UploadSimple size={15} />{isAudio ? t("media.card.uploadAudio") : t("media.uploadImage")}</Button>

@@ -7,6 +7,20 @@ import { server } from "../../test/server";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 
 describe("BlockedRunNotice", () => {
+  it("explains an unselected archived video conflict instead of a model outage", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
+      { id: "done-video", kind: "VIDEO_GENERATION", status: "SUCCEEDED", output: { selected: false } },
+      { id: "placement-conflict", kind: "AGENT_TURN", status: "FAILED", errorCode: "ARTIFACT_VERSION_CONFLICT" },
+    ])));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="placement-conflict" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/^Agent 引用的版本与卡片当前选用结果不一致/))
+      .toHaveTextContent("已生成的媒体仍保留在版本历史中");
+    expect(screen.getByRole("alert")).toHaveTextContent("ARTIFACT_VERSION_CONFLICT");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("模型回合未能完成");
+  });
+
   it("explains exhausted automatic retries and preserves completed media", async () => {
     server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
       { id: "done-image", kind: "IMAGE_GENERATION", status: "SUCCEEDED" },
