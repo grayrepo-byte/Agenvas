@@ -18,7 +18,8 @@ import tools.jackson.databind.node.ObjectNode;
 class ComfyUiHistoryTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final UUID promptId = UUID.randomUUID();
+    private static final String SYNTHETIC_PROXY_PROMPT_ID = "2100000000000000123";
+    private final String promptId = SYNTHETIC_PROXY_PROMPT_ID;
 
     @Test void publishedOutputUsesSelectedNodeAndSafeSubfolder() {
         var output = new ComfyUiWorkflowDefinition.Output("9", "images");
@@ -106,13 +107,16 @@ class ComfyUiHistoryTest {
                 .hasMessage("Exact prompt and video output node required");
     }
 
-    @Test
-    void bothMediaRequireThePersistedPromptId() {
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", ".", "..", "task.id", "task/id", "task?query", "task#fragment",
+            "task%2fother", "task\nid"})
+    void bothMediaRequireThePersistedSafePromptId(String unsafePromptId) {
         JsonNode response = mapper.createObjectNode();
-        assertThatThrownBy(() -> ComfyUiHistory.image(response, null, "9"))
+        assertThatThrownBy(() -> ComfyUiHistory.image(response, unsafePromptId, "9"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Exact prompt and template output node required");
-        assertThatThrownBy(() -> ComfyUiHistory.video(response, null, "14"))
+        assertThatThrownBy(() -> ComfyUiHistory.video(response, unsafePromptId, "14"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Exact prompt and video output node required");
     }
@@ -121,7 +125,7 @@ class ComfyUiHistoryTest {
     @ValueSource(strings = {"null", "[]", "\"entry\"", "1", "true"})
     void malformedExactPromptEntriesAreProtocolFailures(String entryJson) {
         JsonNode response = mapper.createObjectNode()
-                .set(promptId.toString(), mapper.readTree(entryJson));
+                .set(promptId, mapper.readTree(entryJson));
         assertBothMediaReject(response, "History entry is malformed");
     }
 
@@ -131,14 +135,14 @@ class ComfyUiHistoryTest {
             "{\"completed\":[]}", "{\"completed\":{}}"})
     void malformedStatusesAndNonBooleanCompletionAreProtocolFailures(String statusJson) {
         var response = mapper.createObjectNode();
-        response.putObject(promptId.toString()).set("status", mapper.readTree(statusJson));
+        response.putObject(promptId).set("status", mapper.readTree(statusJson));
         assertBothMediaReject(response, "History status is malformed");
     }
 
     @Test
     void missingStatusIsAProtocolFailureBeforeReadingOutputs() {
         var response = mapper.createObjectNode();
-        response.putObject(promptId.toString());
+        response.putObject(promptId);
         assertBothMediaReject(response, "History status is malformed");
     }
 
@@ -183,7 +187,7 @@ class ComfyUiHistoryTest {
     @ValueSource(strings = {"null", "true", "[]", "[true,true]", "[\"true\"]", "[false]"})
     void videoRequiresExactlyOneBooleanTrueAnimationFlag(String animatedJson) {
         JsonNode response = videoHistory(true, "success", "clip.mp4", true);
-        ((ObjectNode) response.path(promptId.toString()).path("outputs").path("14"))
+        ((ObjectNode) response.path(promptId).path("outputs").path("14"))
                 .set("animated", mapper.readTree(animatedJson));
         assertThatThrownBy(() -> ComfyUiHistory.video(response, promptId, "14"))
                 .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
@@ -203,7 +207,7 @@ class ComfyUiHistoryTest {
     @ValueSource(strings = {"type", "subfolder"})
     void videoRequiresTheRootOutputDirectory(String field) {
         JsonNode response = videoHistory(true, "success", "clip.mp4", true);
-        ((ObjectNode) response.path(promptId.toString()).path("outputs").path("14")
+        ((ObjectNode) response.path(promptId).path("outputs").path("14")
                 .path("images").get(0)).put(field, "input");
         assertThatThrownBy(() -> ComfyUiHistory.video(response, promptId, "14"))
                 .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
@@ -238,7 +242,7 @@ class ComfyUiHistoryTest {
     private JsonNode videoHistory(boolean complete, String status,
             String filename, boolean animated) {
         var root = mapper.createObjectNode();
-        var entry = root.putObject(promptId.toString());
+        var entry = root.putObject(promptId);
         entry.putObject("status").put("completed", complete).put("status_str", status);
         var output = entry.putObject("outputs").putObject("14");
         output.putArray("animated").add(animated);
@@ -250,7 +254,7 @@ class ComfyUiHistoryTest {
     private JsonNode history(boolean complete, String status,
             String filename, String type, String subfolder) {
         var root = mapper.createObjectNode();
-        var entry = root.putObject(promptId.toString());
+        var entry = root.putObject(promptId);
         entry.putObject("status").put("completed", complete).put("status_str", status);
         var image = entry.putObject("outputs").putObject("9").putArray("images")
                 .addObject();

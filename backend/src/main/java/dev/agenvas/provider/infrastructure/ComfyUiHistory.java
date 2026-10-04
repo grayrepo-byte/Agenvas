@@ -1,6 +1,5 @@
 package dev.agenvas.provider.infrastructure;
 
-import java.util.UUID;
 import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.task.domain.Task;
 import tools.jackson.databind.JsonNode;
@@ -17,12 +16,12 @@ public final class ComfyUiHistory {
     public record PublishedReady(String filename, String subfolder, String contentType) implements PublishedResult {}
 
     /** Select exactly the published node and field; previews from other nodes never become results. */
-    public static PublishedResult published(JsonNode response, UUID promptId,
+    public static PublishedResult published(JsonNode response, String promptId,
             ComfyUiWorkflowDefinition.Output output, Task.Kind kind) {
         HistoryState state = historyState(response, promptId, output.nodeId(), "published");
         if (state == HistoryState.PENDING) return new PublishedPending();
         if (state == HistoryState.FAILED) return new PublishedFailed();
-        JsonNode files = response.path(promptId.toString()).path("outputs").path(output.nodeId()).path(output.field());
+        JsonNode files = response.path(promptId).path("outputs").path(output.nodeId()).path(output.field());
         if (!files.isArray() || files.size() != 1) throw new ComfyUiClient.ProtocolFailure("Published output is missing or ambiguous");
         JsonNode file = files.get(0);
         String filename = file.path("filename").asText("");
@@ -50,11 +49,11 @@ public final class ComfyUiHistory {
     }
 
     /** 可信输出节点由已安装模板固定，用户不能自行指定。 */
-    public static ImageResult image(JsonNode response, UUID promptId, String outputNodeId) {
+    public static ImageResult image(JsonNode response, String promptId, String outputNodeId) {
         HistoryState state = historyState(response, promptId, outputNodeId, "template");
         if (state == HistoryState.PENDING) return new Pending();
         if (state == HistoryState.FAILED) return new Failed();
-        JsonNode images = response.path(promptId.toString()).path("outputs")
+        JsonNode images = response.path(promptId).path("outputs")
                 .path(outputNodeId).path("images");
         if (!images.isArray() || images.size() != 1) {
             throw new ComfyUiClient.ProtocolFailure("Fixed image output is missing or ambiguous");
@@ -76,11 +75,11 @@ public final class ComfyUiHistory {
      * @param outputNodeId 固定视频模板的输出节点 ID
      * @return 尚未完成、失败或包含一个安全 MP4 文件名的结果
      */
-    public static VideoResult video(JsonNode response, UUID promptId, String outputNodeId) {
+    public static VideoResult video(JsonNode response, String promptId, String outputNodeId) {
         HistoryState state = historyState(response, promptId, outputNodeId, "video");
         if (state == HistoryState.PENDING) return new VideoPending();
         if (state == HistoryState.FAILED) return new VideoFailed();
-        JsonNode output = response.path(promptId.toString()).path("outputs").path(outputNodeId);
+        JsonNode output = response.path(promptId).path("outputs").path(outputNodeId);
         JsonNode files = output.path("images");
         JsonNode animated = output.path("animated");
         if (!files.isArray() || files.size() != 1 || !animated.isArray()
@@ -101,13 +100,13 @@ public final class ComfyUiHistory {
 
     private enum HistoryState { PENDING, FAILED, READY }
 
-    private static HistoryState historyState(JsonNode response, UUID promptId,
+    private static HistoryState historyState(JsonNode response, String promptId,
             String outputNodeId, String outputKind) {
-        if (response == null || !response.isObject() || promptId == null
+        if (response == null || !response.isObject() || !ComfyUiClient.safePromptId(promptId)
                 || outputNodeId == null || !outputNodeId.matches("[0-9]{1,8}")) {
             throw new IllegalArgumentException("Exact prompt and " + outputKind + " output node required");
         }
-        JsonNode entry = response.path(promptId.toString());
+        JsonNode entry = response.path(promptId);
         if (entry.isMissingNode()) {
             if (response.isEmpty()) return HistoryState.PENDING;
             throw new ComfyUiClient.ProtocolFailure("History returned an unrelated prompt");

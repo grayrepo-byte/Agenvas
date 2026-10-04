@@ -63,8 +63,11 @@ class ComfyUiVideoPostgresIT {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final HttpServer SERVER = server();
     private static final Path STORAGE_ROOT = temporaryRoot();
-    private static final AtomicReference<UUID> IMAGE_PROMPT = new AtomicReference<>();
-    private static final AtomicReference<UUID> VIDEO_PROMPT = new AtomicReference<>();
+    private static final String SYNTHETIC_IMAGE_PROMPT_ID = "2100000000000002001";
+    private static final String SYNTHETIC_VIDEO_PROMPT_ID = "2100000000000002002";
+    private static final AtomicReference<String> IMAGE_PROMPT = new AtomicReference<>();
+    private static final AtomicReference<String> VIDEO_PROMPT = new AtomicReference<>();
+    private static final AtomicReference<UUID> VIDEO_REQUEST_KEY = new AtomicReference<>();
     private static final AtomicInteger IMAGE_SUBMISSIONS = new AtomicInteger();
     private static final AtomicInteger VIDEO_SUBMISSIONS = new AtomicInteger();
     private static final AtomicInteger VIDEO_POLLS = new AtomicInteger();
@@ -181,10 +184,11 @@ class ComfyUiVideoPostgresIT {
         assertThat(uploadedKeyframe.getRGB(0, 0) & 0x00ffffff).isEqualTo(0x007f7f7f);
         assertThat(uploadedKeyframe.getRGB(416, 240) & 0x00ffffff).isZero();
         assertThat(tasks.get(owner.userId(), project.id(), videoTask.id()).providerRequestId())
-                .isEqualTo(VIDEO_PROMPT.get().toString());
+                .isEqualTo(VIDEO_PROMPT.get());
         assertThat(jdbc.sql("select request_key from provider_attempt where task_id = :id")
                 .param("id", videoTask.id()).query(UUID.class).single())
-                .isEqualTo(VIDEO_PROMPT.get());
+                .isEqualTo(VIDEO_REQUEST_KEY.get());
+        assertThat(VIDEO_REQUEST_KEY.get().toString()).isNotEqualTo(VIDEO_PROMPT.get());
         assertThat(mediaWorker.submitOnce("another-submitter")).isZero();
         var oldConnection = catalog.getConnection(connection);
         catalog.updateConnection(connection, oldConnection.version(), oldConnection.name(), true,
@@ -266,13 +270,15 @@ class ComfyUiVideoPostgresIT {
             server.createContext(PROXY_PREFIX + "/prompt", exchange -> {
                 JsonNode body = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
                 JsonNode graph = body.path("prompt");
-                UUID id = UUID.fromString(body.path("prompt_id").asText());
-                assertThat(body.path("client_id").asText()).isEqualTo(id.toString());
+                UUID requestKey = UUID.fromString(body.path("prompt_id").asText());
+                assertThat(body.path("client_id").asText()).isEqualTo(requestKey.toString());
                 boolean video = graph.has("14");
+                String id = video ? SYNTHETIC_VIDEO_PROMPT_ID : SYNTHETIC_IMAGE_PROMPT_ID;
                 if (video) {
                     VIDEO_GRAPH.set(graph);
                     VIDEO_SUBMISSIONS.incrementAndGet();
                     VIDEO_PROMPT.set(id);
+                    VIDEO_REQUEST_KEY.set(requestKey);
                 } else {
                     IMAGE_SUBMISSIONS.incrementAndGet();
                     IMAGE_PROMPT.set(id);
@@ -283,7 +289,7 @@ class ComfyUiVideoPostgresIT {
             server.createContext(PROXY_PREFIX + "/history/", exchange -> {
                 boolean video = exchange.getRequestURI().getPath()
                         .equals(PROXY_PREFIX + "/history/" + VIDEO_PROMPT.get());
-                UUID id = video ? VIDEO_PROMPT.get() : IMAGE_PROMPT.get();
+                String id = video ? VIDEO_PROMPT.get() : IMAGE_PROMPT.get();
                 if (video && VIDEO_POLLS.incrementAndGet() == 1) {
                     reply(exchange, 200, "{}".getBytes(StandardCharsets.UTF_8));
                     return;

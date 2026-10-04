@@ -13,11 +13,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /** Local fake-protocol checks; this is not evidence of a real ComfyUI template or GPU. */
 class ComfyUiClientTest {
+
+    private static final String SYNTHETIC_PROXY_PREFIX = "/proxy/synthetic-path-key";
+    private static final String SYNTHETIC_PROXY_PROMPT_ID = "2100000000000000123";
+    private static final int MAX_PROMPT_ID_CHARACTERS = 240;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private HttpServer server;
@@ -57,28 +63,149 @@ class ComfyUiClientTest {
             respond(exchange, 200, "{}");
         });
         JsonNode fixed = mapper.readTree("{\"1\":{\"class_type\":\"TrustedFixture\",\"inputs\":{}}}");
-        assertThat(client.submit(fixed, promptId)).isEqualTo(promptId);
-        assertThat(client.imageStatus(promptId, "9"))
+        assertThat(client.submit(fixed, promptId)).isEqualTo(promptId.toString());
+        assertThat(client.imageStatus(promptId.toString(), "9"))
                 .isInstanceOf(ComfyUiHistory.Pending.class);
-        assertThat(client.imageStatus(promptId, "9"))
+        assertThat(client.imageStatus(promptId.toString(), "9"))
                 .isInstanceOf(ComfyUiHistory.Pending.class);
         assertThat(submits).hasValue(1);
         assertThat(histories).hasValue(2);
     }
 
     @Test
-    void mismatchedAcknowledgementIsAmbiguousAndNeverSubmittedAgain() {
+    void acceptsProxyAssignedPromptIdAndQueriesItWithoutResubmission() {
         UUID requestKey = UUID.randomUUID();
+        AtomicInteger submits = new AtomicInteger();
+        AtomicInteger histories = new AtomicInteger();
+        client = new ComfyUiClient(new ComfyUiProperties(
+                "http://127.0.0.1:" + server.getAddress().getPort()
+                        + SYNTHETIC_PROXY_PREFIX), mapper);
+        server.createContext(SYNTHETIC_PROXY_PREFIX + "/prompt", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+            JsonNode body = mapper.readTree(exchange.getRequestBody().readAllBytes());
+            assertThat(body.path("client_id").asText()).isEqualTo(requestKey.toString());
+            assertThat(body.path("prompt_id").asText()).isEqualTo(requestKey.toString());
+            submits.incrementAndGet();
+            respond(exchange, 200, "{\"prompt_id\":\"" + SYNTHETIC_PROXY_PROMPT_ID + "\"}");
+        });
+        server.createContext(SYNTHETIC_PROXY_PREFIX + "/history/", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            assertThat(exchange.getRequestURI().getPath())
+                    .isEqualTo(SYNTHETIC_PROXY_PREFIX + "/history/" + SYNTHETIC_PROXY_PROMPT_ID);
+            histories.incrementAndGet();
+            respond(exchange, 200, "{\"" + SYNTHETIC_PROXY_PROMPT_ID + "\":{"
+                    + "\"status\":{\"completed\":true,\"status_str\":\"success\"},"
+                    + "\"outputs\":{\"9\":{\"images\":[{\"filename\":\"render.png\","
+                    + "\"subfolder\":\"\",\"type\":\"output\"}]}}}}");
+        });
+        try {
+            var promptId = client.submit(mapper.createObjectNode(), requestKey);
+            assertThat(promptId).isEqualTo(SYNTHETIC_PROXY_PROMPT_ID);
+            assertThat(client.imageStatus(promptId, "9"))
+                    .isEqualTo(new ComfyUiHistory.Ready("render.png"));
+            assertThat(client.imageStatus(promptId, "9"))
+                    .isEqualTo(new ComfyUiHistory.Ready("render.png"));
+            assertThat(histories).hasValue(2);
+        } finally {
+            assertThat(submits).hasValue(1);
+        }
+    }
+
+    @Test
+    void acceptsServerAssignedUuidAndQueriesAcknowledgedPrompt() {
+        UUID requestKey = UUID.randomUUID();
+        String acknowledgedPromptId = UUID.randomUUID().toString();
         AtomicInteger submissions = new AtomicInteger();
+        AtomicInteger histories = new AtomicInteger();
         server.createContext("/prompt", exchange -> {
             JsonNode body = mapper.readTree(exchange.getRequestBody().readAllBytes());
             assertThat(body.path("prompt_id").asText()).isEqualTo(requestKey.toString());
             submissions.incrementAndGet();
-            respond(exchange, 200, "{\"prompt_id\":\"" + UUID.randomUUID() + "\"}");
+            respond(exchange, 200, "{\"prompt_id\":\"" + acknowledgedPromptId + "\"}");
         });
-        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), requestKey))
-                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        server.createContext("/history/", exchange -> {
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/history/" + acknowledgedPromptId);
+            histories.incrementAndGet();
+            respond(exchange, 200, "{}");
+        });
+        String promptId = client.submit(mapper.createObjectNode(), requestKey);
+        assertThat(promptId).isEqualTo(acknowledgedPromptId);
+        assertThat(client.history(promptId).isEmpty()).isTrue();
         assertThat(submissions).hasValue(1);
+        assertThat(histories).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{}", "{\"prompt_id\":null}", "{\"prompt_id\":1}",
+            "{\"prompt_id\":true}", "{\"prompt_id\":[]}", "{\"prompt_id\":{}}"})
+    void missingOrNonStringAcknowledgementIsNeverSubmittedAgain(String response) {
+        AtomicInteger submissions = new AtomicInteger();
+        server.createContext("/prompt", exchange -> {
+            submissions.incrementAndGet();
+            respond(exchange, 200, response);
+        });
+        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("ComfyUI did not return a valid prompt_id");
+        assertThat(submissions).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", ".", "..", "task.id", "../other", "task/id", "task?x=1",
+            "task#fragment", "task%2fother", "task\\id", "task\nid", "task\u0000id"})
+    void unsafeAcknowledgementIsNeverSubmittedAgainOrUsedInHistory(String promptId) {
+        AtomicInteger submissions = new AtomicInteger();
+        AtomicInteger histories = new AtomicInteger();
+        String response = mapper.createObjectNode().put("prompt_id", promptId).toString();
+        server.createContext("/prompt", exchange -> {
+            submissions.incrementAndGet();
+            respond(exchange, 200, response);
+        });
+        server.createContext("/history/", exchange -> {
+            histories.incrementAndGet();
+            respond(exchange, 200, "{}");
+        });
+        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("ComfyUI did not return a valid prompt_id");
+        assertThatThrownBy(() -> client.history(promptId)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(submissions).hasValue(1);
+        assertThat(histories).hasValue(0);
+    }
+
+    @Test
+    void overlongAcknowledgementIsNeverSubmittedAgainOrUsedInHistory() {
+        String promptId = "a".repeat(MAX_PROMPT_ID_CHARACTERS + 1);
+        AtomicInteger submissions = new AtomicInteger();
+        server.createContext("/prompt", exchange -> {
+            submissions.incrementAndGet();
+            respond(exchange, 200, mapper.createObjectNode().put("prompt_id", promptId).toString());
+        });
+        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThatThrownBy(() -> client.history(promptId)).isInstanceOf(IllegalArgumentException.class);
+        assertThat(submissions).hasValue(1);
+    }
+
+    @Test
+    void acceptsOpaquePromptIdAtPersistenceLengthLimit() {
+        String promptId = "task_" + "a".repeat(MAX_PROMPT_ID_CHARACTERS - "task_".length());
+        AtomicInteger submissions = new AtomicInteger();
+        AtomicInteger histories = new AtomicInteger();
+        server.createContext("/prompt", exchange -> {
+            submissions.incrementAndGet();
+            respond(exchange, 200, mapper.createObjectNode().put("prompt_id", promptId).toString());
+        });
+        server.createContext("/history/", exchange -> {
+            assertThat(exchange.getRequestURI().getPath()).isEqualTo("/history/" + promptId);
+            histories.incrementAndGet();
+            respond(exchange, 200, "{}");
+        });
+        String acknowledged = client.submit(mapper.createObjectNode(), UUID.randomUUID());
+        assertThat(acknowledged).isEqualTo(promptId);
+        assertThat(client.history(acknowledged).isEmpty()).isTrue();
+        assertThat(submissions).hasValue(1);
+        assertThat(histories).hasValue(1);
     }
 
     @Test
@@ -89,7 +216,7 @@ class ComfyUiClientTest {
                         + "\"status_str\":\"success\"},\"outputs\":{\"9\":{"
                         + "\"images\":[{\"filename\":\"render.png\","
                         + "\"subfolder\":\"\",\"type\":\"output\"}]}}}}"));
-        assertThat(client.imageStatus(promptId, "9"))
+        assertThat(client.imageStatus(promptId.toString(), "9"))
                 .isEqualTo(new ComfyUiHistory.Ready("render.png"));
     }
 
@@ -192,8 +319,8 @@ class ComfyUiClientTest {
         var captured = new java.util.concurrent.atomic.AtomicReference<java.util.List<dev.agenvas.shared.http.DebugHttpCapture.Exchange>>();
         try (var scope = dev.agenvas.shared.http.DebugHttpCapture.open(captured::set)) {
             assertThat(client.uploadImage(id, new byte[] {1}, "png")).isEqualTo("input.png");
-            assertThat(client.submit(mapper.createObjectNode(), id)).isEqualTo(id);
-            client.history(id);
+            assertThat(client.submit(mapper.createObjectNode(), id)).isEqualTo(id.toString());
+            client.history(id.toString());
             try (var output = client.output("output.png")) { assertThat(output.readAllBytes()).isNotEmpty(); }
         }
         assertThat(routes).containsExactly(prefix + "/upload/image", prefix + "/prompt",

@@ -63,9 +63,11 @@ class ComfyUiImagePostgresIT {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final HttpServer SERVER = startServer();
     private static final Path STORAGE_ROOT = temporaryRoot();
-    private static final AtomicReference<UUID> FIRST_PROMPT_ID = new AtomicReference<>();
-    private static final AtomicReference<UUID> SECOND_PROMPT_ID = new AtomicReference<>();
-    private static final AtomicReference<UUID> LAST_PROMPT_ID = new AtomicReference<>();
+    private static final long SYNTHETIC_PROMPT_ID_BASE = 2_100_000_000_000_001_000L;
+    private static final AtomicReference<String> FIRST_PROMPT_ID = new AtomicReference<>();
+    private static final AtomicReference<String> SECOND_PROMPT_ID = new AtomicReference<>();
+    private static final AtomicReference<UUID> FIRST_REQUEST_KEY = new AtomicReference<>();
+    private static final AtomicReference<UUID> LAST_REQUEST_KEY = new AtomicReference<>();
     private static final AtomicInteger SUBMISSIONS = new AtomicInteger();
     private static final AtomicInteger QUERIES = new AtomicInteger();
     private static final AtomicInteger DOWNLOADS = new AtomicInteger();
@@ -162,10 +164,11 @@ class ComfyUiImagePostgresIT {
                 .isEqualTo(0.65);
         Task waiting = tasks.get(owner.userId(), project.id(), approved.id());
         assertThat(waiting.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
-        assertThat(waiting.providerRequestId()).isEqualTo(FIRST_PROMPT_ID.get().toString());
+        assertThat(waiting.providerRequestId()).isEqualTo(FIRST_PROMPT_ID.get());
         assertThat(jdbc.sql("select request_key from provider_attempt where task_id = :id")
                 .param("id", approved.id()).query(UUID.class).single())
-                .isEqualTo(FIRST_PROMPT_ID.get());
+                .isEqualTo(FIRST_REQUEST_KEY.get());
+        assertThat(FIRST_REQUEST_KEY.get().toString()).isNotEqualTo(waiting.providerRequestId());
         // The first ComfyUI request is still active, but it is not a global product slot.
         assertThat(mediaWorker.submitOnce("other-app-instance")).isEqualTo(1);
         assertThat(SUBMISSIONS).hasValue(2);
@@ -179,7 +182,7 @@ class ComfyUiImagePostgresIT {
         assertThat(mediaWorker.pollOnce("comfy-poller")).isEqualTo(1);
         Task archiveFailed = tasks.get(owner.userId(), project.id(), approved.id());
         assertThat(archiveFailed.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
-        assertThat(archiveFailed.providerRequestId()).isEqualTo(FIRST_PROMPT_ID.get().toString());
+        assertThat(archiveFailed.providerRequestId()).isEqualTo(FIRST_PROMPT_ID.get());
         assertThat(archiveFailed.nextActionAt()).isAfter(archiveFailed.updatedAt());
         assertThat(jdbc.sql("select failure_count from task_provider_poll_retry where task_id = :id")
                 .param("id", approved.id()).query(Integer.class).single()).isEqualTo(1);
@@ -211,7 +214,7 @@ class ComfyUiImagePostgresIT {
         Task completedOld = tasks.get(owner.userId(), project.id(), queuedSecond.id());
         assertThat(completedOld.status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(completedOld.output().path("artifactId").asText()).isNotBlank();
-        assertThat(completedOld.providerRequestId()).isEqualTo(SECOND_PROMPT_ID.get().toString());
+        assertThat(completedOld.providerRequestId()).isEqualTo(SECOND_PROMPT_ID.get());
         assertThat(QUERIES).hasValue(4);
         assertThat(DOWNLOADS).hasValue(3);
         assertThat(jdbc.sql("select count(*) from provider_attempt where task_id = :id")
@@ -248,7 +251,7 @@ class ComfyUiImagePostgresIT {
                 .isEqualTo(Task.Status.SUBMITTING);
         assertThat(tasks.listProviderAttempts(owner.userId(), project.id(), uncertainTask.id()))
                 .singleElement().satisfies(attempt -> {
-                    assertThat(attempt.requestKey()).isEqualTo(LAST_PROMPT_ID.get());
+                    assertThat(attempt.requestKey()).isEqualTo(LAST_REQUEST_KEY.get());
                     assertThat(attempt.providerRequestId()).isNull();
                 });
         jdbc.sql("update task set lease_until = now() - interval '1 second' where id = :id")
@@ -292,11 +295,14 @@ class ComfyUiImagePostgresIT {
             server.createContext(PROXY_PREFIX + "/prompt", exchange -> {
                 JsonNode body = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
                 SUBMITTED_GRAPH.set(body.path("prompt"));
-                UUID promptId = UUID.fromString(body.path("prompt_id").asText());
-                LAST_PROMPT_ID.set(promptId);
-                assertThat(body.path("client_id").asText()).isEqualTo(promptId.toString());
-                if (SUBMISSIONS.incrementAndGet() == 1) {
+                UUID requestKey = UUID.fromString(body.path("prompt_id").asText());
+                LAST_REQUEST_KEY.set(requestKey);
+                assertThat(body.path("client_id").asText()).isEqualTo(requestKey.toString());
+                int submissionNumber = SUBMISSIONS.incrementAndGet();
+                String promptId = Long.toString(SYNTHETIC_PROMPT_ID_BASE + submissionNumber);
+                if (submissionNumber == 1) {
                     FIRST_PROMPT_ID.set(promptId);
+                    FIRST_REQUEST_KEY.set(requestKey);
                 } else {
                     SECOND_PROMPT_ID.set(promptId);
                 }

@@ -78,11 +78,11 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
         String uploaded = client.uploadImage(requestKey,
                 pinnedInputImage(context.ownerId(), task, workflow, ratio), "png");
         long seed = requestKey.getMostSignificantBits() & Long.MAX_VALUE;
-        UUID promptId = client.submit(workflow.renderSeconds(
+        String promptId = client.submit(workflow.renderSeconds(
                 task.input().path("prompt").asText(),
                 task.input().path("negativePrompt").asText(""), seed, uploaded,
                 ratio, durationSeconds), requestKey);
-        return new Submission.Accepted(promptId.toString());
+        return new Submission.Accepted(promptId);
     }
 
     @Override public Submission reconcile(AttemptContext context) {
@@ -90,7 +90,7 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
         ComfyUiClient client = client(snapshot);
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
         if (ComfyUiWorkflowDefinition.configured(settings)) return published.reconcile(context, client, settings);
-        UUID promptId = UUID.fromString(context.originalRequestId());
+        String promptId = context.originalRequestId();
         try {
             return switch (client.videoStatus(promptId, ComfyUiVideoWorkflow.OUTPUT_NODE_ID)) {
                 case ComfyUiHistory.VideoPending ignored ->

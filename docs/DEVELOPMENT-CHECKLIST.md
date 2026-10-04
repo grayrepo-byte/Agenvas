@@ -321,7 +321,8 @@
 - [x] 显示可能的外部成本，不伪装成退款或确定失败。
 - [ ] UNKNOWN 列表逐项展示任务 ID、尝试次数、已保存的原请求 ID 或缺失警告、错误码，不展示私有输入；保留人工核对线索。（2026-09-26 产品决策移除核对能力与该列表 UI，本项作废。）
 - [ ] 按项目权限读取单任务的提交关联键、attempt 状态与原 Provider 请求 ID，页面按需展开且不暴露工作线程信息。（同上，`/attempts` 端点已移除。）
-- [x] 新 ComfyUI 请求使用提交前持久化的关联键作为候选 prompt_id，并拒绝不一致回执；不把该 ID 当幂等保证。
+- [x] 新 ComfyUI 请求使用提交前持久化的关联键作为 client_id 和候选 prompt_id；实际受理 ID 保存服务端回执中的安全字符串，可与候选值不同且不要求 UUID，不把本地请求键当 Provider 幂等保证。（2026-10-04 修正代理分配远程 ID 时被错误拒绝的问题。）
+- 2026-10-04 定向回归：先以合成代理数字 ID 回执复现提交阶段 UUID 解析失败、history 未发出；修复后 `ComfyUiClientTest` 31 项与 `ComfyUiHistoryTest` 69 项通过。`ComfyUiWorkflowPostgresIT`、`ComfyUiImagePostgresIT`、`ComfyUiVideoPostgresIT`、`ComfyUiAcceptedCrashPostgresIT` 共 4 项真实 PostgreSQL + 假 HTTP 集成测试通过，验证受理 ID 持久化至 Task/ProviderAttempt/CallLog、原 ID 查询、图片和旧固定图 MP4 归档、响应丢失与进程终止后 UNKNOWN 且不重提。导入视频验证原 ID 进入轮询，未验证其最终归档。生产及测试编译、差异空白检查和本次变更文本的凭据/隐私检查通过；无 API、数据库迁移或依赖变更。未运行全量、真实 RunningHub/GPU 调用或部署，已经缺失远程受理 ID 的旧任务不会自动恢复。
 - [ ] 新 ComfyUI UNKNOWN 仅在候选 ID、原 endpoint 指纹、工作流配置及 Provider 返回的 prompt/client ID 全部匹配时恢复原请求轮询；空查询、旧 attempt、配置漂移和取消不自动重提。（2026-09-26 产品决策移除“核对原请求”，本项作废。）
 - [x] 重试可为 UNKNOWN 任务新建尝试，原 attempt 保留；新尝试、独立用量预留与待执行依赖重连已通过 PostgreSQL 并发测试；真实 ComfyUI 联调暂缓。2026-09-26 起不再要求显式的重复成本确认，改为界面上的单次重试；被替代的原任务不再占用同卡片任务互斥。
 - [x] 实际中断进程并重启，验证提交 checkpoint 与租约恢复不重复提交。

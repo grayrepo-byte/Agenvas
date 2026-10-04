@@ -67,7 +67,11 @@ import tools.jackson.databind.ObjectMapper;
         "agenvas.provider.media.scheduler-enabled=false"})
 class ComfyUiWorkflowPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
-    private static final ConcurrentHashMap<UUID, JsonNode> GRAPHS = new ConcurrentHashMap<>();
+    private static final String PROXY_PREFIX = "/proxy/synthetic-key";
+    private static final long SYNTHETIC_PROMPT_ID_BASE = 2_100_000_000_000_000_000L;
+    private static final ConcurrentHashMap<String, JsonNode> GRAPHS = new ConcurrentHashMap<>();
+    private static final AtomicInteger SUBMISSIONS = new AtomicInteger();
+    private static final AtomicInteger QUERIES = new AtomicInteger();
     private static final AtomicInteger UPLOADS = new AtomicInteger();
     private static final HttpServer SERVER = server();
     private static final Path STORAGE = storage();
@@ -106,7 +110,7 @@ class ComfyUiWorkflowPostgresIT {
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         var user = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_USER"))));
         var mvc = webAppContextSetup(context).apply(springSecurity()).build();
-        var connection = catalog.createConnection("Synthetic ComfyUI", "http://127.0.0.1:" + SERVER.getAddress().getPort());
+        var connection = catalog.createConnection("Synthetic ComfyUI", "http://127.0.0.1:" + SERVER.getAddress().getPort() + PROXY_PREFIX);
         var settings = ComfyWorkflowFixture.settings(mapper, false, true);
         var workflow = settings.withObject("comfyWorkflow");
         workflow.withObject("graph").putObject("23").put("class_type", "LoadImage").putObject("inputs").put("image", "second.png");
@@ -154,7 +158,16 @@ class ComfyUiWorkflowPostgresIT {
         assertThat(task.input().at("/mediaInput/providerParameters/height").asInt()).isEqualTo(360);
         assertThat(worker.submitOnce("workflow-submit")).isEqualTo(1);
         var submitted = tasks.get(owner.userId(), project.id(), task.id());
-        UUID promptId = UUID.fromString(submitted.providerRequestId());
+        String promptId = submitted.providerRequestId();
+        assertThat(submitted.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+        assertThat(promptId).isEqualTo(Long.toString(SYNTHETIC_PROMPT_ID_BASE + 1));
+        assertThat(tasks.listProviderAttempts(owner.userId(), project.id(), task.id()))
+                .singleElement().satisfies(attempt -> {
+                    assertThat(attempt.providerRequestId()).isEqualTo(promptId);
+                    assertThat(attempt.requestKey().toString()).isNotEqualTo(promptId);
+                });
+        assertThat(jdbc.sql("select provider_request_id from call_log where task_id = :id and operation = 'SUBMIT'")
+                .param("id", task.id()).query(String.class).single()).isEqualTo(promptId);
         var graph = GRAPHS.get(promptId);
         assertThat(graph.at("/11/inputs/text").asText()).isEqualTo("Mapped prompt");
         assertThat(graph.at("/13/inputs/image").asText()).isEqualTo("uploaded-1.png");
@@ -168,6 +181,8 @@ class ComfyUiWorkflowPostgresIT {
         assertThat(worker.pollOnce("workflow-poll")).isEqualTo(1);
         assertThat(tasks.get(owner.userId(), project.id(), task.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(GRAPHS).hasSize(1);
+        assertThat(SUBMISSIONS).hasValue(1);
+        assertThat(QUERIES).hasValue(1);
 
         var video = catalog.publishCapability(connection.id(), "Imported video", "COMFY_VIDEO_V1", ComfyWorkflowFixture.settings(mapper, true, false));
         catalog.setDefault(Task.Kind.VIDEO_GENERATION, catalog.defaultVersion(Task.Kind.VIDEO_GENERATION), video.id());
@@ -177,10 +192,16 @@ class ComfyUiWorkflowPostgresIT {
                 mapper.createObjectNode(), 8, video.id(), MediaDraft.VideoInputMode.TEXT, List.of(), List.of(), null);
         var videoTask = direct.run(owner.userId(), project.id(), videoCard.artifact().id(), videoItem, videoDraft.version(), "imported-video-run");
         assertThat(worker.submitOnce("workflow-video-submit")).isEqualTo(1);
-        UUID videoPrompt = UUID.fromString(tasks.get(owner.userId(), project.id(), videoTask.id()).providerRequestId());
+        String videoPrompt = tasks.get(owner.userId(), project.id(), videoTask.id()).providerRequestId();
+        assertThat(videoPrompt).isEqualTo(Long.toString(SYNTHETIC_PROMPT_ID_BASE + 2));
         assertThat(GRAPHS.get(videoPrompt).at("/14/inputs/frames").asInt()).isEqualTo(193);
         assertThat(GRAPHS.get(videoPrompt).at("/14/inputs/fps").asInt()).isEqualTo(24);
         assertThat(UPLOADS).hasValue(2);
+        due(videoTask.id());
+        assertThat(worker.pollOnce("workflow-video-poll")).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), project.id(), videoTask.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+        assertThat(SUBMISSIONS).hasValue(2);
+        assertThat(QUERIES).hasValue(2);
     }
 
     private void due(UUID taskId) {
@@ -195,18 +216,26 @@ class ComfyUiWorkflowPostgresIT {
     private static HttpServer server() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/upload/image", exchange -> { int index = UPLOADS.incrementAndGet(); exchange.getRequestBody().readAllBytes(); respond(exchange, "{\"name\":\"uploaded-" + index + ".png\",\"type\":\"input\",\"subfolder\":\"\"}"); });
-            server.createContext("/prompt", exchange -> {
+            server.createContext(PROXY_PREFIX + "/upload/image", exchange -> { int index = UPLOADS.incrementAndGet(); exchange.getRequestBody().readAllBytes(); respond(exchange, "{\"name\":\"uploaded-" + index + ".png\",\"type\":\"input\",\"subfolder\":\"\"}"); });
+            server.createContext(PROXY_PREFIX + "/prompt", exchange -> {
                 var body = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
-                UUID id = UUID.fromString(body.path("prompt_id").asText());
+                UUID requestKey = UUID.fromString(body.path("prompt_id").asText());
+                assertThat(body.path("client_id").asText()).isEqualTo(requestKey.toString());
+                String id = Long.toString(SYNTHETIC_PROMPT_ID_BASE + SUBMISSIONS.incrementAndGet());
                 GRAPHS.put(id, body.path("prompt"));
                 respond(exchange, "{\"prompt_id\":\"" + id + "\"}");
             });
-            server.createContext("/history/", exchange -> {
-                String id = exchange.getRequestURI().getPath().substring("/history/".length());
+            server.createContext(PROXY_PREFIX + "/history/", exchange -> {
+                String id = exchange.getRequestURI().getPath().substring((PROXY_PREFIX + "/history/").length());
+                assertThat(GRAPHS).containsKey(id);
+                QUERIES.incrementAndGet();
+                if ("SaveVideo".equals(GRAPHS.get(id).at("/99/class_type").asText())) {
+                    respond(exchange, "{}");
+                    return;
+                }
                 respond(exchange, "{\"" + id + "\":{\"status\":{\"completed\":true,\"status_str\":\"success\"},\"outputs\":{\"99\":{\"images\":[{\"filename\":\"image.png\",\"type\":\"output\",\"subfolder\":\"render/day\"}]}}}}");
             });
-            server.createContext("/view", exchange -> {
+            server.createContext(PROXY_PREFIX + "/view", exchange -> {
                 assertThat(exchange.getRequestURI().getRawQuery()).contains("subfolder=render%2Fday");
                 var bytes = new ByteArrayOutputStream();
                 ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", bytes);
