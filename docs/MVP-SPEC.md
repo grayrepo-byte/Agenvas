@@ -1626,6 +1626,8 @@ UNKNOWN 的显式重试只在所属 Agent 对话和媒体卡片上进行；仅�
 
 统一提示词管理支持多条 Agent 与功能提示词，每条具有 id、唯一稳定 key、kind（AGENT/FUNCTION）、name、description、content、builtIn、version 与时间。名称/说明/正文可编辑，key/kind 创建后不可修改；内置条目可编辑但不可删除，自定义条目按 expectedVersion 删除。搜索及用途筛选只改变列表，不丢失其他条目的草稿；并发冲突先重新读取，明确采用新版本或放弃草稿。
 
+2026-10-04 三视图提示词统一管理：角色、脸部、道具三视图与场景宫格分别使用 `image.three-view.character`、`image.three-view.face`、`image.three-view.prop` 和 `image.three-view.scene-grid` 四条内置 FUNCTION 提示词，入口仍为 `/settings/general?tab=prompts`。V6 数据迁移初始化四类英文正文：角色按用户后续要求改为同一角色的正面半身大头照与全身站立三视图（正面、侧面、背面），16:9、纯白干净背景、影棚级柔和布光、角色设定集风格、高分辨率和电影级质感；其余三类沿用原正文。不修改 V5 或覆盖已有 Agent/文字提示词配置，不改变表结构。新图片后处理 Task schema 7 在首次受理时按服务端校验后的类型读取对应配置，追加可选 `Subject guidance`，冻结最终正文、promptKey 与 promptVersion；Provider 与任务恢复只消费冻结正文，同键重放不重新读取配置，之后修改配置只影响新命令。任务画幅、来源图片、派生节点、权限、能力和 UNKNOWN 显式重试仍由原业务管线管理，提示词正文不能改变这些执行规则。历史图片任务保留原冻结输入；接口字段兼容，服务发布时须执行 V6 才能使用四个消费入口。
+
 Agent 条目及卡片设置管理的是创作系统提示词；底层执行协议不进入可编辑管理条目。界面明确这一范围，创作配置不能新增工具、改变权限或批准媒体。系统规则版本 7 的边界与历史恢复规则见 §8.5；内置导演预设已包含完整创作流程，无须覆盖用户预设或已有卡片。
 
 管理员 GET/POST `/api/v1/settings/prompts`，GET/PUT/DELETE `/api/v1/settings/prompts/{id}`；修改、删除带 expectedVersion，冲突返回 409。普通认证用户 GET `/api/v1/agent-presets` 仅获取 Agent key/name，添加菜单可直接创建每一种 Agent 预设。创建 Agent 的 name/instruction 仍可省略，增加可选 promptKey；省略使用 agent.director，只能选 AGENT 条目。可选 Idempotency-Key 同键同请求重放首次实例及内容，不重算之后修改的条目；同键不同条目或其他参数返回 409。删除自定义预设不改写已创建卡片。

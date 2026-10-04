@@ -2121,7 +2121,7 @@
   "prompts.name": "名前",
   "prompts.description": "用途の説明",
   "prompts.content": "プロンプト本文",
-  "prompts.functionHint": "文字生成は text.generate を使用します。他の機能は用途キーに対応する実装が必要です。",
+  "prompts.functionHint": "文字生成、キャラクター・顔・小道具の三面図、シーンのグリッドはそれぞれの組み込み機能プロンプトを使用します。カスタム項目は用途キーに対応する実装が必要です。",
   "prompts.saved": "プロンプトを保存しました。",
   "prompts.builtInHint": "組み込みプロンプトは機能で使用中です。編集できますが削除できません。",
   "prompts.deleteConfirm": "「{0}」を削除しますか？既存のカードとタスクの内容は保持されます。",

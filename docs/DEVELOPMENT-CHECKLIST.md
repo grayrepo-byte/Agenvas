@@ -1342,6 +1342,16 @@ Markdown 合并 main 复验：保留最新左对齐防重叠、Agent 按需读�
 - [ ] 全量测试、浏览器端到端、真实 LLM/Provider 与部署未运行。当前实际接入消费入口为 Agent 预设创建和文字卡片生成；其他功能按稳定 key 显式接入，诊断协议及服务端权限/工具规则不作为管理员创作提示词。
 
 
+### 2026-10-04 三视图提示词统一管理
+
+- [x] 角色、脸部、道具三视图与场景宫格接入现有提示词管理，分别使用 `image.three-view.character`、`image.three-view.face`、`image.three-view.prop`、`image.three-view.scene-grid` 四条内置 FUNCTION 条目。管理员可编辑名称/说明/正文，沿用 CAS、搜索/用途筛选、草稿保留和内置删除保护；四语言用途说明同步。
+- [x] 新增 V6__three_view_function_prompts.sql 数据迁移，最初四条英文正文与原 Java 字符串逐一核对完全相同，随后按用户要求直接修改未发布 DML 的角色默认正文：英文描述正面半身大头照与全身站立三视图，保持同一角色，16:9 纯白背景、影棚柔光、角色设定集风格、高分辨率及电影级质感。其余三条正文保留；从 ImageOperationSpec 移除固定三视图正文。迁移不改变表结构或现有提示词，不修改 V5，无 jOOQ 结构变化。
+- [x] 新图片后处理 Task schema 7 在首次受理时读取所选类型对应的当前提示词，追加可选主体说明，冻结最终正文与 promptKey/promptVersion。Worker、恢复和同键重放继续消费原冻结输入，配置修改只影响新命令；非三视图操作沿用原指令，派生节点、画幅、权限/能力及 UNKNOWN 规则保持。
+- [x] 后端 6 类 56 项定向检查通过：ImageOperationSpecTest 7、ImageOperationValidationTest 30、ApprovedMediaAcceptanceTest 9、ThreeViewPromptPostgresIT 4、PromptManagementPostgresIT 5、ImageOperationDerivationPostgresIT 1。首次命令 `./mvnw -q -Dtest=ImageOperationSpecTest,ImageOperationValidationTest,ApprovedMediaAcceptanceTest,ThreeViewPromptPostgresIT,PromptManagementPostgresIT,ImageOperationDerivationPostgresIT test`；新集成测试的 multipart 断言修正后，`./mvnw -q -Dtest=ThreeViewPromptPostgresIT -Dlogging.level.root=WARN test` 4 项通过，其余 52 项首次已通过。真实 PostgreSQL 与回环模拟 OpenAI HTTP 验证初始化、管理 API、CAS/删除保护、四类型选用、同键同参重放/异参冲突、旧任务冻结及新任务更新；模拟端收到正确正文并完成合成 PNG 归档，没有真实 Provider 调用。
+- [x] 前端 PromptManagementSection、SystemSettingsPage、MediaCanvasCard 共 3 文件 98 项定向 Vitest 测试通过；新增四条提示词的筛选/搜索、独立草稿、管理保存与内置保护覆盖。TypeScript、修改测试文件 ESLint、四语言语义文案检查通过；按冻结锁文件安装依赖，无依赖变更。OpenAPI 行为说明及生成 TypeScript、MVP 与 ADR 0015 同步，差异空白检查通过。
+- [x] 角色默认 DML 正文修订后，`./mvnw -q -Dtest=ImageOperationSpecTest,ThreeViewPromptPostgresIT -Dlogging.level.root=WARN test` 共 11 项通过；英文正文包含全部九项用户指定的构图/一致性/画幅/背景/布光/风格/质量要素，四条 DML 记录保留。没有接口或表结构变更；未执行应用数据库迁移及真实 Provider 调用。
+- [ ] 全量测试、浏览器端到端、真实 Provider、应用数据库迁移和部署未运行。V6 已在一次性 PostgreSQL 中执行，测试容器与本任务临时媒体目录已清理；发布时服务须执行 V6 才会出现四条功能配置。
+
 ### 2026-10-03 统一提示词与导演 Agent 合并 main 复验
 
 - [x] 保留 main 的 Agent 回答 Markdown、按需读取图片及 Skill 界面改动；解决上下文规则、合约、语言目录和任务清单冲突。新 Run 使用 systemPromptVersion=6，将导演创作系统提示词与按需读图规则组合；历史 1–5 的规则和消息角色保持。Flyway 仍为统一提示词 V5，不修改 main 已有 V1–V4。

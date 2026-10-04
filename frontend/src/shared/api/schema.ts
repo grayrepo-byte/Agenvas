@@ -508,7 +508,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 统一提示词管理列表（仅管理员） */
+        /**
+         * 统一提示词管理列表（仅管理员）
+         * @description 内置功能提示词包括文字生成及角色、脸部、道具三视图和场景宫格；可编辑但不可删除。四种视图分别由固定用途标识 image.three-view.character、image.three-view.face、image.three-view.prop 和 image.three-view.scene-grid 消费。
+         */
         get: operations["listPrompts"];
         put?: never;
         /** 新建独立提示词 */
@@ -1732,7 +1735,7 @@ export interface paths {
         put?: never;
         /**
          * 固定来源图片并创建相连的独立结果节点后受理图片后处理任务
-         * @description 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。节点标题为来源节点当前标题加「 · 操作名称」，超长时截短来源部分以保留操作后缀；完成或重放不覆盖后续改名。
+         * @description 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。节点标题为来源节点当前标题加「 · 操作名称」，超长时截短来源部分以保留操作后缀；完成或重放不覆盖后续改名。THREE_VIEW 首次受理按类型读取统一管理的内置功能提示词，追加可选主体说明，冻结最终正文及 promptKey/promptVersion；修改管理配置只影响新命令，同键重放及在途任务保留原输入。
          */
         post: operations["runImageOperation"];
         delete?: never;

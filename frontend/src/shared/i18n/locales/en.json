@@ -2121,7 +2121,7 @@
   "prompts.name": "Name",
   "prompts.description": "Purpose description",
   "prompts.content": "Prompt content",
-  "prompts.functionHint": "Text generation uses text.generate; other feature entries need an explicit consumer for their key.",
+  "prompts.functionHint": "Text generation, character/face/prop views, and scene grids use their built-in function prompts. Custom entries need an explicit consumer for their key.",
   "prompts.saved": "Prompt saved.",
   "prompts.builtInHint": "Built-in prompts are used by existing features. They can be edited but cannot be deleted.",
   "prompts.deleteConfirm": "Delete prompt “{0}”? Existing cards and tasks keep their content.",
