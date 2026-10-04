@@ -8,6 +8,7 @@ import { createQueryClient } from "../../app/queryClient";
 import type { MediaCapability,MediaConnection,MediaSettings } from "../../shared/api/client";
 import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
+import { definition as comfyDefinition, graph as comfyGraph } from "./comfyWorkflowFixture";
 import { MediaSettingsPage } from "./MediaSettingsPage";
 
 const mockDefault = [
@@ -560,7 +561,7 @@ describe("MediaSettingsPage", () => {
     expect(writes[1]).toMatchObject({ expectedVersion: 1, name: "Local Comfy" });
   });
 
-  it("publishes fixed ComfyUI video model filenames from the settings form", async () => {
+  it("publishes an imported ComfyUI graph with reviewed mappings, defaults and pricing", async () => {
     let submitted: unknown;
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
@@ -578,27 +579,30 @@ describe("MediaSettingsPage", () => {
         return HttpResponse.json({ defaults: mockDefault, connections: [] });
       }),
     );
+    server.use(http.post("/api/v1/settings/media-connections/comfy-1/comfyui/preview", () => HttpResponse.json(comfyGraph)));
     mount();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Wan video");
-    await selectValue(screen.getByRole("combobox", { name: "固定适配器" }), "COMFY_VIDEO_V1");
-    await user.type(screen.getByRole("textbox", { name: "视频扩散模型文件名" }), "wan.safetensors");
-    await user.type(screen.getByRole("textbox", { name: "文本编码器文件名" }), "text.safetensors");
-    await user.type(screen.getByRole("textbox", { name: "VAE 文件名" }), "vae.safetensors");
-    await user.type(screen.getByRole("textbox", { name: "CLIP Vision 文件名" }), "vision.safetensors");
-    await user.click(screen.getByRole("tab", { name: "默认参数" }));
-    await user.type(screen.getByRole("spinbutton", { name: "默认视频时长（秒）" }), "4");
-    await user.click(screen.getByRole("tab", { name: "输入限制" }));
-    const minimum = screen.getByRole("spinbutton", { name: "最短视频时长（秒）" });
+    await selectValue(screen.getByRole("combobox", { name: "主输出类型" }), "COMFY_VIDEO_V1");
+    await user.upload(screen.getByLabelText("选择 API JSON 文件"), new File([JSON.stringify(comfyGraph)], "workflow.json", { type: "application/json" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "解析工作流" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "解析工作流" }));
+    await screen.findByRole("button", { name: /#11.*CustomTextEncoder/ });
+    await selectValue(screen.getByRole("combobox", { name: "text 的参数来源" }), "PROMPT");
+    await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+    await selectValue(screen.getByRole("combobox", { name: "seconds 的参数来源" }), "DURATION_SECONDS");
+    await selectValue(screen.getByRole("combobox", { name: "结果节点" }), "99");
+    await selectValue(screen.getByRole("combobox", { name: "结果字段" }), "videos");
+    const minimum = screen.getByLabelText("工作流最短时长（秒）");
     await user.clear(minimum); await user.type(minimum, "3");
-    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    await user.click(screen.getByRole("button", { name: "检查发布配置" }));
+    await user.type(screen.getByRole("spinbutton", { name: "默认视频时长（秒）" }), "4");
     await user.type(screen.getByRole("spinbutton", { name: "单位价格" }), "1.25");
+    await user.click(screen.getByRole("checkbox", { name: "已核对节点映射、结果节点与估算价格" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(submitted).toEqual({ name: "Wan video", adapterId: "COMFY_VIDEO_V1",
-      settings: { diffusionModel: "wan.safetensors", textEncoder: "text.safetensors",
-        vae: "vae.safetensors", clipVision: "vision.safetensors",
-        defaultDurationSeconds: 4, minimumSeconds: 3,
+      settings: { comfyWorkflow: { ...comfyDefinition, minimumSeconds: 3 }, defaultDurationSeconds: 4,
         pricing: { amount: "1.25", currency: "CNY", unit: "SECOND" } } }));
   });
 
@@ -765,7 +769,7 @@ describe("MediaSettingsPage", () => {
     expect(screen.getByRole("tab", { name: "默认参数" })).toHaveFocus();
   });
 
-  it("reveals the required model fields when publishing from another tab", async () => {
+  it("requires importing and reviewing a ComfyUI workflow before publishing", async () => {
     const settings = settingsFixture({ platform: "COMFYUI", capabilities: [] });
     // The fixture adds its capability after connection overrides; remove it explicitly.
     settings.connections[0]!.capabilities = [];
@@ -778,10 +782,10 @@ describe("MediaSettingsPage", () => {
     mount(); const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Incomplete model");
-    await user.click(screen.getByRole("tab", { name: "估算价格" }));
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
-    expect(screen.getByRole("tab", { name: "模型配置" })).toHaveAttribute("aria-selected", "true");
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "图片 checkpoint 文件名" })).toHaveFocus());
+    expect(screen.getByRole("button", { name: "2. 节点与参数映射" })).toBeDisabled();
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" })).toBeDisabled();
+    expect(screen.getByLabelText("API JSON 内容")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Checkpoint 文件名" })).not.toBeInTheDocument();
     expect(writes).toBe(0);
   });
 

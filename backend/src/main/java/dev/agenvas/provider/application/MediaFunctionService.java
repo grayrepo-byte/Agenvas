@@ -64,7 +64,7 @@ public class MediaFunctionService {
                     && (!transparent || policy.supportsTransparentBackground())
                     && (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
                     || MediaAdapterRegistry.GOOGLE_NANO_BANANA_2.equals(binding.adapterId())
-                    || MediaAdapterRegistry.COMFY_IMAGE_V1.equals(binding.adapterId()));
+                    || MediaAdapterRegistry.COMFY_IMAGE_V1.equals(binding.adapterId()) && policy.maxReferenceImages() == 1);
             boolean workflow = !transparent && (image.cloud() || image == ImageOperation.DEPTH_MAP || image == ImageOperation.UPSCALE)
                     && compatibleDefinition(catalog.runningHubDefinition(binding), RunningHubDefinition.FieldType.IMAGE);
             if (!local && !nativeEdit && !workflow) {

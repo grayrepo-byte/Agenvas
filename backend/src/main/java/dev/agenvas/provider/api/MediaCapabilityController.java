@@ -3,6 +3,7 @@ package dev.agenvas.provider.api;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.ConnectionVersion;
@@ -72,6 +73,15 @@ public class MediaCapabilityController {
         catalog.updateConnection(connectionId, request.expectedVersion(), request.name(),
                 request.enabled(), request.origin(), request.apiKey());
         return response();
+    }
+
+    @PostMapping("/media-connections/{connectionId}/comfyui/preview")
+    public ResponseEntity<JsonNode> previewComfyWorkflow(
+            @AuthenticationPrincipal AdminPrincipal administrator,
+            @PathVariable UUID connectionId, @Valid @RequestBody ComfyWorkflowImportRequest request) {
+        Objects.requireNonNull(administrator, "Authenticated administrator required");
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(catalog.previewComfyWorkflow(connectionId, request.workflowJson()));
     }
 
     @PostMapping("/media-connections/{connectionId}/capabilities")
@@ -144,6 +154,7 @@ public class MediaCapabilityController {
                         ? mapper.createObjectNode() : settings);
     }
 
+    public record ComfyWorkflowImportRequest(@NotBlank @Size(max = ComfyUiWorkflowDefinition.MAX_JSON_BYTES) String workflowJson) {}
     public record CreateConnectionRequest(@NotBlank @Size(max = 160) String name,
             @NotBlank String platform, String origin, String apiKey) {}
     public record UpdateConnectionRequest(@Min(0) long expectedVersion,

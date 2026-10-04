@@ -27,7 +27,7 @@
 | 图片处理 | 标注、裁剪、旋转、镜像、放大、深度提取，以及配置能力支持的 AI 编辑 |
 | 自托管管理 | 模型配置、本地及 OSS/COS/S3 存储、任务与调用记录、项目清单导出 |
 
-界面支持中文、英文、俄文和日文。媒体适配器包括 GPT Image、Google Nano Banana、火山方舟 Seedance、Seed Audio、ComfyUI 固定模板和 RunningHub V2 工作流 / AI 应用；可用操作取决于管理员发布的能力。
+界面支持中文、英文、俄文和日文。媒体适配器包括 GPT Image、Google Nano Banana、火山方舟 Seedance、Seed Audio、ComfyUI 导入并映射发布的 API 工作流和 RunningHub V2 工作流 / AI 应用；可用操作取决于管理员发布的能力。
 
 ## 快速开始
 

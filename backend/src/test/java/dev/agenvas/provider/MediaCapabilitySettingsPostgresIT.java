@@ -16,6 +16,7 @@ import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.settings.application.CredentialCipher;
+import dev.agenvas.support.ComfyWorkflowFixture;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
@@ -127,17 +128,14 @@ class MediaCapabilitySettingsPostgresIT {
         mvc.perform(post("/api/v1/settings/media-connections/" + comfyId + "/capabilities")
                         .with(adminAuth).with(csrf()).header("Idempotency-Key", "comfy-image-1")
                         .contentType("application/json")
-                        .content("{\"name\":\"Image\",\"adapterId\":\"COMFY_IMAGE_V1\","
-                                + "\"settings\":{\"checkpoint\":\"image.safetensors\"}}"))
+                        .content(mapper.createObjectNode().put("name", "Image").put("adapterId", "COMFY_IMAGE_V1")
+                                .set("settings", ComfyWorkflowFixture.settings(mapper, false, false)).toString()))
                 .andExpect(status().isOk());
         mvc.perform(post("/api/v1/settings/media-connections/" + comfyId + "/capabilities")
                         .with(adminAuth).with(csrf()).header("Idempotency-Key", "comfy-video-1")
                         .contentType("application/json")
-                        .content("{\"name\":\"Video\",\"adapterId\":\"COMFY_VIDEO_V1\","
-                                + "\"settings\":{\"diffusionModel\":\"video.safetensors\","
-                                + "\"textEncoder\":\"text.safetensors\","
-                                + "\"vae\":\"vae.safetensors\","
-                                + "\"clipVision\":\"vision.safetensors\"}}"))
+                        .content(mapper.createObjectNode().put("name", "Video").put("adapterId", "COMFY_VIDEO_V1")
+                                .set("settings", ComfyWorkflowFixture.settings(mapper, true, false)).toString()))
                 .andExpect(status().isOk());
         mvc.perform(get("/api/v1/settings/media-connections").with(adminAuth))
                 .andExpect(status().isOk())

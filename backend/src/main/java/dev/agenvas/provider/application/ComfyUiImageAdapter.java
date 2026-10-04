@@ -8,6 +8,7 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
@@ -29,7 +30,7 @@ import javax.imageio.ImageIO;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
-/** Fixed image graph using the exact connection and model filename version approved by the user. */
+/** Execute the pinned published image graph; legacy fixed graphs remain available for recovery. */
 @Component
 public class ComfyUiImageAdapter implements MediaAdapter {
     private final JooqMediaCapabilityRepository catalog;
@@ -38,15 +39,17 @@ public class ComfyUiImageAdapter implements MediaAdapter {
     private final ProjectService projects;
     private final ObjectMapper mapper;
     private final CredentialCipher cipher;
+    private final ComfyUiPublishedWorkflow published;
 
     public ComfyUiImageAdapter(JooqMediaCapabilityRepository catalog, ArtifactService artifacts,
-            AssetService assets, ProjectService projects, ObjectMapper mapper, CredentialCipher cipher) {
+            AssetService assets, ProjectService projects, ObjectMapper mapper, CredentialCipher cipher, ComfyUiPublishedWorkflow published) {
         this.catalog = catalog;
         this.artifacts = artifacts;
         this.assets = assets;
         this.projects = projects;
         this.mapper = mapper;
         this.cipher = cipher;
+        this.published = published;
     }
 
     @Override public String adapterId() { return "COMFY_IMAGE_V1"; }
@@ -58,6 +61,8 @@ public class ComfyUiImageAdapter implements MediaAdapter {
     @Override public Submission submit(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         ComfyUiClient client = client(snapshot);
+        var settings = mapper.readTree(snapshot.specJson()).path("settings");
+        if (ComfyUiWorkflowDefinition.configured(settings)) return published.submit(context, client, settings);
         ComfyUiImageWorkflow workflow = workflow(snapshot);
         Task task = context.lease();
         UUID requestKey = UUID.fromString(context.requestKey());
@@ -74,6 +79,8 @@ public class ComfyUiImageAdapter implements MediaAdapter {
     @Override public Submission reconcile(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         ComfyUiClient client = client(snapshot);
+        var settings = mapper.readTree(snapshot.specJson()).path("settings");
+        if (ComfyUiWorkflowDefinition.configured(settings)) return published.reconcile(context, client, settings);
         UUID promptId = UUID.fromString(context.originalRequestId());
         try {
             return switch (client.imageStatus(promptId, ComfyUiImageWorkflow.OUTPUT_NODE_ID)) {

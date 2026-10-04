@@ -1,13 +1,53 @@
 package dev.agenvas.provider.infrastructure;
 
 import java.util.UUID;
+import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
+import dev.agenvas.task.domain.Task;
 import tools.jackson.databind.JsonNode;
 
-/** 解释指定 ComfyUI prompt 的固定模板输出；尚无历史时保留待查询状态，不误判失败。 */
+/** 解释指定 ComfyUI prompt 的发布输出或历史模板输出；尚无历史时保持待查询，不误判失败。 */
 public final class ComfyUiHistory {
 
     /** 纯解析器不允许实例化。 */
     private ComfyUiHistory() {}
+
+    public sealed interface PublishedResult permits PublishedPending, PublishedFailed, PublishedReady {}
+    public record PublishedPending() implements PublishedResult {}
+    public record PublishedFailed() implements PublishedResult {}
+    public record PublishedReady(String filename, String subfolder, String contentType) implements PublishedResult {}
+
+    /** Select exactly the published node and field; previews from other nodes never become results. */
+    public static PublishedResult published(JsonNode response, UUID promptId,
+            ComfyUiWorkflowDefinition.Output output, Task.Kind kind) {
+        HistoryState state = historyState(response, promptId, output.nodeId(), "published");
+        if (state == HistoryState.PENDING) return new PublishedPending();
+        if (state == HistoryState.FAILED) return new PublishedFailed();
+        JsonNode files = response.path(promptId.toString()).path("outputs").path(output.nodeId()).path(output.field());
+        if (!files.isArray() || files.size() != 1) throw new ComfyUiClient.ProtocolFailure("Published output is missing or ambiguous");
+        JsonNode file = files.get(0);
+        String filename = file.path("filename").asText("");
+        String subfolder = file.path("subfolder").asText("");
+        if (!"output".equals(file.path("type").asText()) || !safeFile(filename) || !safeSubfolder(subfolder))
+            throw new ComfyUiClient.ProtocolFailure("Published output path is unsafe");
+        String contentType;
+        if (kind == Task.Kind.VIDEO_GENERATION && filename.endsWith(".mp4")) contentType = "video/mp4";
+        else if (kind == Task.Kind.IMAGE_GENERATION && filename.endsWith(".png")) contentType = "image/png";
+        else if (kind == Task.Kind.IMAGE_GENERATION && (filename.endsWith(".jpg") || filename.endsWith(".jpeg"))) contentType = "image/jpeg";
+        else if (kind == Task.Kind.IMAGE_GENERATION && filename.endsWith(".webp")) contentType = "image/webp";
+        else throw new ComfyUiClient.ProtocolFailure("Published output media type is unsupported");
+        return new PublishedReady(filename, subfolder, contentType);
+    }
+
+    static boolean safeFile(String value) {
+        return value != null && value.matches("[\\p{L}\\p{N}_][\\p{L}\\p{N} _.-]{0,159}") && !value.contains("..");
+    }
+
+    static boolean safeSubfolder(String value) {
+        if (value == null || value.length() > 500) return false;
+        if (value.isEmpty()) return true;
+        for (String segment : value.split("/", -1)) if (!safeFile(segment)) return false;
+        return true;
+    }
 
     /** 可信输出节点由已安装模板固定，用户不能自行指定。 */
     public static ImageResult image(JsonNode response, UUID promptId, String outputNodeId) {

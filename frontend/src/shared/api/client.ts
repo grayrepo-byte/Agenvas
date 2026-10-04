@@ -96,6 +96,8 @@ export type RunningHubImportRequest = components["schemas"]["RunningHubImportReq
 export type RunningHubImportPreview = components["schemas"]["RunningHubImportPreview"];
 export type MediaSettings = components["schemas"]["MediaSettings"];
 export type MediaConnection = components["schemas"]["MediaConnection"];
+export type ComfyUiGraph = components["schemas"]["ComfyUiGraph"];
+export type ComfyUiWorkflowDefinition = components["schemas"]["ComfyUiWorkflowDefinition"];
 export type MediaCapability = components["schemas"]["MediaCapability"];
 export type ImageGenerationParameters = components["schemas"]["ImageGenerationParameters"];
 export type MediaStyleSummary = components["schemas"]["MediaStyleSummary"];
@@ -313,6 +315,12 @@ export async function updateMediaConnection(connectionId: string,
   input: UpdateMediaConnectionRequest): Promise<MediaSettings> {
   return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}`, {
     method: "PUT", body: JSON.stringify(input),
+  });
+}
+
+export async function previewComfyWorkflow(connectionId: string, workflowJson: string): Promise<ComfyUiGraph> {
+  return writeJson<ComfyUiGraph>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/comfyui/preview`, {
+    method: "POST", body: JSON.stringify({ workflowJson }),
   });
 }
 

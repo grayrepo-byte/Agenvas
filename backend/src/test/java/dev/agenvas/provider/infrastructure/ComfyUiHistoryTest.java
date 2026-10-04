@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.UUID;
+import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
+import dev.agenvas.task.domain.Task;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullSource;
@@ -17,6 +19,31 @@ class ComfyUiHistoryTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final UUID promptId = UUID.randomUUID();
+
+    @Test void publishedOutputUsesSelectedNodeAndSafeSubfolder() {
+        var output = new ComfyUiWorkflowDefinition.Output("9", "images");
+        assertThat(ComfyUiHistory.published(history(true, "success", "image.png", "output", "render/day"), promptId, output, Task.Kind.IMAGE_GENERATION))
+                .isEqualTo(new ComfyUiHistory.PublishedReady("image.png", "render/day", "image/png"));
+        assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "output", "render/day"), promptId,
+                new ComfyUiWorkflowDefinition.Output("8", "images"), Task.Kind.IMAGE_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThat(ComfyUiHistory.published(mapper.createObjectNode(), promptId, output, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ComfyUiHistory.PublishedPending.class);
+        assertThat(ComfyUiHistory.published(history(false, "error", "image.png", "output", ""), promptId, output, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ComfyUiHistory.PublishedFailed.class);
+    }
+
+    @Test void publishedOutputRejectsTraversalUnexpectedTypesAndMultipleResults() {
+        var output = new ComfyUiWorkflowDefinition.Output("9", "images");
+        for (String folder : java.util.List.of("../private", "/absolute", "a/../b", "a\\b", "a//b", "a/%2e%2e"))
+            assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "output", folder), promptId, output, Task.Kind.IMAGE_GENERATION))
+                    .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "input", ""), promptId, output, Task.Kind.IMAGE_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "output", ""), promptId, output, Task.Kind.VIDEO_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        var response = history(true, "success", "image.png", "output", "");
+        var files = (tools.jackson.databind.node.ArrayNode) response.at("/" + promptId + "/outputs/9/images");
+        files.add(files.get(0).deepCopy());
+        assertThatThrownBy(() -> ComfyUiHistory.published(response, promptId, output, Task.Kind.IMAGE_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+    }
 
     @Test
     void emptyHistoryAndIncompleteEntryStayPendingForTheSamePrompt() {

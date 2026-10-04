@@ -18,6 +18,7 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
 import dev.agenvas.provider.domain.AutoDlWorkflows;
 import dev.agenvas.project.application.ProjectService;
@@ -219,6 +220,8 @@ public class DirectMediaTaskService {
                 input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
                 if (kind == Task.Kind.VIDEO_GENERATION && duration != null) input.put("durationSeconds", seconds);
                 ObjectNode frozen = input.putObject("mediaInput");
+                var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
+                if (comfyDimensions != null) frozen.set("providerParameters", mapper.valueToTree(comfyDimensions));
                 if (autodlResolution != null) {
                     ObjectNode providerParameters = frozen.putObject("providerParameters");
                     providerParameters.put("workflowId", configuredSettings.path("workflowId").asText());
@@ -388,6 +391,10 @@ public class DirectMediaTaskService {
                     ApiMessage.of("api.media-style.title"), ApiMessage.of("api.media-style.prompt-too-long",
                             MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH), false);
         }
+        if (ComfyUiWorkflowDefinition.configured(configuredSettings)) {
+            var workflow = ComfyUiWorkflowDefinition.parse(mapper, configuredSettings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), kind);
+            workflow.requireReferences(draft.mediaInputs().size());
+        }
         validateReferenceAssets(ownerId, projectId, draft, binding);
         ImageGenerationParameters imageParameters = !dynamic && kind == Task.Kind.IMAGE_GENERATION
                 ? ImageGenerationParameters.parse(capabilities.parameters(binding, draft.parameters())) : null;
@@ -426,6 +433,20 @@ public class DirectMediaTaskService {
         return new PreparedMedia(target, canvasItem, draft, kind, binding, definition,
                 dynamicParameters, imageParameters, videoParameters, duration, configuredSettings,
                 renderedPrompt, autodlResolution, resolutionTier, style);
+    }
+
+    private ComfyUiWorkflowDefinition.Dimensions comfyDimensions(UUID ownerId, UUID projectId, PreparedMedia prepared) {
+        if (!ComfyUiWorkflowDefinition.configured(prepared.configuredSettings())) return null;
+        var workflow = ComfyUiWorkflowDefinition.parse(mapper, prepared.configuredSettings().get(ComfyUiWorkflowDefinition.SETTINGS_KEY), prepared.kind());
+        String ratio = prepared.imageParameters() != null ? prepared.imageParameters().aspectRatio() : prepared.videoParameters().aspectRatio();
+        if ("AUTO".equals(ratio) && workflow.maps(ComfyUiWorkflowDefinition.Source.WIDTH)) ratio = switch (projects.get(ownerId, projectId).aspectRatio()) {
+            case LANDSCAPE_16_9 -> "16:9";
+            case PORTRAIT_9_16 -> "9:16";
+            case SQUARE_1_1 -> "1:1";
+        };
+        if (!workflow.maps(ComfyUiWorkflowDefinition.Source.WIDTH) && !"AUTO".equals(ratio))
+            throw invalid(ApiMessage.of("api.comfy-workflow.invalid", "dimensions"));
+        return workflow.dimensions(ratio);
     }
 
     private record PreparedMedia(Artifact target, CanvasItem canvasItem, MediaDraft draft,
@@ -495,6 +516,8 @@ public class DirectMediaTaskService {
         snapshot.put("structuralPrompt", prepared.draft().prompt());
         snapshot.set("style", mapper.valueToTree(prepared.style()));
         snapshot.set("parameters", effectiveParameters);
+        var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
+        if (comfyDimensions != null) snapshot.set("providerParameters", mapper.valueToTree(comfyDimensions));
         snapshot.set("mediaInputs", mapper.valueToTree(prepared.draft().mediaInputs()));
         snapshot.set("mentions", mapper.valueToTree(prepared.draft().mentions()));
         snapshot.set("binding", mapper.valueToTree(prepared.binding()));
@@ -736,6 +759,11 @@ public class DirectMediaTaskService {
             else frozenOperation.put("maskAssetId", maskAssetId.toString());
             frozenOperation.set("parameters", operationParameters.deepCopy());
             ObjectNode frozen = input.putObject("mediaInput");
+            if (ComfyUiWorkflowDefinition.configured(operationSettings)) {
+                var workflow = ComfyUiWorkflowDefinition.parse(mapper, operationSettings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), Task.Kind.IMAGE_GENERATION);
+                workflow.requireReferences(1 + normalizedReferenceIds.size());
+                frozen.set("providerParameters", mapper.valueToTree(workflow.dimensions(outputRatio)));
+            }
             frozen.put("parentVersionId", sourceVersionId.toString());
             frozen.put("mode", MediaDraft.VideoInputMode.GENERAL_REFERENCE.name());
             frozen.put("prompt", prompt);

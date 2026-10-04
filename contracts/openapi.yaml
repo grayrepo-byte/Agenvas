@@ -1342,6 +1342,42 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/settings/media-connections/{connectionId}/comfyui/preview:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: connectionId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: previewComfyWorkflow
+      summary: Validate an administrator's ComfyUI API JSON import without saving or generating
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [workflowJson]
+              properties:
+                workflowJson: {type: string, minLength: 1, maxLength: 262144, description: API export or prompt envelope; UTF-8 bytes also limited to 256 KiB. UI-format JSON is rejected.}
+      responses:
+        "200":
+          description: Normalized candidate graph; no provider calls or persistence
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ComfyUiGraph'}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "422":
+          description: Invalid graph or connection type
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
   /api/v1/settings/media-connections/{connectionId}/runninghub/preview:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -4731,8 +4767,9 @@ components:
     FixedMediaAdapterSettings:
       type: object
       additionalProperties: false
-      description: Versioned settings within a compiled adapter protocol. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits can only narrow compiled adapter bounds. Pricing is an administrator estimate, never an actual provider charge.
+      description: Versioned settings within a compiled adapter protocol. New ComfyUI publication requires comfyWorkflow; legacy model-only capabilities retain their snapshot for recovery and metadata changes. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits narrow the published declaration. Pricing is an administrator estimate, never an actual provider charge.
       properties:
+        comfyWorkflow: {$ref: "#/components/schemas/ComfyUiWorkflowDefinition"}
         runningHub: {$ref: "#/components/schemas/RunningHubDefinition"}
         workflowId: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$', description: AutoDL preset or administrator-published workflow ID. Must match workflowDefinition.id when a definition is present.}
         workflowDefinition: {$ref: '#/components/schemas/AutoDlWorkflowDefinition'}
@@ -4768,6 +4805,64 @@ components:
           propertyNames: {pattern: '^[1-9][0-9]{2,3}p$'}
           additionalProperties: {$ref: '#/components/schemas/MediaCapabilityPricing'}
           description: AutoDL video estimates by a published resolution tier. Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost.
+    ComfyUiGraph:
+      type: object
+      minProperties: 1
+      maxProperties: 256
+      propertyNames: {pattern: '^[0-9]{1,8}$'}
+      description: Administrator-imported ComfyUI API-format DAG, at most 256 KiB. Node links and fixed literals are retained; no UI graph, installation commands, transport endpoints or headers are accepted.
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [class_type, inputs]
+        properties:
+          class_type: {type: string, minLength: 1, maxLength: 160}
+          inputs:
+            type: object
+            maxProperties: 128
+            additionalProperties: {}
+            description: Fixed JSON literals or [nodeId, outputIndex] links. Mapping targets must be scalar literals; links are never overwritten.
+          _meta:
+            type: object
+            additionalProperties: false
+            properties:
+              title: {type: string, maxLength: 160}
+    ComfyUiWorkflowDefinition:
+      type: object
+      additionalProperties: false
+      required: [schemaVersion, graph, bindings, output, width, height, minimumSeconds, maximumSeconds, fps, frameMultiple, frameOffset]
+      description: COMFY_IMAGE_V1 / COMFY_VIDEO_V1 administrator-published workflow snapshot. Ordinary users and Agents cannot provide graphs or node mappings. Tasks pin the capability hash and both dimensions. Legacy capabilities without this field retain their fixed graph for recovery.
+      properties:
+        schemaVersion: {type: integer, enum: [1]}
+        graph: {$ref: '#/components/schemas/ComfyUiGraph'}
+        bindings:
+          type: array
+          minItems: 1
+          maxItems: 128
+          description: Unique target inputs on the selected result ancestry. PROMPT is required. WIDTH/HEIGHT must occur together; video requires DURATION_SECONDS or FRAME_COUNT, and FRAME_COUNT also requires FPS. Multiple targets may share a source.
+          items:
+            type: object
+            additionalProperties: false
+            required: [nodeId, inputName, source]
+            properties:
+              nodeId: {type: string, pattern: '^[0-9]{1,8}$'}
+              inputName: {type: string, minLength: 1, maxLength: 160}
+              source: {type: string, enum: [PROMPT, NEGATIVE_PROMPT, SEED, WIDTH, HEIGHT, REFERENCE_IMAGE, DURATION_SECONDS, FRAME_COUNT, FPS, BATCH_SIZE]}
+              referenceIndex: {type: [integer, "null"], minimum: 0, maximum: 13, description: Required for REFERENCE_IMAGE; zero-based contiguous indices of frozen project image inputs. All mapped images are required.}
+        output:
+          type: object
+          additionalProperties: false
+          required: [nodeId, field]
+          properties:
+            nodeId: {type: string, pattern: '^[0-9]{1,8}$'}
+            field: {type: string, enum: [images, gifs, videos], description: Exact history field; image capabilities use images. One PNG/JPEG/WebP or MP4 output is required; ambiguous outputs are rejected. Safe relative output subfolders are supported.}
+        width: {type: integer, minimum: 8, maximum: 4096}
+        height: {type: integer, minimum: 8, maximum: 4096}
+        minimumSeconds: {type: integer, minimum: 0, maximum: 30}
+        maximumSeconds: {type: integer, minimum: 0, maximum: 30, description: Both zero for image; 1–30 seconds for video.}
+        fps: {type: integer, minimum: 1, maximum: 120}
+        frameMultiple: {type: integer, minimum: 1, maximum: 64}
+        frameOffset: {type: integer, minimum: 0, maximum: 63, description: Less than frameMultiple. Frame count = floor(durationSeconds * fps / frameMultiple) * frameMultiple + frameOffset. BATCH_SIZE always injects one; the application splits image generation counts into independent tasks.}
     AutoDlWorkflowDefinition:
       type: object
       additionalProperties: false

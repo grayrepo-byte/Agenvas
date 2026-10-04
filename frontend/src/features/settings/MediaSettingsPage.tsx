@@ -27,26 +27,18 @@ import { GoogleImageConnectionHelp,googleImageApiLabel } from "./GoogleImageConn
 import { MediaConnectionAddressField } from "./MediaConnectionAddressField";
 import { RUNNINGHUB_OUTPUT_ADAPTERS,adapterLabel,adapterMetadata,adapterModel,platformAdapters } from "./mediaAdapterCatalog";
 import "./MediaSettingsPage.css";
+import { ComfyWorkflowEditor } from "./ComfyWorkflowEditor";
+import { isComfyAdapter } from "./comfyWorkflow";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 type AdapterSettings = MediaCapability["settings"];
 const MODEL_LIMIT = 120;
 
 const settingsKey = ["settings", "media"] as const;
 const NAME_LIMIT = 160;
-const comfyImageFields = [{ key: "checkpoint", get label() { return t("settings.mediaSettings.checkpointFile"); } }] as const;
-const comfyVideoFields = [
-  { key: "diffusionModel", get label() { return t("settings.mediaSettings.videoModelFile"); } },
-  { key: "textEncoder", get label() { return t("settings.mediaSettings.textEncoderFile"); } },
-  { key: "vae", get label() { return t("settings.mediaSettings.vaeFile"); } },
-  { key: "clipVision", get label() { return t("settings.mediaSettings.clipVisionFile"); } },
-] as const;
-
 const cloudImageFields = [{ key: "model", get label() { return t("settings.mediaSettings.modelName"); } }] as const;
 
 function fixedModelFields(adapterId: string) {
-  return adapterId === "COMFY_IMAGE_V1" ? comfyImageFields
-    : adapterId === "COMFY_VIDEO_V1" ? comfyVideoFields
-    : adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2"
+  return adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2"
       ? cloudImageFields : [];
 }
 
@@ -56,7 +48,7 @@ function fixedModelSettings(adapterId: string, values: AdapterSettings) {
     [key, values[key as keyof AdapterSettings]?.toString().trim() ?? ""]));
   const { defaultParameters, defaultDurationSeconds, minimumSeconds, maximumSeconds,
     maxReferenceImages, maxReferenceAudios, maxReferenceVideos, pricing } = values;
-  return { ...fields, ...(adapterId === AUTODL_ADAPTER ? {
+  return { ...fields, ...(isComfyAdapter(adapterId) ? { comfyWorkflow: values.comfyWorkflow } : {}), ...(adapterId === AUTODL_ADAPTER ? {
     workflowId: values.workflowDefinition?.id ?? values.workflowId ?? AUTODL_DEFAULT_WORKFLOW,
     ...(values.workflowDefinition ? { workflowDefinition: values.workflowDefinition } : {}),
     ...(values.videoResolution ? { videoResolution: values.videoResolution } : {}),
@@ -120,11 +112,11 @@ const EDITOR_TABS = [
 type EditorTab = typeof EDITOR_TABS[number]["id"];
 
 function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, onAdapterChange, availableAdapters,
-  values, onChange, creating = false, disabled }: {
+  values, onChange, onWorkflowReady, creating = false, disabled }: {
   connectionId: string; name: string; onNameChange: (value: string) => void;
   adapterId: string; onAdapterChange: (value: string) => void; availableAdapters: string[];
   values: AdapterSettings; onChange: (value: AdapterSettings) => void;
-  creating?: boolean; disabled: boolean;
+  creating?: boolean; disabled: boolean; onWorkflowReady: (ready: boolean) => void;
 }) {
   useLocale();
   const [tab, setTab] = useState<EditorTab>("model");
@@ -135,6 +127,15 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
     onChange({ ...values, pricing, runningHub: runningHub ? { ...runningHub,
       outputs: runningHub.outputs.map((output) => output.primary ? { ...output, kind } : output) } : undefined });
   }
+  if (isComfyAdapter(adapterId)) return <fieldset disabled={disabled} className="ui-stack media-settings-fieldset">
+    <div className="ui-form-grid">
+      <Field><FieldLabel>{creating ? t("settings.mediaSettings.newCapabilityName") : t("settings.mediaSettings.capabilityName")}<Input required maxLength={NAME_LIMIT} value={name} onChange={(event) => onNameChange(event.target.value)} /></FieldLabel></Field>
+      <Field><FieldLabel>{t("settings.mediaSettings.primaryOutputKind")}<Select value={adapterId} onChange={(event) => onAdapterChange(event.target.value)}>
+        {availableAdapters.map((id) => <option key={id} value={id}>{adapterLabel(id)}</option>)}
+      </Select></FieldLabel></Field>
+    </div>
+    <ComfyWorkflowEditor key={adapterId} connectionId={connectionId} adapterId={adapterId} values={values} onChange={onChange} onReadyChange={onWorkflowReady} />
+  </fieldset>;
   if (adapterId.startsWith("RUNNINGHUB_")) return <div className="ui-stack"><fieldset disabled={disabled} className="ui-stack">
     <Field><FieldLabel className="ui-field block">{creating ? t("settings.mediaSettings.newCapabilityName") : t("settings.mediaSettings.capabilityName")}<Input required maxLength={NAME_LIMIT} value={name} onChange={(event) => onNameChange(event.target.value)} /></FieldLabel></Field>
     <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.primaryOutputKind")}<Select value={adapterId} onChange={(event) => {
@@ -251,6 +252,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
   const [modelNames, setModelNames] = useState<AdapterSettings>(capability.settings);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
+  const [workflowReady, setWorkflowReady] = useState(false);
   const save = useMutation({
     mutationFn: () => updateMediaCapability(connectionId, capability.id, {
       expectedVersion: baseline.version, name: name.trim(),
@@ -309,18 +311,18 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
           onClick={() => act("capability", capability)}>{capability.enabled ? t("settings.mediaSettings.disable") : t("settings.mediaSettings.enable")}</Button>
       </div></TableCell>
     </TableRow>
-    {editing ? <Dialog className={cn(adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.editCapabilityNamed", { "0": capability.name })} description={`${connectionName} · ${adapterLabel(adapterId)}`}
+    {editing ? <Dialog className={cn(isComfyAdapter(adapterId) && "comfy-capability-dialog", adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.editCapabilityNamed", { "0": capability.name })} description={`${connectionName} · ${adapterLabel(adapterId)}`}
       onClose={() => setEditing(false)} busy={rowBusy} onSubmit={(event) => {
-        event.preventDefault(); if (isStale || rowBusy) return; setError(""); save.mutate();
+        event.preventDefault(); if (isStale || rowBusy || isComfyAdapter(adapterId) && !workflowReady) return; setError(""); save.mutate();
       }} footer={<>
         <Button variant="outline"  type="button" disabled={rowBusy} onClick={() => setEditing(false)}>{t("common.cancel")}</Button>
-        <Button variant="default"  type="submit" disabled={rowBusy || isStale}>{save.isPending ? t("common.savingProgress") : t("settings.mediaSettings.saveCapability")}</Button>
+        <Button variant="default"  type="submit" disabled={rowBusy || isStale || isComfyAdapter(adapterId) && !workflowReady}>{save.isPending ? t("common.savingProgress") : t("settings.mediaSettings.saveCapability")}</Button>
       </>}>
       <div className="ui-stack">
         {isStale ? <ConfigurationUpdatedNotice scope={t("settings.mediaSettings.capabilityParameters")} disabled={rowBusy} onReload={loadLatest} /> : null}
         <CapabilityEditorFields connectionId={connectionId} name={name} onNameChange={setName} adapterId={adapterId}
           onAdapterChange={(value) => { setAdapterId(value); setModelNames({}); }} availableAdapters={sameKindAdapters}
-          values={modelNames} onChange={setModelNames} disabled={rowBusy} />
+          values={modelNames} onChange={setModelNames} onWorkflowReady={setWorkflowReady} disabled={rowBusy} />
         {error ? <Notice tone="danger">{error}</Notice> : null}
       </div>
     </Dialog> : null}
@@ -400,6 +402,7 @@ function ConnectionRow({ connection, settings, apply }: {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState<"connection" | "capability" | null>(null);
+  const [workflowReady, setWorkflowReady] = useState(false);
   const capabilityCreateKey = useRef<{ payload: string; key: string } | null>(null);
   const save = useMutation({
     mutationFn: () => updateMediaConnection(connection.id, {
@@ -506,17 +509,17 @@ function ConnectionRow({ connection, settings, apply }: {
         {error ? <Notice tone="danger">{error}</Notice> : null}
       </div>
     </Dialog> : null}
-    {dialog === "capability" ? <Dialog className={cn(adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.publishNewCapability")} description={`${connection.name} · ${adapterLabel(adapterId)}`}
+    {dialog === "capability" ? <Dialog className={cn(isComfyAdapter(adapterId) && "comfy-capability-dialog", adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.publishNewCapability")} description={`${connection.name} · ${adapterLabel(adapterId)}`}
       onClose={() => setDialog(null)} busy={busy} onSubmit={(event) => {
-        event.preventDefault(); if (busy || !connection.enabled) return; setError(""); addCapability.mutate();
+        event.preventDefault(); if (busy || !connection.enabled || isComfyAdapter(adapterId) && !workflowReady) return; setError(""); addCapability.mutate();
       }} footer={<>
         <Button variant="outline"  type="button" disabled={busy} onClick={() => setDialog(null)}>{t("common.cancel")}</Button>
-        <Button variant="default"  type="submit" disabled={busy || !connection.enabled}>{addCapability.isPending ? t("settings.mediaSettings.publishing") : t("settings.mediaSettings.publishCapability")}</Button>
+        <Button variant="default"  type="submit" disabled={busy || !connection.enabled || isComfyAdapter(adapterId) && !workflowReady}>{addCapability.isPending ? t("settings.mediaSettings.publishing") : t("settings.mediaSettings.publishCapability")}</Button>
       </>}>
       <div className="ui-stack">
         <CapabilityEditorFields connectionId={connection.id} name={capabilityName} onNameChange={setCapabilityName} adapterId={adapterId}
           onAdapterChange={(value) => { setAdapterId(value); setNewModelNames({}); }} availableAdapters={availableAdapters}
-          values={newModelNames} onChange={setNewModelNames} creating disabled={busy || !connection.enabled} />
+          values={newModelNames} onChange={setNewModelNames} onWorkflowReady={setWorkflowReady} creating disabled={busy || !connection.enabled} />
         {!connection.enabled ? <Notice tone="warning">{t("settings.mediaSettings.enableBeforePublish")}</Notice> : null}
         {error ? <Notice tone="danger">{error}</Notice> : null}
       </div>

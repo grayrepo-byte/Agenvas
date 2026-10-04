@@ -3,6 +3,7 @@ import type { MediaCapability } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Input } from "../../shared/ui/primitives/input";
 import { Select } from "../../shared/ui/Select";
+import { comfyReferenceCount } from "./comfyWorkflow";
 import { adapterMetadata } from "./mediaAdapterCatalog";
 
 import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
@@ -25,7 +26,7 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
   useLocale();
   const metadata = adapterMetadata(adapterId);
   const workflow = adapterId === AUTODL_ADAPTER ? autodlWorkflow(values) : undefined;
-  const adapter = metadata && workflow ? { ...metadata, minimum: workflow.minimumSeconds,
+  const adapter = metadata && values.comfyWorkflow ? { ...metadata, minimum: values.comfyWorkflow.minimumSeconds, maximum: values.comfyWorkflow.maximumSeconds, references: comfyReferenceCount(values.comfyWorkflow) } : metadata && workflow ? { ...metadata, minimum: workflow.minimumSeconds,
     maximum: workflow.maximumSeconds, references: workflow.imageFields.length } : metadata;
   if (!adapter) return null;
   const image = adapter.kind === "IMAGE_GENERATION";
@@ -44,7 +45,7 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
       <h3>{t("settings.capabilities.defaultParameters")}</h3>
       {!audio ? <Field><FieldLabel className="ui-field block">{t("settings.capabilities.defaultAspectRatio")}<Select value={parameters.aspectRatio ?? "AUTO"}
           onChange={(event) => changeParameters({ aspectRatio: event.target.value as Parameters["aspectRatio"] })}>
-          {(image ? comfyImage ? ["AUTO", "1:1", "9:16", "16:9"] : IMAGE_RATIOS : VIDEO_RATIOS)
+          {(image ? comfyImage ? values.comfyWorkflow && !values.comfyWorkflow.bindings.some((binding) => binding.source === "WIDTH") ? ["AUTO"] : ["AUTO", "1:1", "9:16", "16:9"] : IMAGE_RATIOS : values.comfyWorkflow && !values.comfyWorkflow.bindings.some((binding) => binding.source === "WIDTH") ? ["AUTO"] : VIDEO_RATIOS)
             .map((ratio) => <option key={ratio} value={ratio}>{ratio === "AUTO" ? t("common.automatic") : ratio}</option>)}
         </Select>
       </FieldLabel></Field> : null}

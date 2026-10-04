@@ -8,6 +8,7 @@ import dev.agenvas.provider.domain.MediaCapabilityConfiguration;
 import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.AutoDlWorkflows;
+import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.infrastructure.ComfyUiEndpoint;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
@@ -207,6 +208,9 @@ public class MediaCapabilityService {
                 || idempotencyKey.length() > 160) {
             throw invalid(ApiMessage.of("api.media-capability-service.a-valid-idempotency-key-must-be-provided"));
         }
+        if (registry.declaration(adapterId).platform() == MediaPlatform.COMFYUI
+                && (settings == null || !ComfyUiWorkflowDefinition.configured(settings)))
+            throw invalid(ApiMessage.of("api.comfy-workflow.invalid", "definition"));
         String normalizedName = requireName(name);
         String spec = spec(adapterId, settings);
         String hash = Sha256.hex(connectionId + "\u0000" + normalizedName + "\u0000"
@@ -285,6 +289,11 @@ public class MediaCapabilityService {
         JsonNode oldSettings = settings == null && current.adapterId().equals(adapterId)
                 ? settings(current) : null;
         JsonNode effectiveSettings = oldSettings == null ? settings : oldSettings;
+        // Metadata-only changes keep legacy snapshots; new configuration must use an imported graph.
+        if (replacement.platform() == MediaPlatform.COMFYUI && effectiveSettings != null
+                && !ComfyUiWorkflowDefinition.configured(effectiveSettings)
+                && !effectiveSettings.equals(settings(current)))
+            throw invalid(ApiMessage.of("api.comfy-workflow.invalid", "definition"));
         if (effectiveSettings != null && effectiveSettings.isMissingNode()) {
             effectiveSettings = mapper.createObjectNode();
         }
@@ -330,7 +339,14 @@ public class MediaCapabilityService {
         return snapshot;
     }
 
-    /** Versioned protocol settings; graph structure and adapter support remain compiled code. */
+    /** Validate a candidate import without persisting it or contacting the inference server. */
+    public JsonNode previewComfyWorkflow(UUID connectionId, String workflowJson) {
+        if (getConnection(connectionId).platform() != MediaPlatform.COMFYUI)
+            throw invalid(ApiMessage.of("api.media-capability-service.adapter-does-not-match-platform-connection"));
+        return ComfyUiWorkflowDefinition.importGraph(mapper, workflowJson);
+    }
+
+    /** Versioned protocol settings, including administrator-published ComfyUI graphs. */
     private String spec(String adapterId, JsonNode suppliedSettings) {
         JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
         var declaration = declaration(adapterId, source);
@@ -355,7 +371,13 @@ public class MediaCapabilityService {
             MediaCapabilityConfiguration.normalize(mapper, declaration, price, settings);
             return normalized.toString();
         }
-        normalizeAdapterSettings(adapterId, source, settings);
+        if (declaration.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(source)) {
+            if (!java.util.stream.Stream.concat(MediaCapabilityConfiguration.FIELDS.stream(),
+                    java.util.stream.Stream.of(ComfyUiWorkflowDefinition.SETTINGS_KEY)).collect(java.util.stream.Collectors.toSet())
+                    .containsAll(source.propertyNames())) throw invalid(ApiMessage.of("api.media-capability-service.capability-template-contains-parameters-that-are-not-allowed"));
+            var workflow = ComfyUiWorkflowDefinition.parse(mapper, source.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), declaration.kind());
+            settings.set(ComfyUiWorkflowDefinition.SETTINGS_KEY, mapper.valueToTree(workflow));
+        } else normalizeAdapterSettings(adapterId, source, settings);
         if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) AutoDlWorkflows.normalize(source, settings);
         MediaCapabilityConfiguration.normalize(mapper, declaration, source, settings);
         var policy = MediaCapabilityConfiguration.policy(declaration, settings);
@@ -368,6 +390,11 @@ public class MediaCapabilityService {
                 String tier = AutoDlWorkflows.selectedResolution(settings, null);
                 if (!"AUTO".equals(ratio)) workflow.resolution(tier, ratio);
             }
+        }
+        if (declaration.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(settings)) {
+            var workflow = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), declaration.kind());
+            if (policy.maxReferenceImages() != workflow.referenceCount())
+                throw invalid(ApiMessage.of("api.comfy-workflow.invalid", "references"));
         }
         putInputLimits(normalized, policy);
         return normalized.toString();
@@ -415,8 +442,11 @@ public class MediaCapabilityService {
     }
 
     private MediaAdapterRegistry.Declaration declaration(String adapterId, JsonNode settings) {
+        var compiled = registry.declaration(adapterId);
+        if (compiled.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(settings))
+            return ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), compiled.kind()).declaration(compiled.kind());
         return AutoDlWorkflows.ADAPTER_ID.equals(adapterId)
-                ? AutoDlWorkflows.require(settings).declaration() : registry.declaration(adapterId);
+                ? AutoDlWorkflows.require(settings).declaration() : compiled;
     }
 
     private static void putInputLimits(ObjectNode target, MediaAdapterRegistry.Declaration policy) {
@@ -565,7 +595,13 @@ public class MediaCapabilityService {
         return new Candidate(binding(snapshot), snapshot.connection().name(),
                 snapshot.capability().name(), policy.kind(), policy.minimumSeconds(),
                 policy.maximumSeconds(), false,
-                mapper.readTree(snapshot.specJson()).path("settings"));
+                publicSettings(snapshot));
+    }
+
+    private JsonNode publicSettings(Snapshot snapshot) {
+        ObjectNode settings = (ObjectNode) settings(snapshot).deepCopy();
+        settings.remove(ComfyUiWorkflowDefinition.SETTINGS_KEY);
+        return settings;
     }
 
     /** Approval only accepts the exact still-published versions frozen in the step. */

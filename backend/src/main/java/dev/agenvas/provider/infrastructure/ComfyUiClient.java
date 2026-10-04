@@ -131,11 +131,17 @@ public class ComfyUiClient {
 
     /** 从相同固定 origin 下载白名单文件名，并在读取时累计限制响应字节。 */
     public InputStream output(String filename) {
-        if (!safeFilename(filename)) {
+        return output(filename, "");
+    }
+
+    /** Published graphs may save beneath a safe relative output subfolder, on the same server. */
+    public InputStream output(String filename, String subfolder) {
+        if (!ComfyUiHistory.safeFile(filename) || !ComfyUiHistory.safeSubfolder(subfolder)) {
             throw new IllegalArgumentException("Unsafe ComfyUI output filename");
         }
         String encoded = URLEncoder.encode(filename, StandardCharsets.UTF_8);
-        Request request = request("/view?filename=" + encoded + "&type=output&subfolder=")
+        Request request = request("/view?filename=" + encoded + "&type=output&subfolder="
+                + URLEncoder.encode(subfolder, StandardCharsets.UTF_8))
                 .get().build();
         return new FilterInputStream(send(request).body()) {
             private long total;

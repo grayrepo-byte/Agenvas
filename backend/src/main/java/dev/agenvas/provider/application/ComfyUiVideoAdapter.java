@@ -8,6 +8,7 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.domain.AttemptContext;
+import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.PortInput;
@@ -31,7 +32,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** Fixed Wan I2V graph using the pinned input image version, origin and four model file basenames. */
+/** Execute the pinned published video graph; legacy fixed graphs remain available for recovery. */
 @Component
 public class ComfyUiVideoAdapter implements MediaAdapter {
     private final JooqMediaCapabilityRepository catalog;
@@ -40,27 +41,32 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
     private final ProjectService projects;
     private final ObjectMapper mapper;
     private final CredentialCipher cipher;
+    private final ComfyUiPublishedWorkflow published;
 
     public ComfyUiVideoAdapter(JooqMediaCapabilityRepository catalog, ArtifactService artifacts,
-            AssetService assets, ProjectService projects, ObjectMapper mapper, CredentialCipher cipher) {
+            AssetService assets, ProjectService projects, ObjectMapper mapper, CredentialCipher cipher, ComfyUiPublishedWorkflow published) {
         this.catalog = catalog;
         this.artifacts = artifacts;
         this.assets = assets;
         this.projects = projects;
         this.mapper = mapper;
         this.cipher = cipher;
+        this.published = published;
     }
 
     @Override public String adapterId() { return "COMFY_VIDEO_V1"; }
 
     @Override public boolean supports(PortInput input) {
+        // This is the protocol envelope; acceptance applies the pinned capability's narrower range.
         return input.kind() == Task.Kind.VIDEO_GENERATION
-                && input.durationSeconds() >= 1 && input.durationSeconds() <= 5;
+                && input.durationSeconds() >= 1 && input.durationSeconds() <= ComfyUiWorkflowDefinition.MAX_SECONDS;
     }
 
     @Override public Submission submit(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         ComfyUiClient client = client(snapshot);
+        var settings = mapper.readTree(snapshot.specJson()).path("settings");
+        if (ComfyUiWorkflowDefinition.configured(settings)) return published.submit(context, client, settings);
         ComfyUiVideoWorkflow workflow = workflow(snapshot);
         Task task = context.lease();
         int durationSeconds = task.input().path("durationSeconds").asInt(-1);
@@ -82,6 +88,8 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
     @Override public Submission reconcile(AttemptContext context) {
         Snapshot snapshot = snapshot(context);
         ComfyUiClient client = client(snapshot);
+        var settings = mapper.readTree(snapshot.specJson()).path("settings");
+        if (ComfyUiWorkflowDefinition.configured(settings)) return published.reconcile(context, client, settings);
         UUID promptId = UUID.fromString(context.originalRequestId());
         try {
             return switch (client.videoStatus(promptId, ComfyUiVideoWorkflow.OUTPUT_NODE_ID)) {

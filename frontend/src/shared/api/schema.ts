@@ -1042,6 +1042,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/media-connections/{connectionId}/comfyui/preview": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate an administrator's ComfyUI API JSON import without saving or generating */
+        post: operations["previewComfyWorkflow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/media-connections/{connectionId}/runninghub/preview": {
         parameters: {
             query?: never;
@@ -3611,8 +3636,9 @@ export interface components {
             mappingSha256: string;
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
-        /** @description Versioned settings within a compiled adapter protocol. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits can only narrow compiled adapter bounds. Pricing is an administrator estimate, never an actual provider charge. */
+        /** @description Versioned settings within a compiled adapter protocol. New ComfyUI publication requires comfyWorkflow; legacy model-only capabilities retain their snapshot for recovery and metadata changes. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits narrow the published declaration. Pricing is an administrator estimate, never an actual provider charge. */
         FixedMediaAdapterSettings: {
+            comfyWorkflow?: components["schemas"]["ComfyUiWorkflowDefinition"];
             runningHub?: components["schemas"]["RunningHubDefinition"];
             /** @description AutoDL preset or administrator-published workflow ID. Must match workflowDefinition.id when a definition is present. */
             workflowId?: string;
@@ -3648,6 +3674,51 @@ export interface components {
             pricingByResolution?: {
                 [key: string]: components["schemas"]["MediaCapabilityPricing"];
             };
+        };
+        /** @description Administrator-imported ComfyUI API-format DAG, at most 256 KiB. Node links and fixed literals are retained; no UI graph, installation commands, transport endpoints or headers are accepted. */
+        ComfyUiGraph: {
+            [key: string]: {
+                class_type: string;
+                /** @description Fixed JSON literals or [nodeId, outputIndex] links. Mapping targets must be scalar literals; links are never overwritten. */
+                inputs: {
+                    [key: string]: unknown;
+                };
+                _meta?: {
+                    title?: string;
+                };
+            };
+        };
+        /** @description COMFY_IMAGE_V1 / COMFY_VIDEO_V1 administrator-published workflow snapshot. Ordinary users and Agents cannot provide graphs or node mappings. Tasks pin the capability hash and both dimensions. Legacy capabilities without this field retain their fixed graph for recovery. */
+        ComfyUiWorkflowDefinition: {
+            /** @enum {integer} */
+            schemaVersion: 1;
+            graph: components["schemas"]["ComfyUiGraph"];
+            /** @description Unique target inputs on the selected result ancestry. PROMPT is required. WIDTH/HEIGHT must occur together; video requires DURATION_SECONDS or FRAME_COUNT, and FRAME_COUNT also requires FPS. Multiple targets may share a source. */
+            bindings: {
+                nodeId: string;
+                inputName: string;
+                /** @enum {string} */
+                source: "PROMPT" | "NEGATIVE_PROMPT" | "SEED" | "WIDTH" | "HEIGHT" | "REFERENCE_IMAGE" | "DURATION_SECONDS" | "FRAME_COUNT" | "FPS" | "BATCH_SIZE";
+                /** @description Required for REFERENCE_IMAGE; zero-based contiguous indices of frozen project image inputs. All mapped images are required. */
+                referenceIndex?: number | null;
+            }[];
+            output: {
+                nodeId: string;
+                /**
+                 * @description Exact history field; image capabilities use images. One PNG/JPEG/WebP or MP4 output is required; ambiguous outputs are rejected. Safe relative output subfolders are supported.
+                 * @enum {string}
+                 */
+                field: "images" | "gifs" | "videos";
+            };
+            width: number;
+            height: number;
+            minimumSeconds: number;
+            /** @description Both zero for image; 1–30 seconds for video. */
+            maximumSeconds: number;
+            fps: number;
+            frameMultiple: number;
+            /** @description Less than frameMultiple. Frame count = floor(durationSeconds * fps / frameMultiple) * frameMultiple + frameOffset. BATCH_SIZE always injects one; the application splits image generation counts into independent tasks. */
+            frameOffset: number;
         };
         /** @description Versioned data-only contract for the fixed AutoDL prompt/duration/video protocol. No graph, node IDs, scripts, endpoints or credentials. New same-protocol workflows need configuration only; other protocols are rejected. Resolution labels are exact provider enum values, not actual pixel guarantees. */
         AutoDlWorkflowDefinition: {
@@ -7523,6 +7594,54 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    previewComfyWorkflow: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description API export or prompt envelope; UTF-8 bytes also limited to 256 KiB. UI-format JSON is rejected. */
+                    workflowJson: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Normalized candidate graph; no provider calls or persistence */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComfyUiGraph"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Invalid graph or connection type */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     previewRunningHubImport: {
