@@ -33,6 +33,15 @@ class ComfyUiHistoryTest {
                 .isInstanceOf(ComfyUiHistory.PublishedFailed.class);
     }
 
+    @Test void publishedOutputAcceptsSuccessfulProxyHistoryWithoutCompletedFlag() {
+        var output = new ComfyUiWorkflowDefinition.Output("9", "images");
+        JsonNode response = history(true, "success", "image.png", "output", "render/day");
+        ((ObjectNode) response.path(promptId).path("status")).remove("completed");
+
+        assertThat(ComfyUiHistory.published(response, promptId, output, Task.Kind.IMAGE_GENERATION))
+                .isEqualTo(new ComfyUiHistory.PublishedReady("image.png", "render/day", "image/png"));
+    }
+
     @Test void publishedOutputRejectsTraversalUnexpectedTypesAndMultipleResults() {
         var output = new ComfyUiWorkflowDefinition.Output("9", "images");
         for (String folder : java.util.List.of("../private", "/absolute", "a/../b", "a\\b", "a//b", "a/%2e%2e"))
@@ -79,6 +88,59 @@ class ComfyUiHistoryTest {
                 promptId, "9")).isInstanceOf(ComfyUiHistory.Failed.class);
         assertThat(ComfyUiHistory.video(videoHistory(complete, "error", "clip.mp4", true),
                 promptId, "14")).isInstanceOf(ComfyUiHistory.VideoFailed.class);
+    }
+
+    @Test
+    void bothLegacyMediaAcceptSuccessfulProxyHistoryWithoutCompletedFlag() {
+        JsonNode imageResponse = withoutCompleted(history(true, "success", "image.png", "output", ""));
+        JsonNode videoResponse = withoutCompleted(videoHistory(true, "success", "clip.mp4", true));
+        assertThat(ComfyUiHistory.image(imageResponse, promptId, "9"))
+                .isEqualTo(new ComfyUiHistory.Ready("image.png"));
+        assertThat(ComfyUiHistory.video(videoResponse, promptId, "14"))
+                .isEqualTo(new ComfyUiHistory.VideoReady("clip.mp4"));
+    }
+
+    @Test
+    void terminalExecutionErrorWithoutCompletedFlagIsNotADownloadCandidate() {
+        JsonNode response = withoutCompleted(history(false, "error", "image.png", "output", ""));
+        assertThat(ComfyUiHistory.image(response, promptId, "9"))
+                .isInstanceOf(ComfyUiHistory.Failed.class);
+        assertThat(ComfyUiHistory.published(response, promptId,
+                new ComfyUiWorkflowDefinition.Output("9", "images"), Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ComfyUiHistory.PublishedFailed.class);
+        assertThat(ComfyUiHistory.video(withoutCompleted(videoHistory(false, "error", "clip.mp4", true)),
+                promptId, "14")).isInstanceOf(ComfyUiHistory.VideoFailed.class);
+    }
+
+    @Test
+    void explicitFalseCompletionRemainsPendingEvenWithSuccessfulStatus() {
+        JsonNode response = history(false, "success", "image.png", "output", "");
+        assertThat(ComfyUiHistory.image(response, promptId, "9"))
+                .isInstanceOf(ComfyUiHistory.Pending.class);
+        assertThat(ComfyUiHistory.published(response, promptId,
+                new ComfyUiWorkflowDefinition.Output("9", "images"), Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ComfyUiHistory.PublishedPending.class);
+        assertThat(ComfyUiHistory.video(videoHistory(false, "success", "clip.mp4", true),
+                promptId, "14")).isInstanceOf(ComfyUiHistory.VideoPending.class);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "running", "unknown", "SUCCESS", "ERROR"})
+    void absentCompletedFlagRequiresTrustedTerminalStatus(String statusCode) {
+        JsonNode response = withoutCompleted(history(true, statusCode, "image.png", "output", ""));
+        if (statusCode == null) ((ObjectNode) response.path(promptId).path("status")).remove("status_str");
+        assertBothMediaReject(response, "History status is malformed");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "1", "\"true\"", "[]", "{}"})
+    void terminalStatusCannotHideMalformedCompletedFlag(String completedJson) {
+        for (String statusCode : java.util.List.of("success", "error")) {
+            JsonNode response = history(true, statusCode, "image.png", "output", "");
+            ((ObjectNode) response.path(promptId).path("status")).set("completed", mapper.readTree(completedJson));
+            assertBothMediaReject(response, "History status is malformed");
+        }
     }
 
     @ParameterizedTest
@@ -237,6 +299,14 @@ class ComfyUiHistoryTest {
                 .isInstanceOf(ComfyUiClient.ProtocolFailure.class).hasMessage(message);
         assertThatThrownBy(() -> ComfyUiHistory.video(response, promptId, "14"))
                 .isInstanceOf(ComfyUiClient.ProtocolFailure.class).hasMessage(message);
+        assertThatThrownBy(() -> ComfyUiHistory.published(response, promptId,
+                new ComfyUiWorkflowDefinition.Output("9", "images"), Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class).hasMessage(message);
+    }
+
+    private JsonNode withoutCompleted(JsonNode response) {
+        ((ObjectNode) response.path(promptId).path("status")).remove("completed");
+        return response;
     }
 
     private JsonNode videoHistory(boolean complete, String status,

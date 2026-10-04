@@ -14,13 +14,21 @@ import { comfyParameterKey, comfyWorkflowProblem } from "./comfyWorkflow";
 
 const stepsParameter: RunningHubField = { key: "input_14_steps", label: "采样步数", type: "INTEGER", nodeId: "14", fieldName: "steps",
   source: "PARAMETER", defaultValue: 20, required: false, advanced: false };
+const dimensionGraph = { ...graph, "14": { ...graph["14"]!, inputs: {
+  ...graph["14"]!.inputs, width: 640, height: 360, secondaryWidth: 1280,
+} } };
+const dimensionDefinition: ComfyUiWorkflowDefinition = { ...definition, graph: dimensionGraph, width: 1536, height: 768 };
 
-function Harness({ initial }: { initial?: ComfyUiWorkflowDefinition }) {
+function currentWorkflow(): ComfyUiWorkflowDefinition {
+  return (JSON.parse(screen.getByTestId("settings").textContent ?? "{}") as MediaCapability["settings"]).comfyWorkflow!;
+}
+
+function Harness({ initial, adapterId = "COMFY_VIDEO_V1" }: { initial?: ComfyUiWorkflowDefinition; adapterId?: string }) {
   const [settings, setSettings] = useState<MediaCapability["settings"]>({ comfyWorkflow: initial });
   const [ready, setReady] = useState(false);
   const [queryClient] = useState(createQueryClient);
   return <QueryClientProvider client={queryClient}><form>
-    <ComfyWorkflowEditor connectionId="comfy" adapterId="COMFY_VIDEO_V1" values={settings} onChange={setSettings} onReadyChange={setReady} />
+    <ComfyWorkflowEditor connectionId="comfy" adapterId={adapterId} values={settings} onChange={setSettings} onReadyChange={setReady} />
     <button type="submit" disabled={!ready}>Publish fixture</button>
     <output data-testid="settings">{JSON.stringify(settings)}</output>
   </form></QueryClientProvider>;
@@ -28,7 +36,7 @@ function Harness({ initial }: { initial?: ComfyUiWorkflowDefinition }) {
 
 describe("ComfyWorkflowEditor", () => {
   beforeEach(() => server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" }))));
-  it("imports API JSON, preserves custom nodes and constants, maps inputs and requires review", async () => {
+  it("imports API JSON, preserves custom nodes and constants, and enables publishing after valid mapping", async () => {
     const requests: unknown[] = [];
     server.use(http.post("/api/v1/settings/media-connections/comfy/comfyui/preview", async ({ request }) => {
       requests.push(await request.json()); return HttpResponse.json(graph);
@@ -47,20 +55,124 @@ describe("ComfyWorkflowEditor", () => {
     await selectValue(screen.getByRole("combobox", { name: "seconds 的参数来源" }), "DURATION_SECONDS");
     await selectValue(screen.getByRole("combobox", { name: "结果节点" }), "99");
     await selectValue(screen.getByRole("combobox", { name: "结果字段" }), "videos");
+    expect(screen.queryByLabelText("基础宽度（像素）")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("基础高度（像素）")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "检查发布配置" }));
-    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: "已核对节点映射、结果节点与估算价格" }));
+    expect(screen.queryByRole("checkbox", { name: "已核对节点映射、结果节点与估算价格" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
     expect(JSON.parse(screen.getByTestId("settings").textContent ?? "{}").comfyWorkflow).toEqual(definition);
     await user.click(screen.getByRole("button", { name: "2. 节点与参数映射" }));
     const steps = screen.getByLabelText("steps 的固定值");
     await user.clear(steps); await user.type(steps, "30");
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
+  });
+
+  it.each(["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"])("keeps a valid %s workflow ready without base-size controls or repeated confirmation", async (adapterId) => {
+    const initial = adapterId === "COMFY_IMAGE_V1" ? { ...definition,
+      bindings: definition.bindings.filter((binding) => binding.source !== "DURATION_SECONDS"),
+      output: { ...definition.output, field: "images" as const }, minimumSeconds: 0, maximumSeconds: 0,
+    } : definition;
+    render(<Harness initial={initial} adapterId={adapterId} />); const user = userEvent.setup();
+    const publish = screen.getByRole("button", { name: "Publish fixture" });
+    expect(publish).toBeEnabled();
+    expect(screen.queryByLabelText("基础宽度（像素）")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("基础高度（像素）")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "检查发布配置" }));
+    expect(screen.queryByRole("checkbox", { name: "已核对节点映射、结果节点与估算价格" })).not.toBeInTheDocument();
+    await user.type(screen.getByRole("spinbutton", { name: "单位价格" }), "1.25");
+    expect(publish).toBeEnabled();
+    if (adapterId === "COMFY_VIDEO_V1") {
+      await user.type(screen.getByRole("spinbutton", { name: "默认视频时长（秒）" }), "4");
+      expect(publish).toBeEnabled();
+    } else {
+      await selectValue(screen.getByRole("combobox", { name: "默认生成数量" }), "2");
+      expect(publish).toBeEnabled();
+    }
+  });
+
+  it("blocks invalid mappings and enables publishing again when the mapping is corrected", async () => {
+    render(<Harness initial={definition} />); const user = userEvent.setup();
+    const publish = screen.getByRole("button", { name: "Publish fixture" });
+    expect(publish).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+    const seconds = screen.getByRole("combobox", { name: "seconds 的参数来源" });
+    await selectValue(seconds, "FIXED");
+    expect(publish).toBeDisabled();
+    expect(screen.getByRole("button", { name: "检查发布配置" })).toBeDisabled();
+    await selectValue(seconds, "DURATION_SECONDS");
+    expect(publish).toBeEnabled();
+    expect(screen.getByRole("button", { name: "检查发布配置" })).toBeEnabled();
+  });
+
+  it("derives first width and height mappings from graph literals and preserves their shared base values", async () => {
+    render(<Harness initial={dimensionDefinition} />); const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+    await selectValue(screen.getByRole("combobox", { name: "width 的参数来源" }), "WIDTH");
+    expect(currentWorkflow().width).toBe(640);
     expect(screen.getByRole("button", { name: "Publish fixture" })).toBeDisabled();
+    await selectValue(screen.getByRole("combobox", { name: "height 的参数来源" }), "HEIGHT");
+    expect(currentWorkflow().height).toBe(360);
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
+    await selectValue(screen.getByRole("combobox", { name: "secondaryWidth 的参数来源" }), "WIDTH");
+    expect(currentWorkflow().width).toBe(640);
+    expect(currentWorkflow().graph).toEqual(dimensionGraph);
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
+  });
+
+  it("preserves published base dimensions until the last binding is removed and remapped", async () => {
+    const initial: ComfyUiWorkflowDefinition = { ...dimensionDefinition, bindings: [...definition.bindings,
+      { nodeId: "14", inputName: "width", source: "WIDTH" }, { nodeId: "14", inputName: "height", source: "HEIGHT" },
+    ] };
+    render(<Harness initial={initial} />); const user = userEvent.setup();
+    expect(currentWorkflow()).toEqual(initial);
+    await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+    await changeControl(screen.getByLabelText("steps 的固定值"), { target: { value: "30" } });
+    expect(currentWorkflow()).toMatchObject({ width: 1536, height: 768 });
+    await selectValue(screen.getByRole("combobox", { name: "width 的参数来源" }), "FIXED");
+    await changeControl(screen.getByLabelText("width 的固定值"), { target: { value: "800" } });
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeDisabled();
+    await selectValue(screen.getByRole("combobox", { name: "width 的参数来源" }), "WIDTH");
+    expect(currentWorkflow()).toMatchObject({ width: 800, height: 768 });
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
+  });
+
+  it.each([7, 640.5])("blocks publishing when a mapped graph width of %s is invalid", async (width) => {
+    const initial = { ...dimensionDefinition, graph: { ...dimensionGraph, "14": { ...dimensionGraph["14"],
+      inputs: { ...dimensionGraph["14"].inputs, width },
+    } } };
+    render(<Harness initial={initial} />); const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+    await selectValue(screen.getByRole("combobox", { name: "width 的参数来源" }), "WIDTH");
+    await selectValue(screen.getByRole("combobox", { name: "height 的参数来源" }), "HEIGHT");
+    expect(currentWorkflow().width).toBe(width);
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "检查发布配置" })).toBeDisabled();
+  });
+
+  it("restores publishing after invalid size mappings are removed while preserving fixed graph literals", async () => {
+    const initial = { ...dimensionDefinition, graph: { ...dimensionGraph, "14": { ...dimensionGraph["14"],
+      inputs: { ...dimensionGraph["14"].inputs, width: 7 },
+    } } };
+    render(<Harness initial={initial} />); const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+    const width = screen.getByRole("combobox", { name: "width 的参数来源" });
+    const height = screen.getByRole("combobox", { name: "height 的参数来源" });
+    await selectValue(width, "WIDTH");
+    await selectValue(height, "HEIGHT");
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeDisabled();
+    await selectValue(width, "FIXED");
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeDisabled();
+    await selectValue(height, "FIXED");
+    expect(currentWorkflow().graph).toEqual(initial.graph);
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "检查发布配置" })).toBeEnabled();
   });
 
   it("keeps the current graph when replacement import fails and shows the failure", async () => {
     server.use(http.post("/api/v1/settings/media-connections/comfy/comfyui/preview", () => HttpResponse.json({ title: "Invalid workflow", detail: "API format required", code: "COMFYUI_WORKFLOW_INVALID" }, { status: 422, headers: { "Content-Type": "application/problem+json" } })));
     render(<Harness initial={definition} />); const user = userEvent.setup();
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "1. 导入工作流" }));
     await user.type(screen.getByLabelText("API JSON 内容"), "invalid");
     await user.click(screen.getByRole("button", { name: "替换工作流并重新映射" }));
@@ -97,7 +209,6 @@ describe("ComfyWorkflowEditor", () => {
     expect(workflow.parameters).toEqual([{ ...stepsParameter, label: "采样步数", defaultValue: 24, minimum: 1, maximum: 50, required: true }]);
     expect(workflow.graph).toEqual(graph);
     await user.click(screen.getByRole("button", { name: "检查发布配置" }));
-    await user.click(screen.getByRole("checkbox", { name: "已核对节点映射、结果节点与估算价格" }));
     expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
   });
 
@@ -109,10 +220,12 @@ describe("ComfyWorkflowEditor", () => {
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(JSON.parse(screen.getByTestId("settings").textContent ?? "{}").comfyWorkflow.parameters[0].defaultValue).toBe(20);
     expect(screen.getByRole("button", { name: "检查发布配置" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
     await selectValue(screen.getByRole("combobox", { name: "steps 的参数来源" }), "FIXED");
     expect(screen.queryByRole("table", { name: "扩展参数" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "检查发布配置" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
     expect(JSON.parse(screen.getByTestId("settings").textContent ?? "{}").comfyWorkflow.parameters).toEqual([]);
   });
 

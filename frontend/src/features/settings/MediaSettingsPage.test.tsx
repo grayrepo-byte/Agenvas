@@ -180,11 +180,14 @@ describe("MediaSettingsPage", () => {
     await selectValue(within(dialog).getByRole("combobox", { name: "目标类型" }), "AI_APP");
     await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
     await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
-    await clickControl(within(dialog).getByRole("button", { name: "选择节点" }));
-    const importedNode = await screen.findByRole("menuitemcheckbox", { name: "节点 1 · 创作风格" });
-    await clickControl(importedNode);
-    await user.keyboard("{Escape}");
+    const importedField = await within(dialog).findByRole("row", { name: "创作风格" });
+    expect(importedField).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 创作风格");
+    expect(within(importedField).getByRole("textbox", { name: "节点字段" })).toHaveValue("style");
+    expect(within(importedField).getByRole("textbox", { name: "默认值" })).toHaveValue('"photo"');
+    await clickControl(within(dialog).getByRole("button", { name: "选择节点" }));
+    expect(screen.getByRole("menuitemcheckbox", { name: "节点 1 · 创作风格" })).toHaveAttribute("aria-checked", "true");
+    await user.keyboard("{Escape}");
     await user.click(within(dialog).getByText("创作者表单预览 · 离线"));
     expect(await within(dialog).findByRole("combobox", { name: "创作风格 *" })).toHaveValue("0");
     await user.click(within(dialog).getByRole("combobox", { name: "创作风格 *" }));
@@ -247,6 +250,85 @@ describe("MediaSettingsPage", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(writes).toHaveLength(2);
     expect(writes[1]).toEqual(writes[0]);
+  });
+
+  it.each(["AI_APP", "WORKFLOW"] as const)("edits saved RunningHub %s mappings and reopens the saved values without rediscovery", async (targetType) => {
+    const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
+      schemaVersion: 1, protocolVersion: "V2", targetType, targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [
+        { key: "prompt", label: "画面提示", nodeId: "10", fieldName: "text", type: "STRING", source: "PROMPT",
+          defaultValue: "合成提示", required: false, advanced: false },
+        { key: "seconds", label: "视频时长", nodeId: "20", fieldName: "seconds", type: "INTEGER", source: "DURATION_SECONDS",
+          defaultValue: 4, required: false, advanced: false },
+        { key: "video", label: "来源视频", nodeId: "20", fieldName: "video", type: "VIDEO", source: "PARAMETER",
+          resourceFormat: "FILE_NAME", required: true, advanced: false },
+      ],
+      fixedBindings: [{ nodeId: "30", fieldName: "enabled", value: false, encoding: "NATIVE" }],
+      outputs: [{ nodeId: "99", kind: "VIDEO", primary: true, maxCount: 2 },
+        { nodeId: "100", kind: "AUDIO", primary: false, maxCount: 1 }],
+    };
+    const savedDefinition = { ...definition, fields: definition.fields.map((field) => field.key === "prompt"
+      ? { ...field, defaultValue: "修改后的合成提示" } : field) };
+    let fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub" }, {
+      adapterId: "RUNNINGHUB_VIDEO", kind: "VIDEO_GENERATION", settings: { runningHub: definition },
+    });
+    const writes: unknown[] = [];
+    const discoveryRequests: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/runninghub/preview", async ({ request }) => {
+        discoveryRequests.push(await request.json());
+        return HttpResponse.json({ definition, warnings: [] });
+      }),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        writes.push(await request.json());
+        fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub" }, {
+          adapterId: "RUNNINGHUB_VIDEO", kind: "VIDEO_GENERATION", version: 5, capabilityVersion: 3,
+          settings: { runningHub: savedDefinition },
+        });
+        return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("combobox", { name: "目标类型" })).toHaveValue(targetType);
+    expect(within(dialog).getByRole("textbox", { name: "真实目标 ID" })).toHaveValue("123");
+    expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 10 · 画面提示 · 节点 20 · 视频时长 · 节点 30");
+    const prompt = within(dialog).getByRole("row", { name: "画面提示" });
+    expect(prompt).toBeVisible();
+    expect(within(prompt).getByRole("textbox", { name: "节点 ID" })).toHaveValue("10");
+    expect(within(prompt).getByRole("textbox", { name: "节点字段" })).toHaveValue("text");
+    expect(within(prompt).getByRole("combobox", { name: "输入来源" })).toHaveValue("PROMPT");
+    const promptDefault = within(prompt).getByRole("textbox", { name: "默认值" });
+    expect(promptDefault).toHaveValue("合成提示");
+    const duration = within(dialog).getByRole("row", { name: "视频时长" });
+    expect(within(duration).getByRole("combobox", { name: "输入来源" })).toHaveValue("DURATION_SECONDS");
+    expect(within(duration).getByRole("textbox", { name: "默认值" })).toHaveValue("4");
+    const video = within(dialog).getByRole("row", { name: "来源视频" });
+    expect(within(video).getByRole("combobox", { name: "上传后的引用格式" })).toHaveValue("FILE_NAME");
+    expect(within(dialog).getByRole("textbox", { name: "固定节点 ID" })).toHaveValue("30");
+    expect(within(dialog).getByRole("textbox", { name: "固定字段" })).toHaveValue("enabled");
+    expect(within(dialog).getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue("false");
+    const outputs = within(dialog).getByRole("table", { name: "输出映射" });
+    expect(within(outputs).getAllByRole("textbox", { name: "输出节点（留空匹配此类型）" }).map((input) => (input as HTMLInputElement).value)).toEqual(["99", "100"]);
+    expect(within(outputs).getAllByRole("combobox", { name: "媒体类型" }).map((input) => (input as HTMLInputElement).value)).toEqual(["VIDEO", "AUDIO"]);
+    expect(within(outputs).getAllByRole("spinbutton", { name: "最多结果数" }).map((input) => (input as HTMLInputElement).value)).toEqual(["2", "1"]);
+    expect(discoveryRequests).toEqual([]);
+
+    await user.clear(promptDefault); await user.type(promptDefault, "修改后的合成提示");
+    await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(writes).toEqual([{ expectedVersion: 4, name: "Portrait", enabled: true,
+      adapterId: "RUNNINGHUB_VIDEO", settings: { runningHub: savedDefinition } }]);
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    const reopened = screen.getByRole("dialog");
+    expect(within(reopened).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 10 · 画面提示 · 节点 20 · 视频时长 · 节点 30");
+    expect(within(within(reopened).getByRole("row", { name: "画面提示" })).getByRole("textbox", { name: "默认值" })).toHaveValue("修改后的合成提示");
+    expect(within(reopened).getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue("false");
+    expect(discoveryRequests).toEqual([]);
   });
 
   it.each(["VIDEO", "AUDIO"] as const)("saves a changed %s primary output and preserves the workflow fields", async (kind) => {
@@ -565,7 +647,7 @@ describe("MediaSettingsPage", () => {
     expect(writes[1]).toMatchObject({ expectedVersion: 1, name: "Local Comfy" });
   });
 
-  it("publishes an imported ComfyUI graph with reviewed mappings, defaults and pricing", async () => {
+  it("publishes an imported ComfyUI graph on explicit submit with valid mappings, defaults and pricing", async () => {
     let submitted: unknown;
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
@@ -598,16 +680,67 @@ describe("MediaSettingsPage", () => {
     await selectValue(screen.getByRole("combobox", { name: "seconds 的参数来源" }), "DURATION_SECONDS");
     await selectValue(screen.getByRole("combobox", { name: "结果节点" }), "99");
     await selectValue(screen.getByRole("combobox", { name: "结果字段" }), "videos");
+    const publish = within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" });
+    expect(publish).toBeEnabled();
+    expect(screen.queryByLabelText("基础宽度（像素）")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("基础高度（像素）")).not.toBeInTheDocument();
+    expect(submitted).toBeUndefined();
     const minimum = screen.getByLabelText("工作流最短时长（秒）");
     await user.clear(minimum); await user.type(minimum, "3");
+    expect(publish).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "检查发布配置" }));
+    expect(screen.queryByRole("checkbox", { name: "已核对节点映射、结果节点与估算价格" })).not.toBeInTheDocument();
     await user.type(screen.getByRole("spinbutton", { name: "默认视频时长（秒）" }), "4");
+    expect(publish).toBeEnabled();
     await user.type(screen.getByRole("spinbutton", { name: "单位价格" }), "1.25");
-    await user.click(screen.getByRole("checkbox", { name: "已核对节点映射、结果节点与估算价格" }));
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
+    expect(publish).toBeEnabled();
+    expect(submitted).toBeUndefined();
+    await user.click(publish);
     await waitFor(() => expect(submitted).toEqual({ name: "Wan video", adapterId: "COMFY_VIDEO_V1",
       settings: { comfyWorkflow: { ...comfyDefinition, minimumSeconds: 3 }, defaultDurationSeconds: 4,
         pricing: { amount: "1.25", currency: "CNY", unit: "SECOND" } } }));
+  });
+
+  it("saves an edited ComfyUI workflow without repeated confirmation while blocking invalid mappings", async () => {
+    const fixture = settingsFixture({ platform: "COMFYUI", name: "ComfyUI", origin: "http://127.0.0.1:8188" }, {
+      adapterId: "COMFY_VIDEO_V1", kind: "VIDEO_GENERATION", settings: { comfyWorkflow: comfyDefinition },
+    });
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        writes.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    const dialog = screen.getByRole("dialog");
+    const save = within(dialog).getByRole("button", { name: "保存能力" });
+    expect(save).toBeEnabled();
+    await user.click(within(dialog).getByRole("button", { name: /#14.*CustomGenerator/ }));
+    const steps = within(dialog).getByLabelText("steps 的固定值");
+    await user.clear(steps); await user.type(steps, "30");
+    expect(save).toBeEnabled();
+    const seconds = within(dialog).getByRole("combobox", { name: "seconds 的参数来源" });
+    await selectValue(seconds, "FIXED");
+    expect(save).toBeDisabled();
+    expect(writes).toEqual([]);
+    await selectValue(seconds, "DURATION_SECONDS");
+    expect(save).toBeEnabled();
+    await user.click(within(dialog).getByRole("button", { name: "检查发布配置" }));
+    expect(within(dialog).queryByRole("checkbox", { name: "已核对节点映射、结果节点与估算价格" })).not.toBeInTheDocument();
+    await user.type(within(dialog).getByRole("spinbutton", { name: "单位价格" }), "1.25");
+    expect(save).toBeEnabled();
+    expect(writes).toEqual([]);
+    await user.click(save);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(writes).toEqual([{ expectedVersion: 4, name: "Portrait", enabled: true, adapterId: "COMFY_VIDEO_V1",
+      settings: { comfyWorkflow: { ...comfyDefinition, graph: { ...comfyGraph,
+        "14": { ...comfyGraph["14"]!, inputs: { ...comfyGraph["14"]!.inputs, steps: 30 } },
+      } }, pricing: { amount: "1.25", currency: "CNY", unit: "SECOND" } },
+    }]);
   });
 
   it("publishes only the fixed GPT Image 2 mapping with an allowed quality", async () => {

@@ -119,6 +119,7 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
   creating?: boolean; disabled: boolean; onWorkflowReady: (ready: boolean) => void;
 }) {
   useLocale();
+  const fieldId = useId();
   const [tab, setTab] = useState<EditorTab>("model");
   function changeWorkflowOutput(kind: keyof typeof RUNNINGHUB_OUTPUT_ADAPTERS, runningHub = values.runningHub) {
     onAdapterChange(RUNNINGHUB_OUTPUT_ADAPTERS[kind]);
@@ -128,12 +129,12 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
       outputs: runningHub.outputs.map((output) => output.primary ? { ...output, kind } : output) } : undefined });
   }
   if (isComfyAdapter(adapterId)) return <fieldset disabled={disabled} className="ui-stack media-settings-fieldset">
-    <div className="ui-form-grid">
-      <Field><FieldLabel>{creating ? t("settings.mediaSettings.newCapabilityName") : t("settings.mediaSettings.capabilityName")}<Input required maxLength={NAME_LIMIT} value={name} onChange={(event) => onNameChange(event.target.value)} /></FieldLabel></Field>
-      <Field><FieldLabel>{t("settings.mediaSettings.primaryOutputKind")}<Select value={adapterId} onChange={(event) => onAdapterChange(event.target.value)}>
+    <FieldGroup className="ui-form-grid">
+      <Field><FieldLabel htmlFor={`${fieldId}-name`}>{creating ? t("settings.mediaSettings.newCapabilityName") : t("settings.mediaSettings.capabilityName")}</FieldLabel><Input id={`${fieldId}-name`} required maxLength={NAME_LIMIT} value={name} onChange={(event) => onNameChange(event.target.value)} /></Field>
+      <Field><FieldLabel htmlFor={`${fieldId}-output-kind`}>{t("settings.mediaSettings.primaryOutputKind")}</FieldLabel><Select id={`${fieldId}-output-kind`} value={adapterId} onChange={(event) => onAdapterChange(event.target.value)}>
         {availableAdapters.map((id) => <option key={id} value={id}>{adapterLabel(id)}</option>)}
-      </Select></FieldLabel></Field>
-    </div>
+      </Select></Field>
+    </FieldGroup>
     <ComfyWorkflowEditor key={adapterId} connectionId={connectionId} adapterId={adapterId} values={values} onChange={onChange} onReadyChange={onWorkflowReady} />
   </fieldset>;
   if (adapterId.startsWith("RUNNINGHUB_")) return <div className="ui-stack"><fieldset disabled={disabled} className="ui-stack">

@@ -7,6 +7,9 @@ import tools.jackson.databind.JsonNode;
 /** 解释指定 ComfyUI prompt 的发布输出或历史模板输出；尚无历史时保持待查询，不误判失败。 */
 public final class ComfyUiHistory {
 
+    private static final String STATUS_SUCCESS = "success";
+    private static final String STATUS_ERROR = "error";
+
     /** 纯解析器不允许实例化。 */
     private ComfyUiHistory() {}
 
@@ -115,13 +118,21 @@ public final class ComfyUiHistory {
             throw new ComfyUiClient.ProtocolFailure("History entry is malformed");
         }
         JsonNode status = entry.path("status");
-        if (!status.isObject() || !status.path("completed").isBoolean()) {
+        if (!status.isObject()) {
+            throw new ComfyUiClient.ProtocolFailure("History status is malformed");
+        }
+        JsonNode completed = status.path("completed");
+        String statusCode = status.path("status_str").asText();
+        // Native proxies may omit completed only for terminal status; provided flags remain strictly boolean.
+        if (completed.isMissingNode()
+                ? !STATUS_SUCCESS.equals(statusCode) && !STATUS_ERROR.equals(statusCode)
+                : !completed.isBoolean()) {
             throw new ComfyUiClient.ProtocolFailure("History status is malformed");
         }
         // ComfyUI records runtime failures with completed=false and status_str=error.
-        if ("error".equals(status.path("status_str").asText())) return HistoryState.FAILED;
-        if (!status.path("completed").booleanValue()) return HistoryState.PENDING;
-        if (!"success".equals(status.path("status_str").asText())) {
+        if (STATUS_ERROR.equals(statusCode)) return HistoryState.FAILED;
+        if (completed.isBoolean() && !completed.booleanValue()) return HistoryState.PENDING;
+        if (!STATUS_SUCCESS.equals(statusCode)) {
             throw new ComfyUiClient.ProtocolFailure("Completed history has unknown status");
         }
         return HistoryState.READY;

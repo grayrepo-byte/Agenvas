@@ -1,5 +1,7 @@
 import type { ComfyUiWorkflowDefinition, RunningHubField } from "../../shared/api/client";
 import { t } from "../../shared/i18n";
+// Required v1 metadata is unused when no dimensions are mapped into the graph.
+export const COMFY_WORKFLOW_DEFAULT_SIDE = 1024;
 export const COMFY_WORKFLOW_LIMITS = {
   jsonBytes: 256 * 1024, nodes: 256, bindings: 128, references: 14,
   minimumSide: 8, maximumSide: 4096, fps: 120, frameMultiple: 64, seconds: 30,
