@@ -1,0 +1,6 @@
+.runninghub-form { min-width: 0; gap: var(--ui-space-5); }
+.runninghub-form .runninghub-form-slot { min-width: 0; gap: var(--ui-space-3); }
+.runninghub-form [data-slot="field"] { min-width: 0; gap: var(--ui-space-2); }
+.runninghub-form [data-slot="field-label"],
+.runninghub-form [data-slot="field-description"] { overflow-wrap: anywhere; }
+.runninghub-form-advanced > [data-slot="field-group"] { margin-top: var(--ui-space-4); gap: var(--ui-space-5); }

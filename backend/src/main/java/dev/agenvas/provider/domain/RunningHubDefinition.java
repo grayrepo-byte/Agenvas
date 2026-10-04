@@ -26,7 +26,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     public static final int MAX_OPTIONS = 100;
     public static final int MAX_DEFINITION_BYTES = 256 * 1024;
     public static final String VALUES_PROPERTY = "dynamicValues";
-    private static final int MAX_LABEL_LENGTH = 160;
+    public static final int MAX_LABEL_LENGTH = 160;
     private static final int MAX_DESCRIPTION_LENGTH = 1_000;
     private static final int MIN_RETAIN_SECONDS = 10;
     private static final int MAX_RETAIN_SECONDS = 180;

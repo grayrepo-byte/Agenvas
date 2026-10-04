@@ -1,5 +1,5 @@
 import { CaretDown,SlidersHorizontal,Trash } from "@phosphor-icons/react";
-import { Field, FieldDescription, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { useMutation } from "@tanstack/react-query";
 import { Fragment,useEffect,useId,useRef,useState,type FormEvent } from "react";
 import { previewRunningHubImport,type RunningHubDefinition,type RunningHubField } from "../../shared/api/client";
@@ -78,6 +78,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
   const [nodeSelection, setNodeSelection] = useState<string[]>(() => inputNodeIds(definition));
   const nodePickerId = useId();
   const nodePickerHintId = useId();
+  const executionOptionsId = useId();
   const nodePickerTrigger = useRef<HTMLButtonElement>(null);
   const invalidParameter = useRef<HTMLElement | null>(null);
   const nodeIds = inputNodeIds(definition);
@@ -150,7 +151,8 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
     <fieldset className="ui-stack" onInvalidCapture={revealInvalidParameter}><legend>{t("settings.runningHub.mappingTable")}</legend>
       <p className="ui-muted">{t("settings.runningHub.mappingHint")}</p>
       <Field className="runninghub-node-picker"><FieldLabel htmlFor={nodePickerId}>{t("settings.runningHub.selectNode")}</FieldLabel>
-        <DropdownMenu modal={false}>
+        {/* A modal menu grants its portal a scroll boundary inside the parent dialog's scroll lock. */}
+        <DropdownMenu>
           <DropdownMenuTrigger asChild><Button ref={nodePickerTrigger} id={nodePickerId} variant="outline" type="button" className="w-full justify-between"
             aria-label={t("settings.runningHub.selectNode")} aria-describedby={nodePickerHintId} disabled={!nodeIds.length} title={nodeSummary || undefined}>
             <span className="truncate">{nodeSummary || t("settings.runningHub.selectNodePlaceholder")}</span><CaretDown data-icon="inline-end" />
@@ -267,15 +269,20 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
       <p>{t("settings.runningHub.outputLimitsHint")}</p>
       <p className="ui-muted">{t("settings.runningHub.outputKindChangeHint")}</p>
     </fieldset>
-    <details><summary>{t("settings.runningHub.executionOptions")}</summary>
-      <Field><FieldLabel className="ui-field block">{t("settings.runningHub.instance")}<Select value={definition.instanceType ?? "default"} onChange={(event) => update({ ...definition, instanceType: event.target.value as RunningHubDefinition["instanceType"] })}><option value="default">default</option><option value="plus">plus</option><option value="ultra">ultra</option></Select></FieldLabel></Field>
-      <label><Checkbox  checked={definition.usePersonalQueue ?? false} onCheckedChange={(event) => update({ ...definition, usePersonalQueue: event === true })} /> {t("settings.runningHub.personalQueueSuffix")}</label>
-      {definition.targetType === "WORKFLOW" ? <label><Checkbox  checked={definition.addMetadata ?? false} onCheckedChange={(event) => update({ ...definition, addMetadata: event === true })} /> {t("settings.runningHub.resultMetadataLabel")}</label> : null}
-      <Field><FieldLabel className="ui-field block">{t("settings.runningHub.instanceRetentionSeconds")}<Input type="number" min={10} max={180} value={definition.retainSeconds ?? ""} onChange={(event) => update({ ...definition, retainSeconds: event.target.value ? Number(event.target.value) : null })} /></FieldLabel></Field>
-
+    <details className="runninghub-editor-section"><summary>{t("settings.runningHub.executionOptions")}</summary>
+      <FieldGroup className="runninghub-section-content">
+        <FieldGroup className="ui-form-grid">
+          <Field><FieldLabel htmlFor={`${executionOptionsId}-instance`}>{t("settings.runningHub.instance")}</FieldLabel><Select id={`${executionOptionsId}-instance`} value={definition.instanceType ?? "default"} onChange={(event) => update({ ...definition, instanceType: event.target.value as RunningHubDefinition["instanceType"] })}><option value="default">default</option><option value="plus">plus</option><option value="ultra">ultra</option></Select></Field>
+          <Field><FieldLabel htmlFor={`${executionOptionsId}-retention`}>{t("settings.runningHub.instanceRetentionSeconds")}</FieldLabel><Input id={`${executionOptionsId}-retention`} type="number" min={10} max={180} value={definition.retainSeconds ?? ""} onChange={(event) => update({ ...definition, retainSeconds: event.target.value ? Number(event.target.value) : null })} /></Field>
+        </FieldGroup>
+        <FieldGroup>
+          <Field orientation="horizontal"><Checkbox id={`${executionOptionsId}-queue`} checked={definition.usePersonalQueue ?? false} onCheckedChange={(event) => update({ ...definition, usePersonalQueue: event === true })} /><FieldLabel htmlFor={`${executionOptionsId}-queue`}>{t("settings.runningHub.personalQueueSuffix")}</FieldLabel></Field>
+          {definition.targetType === "WORKFLOW" ? <Field orientation="horizontal"><Checkbox id={`${executionOptionsId}-metadata`} checked={definition.addMetadata ?? false} onCheckedChange={(event) => update({ ...definition, addMetadata: event === true })} /><FieldLabel htmlFor={`${executionOptionsId}-metadata`}>{t("settings.runningHub.resultMetadataLabel")}</FieldLabel></Field> : null}
+        </FieldGroup>
+      </FieldGroup>
     </details>
-    <details><summary>{t("settings.runningHub.formPreview")}</summary><RunningHubForm definition={definition} values={previewValues} prompt="" durationSeconds={null} choices={[]}
-      onChange={(key, next) => setPreviewValues((current) => { const values = { ...current }; if (next === undefined) delete values[key]; else values[key] = next; return values; })} /></details>
+    <details className="runninghub-editor-section"><summary>{t("settings.runningHub.formPreview")}</summary><FieldGroup className="runninghub-section-content"><RunningHubForm definition={definition} values={previewValues} prompt="" durationSeconds={null} choices={[]}
+      onChange={(key, next) => setPreviewValues((current) => { const values = { ...current }; if (next === undefined) delete values[key]; else values[key] = next; return values; })} /></FieldGroup></details>
     <p className="ui-muted">{t("settings.runningHub.contractVersionHint")}</p>
     {localError ? <p role="alert">{localError}</p> : null}
   </div>;

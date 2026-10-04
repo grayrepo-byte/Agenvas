@@ -34,6 +34,12 @@
 .runninghub-field-details { padding: var(--ui-space-3); }
 .runninghub-field-details legend { color: var(--ui-text-muted); }
 .runninghub-field-details .ui-form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.runninghub-editor-section { min-width: 0; padding-block: var(--ui-space-2); }
+.runninghub-editor-section > summary { cursor: pointer; }
+.runninghub-editor-section > .runninghub-section-content { margin-top: var(--ui-space-4); gap: var(--ui-space-4); }
+.runninghub-section-content [data-slot="field-group"] { gap: var(--ui-space-4); }
+.runninghub-section-content [data-slot="field"] { min-width: 0; gap: var(--ui-space-2); }
+.runninghub-section-content [data-slot="field-label"] { overflow-wrap: anywhere; }
 @media (max-width: 560px) {
   .ui-dialog.app-page.runninghub-capability-dialog { height: calc(100dvh - var(--ui-space-4)); max-height: calc(100dvh - var(--ui-space-4)); }
 }

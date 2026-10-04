@@ -31,7 +31,14 @@ class RunningHubImportServiceTest {
             assertThat(input).isNotNull();
             var payload = mapper.createObjectNode();
             payload.put("code", 0);
-            payload.putObject("data").put("id", "2084320751339032577").set("inputNodes", mapper.readTree(input));
+            var nodes = mapper.readTree(input);
+            // Synthetic discovery response: the node class is generic, its app description is specific.
+            for (var node : nodes) if ("IMAGE".equals(node.path("fieldType").asText())) {
+                var object = (tools.jackson.databind.node.ObjectNode) node;
+                object.put("description", object.path("nodeName").asText());
+                object.put("nodeName", "LoadImage");
+            }
+            payload.putObject("data").put("id", "2084320751339032577").set("inputNodes", nodes);
             server.createContext("/api/webapp/detail", exchange -> {
                 calls.incrementAndGet();
                 assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
@@ -53,6 +60,9 @@ class RunningHubImportServiceTest {
             var preview = new RunningHubImportService(repository, cipher, new RunningHubClient(mapper), mapper)
                     .preview(connectionId, RunningHubDefinition.TargetType.AI_APP, "2084320751339032577", Task.Kind.VIDEO_GENERATION, null);
             assertThat(preview.definition().fields()).hasSize(21);
+            assertThat(preview.definition().fields().stream().filter(field -> field.type() == RunningHubDefinition.FieldType.IMAGE))
+                    .extracting(RunningHubDefinition.Field::label)
+                    .containsExactly("参考图1", "参考图2", "参考图3", "参考图4", "参考图5", "参考图6");
             assertThat(preview.definition().fields()).anyMatch(field -> field.fieldName().equals("aspect_ratio") && field.options().size() == 8);
             assertThat(preview.definition().outputs().getFirst().kind()).isEqualTo(RunningHubDefinition.OutputKind.VIDEO);
             preview.definition().validate(Task.Kind.VIDEO_GENERATION);
@@ -77,11 +87,37 @@ class RunningHubImportServiceTest {
         assertThat(preview.definition().fields().getFirst().options().getFirst().label()).isEqualTo("宽屏");
         assertThat(preview.definition().fields().get(1).defaultValue()).isNull();
     }
+    @Test void appLabelsUseDescriptionsAndFallBackToNonBlankNodeOrFieldNames() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION, mapper.readTree("""
+            [{"nodeId":"1","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE","description":"  参考图1  "},
+             {"nodeId":"2","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE","description":"参考图2"},
+             {"nodeId":"3","nodeName":" LoadImage ","fieldName":"image","fieldType":"IMAGE","description":"  "},
+             {"nodeId":"4","nodeName":null,"fieldName":"image","fieldType":"IMAGE"},
+             {"nodeId":"5","nodeName":"  ","fieldName":"image","fieldType":"IMAGE","description":null}]
+            """));
+        assertThat(preview.definition().fields()).extracting(RunningHubDefinition.Field::label)
+                .containsExactly("参考图1", "参考图2", "LoadImage", "image", "image");
+        assertThat(preview.definition().fields().getFirst().description()).isEqualTo("  参考图1  ");
+        assertThat(preview.definition().fields()).extracting(RunningHubDefinition.Field::nodeId)
+                .containsExactly("1", "2", "3", "4", "5");
+        assertThat(preview.definition().fields()).extracting(RunningHubDefinition.Field::key)
+                .containsExactly("input1", "input2", "input3", "input4", "input5");
+    }
     @Test void credentialsAndOversizedSourceCannotBecomeTemplates() {
         assertThatThrownBy(() -> imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("[{\"apiKey\":\"secret\"}]"))).hasMessageContaining("凭据");
         assertThatThrownBy(() -> imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("{\"apiKey\":\"secret\",\"nodeInfoList\":[]}"))).hasMessageContaining("凭据");
+    }
+    @Test void longAppDescriptionRemainsAvailableWhileItsLabelRespectsTheLengthLimit() {
+        String description = "图".repeat(RunningHubDefinition.MAX_LABEL_LENGTH - 1) + "🎨用途";
+        var node = mapper.createObjectNode().put("nodeId", "1").put("nodeName", "LoadImage")
+                .put("fieldName", "image").put("fieldType", "IMAGE").put("description", description);
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
+                mapper.createArrayNode().add(node));
+        assertThat(preview.definition().fields().getFirst().label())
+                .isEqualTo("图".repeat(RunningHubDefinition.MAX_LABEL_LENGTH - 1));
+        assertThat(preview.definition().fields().getFirst().description()).isEqualTo(description);
     }
     @Test void workflowUploadWidgetLabelsDoNotPreventDiscoveryOfTheActualFileBinding() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "2037454919065673729", Task.Kind.VIDEO_GENERATION,

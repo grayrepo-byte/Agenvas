@@ -113,7 +113,7 @@ public final class RunningHubImportService {
                     JsonNode selected = value;
                     if (options.stream().noneMatch(option -> RunningHubDefinition.scalarEquals(option.value(), selected))) value = null;
                 }
-                fields.add(field(fields.size(), node, name, input.path("nodeName").asText(name), fieldType, value, options, input.path("description").asText(null)));
+                fields.add(field(fields.size(), node, name, appLabel(input, name), fieldType, value, options, input.path("description").asText(null)));
             }
         }
         if (fields.size() > RunningHubDefinition.MAX_FIELDS) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.there-are-more-than-64-fields-please-import-the-selected"));
@@ -127,6 +127,17 @@ public final class RunningHubImportService {
         return new RunningHubDefinition.Field("input" + (index + 1), label, description, type, false, value, null, null, null,
                 options, false, node, name, RunningHubDefinition.Source.PARAMETER, RunningHubDefinition.Encoding.NATIVE,
                 RunningHubDefinition.ResourceFormat.FILE_NAME, null);
+    }
+    /** App descriptions identify reference slots; node names often only identify a shared class. */
+    private String appLabel(JsonNode input, String fieldName) {
+        String label = input.path("description").asText("").strip();
+        if (label.isBlank()) label = input.path("nodeName").asText("").strip();
+        if (label.isBlank()) label = fieldName;
+        if (label.length() <= RunningHubDefinition.MAX_LABEL_LENGTH) return label;
+        // Keep the full description separately and avoid cutting a supplementary character in half.
+        int end = RunningHubDefinition.MAX_LABEL_LENGTH;
+        if (Character.isHighSurrogate(label.charAt(end - 1))) end--;
+        return label.substring(0, end);
     }
     private List<RunningHubDefinition.Option> options(JsonNode data) {
         if (data == null || data.isNull()) return List.of();

@@ -201,11 +201,12 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 强度" }));
     expect(screen.getByRole("menuitemcheckbox", { name: "节点 1 · 模式" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 强度" })).toHaveAttribute("aria-checked", "true");
+    // Modal menu isolates the background until it closes, while both selections stay active.
+    await userEvent.setup().keyboard("{Escape}");
     expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
     expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
     expect(screen.getByRole("textbox", { name: "固定值（JSON 标量）" })).toBeVisible();
     expect(currentDefinition()).toEqual(initialDefinition);
-    await userEvent.setup().keyboard("{Escape}");
     expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 模式 · 节点 2 · 强度");
   });
 
@@ -237,13 +238,16 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     await mount(false);
     await clickControl(screen.getByRole("button", { name: "选择节点" }));
     await clickControl(screen.getByRole("menuitem", { name: "全选节点" }));
+    await userEvent.setup().keyboard("{Escape}");
     expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
     expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
+    await clickControl(screen.getByRole("button", { name: "选择节点" }));
     await clickControl(screen.getByRole("menuitem", { name: "清空选择" }));
-    expect(screen.queryByRole("table", { name: "参数绑定" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "固定值（JSON 标量）" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("menuitemcheckbox")).toHaveLength(2);
     for (const item of screen.getAllByRole("menuitemcheckbox")) expect(item).toHaveAttribute("aria-checked", "false");
+    await userEvent.setup().keyboard("{Escape}");
+    expect(screen.queryByRole("table", { name: "参数绑定" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "固定值（JSON 标量）" })).not.toBeInTheDocument();
     expect(currentDefinition()).toEqual(initialDefinition);
   });
 
