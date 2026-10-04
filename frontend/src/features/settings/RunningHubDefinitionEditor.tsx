@@ -3,7 +3,7 @@ import { Field, FieldDescription, FieldLabel } from "../../shared/ui/primitives/
 import { useMutation } from "@tanstack/react-query";
 import { Fragment,useEffect,useId,useRef,useState,type FormEvent } from "react";
 import { previewRunningHubImport,type RunningHubDefinition,type RunningHubField } from "../../shared/api/client";
-import { t,useLocale } from "../../shared/i18n";
+import { SUPPORTED_LOCALES,t,translate,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuCheckboxItem,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuSeparator,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
@@ -18,12 +18,28 @@ const MAX_FIELDS = 64;
 const FIELD_TABLE_COLUMNS = 9;
 const MAX_OUTPUTS = 16;
 const MAX_IMPORT_SOURCE_CHARACTERS = 256 * 1024;
+const NODE_LABEL_SEPARATOR = " · ";
 type OutputKind = RunningHubDefinition["outputs"][number]["kind"];
-function nodeLabel(nodeId: string) { return nodeId ? t("settings.runningHub.nodeOption", { "0": nodeId }) : t("settings.runningHub.unassignedNode"); }
+function nodeLabel(nodeId: string, definition: RunningHubDefinition) {
+  if (!nodeId) return t("settings.runningHub.unassignedNode");
+  const idLabel = t("settings.runningHub.nodeOption", { "0": nodeId });
+  for (const field of definition.fields) {
+    if (field.nodeId !== nodeId) continue;
+    let name = field.label.trimEnd();
+    // Workflow imports store the node title and input name together in the editable field label.
+    const fieldSuffix = `${NODE_LABEL_SEPARATOR}${field.fieldName}`;
+    if (definition.targetType === "WORKFLOW" && field.fieldName && name.endsWith(fieldSuffix)) name = name.slice(0, -fieldSuffix.length);
+    name = name.trim();
+    if (name && !SUPPORTED_LOCALES.some((locale) => name === translate(locale, "settings.runningHub.nodeOption", { "0": nodeId }))) {
+      return `${idLabel}${NODE_LABEL_SEPARATOR}${name}`;
+    }
+  }
+  return idLabel;
+}
 
 /** With several visible nodes, the administrator explicitly chooses where a new binding belongs. */
-function NodeParameterAction({ nodeIds, label, onAdd, disabled = false, variant = "outline" }: {
-  nodeIds: string[]; label: string; onAdd: (nodeId: string) => void; disabled?: boolean; variant?: "outline" | "ghost";
+function NodeParameterAction({ nodeIds, label, getNodeLabel, onAdd, disabled = false, variant = "outline" }: {
+  nodeIds: string[]; label: string; getNodeLabel: (nodeId: string) => string; onAdd: (nodeId: string) => void; disabled?: boolean; variant?: "outline" | "ghost";
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const firstNode = nodeIds[0];
@@ -31,8 +47,8 @@ function NodeParameterAction({ nodeIds, label, onAdd, disabled = false, variant 
   if (nodeIds.length === 1) return <Button variant={variant} type="button" disabled={disabled} onClick={() => onAdd(firstNode)}>{label}</Button>;
   return <DropdownMenu modal={false}>
     <DropdownMenuTrigger asChild><Button ref={trigger} variant={variant} type="button" disabled={disabled}>{label}<CaretDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
-    <DropdownMenuContent aria-label={label} aria-labelledby={undefined} align="start"><DropdownMenuGroup>
-      {nodeIds.map((nodeId) => <DropdownMenuItem key={nodeId} onSelect={() => { if (!trigger.current?.matches(":disabled")) onAdd(nodeId); }}>{nodeLabel(nodeId)}</DropdownMenuItem>)}
+    <DropdownMenuContent aria-label={label} aria-labelledby={undefined} align="start" className="max-w-[var(--radix-dropdown-menu-content-available-width)]"><DropdownMenuGroup>
+      {nodeIds.map((nodeId) => <DropdownMenuItem key={nodeId} title={getNodeLabel(nodeId)} onSelect={() => { if (!trigger.current?.matches(":disabled")) onAdd(nodeId); }}><span className="min-w-0 whitespace-normal break-words">{getNodeLabel(nodeId)}</span></DropdownMenuItem>)}
     </DropdownMenuGroup></DropdownMenuContent>
   </DropdownMenu>;
 }
@@ -61,7 +77,8 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
   const nodeIds = [...new Set([...definition.fields, ...(definition.fixedBindings ?? [])].map((item) => item.nodeId))]
     .sort((first, second) => first.localeCompare(second, undefined, { numeric: true }));
   const selectedNodes = nodeIds.filter((nodeId) => nodeSelection.includes(nodeId));
-  const nodeSummary = selectedNodes.map(nodeLabel).join(" · ");
+  const getNodeLabel = (nodeId: string) => nodeLabel(nodeId, definition);
+  const nodeSummary = selectedNodes.map(getNodeLabel).join(NODE_LABEL_SEPARATOR);
   useEffect(() => { if (!value) onChange(emptyDefinition(adapterId)); }, [adapterId, value, onChange]);
   const imported = useMutation({
     mutationFn: () => previewRunningHubImport(connectionId, { targetType: definition.targetType,
@@ -133,17 +150,17 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
             aria-label={t("settings.runningHub.selectNode")} aria-describedby={nodePickerHintId} disabled={!nodeIds.length} title={nodeSummary || undefined}>
             <span className="truncate">{nodeSummary || t("settings.runningHub.selectNodePlaceholder")}</span><CaretDown data-icon="inline-end" />
           </Button></DropdownMenuTrigger>
-          <DropdownMenuContent aria-label={t("settings.runningHub.selectNode")} aria-labelledby={undefined} align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+          <DropdownMenuContent aria-label={t("settings.runningHub.selectNode")} aria-labelledby={undefined} align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] max-w-[var(--radix-dropdown-menu-content-available-width)]">
             <DropdownMenuGroup>
               <DropdownMenuItem onSelect={(event) => { event.preventDefault(); if (!nodePickerTrigger.current?.matches(":disabled")) setNodeSelection(nodeIds); }}>{t("settings.runningHub.selectAllNodes")}</DropdownMenuItem>
               <DropdownMenuItem disabled={!selectedNodes.length} onSelect={(event) => { event.preventDefault(); if (!nodePickerTrigger.current?.matches(":disabled")) setNodeSelection([]); }}>{t("settings.runningHub.clearNodeSelection")}</DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuGroup>{nodeIds.map((nodeId) => <DropdownMenuCheckboxItem key={nodeId} checked={selectedNodes.includes(nodeId)}
+            <DropdownMenuGroup>{nodeIds.map((nodeId) => <DropdownMenuCheckboxItem key={nodeId} title={getNodeLabel(nodeId)} checked={selectedNodes.includes(nodeId)}
               onSelect={(event) => event.preventDefault()} onCheckedChange={(checked) => {
                 if (nodePickerTrigger.current?.matches(":disabled")) return;
                 setNodeSelection((selected) => checked ? selected.includes(nodeId) ? selected : [...selected, nodeId] : selected.filter((id) => id !== nodeId));
-              }}>{nodeLabel(nodeId)}</DropdownMenuCheckboxItem>)}
+              }}><span className="min-w-0 whitespace-normal break-words">{getNodeLabel(nodeId)}</span></DropdownMenuCheckboxItem>)}
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -208,7 +225,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
         </TableBody>
       </Table>
       </div>
-      <NodeParameterAction nodeIds={selectedNodes} label={t("settings.runningHub.addField")} disabled={definition.fields.length >= MAX_FIELDS} onAdd={addField} />
+      <NodeParameterAction nodeIds={selectedNodes} getNodeLabel={getNodeLabel} label={t("settings.runningHub.addField")} disabled={definition.fields.length >= MAX_FIELDS} onAdd={addField} />
       <p hidden={!selectedNodes.length}>{t("settings.runningHub.fixedParametersHint")}</p>
       <div hidden={!definition.fixedBindings?.some((item) => selectedNodes.includes(item.nodeId))} className="runninghub-mapping-scroll">
       <Table className="runninghub-secondary-table" aria-label={t("settings.runningHub.fixedParametersHint")}>
@@ -224,7 +241,7 @@ export function RunningHubDefinitionEditor({ connectionId, adapterId, value, onC
       </TableRow>)}
       </TableBody></Table>
       </div>
-      <NodeParameterAction nodeIds={selectedNodes} label={t("settings.runningHub.addFixedMapping")} variant="ghost" onAdd={(nodeId) => {
+      <NodeParameterAction nodeIds={selectedNodes} getNodeLabel={getNodeLabel} label={t("settings.runningHub.addFixedMapping")} variant="ghost" onAdd={(nodeId) => {
         revealNode(nodeId); update({ ...definition, fixedBindings: [...(definition.fixedBindings ?? []), { nodeId, fieldName: "", value: "", encoding: "NATIVE" }] });
       }} />
     </fieldset>

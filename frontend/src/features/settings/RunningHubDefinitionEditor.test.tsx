@@ -18,9 +18,9 @@ const initialDefinition: RunningHubDefinition = {
   outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
 };
 
-async function mount(selectNode = true) {
+async function mount(selectNode = true, startingDefinition = initialDefinition) {
   function Editor() {
-    const [definition, setDefinition] = useState(initialDefinition);
+    const [definition, setDefinition] = useState(startingDefinition);
     return <>
       <RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={definition} onChange={setDefinition} />
       <output data-testid="definition">{JSON.stringify(definition)}</output>
@@ -36,7 +36,9 @@ async function mount(selectNode = true) {
 async function showNodes(...nodeIds: string[]) {
   await clickControl(screen.getByRole("button", { name: "选择节点" }));
   for (const item of screen.getAllByRole("menuitemcheckbox")) {
-    const selected = nodeIds.some((nodeId) => item.textContent === `节点 ${nodeId}`);
+    const selected = nodeIds.some((nodeId) => nodeId
+      ? item.textContent === `节点 ${nodeId}` || item.textContent?.startsWith(`节点 ${nodeId} · `)
+      : item.textContent === "待配置节点");
     if ((item.getAttribute("aria-checked") === "true") !== selected) await clickControl(item);
   }
   await userEvent.setup().keyboard("{Escape}");
@@ -100,22 +102,97 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
   });
 });
 
+describe("RunningHubDefinitionEditor node labels", () => {
+  it("shows one workflow node title across multiple fields and preserves separators within a name", async () => {
+    const definition: RunningHubDefinition = {
+      ...initialDefinition,
+      fields: [
+        { key: "loraName", label: "LoRA · Loader · lora_name", type: "STRING", nodeId: "115", fieldName: "lora_name", required: false, advanced: false },
+        { key: "loraStrength", label: "LoRA · Loader · strength", type: "NUMBER", nodeId: "115", fieldName: "strength", required: false, advanced: false },
+        { key: "sampler", label: "采样器 · 自定义名称", type: "STRING", nodeId: "116", fieldName: "method", required: false, advanced: false },
+      ],
+      fixedBindings: [],
+    };
+    await mount(false, definition);
+    await clickControl(screen.getByRole("button", { name: "选择节点" }));
+    expect(screen.getAllByRole("menuitemcheckbox")).toHaveLength(2);
+    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 115 · LoRA · Loader" }));
+    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 116 · 采样器 · 自定义名称" }));
+    await userEvent.setup().keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 115 · LoRA · Loader · 节点 116 · 采样器 · 自定义名称");
+    expect(screen.getByRole("row", { name: "LoRA · Loader · lora_name" })).toBeVisible();
+    expect(screen.getByRole("row", { name: "LoRA · Loader · strength" })).toBeVisible();
+    expect(currentDefinition()).toEqual(definition);
+  });
+
+  it("keeps AI application input labels intact when their names end with the field name", async () => {
+    const definition: RunningHubDefinition = {
+      ...initialDefinition, targetType: "AI_APP",
+      fields: [{ key: "prompt", label: "输入 · prompt", type: "STRING", nodeId: "8", fieldName: "prompt", required: false, advanced: false }],
+      fixedBindings: [],
+    };
+    await mount(false, definition);
+    await showNodes("8");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 8 · 输入 · prompt");
+    expect(currentDefinition()).toEqual(definition);
+  });
+
+  it("uses the first useful field name and retains ID-only and unassigned fallbacks", async () => {
+    const definition: RunningHubDefinition = {
+      ...initialDefinition,
+      fields: [
+        { key: "unassigned", label: "未配置输入", type: "STRING", nodeId: "", fieldName: "text", required: false, advanced: false },
+        { key: "blank", label: "  ", type: "STRING", nodeId: "3", fieldName: "text", required: false, advanced: false },
+        { key: "generated", label: "节点 4 · scale", type: "NUMBER", nodeId: "4", fieldName: "scale", required: false, advanced: false },
+        { key: "english", label: "Node 6 · seed", type: "INTEGER", nodeId: "6", fieldName: "seed", required: false, advanced: false },
+        { key: "firstBlank", label: "", type: "STRING", nodeId: "7", fieldName: "text", required: false, advanced: false },
+        { key: "named", label: "命名节点 · strength", type: "NUMBER", nodeId: "7", fieldName: "strength", required: false, advanced: false },
+        { key: "emptyTitle", label: " · scale", type: "NUMBER", nodeId: "8", fieldName: "scale", required: false, advanced: false },
+      ],
+      fixedBindings: [{ nodeId: "5", fieldName: "seed", value: 1 }],
+    };
+    await mount(false, definition);
+    await clickControl(screen.getByRole("button", { name: "选择节点" }));
+    expect(screen.getAllByRole("menuitemcheckbox").map((item) => item.textContent)).toEqual([
+      "待配置节点", "节点 3", "节点 4", "节点 5", "节点 6", "节点 7 · 命名节点", "节点 8",
+    ]);
+    await clickControl(screen.getByRole("menuitem", { name: "全选节点" }));
+    await userEvent.setup().keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("待配置节点 · 节点 3 · 节点 4 · 节点 5 · 节点 6 · 节点 7 · 命名节点 · 节点 8");
+    expect(currentDefinition()).toEqual(definition);
+  });
+
+  it("updates the picker and selected summary when an existing saved field label is edited", async () => {
+    await mount(false);
+    await showNodes("2");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 2 · 强度");
+    fireEvent.change(within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "显示名称" }),
+      { target: { value: "采样强度" } });
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 2 · 采样强度");
+    await clickControl(screen.getByRole("button", { name: "选择节点" }));
+    expect(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 采样强度" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("menuitemcheckbox", { name: "节点 2 · 强度" })).not.toBeInTheDocument();
+    expect(currentDefinition().fields[1]).toEqual({ ...initialDefinition.fields[1], label: "采样强度" });
+    await userEvent.setup().keyboard("{Escape}");
+  });
+});
+
 
 describe("RunningHubDefinitionEditor mapping table", () => {
   it("selects multiple nodes in one open menu and shows their editable and fixed parameters together", async () => {
     await mount(false);
     await clickControl(screen.getByRole("button", { name: "选择节点" }));
-    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 1" }));
+    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 1 · 模式" }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
-    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 2" }));
-    expect(screen.getByRole("menuitemcheckbox", { name: "节点 1" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("menuitemcheckbox", { name: "节点 2" })).toHaveAttribute("aria-checked", "true");
+    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 强度" }));
+    expect(screen.getByRole("menuitemcheckbox", { name: "节点 1 · 模式" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 强度" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
     expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
     expect(screen.getByRole("textbox", { name: "固定值（JSON 标量）" })).toBeVisible();
     expect(currentDefinition()).toEqual(initialDefinition);
     await userEvent.setup().keyboard("{Escape}");
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 节点 2");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 模式 · 节点 2 · 强度");
   });
 
   it("shows parameters only after choosing a node and retains scalar drafts across node switches", async () => {
@@ -160,12 +237,12 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     await showNodes("1", "2");
     await clickControl(screen.getByRole("button", { name: "手动添加字段" }));
     expect(currentDefinition().fields).toHaveLength(2);
-    await clickControl(screen.getByRole("menuitem", { name: "节点 1" }));
+    await clickControl(screen.getByRole("menuitem", { name: "节点 1 · 模式" }));
     expect(currentDefinition().fields.at(-1)?.nodeId).toBe("1");
     expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
     await clickControl(screen.getByRole("button", { name: "添加固定映射" }));
     expect(currentDefinition().fixedBindings).toHaveLength(1);
-    await clickControl(screen.getByRole("menuitem", { name: "节点 2" }));
+    await clickControl(screen.getByRole("menuitem", { name: "节点 2 · 强度" }));
     expect(currentDefinition().fixedBindings?.at(-1)).toMatchObject({ nodeId: "2", fieldName: "", value: "" });
     expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
   });
@@ -175,7 +252,7 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     const picker = screen.getByRole("button", { name: "选择节点" });
     picker.focus();
     await userEvent.setup().keyboard("{Enter}{End} ");
-    expect(screen.getByRole("menuitemcheckbox", { name: "节点 2" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 强度" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("menu")).toBeInTheDocument();
     await userEvent.setup().keyboard("{Escape}");
     expect(picker).toHaveFocus();
@@ -207,7 +284,7 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     await showNodes("1");
     expect(screen.queryByRole("textbox", { name: "条件值（JSON 标量）" })).not.toBeInTheDocument();
     fireEvent.invalid(input);
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 节点 2");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 模式 · 节点 2 · 强度");
     expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
     expect(screen.getByRole("textbox", { name: "条件值（JSON 标量）" })).toBe(input);
     expect(currentDefinition().fields[1]?.enabledWhen?.value).toBe(true);
