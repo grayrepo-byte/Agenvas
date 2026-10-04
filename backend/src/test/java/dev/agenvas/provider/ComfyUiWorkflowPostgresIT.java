@@ -319,6 +319,12 @@ class ComfyUiWorkflowPostgresIT {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext(PROXY_PREFIX + "/upload/image", exchange -> { int index = UPLOADS.incrementAndGet(); exchange.getRequestBody().readAllBytes(); respond(exchange, "{\"name\":\"uploaded-" + index + ".png\",\"type\":\"input\",\"subfolder\":\"\"}"); });
             server.createContext(PROXY_PREFIX + "/prompt", exchange -> {
+                exchange.getResponseHeaders().add("Location", "/submit/prompt");
+                exchange.sendResponseHeaders(307, -1);
+                exchange.close();
+            });
+            server.createContext("/submit/prompt", exchange -> {
+                assertThat(exchange.getRequestMethod()).isEqualTo("POST");
                 var body = new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes());
                 UUID requestKey = UUID.fromString(body.path("prompt_id").asText());
                 assertThat(body.path("client_id").asText()).isEqualTo(requestKey.toString());
@@ -328,16 +334,31 @@ class ComfyUiWorkflowPostgresIT {
             });
             server.createContext(PROXY_PREFIX + "/history/", exchange -> {
                 String id = exchange.getRequestURI().getPath().substring((PROXY_PREFIX + "/history/").length());
+                exchange.getResponseHeaders().add("Location", "/query/history/" + id);
+                exchange.sendResponseHeaders(302, -1);
+                exchange.close();
+            });
+            server.createContext("/query/history/", exchange -> {
+                String id = exchange.getRequestURI().getPath().substring("/query/history/".length());
+                assertThat(exchange.getRequestMethod()).isEqualTo("GET");
                 assertThat(GRAPHS).containsKey(id);
                 QUERIES.incrementAndGet();
                 if ("SaveVideo".equals(GRAPHS.get(id).at("/99/class_type").asText())) {
                     respond(exchange, "{}");
                     return;
                 }
-                respond(exchange, "{\"" + id + "\":{\"status\":{\"completed\":true,\"status_str\":\"success\"},\"outputs\":{\"99\":{\"images\":[{\"filename\":\"image.png\",\"type\":\"output\",\"subfolder\":\"render/day\"}]}}}}");
+                // Native proxies can report a terminal status without ComfyUI's optional completed flag.
+                respond(exchange, "{\"" + id + "\":{\"status\":{\"status_str\":\"success\"},\"outputs\":{\"99\":{\"images\":[{\"filename\":\"image.png\",\"type\":\"output\",\"subfolder\":\"render/day\"}]}}}}");
             });
             server.createContext(PROXY_PREFIX + "/view", exchange -> {
                 assertThat(exchange.getRequestURI().getRawQuery()).contains("subfolder=render%2Fday");
+                exchange.getResponseHeaders().add("Location", "/archived/image.png");
+                exchange.sendResponseHeaders(302, -1);
+                exchange.close();
+            });
+            server.createContext("/archived/image.png", exchange -> {
+                assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+                assertThat(exchange.getRequestHeaders()).doesNotContainKeys("Authorization", "Cookie", "Referer");
                 var bytes = new ByteArrayOutputStream();
                 ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", bytes);
                 exchange.sendResponseHeaders(200, bytes.size());

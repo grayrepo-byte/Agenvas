@@ -5,16 +5,22 @@ import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import okhttp3.Dns;
+import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -24,7 +30,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 访问管理员固定的单个 ComfyUI 基地址及代理前缀；所有请求、文件下载和错误响应均受边界约束。 */
+/** 请求从管理员固定的 ComfyUI 基地址发起；手动跳转逐步校验地址与凭据边界，禁止隐式重试。 */
 public class ComfyUiClient {
 
     /** ComfyUI JSON 请求与响应的最大字节数。 */
@@ -39,12 +45,36 @@ public class ComfyUiClient {
     private static final int MAX_PROMPT_ID_CHARACTERS = 240;
     /** 不透明的远程 ID 只能占一个非目录路径片段，禁止编码、查询参数和控制字符。 */
     private static final Pattern PROMPT_ID = Pattern.compile("[A-Za-z0-9_-]+");
-    /** 启动时校验并固定的 HTTP(S) origin，请求不得更换主机或端口。 */
+    private static final int MAX_REDIRECTS = 3;
+    private static final int MAX_REDIRECT_LOCATION_CHARACTERS = 8192;
+    private static final int DEFAULT_HTTPS_PORT = 443;
+    private static final int DEFAULT_HTTP_PORT = 80;
+    private static final int IPV6_BYTES = 16;
+    private static final int IPV6_GLOBAL_UNICAST_MASK = 0xe0;
+    private static final int IPV6_GLOBAL_UNICAST_PREFIX = 0x20;
+    private static final int IPV6_TRANSITION_FIRST_BYTE = 0x20;
+    private static final int IPV6_TEREDO_SECOND_BYTE = 0x01;
+    private static final int IPV6_SIX_TO_FOUR_SECOND_BYTE = 0x02;
+    private static final String AZURE_METADATA_ADDRESS = "168.63.129.16";
+    private static final Pattern NUMERIC_HOST = Pattern.compile("[0-9.]+");
+    private static final String HTTP_GET = "GET";
+    private static final String HTTP_HEAD = "HEAD";
+    private static final String HTTP_POST = "POST";
+    private static final int MOVED_PERMANENTLY = 301;
+    private static final int FOUND = 302;
+    private static final int SEE_OTHER = 303;
+    private static final int TEMPORARY_REDIRECT = 307;
+    private static final int PERMANENT_REDIRECT = 308;
+    private static final Set<Integer> REDIRECT_STATUSES = Set.of(
+            MOVED_PERMANENTLY, FOUND, SEE_OTHER, TEMPORARY_REDIRECT, PERMANENT_REDIRECT);
+    /** 启动时校验并固定的 HTTP(S) origin；跳转回此源时保留自托管地址规则。 */
     private final URI origin;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
     /** 禁止代理、重定向和隐式重试的客户端。 */
     private final OkHttpClient client;
+    /** 跨域跳转使用更严格的 DNS；仍禁止自动跳转、隐式重试与代理。 */
+    private final OkHttpClient redirectClient;
     /** 解析有字节上限的 JSON 协议响应。 */
     private final ObjectMapper mapper;
 
@@ -53,6 +83,8 @@ public class ComfyUiClient {
         this.origin = checkedOrigin(properties.endpoint());
         this.mapper = mapper;
         this.client = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true),
+                CONNECT_TIMEOUT, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
+        this.redirectClient = PinnedHttpClients.pinned(checkedRedirectDns(Dns.SYSTEM),
                 CONNECT_TIMEOUT, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
     }
 
@@ -134,7 +166,7 @@ public class ComfyUiClient {
         return output(filename, "");
     }
 
-    /** Published graphs may save beneath a safe relative output subfolder, on the same server. */
+    /** Published output starts at the pinned server and shares the bounded checked redirect transport. */
     public InputStream output(String filename, String subfolder) {
         if (!ComfyUiHistory.safeFile(filename) || !ComfyUiHistory.safeSubfolder(subfolder)) {
             throw new IllegalArgumentException("Unsafe ComfyUI output filename");
@@ -185,35 +217,184 @@ public class ComfyUiClient {
     }
 
     private record TransportResponse(InputStream body) {}
+    private record RedirectTarget(HttpUrl url, String method) {}
 
-    /** No redirects or retries; a 5xx/network error remains an uncertain submission. */
-    private TransportResponse send(Request request) {
+    /** Redirects are bounded and explicit; HTTP method rules never become an implicit retry of the original URL. */
+    private TransportResponse send(Request initialRequest) {
+        registerOriginSecrets();
+        registerRedirectSecrets(initialRequest);
+        Request request = initialRequest;
+        Set<RedirectTarget> visited = new HashSet<>();
+        visited.add(new RedirectTarget(initialRequest.url(), initialRequest.method()));
+        for (int redirects = 0; ; redirects++) {
+            OkHttpClient transport = sameOrigin(origin, request.url().uri()) ? client : redirectClient;
+            Response response = execute(transport, request);
+            if (!REDIRECT_STATUSES.contains(response.code())) return checkedResponse(response);
+            try (response) {
+                String location = response.header("Location");
+                DebugHttpCapture.registerSecret(location);
+                if (redirects >= MAX_REDIRECTS) throw new ProtocolFailure("ComfyUI redirect limit exceeded");
+                URI target = checkedRedirect(origin, request.url().uri(), location, redirectClient.dns());
+                Request nextRequest = redirectedRequest(request, target, response.code());
+                // Register before closing the redirect body, which may echo a signed destination.
+                registerRedirectSecrets(nextRequest);
+                if (!visited.add(new RedirectTarget(nextRequest.url(), nextRequest.method())))
+                    throw new ProtocolFailure("ComfyUI redirect loop detected");
+                request = nextRequest;
+            }
+        }
+    }
+
+    private Request redirectedRequest(Request previous, URI target, int status) {
+        String method = previous.method();
+        RequestBody body = previous.body();
+        if (status == SEE_OTHER && !HTTP_HEAD.equals(method)
+                || (status == MOVED_PERMANENTLY || status == FOUND) && HTTP_POST.equals(method)) {
+            method = HTTP_GET;
+            body = null;
+        }
+        Request.Builder request = new Request.Builder().url(target.toASCIIString()).method(method, body);
+        String accept = previous.header("Accept");
+        if (accept != null) request.header("Accept", accept);
+        String contentType = previous.header("Content-Type");
+        if (body != null && contentType != null) request.header("Content-Type", contentType);
+        return request.build();
+    }
+
+    private static void registerRedirectSecrets(Request request) {
+        if (!DebugHttpCapture.enabled()) return;
+        var url = request.url();
+        DebugHttpCapture.registerSecret(url.toString());
+        for (String segment : url.pathSegments()) DebugHttpCapture.registerSecret(segment);
+        for (String segment : url.encodedPathSegments()) DebugHttpCapture.registerSecret(segment);
+        for (int index = 0; index < url.querySize(); index++)
+            DebugHttpCapture.registerSecret(url.queryParameterValue(index));
+        String query = url.encodedQuery();
+        if (query != null) for (String parameter : query.split("&")) {
+            int separator = parameter.indexOf('=');
+            if (separator >= 0) DebugHttpCapture.registerSecret(parameter.substring(separator + 1));
+        }
+    }
+
+    private void registerOriginSecrets() {
         for (String segment : origin.getPath().split("/")) DebugHttpCapture.registerSecret(segment);
+    }
+
+    private Response execute(OkHttpClient transport, Request request) {
         try {
-            Response response = client.newCall(request).execute();
-            int status = response.code();
-            if (status < 200 || status >= 300) {
-                try (response) {
-                    if (DebugHttpCapture.enabled() && response.body() != null) {
-                        response.body().byteStream().readNBytes(MAX_JSON_BYTES + 1);
-                    }
-                }
-                if (status >= 500) throw new TransportFailure("ComfyUI returned ambiguous HTTP " + status);
-                throw new ProtocolFailure("ComfyUI returned HTTP " + status);
-            }
-            if (response.body() == null) {
-                response.close();
-                throw new ProtocolFailure("ComfyUI returned an empty body");
-            }
-            return new TransportResponse(new FilterInputStream(response.body().byteStream()) {
-                @Override public void close() throws IOException {
-                    try { super.close(); } finally { response.close(); }
-                }
-            });
+            return transport.newCall(request).execute();
         } catch (IOException failure) {
             // OkHttp exception messages can contain the authenticated URL; do not retain the cause.
             throw new TransportFailure("ComfyUI transport outcome is uncertain");
         }
+    }
+
+    private TransportResponse checkedResponse(Response response) {
+        int status = response.code();
+        if (status < 200 || status >= 300) {
+            try (response) {
+                if (DebugHttpCapture.enabled() && response.body() != null) {
+                    try {
+                        response.body().byteStream().readNBytes(MAX_JSON_BYTES + 1);
+                    } catch (IOException failure) {
+                        throw new TransportFailure("ComfyUI response stream failed");
+                    }
+                }
+            }
+            if (status >= 500) throw new TransportFailure("ComfyUI returned ambiguous HTTP " + status);
+            throw new ProtocolFailure("ComfyUI returned HTTP " + status);
+        }
+        if (response.body() == null) {
+            response.close();
+            throw new ProtocolFailure("ComfyUI returned an empty body");
+        }
+        return new TransportResponse(new FilterInputStream(response.body().byteStream()) {
+            @Override public void close() throws IOException {
+                try { super.close(); } finally { response.close(); }
+            }
+        });
+    }
+
+    /** Same-origin redirects retain administrator address rules; foreign targets must use public HTTPS. */
+    static URI checkedRedirect(URI origin, URI current, String location, Dns redirectDns) {
+        try {
+            if (location == null || location.isBlank() || location.length() > MAX_REDIRECT_LOCATION_CHARACTERS)
+                throw new IllegalArgumentException();
+            URI reference = URI.create(location);
+            URI target;
+            if (reference.getScheme() == null && reference.getRawAuthority() == null
+                    && reference.getRawPath().isEmpty()) {
+                // Java URI.resolve drops the final path segment for a query-only Location.
+                String query = reference.getRawQuery() == null ? current.getRawQuery() : reference.getRawQuery();
+                target = URI.create(current.getScheme() + "://" + current.getRawAuthority() + current.getRawPath()
+                        + (query == null ? "" : "?" + query)
+                        + (reference.getRawFragment() == null ? "" : "#" + reference.getRawFragment()));
+            } else {
+                target = current.resolve(reference);
+            }
+            if (target.getHost() == null || target.getRawUserInfo() != null || target.getRawFragment() != null)
+                throw new IllegalArgumentException();
+            if (sameOrigin(origin, target)) {
+                // Validate the selected address and path, while retaining the target's own query/signature.
+                ComfyUiEndpoint.checked(target.getScheme() + "://" + target.getRawAuthority() + target.getRawPath());
+            } else {
+                if (!"https".equals(target.getScheme()) || target.getPort() != -1 && target.getPort() != DEFAULT_HTTPS_PORT)
+                    throw new IllegalArgumentException();
+                rejectOriginPathSecrets(origin, target);
+                // Literal IP URLs bypass OkHttp DNS; resolve them through the same strict policy before a request.
+                if (NUMERIC_HOST.matcher(target.getHost()).matches() || target.getHost().contains(":"))
+                    redirectDns.lookup(target.getHost());
+            }
+            return target;
+        } catch (IllegalArgumentException | UnknownHostException failure) {
+            throw new ProtocolFailure("ComfyUI redirect is unsafe");
+        }
+    }
+
+    private static void rejectOriginPathSecrets(URI origin, URI target) {
+        String decodedPath = target.getPath();
+        String decodedQuery = target.getQuery();
+        for (String segment : origin.getPath().split("/")) {
+            if (!segment.isEmpty() && (target.toASCIIString().contains(segment)
+                    || decodedPath != null && decodedPath.contains(segment)
+                    || decodedQuery != null && decodedQuery.contains(segment))) {
+                throw new IllegalArgumentException();
+            }
+        }
+    }
+
+    static Dns checkedRedirectDns(Dns resolver) {
+        Dns checked = FixedCloudDns.checked(resolver, false);
+        return hostname -> {
+            List<InetAddress> addresses = checked.lookup(hostname);
+            for (InetAddress address : addresses) {
+                byte[] bytes = address.getAddress();
+                if (address.isSiteLocalAddress() || bytes.length == IPV6_BYTES && !publicIpv6(bytes)
+                        || AZURE_METADATA_ADDRESS.equals(address.getHostAddress())) {
+                    throw new UnknownHostException("ComfyUI redirect DNS returned blocked address");
+                }
+            }
+            return addresses;
+        };
+    }
+
+    private static boolean publicIpv6(byte[] bytes) {
+        // Only global unicast may leave the administrator's origin. NAT64 is outside this range;
+        // Teredo and 6to4 can translate an apparently public IPv6 address to private IPv4.
+        return (bytes[0] & IPV6_GLOBAL_UNICAST_MASK) == IPV6_GLOBAL_UNICAST_PREFIX
+                && !(bytes[0] == IPV6_TRANSITION_FIRST_BYTE && bytes[1] == IPV6_TEREDO_SECOND_BYTE
+                        && bytes[2] == 0 && bytes[3] == 0)
+                && !(bytes[0] == IPV6_TRANSITION_FIRST_BYTE && bytes[1] == IPV6_SIX_TO_FOUR_SECOND_BYTE);
+    }
+
+    private static boolean sameOrigin(URI origin, URI target) {
+        return origin.getScheme().equals(target.getScheme()) && origin.getHost().equalsIgnoreCase(target.getHost())
+                && effectivePort(origin) == effectivePort(target);
+    }
+
+    private static int effectivePort(URI uri) {
+        if (uri.getPort() != -1) return uri.getPort();
+        return "https".equals(uri.getScheme()) ? DEFAULT_HTTPS_PORT : DEFAULT_HTTP_PORT;
     }
 
     /** 有界读取 JSON 响应；格式错误映射为不含原始上游正文的协议失败。 */
