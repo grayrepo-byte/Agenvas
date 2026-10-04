@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 import type { RunningHubDefinition } from "../../shared/api/client";
-import { clickControl } from "../../test/controls";
+import { clickControl, selectValue } from "../../test/controls";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 
 const initialDefinition: RunningHubDefinition = {
@@ -13,11 +13,11 @@ const initialDefinition: RunningHubDefinition = {
     { key: "strength", label: "强度", type: "NUMBER", nodeId: "2", fieldName: "strength", defaultValue: 0, required: false, advanced: false,
       enabledWhen: { field: "mode", value: true } },
   ],
-  fixedBindings: [{ nodeId: "3", fieldName: "text", value: "initial" }],
+  fixedBindings: [{ nodeId: "2", fieldName: "text", value: "initial" }],
   outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
 };
 
-function mount() {
+async function mount(selectNode = true) {
   function Editor() {
     const [definition, setDefinition] = useState(initialDefinition);
     return <>
@@ -26,7 +26,10 @@ function mount() {
     </>;
   }
   render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
-  fireEvent.click(within(screen.getByRole("row", { name: "强度" })).getByRole("button", { name: "更多设置" }));
+  if (selectNode) {
+    await selectValue(screen.getByRole("combobox", { name: "选择节点" }), "2");
+    fireEvent.click(within(screen.getByRole("row", { name: "强度" })).getByRole("button", { name: "更多设置" }));
+  }
 }
 
 function currentDefinition() {
@@ -46,7 +49,7 @@ function inputFor(label: string) {
 
 describe("RunningHubDefinitionEditor scalar inputs", () => {
   it.each(scalarInputs)("keeps the draft on invalid $label and clears errors after a typed scalar is committed", async ({ label, error, getValue }) => {
-    mount();
+    await mount();
     const review = screen.getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" });
     const originalValue = getValue(currentDefinition());
     await clickControl(review);
@@ -74,8 +77,8 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
     expect(review).toBeChecked();
   });
 
-  it("clears an optional default while empty condition and fixed values retain their previous draft", () => {
-    mount();
+  it("clears an optional default while empty condition and fixed values retain their previous draft", async () => {
+    await mount();
     const defaultInput = inputFor("默认值");
     fireEvent.change(defaultInput, { target: { value: "" } });
     fireEvent.blur(defaultInput);
@@ -95,8 +98,30 @@ describe("RunningHubDefinitionEditor scalar inputs", () => {
 
 
 describe("RunningHubDefinitionEditor mapping table", () => {
-  it("edits each row independently and preserves other mappings when one is removed", () => {
-    mount();
+  it("shows parameters only after choosing a node and retains scalar drafts across node switches", async () => {
+    await mount(false);
+    expect(screen.queryByRole("table", { name: "参数绑定" })).not.toBeInTheDocument();
+    const node = screen.getByRole("combobox", { name: "选择节点" });
+    await selectValue(node, "1");
+    expect(screen.getByRole("row", { name: "模式" })).toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: "强度" })).not.toBeInTheDocument();
+    await selectValue(node, "2");
+    expect(screen.queryByRole("row", { name: "模式" })).not.toBeInTheDocument();
+    const input = inputFor("默认值");
+    fireEvent.change(input, { target: { value: "invalid" } });
+    fireEvent.blur(input);
+    await selectValue(node, "1");
+    await selectValue(node, "2");
+    expect(inputFor("默认值")).toBe(input);
+    expect(input).toHaveValue("invalid");
+    expect(input).toBeInvalid();
+    expect(currentDefinition().fields[1]?.defaultValue).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "手动添加字段" }));
+    expect(currentDefinition().fields.at(-1)?.nodeId).toBe("2");
+  });
+
+  it("edits each row independently and preserves other mappings when one is removed", async () => {
+    await mount();
     const table = screen.getByRole("table", { name: "参数绑定" });
     const strength = within(table).getByRole("row", { name: "强度" });
     fireEvent.change(within(strength).getByRole("textbox", { name: "节点 ID" }), { target: { value: "42" } });
@@ -110,15 +135,17 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     expect(currentDefinition().fixedBindings).toEqual(initialDefinition.fixedBindings);
   });
 
-  it("expands hidden settings when form validation targets an invalid condition", () => {
-    mount();
+  it("expands hidden settings when form validation targets an invalid condition", async () => {
+    await mount();
     const input = screen.getByRole("textbox", { name: "条件值（JSON 标量）" });
     fireEvent.change(input, { target: { value: "invalid" } });
     fireEvent.blur(input);
     const row = screen.getByRole("row", { name: "强度" });
     fireEvent.click(within(row).getByRole("button", { name: "更多设置" }));
+    await selectValue(screen.getByRole("combobox", { name: "选择节点" }), "1");
     expect(screen.queryByRole("textbox", { name: "条件值（JSON 标量）" })).not.toBeInTheDocument();
     fireEvent.invalid(input);
+    expect(screen.getByRole("combobox", { name: "选择节点" })).toHaveValue("2");
     expect(screen.getByRole("textbox", { name: "条件值（JSON 标量）" })).toBe(input);
     expect(currentDefinition().fields[1]?.enabledWhen?.value).toBe(true);
   });

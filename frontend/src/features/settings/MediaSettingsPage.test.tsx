@@ -179,6 +179,7 @@ describe("MediaSettingsPage", () => {
     await selectValue(within(dialog).getByRole("combobox", { name: "目标类型" }), "AI_APP");
     await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
     await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
+    await user.click(within(dialog).getByText("创作者表单预览 · 离线"));
     expect(await within(dialog).findByRole("combobox", { name: "创作风格 *" })).toHaveValue("0");
     await user.click(within(dialog).getByRole("combobox", { name: "创作风格 *" }));
     expect(screen.getByRole("option", { name: "写实" })).toBeInTheDocument();
@@ -186,8 +187,112 @@ describe("MediaSettingsPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
     expect(published).toEqual([]);
     await user.click(within(dialog).getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" }));
-    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(published).toEqual([{ name: "背景应用", adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition } }]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("validates and saves an edited workflow on review, preserving failed drafts until an explicit retry", async () => {
+    const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
+      schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [], outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+    };
+    const fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub" }, {
+      adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition },
+    });
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        writes.push(await request.json());
+        return writes.length === 1
+          ? HttpResponse.json({ title: "Unavailable", detail: "Unavailable", code: "SYNTHETIC_FAILURE", status: 503 }, {
+            status: 503, headers: { "Content-Type": "application/problem+json" },
+          })
+          : HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    const dialog = screen.getByRole("dialog");
+    const name = within(dialog).getByRole("textbox", { name: "能力名称" });
+    await user.clear(name); await user.type(name, "Updated workflow");
+    const target = within(dialog).getByRole("textbox", { name: "真实目标 ID" });
+    await user.clear(target); await user.type(target, "invalid");
+    const review = within(dialog).getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" });
+    await user.click(review);
+    expect(target).toBeInvalid();
+    expect(writes).toEqual([]);
+
+    await user.clear(target); await user.type(target, "321");
+    expect(review).not.toBeChecked();
+    await user.click(review);
+    expect(await within(dialog).findByText("Unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBe(dialog);
+    expect(name).toHaveValue("Updated workflow");
+    expect(target).toHaveValue("321");
+    expect(writes).toEqual([{ expectedVersion: 4, name: "Updated workflow", enabled: true,
+      adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: { ...definition, targetId: "321" } } }]);
+
+    await user.click(review);
+    expect(writes).toHaveLength(1);
+    await user.click(review);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual(writes[0]);
+  });
+
+  it.each(["VIDEO", "AUDIO"] as const)("saves a changed %s primary output and preserves the workflow fields", async (kind) => {
+    const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
+      schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [{ key: "prompt", label: "提示词", nodeId: "1", fieldName: "text", type: "STRING", source: "PROMPT", required: false, advanced: false }],
+      outputs: [{ nodeId: "8", kind: "IMAGE", primary: true, maxCount: 1 }],
+    };
+    let fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub" }, {
+      adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition,
+        pricing: { amount: "0.125", currency: "CNY", unit: "IMAGE" } },
+    });
+    const updatedDefinition = { ...definition, outputs: [{ ...definition.outputs[0]!, kind }] };
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        writes.push(await request.json());
+        fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub" }, {
+          adapterId: `RUNNINGHUB_${kind}`, kind: `${kind}_GENERATION`, version: 5,
+          capabilityVersion: 3, settings: { runningHub: updatedDefinition },
+        });
+        fixture.defaults[0]!.capabilityId = null;
+        return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    const dialog = screen.getByRole("dialog");
+    const outputs = within(dialog).getByRole("table", { name: "输出映射" });
+    const target = within(dialog).getByRole("textbox", { name: "真实目标 ID" });
+    const review = within(dialog).getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" });
+    await user.clear(target);
+    await user.click(review);
+    expect(review).toBeChecked();
+    expect(writes).toEqual([]);
+    await selectValue(within(dialog).getByRole("combobox", { name: "主输出类型" }), `RUNNINGHUB_${kind}`);
+    expect(review).not.toBeChecked();
+    expect(within(outputs).getByRole("combobox", { name: "媒体类型" })).toHaveValue(kind);
+    await user.type(target, "123");
+    await selectValue(within(outputs).getByRole("combobox", { name: "媒体类型" }), "IMAGE");
+    await selectValue(within(outputs).getByRole("combobox", { name: "媒体类型" }), kind);
+    expect(within(dialog).getByRole("combobox", { name: "主输出类型" })).toHaveValue(`RUNNINGHUB_${kind}`);
+    expect(within(dialog).getByRole("spinbutton", { name: "单位价格" })).toHaveValue(null);
+    await user.click(within(dialog).getByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(writes).toEqual([{ expectedVersion: 4, name: "Portrait", enabled: true,
+      adapterId: `RUNNINGHUB_${kind}`, settings: { runningHub: updatedDefinition } }]);
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    expect(within(screen.getByRole("table", { name: "输出映射" })).getByRole("combobox", { name: "媒体类型" })).toHaveValue(kind);
   });
 
   it("preserves connection and capability drafts after background updates until each explicit reload", async () => {

@@ -25,7 +25,7 @@ import { AutoDlWorkflowFields } from "./AutoDlWorkflowFields";
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
 import { GoogleImageConnectionHelp,googleImageApiLabel } from "./GoogleImageConnectionHelp";
 import { MediaConnectionAddressField } from "./MediaConnectionAddressField";
-import { adapterLabel,adapterMetadata,adapterModel,platformAdapters } from "./mediaAdapterCatalog";
+import { RUNNINGHUB_OUTPUT_ADAPTERS,adapterLabel,adapterMetadata,adapterModel,platformAdapters } from "./mediaAdapterCatalog";
 import "./MediaSettingsPage.css";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 type AdapterSettings = MediaCapability["settings"];
@@ -128,10 +128,24 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
 }) {
   useLocale();
   const [tab, setTab] = useState<EditorTab>("model");
+  function changeWorkflowOutput(kind: keyof typeof RUNNINGHUB_OUTPUT_ADAPTERS, runningHub = values.runningHub) {
+    onAdapterChange(RUNNINGHUB_OUTPUT_ADAPTERS[kind]);
+    const pricing = values.pricing?.unit === kind || (kind !== "IMAGE" && values.pricing?.unit === "SECOND")
+      ? values.pricing : undefined;
+    onChange({ ...values, pricing, runningHub: runningHub ? { ...runningHub,
+      outputs: runningHub.outputs.map((output) => output.primary ? { ...output, kind } : output) } : undefined });
+  }
   if (adapterId.startsWith("RUNNINGHUB_")) return <div className="ui-stack"><fieldset disabled={disabled} className="ui-stack">
     <Field><FieldLabel className="ui-field block">{creating ? t("settings.mediaSettings.newCapabilityName") : t("settings.mediaSettings.capabilityName")}<Input required maxLength={NAME_LIMIT} value={name} onChange={(event) => onNameChange(event.target.value)} /></FieldLabel></Field>
-    <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.primaryOutputKind")}<Select value={adapterId} onChange={(event) => onAdapterChange(event.target.value)}>{availableAdapters.map((adapter) => <option key={adapter} value={adapter}>{adapterLabel(adapter)}</option>)}</Select></FieldLabel></Field>
-    <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub} onChange={(runningHub) => onChange({ ...values, runningHub })} />
+    <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.primaryOutputKind")}<Select value={adapterId} onChange={(event) => {
+      const kind = (Object.keys(RUNNINGHUB_OUTPUT_ADAPTERS) as (keyof typeof RUNNINGHUB_OUTPUT_ADAPTERS)[])
+        .find((outputKind) => RUNNINGHUB_OUTPUT_ADAPTERS[outputKind] === event.target.value);
+      if (kind) changeWorkflowOutput(kind);
+    }}>{availableAdapters.map((adapter) => <option key={adapter} value={adapter}>{adapterLabel(adapter)}</option>)}</Select></FieldLabel></Field>
+    <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub} onChange={(runningHub, primaryKind) => {
+      if (primaryKind) changeWorkflowOutput(primaryKind, runningHub);
+      else onChange({ ...values, runningHub });
+    }} />
     <CapabilityConfigurationFields section="pricing" adapterId={adapterId} values={values} onChange={onChange} />
   </fieldset></div>;
   return <div className="media-editor ui-stack" onInvalidCapture={(event) => {
@@ -261,7 +275,8 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       setError(errorMessage(cause));
     },
   });
-  const sameKindAdapters = availableAdapters.filter((id) => adapterMetadata(id)?.kind === capability.kind);
+  const sameKindAdapters = capability.adapterId.startsWith("RUNNINGHUB_") ? availableAdapters
+    : availableAdapters.filter((id) => adapterMetadata(id)?.kind === capability.kind);
   const rowBusy = busy || save.isPending;
   function loadLatest() {
     acceptBaseline(capability);

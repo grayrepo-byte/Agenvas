@@ -1,0 +1,55 @@
+.canvas-selection-checkbox {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+}
+
+.canvas-selection-checkbox--inline {
+  position: relative;
+  top: auto;
+  left: auto;
+  flex: none;
+  margin: 5px;
+}
+
+.canvas-selection-checkbox input[type="checkbox"] {
+  appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--ui-text-secondary);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface-raised);
+  box-shadow: var(--ui-panel-shadow);
+  cursor: inherit;
+}
+
+.canvas-selection-checkbox input[type="checkbox"]:checked {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent);
+}
+
+.canvas-selection-checkbox input[type="checkbox"]:focus-visible {
+  outline: var(--ui-focus-width) solid var(--ui-focus);
+  outline-offset: var(--ui-focus-offset);
+}
+
+.canvas-selection-checkbox svg {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  color: var(--ui-accent-foreground);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.canvas-selection-checkbox input:checked + svg { visibility: visible; }

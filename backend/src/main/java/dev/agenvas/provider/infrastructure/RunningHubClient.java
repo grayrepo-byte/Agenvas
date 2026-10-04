@@ -30,6 +30,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class RunningHubClient {
     public static final int MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
     private static final int MAX_JSON_BYTES = 1024 * 1024;
+    private static final String APP_DETAIL_PATH = "/api/webapp/detail";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(60);
     private static final Duration CALL_TIMEOUT = Duration.ofMinutes(2);
@@ -82,10 +83,25 @@ public final class RunningHubClient {
             try { return mapper.readTree(result.asText()); }
             catch (RuntimeException invalid) { throw new ProtocolFailure(); }
         }
-        // The upstream example also puts the key in query. We deliberately use only Bearer;
-        // sites that require the query key can use the sanitized local import instead.
-        return json(new Request.Builder().url(validatedOrigin(origin) + "/api/webapp/apiCallDemo?webappId=" + targetId)
-                .header("Authorization", "Bearer " + key).get().build(), false).path("data");
+        // Public app pages expose the input contract without credentials. The older demo
+        // endpoint can require a query key even with Bearer, so prefer the public detail.
+        try {
+            JsonNode detail = json(post(origin, APP_DETAIL_PATH, mapper.createObjectNode().put("webappId", targetId)), false).path("data");
+            if (!targetId.equals(detail.path("id").asText())) throw new ProtocolFailure();
+            return appInputs(detail.path("inputNodes"));
+        } catch (Rejected | ProtocolFailure unavailable) {
+            // Private apps and compatible sites may only expose the authenticated demo.
+            // This is read-only discovery; neither request can submit a generation.
+            JsonNode demo = json(new Request.Builder().url(validatedOrigin(origin) + "/api/webapp/apiCallDemo?webappId=" + targetId)
+                    .header("Authorization", "Bearer " + key).get().build(), false).path("data");
+            return appInputs(demo.path("nodeInfoList"));
+        }
+    }
+
+    /** Retain only input candidates, never owner information or credential-bearing curl demos. */
+    private JsonNode appInputs(JsonNode nodes) {
+        if (!nodes.isArray() || nodes.isEmpty()) throw new ProtocolFailure();
+        return mapper.createObjectNode().set("nodeInfoList", nodes);
     }
 
     public String upload(String origin, String key, Path path, String mime, RunningHubDefinition.ResourceFormat format) {
@@ -154,7 +170,11 @@ public final class RunningHubClient {
     }
 
     private Request post(String origin, String key, String path, JsonNode body) {
-        return new Request.Builder().url(validatedOrigin(origin) + path).header("Authorization", "Bearer " + key)
+        return post(origin, path, body).newBuilder().header("Authorization", "Bearer " + key).build();
+    }
+
+    private Request post(String origin, String path, JsonNode body) {
+        return new Request.Builder().url(validatedOrigin(origin) + path)
                 .header("Accept", "application/json").post(RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8), MediaType.parse("application/json"))).build();
     }
 

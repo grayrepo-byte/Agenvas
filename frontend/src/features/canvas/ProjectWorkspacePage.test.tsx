@@ -8,9 +8,10 @@ import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Agent,CanvasCommand,CanvasItem,ProjectSnapshot } from "../../shared/api/client";
 import { changeControl } from "../../test/controls";
+import { imageFunctionSettings } from "../../test/imageFunctionsFixture";
 import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
-import { useCanvasStore } from "./canvasStore";
+import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 
 const viewportProbe = vi.hoisted(() => ({ center: vi.fn<ReactFlowInstance["setCenter"]>(),
   instance: null as ReactFlowInstance | null }));
@@ -80,7 +81,8 @@ describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
     viewportProbe.center.mockClear();
     viewportProbe.instance = null;
-    useCanvasStore.setState({ selectedIds: [], drafts: {}, saveState: "saved" });
+    useCanvasStore.setState({ selectedIds: [], selectionMode: CANVAS_SELECTION_MODE.SINGLE,
+      drafts: {}, saveState: "saved" });
     server.use(
       http.get("/api/v1/projects/:projectId/assets/:assetId", ({ params }) => HttpResponse.json({
         id: params.assetId, width: 1024, height: 1024,
@@ -569,6 +571,7 @@ describe("ProjectWorkspacePage", () => {
 
   it("keeps the selected image when Escape closes its model menu and protects smart edit input", async () => {
     server.use(
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("image-model"))),
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Smart edit project", status: "ACTIVE" })),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [imageCard()] })),
@@ -586,13 +589,14 @@ describe("ProjectWorkspacePage", () => {
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
     fireEvent.click(await screen.findByRole("article", { name: "Hero · 图片" }));
-    await user.click(await screen.findByRole("button", { name: "智能编辑" }));
-    await user.type(screen.getByRole("textbox", { name: "智能编辑提示词" }), "保留这段要求");
-    await user.click(screen.getByRole("combobox", { name: "图片能力" }));
+    await user.click(await screen.findByRole("button", { name: "选择生成模型" }));
+    expect(screen.getByRole("menu", { name: "生成模型" })).toBeVisible();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(useCanvasStore.getState().selectedIds).toEqual(["image-card"]);
-    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "智能编辑提示词" })).toHaveValue("保留这段要求");
+    expect(screen.queryByRole("menu", { name: "生成模型" })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "智能编辑" }));
+    await user.type(await screen.findByRole("textbox", { name: "智能编辑提示词" }), "保留这段要求");
+    expect(screen.getByRole("combobox", { name: "图片能力" })).toBeDisabled();
     await user.keyboard("{Escape}");
     const confirmation = await screen.findByRole("dialog", { name: "有未保存的修改" });
     await user.click(within(confirmation).getByRole("button", { name: "继续编辑" }));
@@ -1597,7 +1601,9 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getByText("预览暂不可用")).toBeInTheDocument();
   });
 
-  it("keeps generated video on its poster until the user chooses playback", async () => {
+  it("keeps generated video on its poster until hover playback without selecting the node", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     const assetId = crypto.randomUUID();
     const artifactId = crypto.randomUUID();
     const versionId = crypto.randomUUID();
@@ -1639,12 +1645,18 @@ describe("ProjectWorkspacePage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByAltText("Demo clip 的视频封面")).toHaveAttribute("src",
+    const poster = await screen.findByAltText("Demo clip 的视频封面");
+    expect(poster).toHaveAttribute("src",
       `/api/v1/projects/project-1/assets/${assetId}/thumbnail`);
     expect(screen.queryByLabelText("Demo clip 的视频")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText("播放视频"));
+    fireEvent.mouseEnter(poster.parentElement!);
     expect(screen.getByLabelText("Demo clip 的视频")).toHaveAttribute("src",
       `/api/v1/projects/project-1/assets/${assetId}/content`);
     expect(screen.getByText("演示视频")).toBeInTheDocument();
+    expect(play).toHaveBeenCalledOnce();
+    expect(useCanvasStore.getState().selectedIds).toEqual([]);
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    fireEvent.mouseLeave(screen.getByLabelText("Demo clip 的视频").parentElement!);
+    expect(pause).toHaveBeenCalled();
   });
 });

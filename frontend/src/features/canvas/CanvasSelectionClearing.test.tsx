@@ -10,7 +10,7 @@ import type { CanvasCommand,CanvasItem,ProjectSnapshot } from "../../shared/api/
 import { clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
-import { useCanvasStore } from "./canvasStore";
+import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 
 type SelectionChange = NodeSelectionChange;
@@ -100,7 +100,8 @@ beforeEach(() => {
   focusProbe.center.mockClear();
   focusProbe.viewport.mockClear();
   focusProbe.zoom = 1;
-  useCanvasStore.setState({ selectedIds: [], drafts: {}, mediaDraftRecoveries: {}, saveState: "saved" });
+  useCanvasStore.setState({ selectedIds: [], selectionMode: CANVAS_SELECTION_MODE.SINGLE,
+    drafts: {}, mediaDraftRecoveries: {}, saveState: "saved" });
   server.use(
     http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: [] })),
     http.get("/api/v1/projects/:projectId/artifacts/:artifactId/run", () => HttpResponse.json([])),
@@ -229,6 +230,23 @@ async function renderInteractiveFlow() {
   renderRealFlow = true;
   await renderFlow();
   await waitFor(() => expect(nodeElement("image-card")).toBeInTheDocument());
+}
+
+function boxSelectNodes(box: typeof SELECTION_BOX = SELECTION_BOX) {
+  const pane = document.querySelector(".react-flow__pane");
+  if (!(pane instanceof HTMLElement)) throw new Error("Missing pane");
+  for (const type of ["pointerDown", "pointerMove", "pointerUp"] as const) {
+    const event = createEvent[type](pane, { bubbles: true });
+    Object.defineProperties(event, {
+      clientX: { value: type === "pointerDown" ? box.startX : box.endX },
+      clientY: { value: type === "pointerDown" ? box.startY : box.endY },
+      button: { value: 0 }, isPrimary: { value: true }, pointerId: { value: 1 },
+      pointerType: { value: "mouse" },
+    });
+    fireEvent(pane, event);
+  }
+  // Browsers dispatch click after pointerup; the pane consumes this selection-ending click.
+  fireEvent.click(pane);
 }
 
 describe("video hover controls", () => {
@@ -499,6 +517,75 @@ describe("node click and drag gestures", () => {
 });
 
 describe("workspace selection with real React Flow", () => {
+  it("keeps a single box-selected node in multi-select mode without opening its editor", async () => {
+    await renderInteractiveFlow();
+    boxSelectNodes({ startX: -10, startY: -10, endX: 300, endY: 300 });
+    expect(selectedIds()).toEqual(["image-card"]);
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("媒体卡片操作")).not.toBeInTheDocument();
+    const toolbar = screen.getByRole("group", { name: "批量操作" });
+    expect(toolbar).toBeVisible();
+    expect(within(toolbar).getByText("1 张卡片已选中")).toBeVisible();
+    expect(within(toolbar).getByRole("button", { name: "左对齐" })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "选择卡片：参考图" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "选择卡片：Agent" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "选择卡片：正文" })).not.toBeChecked();
+    expect(focusProbe.center).not.toHaveBeenCalled();
+    fireEvent.click(nodeElement("image-card"));
+    expect(selectedIds()).toEqual(["image-card"]);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "批量操作" })).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("媒体卡片操作")).toBeVisible();
+    expect(await screen.findByLabelText("所选卡片编辑区")).toBeVisible();
+  });
+
+  it("toggles cards through checkboxes while preserving multi-select at one or zero cards", async () => {
+    const saves = observeLayoutSaves();
+    await renderInteractiveFlow();
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "agent-card"]));
+    const imageCheckbox = screen.getByRole("checkbox", { name: "选择卡片：参考图" });
+    const agentCheckbox = screen.getByRole("checkbox", { name: "选择卡片：Agent" });
+    const textCheckbox = screen.getByRole("checkbox", { name: "选择卡片：正文" });
+    expect(imageCheckbox).toBeChecked();
+    expect(agentCheckbox).toBeChecked();
+    expect(textCheckbox).not.toBeChecked();
+    nodeMouseGesture("mouseDown", textCheckbox, 0);
+    nodeMouseGesture("mouseMove", textCheckbox, 40);
+    nodeMouseGesture("mouseUp", textCheckbox, 40);
+    fireEvent.click(textCheckbox);
+    expect(selectedIds()).toEqual(["image-card", "agent-card", "text-card"]);
+    expect(textCheckbox).toBeChecked();
+    expect(saves).toHaveLength(0);
+    fireEvent.click(agentCheckbox);
+    fireEvent.click(imageCheckbox);
+    expect(selectedIds()).toEqual(["text-card"]);
+    expect(screen.getByRole("group", { name: "批量操作" })).toBeVisible();
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("文字卡片操作")).not.toBeInTheDocument();
+    fireEvent.click(textCheckbox);
+    expect(selectedIds()).toEqual([]);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(items.length);
+    expect(screen.queryByRole("group", { name: "批量操作" })).not.toBeInTheDocument();
+    fireEvent.click(imageCheckbox);
+    expect(selectedIds()).toEqual(["image-card"]);
+    expect(screen.queryByLabelText("媒体卡片操作")).not.toBeInTheDocument();
+    fireEvent.keyDown(imageCheckbox, { key: "Escape" });
+    expect(selectedIds()).toEqual([]);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("enters multi-select with an empty box and leaves it on a blank-pane click", async () => {
+    await renderInteractiveFlow();
+    boxSelectNodes({ startX: 1100, startY: 700, endX: 1200, endY: 800 });
+    expect(selectedIds()).toEqual([]);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(items.length);
+    const pane = document.querySelector(".react-flow__pane");
+    if (!(pane instanceof HTMLElement)) throw new Error("Missing pane");
+    fireEvent.pointerDown(pane, { button: 0, isPrimary: true });
+    fireEvent.pointerUp(pane, { button: 0, isPrimary: true });
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
   it("selects and replaces nodes on ordinary clicks", async () => {
     await renderInteractiveFlow();
     fireEvent.click(nodeElement("image-card"));
@@ -522,6 +609,9 @@ describe("workspace selection with real React Flow", () => {
     await waitFor(() => expect(nodeElement("agent-card")).toHaveClass("selected"));
     fireEvent.click(nodeElement("image-card"), modifier);
     expect(selectedIds()).toEqual(["agent-card"]);
+    expect(screen.getByRole("checkbox", { name: "选择卡片：Agent" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "选择卡片：参考图" })).not.toBeChecked();
+    expect(screen.getByRole("group", { name: "批量操作" })).toBeVisible();
     fireEvent.keyUp(window, { key, code });
   });
 
@@ -535,22 +625,8 @@ describe("workspace selection with real React Flow", () => {
 
   it("box-selects nodes and replaces the box selection with an ordinary click", async () => {
     await renderInteractiveFlow();
-    const pane = document.querySelector(".react-flow__pane");
-    if (!(pane instanceof HTMLElement)) throw new Error("Missing pane");
     fireEvent.keyDown(window, { key: "Shift", code: "ShiftLeft", shiftKey: true });
-    const gesture = (type: "pointerDown" | "pointerMove" | "pointerUp", x: number, y: number) => {
-      const event = createEvent[type](pane, { bubbles: true });
-      Object.defineProperties(event, {
-        clientX: { value: x }, clientY: { value: y }, button: { value: 0 },
-        isPrimary: { value: true }, pointerId: { value: 1 }, pointerType: { value: "mouse" },
-      });
-      fireEvent(pane, event);
-    };
-    gesture("pointerDown", SELECTION_BOX.startX, SELECTION_BOX.startY);
-    gesture("pointerMove", SELECTION_BOX.endX, SELECTION_BOX.endY);
-    gesture("pointerUp", SELECTION_BOX.endX, SELECTION_BOX.endY);
-    // Browsers dispatch click after pointerup; the pane consumes this selection-ending click.
-    fireEvent.click(pane);
+    boxSelectNodes();
     fireEvent.keyUp(window, { key: "Shift", code: "ShiftLeft" });
     expect(selectedIds()).toEqual(["image-card", "agent-card"]);
     fireEvent.click(nodeElement("text-card"));

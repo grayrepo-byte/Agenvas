@@ -89,7 +89,15 @@
 }
 .media-draft-editor .media-draft-prompt:focus-visible { border-color: var(--ui-border-strong); outline: none; }
 .media-draft-prompt-shell .media-draft-prompt { min-height: 0; }
-.media-draft-editor > .runninghub-form { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+/* The read-only fieldset uses display: contents; the form is not a direct DOM child. */
+.media-draft-editor .runninghub-form {
+  min-height: 0; overflow-y: auto; overscroll-behavior-y: contain;
+  margin: 9px 0 8px;
+}
+/* Keep a long mapped string from consuming the entire parameter list. */
+.media-draft-editor .runninghub-form textarea {
+  field-sizing: fixed; max-height: var(--draft-prompt-height); overflow-y: auto;
+}
 .media-draft-prompt:empty::before { color: var(--ui-text-subtle); content: attr(data-placeholder); pointer-events: none; }
 .media-draft-prompt::placeholder { color: var(--ui-text-subtle); }
 .media-draft-inline-mention { display: inline-flex; align-items: center; gap: 4px; min-height: 24px;

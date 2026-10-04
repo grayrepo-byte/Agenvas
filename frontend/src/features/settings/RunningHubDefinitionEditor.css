@@ -8,6 +8,8 @@
 .runninghub-definition-editor { gap: var(--ui-space-3); }
 .runninghub-definition-editor > button { align-self: flex-start; }
 .runninghub-definition-editor > fieldset { min-width: 0; gap: var(--ui-space-2); }
+.runninghub-definition-editor > fieldset > button { align-self: flex-start; }
+.runninghub-node-picker { max-width: 480px; }
 .runninghub-mapping-scroll { min-width: 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); }
 .runninghub-mapping-table { min-width: 1120px; table-layout: fixed; }
 .runninghub-mapping-table th { background: var(--ui-field); }

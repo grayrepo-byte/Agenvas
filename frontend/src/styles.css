@@ -321,6 +321,9 @@ button:disabled {
 .workspace-canvas.is-hand-tool .react-flow__node { cursor: grab; }
 .workspace-canvas.is-hand-tool .react-flow__pane.dragging { cursor: grabbing; }
 
+/* The group outline must not cover unchecked cards or their toggles. Drag a selected card to move the group. */
+.workspace-canvas.is-multi-select .react-flow__nodesselection-rect { pointer-events: none; }
+
 .workspace-selection-toolbar {
   position: absolute;
   z-index: 10;
