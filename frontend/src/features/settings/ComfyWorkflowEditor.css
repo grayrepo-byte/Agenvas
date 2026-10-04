@@ -1,5 +1,8 @@
-.comfy-capability-dialog { --ui-dialog-width: 1040px; }
+.ui-dialog.app-page.comfy-capability-dialog { --ui-dialog-width: 1040px; max-height: calc(100dvh - var(--ui-space-8)); }
 .comfy-workflow-editor { min-width: 0; }
+.comfy-workflow-import { gap: var(--ui-space-4); }
+/* Long API JSON scrolls inside the editor instead of pushing the parse action away. */
+.comfy-workflow-json { field-sizing: fixed; height: clamp(120px, 24dvh, 180px); max-height: 180px; resize: none; overflow-y: auto; }
 .comfy-steps { display: flex; gap: 8px; border-bottom: 1px solid var(--ui-border); padding-bottom: 12px; }
 .comfy-steps > button { flex: 1; }
 .comfy-node-layout { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 3fr); gap: 18px; }
@@ -14,7 +17,6 @@
 .comfy-input-row code { overflow-wrap: anywhere; font-size: 12px; }
 .comfy-input-row pre { grid-column: 2 / -1; overflow: auto; margin: 0; font-size: 11px; }
 .comfy-binding-summary { margin: 0; padding-left: 20px; font-size: 13px; }
-.comfy-review-check { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 .comfy-parameter-table { min-width: 840px; }
 .comfy-parameter-table td { vertical-align: top; white-space: normal; }
 .comfy-parameter-table td:first-child { min-width: 150px; }
@@ -29,4 +31,7 @@
   .comfy-input-row > :last-child { grid-column: 2; }
   .comfy-steps { gap: 2px; }
   .comfy-steps > button { padding-inline: 6px; font-size: 12px; }
+}
+@media (max-width: 560px) {
+  .ui-dialog.app-page.comfy-capability-dialog { max-height: calc(100dvh - var(--ui-space-4)); }
 }

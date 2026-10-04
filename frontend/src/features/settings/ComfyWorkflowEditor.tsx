@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ApiError, previewComfyWorkflow, type ComfyUiGraph, type ComfyUiWorkflowDefinition, type MediaCapability, type RunningHubField } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { Notice } from "../../shared/ui/PagePrimitives";
@@ -12,7 +12,7 @@ import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../shared/ui/primitives/table";
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
 import "./ComfyWorkflowEditor.css";
-import { COMFY_WORKFLOW_LIMITS as LIMITS, comfyParameterKey, comfyParameterTypes, comfyReferenceCount, comfyWorkflowProblem } from "./comfyWorkflow";
+import { COMFY_WORKFLOW_DEFAULT_SIDE, COMFY_WORKFLOW_LIMITS as LIMITS, comfyParameterKey, comfyParameterTypes, comfyReferenceCount, comfyWorkflowProblem } from "./comfyWorkflow";
 
 type Settings = MediaCapability["settings"];
 type Binding = ComfyUiWorkflowDefinition["bindings"][number];
@@ -31,7 +31,7 @@ const SOURCE_KEYS = {
 } as const;
 
 function initialDefinition(graph: ComfyUiGraph, video: boolean): ComfyUiWorkflowDefinition {
-  return { schemaVersion: 1, graph, bindings: [], output: { nodeId: "", field: "images" }, width: 1024, height: 1024,
+  return { schemaVersion: 1, graph, bindings: [], output: { nodeId: "", field: "images" }, width: COMFY_WORKFLOW_DEFAULT_SIDE, height: COMFY_WORKFLOW_DEFAULT_SIDE,
     minimumSeconds: video ? 1 : 0, maximumSeconds: video ? 5 : 0, fps: 24, frameMultiple: 1, frameOffset: 0 };
 }
 
@@ -40,6 +40,7 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
   connectionId: string; adapterId: string; values: Settings; onChange: (value: Settings) => void; onReadyChange: (ready: boolean) => void;
 }) {
   useLocale();
+  const fieldId = useId();
   const video = adapterId === "COMFY_VIDEO_V1";
   const definition = values.comfyWorkflow;
   const [step, setStep] = useState<Step>(definition ? "mapping" : "import");
@@ -48,26 +49,25 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
   const [error, setError] = useState("");
   const [parameterErrors, setParameterErrors] = useState<Record<string, boolean>>({});
   const [reading, setReading] = useState(false);
-  const [reviewed, setReviewed] = useState<Settings | null>(null);
   const readEpoch = useRef(0);
   const problem = comfyWorkflowProblem(definition, video);
   const imported = useMutation({
     mutationFn: () => previewComfyWorkflow(connectionId, source),
-    onSuccess: (graph) => { onChange({ comfyWorkflow: initialDefinition(graph, video), pricing: values.pricing }); setReviewed(null); setSelectedNode(Object.keys(graph)[0] ?? ""); setStep("mapping"); setError(""); setParameterErrors({}); },
+    onSuccess: (graph) => { onChange({ comfyWorkflow: initialDefinition(graph, video), pricing: values.pricing }); setSelectedNode(Object.keys(graph)[0] ?? ""); setStep("mapping"); setError(""); setParameterErrors({}); },
     onError: (cause) => setError(cause instanceof ApiError ? cause.message : t("settings.comfy.importFailed")),
   });
   const invalidParameter = Object.values(parameterErrors).some(Boolean);
-  const ready = !!definition && !problem && reviewed === values && !imported.isPending && !reading && !error && !invalidParameter;
+  const ready = !!definition && !problem && !imported.isPending && !reading && !error && !invalidParameter;
   useEffect(() => { onReadyChange(ready); return () => onReadyChange(false); }, [ready, onReadyChange]);
   useEffect(() => () => { readEpoch.current += 1; }, []);
   const node = definition?.graph[selectedNode];
   function update(patch: Partial<ComfyUiWorkflowDefinition>) {
     if (!definition) return;
     onChange({ ...values, comfyWorkflow: { ...definition, ...patch } });
-    setReviewed(null);
   }
   function mapInput(inputName: string, sourceName: string) {
     if (!definition) return;
+    const previousBinding = definition.bindings.find((binding) => binding.nodeId === selectedNode && binding.inputName === inputName);
     const bindings = definition.bindings.filter((binding) => binding.nodeId !== selectedNode || binding.inputName !== inputName);
     const parameters = (definition.parameters ?? []).filter((field) => field.nodeId !== selectedNode || field.fieldName !== inputName);
     const previousParameter = definition.parameters?.find((field) => field.nodeId === selectedNode && field.fieldName === inputName);
@@ -80,7 +80,17 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
         type, nodeId: selectedNode, fieldName: inputName, source: "PARAMETER", defaultValue: value, required: false, advanced: false });
     } else if (sourceName !== NO_MAPPING) bindings.push({ nodeId: selectedNode, inputName, source: sourceName as Source,
       ...(sourceName === "REFERENCE_IMAGE" ? { referenceIndex: 0 } : {}) });
-    update({ bindings, ...(parameters.length || definition.parameters ? { parameters } : {}) });
+    // The first mapped dimension supplies the common pixel basis; additional targets share it.
+    const dimension = sourceName === "WIDTH" ? "width" : sourceName === "HEIGHT" ? "height" : null;
+    const value = node?.inputs[inputName];
+    const dimensionPatch: Partial<ComfyUiWorkflowDefinition> = {};
+    // Removing the last dimension target also clears an invalid, now unused technical basis.
+    if (previousBinding?.source === "WIDTH" && !bindings.some((binding) => binding.source === "WIDTH")) dimensionPatch.width = COMFY_WORKFLOW_DEFAULT_SIDE;
+    if (previousBinding?.source === "HEIGHT" && !bindings.some((binding) => binding.source === "HEIGHT")) dimensionPatch.height = COMFY_WORKFLOW_DEFAULT_SIDE;
+    if (dimension && typeof value === "number"
+      && !definition.bindings.some((binding) => binding.source === sourceName
+        && (binding.nodeId !== selectedNode || binding.inputName !== inputName))) dimensionPatch[dimension] = value;
+    update({ bindings, ...dimensionPatch, ...(parameters.length || definition.parameters ? { parameters } : {}) });
   }
   function parameter(index: number, patch: Partial<RunningHubField>) {
     if (!definition) return;
@@ -93,7 +103,6 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
       input.setCustomValidity(""); setParameterErrors((before) => ({ ...before, [key]: false }));
     } catch {
       input.setCustomValidity(t("settings.comfy.parameterInvalid")); setParameterErrors((before) => ({ ...before, [key]: true }));
-      setReviewed(null);
     }
   }
   function literal(inputName: string, value: string | number | boolean) {
@@ -103,7 +112,7 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
   async function readFile(file: File | undefined) {
     if (!file) return;
     const epoch = ++readEpoch.current;
-    setReviewed(null); setError("");
+    setError("");
     if (file.size > LIMITS.jsonBytes) { setError(t("settings.comfy.tooLarge")); return; }
     setReading(true);
     try { const text = await file.text(); if (epoch === readEpoch.current) setSource(text); }
@@ -115,18 +124,18 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
       {STEPS.map((item, index) => <Button key={item} type="button" variant={step === item ? "secondary" : "ghost"} aria-current={step === item ? "step" : undefined}
         disabled={imported.isPending || reading || item !== "import" && !definition} onClick={() => setStep(item)}>{index + 1}. {t(`settings.comfy.step.${item}`)}</Button>)}
     </nav>
-    {step === "import" ? <div className="ui-stack">
+    {step === "import" ? <FieldGroup className="comfy-workflow-import">
       <p className="ui-muted">{t("settings.comfy.importHint")}</p>
-      <Field><FieldLabel>{t("settings.comfy.file")}<Input type="file" accept=".json,application/json" disabled={reading || imported.isPending}
-        onChange={(event) => { void readFile(event.target.files?.[0]); event.target.value = ""; }} /></FieldLabel></Field>
-      <Field><FieldLabel>{t("settings.comfy.json")}<Textarea rows={9} value={source} maxLength={LIMITS.jsonBytes} disabled={reading || imported.isPending}
-        onChange={(event) => { setSource(event.target.value); setReviewed(null); setError(""); }} placeholder={'{"3":{"class_type":"KSampler","inputs":{...}}}'} /></FieldLabel></Field>
+      <Field><FieldLabel htmlFor={`${fieldId}-file`}>{t("settings.comfy.file")}</FieldLabel><Input id={`${fieldId}-file`} type="file" accept=".json,application/json" disabled={reading || imported.isPending}
+        onChange={(event) => { void readFile(event.target.files?.[0]); event.target.value = ""; }} /></Field>
+      <Field><FieldLabel htmlFor={`${fieldId}-json`}>{t("settings.comfy.json")}</FieldLabel><Textarea id={`${fieldId}-json`} className="comfy-workflow-json" rows={7} value={source} maxLength={LIMITS.jsonBytes} disabled={reading || imported.isPending}
+        onChange={(event) => { setSource(event.target.value); setError(""); }} placeholder={'{"3":{"class_type":"KSampler","inputs":{...}}}'} /></Field>
       <Button type="button" disabled={!source.trim() || reading || imported.isPending} onClick={() => {
         if (new TextEncoder().encode(source).length > LIMITS.jsonBytes) { setError(t("settings.comfy.tooLarge")); return; }
         setError(""); imported.mutate();
       }}>{reading || imported.isPending ? t("settings.comfy.parsing") : definition ? t("settings.comfy.replace") : t("settings.comfy.parse")}</Button>
       {definition ? <p className="ui-muted">{t("settings.comfy.replaceHint")}</p> : null}
-    </div> : null}
+    </FieldGroup> : null}
     {step === "mapping" && definition ? <div className="ui-stack">
       <p className="ui-muted">{t("settings.comfy.mappingHint")}</p>
       <div className="comfy-node-layout">
@@ -225,17 +234,17 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
         </Table>
         {invalidParameter ? <Notice tone="warning">{t("settings.comfy.parameterInvalid")}</Notice> : null}
       </FieldGroup> : null}
-      <div className="ui-form-grid">
-        <Field><FieldLabel>{t("settings.comfy.outputNode")}<Select value={definition.output.nodeId} onChange={(event) => update({ output: { ...definition.output, nodeId: event.target.value } })}>
+      <FieldGroup className="ui-form-grid">
+        <Field><FieldLabel htmlFor={`${fieldId}-output-node`}>{t("settings.comfy.outputNode")}</FieldLabel><Select id={`${fieldId}-output-node`} value={definition.output.nodeId} onChange={(event) => update({ output: { ...definition.output, nodeId: event.target.value } })}>
           <option value="">{t("settings.comfy.chooseOutput")}</option>{Object.entries(definition.graph).map(([id, item]) => <option key={id} value={id}>#{id} · {item._meta?.title ?? item.class_type}</option>)}
-        </Select></FieldLabel></Field>
-        <Field><FieldLabel>{t("settings.comfy.outputField")}<Select value={definition.output.field} onChange={(event) => update({ output: { ...definition.output, field: event.target.value as ComfyUiWorkflowDefinition["output"]["field"] } })}>
+        </Select></Field>
+        <Field><FieldLabel htmlFor={`${fieldId}-output-field`}>{t("settings.comfy.outputField")}</FieldLabel><Select id={`${fieldId}-output-field`} value={definition.output.field} onChange={(event) => update({ output: { ...definition.output, field: event.target.value as ComfyUiWorkflowDefinition["output"]["field"] } })}>
           {(video ? ["images", "gifs", "videos"] : ["images"]).map((field) => <option key={field}>{field}</option>)}
-        </Select></FieldLabel></Field>
-        {(["width", "height", ...(video ? ["minimumSeconds", "maximumSeconds", "fps", "frameMultiple", "frameOffset"] as const : [])] as const).map((key) => <Field key={key}><FieldLabel>{t(`settings.comfy.${key}`)}<Input type="number" required step={1} min={key === "frameOffset" ? 0 : key === "width" || key === "height" ? LIMITS.minimumSide : 1}
-          max={key === "width" || key === "height" ? LIMITS.maximumSide : key === "fps" ? LIMITS.fps : key === "frameMultiple" ? LIMITS.frameMultiple : key === "frameOffset" ? definition.frameMultiple - 1 : LIMITS.seconds}
-          value={definition[key]} onChange={(event) => update({ [key]: Number(event.target.value) })} /></FieldLabel></Field>)}
-      </div>
+        </Select></Field>
+        {video ? (["minimumSeconds", "maximumSeconds", "fps", "frameMultiple", "frameOffset"] as const).map((key) => <Field key={key}><FieldLabel htmlFor={`${fieldId}-${key}`}>{t(`settings.comfy.${key}`)}</FieldLabel><Input id={`${fieldId}-${key}`} type="number" required step={1} min={key === "frameOffset" ? 0 : 1}
+          max={key === "fps" ? LIMITS.fps : key === "frameMultiple" ? LIMITS.frameMultiple : key === "frameOffset" ? definition.frameMultiple - 1 : LIMITS.seconds}
+          value={definition[key]} onChange={(event) => update({ [key]: Number(event.target.value) })} /></Field>) : null}
+      </FieldGroup>
       {video ? <p className="ui-muted">{t("settings.comfy.framesHint")}</p> : null}
       {problem ? <Notice tone="warning">{problem}</Notice> : null}
       <Button type="button" disabled={!!problem || invalidParameter} onClick={() => setStep("review")}>{t("settings.comfy.review")}</Button>
@@ -247,7 +256,6 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
       <CapabilityConfigurationFields section="defaults" adapterId={adapterId} values={values} onChange={onChange} />
       <CapabilityConfigurationFields section="pricing" adapterId={adapterId} values={values} onChange={onChange} />
       {problem ? <Notice tone="warning">{problem}</Notice> : null}
-      <label className="comfy-review-check"><Checkbox aria-label={t("settings.comfy.confirm")} checked={reviewed === values} disabled={!!problem} onCheckedChange={(checked) => setReviewed(checked ? values : null)} />{t("settings.comfy.confirm")}</label>
     </div> : null}
     {error ? <Notice tone="danger">{error}</Notice> : null}
   </div>;
