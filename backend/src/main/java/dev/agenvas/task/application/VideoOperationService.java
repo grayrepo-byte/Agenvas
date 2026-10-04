@@ -61,11 +61,11 @@ public class VideoOperationService {
         if (itemId == null || sourceVersionId == null || operation == null || expectedItemVersion < 0
                 || expectedFunctionVersion < 0 || expectedCapabilityVersion < 1 || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH || parameters == null || !parameters.isObject()) {
-            throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "api.media-function.invalid-request");
+            throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
         }
         String instruction = prompt == null ? "" : prompt.trim();
         if (instruction.length() > MAX_PROMPT_LENGTH) {
-            throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "api.media-function.invalid-request");
+            throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
         }
         ObjectNode request = mapper.createObjectNode().put("artifactId", artifactId.toString())
                 .put("canvasItemId", itemId.toString()).put("sourceVersionId", sourceVersionId.toString())
@@ -77,44 +77,44 @@ public class VideoOperationService {
             if (prior != null) {
                 // JSONB reloads small integral values as IntNode, including originally long CAS versions.
                 if (!mapper.readTree(request.toString()).equals(prior.input().path("videoOperationRequest"))) {
-                    throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", "api.media-function.conflict");
+                    throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", ApiMessage.of("api.media-function.conflict"));
                 }
                 return ProjectEventService.Change.unchanged(prior);
             }
             Artifact sourceArtifact = artifacts.get(ownerId, projectId, artifactId).artifact();
             var sourceItem = items.requireArtifactItem(ownerId, projectId, itemId);
             if (sourceArtifact.kind() != Artifact.Kind.VIDEO || sourceArtifact.archivedAt() != null) {
-                throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "api.media-function.video-required");
+                throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.video-required"));
             }
             if (!sourceItem.subjectId().equals(artifactId) || sourceItem.version() != expectedItemVersion
                     || !sourceVersionId.equals(sourceItem.selectedVersionId())) {
-                throw problem(HttpStatus.CONFLICT, "DIRECT_MEDIA_CONFLICT", "api.media-function.source-changed");
+                throw problem(HttpStatus.CONFLICT, "DIRECT_MEDIA_CONFLICT", ApiMessage.of("api.media-function.source-changed"));
             }
             var source = artifacts.requireMediaVersionForTask(ownerId, projectId, sourceVersionId, Artifact.Kind.VIDEO);
             var asset = assets.metadata(ownerId, projectId, UUID.fromString(source.content().path("assetId").asText()));
             var binding = functions.resolve(operation, expectedFunctionVersion);
             if (binding.capabilityVersion() != expectedCapabilityVersion) {
-                throw problem(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CHANGED", "api.media-function.conflict");
+                throw problem(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CHANGED", ApiMessage.of("api.media-function.conflict"));
             }
             boolean local = MediaAdapterRegistry.localProcessor(binding.adapterId());
             ObjectNode frozenParameters = mapper.createObjectNode();
             RunningHubDefinition definition = catalog.runningHubDefinition(binding);
             Integer seconds = null;
             if (local) {
-                if (!parameters.isEmpty()) throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "api.media-function.invalid-request");
+                if (!parameters.isEmpty()) throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
                 LocalVideoOperationBounds.require(asset);
                 seconds = (asset.durationMs() + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND;
             } else {
                 if (asset.byteSize() > dev.agenvas.provider.infrastructure.RunningHubClient.MAX_UPLOAD_BYTES) {
-                    throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "api.direct-media-task-service.a-single-piece-of-runninghub-material-cannot-exceed-30-mb");
+                    throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.direct-media-task-service.a-single-piece-of-runninghub-material-cannot-exceed-30-mb"));
                 }
                 var videoField = definition.fields().stream().filter(RunningHubDefinition.Field::media).findFirst().orElseThrow();
                 ObjectNode supplied = (ObjectNode) parameters.deepCopy();
                 if (supplied.propertyNames().stream().anyMatch(key -> !Set.of(RunningHubDefinition.VALUES_PROPERTY).contains(key))) {
-                    throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "api.media-function.invalid-request");
+                    throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
                 }
                 var raw = supplied.path(RunningHubDefinition.VALUES_PROPERTY);
-                if (!raw.isMissingNode() && !raw.isObject()) throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "api.media-function.invalid-request");
+                if (!raw.isMissingNode() && !raw.isObject()) throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
                 // The tool owns its source slot; client parameters cannot replace the pinned video.
                 supplied.withObject(RunningHubDefinition.VALUES_PROPERTY).put(videoField.key(), sourceVersionId.toString());
                 seconds = definition.fields().stream().filter(field -> field.effectiveSource() == RunningHubDefinition.Source.DURATION_SECONDS)
@@ -123,7 +123,7 @@ public class VideoOperationService {
                             if (value == null || value.isNull()) value = field.defaultValue();
                             if (value == null || value.isNull()) return null;
                             if (!value.isIntegralNumber() || !value.canConvertToInt()) {
-                                throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "api.media-function.invalid-request");
+                                throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
                             }
                             return value.intValue();
                         }).orElse(null);
@@ -179,7 +179,7 @@ public class VideoOperationService {
         }).value();
     }
 
-    private static ApiProblemException problem(HttpStatus status, String code, String message) {
-        return new ApiProblemException(status, code, ApiMessage.of("api.media-function.title"), ApiMessage.of(message), false);
+    private static ApiProblemException problem(HttpStatus status, String code, ApiMessage detail) {
+        return new ApiProblemException(status, code, ApiMessage.of("api.media-function.title"), detail, false);
     }
 }

@@ -35,17 +35,17 @@ public class MediaFunctionService {
     public void update(VideoOperation operation, long expectedVersion, UUID capabilityId) {
         if (capabilityId != null) compatibleBinding(operation, capabilityId);
         if (!repository.update(operation, expectedVersion, capabilityId, clock.instant())) {
-            throw problem(HttpStatus.CONFLICT, "MEDIA_FUNCTION_CONFLICT", "api.media-function.conflict");
+            throw problem(HttpStatus.CONFLICT, "MEDIA_FUNCTION_CONFLICT", ApiMessage.of("api.media-function.conflict"));
         }
     }
 
     public MediaCapabilityBinding resolve(VideoOperation operation, long expectedVersion) {
         var setting = repository.get(operation);
         if (setting.version() != expectedVersion) {
-            throw problem(HttpStatus.CONFLICT, "MEDIA_FUNCTION_CONFLICT", "api.media-function.conflict");
+            throw problem(HttpStatus.CONFLICT, "MEDIA_FUNCTION_CONFLICT", ApiMessage.of("api.media-function.conflict"));
         }
         if (setting.capabilityId() == null) {
-            throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "MEDIA_FUNCTION_UNCONFIGURED", "api.media-function.unconfigured");
+            throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "MEDIA_FUNCTION_UNCONFIGURED", ApiMessage.of("api.media-function.unconfigured"));
         }
         return compatibleBinding(operation, setting.capabilityId());
     }
@@ -57,7 +57,7 @@ public class MediaFunctionService {
                 || (operation == VideoOperation.EXTRACT_AUDIO
                 && MediaAdapterRegistry.LOCAL_VIDEO_AUDIO_EXTRACTOR.equals(binding.adapterId()));
         if (!local && !compatibleDefinition(catalog.runningHubDefinition(binding))) {
-            throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE", "api.media-function.incompatible");
+            throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE", ApiMessage.of("api.media-function.incompatible"));
         }
         return binding;
     }
@@ -70,7 +70,7 @@ public class MediaFunctionService {
                 && media.getFirst().enabledWhen() == null;
     }
 
-    private static ApiProblemException problem(HttpStatus status, String code, String message) {
-        return new ApiProblemException(status, code, ApiMessage.of("api.media-function.title"), ApiMessage.of(message), false);
+    private static ApiProblemException problem(HttpStatus status, String code, ApiMessage detail) {
+        return new ApiProblemException(status, code, ApiMessage.of("api.media-function.title"), detail, false);
     }
 }
