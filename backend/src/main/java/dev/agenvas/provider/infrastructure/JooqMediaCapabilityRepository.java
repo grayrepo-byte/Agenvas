@@ -204,6 +204,12 @@ public class JooqMediaCapabilityRepository {
                 .fetch(this::mapCapability);
     }
 
+    /** Serialize type changes with default selection before either reads the current version. */
+    public void lockCapability(UUID id) {
+        dsl.select(MEDIA_CAPABILITY.ID).from(MEDIA_CAPABILITY)
+                .where(MEDIA_CAPABILITY.ID.eq(id)).forUpdate().fetch();
+    }
+
     public boolean updateCapability(UUID id, long expectedVersion, String name,
             boolean enabled, int currentVersion, Instant now) {
         return dsl.update(MEDIA_CAPABILITY)
@@ -331,6 +337,16 @@ public class JooqMediaCapabilityRepository {
                 .where(MEDIA_DEFAULT.KIND.eq(kind))
                 .and(MEDIA_DEFAULT.VERSION.eq(expectedVersion))
                 .execute() == 1;
+    }
+
+    /** Clearing only this capability preserves another administrator's explicit choice. */
+    public void clearDefaultForCapability(String kind, UUID capabilityId) {
+        dsl.update(MEDIA_DEFAULT)
+                .set(MEDIA_DEFAULT.CAPABILITY_ID, (UUID) null)
+                .set(MEDIA_DEFAULT.VERSION, MEDIA_DEFAULT.VERSION.plus(1))
+                .where(MEDIA_DEFAULT.KIND.eq(kind))
+                .and(MEDIA_DEFAULT.CAPABILITY_ID.eq(capabilityId))
+                .execute();
     }
 
     private Connection mapConnection(MediaProviderConnectionRecord row) {

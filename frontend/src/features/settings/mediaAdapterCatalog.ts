@@ -1,6 +1,10 @@
 import { t } from "../../shared/i18n";
 import type { MediaConnection } from "../../shared/api/client";
 
+export const RUNNINGHUB_OUTPUT_ADAPTERS = {
+  IMAGE: "RUNNINGHUB_IMAGE", VIDEO: "RUNNINGHUB_VIDEO", AUDIO: "RUNNINGHUB_AUDIO",
+} as const;
+
 /** Presentation metadata for compiled protocols; the server validates their actual bounds. */
 export const mediaAdapters = {
   RUNNINGHUB_IMAGE: { get label() { return t("settings.adapters.runningHubImage"); }, kind: "IMAGE_GENERATION", references: 14, minimum: 0, maximum: 0 },

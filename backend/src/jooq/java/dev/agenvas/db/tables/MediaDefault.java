@@ -65,9 +65,10 @@ public class MediaDefault extends TableImpl<MediaDefaultRecord> {
     public final TableField<MediaDefaultRecord, String> KIND = createField(DSL.name("kind"), SQLDataType.VARCHAR(40).nullable(false), this, "业务类型，允许值由 CHECK 约束限定");
 
     /**
-     * The column <code>public.media_default.capability_id</code>. 固定媒体能力身份
+     * The column <code>public.media_default.capability_id</code>.
+     * 固定媒体能力身份；空值表示尚未选择匹配当前媒体类型的默认能力
      */
-    public final TableField<MediaDefaultRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID.nullable(false), this, "固定媒体能力身份");
+    public final TableField<MediaDefaultRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID, this, "固定媒体能力身份；空值表示尚未选择匹配当前媒体类型的默认能力");
 
     /**
      * The column <code>public.media_default.version</code>.

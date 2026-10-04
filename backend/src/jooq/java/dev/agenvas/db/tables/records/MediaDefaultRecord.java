@@ -35,14 +35,16 @@ public class MediaDefaultRecord extends UpdatableRecordImpl<MediaDefaultRecord> 
     }
 
     /**
-     * Setter for <code>public.media_default.capability_id</code>. 固定媒体能力身份
+     * Setter for <code>public.media_default.capability_id</code>.
+     * 固定媒体能力身份；空值表示尚未选择匹配当前媒体类型的默认能力
      */
     public void setCapabilityId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.media_default.capability_id</code>. 固定媒体能力身份
+     * Getter for <code>public.media_default.capability_id</code>.
+     * 固定媒体能力身份；空值表示尚未选择匹配当前媒体类型的默认能力
      */
     public UUID getCapabilityId() {
         return (UUID) get(1);

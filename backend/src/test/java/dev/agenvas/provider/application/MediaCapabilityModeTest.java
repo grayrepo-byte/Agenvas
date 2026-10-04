@@ -32,6 +32,13 @@ class MediaCapabilityModeTest {
     private final MediaCapabilityService configured = service(ProviderModeProperties.Mode.CONFIGURED);
 
     @Test
+    void clearedDefaultsAreProjectedWithoutLookingUpAnAbsentCapability() {
+        when(repository.defaultCapabilityId(Task.Kind.IMAGE_GENERATION.name())).thenReturn(null);
+        assertThat(configured.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNull();
+        assertThat(service(ProviderModeProperties.Mode.MOCK).defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNull();
+    }
+
+    @Test
     void configuredCatalogExcludesMockConnectionsCapabilitiesAndGenerationCandidates() {
         Snapshot mockImage = snapshot(MediaPlatform.MOCK, "MOCK_IMAGE");
         Snapshot realImage = snapshot(MediaPlatform.OPENAI, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2);

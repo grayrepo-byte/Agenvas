@@ -1104,7 +1104,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** 使用 expectedVersion 修改能力并保留已发布版本 */
+        /**
+         * 使用 expectedVersion 修改能力并保留已发布版本
+         * @description RunningHub capabilities may change their primary media type by switching between RUNNINGHUB_IMAGE, RUNNINGHUB_VIDEO and RUNNINGHUB_AUDIO with a matching primary output. This creates a new immutable capability version and clears its previous media type default selection with a version increment. Existing task bindings retain their original version; other adapters keep their media type fixed.
+         */
         put: operations["updateMediaCapability"];
         post?: never;
         delete?: never;
