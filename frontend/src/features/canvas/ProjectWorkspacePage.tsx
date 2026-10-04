@@ -193,6 +193,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     itemId: string; zIndex: number; artifactId?: string } | null>(null);
   const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
   const flow = useRef<ReactFlowInstance<CanvasNode> | null>(null);
+  const boxSelectionActive = useRef(false);
   const canvasElement = useRef<HTMLElement>(null);
   const { tool, setTool, spaceHeld, selecting } = useCanvasInteraction();
   const creationMenuElement = useRef<HTMLDivElement>(null);
@@ -990,8 +991,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           else next.delete(change.id);
         }
         const ids = [...next];
-        if (ids.length !== current.length || ids.some((id) => !current.includes(id))) {
-          setSelectedIds(ids, mode);
+        // A box gesture becomes multi-select only after React Flow actually selects a node.
+        // Keep checkbox removals outside the gesture in their existing multi-select mode.
+        const nextMode = boxSelectionActive.current
+          ? ids.length > 0 ? CANVAS_SELECTION_MODE.MULTIPLE : CANVAS_SELECTION_MODE.SINGLE
+          : mode;
+        if (nextMode !== mode || ids.length !== current.length || ids.some((id) => !current.includes(id))) {
+          setSelectedIds(ids, nextMode);
         }
       }
       for (const change of changes) {
@@ -1007,6 +1013,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   );
   /** 移动或缩放画布即放弃当前焦点；程序化的 fitView（event 为 null）不参与，否则会上演选中后立刻被清掉。 */
   const clearSelection = useCallback(() => {
+    boxSelectionActive.current = false;
     setSelectedIds([]);
     setSelectedEdgeIds([]);
   }, [setSelectedEdgeIds, setSelectedIds]);
@@ -1334,7 +1341,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             setSelectedIds([node.id]);
           }}
           onPaneClick={clearSelection}
-          onSelectionStart={() => setSelectedIds([], CANVAS_SELECTION_MODE.MULTIPLE)}
+          onSelectionStart={() => {
+            clearSelection();
+            boxSelectionActive.current = true;
+          }}
+          onSelectionEnd={() => { boxSelectionActive.current = false; }}
+          onPointerCancel={() => { boxSelectionActive.current = false; }}
           onPaneContextMenu={(event) => {
             event.preventDefault();
             const rect = canvasElement.current?.getBoundingClientRect();

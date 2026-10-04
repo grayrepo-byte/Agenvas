@@ -45,8 +45,9 @@ vi.mock("@xyflow/react", async (importOriginal) => {
     ReactFlow: (props: FlowProps) => {
       flowProps = props;
       // Keep a fixed viewport; node dimensions come from the actual workspace projection.
-      // jsdom has no viewport bounds; disable edge auto-pan so drag coordinates remain deterministic.
-      return renderRealFlow ? <real.ReactFlow {...props} fitView={false} autoPanOnNodeDrag={false} {...TEST_VIEWPORT}
+      // jsdom has no viewport bounds; disable edge auto-pan so gesture coordinates remain deterministic.
+      return renderRealFlow ? <real.ReactFlow {...props} fitView={false} autoPanOnNodeDrag={false}
+        autoPanOnSelection={false} {...TEST_VIEWPORT}
         onInit={(instance) => props.onInit?.({ ...instance, setCenter: focusProbe.center, setViewport: focusProbe.viewport,
           getZoom: () => focusProbe.zoom })}>
         <TestHandleMeasurements />{props.children}
@@ -232,21 +233,25 @@ async function renderInteractiveFlow() {
   await waitFor(() => expect(nodeElement("image-card")).toBeInTheDocument());
 }
 
-function boxSelectNodes(box: typeof SELECTION_BOX = SELECTION_BOX) {
+function panePointerGesture(type: "pointerDown" | "pointerMove" | "pointerUp", x: number, y: number) {
   const pane = document.querySelector(".react-flow__pane");
   if (!(pane instanceof HTMLElement)) throw new Error("Missing pane");
+  const event = createEvent[type](pane, { bubbles: true });
+  Object.defineProperties(event, {
+    clientX: { value: x }, clientY: { value: y },
+    button: { value: 0 }, isPrimary: { value: true }, pointerId: { value: 1 },
+    pointerType: { value: "mouse" },
+  });
+  fireEvent(pane, event);
+}
+
+function boxSelectNodes(box: typeof SELECTION_BOX = SELECTION_BOX) {
   for (const type of ["pointerDown", "pointerMove", "pointerUp"] as const) {
-    const event = createEvent[type](pane, { bubbles: true });
-    Object.defineProperties(event, {
-      clientX: { value: type === "pointerDown" ? box.startX : box.endX },
-      clientY: { value: type === "pointerDown" ? box.startY : box.endY },
-      button: { value: 0 }, isPrimary: { value: true }, pointerId: { value: 1 },
-      pointerType: { value: "mouse" },
-    });
-    fireEvent(pane, event);
+    panePointerGesture(type, type === "pointerDown" ? box.startX : box.endX,
+      type === "pointerDown" ? box.startY : box.endY);
   }
   // Browsers dispatch click after pointerup; the pane consumes this selection-ending click.
-  fireEvent.click(pane);
+  fireEvent.click(document.querySelector(".react-flow__pane")!);
 }
 
 describe("video hover controls", () => {
@@ -574,16 +579,53 @@ describe("workspace selection with real React Flow", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
-  it("enters multi-select with an empty box and leaves it on a blank-pane click", async () => {
+  it.each([
+    { name: "a slight blank-pane movement", endX: 1101, endY: 701, previous: [] },
+    { name: "a large empty box", endX: 1200, endY: 800, previous: [] },
+    { name: "an empty box after a single selection", endX: 1200, endY: 800, previous: ["image-card"] },
+    { name: "an empty box after a group selection", endX: 1200, endY: 800, previous: ["image-card", "agent-card"] },
+  ])("does not enter multi-select with $name", async ({ endX, endY, previous }) => {
     await renderInteractiveFlow();
-    boxSelectNodes({ startX: 1100, startY: 700, endX: 1200, endY: 800 });
+    act(() => useCanvasStore.getState().setSelectedIds(previous));
+    panePointerGesture("pointerDown", 1100, 700);
+    panePointerGesture("pointerMove", endX, endY);
     expect(selectedIds()).toEqual([]);
-    expect(screen.getAllByRole("checkbox")).toHaveLength(items.length);
-    const pane = document.querySelector(".react-flow__pane");
-    if (!(pane instanceof HTMLElement)) throw new Error("Missing pane");
-    fireEvent.pointerDown(pane, { button: 0, isPrimary: true });
-    fireEvent.pointerUp(pane, { button: 0, isPrimary: true });
+    expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.SINGLE);
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    panePointerGesture("pointerUp", endX, endY);
+    fireEvent.click(document.querySelector(".react-flow__pane")!);
+    expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.SINGLE);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("enters multi-select only when an ongoing box first selects a node", async () => {
+    await renderInteractiveFlow();
+    panePointerGesture("pointerDown", -10, -10);
+    panePointerGesture("pointerMove", -5, -5);
+    expect(selectedIds()).toEqual([]);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    panePointerGesture("pointerMove", 300, 300);
+    expect(selectedIds()).toEqual(["image-card"]);
+    expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.MULTIPLE);
+    expect(screen.getByRole("checkbox", { name: "选择卡片：参考图" })).toBeChecked();
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("媒体卡片操作")).not.toBeInTheDocument();
+    expect(focusProbe.center).not.toHaveBeenCalled();
+    panePointerGesture("pointerUp", 300, 300);
+    expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.MULTIPLE);
+  });
+
+  it("leaves multi-select when an ongoing box shrinks back to empty", async () => {
+    await renderInteractiveFlow();
+    panePointerGesture("pointerDown", -10, -10);
+    panePointerGesture("pointerMove", 300, 300);
+    expect(selectedIds()).toEqual(["image-card"]);
+    panePointerGesture("pointerMove", -5, -5);
+    expect(selectedIds()).toEqual([]);
+    expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.SINGLE);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    panePointerGesture("pointerUp", -5, -5);
+    expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.SINGLE);
   });
 
   it("selects and replaces nodes on ordinary clicks", async () => {
