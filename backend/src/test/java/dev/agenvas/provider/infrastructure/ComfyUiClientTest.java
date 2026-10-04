@@ -7,14 +7,21 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import okhttp3.Dns;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -24,6 +31,7 @@ class ComfyUiClientTest {
     private static final String SYNTHETIC_PROXY_PREFIX = "/proxy/synthetic-path-key";
     private static final String SYNTHETIC_PROXY_PROMPT_ID = "2100000000000000123";
     private static final int MAX_PROMPT_ID_CHARACTERS = 240;
+    private static final int MAX_OUTPUT_REDIRECTS = 3;
 
     private final ObjectMapper mapper = new ObjectMapper();
     private HttpServer server;
@@ -244,7 +252,422 @@ class ComfyUiClientTest {
     }
 
     @Test
-    void refusesRedirectsForSubmissionsAndOutputDownloads() throws IOException {
+    void downloadsOutputRedirectOnceWithoutForwardingCredentials() throws IOException {
+        client = new ComfyUiClient(new ComfyUiProperties(
+                "http://127.0.0.1:" + server.getAddress().getPort() + SYNTHETIC_PROXY_PREFIX), mapper);
+        AtomicInteger views = new AtomicInteger();
+        AtomicInteger downloads = new AtomicInteger();
+        server.createContext(SYNTHETIC_PROXY_PREFIX + "/view", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            views.incrementAndGet();
+            exchange.getResponseHeaders().set("Location", "/download.png");
+            exchange.getResponseHeaders().set("Set-Cookie", "synthetic-cookie=test-only");
+            respond(exchange, 302, "redirect");
+        });
+        server.createContext("/download.png", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Cookie")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Referer")).isNull();
+            downloads.incrementAndGet();
+            respond(exchange, 200, "PNG-BYTES");
+        });
+        try (var output = client.output("rendered_01.png")) {
+            assertThat(output.readAllBytes()).isEqualTo("PNG-BYTES".getBytes(StandardCharsets.UTF_8));
+        }
+        assertThat(views).hasValue(1);
+        assertThat(downloads).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {301, 302, 303, 307, 308})
+    void followsOnlySupportedOutputRedirectStatusesAsNewGets(int status) throws IOException {
+        AtomicInteger downloads = new AtomicInteger();
+        server.createContext("/view", exchange -> {
+            exchange.getResponseHeaders().set("Location", "/download.png?signature=synthetic-value");
+            respond(exchange, status, "redirect");
+        });
+        server.createContext("/download.png", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            assertThat(exchange.getRequestURI().getRawQuery()).isEqualTo("signature=synthetic-value");
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Cookie")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Referer")).isNull();
+            downloads.incrementAndGet();
+            respond(exchange, 200, "PNG-BYTES");
+        });
+        try (var output = client.output("rendered_01.png")) {
+            assertThat(output.readAllBytes()).isEqualTo("PNG-BYTES".getBytes(StandardCharsets.UTF_8));
+        }
+        assertThat(downloads).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {300, 304, 305, 306, 309})
+    void rejectsUnsupportedOutputRedirectStatuses(int status) {
+        AtomicInteger downloads = new AtomicInteger();
+        server.createContext("/view", exchange -> {
+            exchange.getResponseHeaders().set("Location", "/download.png");
+            exchange.sendResponseHeaders(status, -1);
+            exchange.close();
+        });
+        server.createContext("/download.png", exchange -> {
+            downloads.incrementAndGet();
+            respond(exchange, 200, "PNG-BYTES");
+        });
+        assertThatThrownBy(() -> client.output("rendered_01.png"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThat(downloads).hasValue(0);
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", " ", "not a URI", "/unsafe#fragment", "/encoded%2fpath", "/a/../private"})
+    void refusesOutputRedirectsWithoutSafeLocation(String location) {
+        server.createContext("/view", exchange -> {
+            if (location != null) exchange.getResponseHeaders().set("Location", location);
+            respond(exchange, 302, "redirect");
+        });
+        assertThatThrownBy(() -> client.output("rendered_01.png"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("ComfyUI redirect is unsafe");
+    }
+
+    @Test
+    void allowsExactlyThreeOutputRedirects() throws IOException {
+        AtomicInteger downloads = new AtomicInteger();
+        server.createContext("/view", exchange -> {
+            exchange.getResponseHeaders().set("Location", "/hop/1");
+            respond(exchange, 302, "redirect");
+        });
+        server.createContext("/hop/", exchange -> {
+            int hop = Integer.parseInt(exchange.getRequestURI().getPath().substring("/hop/".length()));
+            downloads.incrementAndGet();
+            if (hop < MAX_OUTPUT_REDIRECTS) {
+                exchange.getResponseHeaders().set("Location", "/hop/" + (hop + 1));
+                respond(exchange, 302, "redirect");
+            } else respond(exchange, 200, "PNG-BYTES");
+        });
+        try (var output = client.output("rendered_01.png")) {
+            assertThat(output.readAllBytes()).isEqualTo("PNG-BYTES".getBytes(StandardCharsets.UTF_8));
+        }
+        assertThat(downloads).hasValue(MAX_OUTPUT_REDIRECTS);
+    }
+
+    @Test
+    void rejectsRedirectLoopBeforeRepeatingDownloadRequest() {
+        AtomicInteger downloads = new AtomicInteger();
+        server.createContext("/view", exchange -> {
+            exchange.getResponseHeaders().set("Location", "/loop");
+            respond(exchange, 302, "redirect");
+        });
+        server.createContext("/loop", exchange -> {
+            downloads.incrementAndGet();
+            exchange.getResponseHeaders().set("Location", "/loop");
+            respond(exchange, 302, "redirect");
+        });
+        assertThatThrownBy(() -> client.output("rendered_01.png"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("ComfyUI redirect loop detected");
+        assertThat(downloads).hasValue(1);
+    }
+
+    @Test
+    void rejectsExcessiveRedirectHopsEvenWithoutLoop() {
+        AtomicInteger downloads = new AtomicInteger();
+        server.createContext("/view", exchange -> {
+            exchange.getResponseHeaders().set("Location", "/hop/1");
+            respond(exchange, 302, "redirect");
+        });
+        server.createContext("/hop/", exchange -> {
+            int hop = Integer.parseInt(exchange.getRequestURI().getPath().substring("/hop/".length()));
+            downloads.incrementAndGet();
+            exchange.getResponseHeaders().set("Location", "/hop/" + (hop + 1));
+            respond(exchange, 302, "redirect");
+        });
+        assertThatThrownBy(() -> client.output("rendered_01.png"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("ComfyUI redirect limit exceeded");
+        assertThat(downloads).hasValue(MAX_OUTPUT_REDIRECTS);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {301, 302, 303, 307, 308})
+    void followsSubmissionRedirectUsingHttpMethodRulesWithoutRepeatingOriginalPost(int status) {
+        UUID requestKey = UUID.randomUUID();
+        AtomicInteger submissions = new AtomicInteger();
+        AtomicInteger acknowledgements = new AtomicInteger();
+        AtomicReference<byte[]> submittedBody = new AtomicReference<>();
+        AtomicReference<String> submittedContentType = new AtomicReference<>();
+        server.createContext("/prompt", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+            submissions.incrementAndGet();
+            submittedBody.set(exchange.getRequestBody().readAllBytes());
+            submittedContentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            exchange.getResponseHeaders().set("Location", "/acknowledged");
+            exchange.getResponseHeaders().set("Set-Cookie", "synthetic-cookie=test-only");
+            respond(exchange, status, "redirect");
+        });
+        server.createContext("/acknowledged", exchange -> {
+            boolean retainsPost = status == 307 || status == 308;
+            assertThat(exchange.getRequestMethod()).isEqualTo(retainsPost ? "POST" : "GET");
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Cookie")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Referer")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Accept")).isEqualTo("application/json");
+            byte[] body = exchange.getRequestBody().readAllBytes();
+            if (retainsPost) {
+                assertThat(body).isEqualTo(submittedBody.get());
+                assertThat(exchange.getRequestHeaders().getFirst("Content-Type")).isEqualTo(submittedContentType.get());
+            } else {
+                assertThat(body).isEmpty();
+                assertThat(exchange.getRequestHeaders().getFirst("Content-Type")).isNull();
+            }
+            acknowledgements.incrementAndGet();
+            respond(exchange, 200, "{\"prompt_id\":\"" + SYNTHETIC_PROXY_PROMPT_ID + "\"}");
+        });
+        assertThat(client.submit(mapper.createObjectNode(), requestKey)).isEqualTo(SYNTHETIC_PROXY_PROMPT_ID);
+        assertThat(submissions).hasValue(1);
+        assertThat(acknowledgements).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {301, 302, 303, 307, 308})
+    void followsHistoryRedirectAsGetWithoutCredentials(int status) {
+        AtomicInteger histories = new AtomicInteger();
+        server.createContext("/history/", exchange -> {
+            histories.incrementAndGet();
+            exchange.getResponseHeaders().set("Location", "/archived-history");
+            respond(exchange, status, "redirect");
+        });
+        server.createContext("/archived-history", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+            assertThat(exchange.getRequestBody().readAllBytes()).isEmpty();
+            assertThat(exchange.getRequestHeaders().getFirst("Accept")).isEqualTo("application/json");
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Cookie")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Referer")).isNull();
+            respond(exchange, 200, "{}");
+        });
+        assertThat(client.history(SYNTHETIC_PROXY_PROMPT_ID).isEmpty()).isTrue();
+        assertThat(histories).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {301, 302, 303, 307, 308})
+    void followsUploadRedirectUsingHttpMethodRulesAndExactMultipartBody(int status) {
+        AtomicInteger uploads = new AtomicInteger();
+        AtomicInteger acknowledgements = new AtomicInteger();
+        AtomicReference<byte[]> uploadedBody = new AtomicReference<>();
+        AtomicReference<String> uploadedContentType = new AtomicReference<>();
+        server.createContext("/upload/image", exchange -> {
+            assertThat(exchange.getRequestMethod()).isEqualTo("POST");
+            uploadedBody.set(exchange.getRequestBody().readAllBytes());
+            uploadedContentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            uploads.incrementAndGet();
+            exchange.getResponseHeaders().set("Location", "/uploaded");
+            respond(exchange, status, "redirect");
+        });
+        server.createContext("/uploaded", exchange -> {
+            boolean retainsPost = status == 307 || status == 308;
+            assertThat(exchange.getRequestMethod()).isEqualTo(retainsPost ? "POST" : "GET");
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Cookie")).isNull();
+            assertThat(exchange.getRequestHeaders().getFirst("Referer")).isNull();
+            byte[] body = exchange.getRequestBody().readAllBytes();
+            if (retainsPost) {
+                assertThat(body).isEqualTo(uploadedBody.get());
+                assertThat(exchange.getRequestHeaders().getFirst("Content-Type")).isEqualTo(uploadedContentType.get());
+            } else {
+                assertThat(body).isEmpty();
+                assertThat(exchange.getRequestHeaders().getFirst("Content-Type")).isNull();
+            }
+            acknowledgements.incrementAndGet();
+            respond(exchange, 200, "{\"name\":\"input.png\",\"type\":\"input\",\"subfolder\":\"\"}");
+        });
+        assertThat(client.uploadImage(UUID.randomUUID(), new byte[] {1, 2, 3}, "png")).isEqualTo("input.png");
+        assertThat(uploads).hasValue(1);
+        assertThat(acknowledgements).hasValue(1);
+    }
+
+    @Test
+    void rejectsSubmissionRedirectBackToOriginalUrlBeforeRepeatingPost() {
+        AtomicInteger submissions = new AtomicInteger();
+        server.createContext("/prompt", exchange -> {
+            submissions.incrementAndGet();
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().set("Location", "/prompt");
+            respond(exchange, 307, "redirect");
+        });
+        assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("ComfyUI redirect loop detected");
+        assertThat(submissions).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {301, 302, 303})
+    void acceptsSubmissionReceiptGetAtSameUrlWithoutRepeatingPost(int status) {
+        AtomicInteger submissions = new AtomicInteger();
+        AtomicInteger receipts = new AtomicInteger();
+        server.createContext("/prompt", exchange -> {
+            if ("POST".equals(exchange.getRequestMethod())) {
+                submissions.incrementAndGet();
+                exchange.getRequestBody().readAllBytes();
+                exchange.getResponseHeaders().set("Location", "/prompt");
+                respond(exchange, status, "redirect");
+            } else {
+                assertThat(exchange.getRequestMethod()).isEqualTo("GET");
+                assertThat(exchange.getRequestHeaders().getFirst("Content-Type")).isNull();
+                receipts.incrementAndGet();
+                respond(exchange, 200, "{\"prompt_id\":\"" + SYNTHETIC_PROXY_PROMPT_ID + "\"}");
+            }
+        });
+        assertThat(client.submit(mapper.createObjectNode(), UUID.randomUUID())).isEqualTo(SYNTHETIC_PROXY_PROMPT_ID);
+        assertThat(submissions).hasValue(1);
+        assertThat(receipts).hasValue(1);
+    }
+
+    @Test
+    void validatesMixedSameOriginThenForeignHttpsRedirectChain() {
+        URI origin = URI.create("https://comfy.example.com" + SYNTHETIC_PROXY_PREFIX);
+        URI current = URI.create(origin + "/view?filename=render.png");
+        URI first = ComfyUiClient.checkedRedirect(origin, current, "/archived/render.png?stage=synthetic-first", Dns.SYSTEM);
+        URI second = ComfyUiClient.checkedRedirect(origin, first,
+                "https://cdn.example.com/render.png?signature=synthetic%2Bvalue", Dns.SYSTEM);
+        assertThat(first).isEqualTo(URI.create("https://comfy.example.com/archived/render.png?stage=synthetic-first"));
+        assertThat(second).isEqualTo(URI.create("https://cdn.example.com/render.png?signature=synthetic%2Bvalue"));
+        assertThatThrownBy(() -> ComfyUiClient.checkedRedirect(origin, second,
+                "http://cdn.example.com/render.png", Dns.SYSTEM)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+    }
+
+    @Test
+    void redactsRedirectPathAndCustomQueryCredentialsFromDebugCapture() throws IOException {
+        client = new ComfyUiClient(new ComfyUiProperties(
+                "http://127.0.0.1:" + server.getAddress().getPort() + SYNTHETIC_PROXY_PREFIX), mapper);
+        String target = "/downloads/synthetic-path-signature/render.png?nonce=synthetic-query-secret"
+                + "&signature=synthetic-standard-signature&opaque=synthetic%2Fencoded%2Bsecret";
+        server.createContext(SYNTHETIC_PROXY_PREFIX + "/view", exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "text/plain");
+            exchange.getResponseHeaders().set("Location", target);
+            respond(exchange, 302, target);
+        });
+        server.createContext("/downloads/", exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "text/plain");
+            respond(exchange, 200, "synthetic-path-signature synthetic-query-secret synthetic-standard-signature"
+                    + " synthetic/encoded+secret synthetic%2Fencoded%2Bsecret");
+        });
+        AtomicReference<List<dev.agenvas.shared.http.DebugHttpCapture.Exchange>> captured = new AtomicReference<>();
+        try (var scope = dev.agenvas.shared.http.DebugHttpCapture.open(captured::set);
+                var output = client.output("render.png")) {
+            assertThat(output.readAllBytes()).isNotEmpty();
+        }
+        assertThat(captured.get()).hasSize(2);
+        assertThat(captured.get().toString()).doesNotContain("synthetic-path-key", "synthetic-path-signature",
+                "synthetic-query-secret", "synthetic-standard-signature", "synthetic/encoded+secret",
+                "synthetic%2Fencoded%2Bsecret", target);
+    }
+
+    @Test
+    void validatesPublicHttpsRedirectWithoutChangingSignedQuery() {
+        URI origin = URI.create("https://comfy.example.com" + SYNTHETIC_PROXY_PREFIX);
+        URI current = URI.create(origin + "/view?filename=render.png");
+        String target = "https://cdn.example.com:443/output/render.png?signature=synthetic%2Bvalue&expires=123";
+        assertThat(ComfyUiClient.checkedRedirect(origin, current, target, Dns.SYSTEM))
+                .isEqualTo(URI.create(target));
+    }
+
+    @Test
+    void queryOnlyRedirectKeepsCurrentPathAndExactEncodedQuery() throws IOException {
+        client = new ComfyUiClient(new ComfyUiProperties(
+                "http://127.0.0.1:" + server.getAddress().getPort() + SYNTHETIC_PROXY_PREFIX), mapper);
+        AtomicInteger originalRequests = new AtomicInteger();
+        AtomicInteger redirectedRequests = new AtomicInteger();
+        server.createContext(SYNTHETIC_PROXY_PREFIX + "/view", exchange -> {
+            if (exchange.getRequestURI().getRawQuery().startsWith("filename=")) {
+                originalRequests.incrementAndGet();
+                exchange.getResponseHeaders().set("Location", "?signature=synthetic%2Bvalue&nonce=2");
+                respond(exchange, 302, "redirect");
+            } else {
+                redirectedRequests.incrementAndGet();
+                assertThat(exchange.getRequestURI().getRawQuery()).isEqualTo("signature=synthetic%2Bvalue&nonce=2");
+                respond(exchange, 200, "output");
+            }
+        });
+        try (var output = client.output("render.png")) {
+            assertThat(output.readAllBytes()).isEqualTo("output".getBytes(StandardCharsets.UTF_8));
+        }
+        assertThat(originalRequests).hasValue(1);
+        assertThat(redirectedRequests).hasValue(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"http://cdn.example.com/render.png", "https://cdn.example.com:444/render.png",
+            "https://user:synthetic-pass@cdn.example.com/render.png", "https://cdn.example.com/render.png#fragment",
+            "https://127.0.0.1/render.png", "https://0.0.0.0/render.png", "https://[::1]/render.png",
+            "https://[::]/render.png", "https://169.254.169.254/render.png", "https://168.63.129.16/render.png",
+            "https://10.0.0.1/render.png", "https://172.16.0.1/render.png", "https://192.168.0.1/render.png",
+            "https://224.0.0.1/render.png", "https://[fd00::1]/render.png", "https://[fe80::1]/render.png",
+            "https://127.1/render.png", "https://2130706433/render.png",
+            "https://[64:ff9b::a9fe:a9fe]/render.png", "https://[2002:a9fe:a9fe::1]/render.png",
+            "https://[2001:0:1::1]/render.png"})
+    void rejectsUnsafeForeignOutputRedirectBeforeOpeningRequest(String target) {
+        URI origin = URI.create("https://comfy.example.com" + SYNTHETIC_PROXY_PREFIX);
+        URI current = URI.create(origin + "/view?filename=render.png");
+        assertThatThrownBy(() -> ComfyUiClient.checkedRedirect(origin, current, target,
+                ComfyUiClient.checkedRedirectDns(host -> List.of(InetAddress.getByName(host)))))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("ComfyUI redirect is unsafe");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"https://cdn.example.com/synthetic-path-key/render.png",
+            "https://cdn.example.com/render.png?token=synthetic-path-key",
+            "https://cdn.example.com/render.png?token=synthetic%2dpath%2dkey"})
+    void refusesForeignRedirectsThatEchoOriginPathCredential(String target) {
+        URI origin = URI.create("https://comfy.example.com" + SYNTHETIC_PROXY_PREFIX);
+        URI current = URI.create(origin + "/view?filename=render.png");
+        assertThatThrownBy(() -> ComfyUiClient.checkedRedirect(origin, current, target, Dns.SYSTEM))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class)
+                .hasMessage("ComfyUI redirect is unsafe");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"127.0.0.1", "::1", "0.0.0.0", "::", "169.254.169.254", "fe80::1",
+            "224.0.0.1", "ff02::1", "10.0.0.1", "172.16.0.1", "192.168.0.1", "fc00::1", "fd00::1",
+            "168.63.129.16", "100.100.100.200", "64:ff9b::a9fe:a9fe", "64:ff9b:1::a9fe:a9fe",
+            "100::1", "2002:a9fe:a9fe::1", "2001:0:1::1"})
+    void rejectsPrivateAndSpecialForeignOutputDnsAnswers(String address) throws UnknownHostException {
+        InetAddress resolved = InetAddress.getByName(address);
+        Dns dns = ComfyUiClient.checkedRedirectDns(host -> List.of(resolved));
+        assertThatThrownBy(() -> dns.lookup("synthetic-cdn.example"))
+                .isInstanceOf(UnknownHostException.class);
+    }
+
+    @Test
+    void foreignOutputDnsChecksEveryAnswerAndRechecksLaterLookups() throws UnknownHostException {
+        InetAddress publicAddress = InetAddress.getByName("8.8.8.8");
+        InetAddress privateAddress = InetAddress.getByName("10.0.0.1");
+        assertThatThrownBy(() -> ComfyUiClient.checkedRedirectDns(host -> List.of(publicAddress, privateAddress))
+                .lookup("synthetic-cdn.example")).isInstanceOf(UnknownHostException.class);
+        AtomicInteger lookups = new AtomicInteger();
+        Dns dns = ComfyUiClient.checkedRedirectDns(host -> List.of(
+                lookups.incrementAndGet() == 1 ? publicAddress : privateAddress));
+        assertThat(dns.lookup("synthetic-cdn.example")).containsExactly(publicAddress);
+        assertThatThrownBy(() -> dns.lookup("synthetic-cdn.example")).isInstanceOf(UnknownHostException.class);
+        assertThat(lookups).hasValue(2);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"8.8.8.8", "2606:4700:4700::1111", "198.18.0.1", "198.19.255.254", "2001:2::1"})
+    void acceptsPublicAndExistingFakeIpOutputDnsAnswers(String address) throws UnknownHostException {
+        InetAddress resolved = InetAddress.getByName(address);
+        assertThat(ComfyUiClient.checkedRedirectDns(host -> List.of(resolved)).lookup("synthetic-cdn.example"))
+                .containsExactly(resolved);
+    }
+
+    @Test
+    void refusesUnsafeRedirectTargetsForAllRoutes() throws IOException {
         HttpServer redirectTarget = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         AtomicInteger followed = new AtomicInteger();
         redirectTarget.createContext("/private", exchange -> {
@@ -263,9 +686,21 @@ class ComfyUiClientTest {
                 exchange.getResponseHeaders().add("Location", target);
                 respond(exchange, 302, "redirect");
             });
+            server.createContext("/history/", exchange -> {
+                exchange.getResponseHeaders().add("Location", target);
+                respond(exchange, 302, "redirect");
+            });
+            server.createContext("/upload/image", exchange -> {
+                exchange.getResponseHeaders().add("Location", target);
+                respond(exchange, 307, "redirect");
+            });
             assertThatThrownBy(() -> client.submit(mapper.createObjectNode(), UUID.randomUUID()))
                     .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
             assertThatThrownBy(() -> client.output("rendered_01.png"))
+                    .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+            assertThatThrownBy(() -> client.history(SYNTHETIC_PROXY_PROMPT_ID))
+                    .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+            assertThatThrownBy(() -> client.uploadImage(UUID.randomUUID(), new byte[] {1}, "png"))
                     .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
             assertThat(followed).hasValue(0);
 
