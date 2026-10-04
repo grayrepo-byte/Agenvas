@@ -16,6 +16,7 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
+import dev.agenvas.provider.domain.MediaFunction;
 import dev.agenvas.usage.application.UsageService;
 import java.time.Clock;
 import java.util.Set;
@@ -92,7 +93,7 @@ public class VideoOperationService {
             }
             var source = artifacts.requireMediaVersionForTask(ownerId, projectId, sourceVersionId, Artifact.Kind.VIDEO);
             var asset = assets.metadata(ownerId, projectId, UUID.fromString(source.content().path("assetId").asText()));
-            var binding = functions.resolve(operation, expectedFunctionVersion);
+            var binding = functions.resolve(MediaFunction.forVideo(operation), expectedFunctionVersion);
             if (binding.capabilityVersion() != expectedCapabilityVersion) {
                 throw problem(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CHANGED", "api.media-function.conflict");
             }

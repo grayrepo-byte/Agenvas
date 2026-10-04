@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { getMediaFunctions, getMediaSettings, type RunVideoOperationRequest, type VideoOperation } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
-import { MEDIA_FUNCTIONS_QUERY_KEY, videoOperationLabel, videoFunctionChoices } from "../../shared/mediaFunctions";
+import { MEDIA_FUNCTIONS_QUERY_KEY, videoOperationLabel, videoFunctionChoices, videoFunction } from "../../shared/mediaFunctions";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
 import { Button } from "../../shared/ui/primitives/button";
 import { RunningHubForm, runningHubErrors, type RunningHubValue } from "./RunningHubForm";
@@ -19,7 +19,7 @@ export function VideoOperationPanel({ operation, sourceVersionId, sourceTitle, b
   useLocale();
   const functions = useQuery({ queryKey: MEDIA_FUNCTIONS_QUERY_KEY, queryFn: getMediaFunctions, retry: false });
   const settings = useQuery({ queryKey: ["settings", "media"], queryFn: getMediaSettings, retry: false });
-  const setting = functions.data?.find((entry) => entry.operation === operation);
+  const setting = functions.data?.find((entry) => entry.operation === videoFunction(operation));
   const configured = settings.data && setting?.capabilityId
     ? videoFunctionChoices(settings.data, operation).find(({ capability }) => capability.id === setting.capabilityId) : undefined;
   return <div className="media-operation-panel video-operation-panel nodrag nowheel nopan" role="dialog" aria-label={videoOperationLabel(operation)}>

@@ -28,6 +28,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import dev.agenvas.task.application.VideoOperationService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
+import dev.agenvas.provider.domain.MediaFunction;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -135,9 +136,9 @@ class VideoOperationPostgresIT {
         assertThatThrownBy(() -> run(source, VideoOperation.UPSCALE, "unconfigured-upscale"))
                 .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("MEDIA_FUNCTION_UNCONFIGURED");
         assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(1);
-        long settingVersion = functions.list().stream().filter(setting -> setting.operation() == VideoOperation.UPSCALE).findFirst().orElseThrow().version();
-        functions.update(VideoOperation.UPSCALE, settingVersion, null);
-        assertThatThrownBy(() -> functions.update(VideoOperation.UPSCALE, settingVersion, null))
+        long settingVersion = functions.list().stream().filter(setting -> setting.operation() == MediaFunction.VIDEO_UPSCALE).findFirst().orElseThrow().version();
+        functions.update(MediaFunction.VIDEO_UPSCALE, settingVersion, null);
+        assertThatThrownBy(() -> functions.update(MediaFunction.VIDEO_UPSCALE, settingVersion, null))
                 .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("MEDIA_FUNCTION_CONFLICT");
         assertThat(capabilities.publishedCandidates()).noneMatch(candidate ->
                 candidate.binding().capabilityId().equals(MediaFunctionService.LOCAL_AUDIO_CAPABILITY));
@@ -185,8 +186,8 @@ class VideoOperationPostgresIT {
                  "pricing":{"amount":"0.5","currency":"CNY","unit":"SECOND"}}
                 """);
         var capability = capabilities.publishCapability(connection.id(), "Synthetic AI upscale", "RUNNINGHUB_VIDEO", settings);
-        var initial = functions.list().stream().filter(setting -> setting.operation() == VideoOperation.UPSCALE).findFirst().orElseThrow();
-        functions.update(VideoOperation.UPSCALE, initial.version(), capability.id());
+        var initial = functions.list().stream().filter(setting -> setting.operation() == MediaFunction.VIDEO_UPSCALE).findFirst().orElseThrow();
+        functions.update(MediaFunction.VIDEO_UPSCALE, initial.version(), capability.id());
         try {
             var params = mapper.createObjectNode(); params.putObject("dynamicValues").put("clip", UUID.randomUUID().toString()).put("scale", 4);
             var task = operations.run(owner.userId(), source.projectId(), source.artifactId(), source.itemId(), source.versionId(),
@@ -198,7 +199,7 @@ class VideoOperationPostgresIT {
             assertThat(drafts.get(owner.userId(), source.projectId(), UUID.fromString(task.input().path("canvasItemId").asText())).mediaInputs()).isEmpty();
             direct.cancelQueued(owner.userId(), source.projectId(), task.id());
         } finally {
-            functions.update(VideoOperation.UPSCALE, initial.version() + 1, initial.capabilityId());
+            functions.update(MediaFunction.VIDEO_UPSCALE, initial.version() + 1, initial.capabilityId());
         }
     }
 
@@ -212,8 +213,8 @@ class VideoOperationPostgresIT {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
         var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url).with(auth))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn().getResponse().getContentAsString();
-        assertThat(mapper.readTree(response)).hasSize(3);
-        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(url + "/EXTRACT_AUDIO")
+        assertThat(mapper.readTree(response)).hasSize(18);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(url + "/VIDEO_EXTRACT_AUDIO")
                 .with(auth).contentType("application/json").content("{\"expectedVersion\":0,\"capabilityId\":null}"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
     }
@@ -239,7 +240,7 @@ class VideoOperationPostgresIT {
     }
 
     private Task run(Source source, VideoOperation operation, String key) {
-        long version = functions.list().stream().filter(setting -> setting.operation() == operation).findFirst().orElseThrow().version();
+        long version = functions.list().stream().filter(setting -> setting.operation() == MediaFunction.forVideo(operation)).findFirst().orElseThrow().version();
         return operations.run(owner.userId(), source.projectId(), source.artifactId(), source.itemId(), source.versionId(),
                 0, operation, version, 1, "", mapper.createObjectNode(), key);
     }

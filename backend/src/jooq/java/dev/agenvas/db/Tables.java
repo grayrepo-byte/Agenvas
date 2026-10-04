@@ -273,8 +273,8 @@ public class Tables {
     public static final MediaDraft MEDIA_DRAFT = MediaDraft.MEDIA_DRAFT;
 
     /**
-     * Administrator-selected video processing capabilities, independent of
-     * generation defaults
+     * Administrator-selected image/video processing capabilities, independent
+     * of generation defaults
      */
     public static final MediaFunctionSetting MEDIA_FUNCTION_SETTING = MediaFunctionSetting.MEDIA_FUNCTION_SETTING;
 

@@ -888,7 +888,7 @@
   "media.card.chooseImageUpload": "选择要上传的图片",
   "media.card.closeOperation": "关闭图片处理面板",
   "media.card.closeVideo": "关闭视频预览",
-  "media.card.cloudProcessingHint": "使用 OpenAI / Google 图片能力",
+  "media.card.cloudProcessingHint": "使用已配置的图片处理能力",
   "media.card.configureProviderHint": "请先在设置中配置 OpenAI 或 Google",
   "media.card.copyHint": "复制完整工作草稿，不复制任务和连线",
   "media.card.crop": "裁剪",
@@ -2154,12 +2154,12 @@
   "media.functions.title": "功能设置",
   "media.functions.description": "为画布工具选择处理方式和模型，独立于普通生成默认模型。",
   "media.functions.videoTools": "视频节点工具",
-  "media.functions.catalogHint": "从媒体设置中已发布且支持视频输入的能力中选择；可保留本地处理，或绑定第三方工作流。",
+  "media.functions.catalogHint": "从媒体设置中已发布且兼容此工具的能力中选择；可使用本地处理、模型或第三方工作流。",
   "media.functions.method": "处理方式",
   "media.functions.unconfigured": "未配置 / 停用",
   "media.functions.unavailable": "已配置能力不可用或不兼容，请重新选择。",
   "media.functions.upscaleHint": "选择 AI 超分工作流，放大倍数与质量由其参数决定。",
-  "media.functions.compatibilityHint": "当前支持本地深度/音轨处理与 RunningHub 单视频输入工作流。ComfyUI 目前仅支持生图和图生视频，接入视频处理能力后可在此选择。",
+  "media.functions.compatibilityHint": "当前支持固定本地处理、OpenAI/Google 图片编辑、ComfyUI 固定图片参考编辑模板，以及 RunningHub 单图片或单视频输入工作流。仅显示兼容能力；透明背景、蒙版、额外参考图及超分依赖所选能力。",
   "media.functions.changed": "设置已被修改。草稿已保留，请刷新核对后保存。",
   "media.functions.saved": "功能设置已保存",
   "tasks.errors.videoAudioMissing": "视频没有可分离的音轨",
@@ -2171,5 +2171,8 @@
   "settings.adapters.localVideoAudio": "本地音轨分离",
   "media.functions.localMedia": "本地媒体处理",
   "media.functions.depthHint": "提取场景的相对深度，保存为独立深度视频节点。",
-  "media.functions.audioHint": "分离视频音轨，保存为独立音频节点。"
+  "media.functions.audioHint": "分离视频音轨，保存为独立音频节点。",
+  "media.functions.imageTools": "图片工具",
+  "media.functions.imageHint": "按此处选择的方式执行；修改普通生成默认模型不会改变此设置。",
+  "media.functions.configureImageFirst": "请先在功能设置中为此图片工具选择处理方式。"
 }

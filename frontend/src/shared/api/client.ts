@@ -26,7 +26,9 @@ export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest
 export type RemoveMediaDraftMediaInputRequest = components["schemas"]["RemoveMediaDraftMediaInputRequest"];
 export type RunMediaDraftRequest = components["schemas"]["RunMediaDraftRequest"];
 export type RunImageOperationRequest = components["schemas"]["RunImageOperationRequest"];
+export type ImageOperation = RunImageOperationRequest["operation"];
 export type VideoOperation = components["schemas"]["VideoOperation"];
+export type MediaFunction = components["schemas"]["MediaFunction"];
 export type MediaFunctionSetting = components["schemas"]["MediaFunctionSetting"];
 export type RunVideoOperationRequest = components["schemas"]["RunVideoOperationRequest"];
 export type RunTextGenerationRequest = components["schemas"]["RunTextGenerationRequest"];
@@ -547,7 +549,7 @@ export function getMediaFunctions(): Promise<MediaFunctionSetting[]> {
   return readJson("/api/v1/settings/media-functions", t("api.errors.mediaSettingsUnavailable"));
 }
 
-export function updateMediaFunction(operation: VideoOperation, expectedVersion: number, capabilityId: string | null): Promise<MediaFunctionSetting[]> {
+export function updateMediaFunction(operation: MediaFunction, expectedVersion: number, capabilityId: string | null): Promise<MediaFunctionSetting[]> {
   return writeJson(`/api/v1/settings/media-functions/${operation}`, {
     method: "PUT", body: JSON.stringify({ expectedVersion, capabilityId }),
   });

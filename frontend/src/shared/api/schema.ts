@@ -1734,8 +1734,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 固定来源图片并创建相连的独立结果节点后受理图片后处理任务
-         * @description 派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。节点标题为来源节点当前标题加「 · 操作名称」，超长时截短来源部分以保留操作后缀；完成或重放不覆盖后续改名。THREE_VIEW 首次受理按类型读取统一管理的内置功能提示词，追加可选主体说明，冻结最终正文及 promptKey/promptVersion；修改管理配置只影响新命令，同键重放及在途任务保留原输入。
+         * 按图片功能设置固定来源并创建独立结果节点与图片处理任务
+         * @description 按 IMAGE_ 前缀功能绑定解析处理能力，核对 expectedFunctionVersion 和 expectedCapabilityVersion；不接受客户端选择能力。单图片输入的 RunningHub 契约固定来源槽、冻结普通参数及完整契约；同键重放原任务且不读取新设置。派生结果节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入；操作输入固定在任务及结果来源中。节点标题为来源节点当前标题加「 · 操作名称」，超长时截短来源部分以保留操作后缀；完成或重放不覆盖后续改名。THREE_VIEW 首次受理按类型读取统一管理的内置功能提示词，追加可选主体说明，冻结最终正文及 promptKey/promptVersion；修改管理配置只影响新命令，同键重放及在途任务保留原输入。
          */
         post: operations["runImageOperation"];
         delete?: never;
@@ -1786,7 +1786,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 查询视频工具功能设置（独立于媒体生成默认模型） */
+        /** 查询图片与视频工具功能设置（独立于媒体生成默认模型） */
         get: operations["listMediaFunctions"];
         put?: never;
         post?: never;
@@ -1807,14 +1807,14 @@ export interface paths {
                 "Accept-Language"?: components["parameters"]["AcceptLanguage"];
             };
             path: {
-                operation: components["schemas"]["VideoOperation"];
+                operation: components["schemas"]["MediaFunction"];
             };
             cookie?: never;
         };
         get?: never;
         /**
-         * 通过 CAS 为视频功能绑定已发布且输入输出兼容的能力
-         * @description capabilityId=null 停用入口执行；深度和音轨分离可选内置本地能力，视频高清必须绑定兼容的第三方 AI 能力。当前云端支持 RunningHub 的单视频输入及匹配主输出类型，固定 ComfyUI 图生视频模板不兼容，不伪装成视频后处理。新适配器须实现并声明兼容协议后才可绑定。
+         * 通过 CAS 为图片或视频功能绑定已发布且输入输出兼容的能力
+         * @description capabilityId=null 停用入口执行；图片与视频以 IMAGE_/VIDEO_ 前缀区分。图片几何操作只支持固定本地处理；图片深度与放大支持本地或单图片输入的 RunningHub，生成式图片工具还支持已启用的 OpenAI/Google 参考图能力或 ComfyUI 固定图片参考编辑模板，透明输出工具须支持透明背景。深度和音轨分离可选内置本地能力，视频高清必须绑定兼容的第三方 AI 能力。当前云端支持 RunningHub 的单视频输入及匹配主输出类型，固定 ComfyUI 图生视频模板不兼容，不伪装成视频后处理。新适配器须实现并声明兼容协议后才可绑定。
          */
         put: operations["updateMediaFunction"];
         post?: never;
@@ -4200,8 +4200,10 @@ export interface components {
         };
         /** @enum {string} */
         VideoOperation: "DEPTH_MAP" | "EXTRACT_AUDIO" | "UPSCALE";
+        /** @enum {string} */
+        MediaFunction: "IMAGE_SMART_EDIT" | "IMAGE_RELIGHT" | "IMAGE_OUTPAINT" | "IMAGE_THREE_VIEW" | "IMAGE_LAYER_SPLIT" | "IMAGE_EXPRESSION_EDIT" | "IMAGE_REMOVE_BACKGROUND" | "IMAGE_OBJECT_REMOVE" | "IMAGE_VIEW_ANGLE" | "IMAGE_DEPTH_MAP" | "IMAGE_UPSCALE" | "IMAGE_CROP" | "IMAGE_ROTATE" | "IMAGE_FLIP_HORIZONTAL" | "IMAGE_FLIP_VERTICAL" | "VIDEO_DEPTH_MAP" | "VIDEO_EXTRACT_AUDIO" | "VIDEO_UPSCALE";
         MediaFunctionSetting: {
-            operation: components["schemas"]["VideoOperation"];
+            operation: components["schemas"]["MediaFunction"];
             /** Format: uuid */
             capabilityId: string | null;
             /** Format: int64 */
@@ -4235,14 +4237,18 @@ export interface components {
             /** @enum {string} */
             operation: "SMART_EDIT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
             instruction?: string | null;
-            /** Format: uuid */
-            capabilityId?: string | null;
+            /** Format: int64 */
+            expectedFunctionVersion: number;
+            expectedCapabilityVersion: number;
             referenceVersionIds?: string[];
             /** Format: uuid */
             maskAssetId?: string | null;
             parameters: components["schemas"]["ImageOperationParameters"];
         };
         ImageOperationParameters: {
+            dynamicValues?: {
+                [key: string]: string | number | boolean;
+            };
             /** @enum {integer} */
             scale?: 2 | 4;
             x?: number;
@@ -8771,8 +8777,10 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     runVideoOperation: {
@@ -8854,7 +8862,7 @@ export interface operations {
                 "Accept-Language"?: components["parameters"]["AcceptLanguage"];
             };
             path: {
-                operation: components["schemas"]["VideoOperation"];
+                operation: components["schemas"]["MediaFunction"];
             };
             cookie?: never;
         };

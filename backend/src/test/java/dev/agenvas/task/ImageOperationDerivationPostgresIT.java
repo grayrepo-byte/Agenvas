@@ -107,7 +107,7 @@ class ImageOperationDerivationPostgresIT {
         crop.put("height", 1);
         Task accepted = directMedia.runImageOperation(owner.userId(), project.id(),
                 image.artifact().id(), sourceCardId, sourceVersionId, 1,
-                ImageOperation.CROP, "", null, List.of(), null, crop, "crop-derived-node");
+                ImageOperation.CROP, "", 0, 1, List.of(), null, crop, "crop-derived-node");
         UUID targetCardId = UUID.fromString(accepted.input().path("canvasItemId").asText());
         assertThat(canvas.list(owner.userId(), project.id()).stream()
                 .filter(entry -> entry.item().id().equals(targetCardId))
@@ -133,7 +133,7 @@ class ImageOperationDerivationPostgresIT {
 
         Task replay = directMedia.runImageOperation(owner.userId(), project.id(),
                 image.artifact().id(), sourceCardId, sourceVersionId, 1,
-                ImageOperation.CROP, "", null, List.of(), null, crop, "crop-derived-node");
+                ImageOperation.CROP, "", 0, 1, List.of(), null, crop, "crop-derived-node");
         assertThat(replay.id()).isEqualTo(accepted.id());
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
         assertThat(connections.list(owner.userId(), project.id())).hasSize(1);

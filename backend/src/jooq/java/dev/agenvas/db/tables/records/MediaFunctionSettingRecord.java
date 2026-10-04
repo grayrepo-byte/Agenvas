@@ -14,7 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Administrator-selected video processing capabilities, independent of
+ * Administrator-selected image/video processing capabilities, independent of
  * generation defaults
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
@@ -24,6 +24,7 @@ public class MediaFunctionSettingRecord extends UpdatableRecordImpl<MediaFunctio
 
     /**
      * Setter for <code>public.media_function_setting.operation</code>.
+     * Qualified IMAGE_ or VIDEO_ tool identity
      */
     public void setOperation(String value) {
         set(0, value);
@@ -31,6 +32,7 @@ public class MediaFunctionSettingRecord extends UpdatableRecordImpl<MediaFunctio
 
     /**
      * Getter for <code>public.media_function_setting.operation</code>.
+     * Qualified IMAGE_ or VIDEO_ tool identity
      */
     public String getOperation() {
         return (String) get(0);
@@ -38,6 +40,7 @@ public class MediaFunctionSettingRecord extends UpdatableRecordImpl<MediaFunctio
 
     /**
      * Setter for <code>public.media_function_setting.capability_id</code>.
+     * Selected published capability; null disables new execution
      */
     public void setCapabilityId(UUID value) {
         set(1, value);
@@ -45,34 +48,39 @@ public class MediaFunctionSettingRecord extends UpdatableRecordImpl<MediaFunctio
 
     /**
      * Getter for <code>public.media_function_setting.capability_id</code>.
+     * Selected published capability; null disables new execution
      */
     public UUID getCapabilityId() {
         return (UUID) get(1);
     }
 
     /**
-     * Setter for <code>public.media_function_setting.version</code>.
+     * Setter for <code>public.media_function_setting.version</code>. CAS
+     * version changed only by explicit function setting updates
      */
     public void setVersion(Long value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.media_function_setting.version</code>.
+     * Getter for <code>public.media_function_setting.version</code>. CAS
+     * version changed only by explicit function setting updates
      */
     public Long getVersion() {
         return (Long) get(2);
     }
 
     /**
-     * Setter for <code>public.media_function_setting.updated_at</code>.
+     * Setter for <code>public.media_function_setting.updated_at</code>. Last
+     * function setting update time in UTC
      */
     public void setUpdatedAt(OffsetDateTime value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.media_function_setting.updated_at</code>.
+     * Getter for <code>public.media_function_setting.updated_at</code>. Last
+     * function setting update time in UTC
      */
     public OffsetDateTime getUpdatedAt() {
         return (OffsetDateTime) get(3);

@@ -2,7 +2,7 @@ package dev.agenvas.provider.api;
 
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.provider.application.MediaFunctionService;
-import dev.agenvas.task.domain.VideoOperation;
+import dev.agenvas.provider.domain.MediaFunction;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.PositiveOrZero;
 import java.util.List;
@@ -31,13 +31,13 @@ public class MediaFunctionController {
 
     @PutMapping("/{operation}")
     public List<FunctionResponse> update(@AuthenticationPrincipal AdminPrincipal admin,
-            @PathVariable VideoOperation operation, @Valid @RequestBody UpdateRequest request) {
+            @PathVariable MediaFunction operation, @Valid @RequestBody UpdateRequest request) {
         Objects.requireNonNull(admin);
         functions.update(operation, request.expectedVersion(), request.capabilityId());
         return functions.list().stream().map(setting -> new FunctionResponse(setting.operation(), setting.capabilityId(), setting.version())).toList();
     }
 
-    public record FunctionResponse(VideoOperation operation, UUID capabilityId, long version) {}
+    public record FunctionResponse(MediaFunction operation, UUID capabilityId, long version) {}
 
     public record UpdateRequest(@PositiveOrZero long expectedVersion, UUID capabilityId) {}
 }

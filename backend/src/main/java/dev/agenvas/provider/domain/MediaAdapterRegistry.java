@@ -42,6 +42,7 @@ public final class MediaAdapterRegistry {
     }
     public static final String OPENAI_GPT_IMAGE_2 = "OPENAI_GPT_IMAGE_2";
     public static final String GOOGLE_NANO_BANANA_2 = "GOOGLE_NANO_BANANA_2";
+    public static final String COMFY_IMAGE_V1 = "COMFY_IMAGE_V1";
     public static final String RUNNINGHUB_IMAGE = "RUNNINGHUB_IMAGE";
     public static final String RUNNINGHUB_VIDEO = "RUNNINGHUB_VIDEO";
     public static final String RUNNINGHUB_AUDIO = "RUNNINGHUB_AUDIO";
@@ -80,7 +81,7 @@ public final class MediaAdapterRegistry {
             Map.entry("VOLC_SEED_AUDIO_1", audio(MediaPlatform.VOLCENGINE)),
             Map.entry("MOCK_VIDEO", video(MediaPlatform.MOCK, 1, 30, false, 4,
                     Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "TEXT", true)),
-            Map.entry("COMFY_IMAGE_V1", image(MediaPlatform.COMFYUI, true, 1,
+            Map.entry(COMFY_IMAGE_V1, image(MediaPlatform.COMFYUI, true, 1,
                     Set.of("AUTO", "1:1", "9:16", "16:9"), Set.of("1K"), Set.of(), false,
                     false)),
             Map.entry("COMFY_VIDEO_V1", video(MediaPlatform.COMFYUI, 1, 5, true, 1,

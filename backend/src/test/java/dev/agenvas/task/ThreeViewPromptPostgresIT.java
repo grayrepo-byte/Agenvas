@@ -20,6 +20,8 @@ import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.MediaCapabilityService;
+import dev.agenvas.provider.application.MediaFunctionService;
+import dev.agenvas.provider.domain.MediaFunction;
 import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.settings.application.PromptService;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -94,6 +96,7 @@ class ThreeViewPromptPostgresIT {
     @Autowired CanvasService canvas;
     @Autowired DirectMediaTaskService directMedia;
     @Autowired MediaCapabilityService capabilities;
+    @Autowired MediaFunctionService functions;
     @Autowired MediaExecutionWorker worker;
     @Autowired TaskService tasks;
     @Autowired PromptService prompts;
@@ -141,6 +144,9 @@ class ThreeViewPromptPostgresIT {
                 "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1", "synthetic-image-key");
         var capability = capabilities.publishCapability(connection.id(), "Synthetic image editing",
                 "OPENAI_GPT_IMAGE_2", mapper.createObjectNode());
+        var function = functions.list().stream().filter(entry -> entry.operation() == MediaFunction.IMAGE_THREE_VIEW).findFirst().orElseThrow();
+        functions.update(MediaFunction.IMAGE_THREE_VIEW, function.version(), capability.id());
+        long functionVersion = function.version() + 1;
         var project = projects.create(owner.userId(), "Synthetic " + type, Project.AspectRatio.LANDSCAPE_16_9);
         var assetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());
         var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic source",
@@ -151,9 +157,9 @@ class ThreeViewPromptPostgresIT {
         String guidance = "retain synthetic accessories";
         Task accepted = directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
                 cardId, image.resourceDefaultVersion().id(), 0, ImageOperation.THREE_VIEW, guidance,
-                capability.id(), List.of(), null, parameters, "synthetic-first-views");
+                functionVersion, 1, List.of(), null, parameters, "synthetic-first-views");
         String firstPrompt = firstContent + " Subject guidance: " + guidance;
-        assertThat(accepted.input().path("schemaVersion").asInt()).isEqualTo(7);
+        assertThat(accepted.input().path("schemaVersion").asInt()).isEqualTo(8);
         assertThat(accepted.input().path("promptKey").asText()).isEqualTo(key);
         assertThat(accepted.input().path("promptVersion").asLong()).isEqualTo(saved.path("version").asLong());
         assertFrozenPrompt(accepted, firstPrompt);
@@ -163,12 +169,12 @@ class ThreeViewPromptPostgresIT {
         save(beforeSecondEdit, secondContent);
         Task replay = directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
                 cardId, image.resourceDefaultVersion().id(), 0, ImageOperation.THREE_VIEW, guidance,
-                capability.id(), List.of(), null, parameters, "synthetic-first-views");
+                functionVersion, 1, List.of(), null, parameters, "synthetic-first-views");
         assertThat(replay.id()).isEqualTo(accepted.id());
         assertFrozenPrompt(replay, firstPrompt);
         assertThatThrownBy(() -> directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
                 cardId, image.resourceDefaultVersion().id(), 0, ImageOperation.THREE_VIEW, "changed instruction",
-                capability.id(), List.of(), null, parameters, "synthetic-first-views"))
+                functionVersion, 1, List.of(), null, parameters, "synthetic-first-views"))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("DIRECT_MEDIA_CONFLICT"));
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
@@ -179,7 +185,7 @@ class ThreeViewPromptPostgresIT {
 
         Task next = directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
                 cardId, image.resourceDefaultVersion().id(), 0, ImageOperation.THREE_VIEW, "",
-                capability.id(), List.of(), null, parameters, "synthetic-next-views");
+                functionVersion, 1, List.of(), null, parameters, "synthetic-next-views");
         assertFrozenPrompt(next, secondContent);
         assertThat(next.input().path("promptVersion").asLong()).isEqualTo(beforeSecondEdit.version() + 1);
         assertThat(worker.submitOnce("synthetic-updated-views")).isEqualTo(1);

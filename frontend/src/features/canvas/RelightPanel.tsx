@@ -1,5 +1,5 @@
 import { ArrowUp,Stack,X } from "@phosphor-icons/react";
-import { useState,type PointerEvent } from "react";
+import { useState,type ReactNode,type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { ApiError,type MediaCapability,type RunImageOperationRequest } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -37,9 +37,10 @@ const PRESETS: ReadonlyArray<{
 ];
 
 /** Dedicated AI relighting workspace based on the selected canvas image. */
-export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, onSubmit }: {
+export function RelightPanel({ sourceUrl, capabilities, busy, error, extraControls, submitDisabled = false, configuredMethod = false, onClose, onSubmit }: {
   sourceUrl: string;
   capabilities: MediaCapability[];
+  extraControls?: ReactNode; submitDisabled?: boolean; configuredMethod?: boolean;
   busy: boolean;
   error: Error | null;
   onClose: () => void;
@@ -57,7 +58,7 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
   const previewFilter = `brightness(${Math.max(0.2, 1 + brightness / 100)}) `
     + `sepia(${Math.max(0, -temperatureOffset) * 0.3}) `
     + `hue-rotate(${Math.max(0, temperatureOffset) * 165}deg)`;
-  const canSubmit = !busy && Boolean(capabilityId);
+  const canSubmit = !busy && !submitDisabled && Boolean(capabilityId);
 
   function selectPreset(next: typeof PRESETS[number]) {
     setPreset(next.id);
@@ -130,13 +131,14 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, onClose, on
       </section>
     </div>
 
+    {extraControls}
     {error ? <p className="relight-error" role="alert">
       {error instanceof ApiError ? error.message : t("image.relight.submitFailed")}</p> : null}
 
     <footer className="relight-dialog-footer">
       <label className="relight-capability-select">
         <span>{t("image.relight.imageCapability")}</span>
-        <Select variant="ghost" density="compact" value={capabilityId} aria-label={t("image.relight.imageCapability")}
+        <Select variant="ghost" density="compact" value={capabilityId} disabled={configuredMethod} aria-label={t("image.relight.imageCapability")}
           onChange={(event) => setCapabilityId(event.target.value)}>
           {capabilities.length ? capabilities.map((capability) => <option key={capability.id}
             value={capability.id}>{capability.name}</option>)

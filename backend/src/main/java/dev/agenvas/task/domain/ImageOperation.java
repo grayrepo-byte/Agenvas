@@ -1,6 +1,6 @@
 package dev.agenvas.task.domain;
 
-/** Image-only post-processing commands; cloud operations must use OpenAI or Google. */
+/** Image post-processing semantics; the configured function binding selects the compatible processor. */
 public enum ImageOperation {
     SMART_EDIT("智能编辑", true, true),
     RELIGHT("打光", true, false),

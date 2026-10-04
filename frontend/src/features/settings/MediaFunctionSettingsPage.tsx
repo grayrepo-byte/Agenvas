@@ -4,7 +4,7 @@ import { Link, Navigate } from "react-router";
 import { HTTP_STATUS, ApiError, getCurrentUser, getMediaFunctions, getMediaSettings, updateMediaFunction,
   type MediaFunctionSetting, type MediaSettings } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
-import { MEDIA_FUNCTIONS_QUERY_KEY, VIDEO_OPERATIONS, videoFunctionChoices, videoOperationLabel } from "../../shared/mediaFunctions";
+import { MEDIA_FUNCTIONS_QUERY_KEY, IMAGE_OPERATIONS, VIDEO_OPERATIONS, imageFunction, videoFunction, mediaFunctionChoices, mediaFunctionLabel } from "../../shared/mediaFunctions";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Notice, Panel } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
@@ -16,7 +16,7 @@ function FunctionRow({ setting, settings }: { setting: MediaFunctionSetting; set
   const client = useQueryClient();
   const [draft, setDraft] = useState({ capabilityId: setting.capabilityId ?? "", version: setting.version });
   const [saved, setSaved] = useState(false);
-  const choices = videoFunctionChoices(settings, setting.operation);
+  const choices = mediaFunctionChoices(settings, setting.operation);
   const dirty = draft.capabilityId !== (setting.capabilityId ?? "");
   const stale = draft.version !== setting.version;
   const save = useMutation({
@@ -31,10 +31,10 @@ function FunctionRow({ setting, settings }: { setting: MediaFunctionSetting; set
       if (error instanceof ApiError && error.status === 409) void client.invalidateQueries({ queryKey: MEDIA_FUNCTIONS_QUERY_KEY });
     },
   });
-  const label = videoOperationLabel(setting.operation);
+  const label = mediaFunctionLabel(setting.operation);
   return <section className="media-function-row" aria-label={label}>
-    <div><h3>{label}</h3><p className="ui-muted">{setting.operation === "UPSCALE" ? t("media.functions.upscaleHint")
-      : setting.operation === "DEPTH_MAP" ? t("media.functions.depthHint") : t("media.functions.audioHint")}</p></div>
+    <div><h3>{label}</h3><p className="ui-muted">{setting.operation.startsWith("IMAGE_") ? t("media.functions.imageHint") : setting.operation === "VIDEO_UPSCALE" ? t("media.functions.upscaleHint")
+      : setting.operation === "VIDEO_DEPTH_MAP" ? t("media.functions.depthHint") : t("media.functions.audioHint")}</p></div>
     <div className="ui-stack">
       <label className="ui-field">{t("media.functions.method")}<Select value={draft.capabilityId} disabled={save.isPending}
         aria-label={`${label} · ${t("media.functions.method")}`} onChange={(event) => {
@@ -64,15 +64,18 @@ export function MediaFunctionSettingsPage() {
   if (loadError instanceof ApiError && loadError.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   return <PageShell title={t("media.functions.title")} description={t("media.functions.description")}
     actions={<Link className="secondary-button" to="/settings/media">{t("ui.pageShell.mediaSettings")}</Link>}>
-    <Panel title={t("media.functions.videoTools")} description={t("media.functions.catalogHint")}>
-      {!loadError && (functions.isPending || settings.isPending) ? <LoadingState label={t("app.pageLoading")} /> : null}
-      {loadError ? <Notice tone="danger"><p>{loadError.message}</p>
-        <Button variant="outline" type="button" onClick={() => { void session.refetch(); void functions.refetch(); void settings.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
-      {functions.data && settings.data ? VIDEO_OPERATIONS.map((operation) => {
+    {!loadError && (functions.isPending || settings.isPending) ? <LoadingState label={t("app.pageLoading")} /> : null}
+    {loadError ? <Notice tone="danger"><p>{loadError.message}</p>
+      <Button variant="outline" type="button" onClick={() => { void session.refetch(); void functions.refetch(); void settings.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
+    {functions.data && settings.data ? [
+      { title: t("media.functions.imageTools"), operations: IMAGE_OPERATIONS.map(imageFunction) },
+      { title: t("media.functions.videoTools"), operations: VIDEO_OPERATIONS.map(videoFunction) },
+    ].map((group) => <Panel key={group.title} title={group.title} description={t("media.functions.catalogHint")}>
+      {group.operations.map((operation) => {
         const setting = functions.data.find((entry) => entry.operation === operation);
         return setting ? <FunctionRow key={operation} setting={setting} settings={settings.data} /> : null;
-      }) : null}
-      <p className="ui-muted">{t("media.functions.compatibilityHint")}</p>
-    </Panel>
+      })}
+    </Panel>) : null}
+    <p className="ui-muted">{t("media.functions.compatibilityHint")}</p>
   </PageShell>;
 }

@@ -216,8 +216,9 @@ public final class ImageOperationSpec {
                     + " while preserving identity, proportions, clothing, materials, environment, lighting, "
                     + "and visual style."
                     + (instruction.isBlank() ? "" : " Additional guidance: " + instruction);
-            case DEPTH_MAP -> "Local monocular depth map";
-            case UPSCALE -> "Local " + parameters.path("scale").asInt() + "x upscale";
+            case DEPTH_MAP -> "Extract a relative monocular depth map from the source image.";
+            case UPSCALE -> "Upscale the source image by " + parameters.path("scale").asInt()
+                    + "x while preserving its composition and subject identity.";
             case CROP -> "Local crop";
             case ROTATE -> "Local rotation";
             case FLIP_HORIZONTAL -> "Local horizontal mirror";

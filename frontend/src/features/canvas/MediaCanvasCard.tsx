@@ -19,7 +19,7 @@ X
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState,type ReactNode } from "react";
 import {
-ApiError,assetContentUrl,assetThumbnailUrl,getMediaSettings,listDirectMediaTasks,
+ApiError,assetContentUrl,assetThumbnailUrl,getMediaSettings,getMediaFunctions,listDirectMediaTasks,
 runImageOperation,runVideoOperation,type Artifact,type CanvasItem,type MediaCapability,
 type RunImageOperationRequest,type RunVideoOperationRequest,type VideoOperation,type Task
 } from "../../shared/api/client";
@@ -47,6 +47,8 @@ import { SmartEditDialog } from "./SmartEditDialog";
 import { taskErrorMessage } from "./taskErrorMessages";
 import { VideoOperationPanel } from "./VideoOperationPanel";
 import { VideoPreview } from "./VideoPreview";
+import { ImageFunctionConfiguration } from "./ImageFunctionConfiguration";
+import { MEDIA_FUNCTIONS_QUERY_KEY, imageFunction, mediaFunctionChoices } from "../../shared/mediaFunctions";
 
 const TASK_LABELS: Partial<Record<Task["status"], string>> = {
   // Synchronous providers generate before returning, so SUBMITTING also covers generation time.
@@ -58,10 +60,6 @@ type ImageOperation = RunImageOperationRequest["operation"];
 type ImageTool = ImageOperation | "BRUSH_MARKUP";
 type ThreeViewType = NonNullable<RunImageOperationRequest["parameters"]["threeViewType"]>;
 type AspectRatio = NonNullable<RunImageOperationRequest["parameters"]["aspectRatio"]>;
-const LOCAL_IMAGE_OPERATIONS: readonly ImageTool[] = [
-  "BRUSH_MARKUP",
-  "DEPTH_MAP", "UPSCALE", "CROP", "ROTATE", "FLIP_HORIZONTAL", "FLIP_VERTICAL",
-];
 const THREE_VIEW_OPTIONS = [
   { value: "CHARACTER", get label() { return t("media.card.characterViews"); }, get summary() { return t("media.card.characterViewsHint"); }, icon: PersonSimple,
     aspectRatio: "16:9" },
@@ -128,18 +126,19 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const isAudio = artifact.kind === "AUDIO";
   const isVideo = artifact.kind === "VIDEO";
   const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, isImage || artifact.kind === "VIDEO" ? assetId : null));
-  const settings = useQuery({ queryKey: ["media-settings"], queryFn: getMediaSettings,
+  const settings = useQuery({ queryKey: ["settings", "media"], queryFn: getMediaSettings,
     enabled: isImage && Boolean(assetId) });
-  const cloudCapabilities = (settings.data?.connections ?? [])
-    .filter((connection) => connection.enabled
-      && (connection.platform === "OPENAI" || connection.platform === "GOOGLE"))
-    .flatMap((connection) => connection.capabilities)
-    .filter((capability) => capability.enabled && capability.kind === "IMAGE_GENERATION"
-      && capability.maxReferenceImages > 0);
+  const functions = useQuery({ queryKey: MEDIA_FUNCTIONS_QUERY_KEY, queryFn: getMediaFunctions,
+    enabled: isImage && Boolean(assetId), retry: false });
+  const imageCommand = useRef<{ payload: string; key: string; input: RunImageOperationRequest } | null>(null);
   const operation = useMutation({
-    mutationFn: (input: RunImageOperationRequest) => runImageOperation(
-      artifact.projectId, artifact.id, input, crypto.randomUUID()),
+    mutationFn: (input: RunImageOperationRequest) => {
+      const payload = JSON.stringify({ ...input, expectedCanvasItemVersion: undefined });
+      if (imageCommand.current?.payload !== payload) imageCommand.current = { payload, key: crypto.randomUUID(), input };
+      return runImageOperation(artifact.projectId, artifact.id, imageCommand.current.input, imageCommand.current.key);
+    },
     onSuccess: async () => {
+      imageCommand.current = null;
       setOperationOpen(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
@@ -182,14 +181,18 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     if (!videoPending) resetVideoOperation();
   }, [toolbarActive, operationPending, resetOperation, videoPending, resetVideoOperation]);
 
-  function runOperation(name: ImageOperation, parameters: RunImageOperationRequest["parameters"] = {},
-      instruction?: string, capabilityId?: string | null,
-      extras: Pick<RunImageOperationRequest, "referenceVersionIds" | "maskAssetId"> = {}) {
+  function runOperation(name: ImageOperation, parameters: RunImageOperationRequest["parameters"] = {}) {
     const sourceVersionId = item.selectedVersion?.id;
     if (!sourceVersionId || operation.isPending) return;
-    operation.mutate({ canvasItemId: item.id, sourceVersionId,
-      expectedCanvasItemVersion: item.version, operation: name,
-      instruction: instruction || null, capabilityId: capabilityId || null, parameters, ...extras });
+    const setting = functions.data?.find((entry) => entry.operation === imageFunction(name));
+    const configured = settings.data && setting?.capabilityId ? mediaFunctionChoices(settings.data, imageFunction(name))
+      .find(({ capability }) => capability.id === setting.capabilityId) : undefined;
+    if (!setting || !configured || configured.capability.adapterId !== "LOCAL_IMAGE_PROCESSOR") {
+      setOperationOpen(name); return;
+    }
+    operation.mutate({ canvasItemId: item.id, sourceVersionId, expectedCanvasItemVersion: item.version,
+      operation: name, instruction: null, parameters, expectedFunctionVersion: setting.version,
+      expectedCapabilityVersion: configured.capability.capabilityVersion });
   }
 
   function chooseOperation(name: ImageTool, threeView: ThreeViewType | null = null) {
@@ -199,6 +202,16 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     if (name === "ROTATE") runOperation(name, { quarterTurns: 1 });
     else if (name === "FLIP_HORIZONTAL" || name === "FLIP_VERTICAL") runOperation(name);
     else setOperationOpen(name);
+  }
+
+  function imageToolMethod(name: ImageTool) {
+    if (name === "BRUSH_MARKUP") return t("media.card.local");
+    const setting = functions.data?.find((entry) => entry.operation === imageFunction(name));
+    const configured = settings.data && setting?.capabilityId
+      ? mediaFunctionChoices(settings.data, imageFunction(name)).find(({ capability }) => capability.id === setting.capabilityId)
+      : undefined;
+    if (!configured) return t("models.unconfigured");
+    return configured.capability.adapterId === "LOCAL_IMAGE_PROCESSOR" ? t("media.card.local") : "AI";
   }
 
   return <ArtifactCardFrame title={item.title} kindLabel={isImage ? t("common.image") : isAudio ? t("common.audio") : t("common.video")}
@@ -213,7 +226,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />{t("media.card.smartEdit")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
-            title={t("media.card.depthModelHint")}
             onClick={() => runOperation("DEPTH_MAP")}><Stack size={17} />{t("media.card.extractDepth")}</Button>
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
             <DropdownMenuTrigger asChild><Button variant="ghost" type="button" ref={menuButton}>
@@ -231,7 +243,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
                 </DropdownMenuGroup></DropdownMenuSubContent>
               </DropdownMenuSub> : <DropdownMenuItem key={entry.label} className="py-2"
                 disabled={!assetId || Boolean(busy) || operation.isPending} onSelect={() => chooseOperation(entry.operation)}>
-                <entry.icon /><span>{entry.label}</span><small>{LOCAL_IMAGE_OPERATIONS.includes(entry.operation) ? t("media.card.local") : "AI"}</small>
+                <entry.icon /><span>{entry.label}</span><small>{imageToolMethod(entry.operation)}</small>
               </DropdownMenuItem>)}
             </DropdownMenuGroup></DropdownMenuContent>
           </DropdownMenu>
@@ -241,33 +253,29 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             sourceVersionId={item.selectedVersionId} expectedVersion={item.version}
             sourceTitle={item.title} sourceUrl={assetContentUrl(artifact.projectId, assetId)}
             onClose={() => setOperationOpen(null)} /> : null)
-            : operationOpen === "SMART_EDIT" && assetId ? <SmartEditDialog
-            projectId={artifact.projectId} sourceVersionId={item.selectedVersion?.id ?? ""}
-            sourceTitle={item.title}
-            sourceUrl={assetContentUrl(artifact.projectId, assetId)}
-            capabilities={cloudCapabilities} busy={operation.isPending} error={operation.error}
-            onClose={() => { setOperationOpen(null); operation.reset(); }}
-            onSubmit={(input) => runOperation("SMART_EDIT", {}, input.instruction,
-              input.capabilityId, { referenceVersionIds: input.referenceVersionIds,
-                maskAssetId: input.maskAssetId ?? null })} />
-            : operationOpen === "RELIGHT" && assetId ? <RelightPanel
-            sourceUrl={assetContentUrl(artifact.projectId, assetId)}
-            capabilities={cloudCapabilities} busy={operation.isPending}
-            error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
-            onSubmit={(operationParameters, instruction, capabilityId) =>
-              runOperation("RELIGHT", operationParameters, instruction, capabilityId)} />
-            : operationOpen === "CROP" && assetId ? <CropPanel
-              sourceUrl={assetContentUrl(artifact.projectId, assetId)}
-              sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height}
-              busy={operation.isPending} error={operation.error}
+            : operationOpen && assetId && item.selectedVersionId ? <ImageFunctionConfiguration operation={operationOpen}
+              sourceVersionId={item.selectedVersionId} busy={operation.isPending}
               onClose={() => { setOperationOpen(null); operation.reset(); }}
-              onSubmit={(operationParameters) => runOperation("CROP", operationParameters)} />
-            : operationOpen ? <ImageOperationPanel key={`${operationOpen}:${threeViewType ?? ""}`}
-              operation={operationOpen} initialThreeViewType={threeViewType ?? undefined}
-              capabilities={cloudCapabilities} busy={operation.isPending}
-              error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
-              onSubmit={(operationParameters, instruction, capabilityId) =>
-                runOperation(operationOpen, operationParameters, instruction, capabilityId)} /> : null}
+              onSubmit={(input) => operation.mutate({ ...input, canvasItemId: item.id,
+                sourceVersionId: item.selectedVersionId ?? "", expectedCanvasItemVersion: item.version, operation: operationOpen })}>
+              {({ capability, controls, submitDisabled, submit }) => operationOpen === "SMART_EDIT" ? <SmartEditDialog
+                projectId={artifact.projectId} sourceVersionId={item.selectedVersionId ?? ""} sourceTitle={item.title}
+                sourceUrl={assetContentUrl(artifact.projectId, assetId)} capabilities={[capability]} configuredMethod
+                extraControls={controls} submitDisabled={submitDisabled} busy={operation.isPending} error={operation.error}
+                onClose={() => { setOperationOpen(null); operation.reset(); }}
+                onSubmit={(input) => submit({}, input.instruction, { referenceVersionIds: input.referenceVersionIds, maskAssetId: input.maskAssetId ?? null })} />
+                : operationOpen === "RELIGHT" ? <RelightPanel sourceUrl={assetContentUrl(artifact.projectId, assetId)}
+                  capabilities={[capability]} configuredMethod extraControls={controls} submitDisabled={submitDisabled}
+                  busy={operation.isPending} error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
+                  onSubmit={(parameters, instruction) => submit(parameters, instruction)} />
+                : operationOpen === "CROP" ? <CropPanel sourceUrl={assetContentUrl(artifact.projectId, assetId)}
+                  sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height} busy={operation.isPending}
+                  error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }} onSubmit={(parameters) => submit(parameters)} />
+                : <ImageOperationPanel operation={operationOpen} initialThreeViewType={threeViewType ?? undefined}
+                  capabilities={[capability]} extraControls={controls} submitDisabled={submitDisabled}
+                  busy={operation.isPending} error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
+                  onSubmit={(parameters, instruction) => submit(parameters, instruction)} />}
+            </ImageFunctionConfiguration> : null}
         </> : null}
         {isVideo ? <>
           <span className="media-toolbar-divider" aria-hidden="true" />
@@ -375,16 +383,16 @@ const VIEW_ANGLE_OPTIONS = [
   ["LOW_ANGLE", "media.card.lowAngle"], ["BACK", "media.card.back"],
 ] as const;
 
-function ImageOperationPanel({ operation, initialThreeViewType, capabilities, busy, error,
+function ImageOperationPanel({ operation, initialThreeViewType, capabilities, busy, error, extraControls, submitDisabled,
   onClose, onSubmit }: {
   operation: ImageOperation; capabilities: MediaCapability[]; busy: boolean; error: Error | null;
-  initialThreeViewType?: ThreeViewType;
+  initialThreeViewType?: ThreeViewType; extraControls: ReactNode; submitDisabled: boolean;
   onClose: () => void;
   onSubmit: (parameters: RunImageOperationRequest["parameters"], instruction?: string,
     capabilityId?: string) => void;
 }) {
   useLocale();
-  const cloud = !LOCAL_IMAGE_OPERATIONS.includes(operation);
+  const cloud = capabilities[0]?.adapterId !== "LOCAL_IMAGE_PROCESSOR";
   const [instruction, setInstruction] = useState("");
   const [capabilityId, setCapabilityId] = useState(capabilities[0]?.id ?? "");
   const [scale, setScale] = useState<2 | 4>(2);
@@ -401,18 +409,18 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
   const selectedCapabilityId = eligibleCapabilities.some((capability) => capability.id === capabilityId)
     ? capabilityId : eligibleCapabilities[0]?.id ?? "";
   const instructionCopy = INSTRUCTION_COPY[operation];
-  const canSubmit = !busy && (!cloud || Boolean(selectedCapabilityId))
+  const canSubmit = !busy && !submitDisabled && (!cloud || Boolean(selectedCapabilityId))
     && (!instructionCopy?.required || instruction.trim().length > 0);
 
   function submit() {
     if (!canSubmit) return;
     const parameters: RunImageOperationRequest["parameters"] = operation === "UPSCALE"
-      ? { scale } : operation === "THREE_VIEW"
+      ? capabilities[0]?.settings.runningHub ? {} : { scale } : operation === "THREE_VIEW"
         ? { aspectRatio: ratio, threeViewType }
         : operation === "OUTPAINT" ? { aspectRatio: ratio }
         : operation === "LAYER_SPLIT" ? { layerTarget }
           : operation === "VIEW_ANGLE" ? { viewAngle }
-        : {};
+            : operation === "ROTATE" ? { quarterTurns: 1 } : {};
     onSubmit(parameters, instruction.trim(), selectedCapabilityId || undefined);
   }
 
@@ -444,7 +452,7 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
       onChange={(event) => setViewAngle(event.target.value as typeof viewAngle)}>
       {VIEW_ANGLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
     </Select></label> : null}
-    {cloud ? <label>{t("media.imageCapability")}<Select variant="ghost" density="compact" value={selectedCapabilityId}
+    {cloud ? <label>{t("media.imageCapability")}<Select variant="ghost" density="compact" value={selectedCapabilityId} disabled
       onChange={(event) => setCapabilityId(event.target.value)}>
       {eligibleCapabilities.length ? eligibleCapabilities.map((capability) => <option key={capability.id}
         value={capability.id}>{capability.name}</option>)
@@ -457,14 +465,16 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
         <Textarea value={instruction} maxLength={4000}
           placeholder={instructionCopy.placeholder}
           onChange={(event) => setInstruction(event.target.value)} /></label> : null}
-    {operation === "UPSCALE" ? <label>{t("media.card.upscaleFactor")}<Select variant="ghost" density="compact" value={scale}
+    {operation === "UPSCALE" && !capabilities[0]?.settings.runningHub ? <label>{t("media.card.upscaleFactor")}<Select variant="ghost" density="compact" value={scale}
       onChange={(event) => setScale(Number(event.target.value) as 2 | 4)}>
       <option value={2}>{t("media.card.upscaleDouble")}</option><option value={4}>{t("media.card.upscaleQuadruple")}</option>
     </Select></label> : null}
     {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>{t("media.card.aspectRatio")}<Select variant="ghost" density="compact" value={ratio}
       onChange={(event) => setRatio(event.target.value as AspectRatio)}>
-      {["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"].map((value) =>
+      {["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"].filter((value) =>
+        !capabilities[0]?.supportedImageAspectRatios?.length || capabilities[0].supportedImageAspectRatios.some((ratio) => ratio === value)).map((value) =>
         <option key={value} value={value}>{value}</option>)}</Select></label> : null}
+    {extraControls}
     {error ? <p role="alert">{error instanceof ApiError ? error.message : t("media.card.operationFailed")}</p> : null}
     <footer><Button variant="ghost" type="button" onClick={onClose}>{t("common.cancel")}</Button>
       <Button variant="ghost" type="button" className="is-primary" disabled={!canSubmit} onClick={submit}>

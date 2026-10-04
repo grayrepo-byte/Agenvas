@@ -40,7 +40,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Administrator-selected video processing capabilities, independent of
+ * Administrator-selected image/video processing capabilities, independent of
  * generation defaults
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
@@ -63,30 +63,34 @@ public class MediaFunctionSetting extends TableImpl<MediaFunctionSettingRecord> 
 
     /**
      * The column <code>public.media_function_setting.operation</code>.
+     * Qualified IMAGE_ or VIDEO_ tool identity
      */
-    public final TableField<MediaFunctionSettingRecord, String> OPERATION = createField(DSL.name("operation"), SQLDataType.VARCHAR(32).nullable(false), this, "");
+    public final TableField<MediaFunctionSettingRecord, String> OPERATION = createField(DSL.name("operation"), SQLDataType.VARCHAR(32).nullable(false), this, "Qualified IMAGE_ or VIDEO_ tool identity");
 
     /**
      * The column <code>public.media_function_setting.capability_id</code>.
+     * Selected published capability; null disables new execution
      */
-    public final TableField<MediaFunctionSettingRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID, this, "");
+    public final TableField<MediaFunctionSettingRecord, UUID> CAPABILITY_ID = createField(DSL.name("capability_id"), SQLDataType.UUID, this, "Selected published capability; null disables new execution");
 
     /**
-     * The column <code>public.media_function_setting.version</code>.
+     * The column <code>public.media_function_setting.version</code>. CAS
+     * version changed only by explicit function setting updates
      */
-    public final TableField<MediaFunctionSettingRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<MediaFunctionSettingRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "CAS version changed only by explicit function setting updates");
 
     /**
-     * The column <code>public.media_function_setting.updated_at</code>.
+     * The column <code>public.media_function_setting.updated_at</code>. Last
+     * function setting update time in UTC
      */
-    public final TableField<MediaFunctionSettingRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
+    public final TableField<MediaFunctionSettingRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "Last function setting update time in UTC");
 
     private MediaFunctionSetting(Name alias, Table<MediaFunctionSettingRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private MediaFunctionSetting(Name alias, Table<MediaFunctionSettingRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Administrator-selected video processing capabilities, independent of generation defaults"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Administrator-selected image/video processing capabilities, independent of generation defaults"), TableOptions.table(), where);
     }
 
     /**
@@ -176,7 +180,7 @@ public class MediaFunctionSetting extends TableImpl<MediaFunctionSettingRecord> 
     @Override
     public List<Check<MediaFunctionSettingRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("media_function_setting_operation_check"), "(((operation)::text = ANY ((ARRAY['DEPTH_MAP'::character varying, 'EXTRACT_AUDIO'::character varying, 'UPSCALE'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("media_function_setting_operation_check"), "(((operation)::text = ANY ((ARRAY['IMAGE_SMART_EDIT'::character varying, 'IMAGE_RELIGHT'::character varying, 'IMAGE_OUTPAINT'::character varying, 'IMAGE_THREE_VIEW'::character varying, 'IMAGE_LAYER_SPLIT'::character varying, 'IMAGE_EXPRESSION_EDIT'::character varying, 'IMAGE_REMOVE_BACKGROUND'::character varying, 'IMAGE_OBJECT_REMOVE'::character varying, 'IMAGE_VIEW_ANGLE'::character varying, 'IMAGE_DEPTH_MAP'::character varying, 'IMAGE_UPSCALE'::character varying, 'IMAGE_CROP'::character varying, 'IMAGE_ROTATE'::character varying, 'IMAGE_FLIP_HORIZONTAL'::character varying, 'IMAGE_FLIP_VERTICAL'::character varying, 'VIDEO_DEPTH_MAP'::character varying, 'VIDEO_EXTRACT_AUDIO'::character varying, 'VIDEO_UPSCALE'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("media_function_setting_version_check"), "((version >= 0))", true)
         );
     }

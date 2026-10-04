@@ -10,6 +10,7 @@ import type { Artifact,CanvasItem } from "../../shared/api/client";
 import { changeControl,clickControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { MediaCanvasCard } from "./MediaCanvasCard";
+import { imageFunctionSettings, imageFunctionsFixture, imageWorkflowCapability } from "../../test/imageFunctionsFixture";
 import { videoFunctionsFixture } from "../../test/videoFunctionsFixture";
 
 // React Flow positions the toolbar; this component test exercises its actual controls and media state.
@@ -51,9 +52,9 @@ describe("MediaCanvasCard", () => {
     beforeEach(() => {
       server.use(
         http.get("/api/v1/settings/media-functions", () => HttpResponse.json([
-          { operation: "UPSCALE", capabilityId: null, version: 0 },
-          { operation: "DEPTH_MAP", capabilityId: "depth-cap", version: 2 },
-          { operation: "EXTRACT_AUDIO", capabilityId: "audio-cap", version: 1 },
+          { operation: "VIDEO_UPSCALE", capabilityId: null, version: 0 },
+          { operation: "VIDEO_DEPTH_MAP", capabilityId: "depth-cap", version: 2 },
+          { operation: "VIDEO_EXTRACT_AUDIO", capabilityId: "audio-cap", version: 1 },
         ])),
         http.get("/api/v1/settings/media-connections", () => HttpResponse.json(videoFunctionsFixture())),
         http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode: "RESULT", version: 0 })),
@@ -92,7 +93,7 @@ describe("MediaCanvasCard", () => {
       let request: unknown;
       server.use(
         http.get("/api/v1/settings/media-functions", () => HttpResponse.json([
-          { operation: "UPSCALE", capabilityId: "upscale-cap", version: 5 },
+          { operation: "VIDEO_UPSCALE", capabilityId: "upscale-cap", version: 5 },
         ])),
         http.post("/api/v1/projects/project-1/artifacts/image-1/video-operations", async ({ request: incoming }) => {
           request = await incoming.json(); return HttpResponse.json({ id: "upscale", status: "READY" });
@@ -225,7 +226,8 @@ describe("MediaCanvasCard", () => {
     server.use(
       http.get("/api/v1/projects/project-1/assets/:assetId", ({ params }) =>
         HttpResponse.json({ id: params.assetId, width: 1920, height: 1080 })),
-      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: [] })),
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings())),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json(imageFunctionsFixture())),
       http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
         projectId: artifact.projectId, canvasItemId: "item-1", prompt: "", displayMode: "DRAFT",
         parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [],
@@ -245,9 +247,8 @@ describe("MediaCanvasCard", () => {
         http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
           id: "image-asset", width: 1200, height: 800,
         })),
-        http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
-          connections: [], defaults: [],
-        })),
+        http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings())),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json(imageFunctionsFixture())),
       );
     });
 
@@ -346,10 +347,11 @@ describe("MediaCanvasCard", () => {
       let finishSubmission = () => {};
       const submitted = new Promise<void>((resolve) => { finishSubmission = resolve; });
       server.use(
+        http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("ai-capability"))),
         http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
           connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
             id: "ai-capability", name: "GPT Image", enabled: true,
-            kind: "IMAGE_GENERATION", maxReferenceImages: 1,
+            adapterId: "OPENAI_GPT_IMAGE_2", capabilityVersion: 1, settings: {}, kind: "IMAGE_GENERATION", maxReferenceImages: 1,
           }] }], defaults: [],
         })),
         http.get("/api/v1/auth/csrf", () => HttpResponse.json({
@@ -393,7 +395,7 @@ describe("MediaCanvasCard", () => {
     await clickControl(screen.getByRole("button", { name: "扩展" }));
     expect(screen.getByLabelText("媒体卡片操作").closest(".react-flow__node-toolbar"))
       .toHaveClass("artifact-card-toolbar-raised");
-    expect(screen.getByRole("menuitem", { name: /高清放大.*本地/ })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("menuitem", { name: /高清放大/ })).toHaveAttribute("aria-disabled", "true");
     await userEvent.setup().keyboard("{Escape}");
     expect(screen.queryByLabelText("图片扩展功能")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "扩展" })).toHaveFocus());
@@ -409,9 +411,8 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
         id: "image-asset", width: 1200, height: 800,
       })),
-      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
-        connections: [], defaults: [],
-      })),
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings())),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json(imageFunctionsFixture())),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({
         headerName: "X-XSRF-TOKEN", token: "test",
       })),
@@ -481,10 +482,11 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
         id: "image-asset", width: 1200, height: 800,
       })),
-      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("relight-capability"))),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
         connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
           id: "relight-capability", name: "GPT Image", enabled: true,
-          kind: "IMAGE_GENERATION", maxReferenceImages: 1,
+          adapterId: "OPENAI_GPT_IMAGE_2", capabilityVersion: 1, settings: {}, kind: "IMAGE_GENERATION", maxReferenceImages: 1,
         }] }], defaults: [],
       })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({
@@ -514,7 +516,7 @@ describe("MediaCanvasCard", () => {
 
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       canvasItemId: "item-1", sourceVersionId: "image-version", operation: "RELIGHT",
-      capabilityId: "relight-capability", instruction: "让人物轮廓更清晰",
+      expectedFunctionVersion: 3, expectedCapabilityVersion: 1, instruction: "让人物轮廓更清晰",
       parameters: { lightingPreset: "MOONLIGHT", brightness: -24,
         colorTemperature: 8200, lightX: 0.15, lightY: 0.75 },
     })));
@@ -528,10 +530,11 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
         id: "image-asset", width: 1200, height: 800,
       })),
-      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("ai-capability"))),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
         connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
           id: "ai-capability", name: "GPT Image", enabled: true,
-          kind: "IMAGE_GENERATION", maxReferenceImages: 1,
+          adapterId: "OPENAI_GPT_IMAGE_2", capabilityVersion: 1, settings: {}, kind: "IMAGE_GENERATION", maxReferenceImages: 1,
           supportsTransparentBackground: true, supportsImageMask: true,
         }] }], defaults: [],
       })),
@@ -560,10 +563,11 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
         id: "image-asset", width: 1200, height: 800,
       })),
-      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("smart-capability"))),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
         connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
           id: "smart-capability", name: "GPT Image", enabled: true,
-          adapterId: "OPENAI_GPT_IMAGE_2", settings: {},
+         adapterId: "OPENAI_GPT_IMAGE_2", capabilityVersion: 1, settings: {},
           kind: "IMAGE_GENERATION", maxReferenceImages: 4,
           supportsTransparentBackground: true, supportsImageMask: true,
         }] }], defaults: [],
@@ -617,7 +621,7 @@ describe("MediaCanvasCard", () => {
 
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       operation: "SMART_EDIT", instruction: "把背景替换成参考图中的海边，人物保持不变",
-      capabilityId: "smart-capability", referenceVersionIds: ["reference-version"],
+      expectedFunctionVersion: 3, expectedCapabilityVersion: 1, referenceVersionIds: ["reference-version"],
       maskAssetId: null, parameters: {},
     })));
   });
@@ -631,10 +635,11 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
         id: "image-asset", width: 1200, height: 800,
       })),
-      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("three-view-capability"))),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
         connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
           id: "three-view-capability", name: "GPT Image", enabled: true,
-          kind: "IMAGE_GENERATION", maxReferenceImages: 1,
+          adapterId: "OPENAI_GPT_IMAGE_2", capabilityVersion: 1, settings: {}, kind: "IMAGE_GENERATION", maxReferenceImages: 1,
           supportsTransparentBackground: true, supportsImageMask: true,
         }] }], defaults: [],
       })),
@@ -670,7 +675,7 @@ describe("MediaCanvasCard", () => {
 
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       canvasItemId: "item-1", sourceVersionId: "image-version", operation: "THREE_VIEW",
-      capabilityId: "three-view-capability", instruction: "保留发饰和妆容",
+      expectedFunctionVersion: 3, expectedCapabilityVersion: 1, instruction: "保留发饰和妆容",
       parameters: { aspectRatio: "16:9", threeViewType: "FACE" },
     })));
   });
@@ -684,10 +689,11 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
         id: "image-asset", width: 1200, height: 800,
       })),
-      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("expression-capability"))),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
         connections: [{ id: "openai", enabled: true, platform: "OPENAI", capabilities: [{
           id: "expression-capability", name: "GPT Image", enabled: true,
-          kind: "IMAGE_GENERATION", maxReferenceImages: 1,
+          adapterId: "OPENAI_GPT_IMAGE_2", capabilityVersion: 1, settings: {}, kind: "IMAGE_GENERATION", maxReferenceImages: 1,
           supportsTransparentBackground: true, supportsImageMask: true,
         }] }], defaults: [],
       })),
@@ -716,12 +722,12 @@ describe("MediaCanvasCard", () => {
 
     await waitFor(() => expect(request).toEqual(expect.objectContaining({
       canvasItemId: "item-1", sourceVersionId: "image-version",
-      operation: "EXPRESSION_EDIT", capabilityId: "expression-capability",
+      operation: "EXPRESSION_EDIT", expectedFunctionVersion: 3, expectedCapabilityVersion: 1,
       instruction: "自然微笑，嘴唇闭合", parameters: {},
     })));
   });
 
-  it("requires a transparent-capable model only for the foreground layer", async () => {
+  it("keeps the configured transparent model for both layer outputs", async () => {
     server.use(
       http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({
         projectId: artifact.projectId, canvasItemId: "item-1", displayMode: "RESULT", version: 0,
@@ -729,13 +735,14 @@ describe("MediaCanvasCard", () => {
       http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({
         id: "image-asset", width: 1200, height: 800,
       })),
-      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("transparent-capability"))),
+        http.get("/api/v1/settings/media-connections", () => HttpResponse.json({
         connections: [{ id: "providers", enabled: true, platform: "OPENAI", capabilities: [
           { id: "opaque-capability", name: "Opaque model", enabled: true,
-            kind: "IMAGE_GENERATION", maxReferenceImages: 1, supportsTransparentBackground: false,
+            adapterId: "OPENAI_GPT_IMAGE_2", capabilityVersion: 1, settings: {}, kind: "IMAGE_GENERATION", maxReferenceImages: 1, supportsTransparentBackground: false,
             supportsImageMask: false },
           { id: "transparent-capability", name: "Transparent model", enabled: true,
-            kind: "IMAGE_GENERATION", maxReferenceImages: 1, supportsTransparentBackground: true,
+            adapterId: "OPENAI_GPT_IMAGE_2", capabilityVersion: 1, settings: {}, kind: "IMAGE_GENERATION", maxReferenceImages: 1, supportsTransparentBackground: true,
             supportsImageMask: true },
         ] }], defaults: [],
       })),
@@ -754,8 +761,73 @@ describe("MediaCanvasCard", () => {
     await changeControl(screen.getByRole("combobox", { name: "输出图层" }), {
       target: { value: "BACKGROUND" },
     });
-    await userEvent.setup().click(screen.getByRole("combobox", { name: "图片能力" }));
-    expect(screen.getByRole("option", { name: "Opaque model" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "图片能力" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "图片能力" })).toHaveValue("transparent-capability");
+  });
+
+  describe("configured image tools", () => {
+    function image(): Artifact {
+      return { ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+        id: "image-version", versionNo: 1, schemaVersion: 1,
+        content: { sourceType: "UPLOAD", assetId: "image-asset" }, inputReferences: [],
+        createdByKind: "USER" as const, runId: null, createdAt: artifact.createdAt,
+      } };
+    }
+    beforeEach(() => server.use(
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings())),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(imageFunctionsFixture())),
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode: "RESULT", version: 0 })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    ));
+    it("shows configuration instead of silently choosing a model for a disabled image function", async () => {
+      let submissions = 0;
+      server.use(http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings().map((entry) =>
+        entry.operation === "IMAGE_SMART_EDIT" ? { ...entry, capabilityId: null } : entry))),
+      http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", () => { submissions++; return HttpResponse.json({}); }));
+      showCard(image());
+      await clickControl(screen.getByRole("button", { name: "智能编辑" }));
+      expect(await screen.findByRole("link", { name: "功能设置" })).toHaveAttribute("href", "/settings/functions");
+      expect(screen.queryByRole("button", { name: "开始智能编辑" })).not.toBeInTheDocument();
+      expect(submissions).toBe(0);
+    });
+    it("uses the configured image workflow, pins the source and submits the chosen workflow parameter", async () => {
+      const settings = imageFunctionsFixture();
+      settings.connections.push({ ...videoFunctionsFixture().connections[1]!, capabilities: [imageWorkflowCapability()] });
+      let request: unknown;
+      server.use(http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+        http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings().map((entry) =>
+          entry.operation === "IMAGE_UPSCALE" ? { ...entry, capabilityId: "image-upscale", version: 7 } : entry))),
+        http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+          request = await incoming.json(); return HttpResponse.json({ id: "synthetic-upscale", status: "READY" });
+        }));
+      showCard(image());
+      await clickControl(screen.getByRole("button", { name: "扩展" }));
+      await clickControl(screen.getByRole("menuitem", { name: /高清放大/ }));
+      const scale = await screen.findByRole("combobox", { name: "模型放大倍数 *" });
+      expect(screen.queryByRole("combobox", { name: "来源图片" })).not.toBeInTheDocument();
+      await selectValue(scale, "1");
+      await clickControl(screen.getByRole("button", { name: "开始处理" }));
+      await waitFor(() => expect(request).toEqual(expect.objectContaining({ operation: "UPSCALE", sourceVersionId: "image-version",
+        expectedFunctionVersion: 7, expectedCapabilityVersion: 1, parameters: { dynamicValues: { image: "image-version", scale: 4 } } })));
+      expect(request).not.toHaveProperty("capabilityId");
+    });
+    it("replays the original image command after an uncertain response and a layout save", async () => {
+      const requests: Array<{ key: string | null; body: unknown }> = [];
+      server.use(http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        requests.push({ key: incoming.headers.get("Idempotency-Key"), body: await incoming.json() });
+        return requests.length === 1 ? HttpResponse.json({ title: "稍后重试", detail: "稍后重试" }, { status: 503, headers: { "Content-Type": "application/problem+json" } })
+          : HttpResponse.json({ id: "original-command", status: "READY" });
+      }));
+      const shown = image(); const view = showCard(shown);
+      await clickControl(screen.getByRole("button", { name: "扩展" }));
+      await clickControl(screen.getByRole("menuitem", { name: /高清放大/ }));
+      await clickControl(await screen.findByRole("button", { name: "开始处理" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("稍后重试");
+      view.setItem({ ...itemFor(shown), x: 200, version: 1 });
+      await clickControl(screen.getByRole("button", { name: "开始处理" }));
+      await waitFor(() => expect(requests).toHaveLength(2));
+      expect(requests[1]).toEqual(requests[0]);
+    });
   });
 
   describe("image enlargement", () => {

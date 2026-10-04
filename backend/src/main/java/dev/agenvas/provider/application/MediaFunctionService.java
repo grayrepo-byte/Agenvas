@@ -6,7 +6,8 @@ import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.infrastructure.JooqMediaFunctionRepository;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
-import dev.agenvas.task.domain.VideoOperation;
+import dev.agenvas.provider.domain.MediaFunction;
+import dev.agenvas.task.domain.ImageOperation;
 import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
@@ -32,14 +33,14 @@ public class MediaFunctionService {
     public List<JooqMediaFunctionRepository.Setting> list() { return repository.list(); }
 
     @Transactional
-    public void update(VideoOperation operation, long expectedVersion, UUID capabilityId) {
+    public void update(MediaFunction operation, long expectedVersion, UUID capabilityId) {
         if (capabilityId != null) compatibleBinding(operation, capabilityId);
         if (!repository.update(operation, expectedVersion, capabilityId, clock.instant())) {
             throw problem(HttpStatus.CONFLICT, "MEDIA_FUNCTION_CONFLICT", "api.media-function.conflict");
         }
     }
 
-    public MediaCapabilityBinding resolve(VideoOperation operation, long expectedVersion) {
+    public MediaCapabilityBinding resolve(MediaFunction operation, long expectedVersion) {
         var setting = repository.get(operation);
         if (setting.version() != expectedVersion) {
             throw problem(HttpStatus.CONFLICT, "MEDIA_FUNCTION_CONFLICT", "api.media-function.conflict");
@@ -50,23 +51,42 @@ public class MediaFunctionService {
         return compatibleBinding(operation, setting.capabilityId());
     }
 
-    private MediaCapabilityBinding compatibleBinding(VideoOperation operation, UUID capabilityId) {
+    private MediaCapabilityBinding compatibleBinding(MediaFunction operation, UUID capabilityId) {
         var binding = catalog.resolve(capabilityId, operation.taskKind(), 0);
-        boolean local = (operation == VideoOperation.DEPTH_MAP
+        var image = operation.imageOperation();
+        boolean local = image != null && !image.cloud()
+                && MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId());
+        if (image != null) {
+            if (local) return binding;
+            var policy = catalog.inputPolicy(binding);
+            boolean transparent = image == ImageOperation.REMOVE_BACKGROUND || image == ImageOperation.LAYER_SPLIT;
+            boolean nativeEdit = image.cloud() && policy.maxReferenceImages() > 0
+                    && (!transparent || policy.supportsTransparentBackground())
+                    && (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
+                    || MediaAdapterRegistry.GOOGLE_NANO_BANANA_2.equals(binding.adapterId())
+                    || MediaAdapterRegistry.COMFY_IMAGE_V1.equals(binding.adapterId()));
+            boolean workflow = !transparent && (image.cloud() || image == ImageOperation.DEPTH_MAP || image == ImageOperation.UPSCALE)
+                    && compatibleDefinition(catalog.runningHubDefinition(binding), RunningHubDefinition.FieldType.IMAGE);
+            if (!local && !nativeEdit && !workflow) {
+                throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE", "api.media-function.incompatible");
+            }
+            return binding;
+        }
+        local = (operation == MediaFunction.VIDEO_DEPTH_MAP
                 && MediaAdapterRegistry.LOCAL_VIDEO_PROCESSOR.equals(binding.adapterId()))
-                || (operation == VideoOperation.EXTRACT_AUDIO
+                || (operation == MediaFunction.VIDEO_EXTRACT_AUDIO
                 && MediaAdapterRegistry.LOCAL_VIDEO_AUDIO_EXTRACTOR.equals(binding.adapterId()));
-        if (!local && !compatibleDefinition(catalog.runningHubDefinition(binding))) {
+        if (!local && !compatibleDefinition(catalog.runningHubDefinition(binding), RunningHubDefinition.FieldType.VIDEO)) {
             throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE", "api.media-function.incompatible");
         }
         return binding;
     }
 
-    /** A transform consumes exactly one fixed video; other required media would change this tool's meaning. */
-    public static boolean compatibleDefinition(RunningHubDefinition definition) {
+    /** A workflow consumes one fixed source; additional or conditional media would change the tool's meaning. */
+    public static boolean compatibleDefinition(RunningHubDefinition definition, RunningHubDefinition.FieldType sourceType) {
         if (definition == null) return false;
         var media = definition.fields().stream().filter(RunningHubDefinition.Field::media).toList();
-        return media.size() == 1 && media.getFirst().type() == RunningHubDefinition.FieldType.VIDEO
+        return media.size() == 1 && media.getFirst().type() == sourceType
                 && media.getFirst().enabledWhen() == null;
     }
 

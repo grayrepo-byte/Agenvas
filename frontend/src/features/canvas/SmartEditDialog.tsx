@@ -4,7 +4,7 @@ PaintBrush,PaperPlaneTilt,Plus,UploadSimple,X
 } from "@phosphor-icons/react";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import {
-useMemo,useRef,useState,type FormEvent,
+useMemo,useRef,useState,type FormEvent,type ReactNode,
 type PointerEvent as ReactPointerEvent
 } from "react";
 import {
@@ -30,13 +30,14 @@ type Tool = "BRUSH" | "RECTANGLE";
 type StrokeMode = "PAINT" | "ERASE";
 type Reference = { versionId: string; label: string; thumbnailUrl: string };
 
-export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourceUrl, capabilities, busy, error,
+export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourceUrl, capabilities, busy, error, extraControls, submitDisabled = false, configuredMethod = false,
   onClose, onSubmit }: {
   projectId: string;
   sourceVersionId: string;
   sourceTitle: string;
   sourceUrl: string;
   capabilities: MediaCapability[];
+  extraControls?: ReactNode; submitDisabled?: boolean; configuredMethod?: boolean;
   busy: boolean;
   error: Error | null;
   onClose: () => void;
@@ -77,7 +78,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
     ?? eligibleCapabilities[0];
   const selectedCapabilityId = selectedCapability?.id ?? "";
   const referenceCapacity = Math.max(0, (selectedCapability?.maxReferenceImages ?? 1) - 1);
-  const canSubmit = !busy && !uploading && instruction.trim().length > 0
+  const canSubmit = !busy && !submitDisabled && !uploading && instruction.trim().length > 0
     && Boolean(selectedCapabilityId) && references.length <= referenceCapacity;
 
   const availableReferences = useMemo(() => {
@@ -387,9 +388,10 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
           aria-label={t("image.smartEdit.prompt")}
           placeholder={t("image.smartEdit.promptPlaceholder")}
           onChange={(event) => setInstruction(event.target.value)} />
+        {extraControls}
         <div className="smart-edit-footer">
           <label><span className="sr-only">{t("media.imageCapability")}</span>
-            <Select variant="ghost" density="compact" icon={<ImageIcon />} value={selectedCapabilityId} portalContainer={menuContainer}
+            <Select variant="ghost" density="compact" icon={<ImageIcon />} value={selectedCapabilityId} disabled={configuredMethod} portalContainer={menuContainer}
               optionDetails={Object.fromEntries(eligibleCapabilities.map((capability) => [capability.id, mediaModelDetails(capability)]))}
               onChange={(event) => setCapabilityId(event.target.value)}>
               {eligibleCapabilities.length ? eligibleCapabilities.map((capability) =>

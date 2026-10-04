@@ -888,7 +888,7 @@
   "media.card.chooseImageUpload": "Select images to upload",
   "media.card.closeOperation": "Close the image processing panel",
   "media.card.closeVideo": "Turn off video preview",
-  "media.card.cloudProcessingHint": "Use OpenAI / Google Image capabilities",
+  "media.card.cloudProcessingHint": "Use the configured image processing capability",
   "media.card.configureProviderHint": "Please configure OpenAI or Google in settings first",
   "media.card.copyHint": "Copy the complete working draft without copying tasks and connections",
   "media.card.crop": "Crop",
@@ -2154,12 +2154,12 @@
   "media.functions.title": "Function settings",
   "media.functions.description": "Choose processing methods and models for canvas tools independently of generation defaults.",
   "media.functions.videoTools": "Video node tools",
-  "media.functions.catalogHint": "Choose published capabilities that accept video input in Media settings; keep local processing or bind a third-party workflow.",
+  "media.functions.catalogHint": "Choose published capabilities compatible with each tool in Media settings; use local processing, a model, or a third-party workflow.",
   "media.functions.method": "Processing method",
   "media.functions.unconfigured": "Unconfigured / disabled",
   "media.functions.unavailable": "The configured capability is unavailable or incompatible. Choose another.",
   "media.functions.upscaleHint": "Choose an AI superresolution workflow. Its parameters control scale and quality.",
-  "media.functions.compatibilityHint": "Local depth/audio processing and RunningHub workflows with one video input are supported. ComfyUI currently generates images or video from images; video processing requires a compatible capability.",
+  "media.functions.compatibilityHint": "Supports fixed local processing, OpenAI/Google image editing, the fixed ComfyUI image reference template, and RunningHub workflows with one image or video input. Only compatible capabilities are shown; transparency, masks, extra references and super-resolution depend on the selected capability.",
   "media.functions.changed": "Settings changed. Your draft is preserved; refresh and review before saving.",
   "media.functions.saved": "Function settings saved",
   "tasks.errors.videoAudioMissing": "The video has no audio track to extract",
@@ -2171,5 +2171,8 @@
   "settings.adapters.localVideoAudio": "Local audio extraction",
   "media.functions.localMedia": "Local media processing",
   "media.functions.depthHint": "Extract relative scene depth into an independent depth video node.",
-  "media.functions.audioHint": "Separate the soundtrack into an independent audio node."
+  "media.functions.audioHint": "Separate the soundtrack into an independent audio node.",
+  "media.functions.imageTools": "Image tools",
+  "media.functions.imageHint": "Uses the method selected here, independently of the default generation model.",
+  "media.functions.configureImageFirst": "Choose a processing method for this image tool in Function settings first."
 }

@@ -888,7 +888,7 @@
   "media.card.chooseImageUpload": "アップロードする画像を選択してください",
   "media.card.closeOperation": "画像処理パネルを閉じる",
   "media.card.closeVideo": "ビデオのプレビューをオフにする",
-  "media.card.cloudProcessingHint": "OpenAI / Google Image 機能を使用する",
+  "media.card.cloudProcessingHint": "設定済みの画像処理機能を使用する",
   "media.card.configureProviderHint": "最初に設定で OpenAI または Google を構成してください",
   "media.card.copyHint": "タスクや接続をコピーせずに完全な作業ドラフトをコピーします",
   "media.card.crop": "作物",
@@ -2154,12 +2154,12 @@
   "media.functions.title": "機能設定",
   "media.functions.description": "キャンバスのツールに処理方法とモデルを選択します。通常の生成モデルとは別に設定できます。",
   "media.functions.videoTools": "動画ノードのツール",
-  "media.functions.catalogHint": "メディア設定で公開済みの動画入力対応能力を選択します。ローカル処理または外部ワークフローを使用できます。",
+  "media.functions.catalogHint": "メディア設定で公開済みの各ツールに対応する機能を選択します。ローカル処理、モデル、外部ワークフローを使用できます。",
   "media.functions.method": "処理方法",
   "media.functions.unconfigured": "未設定 / 無効",
   "media.functions.unavailable": "設定した能力が利用できないか、対応していません。選び直してください。",
   "media.functions.upscaleHint": "AI 超解像ワークフローを選択します。倍率と品質はそのパラメータで決まります。",
-  "media.functions.compatibilityHint": "ローカルの深度・音声処理と、動画入力が 1 つの RunningHub ワークフローに対応しています。ComfyUI は現在、画像生成と画像からの動画生成に対応しています。動画処理能力の追加後に選択できます。",
+  "media.functions.compatibilityHint": "固定ローカル処理、OpenAI/Google の画像編集、ComfyUI の固定画像参照テンプレート、画像または動画入力が1つの RunningHub に対応します。互換機能のみ表示し、透明背景、マスク、追加参照、超解像は選択した機能の対応状況によります。",
   "media.functions.changed": "設定が変更されました。下書きは保持しています。更新して確認後に保存してください。",
   "media.functions.saved": "機能設定を保存しました",
   "tasks.errors.videoAudioMissing": "動画に分離できる音声トラックがありません",
@@ -2171,5 +2171,8 @@
   "settings.adapters.localVideoAudio": "ローカル音声分離",
   "media.functions.localMedia": "ローカルメディア処理",
   "media.functions.depthHint": "シーンの相対深度を抽出し、独立した深度動画ノードとして保存します。",
-  "media.functions.audioHint": "動画の音声を分離し、独立した音声ノードとして保存します。"
+  "media.functions.audioHint": "動画の音声を分離し、独立した音声ノードとして保存します。",
+  "media.functions.imageTools": "画像ツール",
+  "media.functions.imageHint": "通常生成のデフォルトモデルとは独立して、ここで選んだ処理方法を使います。",
+  "media.functions.configureImageFirst": "機能設定でこの画像ツールの処理方法を選んでください。"
 }

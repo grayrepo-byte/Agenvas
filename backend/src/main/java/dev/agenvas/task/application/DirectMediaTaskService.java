@@ -56,7 +56,7 @@ public class DirectMediaTaskService {
     private static final int MAX_COMMAND_KEY_LENGTH = 160;
     private static final int MAX_IMAGE_OPERATION_INSTRUCTION_LENGTH = 4000;
     private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 5;
-    private static final int IMAGE_OPERATION_INPUT_SCHEMA_VERSION = 7;
+    private static final int IMAGE_OPERATION_INPUT_SCHEMA_VERSION = 8;
     private static final int TASK_EVENT_SCHEMA_VERSION = 1;
     private static final int BATCH_KEY_DIGEST_LENGTH = 32;
     private static final String LOCAL_COST_SOURCE = "LOCAL_NO_COST";
@@ -81,6 +81,7 @@ public class DirectMediaTaskService {
     private final AgentRunService runs;
     private final MediaStyleService styles;
     private final PromptService prompts;
+    private final dev.agenvas.provider.application.MediaFunctionService functions;
     private final dev.agenvas.asset.storage.MediaRelayService relay;
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
@@ -89,7 +90,7 @@ public class DirectMediaTaskService {
             MediaCapabilityService capabilities,
             ProjectEventService events, UsageService usage,
             ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles, dev.agenvas.asset.storage.MediaRelayService relay,
-            PromptService prompts) {
+            PromptService prompts, dev.agenvas.provider.application.MediaFunctionService functions) {
         this.tasks = tasks;
         this.drafts = drafts;
         this.artifacts = artifacts;
@@ -106,6 +107,7 @@ public class DirectMediaTaskService {
         this.styles = styles;
         this.relay = relay;
         this.prompts = prompts;
+        this.functions = functions;
     }
 
     @Transactional
@@ -544,7 +546,7 @@ public class DirectMediaTaskService {
     /** Accepts one image post-processing command while pinning the exact visible source version. */
     public Task runImageOperation(UUID ownerId, UUID projectId, UUID artifactId,
             UUID canvasItemId, UUID sourceVersionId, long expectedCanvasItemVersion,
-            ImageOperation operation, String instruction, UUID capabilityId,
+            ImageOperation operation, String instruction, long expectedFunctionVersion, int expectedCapabilityVersion,
             List<UUID> referenceVersionIds, UUID maskAssetId, JsonNode requestedParameters,
             String commandKey) {
         if (canvasItemId == null || sourceVersionId == null || operation == null
@@ -570,38 +572,29 @@ public class DirectMediaTaskService {
         if (operation.instructionRequired() && normalizedInstruction.isBlank()) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.this-ai-image-processing-requires-filling-in-processing-instructions"));
         }
-        if (operation.cloud() && capabilityId == null) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.ai-image-processing-requires-selecting-openai-or-google-image-capabilities"));
+        if (expectedFunctionVersion < 0 || expectedCapabilityVersion < 1) {
+            throw invalid(ApiMessage.of("api.media-function.invalid-request"));
         }
-        if (!operation.cloud() && capabilityId != null) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.local-image-processing-cannot-specify-cloud-image-capabilities"));
-        }
+        ObjectNode request = mapper.createObjectNode().put("artifactId", artifactId.toString())
+                .put("canvasItemId", canvasItemId.toString()).put("sourceVersionId", sourceVersionId.toString())
+                .put("expectedCanvasItemVersion", expectedCanvasItemVersion).put("operation", operation.name())
+                .put("instruction", normalizedInstruction).put("expectedFunctionVersion", expectedFunctionVersion)
+                .put("expectedCapabilityVersion", expectedCapabilityVersion);
+        request.set("referenceVersionIds", requestedReferenceIds);
+        if (maskAssetId == null) request.putNull("maskAssetId");
+        else request.put("maskAssetId", maskAssetId.toString());
+        request.set("parameters", requestedParameters);
+        // Compare parsed numbers with the JSONB replay representation (for example 2 and 2.0).
+        JsonNode normalizedRequest = mapper.readTree(request.toString());
         // Remote masks are materialized before the event transaction acquires project locks.
         // Immutable READY bytes allow the acceptance transaction to recheck only identity and capability.
         if (maskAssetId != null && tasks.findDirectByStepKey(ownerId, projectId, commandKey).isEmpty()) {
             validateImageMask(ownerId, projectId, maskAssetId);
         }
-        UUID requestedCapabilityId = operation.cloud()
-                ? capabilityId : LOCAL_IMAGE_CAPABILITY_ID;
         return events.recordChange(ownerId, projectId, () -> {
             Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
             if (prior != null) {
-                JsonNode saved = prior.input().path("imageOperation");
-                if (!prior.input().path("artifactId").asText().equals(artifactId.toString())
-                        || !prior.input().path("sourceCanvasItemId").asText()
-                                .equals(canvasItemId.toString())
-                        || !saved.path("sourceVersionId").asText()
-                                .equals(sourceVersionId.toString())
-                        || !saved.path("name").asText().equals(operation.name())
-                        || !saved.path("capabilityId").asText()
-                                .equals(requestedCapabilityId.toString())
-                        || !saved.path("instruction").asText().equals(normalizedInstruction)
-                        || !saved.path("referenceVersionIds").equals(requestedReferenceIds)
-                        || !saved.path("maskAssetId").asText("")
-                                .equals(maskAssetId == null ? "" : maskAssetId.toString())
-                        || prior.input().path("sourceCanvasItemVersion").asLong(-1)
-                                != expectedCanvasItemVersion
-                        || !saved.path("parameters").equals(operationParameters)) {
+                if (!prior.input().path("imageOperationRequest").equals(normalizedRequest)) {
                     throw conflict(ApiMessage.of("api.direct-media-task-service.the-same-idempotent-keys-have-been-used-for-different-image"));
                 }
                 return ProjectEventService.Change.unchanged(prior);
@@ -623,9 +616,16 @@ public class DirectMediaTaskService {
             if (!source.artifactId().equals(artifactId)) {
                 throw invalid(ApiMessage.of("api.direct-media-task-service.the-processing-source-must-be-the-version-of-the-image"));
             }
-            MediaCapabilityBinding binding = operation.cloud()
-                    ? cloudImageBinding(capabilityId) : capabilities.resolve(
-                            LOCAL_IMAGE_CAPABILITY_ID, Task.Kind.IMAGE_GENERATION, 0);
+            MediaCapabilityBinding binding = functions.resolve(
+                    dev.agenvas.provider.domain.MediaFunction.forImage(operation), expectedFunctionVersion);
+            if (binding.capabilityVersion() != expectedCapabilityVersion) {
+                throw new ApiProblemException(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CHANGED",
+                        ApiMessage.of("api.media-function.title"), ApiMessage.of("api.media-function.conflict"), false);
+            }
+            UUID requestedCapabilityId = binding.capabilityId();
+            var definition = capabilities.runningHubDefinition(binding);
+            // Workflow fields own their scale; do not record an unseen local interpolation default.
+            if (definition != null && operation == ImageOperation.UPSCALE) operationParameters.remove("scale");
             var inputPolicy = capabilities.inputPolicy(binding);
             if (1 + normalizedReferenceIds.size() > inputPolicy.maxReferenceImages()) {
                 throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-image-capability-cannot-accept-this-many-reference"));
@@ -655,6 +655,9 @@ public class DirectMediaTaskService {
                     : prompts.require(promptKey, PromptService.Kind.FUNCTION);
             String prompt = operationSpec.prompt(normalizedInstruction,
                     functionPrompt == null ? null : functionPrompt.content());
+            if (definition != null && (operation == ImageOperation.UPSCALE || operation == ImageOperation.DEPTH_MAP)) {
+                prompt = operation.resultLabel() + (normalizedInstruction.isBlank() ? "" : ": " + normalizedInstruction);
+            }
             if (!referenceVersions.isEmpty()) {
                 prompt += " Image 1 is the source to edit. Images 2 through "
                         + (referenceVersions.size() + 1)
@@ -665,6 +668,35 @@ public class DirectMediaTaskService {
                 prompt += " Apply the requested change only in the transparent mask-guided area and "
                         + "preserve every unmasked pixel as closely as possible.";
             }
+            ObjectNode workflowParameters = mapper.createObjectNode();
+            if (definition != null) {
+                Asset sourceAsset = assets.requireReadyMedia(ownerId, projectId,
+                        UUID.fromString(source.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
+                if (sourceAsset.byteSize() > dev.agenvas.provider.infrastructure.RunningHubClient.MAX_UPLOAD_BYTES) {
+                    throw invalid(ApiMessage.of("api.direct-media-task-service.a-single-piece-of-runninghub-material-cannot-exceed-30-mb"));
+                }
+                JsonNode dynamic = requestedParameters.path(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY);
+                if (!dynamic.isMissingNode() && !dynamic.isObject()) {
+                    throw invalid(ApiMessage.of("api.media-function.invalid-request"));
+                }
+                workflowParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY,
+                        dynamic.isMissingNode() ? mapper.createObjectNode() : dynamic.deepCopy());
+                var sourceField = definition.fields().stream().filter(dev.agenvas.provider.domain.RunningHubDefinition.Field::media)
+                        .findFirst().orElseThrow();
+                workflowParameters.withObject(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY)
+                        .put(sourceField.key(), sourceVersionId.toString());
+                workflowParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY,
+                        definition.values(mapper, workflowParameters, prompt, null, true));
+            } else if (requestedParameters.has(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY)) {
+                throw invalid(ApiMessage.of("api.media-function.invalid-request"));
+            }
+            String outputRatio = operation == ImageOperation.OUTPAINT || operation == ImageOperation.THREE_VIEW
+                    ? operationParameters.path("aspectRatio").asText()
+                    : sourceAspectRatio(ownerId, projectId, source, inputPolicy.supportedImageAspectRatios());
+            if (definition == null && !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())
+                    && !inputPolicy.supportedImageAspectRatios().contains(outputRatio)) {
+                throw invalid(ApiMessage.of("api.image-generation-parameters.the-selected-image-capability-does-not-support-aspect-ratio", outputRatio));
+            }
             MediaDraft sourceDraft = drafts.get(ownerId, projectId, canvasItemId);
             CanvasItem outputCard = canvas.forkMediaDerivationWithinChange(ownerId, projectId,
                     canvasItemId, UUID.randomUUID(), sourceDraft.version(), 0,
@@ -672,6 +704,8 @@ public class DirectMediaTaskService {
             Instant now = clock.instant();
             ObjectNode input = mapper.createObjectNode();
             input.put("schemaVersion", IMAGE_OPERATION_INPUT_SCHEMA_VERSION);
+            input.set("imageOperationRequest", normalizedRequest);
+            input.put("functionVersion", expectedFunctionVersion);
             input.put("artifactId", artifactId.toString());
             input.put("sourceCanvasItemId", canvasItemId.toString());
             input.put("sourceCanvasItemVersion", expectedCanvasItemVersion);
@@ -707,10 +741,7 @@ public class DirectMediaTaskService {
             frozen.put("prompt", prompt);
             frozen.put("renderedPrompt", prompt);
             ObjectNode generationParameters = frozen.putObject("parameters");
-            generationParameters.put("aspectRatio", operation == ImageOperation.OUTPAINT
-                            || operation == ImageOperation.THREE_VIEW
-                    ? operationParameters.path("aspectRatio").asText()
-                    : sourceAspectRatio(ownerId, projectId, source));
+            generationParameters.put("aspectRatio", outputRatio);
             generationParameters.put("resolution", "1K");
             generationParameters.put("quality", "high");
             generationParameters.put("transparentBackground", transparentOutput);
@@ -733,6 +764,11 @@ public class DirectMediaTaskService {
                 referenceImage.put("order", referenceOrder++);
             }
             frozen.putArray("mentions");
+            if (definition != null) {
+                input.put("providerProtocol", "RUNNINGHUB_V2");
+                frozen.set("runningHubContract", mapper.valueToTree(definition));
+                frozen.set("parameters", workflowParameters);
+            }
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,
                     Task.Kind.IMAGE_GENERATION, Task.Status.READY, false, input,
                     Sha256.hex(input.toString()), null, null, 1, now, null, null, 0, 0,
@@ -742,7 +778,8 @@ public class DirectMediaTaskService {
             tasks.createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), projectId,
                     artifactId, sourceVersionId, target.version(), outputCard.id()));
             usage.reserveMediaTask(ownerId, task,
-                    operation.cloud() ? COST_SOURCE : LOCAL_COST_SOURCE, binding.connectionVersion());
+                    MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())
+                            ? LOCAL_COST_SOURCE : COST_SOURCE, binding.connectionVersion());
             ObjectNode payload = mapper.createObjectNode();
             payload.put("taskId", task.id().toString());
             payload.put("artifactId", artifactId.toString());
@@ -754,19 +791,6 @@ public class DirectMediaTaskService {
                     "task.status.changed", TASK_EVENT_SCHEMA_VERSION, task.id(), task.version(), payload));
             return ProjectEventService.Change.unchanged(task);
         }).value();
-    }
-
-    private MediaCapabilityBinding cloudImageBinding(UUID capabilityId) {
-        MediaCapabilityBinding binding = capabilities.resolve(capabilityId,
-                Task.Kind.IMAGE_GENERATION, 0);
-        if (!MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
-                && !MediaAdapterRegistry.GOOGLE_NANO_BANANA_2.equals(binding.adapterId())) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.ai-image-processing-only-supports-openai-or-google-image-capabilities"));
-        }
-        if (capabilities.inputPolicy(binding).maxReferenceImages() < 1) {
-            throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-reference-picture"));
-        }
-        return binding;
     }
 
     /** A provider mask is an immutable, project-scoped PNG with a real alpha channel. */
@@ -788,12 +812,12 @@ public class DirectMediaTaskService {
         }
     }
 
-    private String sourceAspectRatio(UUID ownerId, UUID projectId, ArtifactVersion source) {
+    private String sourceAspectRatio(UUID ownerId, UUID projectId, ArtifactVersion source, Set<String> supported) {
         UUID assetId = UUID.fromString(source.content().path("assetId").asText());
         Asset asset = assets.requireReadyMedia(ownerId, projectId, assetId,
                 Asset.MediaKind.IMAGE);
         double actual = (double) asset.width() / asset.height();
-        return ImageGenerationParameters.ASPECT_RATIOS.stream()
+        return (supported.isEmpty() ? ImageGenerationParameters.ASPECT_RATIOS : supported).stream()
                 .filter(ratio -> !ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio))
                 .min(java.util.Comparator.comparingDouble(ratio -> {
                     String[] parts = ratio.split(":", 2);

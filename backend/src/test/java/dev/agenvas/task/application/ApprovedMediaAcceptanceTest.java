@@ -75,7 +75,7 @@ class ApprovedMediaAcceptanceTest {
         service = new DirectMediaTaskService(repository, drafts, artifacts, mock(AssetService.class),
                 cards, canvas, capabilities, events, usage,
                 mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ProjectService.class), runs, styles, mock(dev.agenvas.asset.storage.MediaRelayService.class),
-                mock(dev.agenvas.settings.application.PromptService.class));
+                mock(dev.agenvas.settings.application.PromptService.class), mock(dev.agenvas.provider.application.MediaFunctionService.class));
         Artifact artifact = new Artifact(ARTIFACT, PROJECT, Artifact.Kind.IMAGE, "Proposal", null,
                 null, 0, NOW, NOW);
         when(artifacts.get(OWNER, PROJECT, ARTIFACT)).thenReturn(new ArtifactService.ArtifactView(artifact, null));

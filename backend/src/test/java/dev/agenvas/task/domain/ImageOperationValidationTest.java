@@ -29,7 +29,7 @@ class ImageOperationValidationTest {
         assertThat(ImageOperationSpec.parse(mapper, ImageOperation.CROP, null).parameters())
                 .isEqualTo(mapper.readTree("{\"x\":0.0,\"y\":0.0,\"width\":1.0,\"height\":1.0}"));
         assertThat(ImageOperationSpec.parse(mapper, ImageOperation.UPSCALE, null).prompt("", null))
-                .isEqualTo("Local 2x upscale");
+                .contains("2x", "preserving its composition and subject identity");
         assertThat(ImageOperationSpec.parse(mapper, ImageOperation.ROTATE, null).parameters().path("quarterTurns").asInt())
                 .isEqualTo(1);
     }
