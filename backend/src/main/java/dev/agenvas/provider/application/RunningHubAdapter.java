@@ -13,15 +13,17 @@ import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.RunningHubClient;
+import dev.agenvas.provider.infrastructure.RunningHubResultArchive;
 import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
-import java.time.Clock;
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -36,7 +38,7 @@ public final class RunningHubAdapter implements MediaAdapter {
     private static final int MAX_USAGE_PRECISION = 40;
     private static final int MAX_USAGE_SCALE = 20;
     private static final Set<String> USAGE_FIELDS = Set.of("consumeMoney", "consumeCoins", "taskCostTime", "thirdPartyConsumeMoney");
-    private static final String AUXILIARY_ARCHIVE_TYPE = "zip";
+    private static final String ARCHIVE_TYPE = "zip";
     private final String id;
     private final Task.Kind kind;
     private final JooqMediaCapabilityRepository catalog;
@@ -114,7 +116,39 @@ public final class RunningHubAdapter implements MediaAdapter {
     }
 
     @Override public MediaPayload downloadResult(AttemptContext context, ProviderResultManifest.Result result) {
-        return client.download(snapshot(context).connectionVersion().origin(), result.url());
+        ResultDownloads downloads = openResultDownloads(context);
+        try {
+            MediaPayload payload = downloads.download(result);
+            return new MediaPayload(new FilterInputStream(payload.stream()) {
+                @Override public void close() throws IOException {
+                    try { super.close(); } finally { downloads.close(); }
+                }
+            }, payload.declaredContentType());
+        } catch (RuntimeException failure) {
+            try { downloads.close(); } catch (RuntimeException cleanup) { failure.addSuppressed(cleanup); }
+            throw failure;
+        }
+    }
+
+    @Override public ResultDownloads openResultDownloads(AttemptContext context) {
+        String origin = snapshot(context).connectionVersion().origin();
+        return new ResultDownloads() {
+            private final Map<String, RunningHubResultArchive> archives = new HashMap<>();
+            @Override public MediaPayload download(ProviderResultManifest.Result result) {
+                if (result.archiveEntry() == null) return client.download(origin, result.url());
+                // Download/extract each ZIP once per archive attempt, including mixed-media batches.
+                return archives.computeIfAbsent(result.url(), url -> RunningHubResultArchive.open(client.download(origin, url)))
+                        .download(result.archiveEntry());
+            }
+            @Override public void close() {
+                RuntimeException failure = null;
+                for (var archive : archives.values()) {
+                    try { archive.close(); }
+                    catch (RuntimeException cleanup) { if (failure == null) failure = cleanup; else failure.addSuppressed(cleanup); }
+                }
+                if (failure != null) throw failure;
+            }
+        };
     }
 
     ProviderResultManifest manifest(JsonNode response, RunningHubDefinition definition, String origin) {
@@ -123,27 +157,21 @@ public final class RunningHubAdapter implements MediaAdapter {
         List<ProviderResultManifest.Result> results = new ArrayList<>();
         Map<RunningHubDefinition.Output, Integer> counts = new HashMap<>();
         Set<String> seen = new HashSet<>();
-        boolean primary = false;
         for (JsonNode item : raw) {
-            // RunningHub apps can return a companion ZIP even with their ZIP-only switch disabled.
-            // It is neither downloaded nor extracted; a valid mapped primary media result is still required.
-            if (AUXILIARY_ARCHIVE_TYPE.equalsIgnoreCase(item.path("outputType").asText(""))) continue;
             String url = item.path("url").asText("");
-            var outputKind = outputKind(item.path("outputType").asText(""));
-            if (outputKind == null) throw new RunningHubClient.ProtocolFailure();
             String nodeId = item.path("nodeId").asText("");
-            var output = definition.outputs().stream().filter(binding -> binding.kind() == outputKind
-                    && (binding.nodeId() == null || binding.nodeId().equals(nodeId))).findFirst()
-                    .orElseThrow(RunningHubClient.ProtocolFailure::new);
             RunningHubClient.validateDownload(origin, url);
-            if (!seen.add(nodeId + ":" + outputKind + ":" + url)) continue;
-            int count = counts.merge(output, 1, Integer::sum);
-            if (count > output.maxCount()) throw new RunningHubClient.ProtocolFailure();
-            boolean main = output.primary() && !primary;
-            if (main) primary = true;
-            results.add(new ProviderResultManifest.Result(results.size(), nodeId, outputKind, main, url));
+            if (ARCHIVE_TYPE.equalsIgnoreCase(item.path("outputType").asText(""))) {
+                try (var archive = RunningHubResultArchive.open(client.download(origin, url))) {
+                    for (var member : archive.members()) addResult(results, counts, seen, definition, nodeId, member.kind(), url, member.entry());
+                }
+            } else {
+                var outputKind = RunningHubResultArchive.outputKind(item.path("outputType").asText(""));
+                if (outputKind == null) throw new RunningHubClient.ProtocolFailure();
+                addResult(results, counts, seen, definition, nodeId, outputKind, url, null);
+            }
         }
-        if (!primary) throw new RunningHubClient.ProtocolFailure();
+        if (results.stream().noneMatch(ProviderResultManifest.Result::primary)) throw new RunningHubClient.ProtocolFailure();
         var usage = mapper.createObjectNode();
         for (String name : USAGE_FIELDS) {
             JsonNode value = response.path("usage").get(name);
@@ -152,6 +180,19 @@ public final class RunningHubAdapter implements MediaAdapter {
         }
         // No inferred currency or total: null remains unknown and GPU time is not media duration.
         return new ProviderResultManifest(ProviderResultManifest.SCHEMA_VERSION, List.copyOf(results), usage);
+    }
+
+    private void addResult(List<ProviderResultManifest.Result> results, Map<RunningHubDefinition.Output, Integer> counts,
+            Set<String> seen, RunningHubDefinition definition, String nodeId, RunningHubDefinition.OutputKind kind,
+            String url, ProviderResultManifest.ArchiveEntry entry) {
+        var output = definition.outputs().stream().filter(binding -> binding.kind() == kind
+                && (binding.nodeId() == null || binding.nodeId().equals(nodeId))).findFirst()
+                .orElseThrow(RunningHubClient.ProtocolFailure::new);
+        if (!seen.add(nodeId + ":" + kind + ":" + url + ":" + (entry == null ? "" : entry.name()))) return;
+        if (counts.merge(output, 1, Integer::sum) > output.maxCount() || results.size() >= RunningHubDefinition.MAX_OUTPUTS)
+            throw new RunningHubClient.ProtocolFailure();
+        boolean main = output.primary() && results.stream().noneMatch(ProviderResultManifest.Result::primary);
+        results.add(new ProviderResultManifest.Result(results.size(), nodeId, kind, main, url, entry));
     }
 
     /** Real V2 responses also encode usage decimals as strings; currency and totals stay uninferred. */
@@ -163,15 +204,6 @@ public final class RunningHubAdapter implements MediaAdapter {
             if (amount.signum() < 0 || amount.precision() > MAX_USAGE_PRECISION || Math.abs((long) amount.scale()) > MAX_USAGE_SCALE) return null;
             return mapper.valueToTree(amount);
         } catch (NumberFormatException invalid) { return null; }
-    }
-
-    private static RunningHubDefinition.OutputKind outputKind(String type) {
-        return switch (type.toLowerCase(Locale.ROOT)) {
-            case "image", "png", "jpg", "jpeg", "webp" -> RunningHubDefinition.OutputKind.IMAGE;
-            case "video", "mp4" -> RunningHubDefinition.OutputKind.VIDEO;
-            case "audio", "mp3", "wav", "flac" -> RunningHubDefinition.OutputKind.AUDIO;
-            default -> null;
-        };
     }
 
     private JsonNode values(AttemptContext context, RunningHubDefinition definition) {
