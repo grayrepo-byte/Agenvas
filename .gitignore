@@ -217,7 +217,7 @@ database.sql
 
 # Ignore every docs subdirectory, including future ones; keep root documents visible.
 # Already tracked documents remain tracked until explicitly removed from the index.
-/docs/*/
+/docs/superpowers
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
