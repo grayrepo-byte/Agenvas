@@ -54,7 +54,35 @@ mkdir agenvas && cd agenvas && \
   docker compose up -d --wait
 ```
 
-**Windows：让 AI Agent 安装**
+**Windows：一键命令**
+
+首次安装，打开 CMD 或 PowerShell，复制对应的整段命令执行；两种方式选一种即可。
+
+<details>
+<summary><strong>CMD（命令提示符）</strong></summary>
+
+```cmd
+mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml -o docker-compose.yml && docker compose up -d --wait
+```
+
+</details>
+
+<details>
+<summary><strong>PowerShell（Windows PowerShell 5.1 / PowerShell 7）</strong></summary>
+
+```powershell
+& {
+  $ErrorActionPreference = 'Stop'
+  New-Item -ItemType Directory -Path agenvas | Out-Null
+  Set-Location agenvas
+  Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml' -OutFile docker-compose.yml -UseBasicParsing
+  docker compose up -d --wait
+}
+```
+
+</details>
+
+**Windows：让 AI Agent 安装 (推荐) **
 
 把 [安装提示词](docs/operations/windows-ai-install-prompt.md)发给 WorkBuddy 等能执行本机操作的 AI Agent，让它检查环境、安装并启动 Agenvas。完成后，打开它给出的地址创建账号。
 

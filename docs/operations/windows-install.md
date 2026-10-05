@@ -18,6 +18,8 @@ Docker Desktop 是让 Agenvas 运行的软件环境；WSL 2 是它在 Windows �
 
 ## 手动安装
 
+Docker Desktop 已就绪时，可以直接使用 [README 中的 CMD 或 PowerShell 一键命令](../../README.md#快速开始)。如果想自行下载部署文件，按下面的步骤操作。
+
 ### 1. 安装并打开 Docker Desktop
 
 1. 用浏览器打开 [Docker Desktop 的 Windows 官方安装页面](https://docs.docker.com/desktop/setup/install/windows-install/)，选择与你电脑处理器相符的安装包。常见 Intel / AMD 电脑使用 `x86_64`；如不确定，在 Windows“设置 → 系统 → 关于”中查看系统类型，并对照官方要求选择正式支持的版本。
@@ -40,7 +42,7 @@ Docker Desktop 是让 Agenvas 运行的软件环境；WSL 2 是它在 Windows �
 ### 3. 复制一行命令，启动 Agenvas
 
 1. 保持资源管理器打开在含有 `docker-compose.yml` 的文件夹。
-2. 点击上方显示文件夹路径的**地址栏**（不是搜索框），输入 `cmd`，按回车。这会在正确的文件夹中打开“命令提示符”，无需自己输入切换目录的命令。
+2. 点击上方显示文件夹路径的**地址栏**（不是搜索框），输入 `cmd` 打开 CMD，或输入 `powershell` 打开 Windows PowerShell，再按回车。终端会在当前文件夹打开，无需自己输入切换目录的命令。
 3. 只复制下面这一行，粘贴到命令窗口，按回车：
 
 ```cmd
@@ -58,7 +60,7 @@ docker compose up -d --wait
 
 首次启动会下载镜像，时间取决于网络。命令成功结束、重新出现可输入内容的提示符后，可以关闭该窗口。出现红色报错或 `unhealthy` 时，按下方“常见问题”处理。
 
-不要把其他教程里的多行命令、`^`、反引号或 `&&` 拼进这一行。这里通过资源管理器直接打开 `cmd`，避免不同终端的语法差异。
+部署文件已下载时，上面这一行在 CMD 和 PowerShell 中都可以直接执行。首次安装的一键命令请使用 README 中对应终端的版本。
 
 ### 4. 打开网页，创建管理员
 

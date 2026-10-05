@@ -52,6 +52,34 @@ mkdir agenvas && cd agenvas && \
   docker compose up -d --wait
 ```
 
+**Windows: one-command installation**
+
+For a new installation, open CMD or PowerShell and paste the corresponding block. Choose one of the two options.
+
+<details>
+<summary><strong>CMD (Command Prompt)</strong></summary>
+
+```cmd
+mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml -o docker-compose.yml && docker compose up -d --wait
+```
+
+</details>
+
+<details>
+<summary><strong>PowerShell (Windows PowerShell 5.1 / PowerShell 7)</strong></summary>
+
+```powershell
+& {
+  $ErrorActionPreference = 'Stop'
+  New-Item -ItemType Directory -Path agenvas | Out-Null
+  Set-Location agenvas
+  Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml' -OutFile docker-compose.yml -UseBasicParsing
+  docker compose up -d --wait
+}
+```
+
+</details>
+
 **Windows: install with an AI Agent**
 
 Send the [installation prompt (Chinese)](docs/operations/windows-ai-install-prompt.md) to WorkBuddy or another AI Agent that can run tasks on your computer. It will check the environment, install Agenvas, and start it. Open the address it provides to create your account.

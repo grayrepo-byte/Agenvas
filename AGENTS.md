@@ -28,7 +28,7 @@ MVP 已完成，项目进入持续迭代阶段。后续开发按当前需求推�
 - **分层**：Controller 与 Tool 复用应用服务；模块之间通过应用接口协作，不跨用 Repository 或表常量。状态转换集中管理，`shared` 只放横切能力。
 - **状态与版本**：数据库是业务真相，前端缓存、SSE、内存队列与 Chat Memory 只做投影或辅助。内容版本与媒体文件不可原地覆盖；并发写入使用 expectedVersion/CAS 并检查更新行数；布局与内容修改分开。
 - **执行边界**：网络调用不持有数据库事务。外部生成受理结果不确定时保留 UNKNOWN，只能由用户显式创建新尝试；查询或归档重试不能变成重新生成。模型文本不能授予权限或批准媒体调用。
-- **前端**：复用已有组件；没有特殊说明时不新增交互方式。TanStack Query 管服务器数据，Zustand 管交互草稿与 UI，React Flow 从业务数据投影。保存失败保留草稿并显示失败；异步交互覆盖等待、失败、冲突、取消、UNKNOWN、空态与未授权。
+- **前端**：复用已有组件；没有特殊说明时不新增交互方式。TanStack Query 管服务器数据，Zustand 管交互草稿与 UI，React Flow 从业务数据投影。保存失败保留草稿并显示失败；异步交互覆盖等待、失败、冲突、取消、UNKNOWN、空态与未授权；UI组件统一使用 shadcn。
 - **代码约定**：前后端业务值使用常量或枚举；不通过随意 `any`、`ts-ignore` 或关闭 lint 绕过错误。为不显然的业务约束、状态转换和公共接口写解释性注释。
 - **合约与生成代码**：[contracts/openapi.yaml](contracts/openapi.yaml) 是 API 权威来源；改动同步 Java 实现、生成 TypeScript 与契约测试。禁止手改 `frontend/src/shared/api/schema.ts` 和 `backend/src/jooq/java`。
 - **持久化**：生产数据访问使用 jOOQ，Flyway 迁移只增不改。API 与模型变更按实际兼容和数据迁移需求处理，不保留无需求的兼容层；保护现有数据、同步合约并说明破坏性变更的升级影响。
