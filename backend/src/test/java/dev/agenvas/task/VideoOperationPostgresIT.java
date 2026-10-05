@@ -85,22 +85,27 @@ class VideoOperationPostgresIT {
         if (owner == null) owner = identities.setup("video-tools-test", "synthetic-video-password-123");
     }
 
-    @Test void extractsActualAudioToIndependentArtifactAndKeepsSourceUnchanged() throws Exception {
+    @Test void extractsAudioAndSilentVideoToIndependentNodesAndKeepsSourceUnchanged() throws Exception {
         var source = source(true);
         var task = run(source, VideoOperation.EXTRACT_AUDIO, "audio-extraction");
         var replay = run(source, VideoOperation.EXTRACT_AUDIO, "audio-extraction");
         assertThat(replay.id()).isEqualTo(task.id());
+        assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(3);
         assertThatThrownBy(() -> run(source, VideoOperation.DEPTH_MAP, "audio-extraction"))
                 .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("IDEMPOTENCY_CONFLICT");
         UUID resultItemId = UUID.fromString(task.input().path("canvasItemId").asText());
         UUID resultArtifactId = UUID.fromString(task.input().path("artifactId").asText());
         assertThat(resultArtifactId).isNotEqualTo(source.artifactId());
+        UUID silentItemId = UUID.fromString(task.input().path("silentVideoTarget").path("canvasItemId").asText());
+        assertThat(direct.list(owner.userId(), source.projectId(), source.artifactId(), silentItemId))
+                .extracting(Task::id).containsExactly(task.id());
+        assertThat(direct.list(owner.userId(), source.projectId(), source.artifactId(), source.itemId())).isEmpty();
         var outputItem = canvas.list(owner.userId(), source.projectId()).stream()
                 .filter(entry -> entry.item().id().equals(resultItemId)).findFirst().orElseThrow().item();
         assertThat(outputItem.width()).isEqualByComparingTo("430");
         assertThat(outputItem.height()).isEqualByComparingTo("240");
         assertThat(drafts.get(owner.userId(), source.projectId(), resultItemId).mediaInputs()).isEmpty();
-        assertThat(connections.list(owner.userId(), source.projectId())).singleElement().satisfies(line -> {
+        assertThat(connections.list(owner.userId(), source.projectId())).hasSize(2).allSatisfy(line -> {
             assertThat(line.relationType()).isEqualTo(CanvasConnection.RelationType.MEDIA_DERIVATION);
             assertThat(line.sourceArtifactVersionId()).isEqualTo(source.versionId());
         });
@@ -113,11 +118,73 @@ class VideoOperationPostgresIT {
         var audio = assets.get(owner.userId(), source.projectId(), UUID.fromString(result.content().path("assetId").asText()));
         assertThat(audio.asset().durationMs()).isBetween(900, 1100);
         assertThat(audio.asset().contentType()).isEqualTo("audio/wav");
+        var silentOutput = completed.output().path("additionalResults");
+        assertThat(silentOutput).hasSize(1);
+        var silent = silentOutput.get(0);
+        assertThat(silent.path("selected").asBoolean()).isTrue();
+        assertThat(silent.path("artifactId").asText()).isEqualTo(source.artifactId().toString());
+        var silentVersion = artifacts.requireMediaVersionForTask(owner.userId(), source.projectId(),
+                UUID.fromString(silent.path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
+        var silentFile = assets.get(owner.userId(), source.projectId(), UUID.fromString(silentVersion.content().path("assetId").asText()));
+        assertThat(silentFile.asset().id()).isNotEqualTo(audio.asset().id());
+        assertThat(silentFile.asset().durationMs()).isBetween(900, 1100);
+        assertThat(silentFile.asset().width()).isEqualTo(160);
+        assertThat(silentFile.asset().height()).isEqualTo(90);
+        assertThat(mapper.readTree(tools.ffprobe(List.of("-v", "error", "-select_streams", "a",
+                "-show_entries", "stream=index", "-of", "json", silentFile.path().toString()))).path("streams")).isEmpty();
+        var sourceVersion = artifacts.requireMediaVersionForTask(owner.userId(), source.projectId(), source.versionId(), Artifact.Kind.VIDEO);
+        var sourceFile = assets.get(owner.userId(), source.projectId(), UUID.fromString(sourceVersion.content().path("assetId").asText()));
+        assertThat(videoPacketHashes(silentFile.path())).isEqualTo(videoPacketHashes(sourceFile.path()));
+        assertThat(drafts.get(owner.userId(), source.projectId(), UUID.fromString(silent.path("canvasItemId").asText())).mediaInputs()).isEmpty();
         assertThat(artifacts.get(owner.userId(), source.projectId(), source.artifactId()).resourceDefaultVersion().id()).isEqualTo(source.versionId());
         assertThat(canvas.list(owner.userId(), source.projectId()).stream().filter(entry -> entry.item().id().equals(source.itemId()))
                 .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(source.versionId());
         var line = connections.list(owner.userId(), source.projectId()).getFirst();
         connections.disconnect(owner.userId(), source.projectId(), line.id(), null, null);
+        assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(3);
+    }
+
+    @Test void removingSilentVideoTargetDoesNotRecreateItOrPreventAudioSelection() throws Exception {
+        var source = source(true);
+        var task = run(source, VideoOperation.EXTRACT_AUDIO, "removed-silent-target");
+        UUID silentItemId = UUID.fromString(task.input().path("silentVideoTarget").path("canvasItemId").asText());
+        canvas.apply(owner.userId(), source.projectId(), List.of(new CanvasService.Remove(silentItemId, 0)));
+        worker.submitOnce("removed-silent-target");
+        var completed = tasks.get(owner.userId(), source.projectId(), task.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(completed.output().path("selected").asBoolean()).isTrue();
+        assertThat(completed.output().path("additionalResults").get(0).path("selected").asBoolean()).isFalse();
+        assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(2)
+                .noneSatisfy(entry -> assertThat(entry.item().id()).isEqualTo(silentItemId));
+        assertThat(connections.list(owner.userId(), source.projectId())).hasSize(1);
+    }
+
+    @Test void changedSilentVideoDraftDoesNotOverrideItOrPreventAudioSelection() throws Exception {
+        var source = source(true);
+        var task = run(source, VideoOperation.EXTRACT_AUDIO, "edited-silent-target");
+        UUID silentItemId = UUID.fromString(task.input().path("silentVideoTarget").path("canvasItemId").asText());
+        drafts.save(owner.userId(), source.projectId(), silentItemId, 0, "下一次创作", mapper.createObjectNode(),
+                null, null, null, List.of(), List.of(), null);
+        worker.submitOnce("edited-silent-target");
+        var completed = tasks.get(owner.userId(), source.projectId(), task.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(completed.output().path("selected").asBoolean()).isTrue();
+        assertThat(completed.output().path("additionalResults").get(0).path("selected").asBoolean()).isFalse();
+        assertThat(drafts.get(owner.userId(), source.projectId(), silentItemId).prompt()).isEqualTo("下一次创作");
+        assertThat(canvas.list(owner.userId(), source.projectId()).stream().filter(entry -> entry.item().id().equals(silentItemId))
+                .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(source.versionId());
+    }
+
+    @Test void removingAudioTargetStillSelectsTheSilentVideoWithoutRecreatingAudio() throws Exception {
+        var source = source(true);
+        var task = run(source, VideoOperation.EXTRACT_AUDIO, "removed-audio-target");
+        UUID audioItemId = UUID.fromString(task.input().path("canvasItemId").asText());
+        canvas.apply(owner.userId(), source.projectId(), List.of(new CanvasService.Remove(audioItemId, 0)));
+        worker.submitOnce("removed-audio-target");
+        var completed = tasks.get(owner.userId(), source.projectId(), task.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(completed.output().path("selected").asBoolean()).isFalse();
+        assertThat(completed.output().path("additionalResults").get(0).path("selected").asBoolean()).isTrue();
         assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(2);
     }
 
@@ -221,6 +288,12 @@ class VideoOperationPostgresIT {
     }
 
     private record Source(UUID projectId, UUID artifactId, UUID itemId, UUID versionId) {}
+    private tools.jackson.databind.JsonNode videoPacketHashes(Path file) {
+        return mapper.readTree(tools.ffprobe(List.of("-v", "error", "-select_streams", "v:0",
+                "-show_packets", "-show_entries", "packet=data_hash", "-show_data_hash", "sha256",
+                "-of", "json", file.toString()))).path("packets");
+    }
+
     private Source source(boolean audio) throws Exception {
         var project = projects.create(owner.userId(), "Synthetic video tool", Project.AspectRatio.LANDSCAPE_16_9);
         Path video = temp.resolve(UUID.randomUUID() + ".mp4");

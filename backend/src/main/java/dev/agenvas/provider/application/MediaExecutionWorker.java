@@ -13,6 +13,7 @@ import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.task.domain.VideoOperation;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
@@ -34,15 +35,18 @@ public class MediaExecutionWorker {
     private final MediaAdapterRegistry adapters;
     private final AssetService assets;
     private final ObjectMapper mapper;
+    private final LocalVideoProcessor videoProcessor;
 
     public MediaExecutionWorker(TaskService tasks, MediaCapabilityService catalog,
-            MediaAdapterRegistry adapters, AssetService assets, ObjectMapper mapper, CallLogService callLogs) {
+            MediaAdapterRegistry adapters, AssetService assets, ObjectMapper mapper, CallLogService callLogs,
+            LocalVideoProcessor videoProcessor) {
         this.callLogs = callLogs;
         this.tasks = tasks;
         this.catalog = catalog;
         this.adapters = adapters;
         this.assets = assets;
         this.mapper = mapper;
+        this.videoProcessor = videoProcessor;
     }
 
     /** The claim and checkpoint are short transactions; provider traffic happens afterward. */
@@ -122,15 +126,15 @@ public class MediaExecutionWorker {
                                 "PROVIDER_POLL_TECHNICAL_FAILURE");
                         continue;
                     }
-                    tasks.succeedWithArtifact(task, workerId, content);
+                    completeArtifact(attempt, workerId, content);
                 }
                 case Submission.CompletedArtifact completed ->
-                    tasks.succeedWithArtifact(task, workerId, completed.content());
+                    completeArtifact(attempt, workerId, completed.content());
                 case Submission.CompletedResults completed -> {
                     try {
                         if (tasks.providerResultManifest(task).isEmpty()) tasks.checkpointProviderResults(task, workerId, completed.manifest());
                         var results = archiveResults(attempt, adapter, completed.manifest());
-                        tasks.succeedWithArtifacts(task, workerId, results, completed.manifest().usage());
+                        tasks.succeedWithArtifacts(task, workerId, withSilentVideo(attempt, results), completed.manifest().usage());
                     } catch (RuntimeException archiveFailure) {
                         tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
                     }
@@ -181,10 +185,10 @@ public class MediaExecutionWorker {
         switch (result) {
             case Submission.Accepted accepted -> tasks.waitForProvider(task, workerId,
                     accepted.requestId(), Instant.now().plusSeconds(5));
-            case Submission.Completed completed -> tasks.succeedWithArtifact(task, workerId,
+            case Submission.Completed completed -> completeArtifact(attempt, workerId,
                     archive(attempt, completed.payload()));
             case Submission.CompletedArtifact completed ->
-                    tasks.succeedWithArtifact(task, workerId, completed.content());
+                    completeArtifact(attempt, workerId, completed.content());
             case Submission.Rejected rejected -> tasks.rejectSubmission(task, workerId,
                     rejected.code());
             case Submission.Unknown unknown -> {
@@ -201,6 +205,30 @@ public class MediaExecutionWorker {
             case Submission.Blocked ignored -> throw new IllegalStateException(
                     "Submission cannot be blocked after external submission");
         }
+    }
+
+    private void completeArtifact(AttemptContext attempt, String workerId, tools.jackson.databind.JsonNode content) {
+        Task task = attempt.lease();
+        List<TaskService.ArchivedProviderResult> results;
+        try {
+            results = withSilentVideo(attempt, List.of(new TaskService.ArchivedProviderResult(0,
+                    dev.agenvas.artifact.domain.Artifact.Kind.valueOf(task.kind().name().replace("_GENERATION", "")), true, content)));
+        } catch (RuntimeException processingFailure) {
+            if (attempt.originalRequestId() != null) tasks.retryProviderPoll(task, workerId, "LOCAL_VIDEO_PROCESSING_FAILED");
+            else tasks.rejectSubmission(task, workerId, "LOCAL_VIDEO_PROCESSING_FAILED");
+            return;
+        }
+        tasks.succeedWithArtifacts(task, workerId, results, null);
+    }
+
+    /** Cloud audio extraction also keeps a local, lossless silent copy of the original pinned video. */
+    private List<TaskService.ArchivedProviderResult> withSilentVideo(AttemptContext attempt,
+            List<TaskService.ArchivedProviderResult> results) {
+        if (!attempt.lease().input().has(VideoOperation.SILENT_VIDEO_TARGET)) return results;
+        var separated = new java.util.ArrayList<>(results);
+        separated.add(new TaskService.ArchivedProviderResult(results.size(),
+                dev.agenvas.artifact.domain.Artifact.Kind.VIDEO, false, videoProcessor.silentVideoResult(attempt)));
+        return List.copyOf(separated);
     }
 
     private List<TaskService.ArchivedProviderResult> archiveResults(AttemptContext attempt, MediaAdapter adapter,

@@ -316,7 +316,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         return dsl.select(TASK.fields()).from(TASK)
                 .join(TASK_ARTIFACT_TARGET).on(TASK_ARTIFACT_TARGET.TASK_ID.eq(TASK.ID))
                 .where(TASK.PROJECT_ID.eq(projectId))
-                .and(targetField.eq(targetId))
+                .and(mediaTargetCondition(targetField, targetId))
                 .and(TASK.STATUS.in(Task.Status.READY.name(),
                                 Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name(),
                                 Task.Status.WAITING_PROVIDER.name(), Task.Status.UNKNOWN.name())
@@ -401,7 +401,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .where(PROJECT.OWNER_ID.eq(ownerId))
                 .and(TASK.PROJECT_ID.eq(projectId))
                 .and(taskScope)
-                .and(targetField.eq(targetId))
+                .and(mediaTargetCondition(targetField, targetId))
                 // 卡片只呈现仍有效的任务：已被「重试」取代的原任务不再决定
                 // 卡片是否可再次运行。
                 .and(DSL.notExists(DSL.selectOne()
@@ -410,6 +410,14 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .orderBy(TASK.CREATED_AT.desc(), TASK.ID.desc())
                 .limit(RECENT_TARGET_TASK_LIMIT)
                 .fetch(row -> mapTask(row.into(TASK)));
+    }
+
+    /** One audio separation Task occupies both pre-created output nodes, never the source video node. */
+    private Condition mediaTargetCondition(Field<UUID> targetField, UUID targetId) {
+        Condition primary = targetField.eq(targetId);
+        if (!targetField.equals(TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID)) return primary;
+        return primary.or(DSL.field("{0}->'silentVideoTarget'->>'canvasItemId'", String.class, TASK.INPUT_JSON)
+                .eq(targetId.toString()));
     }
 
     @Override
