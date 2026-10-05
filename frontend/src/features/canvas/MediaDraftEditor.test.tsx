@@ -857,6 +857,27 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(saves.at(-1)?.parameters.speechRate).toBe(-20));
   });
 
+  it("keeps the voice library open when filtering and dismisses a filter before the library on Escape", async () => {
+    setup({ kind: "AUDIO", settings: audioSettings });
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "音频提示词" });
+    const trigger = screen.getByRole("button", { name: "选择音色" });
+    await user.click(trigger);
+    await changeControl(screen.getByRole("combobox", { name: "音色语言" }), { target: { value: "en" } });
+    expect(screen.getByRole("dialog", { name: "音色库" })).toBeVisible();
+    expect(screen.getByText("Tim", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.queryByText("Vivi 2.0", { selector: "strong" })).not.toBeInTheDocument();
+    const scene = screen.getByRole("combobox", { name: "音色场景" });
+    await user.click(scene);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(scene).toHaveFocus();
+    expect(screen.getByRole("dialog", { name: "音色库" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "音色库" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it.each([
     { name: "reserves an audio slot for the selected voice", roles: ["AUDIO_REFERENCE", "AUDIO_REFERENCE"], speaker: "zh_female_xiaohe_uranus_bigtts", kind: "AUDIO", allowed: false },
     { name: "rejects an image alongside an audio reference", roles: ["AUDIO_REFERENCE"], speaker: "", kind: "IMAGE", allowed: false },
@@ -1540,6 +1561,33 @@ describe("MediaDraftEditor", () => {
     expect(await screen.findByRole("button", { name: "重试" })).toBeVisible();
     expect(screen.getAllByText("结果未知").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+  });
+
+  it("creates a new task for an accepted blocked request while retaining its draft", async () => {
+    const blocked = { ...task("BLOCKED"), providerRequestId: "synthetic-accepted", version: 7,
+      errorCode: "PROVIDER_POLL_RETRY_EXHAUSTED" };
+    const replacement = { ...task("READY"), id: "replacement-task", attemptNo: 2 };
+    let calls = 0;
+    const state: ReturnType<typeof setup> = setup({ tasks: [blocked], handlers: [
+      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/new-attempt`, async ({ request }) => {
+        expect(await request.json()).toEqual({ expectedTaskVersion: 7 });
+        expect(request.headers.get("Idempotency-Key")).toBeTruthy();
+        calls++;
+        state.setTasks([replacement]);
+        return HttpResponse.json(replacement);
+      }),
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/replacement-task/queue`, () =>
+        HttpResponse.json({ waitingAhead: 0, reason: "WAITING_WORKER" })),
+    ] });
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeDisabled());
+    const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
+    const previous = prompt.textContent;
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await userEvent.setup().click(retry);
+    await waitFor(() => expect(calls).toBe(1));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument());
+    expect(prompt.textContent).toBe(previous);
+    expect(state.saves).toHaveLength(0);
   });
 
   it.each(["READY", "UNKNOWN"] as const)("keeps Agent %s tasks occupied without direct task controls", async (status) => {

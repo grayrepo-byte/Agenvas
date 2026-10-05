@@ -370,7 +370,7 @@ describe("MediaCanvasCard", () => {
       await screen.findByRole("img", { name: "湖边 的预览" });
       await clickControl(screen.getByRole("button", { name: "扩展" }));
       await clickControl(screen.getByRole("menuitem", { name: /表情调整.*AI/ }));
-      expect(await screen.findByText("GPT Image")).toBeVisible();
+      expect(await screen.findByText("GPT Image", { selector: "p" })).toBeVisible();
       expect(screen.queryByRole("combobox", { name: "图片能力" })).not.toBeInTheDocument();
       await changeControl(screen.getByRole("textbox", { name: "目标表情" }), { target: { value: "微笑" } });
       await clickControl(screen.getByRole("button", { name: "开始处理" }));
@@ -763,13 +763,13 @@ describe("MediaCanvasCard", () => {
 
     await clickControl(await screen.findByRole("button", { name: "扩展" }));
     await clickControl(screen.getByRole("menuitem", { name: /图层分离.*AI/ }));
-    expect(await screen.findByText("Transparent model")).toBeVisible();
+    expect(await screen.findByText("Transparent model", { selector: "p" })).toBeVisible();
     expect(screen.queryByRole("combobox", { name: "图片能力" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Opaque model" })).not.toBeInTheDocument();
     await changeControl(screen.getByRole("combobox", { name: "输出图层" }), {
       target: { value: "BACKGROUND" },
     });
-    expect(screen.getByText("Transparent model")).toBeVisible();
+    expect(screen.getByText("Transparent model", { selector: "p" })).toBeVisible();
     expect(screen.queryByRole("combobox", { name: "图片能力" })).not.toBeInTheDocument();
   });
 

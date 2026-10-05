@@ -80,16 +80,71 @@ class RunningHubPostgresIT {
     @Autowired MediaCapabilityService catalog;
     @Autowired MediaAdapterRegistry adapters;
     @Autowired MediaExecutionWorker worker;
+    @Autowired dev.agenvas.provider.application.LocalVideoProcessor videoProcessor;
     @Autowired DirectMediaTaskService direct;
     @Autowired TaskService tasks;
+    @Autowired dev.agenvas.task.application.ManualUnknownRetryService retries;
     @Autowired UsageService usage;
     @Autowired CallLogService callLogs;
     @Autowired MediaToolRunner mediaTools;
     @Autowired JdbcClient jdbc;
     @Autowired ObjectMapper mapper;
     @Autowired WebApplicationContext webContext;
+    @Autowired dev.agenvas.provider.application.MediaFunctionService functions;
+    @Autowired dev.agenvas.task.application.VideoOperationService videoOperations;
     private static UUID owner;
     @BeforeEach void owner() { if (owner == null) owner = identities.setup("rh-admin", "runninghub-password-123").userId(); }
+
+    @Test void cloudAudioSeparationArchivesBothOutputsAfterRecoveryWithoutAnotherSubmission() throws Exception {
+        try (var provider = new Fake(1, false, false)) {
+            var audio = Files.createTempFile("rh-separated-audio-", ".wav");
+            var video = Files.createTempFile("rh-source-video-", ".mp4");
+            var operation = dev.agenvas.provider.domain.MediaFunction.VIDEO_EXTRACT_AUDIO;
+            var original = functions.list().stream().filter(setting -> setting.operation() == operation).findFirst().orElseThrow();
+            try {
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                        "sine=frequency=440:sample_rate=48000", "-t", "1", "-y", audio.toString()));
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                        "testsrc2=s=160x90:r=12", "-i", audio.toString(), "-t", "1", "-c:v", "libx264", "-c:a", "aac", "-y", video.toString()));
+                provider.zipOnly = true;
+                provider.failZipArchiveOnce = true;
+                provider.zipBytes = zip(new String[] { "audio.wav" }, new byte[][] { Files.readAllBytes(audio) });
+                var fixture = fixture(provider, Artifact.Kind.AUDIO, "WORKFLOW", true);
+                functions.update(operation, original.version(), fixture.capability);
+                var sourceAsset = assets.archiveTaskVideo(owner, fixture.project.id(), UUID.randomUUID(), () -> {
+                    try { return Files.newInputStream(video); } catch (java.io.IOException failure) { throw new IllegalStateException(failure); }
+                });
+                var source = artifacts.create(owner, fixture.project.id(), Artifact.Kind.VIDEO, "Cloud split source",
+                        mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", sourceAsset.id().toString()));
+                UUID sourceItem = place(fixture.project, source.artifact());
+                var task = videoOperations.run(owner, fixture.project.id(), source.artifact().id(), sourceItem,
+                        source.resourceDefaultVersion().id(), 0, dev.agenvas.task.domain.VideoOperation.EXTRACT_AUDIO,
+                        original.version() + 1, 1, "", mapper.createObjectNode(), "cloud-separation");
+                worker.submitOnce("cloud-split-submit");
+                due(task.id()); worker.pollOnce("cloud-split-poll-failure");
+                assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+                due(task.id());
+                new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor).pollOnce("cloud-split-recovery");
+                var completed = tasks.get(owner, fixture.project.id(), task.id());
+                assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+                assertThat(completed.output().path("selected").asBoolean()).isTrue();
+                assertThat(completed.output().path("additionalResults")).hasSize(1);
+                var silent = completed.output().path("additionalResults").get(0);
+                assertThat(silent.path("selected").asBoolean()).isTrue();
+                var version = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
+                        UUID.fromString(silent.path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
+                var file = assets.get(owner, fixture.project.id(), UUID.fromString(version.content().path("assetId").asText()));
+                assertThat(mapper.readTree(mediaTools.ffprobe(List.of("-v", "error", "-select_streams", "a",
+                        "-show_entries", "stream=index", "-of", "json", file.path().toString()))).path("streams")).isEmpty();
+                assertThat(provider.submits.get()).isEqualTo(1);
+                assertThat(provider.queries.get()).isEqualTo(1);
+            } finally {
+                var current = functions.list().stream().filter(setting -> setting.operation() == operation).findFirst().orElseThrow();
+                if (!java.util.Objects.equals(current.capabilityId(), original.capabilityId())) functions.update(operation, current.version(), original.capabilityId());
+                Files.deleteIfExists(audio); Files.deleteIfExists(video);
+            }
+        }
+    }
 
     @Test void archivesMultipleMediaOutputsReadsCompanionZipResumesFromManifestAndPreservesANewerDraft() throws Exception {
         try (var provider = new Fake(2, true, false)) {
@@ -110,13 +165,13 @@ class RunningHubPostgresIT {
             drafts.save(owner, fixture.project.id(), fixture.card, draft.version(), "new local draft", draft.parameters(), null,
                     fixture.capability, null, List.of(), List.of(), null);
             // A fresh worker has no in-memory result state, and must not re-query/re-submit or re-download the ready first asset.
-            var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs);
+            var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor);
             due(task.id()); restarted.pollOnce("rh-restarted");
             var completed = tasks.get(owner, fixture.project.id(), task.id());
             assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
             assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
             assertThat(provider.firstDownloads).hasValue(1); assertThat(provider.secondDownloads).hasValue(2);
-            assertThat(provider.zipDownloads).hasValue(1);
+            assertThat(provider.zipDownloads).hasValue(0);
             assertThat(completed.output().path("additionalResults")).hasSize(1);
             assertThat(completed.output().path("selected").asBoolean()).isFalse();
             assertThat(drafts.get(owner, fixture.project.id(), fixture.card).prompt()).isEqualTo("new local draft");
@@ -125,6 +180,41 @@ class RunningHubPostgresIT {
             assertThat(restarted.pollOnce("rh-repeat")).isZero();
             assertThat(canvas.list(owner, fixture.project.id())).hasSize(2);
             assertThat(completed.output().path("providerUsage").path("consumeMoney").isNull()).isTrue();
+        }
+    }
+
+    @Test void explicitBlockedVideoRetryCreatesANewGenerationAndSelectsTheFirstResult() throws Exception {
+        try (var provider = new Fake(1, false, false)) {
+            var file = Files.createTempFile("rh-selection-fixture", ".mp4");
+            try {
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi",
+                        "-i", "color=c=black:s=32x32:r=1", "-t", "1", "-pix_fmt", "yuv420p", "-y", file.toString()));
+                provider.firstType = "mp4";
+                provider.firstBytes = Files.readAllBytes(file);
+                provider.zipBytes = zip(new String[] { "companion.mp4" }, new byte[][] { provider.firstBytes });
+                var fixture = fixture(provider, Artifact.Kind.VIDEO, "AI_APP", false);
+                Task original = accept(fixture, "Synthetic video retry");
+                worker.submitOnce("rh-original-submit");
+                jdbc.sql("update task set status='BLOCKED', error_code='PROVIDER_POLL_RETRY_EXHAUSTED', "
+                                + "version=version+1 where id=:id").param("id", original.id()).update();
+                Task blocked = tasks.get(owner, fixture.project.id(), original.id());
+                Task replacement = retries.create(owner, fixture.project.id(), original.id(), blocked.version(), "retry-blocked-video");
+                assertThat(retries.create(owner, fixture.project.id(), original.id(), blocked.version(), "retry-blocked-video").id())
+                        .isEqualTo(replacement.id());
+                assertThat(provider.submits).hasValue(1);
+                worker.submitOnce("rh-replacement-submit");
+                due(replacement.id()); worker.pollOnce("rh-replacement-poll");
+                Task completed = tasks.get(owner, fixture.project.id(), replacement.id());
+                assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+                assertThat(completed.output().path("selected").asBoolean()).isTrue();
+                assertThat(completed.output().path("additionalResults")).isEmpty();
+                assertThat(provider.submits).hasValue(2);
+                assertThat(provider.queries).hasValue(1);
+                assertThat(provider.zipDownloads).hasValue(0);
+                assertThat(canvas.list(owner, fixture.project.id())).hasSize(1);
+                assertThat(tasks.get(owner, fixture.project.id(), original.id())).isEqualTo(blocked);
+                assertThat(tasks.providerResultManifest(completed).orElseThrow().results()).hasSize(1);
+            } finally { Files.deleteIfExists(file); }
         }
     }
 
@@ -143,7 +233,7 @@ class RunningHubPostgresIT {
             // Model a crash after the first member has already been published as a READY asset.
             UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:provider-output:v1:" + task.id() + ":0").getBytes(StandardCharsets.UTF_8));
             var first = assets.archiveTaskImage(owner, fixture.project.id(), archiveId, () -> new ByteArrayInputStream(provider.imageBytes));
-            var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs);
+            var restarted = new MediaExecutionWorker(tasks, catalog, adapters, assets, mapper, callLogs, videoProcessor);
             due(task.id()); restarted.pollOnce("rh-zip-resumed");
             var completed = tasks.get(owner, fixture.project.id(), task.id());
             assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
@@ -455,6 +545,8 @@ class RunningHubPostgresIT {
         final AtomicReference<String> submitted = new AtomicReference<>();
         final AtomicReference<String> submissionPath = new AtomicReference<>();
         volatile String secondType = "png";
+        volatile String firstType = "png";
+        volatile byte[] firstBytes;
         volatile byte[] secondBytes;
         final byte[] imageBytes;
         volatile byte[] zipBytes;
@@ -476,7 +568,7 @@ class RunningHubPostgresIT {
                 } else if (path.equals("/openapi/v2/query")) {
                     queries.incrementAndGet();
                     response = ("{\"status\":\"SUCCESS\",\"results\":["
-                            + (zipOnly ? "" : "{\"nodeId\":\"9\",\"outputType\":\"png\",\"url\":\"" + origin() + "/first.png\"}"
+                            + (zipOnly ? "" : "{\"nodeId\":\"9\",\"outputType\":\"" + firstType + "\",\"url\":\"" + origin() + "/first.png\"}"
                                 + (resultCount > 1 ? ",{\"nodeId\":\"9\",\"outputType\":\"" + secondType + "\",\"url\":\"" + origin() + "/second.png\"}" : "") + ",")
                             + "{\"nodeId\":\"99\",\"outputType\":\"zip\",\"url\":\"" + origin() + "/companion.zip\"}"
                             + "],\"usage\":{\"consumeMoney\":null,\"consumeCoins\":0.25,\"taskCostTime\":3}}").getBytes(StandardCharsets.UTF_8);
@@ -487,7 +579,8 @@ class RunningHubPostgresIT {
                     if (path.equals("/first.png")) firstDownloads.incrementAndGet();
                     else if (path.equals("/companion.zip") && zipDownloads.incrementAndGet() == 2 && failZipArchiveOnce) status = 503;
                     else if (path.equals("/second.png") && secondDownloads.incrementAndGet() == 1 && failSecondOnce) status = 503;
-                    response = path.equals("/companion.zip") ? zipBytes : path.equals("/second.png") && secondBytes != null ? secondBytes : imageBytes;
+                    response = path.equals("/companion.zip") ? zipBytes : path.equals("/second.png") && secondBytes != null
+                            ? secondBytes : path.equals("/first.png") && firstBytes != null ? firstBytes : imageBytes;
                 }
                 exchange.sendResponseHeaders(status, response.length); exchange.getResponseBody().write(response); exchange.close();
             }); server.start();

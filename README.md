@@ -6,7 +6,7 @@
 
 <p align="center"><strong>可自托管的 AI 创作画布</strong><br />文字、图片、视频、音频与 Agent，一个工作空间。</p>
 
-<p align="center">Agenvas 希望让个人用户能够使用最低的代价体验商业画布的体验，而不用依赖昂贵的会员或者顶尖的模型，将低价的选择权掌握在自己手中</p>
+<p align="center">Agenvas 希望让个人用户能够使用最低的代价获得商业画布的体验，而不用绑定昂贵的会员或者顶尖的模型，将低价的选择权掌握在自己手中</p>
 
 <p align="center">
   <a href="README.en.md">English</a> ·
@@ -15,6 +15,13 @@
   <a href="#本地开发">本地开发</a> ·
   <a href="#文档与贡献">文档与贡献</a> ·
   <a href="LICENSE">MIT</a>
+</p>
+
+<p align="center">作者：<a href="https://x.com/Grayrepo">X / Twitter @Grayrepo</a> · 邮箱：<a href="mailto:yoshioka8084806@gmail.com">yoshioka8084806@gmail.com</a></p>
+
+<p align="center">
+  <img src="docs/assets/wechat-official-account.jpg" alt="微信公众号二维码" width="180" /><br />
+  扫码关注微信公众号
 </p>
 
 > 当前为开发版本，面向单管理员自托管使用。不保证后续版本的数据兼容。
@@ -36,7 +43,7 @@
 
 ### 1. 一键启动
 
-先安装并启动 **Docker Engine / Docker Desktop**，确认包含 **Docker Compose v2**。启动和登录无需 Git、本地编译环境、GPU、`.env` 或模型 Key。
+通过下面的命令启动前，先安装并启动 **Docker Engine / Docker Desktop**，确认包含 **Docker Compose v2**。启动和登录无需 Git、本地编译环境、GPU、`.env` 或模型 Key。
 
 首次安装，在 **macOS / Linux** 终端复制执行整段命令：
 
@@ -47,19 +54,41 @@ mkdir agenvas && cd agenvas && \
   docker compose up -d --wait
 ```
 
-<details>
-<summary><strong>Windows 启动命令（命令提示符 / cmd.exe）</strong></summary>
+**Windows：一键命令**
 
-```bat
-mkdir agenvas && cd agenvas && ^
-  curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml ^
-    -o docker-compose.yml && ^
-  docker compose up -d --wait
+首次安装，打开 CMD 或 PowerShell，复制对应的整段命令执行；两种方式选一种即可。
+
+<details>
+<summary><strong>CMD（命令提示符）</strong></summary>
+
+```cmd
+mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml -o docker-compose.yml && docker compose up -d --wait
 ```
 
 </details>
 
-命令会新建 `agenvas` 目录、下载 Compose 文件、拉取镜像，并等待三个服务健康。保留该目录，后续管理在其中执行。已有 Compose 文件时，直接在文件所在目录运行 `docker compose up -d --wait`。
+<details>
+<summary><strong>PowerShell（Windows PowerShell 5.1 / PowerShell 7）</strong></summary>
+
+```powershell
+& {
+  $ErrorActionPreference = 'Stop'
+  New-Item -ItemType Directory -Path agenvas | Out-Null
+  Set-Location agenvas
+  Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml' -OutFile docker-compose.yml -UseBasicParsing
+  docker compose up -d --wait
+}
+```
+
+</details>
+
+**Windows：让 AI Agent 安装 (推荐) **
+
+把 [安装提示词](docs/operations/windows-ai-install-prompt.md)发给 WorkBuddy 等能执行本机操作的 AI Agent，让它检查环境、安装并启动 Agenvas。完成后，打开它给出的地址创建账号。
+
+自行安装见 [Windows 安装指南](docs/operations/windows-install.md)。
+
+以上步骤会准备 `agenvas` 目录和 Compose 文件、拉取镜像，并等待三个服务健康。保留该目录，后续管理在其中执行。已有 Compose 文件时，直接在文件所在目录运行 `docker compose up -d --wait`。
 
 数据库密码和凭证加密密钥首次启动时自动生成并持久保存，无需填写。首次下载镜像可能需要几分钟。
 
@@ -165,7 +194,7 @@ docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/c
 docker compose -f docker-compose.local.yml up -d --build --wait
 ```
 
-也可使用 `./deploy/update-local.sh`，先完成全部镜像构建，再更新容器并等待健康检查；完成后仅显示容器名、服务、状态和端口，避免完整启动命令撑宽状态表。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
+也可使用 `./deploy/update-local.sh`，先完成全部镜像构建，再更新容器并等待健康检查；后端仅执行 `package -DskipTests`，不自动运行 `mvn verify`，完整测试按需手动执行或由 CI 执行。完成后仅显示容器名、服务、状态和端口，避免完整启动命令撑宽状态表。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
 
 镜像部署和源码构建默认项目名均为 `agenvas`，沿用相同数据库、素材和密钥卷，切换时须备份并保证版本兼容。它们是同一环境的两种启动方式；若要并行运行，需用 `-p` 指定独立项目名并修改端口。
 
@@ -220,13 +249,24 @@ Vite 默认运行于 `5173`，将 `/api` 代理到 `localhost:8080`。
 
 在 Docker Hub 准备 `grayrepo/agenvas-server`、`grayrepo/agenvas-web` 两个公开仓库，便于部署者匿名拉取。CI 发布地址直接使用 `grayrepo`；需要更换发布方时修改工作流和 Compose 中的地址。PostgreSQL 从官方仓库拉取，CI 保留其 SBOM 与许可证清单。
 
-`.github/workflows/ci.yml` 在推送 `main`、推送 `v*.*.*` 版本标签或手动运行时执行；只有推送 `v*.*.*` 版本标签会上传 Docker Hub，`main` 推送与手动运行只构建和收集清单、不推送。前后端测试、Compose 检查、源码密钥扫描及两个架构的镜像构建与清单收集通过后，发布对应应用镜像的多架构清单：
+`.github/workflows/ci.yml` 在 PR、main 推送、`v*.*.*` 版本标签推送和手动运行时执行，测试与镜像构建并行：
+
+| 触发 | 验证 | 镜像与清单 |
+| --- | --- | --- |
+| 代码 PR | 前端、后端单测、全部四个 PostgreSQL IT 分片、jOOQ、Compose、密钥扫描 | server/web amd64 构建 |
+| 纯文档 PR | 规划检查、密钥扫描、CI Gate | 跳过重任务 |
+| main / 手动运行 | 完整验证 | server/web amd64 + arm64 构建 |
+| 版本标签推送 | 完整验证 | 双架构应用构建与官方 PostgreSQL 清单，CI Gate 通过后发布 |
+
+`CI Gate` 始终生成，失败、取消或非预期跳过都会阻断；配置分支必需检查时可选择它。Buildx 缓存按服务和架构隔离，PR 只读。server 打包跳过整套测试，CI 每个原生架构仍保留一项深度模型/JNI 冒烟。
+
+只有版本标签推送上传 Docker Hub。发布镜像扫描一次，再将 JSON 转换为 CycloneDX；所有检查通过后从短期工件加载并推送同一镜像。失败报告保留 7 天、待发布镜像保留 1 天、SBOM/许可证证据保留 90 天。
 
 - 每次发布：`sha-<完整 40 位提交 SHA>`。
 - `v0.1.0` 版本标签：额外发布去除前导 v 后的 `0.1.0`。
 - 稳定版本标签（无预发布后缀，如 `v0.1.0`）：额外把 `latest` 指向该版本，供默认 Compose 使用；预发布版本（如 `v0.1.0-rc.1`）保留后缀，不更新 `latest`。
 
-PR 只执行检查，不访问 Docker Hub 凭据或推送镜像；`main` 推送与在非版本标签触发的手动运行也只构建和收集清单。每个服务和架构保留 SBOM 与许可证清单，成功发布的标签显示在 Actions 摘要中。`ci-<运行 ID>-<尝试次数>-<架构>` 为中间标签，部署使用 `latest` 或自行指定最终版本、提交标签或 digest。
+PR、main 推送和手动运行不访问 Docker Hub 凭据、不推送镜像。发布时每个服务和架构保留 SBOM 与许可证清单，成功发布的标签显示在 Actions 摘要中。`ci-<运行 ID>-<尝试次数>-<架构>` 为中间标签，部署使用 `latest` 或自行指定最终版本、提交标签或 digest。
 
 发布实现参考 [Docker 多架构构建说明](https://docs.docker.com/build/ci/github-actions/multi-platform/)与 [Docker 镜像标签规则](https://github.com/docker/metadata-action)。
 

@@ -273,7 +273,7 @@ public class MediaCapabilityService {
             throw invalid(ApiMessage.of("api.media-capability-service.capability-does-not-belong-to-this-connection"));
         }
         rejectSystemManaged(current.connection());
-        if (current.capability().version() != expectedVersion) {
+        if (current.capability().deleted() || current.capability().version() != expectedVersion) {
             throw conflict(ApiMessage.of("api.media-capability-service.ability-has-been-modified-by-another-operation"));
         }
         MediaAdapterRegistry.Declaration replacement = registry.declaration(adapterId);
@@ -314,6 +314,28 @@ public class MediaCapabilityService {
         }
         if (changedKind) repository.clearDefaultForCapability(previousKind.name(), capabilityId);
         return repository.capability(capabilityId).orElseThrow();
+    }
+
+    /** Serialize removal with edits and configuration selection; pinned task versions remain readable. */
+    @Transactional
+    public void deleteCapability(UUID connectionId, UUID capabilityId, long expectedVersion) {
+        repository.lockCapability(capabilityId);
+        Snapshot current = capabilitySnapshot(capabilityId);
+        requireAvailablePlatform(current.connection().platform());
+        if (!current.connection().id().equals(connectionId)) {
+            throw invalid(ApiMessage.of("api.media-capability-service.capability-does-not-belong-to-this-connection"));
+        }
+        rejectSystemManaged(current.connection());
+        Instant now = clock.instant();
+        if (!repository.deleteCapability(capabilityId, expectedVersion, now)) {
+            throw conflict(ApiMessage.of("api.media-capability-service.ability-has-been-modified-by-another-operation"));
+        }
+        repository.clearSelectionsForCapability(capabilityId, now);
+    }
+
+    /** Call within the configuration transaction before validating and saving a capability selection. */
+    public void lockCapabilityForConfiguration(UUID capabilityId) {
+        repository.lockCapability(capabilityId);
     }
 
     public Connection getConnection(UUID connectionId) {
@@ -672,7 +694,7 @@ public class MediaCapabilityService {
     private Snapshot enabledSnapshot(UUID capabilityId) {
         Snapshot snapshot = capabilitySnapshot(capabilityId);
         requireAvailablePlatform(snapshot.connection().platform());
-        if (!snapshot.connection().enabled() || !snapshot.capability().enabled()) {
+        if (snapshot.capability().deleted() || !snapshot.connection().enabled() || !snapshot.capability().enabled()) {
             throw conflict(ApiMessage.of("api.media-capability-service.media-connection-or-capability-is-disabled"));
         }
         registry.declaration(snapshot.adapterId());

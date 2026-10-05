@@ -295,13 +295,14 @@ class ComfyUiVideoPostgresIT {
                     return;
                 }
                 String output = video
-                        ? "\"14\":{\"images\":[{\"filename\":\"result.mp4\",\"type\":\"output\",\"subfolder\":\"\"}],\"animated\":[true]}"
+                        ? "\"14\":{\"images\":[{\"filename\":\"preview.png\",\"type\":\"temp\",\"subfolder\":\"\"},{\"filename\":\"result.mp4\",\"type\":\"output\",\"subfolder\":\"\"},{\"filename\":\"unused.mp4\",\"type\":\"output\",\"subfolder\":\"\"}],\"animated\":[true]}"
                         : "\"8\":{\"images\":[{\"filename\":\"result.png\",\"type\":\"output\",\"subfolder\":\"\"}]}";
                 reply(exchange, 200, ("{\"" + id + "\":{\"status\":{\"completed\":true,"
                         + "\"status_str\":\"success\"},\"outputs\":{" + output + "}}}")
                         .getBytes(StandardCharsets.UTF_8));
             });
             server.createContext(PROXY_PREFIX + "/view", exchange -> {
+                assertThat(exchange.getRequestURI().getQuery()).doesNotContain("preview.png", "unused.mp4");
                 boolean video = exchange.getRequestURI().getQuery().contains("result.mp4");
                 reply(exchange, 200, video ? VIDEO_BYTES.get() : png());
             });

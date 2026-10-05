@@ -54,21 +54,22 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
     setError(null);
     try { await element.play(); } catch { setError(t("audio.player.playbackFailed")); }
   }
-  return <div className="audio-player nodrag nowheel nopan" onPointerDown={(event) => event.stopPropagation()}>
+  // Only playback controls exclude node gestures; the surrounding surface selects and drags the card.
+  return <div className="audio-player nowheel nopan">
     <audio ref={audio} src={src} preload="metadata" aria-label={t("audio.player.audioLabel", { "0": title })}
       onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
       onTimeUpdate={(event) => setPosition(event.currentTarget.currentTime)}
       onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
       onError={() => { setError(t("audio.player.loadFailed")); setPlaying(false); }} />
     <div className="audio-player-controls">
-      <Button variant="ghost" type="button" className="audio-player-play" onClick={() => void toggle()}
+      <Button variant="ghost" type="button" className="audio-player-play nodrag" onClick={() => void toggle()}
         aria-label={playing ? t("audio.player.pause") : t("audio.player.play")}>{playing ? <Pause size={16} weight="fill" /> : <Play size={16} weight="fill" />}</Button>
       <div className="audio-player-details">
         <p className="audio-player-title" title={description}>{description}</p>
         <span className="audio-player-time">{timeLabel(position)} / {timeLabel(duration)}</span>
       </div>
     </div>
-    <div className="audio-player-progress">
+    <div className="audio-player-progress nodrag">
       <div className="audio-player-waveform" aria-hidden="true">
         {waveform.data ? waveform.data.map((amplitude, index) => <span key={index}
           className={duration > 0 && index / WAVEFORM_BARS < position / duration ? "is-played" : ""}
@@ -80,8 +81,8 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
         onChange={(event) => { const value = Number(event.target.value); if (audio.current) audio.current.currentTime = value; setPosition(value); }} />
     </div>
     {waveform.isFetching ? <small role="status">{t("audio.player.waveformLoading")}</small> : null}
-    {waveform.error ? <small>{t("audio.player.waveformUnavailable")}<Button variant="ghost" type="button" onClick={() => void waveform.refetch()}>{t("audio.player.retryWaveform")}</Button></small> : null}
-    {error ? <div className="audio-player-error" role="alert">{error}<Button variant="ghost" type="button"
+    {waveform.error ? <small>{t("audio.player.waveformUnavailable")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void waveform.refetch()}>{t("audio.player.retryWaveform")}</Button></small> : null}
+    {error ? <div className="audio-player-error" role="alert">{error}<Button variant="ghost" type="button" className="nodrag"
       onClick={() => { setError(null); audio.current?.load(); }}><ArrowClockwise size={14} />{t("media.retryPlayback")}</Button></div> : null}
     {demo ? <small className="audio-player-demo">{t("audio.player.mockHint")}</small> : null}
   </div>;

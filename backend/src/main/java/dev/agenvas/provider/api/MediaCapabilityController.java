@@ -23,6 +23,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,6 +35,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Administrator catalog API. All views are explicit allowlists without encrypted columns. */
 @RestController
+@Validated
 @RequestMapping("/api/v1/settings")
 public class MediaCapabilityController {
 
@@ -104,6 +108,16 @@ public class MediaCapabilityController {
         Objects.requireNonNull(administrator, "Authenticated administrator required");
         catalog.updateCapability(connectionId, capabilityId, request.expectedVersion(),
                 request.name(), request.enabled(), request.adapterId(), request.settings());
+        return response();
+    }
+
+    @DeleteMapping("/media-connections/{connectionId}/capabilities/{capabilityId}")
+    public ResponseEntity<MediaSettingsResponse> deleteCapability(
+            @AuthenticationPrincipal AdminPrincipal administrator,
+            @PathVariable UUID connectionId, @PathVariable UUID capabilityId,
+            @RequestParam @Min(0) long expectedVersion) {
+        Objects.requireNonNull(administrator, "Authenticated administrator required");
+        catalog.deleteCapability(connectionId, capabilityId, expectedVersion);
         return response();
     }
 

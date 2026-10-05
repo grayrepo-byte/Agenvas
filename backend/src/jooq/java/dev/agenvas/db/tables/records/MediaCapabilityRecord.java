@@ -141,6 +141,22 @@ public class MediaCapabilityRecord extends UpdatableRecordImpl<MediaCapabilityRe
         return (OffsetDateTime) get(7);
     }
 
+    /**
+     * Setter for <code>public.media_capability.deleted_at</code>.
+     * 能力删除时间；目录不再展示，历史任务保留不可变版本用于恢复
+     */
+    public void setDeletedAt(OffsetDateTime value) {
+        set(8, value);
+    }
+
+    /**
+     * Getter for <code>public.media_capability.deleted_at</code>.
+     * 能力删除时间；目录不再展示，历史任务保留不可变版本用于恢复
+     */
+    public OffsetDateTime getDeletedAt() {
+        return (OffsetDateTime) get(8);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -164,7 +180,7 @@ public class MediaCapabilityRecord extends UpdatableRecordImpl<MediaCapabilityRe
     /**
      * Create a detached, initialised MediaCapabilityRecord
      */
-    public MediaCapabilityRecord(UUID id, UUID connectionId, String name, Boolean enabled, Long version, Integer currentVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public MediaCapabilityRecord(UUID id, UUID connectionId, String name, Boolean enabled, Long version, Integer currentVersion, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt) {
         super(MediaCapability.MEDIA_CAPABILITY);
 
         setId(id);
@@ -175,6 +191,7 @@ public class MediaCapabilityRecord extends UpdatableRecordImpl<MediaCapabilityRe
         setCurrentVersion(currentVersion);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setDeletedAt(deletedAt);
         resetChangedOnNotNull();
     }
 }

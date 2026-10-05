@@ -23,7 +23,7 @@ fi
 deploy_compose=(docker compose -f "$deploy_compose_file")
 "${deploy_compose[@]}" config --quiet
 
-printf 'Building local Compose images...\n'
+printf 'Building local Compose images (backend package only; tests skipped)...\n'
 "${deploy_compose[@]}" build --pull
 
 printf 'Updating containers and waiting for health checks...\n'

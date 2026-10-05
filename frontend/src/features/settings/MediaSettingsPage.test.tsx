@@ -1042,3 +1042,112 @@ describe("MediaSettingsPage", () => {
   });
 
 });
+
+
+describe("capability deletion", () => {
+  function serve(settings: MediaSettings) {
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic-csrf", headerName: "X-CSRF-TOKEN" })),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+    );
+  }
+
+  it("cancels without deleting and confirms with the displayed version", async () => {
+    const settings = settingsFixture();
+    serve(settings);
+    const versions: string[] = [];
+    server.use(http.delete("/api/v1/settings/media-connections/openai-1/capabilities/portrait", ({ request }) => {
+      versions.push(new URL(request.url).searchParams.get("expectedVersion")!);
+      return HttpResponse.json({ ...settings, connections: [{ ...settings.connections[0], capabilities: [] }],
+        defaults: settings.defaults.map((item) => item.capabilityId === "portrait" ? { ...item, capabilityId: null, version: 1 } : item) });
+    }));
+    const user = userEvent.setup();
+    const client = mount();
+    client.setQueryData(["media-functions"], []);
+    await user.click(await screen.findByRole("button", { name: "删除能力" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("历史结果和已受理任务保留");
+    expect(versions).toEqual([]);
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(versions).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "删除能力" }));
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect(screen.queryByText("Portrait")).not.toBeInTheDocument());
+    expect(versions).toEqual(["4"]);
+    expect(client.getQueryState(["media-functions"])?.isInvalidated).toBe(true);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("prevents repeated deletion and closing while the request is pending", async () => {
+    serve(settingsFixture());
+    let finish: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    let attempts = 0;
+    server.use(http.delete("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async () => {
+      attempts += 1;
+      await pending;
+      return HttpResponse.json({ title: "删除失败", detail: "请重试", code: "INTERNAL_ERROR" },
+        { status: 500, headers: { "Content-Type": "application/problem+json" } });
+    }));
+    const user = userEvent.setup(); mount();
+    await user.click(await screen.findByRole("button", { name: "删除能力" }));
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect(attempts).toBe(1));
+    expect(screen.getByRole("button", { name: "正在删除…" })).toBeDisabled();
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    finish?.();
+    await screen.findByText("请重试");
+    expect(screen.getByRole("button", { name: "确认删除" })).toBeEnabled();
+    expect(attempts).toBe(1);
+  });
+
+  it("allows deleting a disabled capability on a disabled connection", async () => {
+    serve(settingsFixture({ enabled: false }, { enabled: false }));
+    mount();
+    expect(await screen.findByRole("button", { name: "删除能力" })).toBeEnabled();
+  });
+
+  it("retains the confirmation and capability when deletion fails, then allows retry", async () => {
+    const settings = settingsFixture(); serve(settings);
+    let attempts = 0;
+    server.use(http.delete("/api/v1/settings/media-connections/openai-1/capabilities/portrait", () => {
+      attempts += 1;
+      return HttpResponse.json({ title: "删除失败", detail: "请重试", code: "INTERNAL_ERROR" }, { status: 500, headers: { "Content-Type": "application/problem+json" } });
+    }));
+    const user = userEvent.setup(); mount();
+    await user.click(await screen.findByRole("button", { name: "删除能力" }));
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    expect(await within(screen.getByRole("dialog")).findByText(/请重试/)).toBeInTheDocument();
+    expect(screen.getByText("Portrait")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect(attempts).toBe(2));
+  });
+
+  it("requires loading the new version after a concurrent edit", async () => {
+    let settings = settingsFixture(); serve(settings);
+    const versions: string[] = [];
+    server.use(http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.delete("/api/v1/settings/media-connections/openai-1/capabilities/portrait", ({ request }) => {
+        versions.push(new URL(request.url).searchParams.get("expectedVersion")!);
+        settings = settingsFixture({}, { version: 5 });
+        return HttpResponse.json({ title: "配置冲突", detail: "能力已修改", code: "MEDIA_CAPABILITY_CONFLICT" }, { status: 409 });
+      }));
+    const user = userEvent.setup(); mount();
+    await user.click(await screen.findByRole("button", { name: "删除能力" }));
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "确认删除" })).toBeDisabled());
+    await user.click(screen.getByRole("button", { name: /载入最新/ }));
+    expect(screen.getByRole("button", { name: "确认删除" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect(versions).toEqual(["4", "5"]));
+  });
+
+  it("does not offer deletion for built-in local capabilities", async () => {
+    serve(settingsFixture({ platform: "LOCAL" }, { adapterId: "LOCAL_IMAGE_PROCESSOR" }));
+    mount(); await screen.findByText("Portrait");
+    expect(screen.queryByRole("button", { name: "删除能力" })).not.toBeInTheDocument();
+  });
+});

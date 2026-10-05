@@ -5,12 +5,13 @@ import { cn } from "cn";
 import { useId,useRef,useState,type FormEvent } from "react";
 import { Link,Navigate } from "react-router";
 import {
-HTTP_STATUS,ApiError,createMediaCapability,createMediaConnection,getCurrentUser,
+HTTP_STATUS,ApiError,deleteMediaCapability,createMediaCapability,createMediaConnection,getCurrentUser,
 getMediaSettings,setMediaDefault,updateMediaCapability,
 updateMediaConnection,
 type MediaCapability,type MediaConnection,type MediaSettings,
 } from "../../shared/api/client";
 import { AUTODL_ADAPTER,AUTODL_DEFAULT_WORKFLOW,autoDlResolutionTiers,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
+import { MEDIA_FUNCTIONS_QUERY_KEY } from "../../shared/mediaFunctions";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
@@ -253,6 +254,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
   const [modelNames, setModelNames] = useState<AdapterSettings>(capability.settings);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState<MediaCapability | null>(null);
   const [workflowReady, setWorkflowReady] = useState(false);
   const save = useMutation({
     mutationFn: () => updateMediaCapability(connectionId, capability.id, {
@@ -278,9 +280,27 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       setError(errorMessage(cause));
     },
   });
+  const remove = useMutation({
+    mutationFn: () => {
+      if (!deleting) throw new Error(t("settings.mediaSettings.selectCapability"));
+      return deleteMediaCapability(connectionId, deleting.id, deleting.version);
+    },
+    onSuccess: (result) => {
+      apply(result);
+      queryClient.setQueryData(["media-settings"], result);
+      void queryClient.invalidateQueries({ queryKey: MEDIA_FUNCTIONS_QUERY_KEY });
+      setDeleting(null);
+    },
+    onError: (cause) => {
+      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) {
+        void queryClient.invalidateQueries({ queryKey: settingsKey });
+      }
+    },
+  });
+  const deleteStale = deleting !== null && deleting.version !== capability.version;
   const sameKindAdapters = capability.adapterId.startsWith("RUNNINGHUB_") ? availableAdapters
     : availableAdapters.filter((id) => adapterMetadata(id)?.kind === capability.kind);
-  const rowBusy = busy || save.isPending;
+  const rowBusy = busy || save.isPending || remove.isPending;
   function loadLatest() {
     acceptBaseline(capability);
     setName(capability.name);
@@ -310,8 +330,24 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
           onClick={() => act("default", capability)}>{t("settings.mediaSettings.setDefault")}</Button>
         <Button variant="ghost"  type="button" disabled={rowBusy}
           onClick={() => act("capability", capability)}>{capability.enabled ? t("settings.mediaSettings.disable") : t("settings.mediaSettings.enable")}</Button>
+        <Button variant="destructive" type="button" disabled={rowBusy}
+          onClick={() => { remove.reset(); setDeleting(capability); }}>{t("settings.mediaSettings.deleteCapability")}</Button>
       </div></TableCell>
     </TableRow>
+    {deleting ? <Dialog compact title={t("settings.mediaSettings.deleteCapabilityNamed", { "0": deleting.name })}
+      description={connectionName} busy={rowBusy} onClose={() => setDeleting(null)}
+      onSubmit={(event) => { event.preventDefault(); if (!rowBusy && !deleteStale) remove.mutate(); }}
+      footer={<>
+        <Button variant="outline" type="button" disabled={rowBusy} onClick={() => setDeleting(null)}>{t("common.cancel")}</Button>
+        <Button variant="destructive" type="submit" disabled={rowBusy || deleteStale}>
+          {remove.isPending ? t("settings.mediaSettings.deletingCapability") : t("settings.mediaSettings.confirmDeleteCapability")}
+        </Button>
+      </>}>
+      <p>{t("settings.mediaSettings.deleteCapabilityHint")}</p>
+      {deleteStale ? <ConfigurationUpdatedNotice scope={t("settings.mediaSettings.capabilityParameters")} disabled={rowBusy}
+        onReload={() => { remove.reset(); setDeleting(capability); }} /> : null}
+      {remove.isError ? <Notice tone="danger">{errorMessage(remove.error)}</Notice> : null}
+    </Dialog> : null}
     {editing ? <Dialog className={cn(isComfyAdapter(adapterId) && "comfy-capability-dialog", adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.editCapabilityNamed", { "0": capability.name })} description={`${connectionName} · ${adapterLabel(adapterId)}`}
       onClose={() => setEditing(false)} busy={rowBusy} onSubmit={(event) => {
         event.preventDefault(); if (isStale || rowBusy || isComfyAdapter(adapterId) && !workflowReady) return; setError(""); save.mutate();

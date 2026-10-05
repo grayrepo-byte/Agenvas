@@ -322,7 +322,7 @@ class ComfyUiImagePostgresIT {
                             + "\"status\":{"
                             + "\"completed\":true,\"status_str\":\"success\"},"
                             + "\"outputs\":{\"8\":{\"images\":[{\"filename\":\"render.png\","
-                            + "\"type\":\"output\",\"subfolder\":\"\"}]}}}}");
+                            + "\"type\":\"output\",\"subfolder\":\"\"},{\"filename\":\"unused.png\",\"type\":\"output\",\"subfolder\":\"\"}]}}}}");
                     return;
                 }
                 assertThat(exchange.getRequestURI().getPath())
@@ -333,10 +333,11 @@ class ComfyUiImagePostgresIT {
                     respond(exchange, 200, "{\"" + FIRST_PROMPT_ID.get() + "\":{\"status\":{"
                             + "\"completed\":true,\"status_str\":\"success\"},"
                             + "\"outputs\":{\"8\":{\"images\":[{\"filename\":\"render.png\","
-                            + "\"type\":\"output\",\"subfolder\":\"\"}]}}}}");
+                            + "\"type\":\"output\",\"subfolder\":\"\"},{\"filename\":\"unused.png\",\"type\":\"output\",\"subfolder\":\"\"}]}}}}");
                 }
             });
             server.createContext(PROXY_PREFIX + "/view", exchange -> {
+                assertThat(exchange.getRequestURI().getQuery()).contains("filename=render.png");
                 if (DOWNLOADS.incrementAndGet() == 1) {
                     respond(exchange, 200, "not an image");
                 } else {

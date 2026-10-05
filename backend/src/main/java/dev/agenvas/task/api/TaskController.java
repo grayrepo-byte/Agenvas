@@ -43,7 +43,7 @@ public class TaskController {
         return TaskResponse.from(tasks.get(principal.userId(), projectId, taskId));
     }
 
-    /** 为 UNKNOWN 任务创建一次独立预留的新媒体任务；同幂等键重放返回原新任务。 */
+    /** 为 UNKNOWN 或已受理但 BLOCKED 的直连任务创建新媒体任务；同幂等键返回原新任务。 */
     @PostMapping("/tasks/{taskId}/new-attempt")
     public TaskResponse newAttempt(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @PathVariable UUID taskId,
@@ -53,8 +53,8 @@ public class TaskController {
                 request.expectedTaskVersion(), idempotencyKey));
     }
 
-    /** 请求必须带用户读取到的任务版本，防止对已变化的 UNKNOWN 任务重复重试。
-     * @param expectedTaskVersion 用户读取到的 UNKNOWN 任务版本
+    /** 请求必须带用户读取到的任务版本，防止对已变化的任务重复重试。
+     * @param expectedTaskVersion 用户读取到的原任务版本
      */
     public record NewAttemptRequest(long expectedTaskVersion) {}
 

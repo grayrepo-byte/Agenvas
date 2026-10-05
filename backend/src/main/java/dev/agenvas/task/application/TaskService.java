@@ -15,6 +15,7 @@ import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.task.domain.VideoOperation;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.ProviderResultManifest;
@@ -645,8 +646,8 @@ public class TaskService {
                             lease.input().path("canvasItemId").asText())) {
                 throw validation(ApiMessage.of("api.task-service.card-targets-for-the-media-task-were-inconsistent-with-fixed"));
             }
-            boolean selectResult = !canceled && !projectArchived
-                    && pinnedMediaInputsCurrent(ownerId, lease)
+            boolean allowTargetSelection = !canceled && !projectArchived && pinnedMediaInputsCurrent(ownerId, lease);
+            boolean selectResult = allowTargetSelection
                     && (lease.runId() != null || canvasItemId != null);
             boolean activeOrUnknown = current.status() == Task.Status.RUNNING
                     || current.status() == Task.Status.SUBMITTING
@@ -695,6 +696,25 @@ public class TaskService {
             for (ArchivedProviderResult extra : results) {
                 if (extra.primary()) continue;
                 if (!lease.id().toString().equals(extra.content().path("sourceTaskId").asText())) throw validation(ApiMessage.of("api.task-service.extra-results-sourcetaskid-is-invalid"));
+                if (lease.input().has(VideoOperation.SILENT_VIDEO_TARGET) && extra.kind() == Artifact.Kind.VIDEO
+                        && VideoOperation.SILENT_VIDEO_RESULT.equals(extra.content().path("parameters").path("videoOperationOutput").asText())) {
+                    // This output already has a node. Commit its own CAS snapshot, even if the audio node was removed.
+                    JsonNode silent = lease.input().path(VideoOperation.SILENT_VIDEO_TARGET);
+                    UUID silentArtifactId = UUID.fromString(silent.path("artifactId").asText());
+                    UUID silentItemId = UUID.fromString(silent.path("canvasItemId").asText());
+                    UUID parent = UUID.fromString(silent.path("parentVersionId").asText());
+                    var silentVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(),
+                            silentArtifactId, lease.runId(), parent, silent.path("artifactVersion").asLong(),
+                            extra.content(), lease.input().path("mediaInput"), false);
+                    canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(), silentItemId, silentArtifactId, silentVersion.versionId());
+                    boolean silentSelected = allowTargetSelection && canvas.selectTaskResultWithinChange(ownerId, lease.projectId(),
+                            silentItemId, silentArtifactId, parent, silentVersion.versionId(),
+                            silent.path("resultSelectionEpoch").asLong(), silent.path("resultDraftVersion").asLong());
+                    extraOutputs.addObject().put("ordinal", extra.ordinal()).put("artifactId", silentArtifactId.toString())
+                            .put("canvasItemId", silentItemId.toString()).put("artifactVersionId", silentVersion.versionId().toString())
+                            .put("selected", silentSelected);
+                    continue;
+                }
                 Artifact extraArtifact = artifacts.get(ownerId, lease.projectId(), artifactId).artifact();
                 if (extraArtifact.kind() != extra.kind()) extraArtifact = artifacts.createTaskMediaIdentityWithinChange(ownerId, lease.projectId(), extra.kind(), "RunningHub " + extra.kind() + " " + (outputIndex + 1));
                 var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(), lease.runId(), null,

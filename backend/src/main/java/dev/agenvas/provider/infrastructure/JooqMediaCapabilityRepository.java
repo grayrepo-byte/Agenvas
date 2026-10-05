@@ -5,6 +5,7 @@ import static dev.agenvas.db.Tables.MEDIA_CAPABILITY_CREATE_KEY;
 import static dev.agenvas.db.Tables.MEDIA_CAPABILITY_VERSION;
 import static dev.agenvas.db.Tables.MEDIA_CONNECTION_CREATE_KEY;
 import static dev.agenvas.db.Tables.MEDIA_DEFAULT;
+import static dev.agenvas.db.Tables.MEDIA_FUNCTION_SETTING;
 import static dev.agenvas.db.Tables.MEDIA_PROVIDER_CONNECTION;
 import static dev.agenvas.db.Tables.MEDIA_PROVIDER_CONNECTION_VERSION;
 
@@ -31,7 +32,7 @@ public class JooqMediaCapabilityRepository {
             String originSha256, byte[] credentialCiphertext, byte[] credentialNonce,
             Integer credentialKeyVersion, String keyMask) {}
     public record Capability(UUID id, UUID connectionId, String name, boolean enabled,
-            long version, int currentVersion) {}
+            long version, int currentVersion, boolean deleted) {}
     public record Snapshot(Connection connection, Capability capability,
             ConnectionVersion connectionVersion, String adapterId, String mappingSha256,
             String specJson) {}
@@ -200,6 +201,7 @@ public class JooqMediaCapabilityRepository {
     public List<Capability> capabilities(UUID connectionId) {
         return dsl.selectFrom(MEDIA_CAPABILITY)
                 .where(MEDIA_CAPABILITY.CONNECTION_ID.eq(connectionId))
+                .and(MEDIA_CAPABILITY.DELETED_AT.isNull())
                 .orderBy(MEDIA_CAPABILITY.CREATED_AT, MEDIA_CAPABILITY.ID)
                 .fetch(this::mapCapability);
     }
@@ -220,7 +222,33 @@ public class JooqMediaCapabilityRepository {
                 .set(MEDIA_CAPABILITY.UPDATED_AT, atUtc(now))
                 .where(MEDIA_CAPABILITY.ID.eq(id))
                 .and(MEDIA_CAPABILITY.VERSION.eq(expectedVersion))
+                .and(MEDIA_CAPABILITY.DELETED_AT.isNull())
                 .execute() == 1;
+    }
+
+    /** Delete from the live catalog while keeping version rows for pinned tasks and drafts. */
+    public boolean deleteCapability(UUID id, long expectedVersion, Instant now) {
+        return dsl.update(MEDIA_CAPABILITY)
+                .set(MEDIA_CAPABILITY.DELETED_AT, atUtc(now))
+                .set(MEDIA_CAPABILITY.ENABLED, false)
+                .set(MEDIA_CAPABILITY.VERSION, MEDIA_CAPABILITY.VERSION.plus(1))
+                .set(MEDIA_CAPABILITY.UPDATED_AT, atUtc(now))
+                .where(MEDIA_CAPABILITY.ID.eq(id))
+                .and(MEDIA_CAPABILITY.VERSION.eq(expectedVersion))
+                .and(MEDIA_CAPABILITY.DELETED_AT.isNull())
+                .execute() == 1;
+    }
+
+    public void clearSelectionsForCapability(UUID id, Instant now) {
+        dsl.update(MEDIA_DEFAULT)
+                .set(MEDIA_DEFAULT.CAPABILITY_ID, (UUID) null)
+                .set(MEDIA_DEFAULT.VERSION, MEDIA_DEFAULT.VERSION.plus(1))
+                .where(MEDIA_DEFAULT.CAPABILITY_ID.eq(id)).execute();
+        dsl.update(MEDIA_FUNCTION_SETTING)
+                .set(MEDIA_FUNCTION_SETTING.CAPABILITY_ID, (UUID) null)
+                .set(MEDIA_FUNCTION_SETTING.VERSION, MEDIA_FUNCTION_SETTING.VERSION.plus(1))
+                .set(MEDIA_FUNCTION_SETTING.UPDATED_AT, atUtc(now))
+                .where(MEDIA_FUNCTION_SETTING.CAPABILITY_ID.eq(id)).execute();
     }
 
     public void insertCapabilityVersion(UUID id, int version, String adapterId,
@@ -251,7 +279,8 @@ public class JooqMediaCapabilityRepository {
                         connectionVersionTable.KEY_MASK, capabilityTable.ID, capabilityTable.NAME,
                         capabilityTable.ENABLED, capabilityTable.VERSION,
                         capabilityTable.CURRENT_VERSION, capabilityVersionTable.ADAPTER_ID,
-                        capabilityVersionTable.MAPPING_SHA256, capabilityVersionTable.SPEC_JSON)
+                        capabilityVersionTable.MAPPING_SHA256, capabilityVersionTable.SPEC_JSON,
+                        capabilityTable.DELETED_AT)
                 .from(capabilityTable)
                 .join(connectionTable).on(connectionTable.ID.eq(capabilityTable.CONNECTION_ID))
                 .join(connectionVersionTable).on(connectionVersionTable.CONNECTION_ID
@@ -268,7 +297,7 @@ public class JooqMediaCapabilityRepository {
                             MediaPlatform.valueOf(row.value3()),
                             row.value4(), row.value5(), connectionVersion);
                     Capability capability = new Capability(row.value13(), connectionId,
-                            row.value14(), row.value15(), row.value16(), row.value17());
+                            row.value14(), row.value15(), row.value16(), row.value17(), row.value21() != null);
                     ConnectionVersion version = new ConnectionVersion(connectionId,
                             connectionVersion, row.value7(), row.value8(), row.value9(),
                             row.value10(), row.value11(), row.value12());
@@ -293,7 +322,7 @@ public class JooqMediaCapabilityRepository {
                         connectionVersionTable.KEY_MASK, capabilityTable.NAME,
                         capabilityTable.ENABLED, capabilityTable.VERSION,
                         capabilityVersionTable.ADAPTER_ID, capabilityVersionTable.MAPPING_SHA256,
-                        capabilityVersionTable.SPEC_JSON)
+                        capabilityVersionTable.SPEC_JSON, capabilityTable.DELETED_AT)
                 .from(capabilityTable)
                 .join(connectionTable).on(connectionTable.ID.eq(capabilityTable.CONNECTION_ID))
                 .join(connectionVersionTable).on(connectionVersionTable.CONNECTION_ID
@@ -309,7 +338,7 @@ public class JooqMediaCapabilityRepository {
                                 MediaPlatform.valueOf(row.value2()), row.value3(),
                                 row.value4(), connectionVersion),
                         new Capability(capabilityId, connectionId, row.value11(), row.value12(),
-                                row.value13(), capabilityVersion),
+                                row.value13(), capabilityVersion, row.value17() != null),
                         new ConnectionVersion(connectionId, connectionVersion, row.value5(),
                                 row.value6(), row.value7(), row.value8(), row.value9(),
                                 row.value10()),
@@ -356,7 +385,7 @@ public class JooqMediaCapabilityRepository {
 
     private Capability mapCapability(MediaCapabilityRecord row) {
         return new Capability(row.getId(), row.getConnectionId(), row.getName(),
-                row.getEnabled(), row.getVersion(), row.getCurrentVersion());
+                row.getEnabled(), row.getVersion(), row.getCurrentVersion(), row.getDeletedAt() != null);
     }
 
     /** 将业务时间转换为 PostgreSQL 使用的 UTC 偏移时间。 */

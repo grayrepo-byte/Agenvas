@@ -1,4 +1,4 @@
-.call-log-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ui-space-4); }
+.call-log-filters[data-slot="field-group"] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ui-space-4); }
 .call-log-results { overflow: hidden; }
 .call-log-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: var(--ui-text-sm); }
 .call-log-table th { padding: 0 10px 12px; color: var(--muted); font-size: var(--ui-text-xs); font-weight: 500; }
@@ -25,7 +25,7 @@
 .call-log-task h3 { font-size: var(--ui-text-md); font-weight: 550; margin: 0 0 12px; }
 .call-log-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-3); margin-top: var(--ui-space-5); }
 @media (max-width: 1080px) {
-  .call-log-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .call-log-filters[data-slot="field-group"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .call-log-metadata { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .call-log-table, .call-log-table tbody { display: block; }
   .call-log-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
@@ -35,9 +35,9 @@
   .call-log-table .call-log-toggle { align-items: flex-start; }
 }
 @media (max-width: 560px) {
-  .call-log-filters, .call-log-metadata { grid-template-columns: minmax(0, 1fr); }
+  .call-log-filters[data-slot="field-group"], .call-log-metadata { grid-template-columns: minmax(0, 1fr); }
 }
-@media (min-width: 1600px) { .call-log-filters { grid-template-columns: repeat(6, minmax(0, 1fr)); } .call-log-metadata { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1600px) { .call-log-filters[data-slot="field-group"] { grid-template-columns: repeat(6, minmax(0, 1fr)); } .call-log-metadata { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 .call-log-debug { margin-top: var(--ui-space-5); border-top: 1px solid var(--line); padding-top: var(--ui-space-4); }
 .call-log-debug h3, .call-log-debug h4 { margin: 0 0 var(--ui-space-3); font-weight: 550; }

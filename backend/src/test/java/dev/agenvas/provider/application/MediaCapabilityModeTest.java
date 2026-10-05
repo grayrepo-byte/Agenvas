@@ -3,6 +3,10 @@ package dev.agenvas.provider.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -119,6 +123,38 @@ class MediaCapabilityModeTest {
         }
     }
 
+    @Test
+    void deletionClearsSelectionsOnlyAfterSuccessfulCas() {
+        Snapshot snapshot = snapshot(MediaPlatform.OPENAI, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2);
+        stub(snapshot);
+        when(repository.deleteCapability(eq(snapshot.capability().id()), eq(0L), any())).thenReturn(true);
+        configured.deleteCapability(snapshot.connection().id(), snapshot.capability().id(), 0);
+        verify(repository).lockCapability(snapshot.capability().id());
+        verify(repository).clearSelectionsForCapability(eq(snapshot.capability().id()), any());
+    }
+
+    @Test
+    void staleDeletionDoesNotClearSelections() {
+        Snapshot snapshot = snapshot(MediaPlatform.OPENAI, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2);
+        stub(snapshot);
+        assertThatThrownBy(() -> configured.deleteCapability(snapshot.connection().id(), snapshot.capability().id(), 1))
+                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("MEDIA_CAPABILITY_CONFLICT"));
+        verify(repository, never()).clearSelectionsForCapability(any(), any());
+    }
+
+    @Test
+    void deletedCapabilityRejectsNewSelectionButPreservesPinnedSnapshot() {
+        Snapshot live = snapshot(MediaPlatform.OPENAI, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2);
+        var capability = live.capability();
+        Snapshot deleted = new Snapshot(live.connection(),
+                new Capability(capability.id(), capability.connectionId(), capability.name(), false, 1, 1, true),
+                live.connectionVersion(), live.adapterId(), live.mappingSha256(), live.specJson());
+        stub(deleted);
+        when(repository.snapshotAt(capability.id(), 1, live.connection().id(), 1)).thenReturn(Optional.of(deleted));
+        assertThatThrownBy(() -> configured.forDraft(capability.id(), Task.Kind.IMAGE_GENERATION)).isInstanceOf(ApiProblemException.class);
+        assertThat(configured.pinnedSnapshot(binding(live)).specJson()).isEqualTo(live.specJson());
+    }
+
     private MediaCapabilityService service(ProviderModeProperties.Mode mode) {
         return new MediaCapabilityService(repository, registry, cipher, Clock.systemUTC(),
                 new ObjectMapper(), new ProviderModeProperties(mode));
@@ -126,7 +162,7 @@ class MediaCapabilityModeTest {
 
     private Snapshot snapshot(MediaPlatform platform, String adapterId) {
         var connection = new Connection(UUID.randomUUID(), "Synthetic connection", platform, true, 0, 1);
-        var capability = new Capability(UUID.randomUUID(), connection.id(), "Synthetic capability", true, 0, 1);
+        var capability = new Capability(UUID.randomUUID(), connection.id(), "Synthetic capability", true, 0, 1, false);
         var version = new ConnectionVersion(connection.id(), 1, null, null, null, null, null, null);
         return new Snapshot(connection, capability, version, adapterId, "synthetic-mapping", "{\"settings\":{}}");
     }

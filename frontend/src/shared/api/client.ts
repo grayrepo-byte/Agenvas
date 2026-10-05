@@ -343,6 +343,13 @@ export async function updateMediaCapability(connectionId: string, capabilityId: 
   });
 }
 
+export async function deleteMediaCapability(connectionId: string, capabilityId: string,
+  expectedVersion: number): Promise<MediaSettings> {
+  return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities/${encodeURIComponent(capabilityId)}?expectedVersion=${expectedVersion}`, {
+    method: "DELETE",
+  });
+}
+
 export async function setMediaDefault(kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION",
   input: SetMediaDefaultRequest): Promise<MediaSettings> {
   return writeJson<MediaSettings>(`/api/v1/settings/media-defaults/${kind}`, {
@@ -808,7 +815,7 @@ export async function getTask(projectId: string, taskId: string): Promise<Task> 
   return readJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}`, t("api.errors.taskStatusUnavailable"));
 }
 
-/** Starts a separately reserved attempt for a task whose result is unknown. */
+/** Creates a separately reserved generation attempt for an unknown or accepted blocked direct task. */
 export async function createManualUnknownAttempt(projectId: string, taskId: string,
   key: string, request: ManualUnknownAttemptRequest): Promise<Task> {
   return writeJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}/new-attempt`, {
