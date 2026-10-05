@@ -15,6 +15,13 @@
   <a href="LICENSE">MIT</a>
 </p>
 
+<p align="center">Author: <a href="https://x.com/Grayrepo">X / Twitter @Grayrepo</a> · Email: <a href="mailto:yoshioka8084806@gmail.com">yoshioka8084806@gmail.com</a></p>
+
+<p align="center">
+  <img src="docs/assets/wechat-official-account.jpg" alt="WeChat official account QR code" width="180" /><br />
+  Scan to follow on WeChat
+</p>
+
 > Development build for a single self-hosting administrator. See the [development checklist](docs/DEVELOPMENT-CHECKLIST.md) for real model compatibility and release verification status.
 
 ## Features

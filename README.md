@@ -17,6 +17,13 @@
   <a href="LICENSE">MIT</a>
 </p>
 
+<p align="center">作者：<a href="https://x.com/Grayrepo">X / Twitter @Grayrepo</a> · 邮箱：<a href="mailto:yoshioka8084806@gmail.com">yoshioka8084806@gmail.com</a></p>
+
+<p align="center">
+  <img src="docs/assets/wechat-official-account.jpg" alt="微信公众号二维码" width="180" /><br />
+  扫码关注微信公众号
+</p>
+
 > 当前为开发版本，面向单管理员自托管使用。不保证后续版本的数据兼容。
 
 ## 功能
