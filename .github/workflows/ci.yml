@@ -16,7 +16,7 @@ concurrency:
 
 env:
   IMAGE_NAMESPACE: grayrepo
-  # Docker Hub uploads are tag-only; branch pushes still build and scan, but never publish.
+  # Docker Hub uploads are tag-only; branch pushes still build and inventory images, but never publish.
   PUBLISH_IMAGES: ${{ github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
@@ -90,10 +90,8 @@ jobs:
         run: python3 deploy/test-installation-secrets.py
 
   security-source:
+    name: Source secret scan
     runs-on: ubuntu-latest
-    env:
-      # Avoid Maven Central lookups during PR scans; image scans inspect the bundled JAR.
-      TRIVY_OFFLINE_SCAN: 'true'
     steps:
       # This job runs on fork PRs. Do not pass Provider or deployment secrets to it.
       - uses: actions/checkout@v4
@@ -105,18 +103,9 @@ jobs:
           scan-ref: .
           scanners: secret
           exit-code: '1'
-      - name: Check source dependencies for high-risk vulnerabilities
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
-        with:
-          version: v0.74.0
-          skip-setup-trivy: true
-          scan-type: fs
-          scan-ref: .
-          scanners: vuln
-          severity: HIGH,CRITICAL
-          exit-code: '1'
 
   security-images:
+    name: Image build and inventory (${{ matrix.service }}, ${{ matrix.architecture }})
     needs: [frontend, backend, compose-config, security-source]
     runs-on: ${{ matrix.runner }}
     env:
@@ -168,21 +157,14 @@ jobs:
         env:
           IMAGE_PUBLIC: ${{ matrix.image }}
         run: docker pull "$IMAGE_PUBLIC"
-      - name: Check release image for high-risk vulnerabilities
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
-        with:
-          version: v0.74.0
-          image-ref: ${{ matrix.image }}
-          scanners: vuln
-          severity: HIGH,CRITICAL
-          exit-code: '1'
       - name: Generate release image SBOM
         if: always() && (steps.build.outcome == 'success' || steps.pull.outcome == 'success')
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           version: v0.74.0
-          skip-setup-trivy: true
           image-ref: ${{ matrix.image }}
+          # Only collect packages/licenses; do not re-enable vulnerability scanning.
+          scanners: license
           format: cyclonedx
           output: sbom-${{ matrix.service }}.json
           exit-code: '0'
@@ -206,7 +188,7 @@ jobs:
             sbom-${{ matrix.service }}.json
             licenses-${{ matrix.service }}.json
           if-no-files-found: error
-      # Publish the exact scanned local image; do not rebuild after the vulnerability gate.
+      # Publish the exact inventoried local image; do not rebuild after collecting its SBOM.
       # PRs (including forks) never execute the credential-bearing steps.
       - name: Log in to Docker Hub
         if: env.PUBLISH_IMAGES == 'true' && matrix.dockerfile != ''
@@ -214,7 +196,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      - name: Push scanned architecture image for this workflow run
+      - name: Push architecture image for this workflow run
         if: env.PUBLISH_IMAGES == 'true' && matrix.dockerfile != ''
         env:
           IMAGE_LOCAL: ${{ matrix.image }}
@@ -253,7 +235,7 @@ jobs:
             type=sha,format=long
             type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
             type=semver,pattern={{version}}
-      - name: Publish manifests from the scanned architecture images
+      - name: Publish manifests from the built architecture images
         env:
           IMAGE_NAME: docker.io/${{ env.IMAGE_NAMESPACE }}/agenvas-${{ matrix.service }}
           IMAGE_TAGS: ${{ steps.metadata.outputs.tags }}

@@ -1750,3 +1750,10 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 完整远端检查暴露初始化测试清理与后台读查询的偶发死锁；测试清理改为仅删除账号行，避免 TRUNCATE CASCADE 的跨表独占锁。新增真实 PostgreSQL 并发读锁回归，旧清理方式在有界锁超时内失败，修复后通过；初始化关闭、事务回滚与鉴权断言保留。
 - [x] DebugModeSection 4 项前端测试、对应 ESLint、DebugHttpCaptureTest 与 IdentityServiceTest 共 24 项后端单元测试、六个测试类共 58 项真实 PostgreSQL 集成测试通过，无失败或跳过；差异空白检查通过。远端前端 951 项测试及生产构建已通过。仅修改测试和验收记录，无生产行为、API 合约、数据库迁移或依赖变化。
 - [ ] 本地全量测试、真实 Provider 调用与部署未运行；远端完整验收以修复 PR 的 CI 检查结果为准。
+
+## 2026-10-05 取消 CI 漏洞检查
+
+- [x] 按用户决定取消 Trivy 源码依赖及三服务双架构镜像漏洞检查，不再以 HIGH/CRITICAL 报告阻断发布；保留源码密钥扫描、原生镜像构建/官方 PostgreSQL 拉取和 SBOM/许可证清单。首个 SBOM 步骤负责安装 Trivy，并显式只启用 license scanner。规格、ADR 0002、依赖基线及扫描台账同步；不升级依赖，不添加漏洞排除。
+- [x] 取消前远端修复提交的前端 951 项测试及构建、后端单元 867 项（跳过 1 项）及 PostgreSQL 集成 258 项（跳过 4 项）、jOOQ 漂移检查、Compose 检查及源码密钥扫描均通过；该流水线最终因 Jackson/gosu 镜像漏洞报告失败，不能声称漏洞已修复。
+- [x] actionlint 与差异空白检查通过；结构检查确认仅保留 secret/license scanner、首个 SBOM 步骤安装 Trivy、三服务双架构矩阵和版本标签发布依赖完整。
+- [ ] 更新后的完整远端 CI 以修复 PR 检查结果为准；Docker Hub 发布、真实 Provider 调用和部署未运行。

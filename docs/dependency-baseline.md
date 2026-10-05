@@ -12,7 +12,7 @@
 | Maven Wrapper | 3.9.12 | `backend/mvnw` |
 | Node.js | 24.21.0 | 前端构建镜像；`package.json` 接受同一 Node 24 LTS 系列的 24.12+ |
 | pnpm | 12.5.1 | `packageManager`、engine、CI 和容器一致 |
-| Trivy | 0.74.0 | CI action 固定到 v0.36.0 对应 commit；本机以同版本容器复验扫描命令 |
+| Trivy | 0.74.0 | CI action 固定到 v0.36.0 对应 commit；仅用于密钥扫描及 SBOM/许可证清单，不运行漏洞扫描 |
 | PostgreSQL | 17.11 | 清理后的单个 Flyway V1 已在隔离 PostgreSQL 验证；67 表、567 列及全部数据库对象注释已落地，149 项后端定向回归及目标本地 Compose 空卷启动通过，详见开发清单 |
 
 ## 后端直接依赖
@@ -125,3 +125,7 @@ RunningHub 固定 V2 协议复用现有 OkHttp、Jackson、Spring MVC、任务�
 本机使用 Docker Compose 2.21.0 执行四种入口的定向配置检查，并验证默认镜像 Compose 单文件复制后可独立解析，使用 actionlint 1.7.12 检查工作流、Bash 语法检查修改的部署脚本与工作流 run 步骤。未在本机执行全量测试、应用镜像构建或官方 PostgreSQL 启动/安全扫描，未运行 GitHub 托管流水线、Docker Hub 登录/推送或远程镜像启动；双架构实际构建、官方镜像漏洞扫描与发布仍须由 CI 验证。此前配置的 Docker Hub Actions Secrets 已核对存在；该元数据核对不代表真实供应商登录或镜像发布验收。
 
 2026-10-04 初始化简化：新增 V9 永久完成标记，取消 bootstrap 配置；jOOQ 从独立空 PostgreSQL 重新生成，145 个生成文件中只改变 InstallationLock 表与记录两个文件。服务仍为 Java 21，未增加依赖。
+
+## 2026-10-05 CI 漏洞检查取消
+
+按用户决定移除源码依赖和三个服务双架构镜像的漏洞扫描及 HIGH/CRITICAL 发布门禁。保留固定版本 Trivy 的源码密钥扫描、CycloneDX SBOM 与许可证 JSON；SBOM 显式只启用 license scanner，首个镜像清单步骤负责安装 Trivy。应用双架构原生构建、官方 PostgreSQL 拉取和版本标签发布规则继续生效；依赖和运行镜像版本未变。本轮改动不表示此前 Jackson/gosu 漏洞报告已修复，CI 成功不能证明没有漏洞。

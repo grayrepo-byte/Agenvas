@@ -1830,9 +1830,9 @@ agent-canvas/
 
 跨栈：OpenAPI 破坏性变更检查 → 生成代码无未提交差异 → Mock 黄金路径 → 幂等与故障测试。
 
-安全：密钥扫描、依赖漏洞扫描、容器扫描、许可证清单/SBOM。对可达的高风险漏洞设发布阻断；误报或暂缓必须有负责人、理由和到期日期。
+安全：密钥扫描、许可证清单/SBOM。2026-10-05 按用户决定取消 CI 源码依赖和容器镜像漏洞扫描及 HIGH/CRITICAL 发布门禁；保留密钥泄露阻断和各镜像依赖/许可证清单。CI 成功不代表漏洞检查通过。
 
-镜像发布：GitHub CI 在 main 推送、`v*.*.*` 标签推送或手动触发时运行；只有 `v*.*.*` 版本标签推送会上传 Docker Hub，main 推送、PR 与非标签手动运行只构建和扫描。前后端测试、Compose 定向配置检查、源码扫描通过后，在 amd64 / arm64 原生 Runner 上构建和扫描 server/web，并直接拉取和扫描官方 `postgres:17.11-alpine`，保留各架构 SBOM 与许可证清单。PostgreSQL 不自建、不推送，不沿用已退役派生镜像的 gosu 扫描排除。应用扫描后的同一镜像以当前运行中间标签推送，所有服务与架构通过后才创建最终应用多架构标签：`sha-<完整提交 SHA>`、稳定版本标签（无预发布后缀）的 latest、版本标签去除前导 v 后的版本。预发布版本保留后缀且不更新 latest；PR 不读取 Docker Hub 凭据且不推送。发布地址直接固定为 grayrepo，凭据为仓库 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`；缺失时明确失败，不宣称发布成功。新增 Docker Actions 固定到 commit。
+镜像发布：GitHub CI 在 main 推送、`v*.*.*` 标签推送或手动触发时运行；只有 `v*.*.*` 版本标签推送会上传 Docker Hub，main 推送、PR 与非标签手动运行只构建和生成清单。前后端测试、Compose 定向配置检查、源码密钥扫描通过后，在 amd64 / arm64 原生 Runner 上构建 server/web，并直接拉取官方 `postgres:17.11-alpine`，保留各架构 SBOM 与许可证清单。PostgreSQL 不自建、不推送，不沿用已退役派生镜像的 gosu 扫描排除。生成清单后的同一应用镜像以当前运行中间标签推送，所有服务与架构通过后才创建最终应用多架构标签：`sha-<完整提交 SHA>`、稳定版本标签（无预发布后缀）的 latest、版本标签去除前导 v 后的版本。预发布版本保留后缀且不更新 latest；PR 不读取 Docker Hub 凭据且不推送。发布地址直接固定为 grayrepo，凭据为仓库 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`；缺失时明确失败，不宣称发布成功。新增 Docker Actions 固定到 commit。
 
 真实模型冒烟是显式手动或受控触发，不在来自 fork 的 PR 中注入真实密钥，也不无限消耗真实 API 费用。
 
