@@ -51,8 +51,10 @@ MVP 已完成，项目进入持续迭代。本清单保留历史任务与后续�
 交付：Compose、Nginx、server、PostgreSQL、持久卷、健康检查、Mock Provider。
 
 - [x] 无模型 Key 和 GPU 时能启动，不产生未说明的外部请求。
-- [x] 默认端口安全，SSE 代理配置正确，容器非 root。
+- [x] 默认镜像入口仅开放监听所有 IPv4 地址的 Web 端口，源码与 Mock 入口保留三个端口的本机绑定；SSE 代理配置正确，容器非 root。
 - [x] Mock 状态醒目标识，支持可重复成功和失败 fixture。
+
+2026-10-05 默认镜像部署端口收敛：按用户决定，根目录 `docker-compose.yml` 仅发布 Web 8088 到 `0.0.0.0`，移除 API 8080 与 PostgreSQL 5432 的宿主机端口映射，内部代理、数据库地址和健康检查继续使用容器网络；其他三份源码/Mock Compose 保留三个端口的 `127.0.0.1` 绑定。配置回归校验完整端口映射及默认入口 API/数据库未发布，跨入口继续核对其余运行设置、项目名和持久卷一致。同步中英文 README、规格 §17.1 与 ADR 0002。四份 Compose 配置回归、Bash 语法及差异空白检查通过；无 API、迁移或依赖变更，未运行容器更新、远程连接验证、全量测试或真实 Provider 调用。
 
 2026-10-04 更新脚本状态输出修复：`deploy/update-local.sh` 的最终状态表显式选择容器名、服务、状态和端口，避免 Compose 2.21 将完整内联初始化命令打印到 COMMAND 列后撑宽整张表。完整脚本输出回归中，构建与更新步骤使用 Mock，状态步骤执行真实只读 Compose 查询；修复前最长行 3343 列，修复后 89 列，执行顺序与成功摘要检查通过。Bash 语法、四份 Compose 配置回归与差异空白检查通过。同步中英文 README；无 API、迁移或依赖变化。未运行镜像构建、容器更新、全量测试或真实 Provider 调用。
 
@@ -116,7 +118,11 @@ MVP 已完成，项目进入持续迭代。本清单保留历史任务与后续�
 
 - [x] 成功与错误状态符合合约，生成类型可用于前端请求。
 - [x] 生成文件无漂移；失败用例不会被统一转换成 HTTP 200。
-- [x] 真实密钥不进入 fork PR；依赖、镜像、密钥与许可证扫描可运行。
+- [x] 真实密钥不进入 fork PR；密钥扫描与发布镜像 SBOM/许可证清单可运行，漏洞扫描按用户决定关闭。
+
+2026-10-05 CI 反馈速度优化：新增始终生成的 CI Gate，代码 PR 执行完整单测、四个自动 IT 分片、生成代码/Compose/密钥检查和 amd64 server/web 构建；main/手动增加 arm64，只有版本标签 push 收集三服务双架构清单并发布。当前 101 个 IT 类按 26/25/25/25 完整分配，数据库隔离和每类语义不变。构建与测试并行；Buildx GHA v2 缓存按服务/架构隔离、PR 只读，运行时 OS 更新层不复用缓存。Docker package 跳过整套测试，CI 每架构保留一项深度模型/JNI 冒烟；前端 build:ci 不重复 tsc。清单一次扫描后转换 CycloneDX；应用镜像先存 1 天工件，全部门禁通过后才加载原镜像、使用凭据并推送，SBOM/许可证保留 90 天，失败报告保留 7 天。纯文档 PR 仅跳过显式规划的重任务，密钥扫描保留；失败、取消、缺失结果和意外跳过阻断 Gate。
+
+本机验证：13 项 CI 规划/分片/门禁单测（含实际 Git 删除/重命名与凭据门禁结构）、actionlint、Bash 语法、差异空白与中英文 README 结构/链接检查通过；改动公开文件的 Trivy 密钥扫描无候选；前端 typecheck 与 build:ci 通过（保留既有大 chunk 提示）。MessageCatalogTest 的 2 项单测与 ci-integration profile 下 IdentitySetupPostgresIT 的 5 项真实 PostgreSQL 测试通过，后者明确跳过 Surefire 并实际执行 Failsafe；独立真实 PostgreSQL jOOQ 生成检查通过且无源码漂移。Linux ARM64 server builder 实际打包跳过完整单测，随后单项深度模型/JNI 冒烟通过；Trivy 0.74.0 官方二进制校验和核对后，对本地官方 PostgreSQL 镜像实际单次收集并转换，49 个包全部进入 CycloneDX（51 个组件，44 个组件含许可证）；Docker save/gzip/load 往返保持相同 image ID。未运行全量前后端测试、完整四分片、完整运行镜像构建/启动、amd64 本机构建、GitHub 托管运行、GHA 远程缓存、Docker Hub 发布或真实 Provider 调用；不宣称已达到估算耗时。无 API、迁移、生成源码或应用依赖变更。
 
 **M0 门禁**：可从干净环境启动与构建，并有实际测试输出；不是仅写好了 Dockerfile。
 

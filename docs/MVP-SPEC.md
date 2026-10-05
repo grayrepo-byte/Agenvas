@@ -1366,13 +1366,13 @@ FFmpeg 的许可证取决于启用的组件；包含某些 GPL 组件会改变�
 
 ### 17.1 鉴权与初始化
 
-P0 只支持单管理员。2026-10-04 用户决定取消初始化密钥，首次 `/setup` 仅填写登录名和密码。数据库安装行锁串行化请求，管理员插入和 `installation_lock.initialized_at` 完成标记在同一事务提交；唯一约束及 CAS 保证并发只成功一次。后续有效请求返回 `409 SETUP_ALREADY_COMPLETED`；重启、停用或删除管理员都不重新开放，失败事务同时回滚账户与标记。V9 根据已有任意状态账号的最早创建时间回填标记，升级不要求重复初始化。默认端口只绑定本机，部署者先在本机完成初始化，再开放公网反代；一次性保护不验证未初始化安装的首位访问者身份。CSRF 仍必需。
+P0 只支持单管理员。2026-10-04 用户决定取消初始化密钥，首次 `/setup` 仅填写登录名和密码。数据库安装行锁串行化请求，管理员插入和 `installation_lock.initialized_at` 完成标记在同一事务提交；唯一约束及 CAS 保证并发只成功一次。后续有效请求返回 `409 SETUP_ALREADY_COMPLETED`；重启、停用或删除管理员都不重新开放，失败事务同时回滚账户与标记。V9 根据已有任意状态账号的最早创建时间回填标记，升级不要求重复初始化。默认镜像部署入口 `docker-compose.yml` 仅将 Web 8088 映射到所有 IPv4 地址（`0.0.0.0`），API 8080 与 PostgreSQL 5432 仅走容器内部网络，不映射宿主机端口；源码与 Mock Compose 保留三个端口的本机绑定。部署者先在受控网络完成初始化，再开放公网反代；一次性保护不验证未初始化安装的首位访问者身份。CSRF 仍必需。
 
 使用 Spring Security 的受支持密码编码器和会话管理；密码不明文存储。Cookie 生产配置为 HttpOnly、Secure、SameSite=Lax，并配套 CSRF 防护与来源校验。登录和改密接口限流，认证失败不泄露账号状态。
 
 Spring Session JDBC 使服务器重启不会仅因内存会话丢失而要求所有用户重新登录。数据库会话表统一纳入迁移与清理策略。
 
-默认部署端口只绑定本机；公网部署必须先配置 HTTPS 与安全反向代理。无认证开发模式不能出现在发布默认配置中。
+默认镜像部署仅开放监听 `0.0.0.0` 的 Web 8088 端口，允许通过服务器 IP 访问；公网部署必须先配置 HTTPS 与安全反向代理。无认证开发模式不能出现在发布默认配置中。
 
 ### 17.2 API Key
 
@@ -1731,7 +1731,7 @@ UNKNOWN 任务新出现、数据库连接池饱和、事件明显积压、磁盘
 
 自托管：根目录 `docker-compose.yml` 为默认镜像部署入口，直接写明 `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest` 与官方 `postgres:17.11-alpine`。应用设置 `pull_policy: always` 获取最新 latest，PostgreSQL 使用固定版本；不要求镜像地址、namespace 或 tag 环境变量。部署者需要固定应用版本或更换镜像地址时直接编辑 Compose 的 image。`docker-compose.local.yml` 与原 `deploy/compose.yaml` 只从源码构建 server/web，PostgreSQL 直接拉取官方镜像；`deploy/update-local.sh` 使用根目录源码入口，先构建再更新容器。四份文件均完整列出所有运行参数，不依赖其他 Compose 文件或共享 runtime 文件，部署者直接选择和修改参数。
 
-镜像部署和源码构建均使用 `configured`，管理员配置真实 LLM、媒体连接及已发布能力后才可生成。容器首次启动从系统随机源生成数据库密码（32 字节转 64 字符十六进制）和 32 字节 Base64 凭证主密钥，原子保存到 `credentials-data` 持久卷；不要求 `.env` 或手工填写。PostgreSQL 仍为官方镜像，生成逻辑完整列在所选 Compose 的入口中；server 非 root 入口从只读挂载文件读取数据库密码与主密钥，不将值写入 Compose 或日志。密钥目录为 UID 100/GID 101 的 0700，文件 0600，重启/更新复用原值；旧数据库缺少密钥卷时须恢复或显式导入原值，不能自动换密码/主密钥。初始化页面仅输入账号和密码，密钥卷单独加密备份。部署两种入口默认项目名均为 `agenvas`，复用原数据库、素材和密钥卷，Mock 开发版为 `agenvas-dev`，卷按项目名隔离。默认端口相同，并行运行须显式配置不同项目名和端口；切换启动方式须备份并确保版本兼容。配置分离不代表生产发布验收完成。真实 ComfyUI 与生成模型服务可在另一台机器；主应用镜像不打包生成式大模型，只内置经固定提交、哈希和许可证校验的 27.3 MB Depth Anything V2 Small INT8 深度模型。
+镜像部署和源码构建均使用 `configured`，管理员配置真实 LLM、媒体连接及已发布能力后才可生成。容器首次启动从系统随机源生成数据库密码（32 字节转 64 字符十六进制）和 32 字节 Base64 凭证主密钥，原子保存到 `credentials-data` 持久卷；不要求 `.env` 或手工填写。PostgreSQL 仍为官方镜像，生成逻辑完整列在所选 Compose 的入口中；server 非 root 入口从只读挂载文件读取数据库密码与主密钥，不将值写入 Compose 或日志。密钥目录为 UID 100/GID 101 的 0700，文件 0600，重启/更新复用原值；旧数据库缺少密钥卷时须恢复或显式导入原值，不能自动换密码/主密钥。初始化页面仅输入账号和密码，密钥卷单独加密备份。部署两种入口默认项目名均为 `agenvas`，复用原数据库、素材和密钥卷，Mock 开发版为 `agenvas-dev`，卷按项目名隔离。默认 Web 端口相同，并行运行须显式配置不同项目名和端口；切换启动方式须备份并确保版本兼容。配置分离不代表生产发布验收完成。真实 ComfyUI 与生成模型服务可在另一台机器；主应用镜像不打包生成式大模型，只内置经固定提交、哈希和许可证校验的 27.3 MB Depth Anything V2 Small INT8 深度模型。
 
 Nginx 统一域名处理前端与 `/api`，避免生产跨域鉴权复杂度。SSE 反代禁缓冲。构建基础镜像锁版本与 digest；2026-10-04 用户明确决定默认应用部署使用 latest，PostgreSQL 使用官方固定版本。部署者可以直接在 Compose 中改为指定版本、提交标签或 digest；此前禁止应用镜像 latest 的部署规则由该决定覆盖。
 
@@ -1826,13 +1826,17 @@ agent-canvas/
 
 前端：冻结安装 → 类型检查 → lint → 单测 → 构建 → 核心 Playwright E2E。
 
-后端：Maven Wrapper verify → 格式检查 → 单测 → PostgreSQL 集成测试 → 契约测试 → 迁移测试。
+后端：独立 Maven Wrapper 单测任务与四个 PostgreSQL 集成测试分片并行；分片从 Failsafe 默认命名规则自动发现全部测试类，每个类只分配一次，继续使用各自隔离的真实 PostgreSQL。独立 jOOQ 任务重跑迁移与生成，检查提交源码无漂移。默认本地 `./mvnw verify` 仍执行完整单测与集成测试。
 
 跨栈：OpenAPI 破坏性变更检查 → 生成代码无未提交差异 → Mock 黄金路径 → 幂等与故障测试。
 
 安全：密钥扫描、许可证清单/SBOM。2026-10-05 按用户决定取消 CI 源码依赖和容器镜像漏洞扫描及 HIGH/CRITICAL 发布门禁；保留密钥泄露阻断和各镜像依赖/许可证清单。CI 成功不代表漏洞检查通过。
 
-镜像发布：GitHub CI 在 main 推送、`v*.*.*` 标签推送或手动触发时运行；只有 `v*.*.*` 版本标签推送会上传 Docker Hub，main 推送、PR 与非标签手动运行只构建和生成清单。前后端测试、Compose 定向配置检查、源码密钥扫描通过后，在 amd64 / arm64 原生 Runner 上构建 server/web，并直接拉取官方 `postgres:17.11-alpine`，保留各架构 SBOM 与许可证清单。PostgreSQL 不自建、不推送，不沿用已退役派生镜像的 gosu 扫描排除。生成清单后的同一应用镜像以当前运行中间标签推送，所有服务与架构通过后才创建最终应用多架构标签：`sha-<完整提交 SHA>`、稳定版本标签（无预发布后缀）的 latest、版本标签去除前导 v 后的版本。预发布版本保留后缀且不更新 latest；PR 不读取 Docker Hub 凭据且不推送。发布地址直接固定为 grayrepo，凭据为仓库 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`；缺失时明确失败，不宣称发布成功。新增 Docker Actions 固定到 commit。
+CI 分层：代码 PR 执行前端验证、后端单测、全部四个 IT 分片、jOOQ 漂移、Compose 与密钥检查，并在 amd64 原生 Runner 构建 server/web；main 与手动运行增加 arm64 原生构建。仅修改显式允许的根 README、LICENSE、CHANGELOG 与 docs 的 PR 跳过重任务，但仍运行规划校验、密钥扫描与始终存在的 `CI Gate`；未知路径、代码删除和跨目录重命名进入完整验证。main、版本标签及手动运行不使用纯文档跳过。Gate 对失败、取消、缺失结果及非预期跳过返回失败，可作为分支规则的统一 Required Check。
+
+镜像构建与测试并行，使用按服务/架构隔离的 Buildx GHA v2 层缓存；PR 只读缓存，受信任的 main、标签及手动任务写入。server 镜像打包跳过完整测试，但 CI 每个原生架构保留内置深度模型与 ONNX JNI 的单项冒烟；运行镜像的 apt/apk 更新层不从缓存复用。前端 CI 在独立类型检查后执行不重复 tsc 的 `build:ci`，本地 `build` 仍包含类型检查。
+
+镜像发布：只有 `v*.*.*` 版本标签的 push 上传 Docker Hub，PR、main 与手动运行不读取 Docker Hub 凭据且不推送。标签任务构建 server/web 双架构，并拉取官方 `postgres:17.11-alpine`，各镜像只执行一次包/许可证 JSON 收集，再由 `trivy convert` 生成 CycloneDX；不重新启用漏洞扫描。SBOM/许可证证据保留 90 天，失败测试报告保留 7 天，待发布应用镜像工件保留 1 天。CI Gate 通过后下载并加载同一已记录清单的应用镜像，不重新构建，再推送当前运行的中间标签；全部架构推送成功后才创建最终应用多架构标签：`sha-<完整提交 SHA>`、稳定版本标签（无预发布后缀）的 latest、版本标签去除前导 v 后的版本。预发布版本保留后缀且不更新 latest。PostgreSQL 不自建、不推送，不沿用退役派生镜像的扫描排除。发布地址固定为 grayrepo，凭据为仓库 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`；缺失时明确失败。Docker Actions 固定到 commit。
 
 真实模型冒烟是显式手动或受控触发，不在来自 fork 的 PR 中注入真实密钥，也不无限消耗真实 API 费用。
 

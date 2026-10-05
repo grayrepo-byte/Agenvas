@@ -9,6 +9,7 @@
 <p align="center">
   <a href="README.md">中文</a> ·
   <a href="#quick-start">Quick start</a> ·
+  <a href="#deployment-and-maintenance">Deployment</a> ·
   <a href="#local-development">Development</a> ·
   <a href="#documentation-and-contributing">Docs &amp; contributing</a> ·
   <a href="LICENSE">MIT</a>
@@ -31,25 +32,79 @@ The interface supports Chinese, English, Russian, and Japanese. Media adapters i
 
 ## Quick start
 
-### 1. Start
+### 1. Start with one command
 
-Install Docker Engine / Docker Desktop and Docker Compose. Put `docker-compose.yml` in a directory and run:
+Install and start **Docker Engine / Docker Desktop**, with **Docker Compose v2**. No Git, local build tools, GPU, `.env` file, or model key is needed to start and sign in.
+
+For a new installation, paste this entire block into a **macOS / Linux** terminal:
 
 ```sh
-docker compose up -d --wait
+mkdir agenvas && cd agenvas && \
+  curl -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml \
+    -o docker-compose.yml && \
+  docker compose up -d --wait
 ```
 
-No `.env` file or manual secret generation is required. The first start generates a database password and credential encryption key, then stores them in the persistent `credentials-data` volume. Restarts, updates, and ordinary `down` retain the same values.
+<details>
+<summary><strong>Windows command (Command Prompt / cmd.exe)</strong></summary>
 
-The default file pulls `docker.io/grayrepo/agenvas-server:latest`, `docker.io/grayrepo/agenvas-web:latest`, and the official `postgres:17.11-alpine` image without local compilation. The publishing workflow produces amd64 / arm64 application images; first publish a `latest` image containing the automatic secret entrypoint. Before that publication, use [container source builds](#container-source-builds). Starting and signing in require neither a GPU nor a model key.
+```bat
+mkdir agenvas && cd agenvas && ^
+  curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml ^
+    -o docker-compose.yml && ^
+  docker compose up -d --wait
+```
 
-Each Compose file contains all environment settings, ports, volumes, health checks, and resource limits. Edit the chosen file directly. To pin an application version, replace `latest` with a published version, commit tag, or digest. PostgreSQL uses an [official fixed-version image](https://hub.docker.com/_/postgres) and is never built or published by this project.
+</details>
+
+The command creates an `agenvas` directory, downloads the Compose file, pulls the images, and waits for all three services to become healthy. Keep this directory for future management. If you already have the Compose file, run `docker compose up -d --wait` in its directory.
+
+Database and encryption secrets are generated and saved automatically on first start. First-time image downloads may take a few minutes.
 
 ### 2. Create an administrator
 
-Open <http://127.0.0.1:8088/setup>, choose an administrator username and password, and sign in after account creation. No setup secret is required.
+Open **<http://127.0.0.1:8088/setup>** locally, or `http://<server-ip>:8088/setup` from another device. Choose an administrator username and password, then sign in. Complete setup on a controlled network before exposing the service to the internet.
 
-The database permanently records successful initialization: only one concurrent request succeeds; later requests return `409 SETUP_ALREADY_COMPLETED`. Restarts, disabling, or deleting the account never reopen setup. Failed initialization rolls back and can be retried. Complete setup locally before exposing a public reverse proxy.
+### 3. Configure models and create
+
+- **Text and Agent**: Add an OpenAI-compatible endpoint, model ID, and API key under settings → model settings. An administrator must run the tool-calling diagnostic before using an Agent.
+- **Images, video, and audio**: Create connections, publish capabilities, and choose default models in media settings. The default deployment requires real model configuration before generating media.
+
+Create a project and use the canvas context menu to add cards or upload media. Select a model, enter a prompt and references, check the estimated cost, and run. Preview, select, or regenerate results. Agent cards can bind context and use Skills; approve or reject media proposals as a batch in the conversation.
+
+Seedance video references need a publicly accessible media relay. See the [relay guide](docs/media-relay-design.md).
+
+> UNKNOWN results require an explicit retry, which may incur duplicate costs. Cancellation does not guarantee that an external service stops or refunds charges. Project manifests contain data and media metadata; they do not replace database and media file backups.
+
+## Deployment and maintenance
+
+Run the following commands from the directory containing `docker-compose.yml` (created as `agenvas` above):
+
+| Action | Command |
+| --- | --- |
+| Start / update to the configured image version | `docker compose up -d --wait` |
+| Stop while keeping data | `docker compose down` |
+| View service status | `docker compose ps --format "table {{.Service}}\t{{.Status}}\t{{.Ports}}"` |
+| View recent startup logs | `docker compose logs --tail=100 server postgres` |
+
+> Back up the database, media, configuration, and encryption secrets before updating. **Do not run `docker compose down -v`**: it deletes data and secrets. See [backup and recovery](docs/operations/backup-restore.md).
+
+<details>
+<summary><strong>Ports, image versions, and public deployment</strong></summary>
+
+- The default `docker-compose.yml` publishes only Web `8088` on `0.0.0.0`, allowing access through the server IP. API `8080` and PostgreSQL `5432` use the internal container network and are not published to the host. Source and Mock Compose files retain all three ports on loopback for development. If the Web port is in use, change the host port in `ports`.
+- The default file pulls `docker.io/grayrepo/agenvas-server:latest`, `docker.io/grayrepo/agenvas-web:latest`, and the official `postgres:17.11-alpine` image. The publishing workflow targets amd64 / arm64 application images; no local compilation is required.
+- Application images are pulled on every `up`. To pin a version, replace `latest` with a published version, commit tag, or digest.
+- Each Compose file includes environment settings, ports, volumes, health checks, and resource limits; edit it directly without additional configuration files.
+- Public deployment requires HTTPS, a reverse proxy, and `AGENVAS_SECURE_COOKIES: "true"` in Compose. For old V1–V77 database migration limits, see [backup and recovery](docs/operations/backup-restore.md).
+- For source builds, update the checkout and run `./deploy/update-local.sh`; stop with `docker compose -f docker-compose.local.yml down`.
+
+</details>
+
+<details>
+<summary><strong>Automatic secrets, administrator initialization, and recovery</strong></summary>
+
+The database permanently records successful initialization: only one concurrent request succeeds; later requests return `409 SETUP_ALREADY_COMPLETED`. Restarts, disabling, or deleting the account never reopen setup. Failed initialization rolls back and can be retried. Complete setup on a controlled network before exposing a public reverse proxy.
 
 The database password and credential encryption key are configured automatically. Their files are under `/run/agenvas/credentials/installation/` in the server container; ordinary use requires neither reading nor filling them in:
 
@@ -74,30 +129,21 @@ If you see `no configuration file provided: not found`, switch to the directory 
 
 Values are never written into Compose, Git, or startup logs. Encrypt and escrow `credentials-data` separately when backing up. Avoid `down -v`, which deletes data and secrets. Existing databases must restore this volume or import the original database password and encryption key through a private Compose configuration outside the repository. See [backup and restore](docs/operations/backup-restore.md).
 
-### 3. Configure models and create
+</details>
 
-- **Text and Agent**: Add an OpenAI-compatible endpoint, model ID, and API key under settings → model settings. An administrator must run the tool-calling diagnostic before using an Agent.
-- **Images, video, and audio**: Create connections, publish capabilities, and choose default models in media settings. The default deployment requires real model configuration before generating media.
+<details>
+<summary><strong>Startup troubleshooting</strong></summary>
 
-Create a project and use the canvas context menu to add cards or upload media. Select a model, enter a prompt and references, check the estimated cost, and run. Preview, select, or regenerate results. Agent cards can bind context and use Skills; approve or reject media proposals as a batch in the conversation.
+| Symptom | Next step |
+| --- | --- |
+| Docker cannot connect / Compose command unavailable | Start Docker Desktop or Docker Engine and check `docker compose version` |
+| The `agenvas` directory already exists | For an existing installation, enter it and run `docker compose up -d --wait`; for a new download, choose an unused directory name |
+| Compose download fails | Check access to `raw.githubusercontent.com`; you can also manually download [docker-compose.yml](docker-compose.yml) |
+| `manifest unknown` / image unavailable | Check Docker Hub access and published tags; if no release is available, use [container source builds](#container-source-builds) |
+| Port already in use | Edit the host port in `ports`, then start again; if you change `8088`, use the new port in the browser |
+| Health checks fail | Inspect startup logs with the command above, fix the reported issue, and run the start command again |
 
-Seedance video references need a publicly accessible media relay. See the [relay guide](docs/media-relay-design.md).
-
-> UNKNOWN results require an explicit retry, which may incur duplicate costs. Cancellation does not guarantee that an external service stops or refunds charges. Project manifests contain data and media metadata; they do not replace database and media file backups.
-
-### Update and stop
-
-Run `docker compose up -d --wait` to pull and apply the current `latest` application images. If you edited the image tags or digests directly in Compose, it uses those versions instead. To stop services and retain data volumes:
-
-```sh
-docker compose down
-```
-
-For source builds, update the checkout and run `./deploy/update-local.sh`; stop with `docker compose -f docker-compose.local.yml down`.
-
-Default ports are Web `8088`, API `8080`, and PostgreSQL `5432`, all bound to loopback. Edit `ports` directly in the chosen Compose file.
-
-Public deployment requires HTTPS, a reverse proxy, and `AGENVAS_SECURE_COOKIES: "true"` in Compose. Back up databases, media, configuration, and encryption keys before upgrading. For old V1–V77 development database migration limits, see [backup and recovery](docs/operations/backup-restore.md).
+</details>
 
 ## Local development
 
@@ -160,6 +206,9 @@ Vite runs on port `5173` and proxies `/api` to `localhost:8080`.
 
 ## Automatic Docker Hub publication
 
+<details>
+<summary><strong>Image publication configuration (maintainers)</strong></summary>
+
 Configure these under **Settings → Secrets and variables → Actions** in the GitHub repository:
 
 | Type | Name | Value |
@@ -167,17 +216,30 @@ Configure these under **Settings → Secrets and variables → Actions** in the 
 | Secret | `DOCKERHUB_USERNAME` | A Docker Hub user authorized to push the images |
 | Secret | `DOCKERHUB_TOKEN` | A Docker Hub access token with read/write permissions for the target repositories |
 
-Prepare two public Docker Hub repositories, `grayrepo/agenvas-server` and `grayrepo/agenvas-web`, allowing anonymous deployment pulls. CI publishes directly under `grayrepo`; to change the publisher, edit the workflow and Compose addresses. PostgreSQL is pulled from its official repository and scanned only.
+Prepare two public Docker Hub repositories, `grayrepo/agenvas-server` and `grayrepo/agenvas-web`, allowing anonymous deployment pulls. CI publishes directly under `grayrepo`; to change the publisher, edit the workflow and Compose addresses. PostgreSQL is pulled from its official repository; CI retains its SBOM and license inventory.
 
-`.github/workflows/ci.yml` runs on pushes to `main`, `v*.*.*` version tags, and manual dispatches; only pushes of `v*.*.*` version tags upload to Docker Hub, while `main` pushes and manual runs build and scan without publishing. After frontend/backend tests, Compose checks, source scanning, and application/official PostgreSQL image scans on both architectures succeed, it publishes multi-platform manifests from the exact scanned application images:
+`.github/workflows/ci.yml` runs on PRs, pushes to `main`, `v*.*.*` version tags, and manual dispatches. Tests and image builds run in parallel:
+
+| Trigger | Validation | Images and inventories |
+| --- | --- | --- |
+| Code PR | Frontend, backend unit tests, all four PostgreSQL IT shards, jOOQ, Compose, secret scan | server/web amd64 builds |
+| Documentation-only PR | Planning checks, secret scan, CI Gate | Heavy jobs skipped |
+| main / manual | Full validation | server/web amd64 + arm64 builds |
+| Version tag push | Full validation | Application builds and official PostgreSQL inventories on both architectures; publication after CI Gate |
+
+`CI Gate` always appears and rejects failed, cancelled, or unexpectedly skipped checks. Select it when configuring a required branch check. Buildx caches are scoped by service and architecture; PRs only read them. Server packaging skips the full test suite, while CI retains one depth-model/JNI smoke test per native architecture.
+
+Only version-tag pushes upload to Docker Hub. Release images are inventoried once, then the JSON is converted to CycloneDX. The same images are loaded from short-lived artifacts and pushed after all checks pass. Failure reports are retained for 7 days, publication images for 1 day, and SBOM/license evidence for 90 days.
 
 - Every publication: `sha-<full 40-character commit SHA>`.
 - `v0.1.0` version tag: also publishes `0.1.0` with the leading `v` removed.
 - Stable version tag (no prerelease suffix, e.g. `v0.1.0`): also points `latest` at that version for the default Compose file; a prerelease (e.g. `v0.1.0-rc.1`) retains its suffix and never updates `latest`.
 
-PRs run checks without Docker Hub credentials or pushes, and `main` pushes or manual runs on non-tag refs only build and scan. Each service and architecture retains SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
+PRs, `main` pushes, and manual runs never access Docker Hub credentials or push images. Release service/architecture jobs retain SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
 
 The workflow follows [Docker's multi-platform build documentation](https://docs.docker.com/build/ci/github-actions/multi-platform/) and [Docker image tagging rules](https://github.com/docker/metadata-action).
+
+</details>
 
 ## Documentation and contributing
 

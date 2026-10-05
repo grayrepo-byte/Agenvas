@@ -27,7 +27,13 @@ for compose_file in "${compose_files[@]}"; do
     exit 1
   fi
 
-  compose_config "$compose_file" | jq -e '
+  compose_bind_host=127.0.0.1
+  compose_web_only=false
+  if [[ $compose_file == docker-compose.yml ]]; then
+    compose_bind_host=0.0.0.0
+    compose_web_only=true
+  fi
+  compose_config "$compose_file" | jq -e --arg bind_host "$compose_bind_host" --argjson web_only "$compose_web_only" '
     (.services | keys) == ["postgres", "server", "web"] and
     .services.postgres.image == "postgres:17.11-alpine" and
     (.services.postgres | has("build") | not) and
@@ -35,7 +41,19 @@ for compose_file in "${compose_files[@]}"; do
       (.mem_limit | tonumber) > 0 and .cpus > 0 and
       .logging.driver == "json-file" and
       .logging.options."max-size" == "10m" and .logging.options."max-file" == "3" and
-      all(.ports[]; .host_ip == "127.0.0.1"))) and
+      all((.ports // [])[]; .host_ip == $bind_host))) and
+    # Require exactly the intended published ports, including the absence of API/DB mappings.
+    .services.web.ports == [{mode: "ingress", host_ip: $bind_host,
+      target: 8080, published: "8088", protocol: "tcp"}] and
+    (if $web_only then
+      (.services.postgres | has("ports") | not) and
+      (.services.server | has("ports") | not)
+    else
+      .services.postgres.ports == [{mode: "ingress", host_ip: $bind_host,
+        target: 5432, published: "5432", protocol: "tcp"}] and
+      .services.server.ports == [{mode: "ingress", host_ip: $bind_host,
+        target: 8080, published: "8080", protocol: "tcp"}]
+    end) and
     .services.server.read_only and .services.web.read_only and
     .services.server.stop_grace_period == "45s" and
     .services.server.depends_on.postgres.condition == "service_healthy" and
@@ -84,12 +102,13 @@ for compose_file in docker-compose.local.yml deploy/compose.yaml deploy/compose.
     .services.web.build.dockerfile == "deploy/docker/frontend.Dockerfile"' >/dev/null
 done
 
-# Both deployment entry points retain the exact runtime settings and persistent volume identities.
+# Port publication differs between image and source deployment and is checked above.
+# Compare all other runtime settings and persistent volume identities here.
 source_runtime=$(compose_config docker-compose.local.yml |
-  jq -Sc 'del(.services[].build, .services[].image, .services[].pull_policy)')
+  jq -Sc 'del(.services[].build, .services[].image, .services[].pull_policy, .services[].ports)')
 for compose_file in docker-compose.yml deploy/compose.yaml; do
   runtime=$(compose_config "$compose_file" |
-    jq -Sc 'del(.services[].build, .services[].image, .services[].pull_policy)')
+    jq -Sc 'del(.services[].build, .services[].image, .services[].pull_policy, .services[].ports)')
   if [[ $runtime != "$source_runtime" ]]; then
     printf '%s differs from source deployment runtime settings\n' "$compose_file" >&2
     exit 1

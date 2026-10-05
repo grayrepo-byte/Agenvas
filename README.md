@@ -6,18 +6,18 @@
 
 <p align="center"><strong>可自托管的 AI 创作画布</strong><br />文字、图片、视频、音频与 Agent，一个工作空间。</p>
 
-<p align="center">Agenvas 希望让个人用户能够使用最低的代价体验商业画布的体验，而不用依赖昂贵的会员或者顶尖的模型，将低价的选择权掌握在自己手中</p>
+<p align="center">Agenvas 希望让个人用户能够使用最低的代价获得商业画布的体验，而不用绑定昂贵的会员或者顶尖的模型，将低价的选择权掌握在自己手中</p>
 
 <p align="center">
   <a href="README.en.md">English</a> ·
   <a href="#快速开始">快速开始</a> ·
+  <a href="#部署与维护">部署与维护</a> ·
   <a href="#本地开发">本地开发</a> ·
   <a href="#文档与贡献">文档与贡献</a> ·
   <a href="LICENSE">MIT</a>
 </p>
 
-> 当前为开发版本，面向单管理员自托管使用。不保证后续版本的数据兼容
-
+> 当前为开发版本，面向单管理员自托管使用。不保证后续版本的数据兼容。
 
 ## 功能
 
@@ -34,25 +34,79 @@
 
 ## 快速开始
 
-### 1. 启动
+### 1. 一键启动
 
-安装 Docker Engine / Docker Desktop 和 Docker Compose，将 `docker-compose.yml` 放入一个目录，在该目录执行：
+先安装并启动 **Docker Engine / Docker Desktop**，确认包含 **Docker Compose v2**。启动和登录无需 Git、本地编译环境、GPU、`.env` 或模型 Key。
+
+首次安装，在 **macOS / Linux** 终端复制执行整段命令：
 
 ```sh
-docker compose up -d --wait
+mkdir agenvas && cd agenvas && \
+  curl -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml \
+    -o docker-compose.yml && \
+  docker compose up -d --wait
 ```
 
-无需创建 `.env`，无需手动生成或填写密钥。首次启动自动生成数据库密码和凭证加密主密钥，并保存到 `credentials-data` 持久卷；重启、更新和普通 `down` 后继续使用原值。
+<details>
+<summary><strong>Windows 启动命令（命令提示符 / cmd.exe）</strong></summary>
 
-默认 `docker-compose.yml` 直接拉取 `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest` 和官方 `postgres:17.11-alpine`，不在本机编译。发布流水线配置为生成应用的 amd64 / arm64 镜像；需先成功发布含自动密钥入口的 `latest`。首次发布前可使用[容器源码构建](#容器源码构建)。启动和登录无需 GPU 或模型 Key。
+```bat
+mkdir agenvas && cd agenvas && ^
+  curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml ^
+    -o docker-compose.yml && ^
+  docker compose up -d --wait
+```
 
-每份 Compose 都完整列出环境、端口、卷、健康检查和资源限制；部署者直接修改所选文件，不需要其他配置文件。需要固定应用版本时，把 `latest` 改为已发布版本、提交标签或 digest。PostgreSQL 使用[官方固定版本镜像](https://hub.docker.com/_/postgres)，不自行构建或发布。
+</details>
+
+命令会新建 `agenvas` 目录、下载 Compose 文件、拉取镜像，并等待三个服务健康。保留该目录，后续管理在其中执行。已有 Compose 文件时，直接在文件所在目录运行 `docker compose up -d --wait`。
+
+数据库密码和凭证加密密钥首次启动时自动生成并持久保存，无需填写。首次下载镜像可能需要几分钟。
 
 ### 2. 创建管理员
 
-打开 <http://127.0.0.1:8088/setup>，填写管理员登录名和密码，创建账号后登录。无需初始化密钥。
+本机打开 **<http://127.0.0.1:8088/setup>**；从其他设备访问时使用 `http://<服务器IP>:8088/setup`。填写管理员登录名和密码，创建账号后登录。先在受控网络完成初始化，再开放公网访问。
 
-程序在数据库中永久记录初始化完成状态：并发请求只有一次成功，完成后再次提交返回 `409 SETUP_ALREADY_COMPLETED`。重启、停用或删除管理员不会重新开放初始化；初始化失败会回滚，仍可重试。先在本机完成初始化，再开放公网反向代理。
+### 3. 配置模型，开始创作
+
+- **文字与 Agent**：在“设置 → 模型配置”中添加 OpenAI 兼容端点、模型 ID 和 API Key。使用 Agent 前，管理员须运行工具调用诊断。
+- **图片、视频与音频**：在“媒体配置”中创建连接、发布能力并设置默认模型。默认部署需完成真实模型配置后才能生成媒体。
+
+创建项目，通过画布右键菜单添加卡片或上传素材。选择模型、填写提示词和参考输入，检查预计费用后运行；完成后可预览、选用结果或重新生成。Agent 卡片可绑定上下文并选择 Skill，媒体提案在对话中统一批准或拒绝。
+
+Seedance 视频参考需要可公网访问的媒体中继，配置见[媒体中继说明](docs/media-relay-design.md)。
+
+> 结果未知（UNKNOWN）时需显式重试，可能产生重复费用；取消不保证外部服务停止或退款。项目清单包含数据与素材元数据，不能替代数据库和媒体文件备份。
+
+## 部署与维护
+
+以下命令在 `docker-compose.yml` 所在目录执行（一键启动创建的 `agenvas` 目录）：
+
+| 操作 | 命令 |
+| --- | --- |
+| 启动 / 更新到配置中的镜像版本 | `docker compose up -d --wait` |
+| 停止并保留数据 | `docker compose down` |
+| 查看服务状态 | `docker compose ps --format "table {{.Service}}\t{{.Status}}\t{{.Ports}}"` |
+| 查看最近的启动日志 | `docker compose logs --tail=100 server postgres` |
+
+> 更新前备份数据库、媒体、配置与加密密钥。**不要执行 `docker compose down -v`**，它会删除数据和密钥。详见[备份与恢复](docs/operations/backup-restore.md)。
+
+<details>
+<summary><strong>端口、镜像版本与公网部署</strong></summary>
+
+- 默认 `docker-compose.yml` 仅将 Web `8088` 映射到 `0.0.0.0`，通过服务器 IP 访问；API `8080` 和 PostgreSQL `5432` 仅在容器内部网络使用，不映射到宿主机。源码和 Mock Compose 仍保留仅绑定本机的三个端口，方便开发排查。Web 端口被占用时，修改 `ports` 中的宿主机端口。
+- 默认拉取 `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest` 和官方 `postgres:17.11-alpine`。应用镜像发布配置覆盖 amd64 / arm64，无需本机编译。
+- 应用镜像每次 `up` 都会拉取；需要固定版本时，把 `latest` 改为已发布版本、提交标签或 digest。
+- 每份 Compose 完整列出环境、端口、卷、健康检查和资源限制，直接修改所选文件即可，无需其他配置文件。
+- 对外部署需配置 HTTPS、反向代理，并将 `AGENVAS_SECURE_COOKIES` 改为 `"true"`。旧 V1–V77 开发库的迁移限制见[备份与恢复](docs/operations/backup-restore.md)。
+- 源码构建环境更新代码后运行 `./deploy/update-local.sh`；停止时使用 `docker compose -f docker-compose.local.yml down`。
+
+</details>
+
+<details>
+<summary><strong>自动密钥、管理员初始化与恢复</strong></summary>
+
+程序在数据库中永久记录初始化完成状态：并发请求只有一次成功，完成后再次提交返回 `409 SETUP_ALREADY_COMPLETED`。重启、停用或删除管理员不会重新开放初始化；初始化失败会回滚，仍可重试。先在受控网络完成初始化，再开放公网反向代理。
 
 数据库密码和凭证主密钥均已自动配置，文件位于 server 容器的 `/run/agenvas/credentials/installation/`，普通使用不需要读取或填写：
 
@@ -77,30 +131,21 @@ docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/c
 
 密钥不会写入 Compose、Git 或启动日志。备份时须另外加密保管 `credentials-data`；不要执行 `down -v`，它会删除数据和密钥。已有数据库升级到此入口时，须先恢复密钥卷或通过仓库外私有 Compose 配置导入原数据库密码和主密钥；缺失时启动会停止，避免旧凭证无法解密。详见[备份与恢复](docs/operations/backup-restore.md)。
 
-### 3. 配置模型，开始创作
+</details>
 
-- **文字与 Agent**：在“设置 → 模型配置”中添加 OpenAI 兼容端点、模型 ID 和 API Key。使用 Agent 前，管理员须运行工具调用诊断。
-- **图片、视频与音频**：在“媒体配置”中创建连接、发布能力并设置默认模型。默认部署需完成真实模型配置后才能生成媒体。
+<details>
+<summary><strong>启动遇到问题</strong></summary>
 
-创建项目，通过画布右键菜单添加卡片或上传素材。选择模型、填写提示词和参考输入，检查预计费用后运行；完成后可预览、选用结果或重新生成。Agent 卡片可绑定上下文并选择 Skill，媒体提案在对话中统一批准或拒绝。
+| 现象 | 处理方式 |
+| --- | --- |
+| Docker 无法连接 / Compose 命令不可用 | 启动 Docker Desktop 或 Docker Engine，确认 `docker compose version` 可执行 |
+| 提示 `agenvas` 目录已存在 | 已安装时进入该目录直接运行 `docker compose up -d --wait`；首次下载时改用一个未占用的目录名 |
+| Compose 下载失败 | 检查能否访问 `raw.githubusercontent.com`，也可手动下载 [docker-compose.yml](docker-compose.yml) |
+| 提示 `manifest unknown` / 镜像不可用 | 检查 Docker Hub 网络与已发布标签；尚无可用发布时使用[容器源码构建](#容器源码构建) |
+| 端口已被占用 | 修改 Compose 的 `ports` 中宿主机端口后重新启动；修改 `8088` 后，浏览器地址也使用新端口 |
+| 健康检查失败 | 使用上表日志命令查看原因，处理后重新执行启动命令 |
 
-Seedance 视频参考需要可公网访问的媒体中继，配置见[媒体中继说明](docs/media-relay-design.md)。
-
-> 结果未知（UNKNOWN）时需显式重试，可能产生重复费用；取消不保证外部服务停止或退款。项目清单包含数据与素材元数据，不能替代数据库和媒体文件备份。
-
-### 更新与停止
-
-执行 `docker compose up -d --wait` 拉取并应用最新 `latest` 应用镜像。若已自行修改 Compose 中的标签或 digest，则使用所指定版本。停止服务并保留数据卷：
-
-```sh
-docker compose down
-```
-
-源码构建环境更新代码后运行 `./deploy/update-local.sh`；停止时使用 `docker compose -f docker-compose.local.yml down`。
-
-默认端口为 Web `8088`、API `8080`、PostgreSQL `5432`，均仅绑定本机。直接修改所选 Compose 的 `ports`。
-
-对外部署需配置 HTTPS、反向代理，并将 Compose 的 `AGENVAS_SECURE_COOKIES` 改为 `"true"`。升级前备份数据库、媒体、配置与加密密钥；旧 V1–V77 开发库的迁移限制见[备份与恢复说明](docs/operations/backup-restore.md)。
+</details>
 
 ## 本地开发
 
@@ -134,7 +179,7 @@ docker compose -f deploy/compose.dev.yaml up -d --build --wait
 
 文字与媒体使用 Mock，图片、视频、音频为合成演示素材，不代表真实模型效果。访问地址与初始化流程同上；停止时使用同一 Compose 文件执行 `down`。
 
-默认部署与 Mock 环境使用独立数据卷，但默认端口相同；并行运行需设置不同端口。
+默认部署与 Mock 环境使用独立数据卷，但默认 Web 端口相同；并行运行需设置不同端口。
 
 <details>
 <summary><strong>从源码运行</strong></summary>
@@ -163,6 +208,9 @@ Vite 默认运行于 `5173`，将 `/api` 代理到 `localhost:8080`。
 
 ## Docker Hub 自动发布
 
+<details>
+<summary><strong>镜像发布配置（维护者）</strong></summary>
+
 在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中配置：
 
 | 类型 | 名称 | 内容 |
@@ -170,17 +218,30 @@ Vite 默认运行于 `5173`，将 `/api` 代理到 `localhost:8080`。
 | Secret | `DOCKERHUB_USERNAME` | 有权推送镜像的 Docker Hub 用户名 |
 | Secret | `DOCKERHUB_TOKEN` | Docker Hub Access Token，具备目标仓库的读写权限 |
 
-在 Docker Hub 准备 `grayrepo/agenvas-server`、`grayrepo/agenvas-web` 两个公开仓库，便于部署者匿名拉取。CI 发布地址直接使用 `grayrepo`；需要更换发布方时修改工作流和 Compose 中的地址。PostgreSQL 从官方仓库拉取，只做扫描。
+在 Docker Hub 准备 `grayrepo/agenvas-server`、`grayrepo/agenvas-web` 两个公开仓库，便于部署者匿名拉取。CI 发布地址直接使用 `grayrepo`；需要更换发布方时修改工作流和 Compose 中的地址。PostgreSQL 从官方仓库拉取，CI 保留其 SBOM 与许可证清单。
 
-`.github/workflows/ci.yml` 在推送 `main`、推送 `v*.*.*` 版本标签或手动运行时执行；只有推送 `v*.*.*` 版本标签会上传 Docker Hub，`main` 推送与手动运行只构建和扫描、不推送。前后端测试、Compose 检查、源码扫描及两个架构的应用与官方 PostgreSQL 镜像扫描通过后，发布已扫描应用镜像的多架构清单：
+`.github/workflows/ci.yml` 在 PR、main 推送、`v*.*.*` 版本标签推送和手动运行时执行，测试与镜像构建并行：
+
+| 触发 | 验证 | 镜像与清单 |
+| --- | --- | --- |
+| 代码 PR | 前端、后端单测、全部四个 PostgreSQL IT 分片、jOOQ、Compose、密钥扫描 | server/web amd64 构建 |
+| 纯文档 PR | 规划检查、密钥扫描、CI Gate | 跳过重任务 |
+| main / 手动运行 | 完整验证 | server/web amd64 + arm64 构建 |
+| 版本标签推送 | 完整验证 | 双架构应用构建与官方 PostgreSQL 清单，CI Gate 通过后发布 |
+
+`CI Gate` 始终生成，失败、取消或非预期跳过都会阻断；配置分支必需检查时可选择它。Buildx 缓存按服务和架构隔离，PR 只读。server 打包跳过整套测试，CI 每个原生架构仍保留一项深度模型/JNI 冒烟。
+
+只有版本标签推送上传 Docker Hub。发布镜像扫描一次，再将 JSON 转换为 CycloneDX；所有检查通过后从短期工件加载并推送同一镜像。失败报告保留 7 天、待发布镜像保留 1 天、SBOM/许可证证据保留 90 天。
 
 - 每次发布：`sha-<完整 40 位提交 SHA>`。
 - `v0.1.0` 版本标签：额外发布去除前导 v 后的 `0.1.0`。
 - 稳定版本标签（无预发布后缀，如 `v0.1.0`）：额外把 `latest` 指向该版本，供默认 Compose 使用；预发布版本（如 `v0.1.0-rc.1`）保留后缀，不更新 `latest`。
 
-PR 只执行检查，不访问 Docker Hub 凭据或推送镜像；`main` 推送与在非版本标签触发的手动运行也只构建和扫描。每个服务和架构保留 SBOM 与许可证清单，成功发布的标签显示在 Actions 摘要中。`ci-<运行 ID>-<尝试次数>-<架构>` 为中间标签，部署使用 `latest` 或自行指定最终版本、提交标签或 digest。
+PR、main 推送和手动运行不访问 Docker Hub 凭据、不推送镜像。发布时每个服务和架构保留 SBOM 与许可证清单，成功发布的标签显示在 Actions 摘要中。`ci-<运行 ID>-<尝试次数>-<架构>` 为中间标签，部署使用 `latest` 或自行指定最终版本、提交标签或 digest。
 
 发布实现参考 [Docker 多架构构建说明](https://docs.docker.com/build/ci/github-actions/multi-platform/)与 [Docker 镜像标签规则](https://github.com/docker/metadata-action)。
+
+</details>
 
 ## 文档与贡献
 
