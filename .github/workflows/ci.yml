@@ -16,11 +16,29 @@ concurrency:
 
 env:
   IMAGE_NAMESPACE: grayrepo
-  # Docker Hub uploads are tag-only; branch pushes still build and inventory images, but never publish.
-  PUBLISH_IMAGES: ${{ github.event_name != 'pull_request' && startsWith(github.ref, 'refs/tags/v') }}
+  # Only version-tag runs can access publishing credentials or upload images.
+  PUBLISH_IMAGES: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
+  changes:
+    name: Plan CI
+    runs-on: ubuntu-latest
+    outputs:
+      code_changed: ${{ steps.plan.outputs.code_changed }}
+      images: ${{ steps.plan.outputs.images }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify planning, shard coverage, and gate failure handling
+        run: python3 -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Plan validation and native image matrix
+        id: plan
+        run: python3 .github/scripts/ci.py plan
+
   frontend:
+    needs: [changes]
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -42,9 +60,12 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
-      - run: pnpm build
+      # TypeScript was already checked above; local pnpm build still includes it.
+      - run: pnpm build:ci
 
-  backend:
+  backend-unit:
+    needs: [changes]
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -54,42 +75,74 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: '21'
+          cache: maven
+      - name: Run unit tests only
+        run: ./mvnw --batch-mode --no-transfer-progress test
+      - name: Retain failed unit test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-unit-reports
+          path: backend/target/surefire-reports/
+          retention-days: 7
+
+  backend-integration:
+    name: Backend integration (shard ${{ matrix.shard }})
+    needs: [changes]
+    if: needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
           cache: maven
       - name: Install local media tools required by PostgreSQL integration tests
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - run: ./mvnw --batch-mode --no-transfer-progress verify
-      # 生成源码入库、构建期不连数据库（见 ADR 0012），因此漂移只能在这里发现：
-      # 对一次性 PostgreSQL 重跑迁移 + codegen，生成结果必须与提交内容完全一致。
-      - name: Verify jOOQ generated sources match migrations
+      - name: Run the shard with isolated PostgreSQL containers
+        env:
+          IT_SHARD: ${{ matrix.shard }}
         run: |
-          # Testcontainers can occupy any ephemeral host port, including 55432.
-          # Let Docker reserve a free port and keep this one-off database isolated.
-          codegen_container="agenvas-jooq-codegen-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          trap 'docker rm -f -v "$codegen_container" >/dev/null 2>&1 || true' EXIT
-          docker run -d --name "$codegen_container" \
-            -e POSTGRES_DB=agenvas -e POSTGRES_USER=agenvas \
-            -e POSTGRES_PASSWORD=codegen-only -p 127.0.0.1::5432 postgres:17.11-alpine
-          codegen_endpoint=$(docker port "$codegen_container" 5432/tcp)
-          codegen_port=${codegen_endpoint##*:}
-          # The initialization server accepts Unix sockets only; wait for final TCP startup.
-          for _ in $(seq 1 30); do
-            if docker exec "$codegen_container" pg_isready -h 127.0.0.1 -U agenvas -d agenvas >/dev/null 2>&1; then
-              break
-            fi
-            sleep 1
-          done
-          docker exec "$codegen_container" pg_isready -h 127.0.0.1 -U agenvas -d agenvas
-          ./mvnw --batch-mode --no-transfer-progress -Pjooq-codegen \
-            "-Djooq.codegen.jdbcUrl=jdbc:postgresql://127.0.0.1:$codegen_port/agenvas" generate-sources
-          # 用 porcelain 而非 git diff：新增表会产生未跟踪文件，git diff 看不到。
-          if [ -n "$(git status --porcelain -- src/jooq/java)" ]; then
-            echo 'src/jooq/java 与迁移不一致，请重新生成并提交：' >&2
-            git status --porcelain -- src/jooq/java >&2
-            exit 1
-          fi
+          integration_classes=$(python3 ../.github/scripts/ci.py shard "$IT_SHARD" 4)
+          ./mvnw --batch-mode --no-transfer-progress -Pci-integration \
+            "-Dit.test=$integration_classes" verify
+      - name: Retain failed integration test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-integration-reports-${{ matrix.shard }}
+          path: backend/target/failsafe-reports/
+          retention-days: 7
+
+  jooq-codegen:
+    needs: [changes]
+    if: needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify jOOQ generated sources match migrations
+        run: bash ../.github/scripts/check-jooq.sh
 
   compose-config:
+    needs: [changes]
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -105,7 +158,7 @@ jobs:
       # Secret scanning must not resolve Maven dependencies over the network.
       TRIVY_OFFLINE_SCAN: 'true'
     steps:
-      # This job runs on fork PRs. Do not pass Provider or deployment secrets to it.
+      # Runs even for documentation-only and fork PRs, without deployment secrets.
       - uses: actions/checkout@v4
       - name: Reject committed secrets
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
@@ -117,34 +170,116 @@ jobs:
           exit-code: '1'
 
   security-images:
-    name: Image build and inventory (${{ matrix.service }}, ${{ matrix.architecture }})
-    needs: [frontend, backend, compose-config, security-source]
+    name: Image build (${{ matrix.service }}, ${{ matrix.architecture }})
+    # Image compilation can run alongside tests; only CI Gate may authorize final tags.
+    needs: [changes]
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: ${{ matrix.runner }}
     env:
       TRIVY_OFFLINE_SCAN: 'true'
     strategy:
       fail-fast: false
-      matrix:
-        architecture: [amd64, arm64]
-        service: [server, web, postgres]
-        include:
-          - architecture: amd64
-            runner: ubuntu-24.04
-          - architecture: arm64
-            runner: ubuntu-24.04-arm
-          - service: server
-            image: agenvas-server:ci
-            dockerfile: deploy/docker/server.Dockerfile
-          - service: web
-            image: agenvas-web:ci
-            dockerfile: deploy/docker/frontend.Dockerfile
-          - service: postgres
-            image: postgres:17.11-alpine
-            dockerfile: ''
+      matrix: ${{ fromJSON(needs.changes.outputs.images) }}
     steps:
       - uses: actions/checkout@v4
-      - name: Validate Docker Hub publishing configuration
+      - name: Set up Docker Buildx
+        if: matrix.dockerfile != ''
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Build application image on the native architecture
+        id: build
+        if: matrix.dockerfile != ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/${{ matrix.architecture }}
+          load: true
+          tags: ${{ matrix.image }}
+          pull: true
+          build-args: ${{ matrix.service == 'server' && 'VERIFY_DEPTH_MODEL=true' || '' }}
+          # Cache compilation/dependencies, while still refreshing runtime apt/apk packages.
+          no-cache-filters: runtime
+          cache-from: type=gha,version=2,scope=${{ matrix.service }}-${{ matrix.architecture }}
+          # All PRs, including forks, only read caches. Trusted runs warm them.
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=gha,version=2,mode=max,scope={0}-{1}', matrix.service, matrix.architecture) || '' }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Pull the official PostgreSQL release image on the native architecture
+        id: pull
+        if: matrix.dockerfile == ''
+        env:
+          IMAGE_PUBLIC: ${{ matrix.image }}
+        run: docker pull "$IMAGE_PUBLIC"
+      - name: Collect release packages and licenses once
+        id: inventory
+        if: env.PUBLISH_IMAGES == 'true'
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: v0.74.0
+          image-ref: ${{ matrix.image }}
+          scanners: license
+          list-all-pkgs: 'true'
+          format: json
+          output: licenses-${{ matrix.service }}.json
+          exit-code: '0'
+      - name: Convert the collected inventory to CycloneDX without rescanning
+        if: env.PUBLISH_IMAGES == 'true'
+        env:
+          IMAGE_SERVICE: ${{ matrix.service }}
+        run: trivy convert --format cyclonedx --output "sbom-$IMAGE_SERVICE.json" "licenses-$IMAGE_SERVICE.json"
+      - name: Keep release SBOM and license inventory
+        if: always() && env.PUBLISH_IMAGES == 'true' && steps.inventory.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-${{ matrix.service }}-${{ matrix.architecture }}
+          path: |
+            sbom-${{ matrix.service }}.json
+            licenses-${{ matrix.service }}.json
+          if-no-files-found: error
+          # Release evidence should not expire as quickly as transient failure reports.
+          retention-days: 90
+      - name: Archive the validated architecture image for gated publication
         if: env.PUBLISH_IMAGES == 'true' && matrix.dockerfile != ''
+        env:
+          IMAGE_LOCAL: ${{ matrix.image }}
+        run: |
+          set -o pipefail
+          docker save "$IMAGE_LOCAL" | gzip -1 > image.tar.gz
+      - name: Retain the exact architecture image until publication
+        if: env.PUBLISH_IMAGES == 'true' && matrix.dockerfile != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.service }}-${{ matrix.architecture }}
+          path: image.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+  ci-gate:
+    name: CI Gate
+    if: always()
+    needs: [changes, frontend, backend-unit, backend-integration, jooq-codegen, compose-config, security-source, security-images]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require every planned check to succeed
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 .github/scripts/ci.py gate
+
+  push-images:
+    name: Push validated image (${{ matrix.service }}, ${{ matrix.architecture }})
+    needs: [ci-gate]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [server, web]
+        architecture: [amd64, arm64]
+    steps:
+      - name: Validate Docker Hub publishing configuration
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -153,76 +288,31 @@ jobs:
             echo 'Set repository secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN before publishing.' >&2
             exit 1
           fi
-      - name: Build application image on the native architecture
-        id: build
-        if: matrix.dockerfile != ''
-        env:
-          IMAGE_DOCKERFILE: ${{ matrix.dockerfile }}
-          IMAGE_LOCAL: ${{ matrix.image }}
+      - name: Download the exact inventoried architecture image
+        uses: actions/download-artifact@v4
+        with:
+          name: image-${{ matrix.service }}-${{ matrix.architecture }}
+      - name: Load the image without rebuilding
         run: |
-          docker build --file "$IMAGE_DOCKERFILE" --tag "$IMAGE_LOCAL" \
-            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
-            --label "org.opencontainers.image.revision=$GITHUB_SHA" .
-      - name: Pull the official PostgreSQL image on the native architecture
-        id: pull
-        if: matrix.dockerfile == ''
-        env:
-          IMAGE_PUBLIC: ${{ matrix.image }}
-        run: docker pull "$IMAGE_PUBLIC"
-      - name: Generate release image SBOM
-        if: always() && (steps.build.outcome == 'success' || steps.pull.outcome == 'success')
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
-        with:
-          version: v0.74.0
-          image-ref: ${{ matrix.image }}
-          # Only collect packages/licenses; do not re-enable vulnerability scanning.
-          scanners: license
-          format: cyclonedx
-          output: sbom-${{ matrix.service }}.json
-          exit-code: '0'
-      - name: Generate license inventory
-        if: always() && (steps.build.outcome == 'success' || steps.pull.outcome == 'success')
-        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
-        with:
-          version: v0.74.0
-          skip-setup-trivy: true
-          image-ref: ${{ matrix.image }}
-          scanners: license
-          format: json
-          output: licenses-${{ matrix.service }}.json
-          exit-code: '0'
-      - name: Keep SBOM and license inventory for release review
-        if: always() && (steps.build.outcome == 'success' || steps.pull.outcome == 'success')
-        uses: actions/upload-artifact@v4
-        with:
-          name: security-${{ matrix.service }}-${{ matrix.architecture }}
-          path: |
-            sbom-${{ matrix.service }}.json
-            licenses-${{ matrix.service }}.json
-          if-no-files-found: error
-      # Publish the exact inventoried local image; do not rebuild after collecting its SBOM.
-      # PRs (including forks) never execute the credential-bearing steps.
+          set -o pipefail
+          gzip -dc image.tar.gz | docker load
       - name: Log in to Docker Hub
-        if: env.PUBLISH_IMAGES == 'true' && matrix.dockerfile != ''
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Push architecture image for this workflow run
-        if: env.PUBLISH_IMAGES == 'true' && matrix.dockerfile != ''
         env:
-          IMAGE_LOCAL: ${{ matrix.image }}
           IMAGE_SERVICE: ${{ matrix.service }}
           IMAGE_ARCHITECTURE: ${{ matrix.architecture }}
         run: |
           image_staging="docker.io/$IMAGE_NAMESPACE/agenvas-$IMAGE_SERVICE:ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$IMAGE_ARCHITECTURE"
-          docker tag "$IMAGE_LOCAL" "$image_staging"
+          docker tag "agenvas-$IMAGE_SERVICE:ci" "$image_staging"
           docker push "$image_staging"
 
   publish-dockerhub:
-    # Release tags appear only after every service and architecture passes all existing gates.
-    needs: [security-images]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [push-images]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -241,7 +331,6 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
           images: docker.io/${{ env.IMAGE_NAMESPACE }}/agenvas-${{ matrix.service }}
-          # latest floats only for stable version tags; a prerelease suffix must never move the rolling channel.
           flavor: latest=false
           tags: |
             type=sha,format=long

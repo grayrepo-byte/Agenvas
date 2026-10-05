@@ -6,6 +6,10 @@ public enum VideoOperation {
     EXTRACT_AUDIO("音频分离", Task.Kind.AUDIO_GENERATION),
     UPSCALE("视频高清", Task.Kind.VIDEO_GENERATION);
 
+    public static final String SILENT_VIDEO_TARGET = "silentVideoTarget";
+    public static final String SILENT_VIDEO_RESULT = "SILENT_VIDEO";
+    public static final String SILENT_VIDEO_LABEL = "无声视频";
+
     private final String resultLabel;
     private final Task.Kind taskKind;
 

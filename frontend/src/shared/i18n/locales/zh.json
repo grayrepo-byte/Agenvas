@@ -2292,5 +2292,10 @@
   "settings.comfy.parameterOptions": "枚举选项（JSON 数组）",
   "settings.comfy.parameterHint": "这里声明的参数在画布“扩展参数”表格中编辑。选择一个文本输入映射为提示词，图片输入显示为具名资源槽位；未映射的输入保持固定值。",
   "settings.comfy.parameterInvalid": "扩展参数的类型、默认值、范围或选项无效，请与原节点输入类型保持一致。",
-  "settings.comfy.duplicateMapping": "同一节点输入不能重复映射，扩展参数的稳定字段键也不能重复。"
+  "settings.comfy.duplicateMapping": "同一节点输入不能重复映射，扩展参数的稳定字段键也不能重复。",
+  "ui.dateTime.chooseDate": "选择日期",
+  "ui.dateTime.previousMonth": "上个月",
+  "ui.dateTime.nextMonth": "下个月",
+  "ui.dateTime.clear": "清空日期",
+  "ui.dateTime.timeLabel": "{0}（时:分:秒）"
 }

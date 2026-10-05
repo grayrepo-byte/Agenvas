@@ -15,6 +15,13 @@
   <a href="LICENSE">MIT</a>
 </p>
 
+<p align="center">Author: <a href="https://x.com/Grayrepo">X / Twitter @Grayrepo</a> · Email: <a href="mailto:yoshioka8084806@gmail.com">yoshioka8084806@gmail.com</a></p>
+
+<p align="center">
+  <img src="docs/assets/wechat-official-account.jpg" alt="WeChat official account QR code" width="180" /><br />
+  Scan to follow on WeChat
+</p>
+
 > Development build for a single self-hosting administrator. See the [development checklist](docs/DEVELOPMENT-CHECKLIST.md) for real model compatibility and release verification status.
 
 ## Features
@@ -34,7 +41,7 @@ The interface supports Chinese, English, Russian, and Japanese. Media adapters i
 
 ### 1. Start with one command
 
-Install and start **Docker Engine / Docker Desktop**, with **Docker Compose v2**. No Git, local build tools, GPU, `.env` file, or model key is needed to start and sign in.
+Before using the command below, install and start **Docker Engine / Docker Desktop**, with **Docker Compose v2**. No Git, local build tools, GPU, `.env` file, or model key is needed to start and sign in.
 
 For a new installation, paste this entire block into a **macOS / Linux** terminal:
 
@@ -45,19 +52,41 @@ mkdir agenvas && cd agenvas && \
   docker compose up -d --wait
 ```
 
-<details>
-<summary><strong>Windows command (Command Prompt / cmd.exe)</strong></summary>
+**Windows: one-command installation**
 
-```bat
-mkdir agenvas && cd agenvas && ^
-  curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml ^
-    -o docker-compose.yml && ^
-  docker compose up -d --wait
+For a new installation, open CMD or PowerShell and paste the corresponding block. Choose one of the two options.
+
+<details>
+<summary><strong>CMD (Command Prompt)</strong></summary>
+
+```cmd
+mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml -o docker-compose.yml && docker compose up -d --wait
 ```
 
 </details>
 
-The command creates an `agenvas` directory, downloads the Compose file, pulls the images, and waits for all three services to become healthy. Keep this directory for future management. If you already have the Compose file, run `docker compose up -d --wait` in its directory.
+<details>
+<summary><strong>PowerShell (Windows PowerShell 5.1 / PowerShell 7)</strong></summary>
+
+```powershell
+& {
+  $ErrorActionPreference = 'Stop'
+  New-Item -ItemType Directory -Path agenvas | Out-Null
+  Set-Location agenvas
+  Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml' -OutFile docker-compose.yml -UseBasicParsing
+  docker compose up -d --wait
+}
+```
+
+</details>
+
+**Windows: install with an AI Agent**
+
+Send the [installation prompt (Chinese)](docs/operations/windows-ai-install-prompt.md) to WorkBuddy or another AI Agent that can run tasks on your computer. It will check the environment, install Agenvas, and start it. Open the address it provides to create your account.
+
+For manual installation, see the [Windows guide (Chinese)](docs/operations/windows-install.md).
+
+These steps prepare an `agenvas` directory and Compose file, pull the images, and wait for all three services to become healthy. Keep this directory for future management. If you already have the Compose file, run `docker compose up -d --wait` in its directory.
 
 Database and encryption secrets are generated and saved automatically on first start. First-time image downloads may take a few minutes.
 
@@ -163,7 +192,7 @@ From the repository root, compile server and web from the current checkout and s
 docker compose -f docker-compose.local.yml up -d --build --wait
 ```
 
-Alternatively, `./deploy/update-local.sh` builds all images before updating containers and waiting for health checks. Its final status table shows only container names, services, status, and ports so full startup commands cannot stretch the table. Source builds need no Docker Hub login. Text and media still default to `configured`. The existing `deploy/compose.yaml` uses the same source build configuration.
+Alternatively, `./deploy/update-local.sh` builds all images before updating containers and waiting for health checks. The backend runs only `package -DskipTests`, without automatically running `mvn verify`; run the full test suites manually as needed or through CI. Its final status table shows only container names, services, status, and ports so full startup commands cannot stretch the table. Source builds need no Docker Hub login. Text and media still default to `configured`. The existing `deploy/compose.yaml` uses the same source build configuration.
 
 Image deployment and source builds both default to the `agenvas` project and retain the same database, media, and credential volumes. Back up data and check version compatibility before switching. To run independent environments simultaneously, use distinct project names with `-p` and override the ports.
 
@@ -218,13 +247,24 @@ Configure these under **Settings → Secrets and variables → Actions** in the 
 
 Prepare two public Docker Hub repositories, `grayrepo/agenvas-server` and `grayrepo/agenvas-web`, allowing anonymous deployment pulls. CI publishes directly under `grayrepo`; to change the publisher, edit the workflow and Compose addresses. PostgreSQL is pulled from its official repository; CI retains its SBOM and license inventory.
 
-`.github/workflows/ci.yml` runs on pushes to `main`, `v*.*.*` version tags, and manual dispatches; only pushes of `v*.*.*` version tags upload to Docker Hub, while `main` pushes and manual runs build and collect inventories without publishing. After frontend/backend tests, Compose checks, source secret scanning, and image builds and inventories on both architectures succeed, it publishes multi-platform manifests from the inventoried application images:
+`.github/workflows/ci.yml` runs on PRs, pushes to `main`, `v*.*.*` version tags, and manual dispatches. Tests and image builds run in parallel:
+
+| Trigger | Validation | Images and inventories |
+| --- | --- | --- |
+| Code PR | Frontend, backend unit tests, all four PostgreSQL IT shards, jOOQ, Compose, secret scan | server/web amd64 builds |
+| Documentation-only PR | Planning checks, secret scan, CI Gate | Heavy jobs skipped |
+| main / manual | Full validation | server/web amd64 + arm64 builds |
+| Version tag push | Full validation | Application builds and official PostgreSQL inventories on both architectures; publication after CI Gate |
+
+`CI Gate` always appears and rejects failed, cancelled, or unexpectedly skipped checks. Select it when configuring a required branch check. Buildx caches are scoped by service and architecture; PRs only read them. Server packaging skips the full test suite, while CI retains one depth-model/JNI smoke test per native architecture.
+
+Only version-tag pushes upload to Docker Hub. Release images are inventoried once, then the JSON is converted to CycloneDX. The same images are loaded from short-lived artifacts and pushed after all checks pass. Failure reports are retained for 7 days, publication images for 1 day, and SBOM/license evidence for 90 days.
 
 - Every publication: `sha-<full 40-character commit SHA>`.
 - `v0.1.0` version tag: also publishes `0.1.0` with the leading `v` removed.
 - Stable version tag (no prerelease suffix, e.g. `v0.1.0`): also points `latest` at that version for the default Compose file; a prerelease (e.g. `v0.1.0-rc.1`) retains its suffix and never updates `latest`.
 
-PRs run checks without Docker Hub credentials or pushes, and `main` pushes or manual runs on non-tag refs only build and collect inventories. Each service and architecture retains SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
+PRs, `main` pushes, and manual runs never access Docker Hub credentials or push images. Release service/architecture jobs retain SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
 
 The workflow follows [Docker's multi-platform build documentation](https://docs.docker.com/build/ci/github-actions/multi-platform/) and [Docker image tagging rules](https://github.com/docker/metadata-action).
 

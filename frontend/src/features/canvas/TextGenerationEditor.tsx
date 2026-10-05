@@ -9,6 +9,7 @@ import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import "./MediaDraftEditor.css";
+import { EditorFeedbackRow } from "./EditorFeedbackRow";
 import { latestMediaTask,MEDIA_TASK_REFRESH_INTERVAL_MS,occupiesMediaCard } from "./mediaTaskState";
 import { taskErrorDetail } from "./taskErrorMessages";
 import "./TextGenerationEditor.css";
@@ -81,7 +82,9 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
         : diagnostics.data?.llmMode === "MOCK" ? t("text.generation.mock") : t("text.generation.modelMissing");
   const taskMessage = latestTask?.status === "SUCCEEDED"
     ? latestTask.output?.selected === false ? t("text.generation.resultArchived") : t("text.generation.resultSelected")
-    : latestTask?.status === "FAILED" ? taskErrorDetail(latestTask.errorCode)
+    : latestTask?.status === "UNKNOWN" ? t("tasks.status.unknown")
+      : latestTask?.status === "BLOCKED" ? t("tasks.status.blocked")
+      : latestTask?.status === "FAILED" ? taskErrorDetail(latestTask.errorCode)
       : latestTask?.status === "CANCELED" ? t("text.generation.canceled")
         : occupied ? t("text.generation.generating") : null;
 
@@ -111,16 +114,18 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
         title={occupied ? t("text.generation.activeTask") : t("text.generate")}
         onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></Button>
     </div>
-    <div className="media-draft-feedback" aria-live="polite">
-      {settings.error ? <p role="alert">{t("text.generation.modelSettingsUnavailable")}<Button variant="ghost" className="media-draft-text-action" type="button"
-          onClick={() => void settings.refetch()}>{t("common.retry")}</Button></p> : null}
-      {diagnostics.error ? <p role="alert">{t("text.generation.modelModeUnavailable")}<Button variant="ghost" className="media-draft-text-action" type="button"
-          onClick={() => void diagnostics.refetch()}>{t("common.retry")}</Button></p> : null}
-      {directTasks.error ? <p role="alert">{t("text.generation.tasksUnavailable")}<Button variant="ghost" className="media-draft-text-action" type="button"
-          onClick={() => void directTasks.refetch()}>{t("common.retry")}</Button></p> : null}
-      {run.error ? <p role="alert">{run.error instanceof ApiError
-        ? run.error.message : t("text.generation.submitFailed")}</p> : null}
-      {taskMessage ? <p className="media-draft-task-status">{taskMessage}</p> : null}
+    <div className="media-draft-feedback">
+      {settings.error ? <EditorFeedbackRow tone="danger" action={<Button variant="ghost" size="xs" type="button"
+          onClick={() => void settings.refetch()}>{t("common.retry")}</Button>}>{t("text.generation.modelSettingsUnavailable")}</EditorFeedbackRow> : null}
+      {diagnostics.error ? <EditorFeedbackRow tone="danger" action={<Button variant="ghost" size="xs" type="button"
+          onClick={() => void diagnostics.refetch()}>{t("common.retry")}</Button>}>{t("text.generation.modelModeUnavailable")}</EditorFeedbackRow> : null}
+      {directTasks.error ? <EditorFeedbackRow tone="danger" action={<Button variant="ghost" size="xs" type="button"
+          onClick={() => void directTasks.refetch()}>{t("common.retry")}</Button>}>{t("text.generation.tasksUnavailable")}</EditorFeedbackRow> : null}
+      {run.error ? <EditorFeedbackRow tone="danger">{run.error instanceof ApiError
+        ? run.error.message : t("text.generation.submitFailed")}</EditorFeedbackRow> : null}
+      {taskMessage ? <EditorFeedbackRow tone={latestTask?.status === "FAILED" ? "danger"
+        : latestTask?.status === "UNKNOWN" || latestTask?.status === "BLOCKED" ? "warning"
+          : latestTask?.status === "SUCCEEDED" ? "success" : occupied ? "loading" : "neutral"}>{taskMessage}</EditorFeedbackRow> : null}
     </div>
   </div>;
 }

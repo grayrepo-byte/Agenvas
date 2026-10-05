@@ -88,4 +88,17 @@ describe("TextGenerationEditor", () => {
     expect(await screen.findByText("生成完成；卡片内容已变化，结果保存在版本历史中。"))
       .toBeInTheDocument();
   });
+
+  it.each(["UNKNOWN", "BLOCKED", "CANCELED"] as const)("shows %s without a generating indicator", async (status) => {
+    server.use(
+      http.get("/api/v1/settings/llm", () => HttpResponse.json({ configured: false })),
+      http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({ llmMode: "MOCK" })),
+      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/text-generations", () => HttpResponse.json([task(status)])),
+    );
+    renderEditor();
+    const message = status === "UNKNOWN" ? "结果未知" : status === "BLOCKED" ? "已阻断" : "本次文字生成已取消。";
+    expect(await screen.findByText(message)).toBeVisible();
+    expect(screen.queryByText("正在生成文字…")).not.toBeInTheDocument();
+  });
+
 });

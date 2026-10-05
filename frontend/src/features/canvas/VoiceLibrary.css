@@ -1,23 +1,6 @@
-.voice-library { position: absolute; display: flex; flex-direction: column; bottom: calc(100% + 12px); right: 0; width: min(640px, 85vw); padding: 16px; color: var(--ui-text); max-height: 70vh; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 14px; }
-.voice-library > :not(.voice-library-list) { flex-shrink: 0; }
-.voice-library-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.voice-library > input { width: 100%; padding: 9px 12px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-field); }
-.voice-library-filters { display: flex; gap: 10px; margin: 12px 0; }
-.voice-library-tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--ui-border); margin-bottom: 10px; }
-.voice-library-tabs button { padding: 8px 0; font-size: 12px; color: var(--ui-text-muted); }
-.voice-library-tabs button[aria-pressed="true"] { color: var(--ui-accent-text); border-bottom: 2px solid var(--ui-accent); }
-.voice-library-list { flex: 0 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 380px; overflow-y: auto; }
-.voice-library-row { display: flex; align-items: center; gap: 8px; padding: 3px 5px; border-radius: 9px; background: var(--ui-surface-raised); }
-.voice-library-choice { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left; padding: 8px; border-radius: 8px; }
-.voice-library-choice:hover, .voice-library-choice[aria-pressed="true"] { background: var(--ui-hover); }
-.voice-library-avatar { display: grid; place-items: center; width: 34px; height: 34px; flex-shrink: 0; border: 1px solid var(--ui-border); border-radius: 50%; background: var(--ui-surface-raised); color: var(--ui-text-secondary); font-size: 12px; }
-.voice-library-choice strong { display: block; font-size: 12px; font-weight: 500; }
-.voice-library-choice small { display: block; margin-top: 3px; font-size: 10px; color: var(--ui-text-muted); }
-.voice-library-row > button:not(.voice-library-choice) { padding: 6px; color: var(--ui-text-muted); }
-.voice-library-row > button[aria-pressed="true"] { color: var(--ui-accent-text); }
-.voice-library button:disabled { opacity: .45; cursor: not-allowed; }
-.voice-library-automatic { display: flex; width: 100%; align-items: center; justify-content: space-between; padding: 9px; font-size: 12px; }
-.voice-library-help { font-size: 10px; color: var(--ui-text-muted); line-height: 1.5; margin: 12px 0 0; }
+.voice-library { position: absolute; bottom: calc(100% + 12px); right: 0; width: min(640px, 85vw); max-height: 70vh; }
+.ui-popover-surface.voice-library { padding: var(--ui-space-4); overflow: hidden; }
+.voice-library-list { min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; max-height: 380px; overflow-y: auto; overscroll-behavior: contain; }
 .media-draft-audio-parameters { display: grid; gap: 12px; }
 .media-draft-audio-parameters label { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .media-draft-audio-parameters input { width: 90px; border: 1px solid var(--ui-border); padding: 8px; border-radius: 6px; background: var(--ui-field); }

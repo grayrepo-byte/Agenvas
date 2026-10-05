@@ -216,6 +216,22 @@
     </build>
 
     <profiles>
+        <!-- CI shards run all selected Failsafe ITs, while the separate unit job owns Surefire.
+             Do not use -DskipTests here: it would also disable integration tests. -->
+        <profile>
+            <id>ci-integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <skipTests>true</skipTests>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
         <!--
           一次性重新生成 jOOQ 源码。生成结果提交在 src/jooq/java，因此普通构建、CI 与
           部署镜像都不需要数据库。重新生成前先启动一个空的 PostgreSQL 17 并把
