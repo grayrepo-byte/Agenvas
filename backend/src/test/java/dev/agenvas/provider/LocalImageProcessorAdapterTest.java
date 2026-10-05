@@ -79,6 +79,28 @@ class LocalImageProcessorAdapterTest {
     }
 
     @Test
+    void resizesProportionallyAndPreservesAlpha() throws Exception {
+        BufferedImage transparent = new BufferedImage(4, 3, BufferedImage.TYPE_INT_ARGB);
+        ImageIO.write(transparent, "png", sourceFile.toFile());
+        for (var parameters : List.of(parameters().put("resizeMode", "PERCENTAGE").put("percentage", 50),
+                parameters().put("resizeMode", "LONGEST_EDGE").put("longestEdge", 2))) {
+            var context = context("RESIZE", parameters);
+            assertThat(adapter("").preflightFailure(context)).isNull();
+            Submission.Completed completed = (Submission.Completed) adapter("").submit(context);
+            try (var payload = completed.payload()) {
+                BufferedImage output = ImageIO.read(payload.stream());
+                assertThat(output.getWidth()).isEqualTo(2);
+                assertThat(output.getHeight()).isEqualTo(2);
+                assertThat(output.getColorModel().hasAlpha()).isTrue();
+                assertThat(output.getRGB(0, 0) >>> 24).isZero();
+            }
+        }
+        assertThat(adapter("").preflightFailure(context("RESIZE", parameters()
+                .put("resizeMode", "LONGEST_EDGE").put("longestEdge", 40000))))
+                .isEqualTo("PROVIDER_UNSUPPORTED_INPUT");
+    }
+
+    @Test
     void cropsNormalizedBounds() throws Exception {
         LocalImageProcessorAdapter adapter = adapter("");
         ObjectNode parameters = parameters().put("x", 0.25).put("y", 0.0)

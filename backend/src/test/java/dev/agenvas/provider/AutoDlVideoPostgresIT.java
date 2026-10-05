@@ -284,6 +284,7 @@ class AutoDlVideoPostgresIT {
             server.createContext("/", exchange -> {
                 String path = exchange.getRequestURI().getPath();
                 if (path.startsWith("/comfyui/outputs/")) {
+                    assertThat(path).doesNotContain("unused");
                     assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
                     if (FAIL_DOWNLOAD.getAndSet(false)) {
                         exchange.sendResponseHeaders(500, -1); exchange.close(); return;
@@ -309,8 +310,18 @@ class AutoDlVideoPostgresIT {
                     queriedKey = exchange.getRequestHeaders().getFirst("Authorization");
                     int count = QUERIES.incrementAndGet();
                     data.put("task_id", path.substring(path.lastIndexOf('/')+1)).put("status", RUNNING.get() ? "RUNNING" : "SUCCESS");
-                    if (!RUNNING.get()) data.putArray("results").addObject().put("type", "video").put("output_type", "output")
-                            .put("url", "http://127.0.0.1:"+server.getAddress().getPort()+"/comfyui/outputs/fresh-"+count+".mp4");
+                    if (!RUNNING.get()) {
+                        var results = data.putArray("results");
+                        String origin = "http://127.0.0.1:" + server.getAddress().getPort();
+                        results.addObject().put("type", "video").put("output_type", "temp")
+                                .put("url", origin + "/comfyui/outputs/unused-preview.mp4");
+                        results.addObject().put("type", "image").put("output_type", "output")
+                                .put("url", origin + "/comfyui/outputs/unused-image.png");
+                        results.addObject().put("type", "video").put("output_type", "output")
+                                .put("url", origin + "/comfyui/outputs/fresh-" + count + ".mp4");
+                        results.addObject().put("type", "video").put("output_type", "output")
+                                .put("url", origin + "/comfyui/outputs/unused-extra.mp4");
+                    }
                 }
                 byte[] bytes = mapper.createObjectNode().put("code", "Success").set("data", data).toString().getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().set("Content-Type", "application/json");

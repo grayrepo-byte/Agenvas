@@ -71,4 +71,40 @@ class MediaDraftReplacementTest {
         order.verify(drafts).save(owner, project, item, 5, "Camera moves forward", parameters,
                 5, capability, MediaDraft.VideoInputMode.START_END, inputs, List.of(), style);
     }
+
+    @Test
+    void capabilitySwitchRetainsMatchedConnectionSourcesBeforeSavingTheCompleteDraft() {
+        UUID previous = UUID.randomUUID();
+        UUID next = UUID.randomUUID();
+        UUID retainedVersion = UUID.randomUUID();
+        MediaDraft before = mock(MediaDraft.class);
+        when(before.capabilityId()).thenReturn(previous);
+        when(drafts.get(owner, project, item)).thenReturn(before);
+        var inputs = List.of(new MediaDraftService.SaveMediaInput(retainedVersion,
+                MediaDraft.InputRole.REFERENCE, "#7C3AED"));
+        when(connections.retainTargetMediaConnectionsWithinChange(owner, project, item, 3,
+                java.util.Set.of(retainedVersion))).thenReturn(4L);
+        service.save(owner, project, item, 3, "Edit", null, null, next,
+                null, inputs, List.of(), null);
+        var order = inOrder(events, connections, drafts);
+        order.verify(events).recordChange(any(), any(), any());
+        order.verify(drafts).get(owner, project, item);
+        order.verify(connections).retainTargetMediaConnectionsWithinChange(owner, project, item, 3,
+                java.util.Set.of(retainedVersion));
+        order.verify(drafts).save(owner, project, item, 4, "Edit", null, null, next,
+                null, inputs, List.of(), null);
+    }
+
+    @Test
+    void ordinaryAutosaveDoesNotClearConnectionOnlyInputs() {
+        UUID capability = UUID.randomUUID();
+        MediaDraft before = mock(MediaDraft.class);
+        when(before.capabilityId()).thenReturn(capability);
+        when(drafts.get(owner, project, item)).thenReturn(before);
+        service.save(owner, project, item, 3, "Autosave", null, null, capability,
+                null, List.of(), List.of(), null);
+        verify(connections, never()).retainTargetMediaConnectionsWithinChange(any(), any(), any(), anyLong(), any());
+        verify(drafts).save(owner, project, item, 3, "Autosave", null, null, capability,
+                null, List.of(), List.of(), null);
+    }
 }

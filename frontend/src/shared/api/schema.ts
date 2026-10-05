@@ -1138,7 +1138,11 @@ export interface paths {
          */
         put: operations["updateMediaCapability"];
         post?: never;
-        delete?: never;
+        /**
+         * 使用 expectedVersion 删除能力并清空默认选择及功能绑定
+         * @description Removes the capability from settings and published catalogs. Immutable versions and existing drafts remain available for accepted task recovery and reference cleanup. New runs and edits are rejected. Built-in LOCAL capabilities cannot be deleted.
+         */
+        delete: operations["deleteMediaCapability"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1795,7 +1799,7 @@ export interface paths {
         put?: never;
         /**
          * 按功能设置固定来源视频并创建独立处理结果节点与任务
-         * @description 深度视频和视频高清派生同一视频产物的独立节点；音频分离创建独立音频产物和节点。所有结果使用空白草稿及可删除派生线，来源选择不变。固定功能设置版本、能力版本、来源视频版本及参数；同键异参冲突。视频高清只执行管理员绑定的兼容 AI 能力。本地深度输出最长边 518px、12fps、无音轨的相对深度视频；本地音频分离读取第一音轨为双声道 48kHz PCM WAV。两类本地输入限 30 秒、200MiB、3840×2160 像素数。RunningHub 使用已发布的单视频输入契约，不接受任意工作流或请求。
+         * @description 深度视频和视频高清派生同一视频产物的独立节点；音频分离创建独立音频产物/节点和来源视频产物的无声视频派生节点，同一任务提交两个结果。所有结果使用空白草稿及可删除派生线，来源选择不变。固定功能设置版本、能力版本、来源视频版本及参数；同键异参冲突。视频高清只执行管理员绑定的兼容 AI 能力。本地深度输出最长边 518px、12fps、无音轨的相对深度视频；本地音频分离读取第一音轨为双声道 48kHz PCM WAV，并直接复制原视频流、移除音轨为无声 MP4；云端音频输出也配套本地无声视频。两个目标独立核对选择 epoch/草稿版本，目标删除不重建，归档重试不重新生成。两类本地输入限 30 秒、200MiB、3840×2160 像素数。RunningHub 使用已发布的单视频输入契约，不接受任意工作流或请求。
          */
         post: operations["runVideoOperation"];
         delete?: never;
@@ -2516,7 +2520,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 为结果未知的任务创建独立的新尝试 */
+        /**
+         * 为结果未知或已受理但阻断的直连媒体任务创建独立的新尝试
+         * @description 仅接受未取消的 UNKNOWN（无外部请求 ID）或 BLOCKED（已有外部请求 ID）直连媒体任务。重试创建新的生成任务并独立预留用量；保留原任务、请求 ID、输入与费用记录，原任务不再占用发起卡片。不会恢复原请求查询。已变化的任务版本或能力配置返回冲突。
+         */
         post: operations["createManualUnknownAttempt"];
         delete?: never;
         options?: never;
@@ -3776,6 +3783,7 @@ export interface components {
             fields: components["schemas"]["RunningHubField"][];
             fixedBindings?: {
                 nodeId: string;
+                /** @description Exact remote input name, including literal dots; never interpreted as a JSON path. */
                 fieldName: string;
                 value: components["schemas"]["RunningHubScalar"];
                 /** @enum {string|null} */
@@ -3786,6 +3794,7 @@ export interface components {
                 /** @enum {string} */
                 kind: "IMAGE" | "VIDEO" | "AUDIO";
                 primary: boolean;
+                /** @description 按 Provider 结果及 ZIP 成员顺序选取此映射的前 N 个媒体结果。超出的结果和未映射附件跳过，不因返回数量超过上限而拒绝整个任务。 */
                 maxCount: number;
             }[];
         };
@@ -3808,7 +3817,7 @@ export interface components {
                 value: components["schemas"]["RunningHubScalar"];
             }[] | null;
             nodeId: string;
-            /** @description Exact declared node input. RunningHub additionally requires [A-Za-z_][A-Za-z0-9_]{0,79}; ComfyUI permits imported graph input names including symbols and Unicode. */
+            /** @description Exact declared node input. RunningHub additionally requires [A-Za-z_][A-Za-z0-9_.]{0,79}, preserving literal dots without JSON path traversal; ComfyUI permits imported graph input names including symbols and Unicode. */
             fieldName: string;
             /** @enum {string|null} */
             source?: "PARAMETER" | "PROMPT" | "DURATION_SECONDS" | null;
@@ -4280,6 +4289,7 @@ export interface components {
             /** @description TEXT 必须提供 format 与 text，text 可为空字符串以创建文字节点的初始正文版本。IMAGE/VIDEO 可为 null，此时只创建稳定资源身份；放入画布时再为新卡片初始化空草稿。 */
             content: components["schemas"]["WritableArtifactContent"] | null;
         };
+        /** @description 普通保存保留既有连线来源；capabilityId 变化时按请求中的精确 mediaInputs 整理引用与拓扑，匹配版本保留全部来源，未匹配版本的媒体输入连线在同一 CAS 事务中移除。校验失败或版本冲突整体回滚。 */
         SaveMediaDraftRequest: {
             /** Format: int64 */
             expectedVersion: number;
@@ -4317,7 +4327,7 @@ export interface components {
         /** @enum {string} */
         VideoOperation: "DEPTH_MAP" | "EXTRACT_AUDIO" | "UPSCALE";
         /** @enum {string} */
-        MediaFunction: "IMAGE_SMART_EDIT" | "IMAGE_RELIGHT" | "IMAGE_OUTPAINT" | "IMAGE_THREE_VIEW" | "IMAGE_LAYER_SPLIT" | "IMAGE_EXPRESSION_EDIT" | "IMAGE_REMOVE_BACKGROUND" | "IMAGE_OBJECT_REMOVE" | "IMAGE_VIEW_ANGLE" | "IMAGE_DEPTH_MAP" | "IMAGE_UPSCALE" | "IMAGE_CROP" | "IMAGE_ROTATE" | "IMAGE_FLIP_HORIZONTAL" | "IMAGE_FLIP_VERTICAL" | "VIDEO_DEPTH_MAP" | "VIDEO_EXTRACT_AUDIO" | "VIDEO_UPSCALE";
+        MediaFunction: "IMAGE_SMART_EDIT" | "IMAGE_RELIGHT" | "IMAGE_OUTPAINT" | "IMAGE_THREE_VIEW" | "IMAGE_LAYER_SPLIT" | "IMAGE_EXPRESSION_EDIT" | "IMAGE_REMOVE_BACKGROUND" | "IMAGE_OBJECT_REMOVE" | "IMAGE_VIEW_ANGLE" | "IMAGE_DEPTH_MAP" | "IMAGE_UPSCALE" | "IMAGE_RESIZE" | "IMAGE_CROP" | "IMAGE_ROTATE" | "IMAGE_FLIP_HORIZONTAL" | "IMAGE_FLIP_VERTICAL" | "VIDEO_DEPTH_MAP" | "VIDEO_EXTRACT_AUDIO" | "VIDEO_UPSCALE";
         MediaFunctionSetting: {
             operation: components["schemas"]["MediaFunction"];
             /** Format: uuid */
@@ -4351,7 +4361,7 @@ export interface components {
             /** Format: int64 */
             expectedCanvasItemVersion: number;
             /** @enum {string} */
-            operation: "SMART_EDIT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
+            operation: "SMART_EDIT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "RESIZE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
             instruction?: string | null;
             /** Format: int64 */
             expectedFunctionVersion: number;
@@ -4365,6 +4375,13 @@ export interface components {
             dynamicValues?: {
                 [key: string]: string | number | boolean;
             };
+            /**
+             * @description RESIZE requires exactly the value for the selected mode; dimensions round to the nearest pixel (minimum 1), output is limited to 40 MP.
+             * @enum {string}
+             */
+            resizeMode?: "PERCENTAGE" | "LONGEST_EDGE";
+            percentage?: number;
+            longestEdge?: number;
             /** @enum {integer} */
             scale?: 2 | 4;
             x?: number;
@@ -7783,6 +7800,43 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    deleteMediaCapability: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                connectionId: string;
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 删除后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     setMediaDefault: {

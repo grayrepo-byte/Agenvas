@@ -156,6 +156,57 @@ class ManualUnknownRetryPostgresIT {
                         .header("Idempotency-Key", "foreign")
                         .contentType("application/json").content(body))
                 .andExpect(status().isNotFound());
+
+        // Accepted requests whose result collection stopped must also have an explicit
+        // new-attempt path. Preserve their request ID and reservation as audit evidence.
+        var blockedCard = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
+                "Blocked retry card", null);
+        UUID blockedItem = dev.agenvas.support.CanvasMediaFixture.place(
+                canvas, owner.userId(), project.id(), blockedCard.artifact().id());
+        dev.agenvas.support.CanvasMediaFixture.save(drafts, owner.userId(), project.id(), blockedItem,
+                0, "Synthetic blocked retry", null, null, null);
+        Task accepted = directMedia.run(owner.userId(), project.id(), blockedCard.artifact().id(),
+                blockedItem, 1, "blocked-direct");
+        jdbc.sql("update task set status='BLOCKED', provider_request_id='synthetic-accepted', "
+                        + "error_code='PROVIDER_POLL_RETRY_EXHAUSTED', version=version+1 where id=:id")
+                .param("id", accepted.id()).update();
+        Task blocked = tasks.get(owner.userId(), project.id(), accepted.id());
+        assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), blocked.id(),
+                blocked.version() - 1, "stale-blocked"))
+                .isInstanceOf(ApiProblemException.class);
+        Task blockedReplacement;
+        CountDownLatch retryStart = new CountDownLatch(1);
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            Future<Task> first = pool.submit(() -> {
+                retryStart.await();
+                return retries.create(owner.userId(), project.id(), blocked.id(), blocked.version(), "blocked-retry");
+            });
+            Future<Task> duplicate = pool.submit(() -> {
+                retryStart.await();
+                return retries.create(owner.userId(), project.id(), blocked.id(), blocked.version(), "blocked-retry");
+            });
+            retryStart.countDown();
+            blockedReplacement = first.get();
+            assertThat(duplicate.get().id()).isEqualTo(blockedReplacement.id());
+        }
+        assertThat(blockedReplacement.status()).isEqualTo(Task.Status.READY);
+        assertThat(blockedReplacement.providerRequestId()).isNull();
+        assertThat(blockedReplacement.input()).isEqualTo(blocked.input());
+        assertThat(blockedReplacement.attemptNo()).isEqualTo(2);
+        assertThat(tasks.get(owner.userId(), project.id(), blocked.id())).isEqualTo(blocked);
+        assertThat(taskRepository.listMediaForCanvasItem(owner.userId(), project.id(), blockedItem))
+                .extracting(Task::id).containsExactly(blockedReplacement.id());
+        assertThat(taskRepository.findOccupyingDirectMediaTask(project.id(), blockedItem))
+                .get().extracting(Task::id).isEqualTo(blockedReplacement.id());
+        assertThat(jdbc.sql("select count(*) from usage_ledger where task_id in (:old,:new)")
+                .param("old", blocked.id()).param("new", blockedReplacement.id())
+                .query(Long.class).single()).isGreaterThanOrEqualTo(2L);
+        mvc.perform(post("/api/v1/projects/" + project.id() + "/tasks/" + blocked.id() + "/new-attempt")
+                        .with(authenticated).with(csrf()).header("Idempotency-Key", "blocked-retry")
+                        .contentType("application/json").content("{\"expectedTaskVersion\":" + blocked.version() + "}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(blockedReplacement.id().toString()));
+        assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), blocked.id(), blocked.version(), "another-blocked-retry"))
+                .isInstanceOf(ApiProblemException.class);
         // 切到 ComfyUI 适配器后仍由通用认领路径处理；原 UNKNOWN 记录保留，
         // 但不会阻塞用户显式创建的替代任务。
         jdbc.sql("update media_capability_version set adapter_id = 'COMFY_IMAGE_V1'").update();

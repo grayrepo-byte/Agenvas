@@ -15,6 +15,13 @@
   <a href="LICENSE">MIT</a>
 </p>
 
+<p align="center">Author: <a href="https://x.com/Grayrepo">X / Twitter @Grayrepo</a> · Email: <a href="mailto:yoshioka8084806@gmail.com">yoshioka8084806@gmail.com</a></p>
+
+<p align="center">
+  <img src="docs/assets/wechat-official-account.jpg" alt="WeChat official account QR code" width="180" /><br />
+  Scan to follow on WeChat
+</p>
+
 > Development build for a single self-hosting administrator. See the [development checklist](docs/DEVELOPMENT-CHECKLIST.md) for real model compatibility and release verification status.
 
 ## Features
@@ -34,7 +41,7 @@ The interface supports Chinese, English, Russian, and Japanese. Media adapters i
 
 ### 1. Start with one command
 
-Install and start **Docker Engine / Docker Desktop**, with **Docker Compose v2**. No Git, local build tools, GPU, `.env` file, or model key is needed to start and sign in.
+Before using the command below, install and start **Docker Engine / Docker Desktop**, with **Docker Compose v2**. No Git, local build tools, GPU, `.env` file, or model key is needed to start and sign in.
 
 For a new installation, paste this entire block into a **macOS / Linux** terminal:
 
@@ -45,19 +52,41 @@ mkdir agenvas && cd agenvas && \
   docker compose up -d --wait
 ```
 
-<details>
-<summary><strong>Windows command (Command Prompt / cmd.exe)</strong></summary>
+**Windows: one-command installation**
 
-```bat
-mkdir agenvas && cd agenvas && ^
-  curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml ^
-    -o docker-compose.yml && ^
-  docker compose up -d --wait
+For a new installation, open CMD or PowerShell and paste the corresponding block. Choose one of the two options.
+
+<details>
+<summary><strong>CMD (Command Prompt)</strong></summary>
+
+```cmd
+mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml -o docker-compose.yml && docker compose up -d --wait
 ```
 
 </details>
 
-The command creates an `agenvas` directory, downloads the Compose file, pulls the images, and waits for all three services to become healthy. Keep this directory for future management. If you already have the Compose file, run `docker compose up -d --wait` in its directory.
+<details>
+<summary><strong>PowerShell (Windows PowerShell 5.1 / PowerShell 7)</strong></summary>
+
+```powershell
+& {
+  $ErrorActionPreference = 'Stop'
+  New-Item -ItemType Directory -Path agenvas | Out-Null
+  Set-Location agenvas
+  Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml' -OutFile docker-compose.yml -UseBasicParsing
+  docker compose up -d --wait
+}
+```
+
+</details>
+
+**Windows: install with an AI Agent**
+
+Send the [installation prompt (Chinese)](docs/operations/windows-ai-install-prompt.md) to WorkBuddy or another AI Agent that can run tasks on your computer. It will check the environment, install Agenvas, and start it. Open the address it provides to create your account.
+
+For manual installation, see the [Windows guide (Chinese)](docs/operations/windows-install.md).
+
+These steps prepare an `agenvas` directory and Compose file, pull the images, and wait for all three services to become healthy. Keep this directory for future management. If you already have the Compose file, run `docker compose up -d --wait` in its directory.
 
 Database and encryption secrets are generated and saved automatically on first start. First-time image downloads may take a few minutes.
 
@@ -163,7 +192,7 @@ From the repository root, compile server and web from the current checkout and s
 docker compose -f docker-compose.local.yml up -d --build --wait
 ```
 
-Alternatively, `./deploy/update-local.sh` builds all images before updating containers and waiting for health checks. Its final status table shows only container names, services, status, and ports so full startup commands cannot stretch the table. Source builds need no Docker Hub login. Text and media still default to `configured`. The existing `deploy/compose.yaml` uses the same source build configuration.
+Alternatively, `./deploy/update-local.sh` builds all images before updating containers and waiting for health checks. The backend runs only `package -DskipTests`, without automatically running `mvn verify`; run the full test suites manually as needed or through CI. Its final status table shows only container names, services, status, and ports so full startup commands cannot stretch the table. Source builds need no Docker Hub login. Text and media still default to `configured`. The existing `deploy/compose.yaml` uses the same source build configuration.
 
 Image deployment and source builds both default to the `agenvas` project and retain the same database, media, and credential volumes. Back up data and check version compatibility before switching. To run independent environments simultaneously, use distinct project names with `-p` and override the ports.
 

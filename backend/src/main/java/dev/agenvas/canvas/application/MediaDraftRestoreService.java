@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 
-/** Coordinates topology cleanup and full draft replacement in one transaction. */
+/** Coordinates topology reconciliation and complete draft writes in one transaction. */
 @Service
 public class MediaDraftRestoreService {
     private final CanvasConnectionService connections;
@@ -30,6 +30,34 @@ public class MediaDraftRestoreService {
                 ownerId, projectId, canvasItemId, expectedDraftVersion);
         return drafts.restoreVersionInputs(ownerId, projectId, canvasItemId, versionId,
                 versionAfterCleanup);
+    }
+
+    /** Switching capability is an explicit input reconciliation. Ordinary autosaves still
+     * retain connection-only inputs; a switch removes only lines excluded by the new plan.
+     * Cleanup, draft validation/CAS and the event share the project lock and transaction.
+     */
+    @Transactional
+    public MediaDraft save(UUID ownerId, UUID projectId, UUID canvasItemId,
+            long expectedDraftVersion, String prompt, JsonNode parameters,
+            Integer durationSeconds, UUID capabilityId, MediaDraft.VideoInputMode videoInputMode,
+            List<MediaDraftService.SaveMediaInput> mediaInputs,
+            List<MediaDraft.PromptMention> mentions, UUID styleId) {
+        return events.recordChange(ownerId, projectId, () -> {
+            MediaDraft before = drafts.get(ownerId, projectId, canvasItemId);
+            long version = expectedDraftVersion;
+            if (!java.util.Objects.equals(before.capabilityId(), capabilityId)) {
+                java.util.Set<UUID> retained = mediaInputs == null ? java.util.Set.of()
+                        : mediaInputs.stream().filter(java.util.Objects::nonNull)
+                                .map(MediaDraftService.SaveMediaInput::versionId)
+                                .collect(java.util.stream.Collectors.toSet());
+                version = connections.retainTargetMediaConnectionsWithinChange(ownerId, projectId,
+                        canvasItemId, expectedDraftVersion, retained);
+            }
+            MediaDraft saved = drafts.save(ownerId, projectId, canvasItemId, version,
+                    prompt, parameters, durationSeconds, capabilityId, videoInputMode,
+                    mediaInputs, mentions, styleId);
+            return ProjectEventService.Change.unchanged(saved);
+        }).value();
     }
 
     /** An explicit full replacement removes connection sources atomically with the new inputs.

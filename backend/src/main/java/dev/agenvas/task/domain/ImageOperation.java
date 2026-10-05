@@ -13,6 +13,7 @@ public enum ImageOperation {
     VIEW_ANGLE("视角调整", true, false),
     DEPTH_MAP("深度图", false, false),
     UPSCALE("高清放大", false, false),
+    RESIZE("缩放", false, false),
     CROP("裁剪", false, false),
     ROTATE("旋转", false, false),
     FLIP_HORIZONTAL("水平镜像", false, false),

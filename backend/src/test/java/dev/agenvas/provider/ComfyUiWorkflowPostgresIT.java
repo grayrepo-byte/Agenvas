@@ -348,10 +348,11 @@ class ComfyUiWorkflowPostgresIT {
                     return;
                 }
                 // Native proxies can report a terminal status without ComfyUI's optional completed flag.
-                respond(exchange, "{\"" + id + "\":{\"status\":{\"status_str\":\"success\"},\"outputs\":{\"99\":{\"images\":[{\"filename\":\"image.png\",\"type\":\"output\",\"subfolder\":\"render/day\"}]}}}}");
+                respond(exchange, "{\"" + id + "\":{\"status\":{\"status_str\":\"success\"},\"outputs\":{\"99\":{\"images\":[{\"filename\":\"preview.png\",\"type\":\"temp\"},{\"filename\":\"image.png\",\"type\":\"output\",\"subfolder\":\"render/day\"},{\"filename\":\"unused.png\",\"type\":\"output\"}]}}}}");
             });
             server.createContext(PROXY_PREFIX + "/view", exchange -> {
                 assertThat(exchange.getRequestURI().getRawQuery()).contains("subfolder=render%2Fday");
+                assertThat(exchange.getRequestURI().getRawQuery()).contains("filename=image.png");
                 exchange.getResponseHeaders().add("Location", "/archived/image.png");
                 exchange.sendResponseHeaders(302, -1);
                 exchange.close();

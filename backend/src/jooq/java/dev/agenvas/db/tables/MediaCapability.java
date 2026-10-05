@@ -111,6 +111,12 @@ public class MediaCapability extends TableImpl<MediaCapabilityRecord> {
      */
     public final TableField<MediaCapabilityRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
+    /**
+     * The column <code>public.media_capability.deleted_at</code>.
+     * 能力删除时间；目录不再展示，历史任务保留不可变版本用于恢复
+     */
+    public final TableField<MediaCapabilityRecord, OffsetDateTime> DELETED_AT = createField(DSL.name("deleted_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "能力删除时间；目录不再展示，历史任务保留不可变版本用于恢复");
+
     private MediaCapability(Name alias, Table<MediaCapabilityRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }

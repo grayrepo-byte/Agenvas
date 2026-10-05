@@ -1,10 +1,11 @@
-import { Field, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { ArrowSquareOut,ListMagnifyingGlass } from "@phosphor-icons/react";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState,type FormEvent,type ReactNode } from "react";
 import { Link,Navigate,useSearchParams } from "react-router";
 import { HTTP_STATUS,ApiError,getCurrentUser,getTask,listCallLogs,type CallLog,type CallLogFilters,type Task } from "../../shared/api/client";
 import { getFormatLocale,t,useLocale } from "../../shared/i18n";
+import { DateTimePicker } from "../../shared/ui/DateTimePicker";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState,Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
@@ -19,8 +20,6 @@ import "./CallLogsPage.css";
 const PAGE_SIZE = 20;
 const FIRST_PAGE = 0;
 const BAD_REQUEST_STATUS = 400;
-const MILLISECONDS_PER_MINUTE = 60_000;
-const LOCAL_DATE_TIME_LENGTH = 19;
 const KIND_LABELS: Record<CallLog["kind"], string> = { get LLM() { return t("models.text"); }, get IMAGE() { return t("common.image"); }, get VIDEO() { return t("common.video"); }, get AUDIO() { return t("common.audio"); } };
 const STATUS_LABELS: Record<CallLog["status"], string> = { get RUNNING() { return t("logs.calls.calling"); }, get SUCCEEDED() { return t("logs.calls.success"); }, get FAILED() { return t("common.failed"); }, get UNKNOWN() { return t("common.unknown"); } };
 const OPERATION_LABELS: Record<CallLog["operation"], string> = { get CHAT() { return t("logs.calls.modelConversation"); }, get SUBMIT() { return t("logs.calls.submitGeneration"); }, get POLL() { return t("logs.calls.results"); }, get LEGACY() { return t("logs.calls.historicalTask"); } };
@@ -129,17 +128,23 @@ function CallLogFilterForm({ filters, onApply, disabled }: { filters: CallLogFil
     onApply(next);
   }
   return <form className="ui-form" onSubmit={submit}>
-    <div className="call-log-filters">
-      <Field><FieldLabel className="ui-field block">{t("logs.calls.projectId")}<Input name="projectId" defaultValue={filters.projectId} placeholder={t("logs.calls.allProjects")} /></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("logs.calls.callType")}<Select name="kind" defaultValue={filters.kind ?? ""}><option value="">{t("common.allKinds")}</option>
-        {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("logs.calls.status")}<Select name="status" defaultValue={filters.status ?? ""}><option value="">{t("logs.calls.allStatuses")}</option>
-        {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">Trace ID<Input name="traceId" defaultValue={filters.traceId} placeholder={t("logs.calls.traceSearchPlaceholder")} /></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("logs.calls.startTime")}<Input type="datetime-local" name="from" step="1" defaultValue={localDateTime(filters.from)} /></FieldLabel></Field>
-      <Field><FieldLabel className="ui-field block">{t("logs.calls.endTime")}<Input type="datetime-local" name="to" step="1" defaultValue={localDateTime(filters.to)} /></FieldLabel></Field>
-    </div>
-    {error ? <p className="ui-error" role="alert">{error}</p> : null}
+    <FieldGroup className="call-log-filters">
+      <Field><FieldLabel htmlFor="call-log-project">{t("logs.calls.projectId")}</FieldLabel>
+        <Input id="call-log-project" name="projectId" defaultValue={filters.projectId} placeholder={t("logs.calls.allProjects")} /></Field>
+      <Field><FieldLabel htmlFor="call-log-kind">{t("logs.calls.callType")}</FieldLabel>
+        <Select id="call-log-kind" name="kind" defaultValue={filters.kind ?? ""}><option value="">{t("common.allKinds")}</option>
+          {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
+      <Field><FieldLabel htmlFor="call-log-status">{t("logs.calls.status")}</FieldLabel>
+        <Select id="call-log-status" name="status" defaultValue={filters.status ?? ""}><option value="">{t("logs.calls.allStatuses")}</option>
+          {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
+      <Field><FieldLabel htmlFor="call-log-trace">Trace ID</FieldLabel>
+        <Input id="call-log-trace" name="traceId" defaultValue={filters.traceId} placeholder={t("logs.calls.traceSearchPlaceholder")} /></Field>
+      <Field data-invalid={Boolean(error)}><FieldLabel htmlFor="call-log-from">{t("logs.calls.startTime")}</FieldLabel>
+        <DateTimePicker id="call-log-from" name="from" label={t("logs.calls.startTime")} defaultValue={filters.from} invalid={Boolean(error)} describedBy={error ? "call-log-time-error" : undefined} /></Field>
+      <Field data-invalid={Boolean(error)}><FieldLabel htmlFor="call-log-to">{t("logs.calls.endTime")}</FieldLabel>
+        <DateTimePicker id="call-log-to" name="to" label={t("logs.calls.endTime")} defaultValue={filters.to} invalid={Boolean(error)} describedBy={error ? "call-log-time-error" : undefined} /></Field>
+    </FieldGroup>
+    {error ? <FieldError id="call-log-time-error">{error}</FieldError> : null}
     <div className="ui-toolbar"><span className="ui-muted" role="status">{filterCount ? t("logs.calls.filterCount", { "0": filterCount }) : t("logs.calls.allRecords")}</span>
     <div className="ui-form-actions"><Button variant="default"  type="submit" disabled={disabled}>{t("logs.calls.filter")}</Button>
       <Button variant="ghost"  type="button" disabled={disabled} onClick={() => { setError(null); onApply(new URLSearchParams()); }}>{t("logs.calls.clearFilters")}</Button></div></div>
@@ -212,7 +217,7 @@ function CallLogTask({ projectId, taskId }: { projectId: string; taskId: string 
     </Notice> : null}
     {task.data && !task.isError ? <div className="ui-toolbar">
       <span className="ui-muted">{t("logs.calls.currentStatus", { "0": TASK_STATUS_LABELS[task.data.status] })}</span>
-      <Link className="secondary-button" to={`/projects/${encodeURIComponent(projectId)}`}>{t("logs.calls.openProject")}<ArrowSquareOut size={14} aria-hidden /></Link>
+      <Button variant="outline" asChild><Link to={`/projects/${encodeURIComponent(projectId)}`}>{t("logs.calls.openProject")}<ArrowSquareOut data-icon="inline-end" aria-hidden /></Link></Button>
     </div> : null}
   </section>;
 }
@@ -225,11 +230,4 @@ function Detail({ label, value }: { label: string; value: ReactNode }) {
 function LogTime({ value, missing = t("common.notRecorded") }: { value: string | null; missing?: string }) {
   useLocale();
   return value ? <time dateTime={value}>{new Date(value).toLocaleString(getFormatLocale())}</time> : <span className="ui-muted">{missing}</span>;
-}
-
-function localDateTime(value?: string): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return new Date(date.getTime() - date.getTimezoneOffset() * MILLISECONDS_PER_MINUTE).toISOString().slice(0, LOCAL_DATE_TIME_LENGTH);
 }

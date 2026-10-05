@@ -420,13 +420,13 @@ function nodeMouseGesture(type: "mouseDown" | "mouseMove" | "mouseUp", node: HTM
   fireEvent(target, event);
 }
 
-function observeLayoutSaves(fail = false) {
+function observeLayoutSaves(fail = false, baseItems = items) {
   const batches: CanvasCommand[][] = [];
   server.use(http.post("/api/v1/projects/project-1/canvas/commands", async ({ request }) => {
     const body = await request.json() as { commands: CanvasCommand[] };
     batches.push(body.commands);
     if (fail) return HttpResponse.json({ code: "VERSION_CONFLICT", title: "布局冲突" }, { status: 409 });
-    return HttpResponse.json({ items: items.map((item) => {
+    return HttpResponse.json({ items: baseItems.map((item) => {
       const command = body.commands.find((candidate) => candidate.itemId === item.id);
       return command?.type === "UPDATE_LAYOUT"
         ? { ...item, x: command.x, y: command.y, width: command.width, height: command.height,
@@ -437,6 +437,35 @@ function observeLayoutSaves(fail = false) {
 }
 
 describe("node click and drag gestures", () => {
+  it.each([".audio-player-details", ".audio-player"])("selects and drags an audio node from %s", async (targetSelector) => {
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    const source = items[0]!;
+    const version: NonNullable<CanvasItem["selectedVersion"]> = { ...source.artifact!.resourceDefaultVersion!,
+      content: { sourceType: "UPLOAD", assetId: "synthetic-audio" } };
+    const audioItems = items.map((item) => item.id === source.id ? {
+      ...item, selectedVersionId: version.id, selectedVersion: version,
+      artifact: { ...source.artifact!, kind: "AUDIO" as const, resourceDefaultVersion: version },
+    } : item);
+    server.use(
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: audioItems } })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: audioItems })),
+      http.get("/api/v1/projects/:projectId/assets/synthetic-audio/content", () => new HttpResponse(null, { status: 503 })),
+    );
+    const saves = observeLayoutSaves(false, audioItems);
+    await renderInteractiveFlow();
+    const target = nodeElement("image-card").querySelector<HTMLElement>(targetSelector)!;
+    fireEvent.click(target);
+    expect(selectedIds()).toEqual(["image-card"]);
+    act(() => useCanvasStore.getState().setSelectedIds([]));
+    nodeMouseGesture("mouseDown", target, 0);
+    nodeMouseGesture("mouseMove", target, CANVAS_POINTER_THRESHOLD + 1);
+    expect(nodeElement("image-card").querySelector(".artifact-canvas-card")).toHaveClass("is-selected");
+    nodeMouseGesture("mouseMove", target, 40);
+    nodeMouseGesture("mouseUp", target, 40);
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toEqual([expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "image-card", x: 36, y: 0 })]);
+  });
+
   it("highlights an unselected node only while dragging, saves on release, and accepts the next click", async () => {
     const saves = observeLayoutSaves();
     await renderInteractiveFlow();

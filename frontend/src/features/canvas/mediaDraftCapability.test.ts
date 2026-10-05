@@ -14,7 +14,7 @@ const image: MediaCapability = {
 };
 const video: MediaCapability = { ...image, id: "video-model", kind: "VIDEO_GENERATION",
   adapterId: "ARK_SEEDANCE_2_I2V", supportedVideoInputModes: ["TEXT", "GENERAL_REFERENCE", "START_END"],
-  defaultVideoInputMode: "TEXT" };
+  maxReferenceAudios: 3, maxReferenceVideos: 3, supportsEndFrame: true, defaultVideoInputMode: "TEXT" };
 const imageInput = { versionId: "image-version", role: "REFERENCE", color: "#F15CAF" } as const;
 const audioInput = { versionId: "audio-version", role: "AUDIO_REFERENCE", color: "#67C7F3" } as const;
 const fields: MediaDraftFields = { prompt: "Create a scene", parameters: {}, durationSeconds: 5,
@@ -33,6 +33,160 @@ const dynamic: MediaCapability = { ...video, id: "runninghub", adapterId: "RUNNI
   settings: { runningHub: definition } };
 
 describe("media capability changes", () => {
+  it.each((["IMAGE", "VIDEO", "AUDIO"] as const).flatMap((kind) =>
+    (["IMAGE", "VIDEO", "AUDIO"] as const).map((inputKind) => ({ kind, inputKind }))))(
+    "matches $inputKind references to published slots independently of $kind output", ({ kind, inputKind }) => {
+      const input = { ...imageInput, role: inputKind === "AUDIO" ? "AUDIO_REFERENCE" as const
+        : inputKind === "VIDEO" ? "VIDEO_REFERENCE" as const : "REFERENCE" as const };
+      const next: MediaCapability = { ...dynamic, kind: kind === "AUDIO" ? "AUDIO_GENERATION"
+        : kind === "VIDEO" ? "VIDEO_GENERATION" : "IMAGE_GENERATION", settings: { runningHub: { ...definition,
+        fields: [{ ...definition.fields[0]!, type: inputKind }], outputs: [{ kind, primary: true, maxCount: 1 }] } } };
+      const change = planMediaCapabilityChange({ kind, fields: { ...fields,
+        mediaInputs: [input], prompt: `Use ${MENTION_MARKER}`, mentions: [input] },
+      capabilityId: next.id, resolvedCapabilityId: next.id, next });
+      expect(change.fields).toMatchObject({ parameters: { dynamicValues: { frame: input.versionId } },
+        mediaInputs: [input], prompt: `Use ${MENTION_MARKER}`, mentions: [input] });
+    });
+
+  it("trims image references when switching ordinary image models to a smaller capacity", () => {
+    const next = { ...image, maxReferenceImages: 1 };
+    const change = planMediaCapabilityChange({ kind: "IMAGE", fields: { ...fields,
+      mediaInputs: [imageInput, { ...imageInput, versionId: "extra-image" }] },
+      capabilityId: next.id, resolvedCapabilityId: next.id, previous: image, next });
+    expect(change.fields.mediaInputs).toEqual([imageInput]);
+  });
+  it("prunes unsupported types and excess references when switching ordinary video models", () => {
+    const inputs = [imageInput, { ...imageInput, versionId: "extra-image" }, audioInput,
+      { ...imageInput, versionId: "video-version", role: "VIDEO_REFERENCE" as const }];
+    const next = { ...video, maxReferenceImages: 1, maxReferenceAudios: 1, maxReferenceVideos: 0 };
+    const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, videoInputMode: "GENERAL_REFERENCE",
+      mediaInputs: inputs, prompt: inputs.map(() => MENTION_MARKER).join("/"), mentions: inputs },
+    capabilityId: next.id, resolvedCapabilityId: next.id, previous: video, next });
+    expect(change.fields.mediaInputs).toEqual([imageInput, audioInput]);
+    expect(change.fields.prompt).toBe(`${MENTION_MARKER}//${MENTION_MARKER}/`);
+  });
+
+  it("removes only the end frame when switching to a first-frame-only video model", () => {
+    const start = { ...imageInput, role: "START_FRAME" as const };
+    const end = { ...imageInput, versionId: "end-version", role: "END_FRAME" as const };
+    const next = { ...video, supportedVideoInputModes: ["START_END" as const], supportsEndFrame: false };
+    const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, videoInputMode: "START_END",
+      mediaInputs: [start, end], prompt: `${MENTION_MARKER}/${MENTION_MARKER}`, mentions: [start, end] },
+    capabilityId: next.id, resolvedCapabilityId: next.id, previous: video, next });
+    expect(change.fields.mediaInputs).toEqual([start]);
+    expect(change.fields.prompt).toBe(`${MENTION_MARKER}/`);
+  });
+
+  it("selects text and clears references when switching to a text-only video model", () => {
+    const next = { ...video, supportedVideoInputModes: ["TEXT" as const], defaultVideoInputMode: "TEXT" as const };
+    const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, videoInputMode: "GENERAL_REFERENCE",
+      mediaInputs: [imageInput], prompt: `Use ${MENTION_MARKER}`, mentions: [imageInput] },
+    capabilityId: next.id, resolvedCapabilityId: next.id, previous: video, next });
+    expect(change.fields).toMatchObject({ videoInputMode: "TEXT", mediaInputs: [], mentions: [], prompt: "Use " });
+  });
+
+  it("prunes unsupported references when switching ordinary audio models", () => {
+    const previous = { ...image, kind: "AUDIO_GENERATION" as const, maxReferenceAudios: 3 };
+    const next = { ...previous, maxReferenceImages: 0, maxReferenceAudios: 1 };
+    const change = planMediaCapabilityChange({ kind: "AUDIO", fields: { ...fields,
+      mediaInputs: [imageInput, audioInput, { ...audioInput, versionId: "extra-audio" }] },
+    capabilityId: next.id, resolvedCapabilityId: next.id, previous, next });
+    expect(change.fields.mediaInputs).toEqual([audioInput]);
+  });
+
+  it.each(["IMAGE", "AUDIO"] as const)("keeps the first compatible %s modality when switching a mixed workflow to Seed Audio", (first) => {
+    const next = { ...image, adapterId: "VOLC_SEED_AUDIO_1", kind: "AUDIO_GENERATION" as const,
+      maxReferenceImages: 1, maxReferenceAudios: 3 };
+    const inputs = first === "IMAGE" ? [imageInput, audioInput] : [audioInput, imageInput];
+    const change = planMediaCapabilityChange({ kind: "AUDIO", fields: { ...fields, mediaInputs: inputs },
+      capabilityId: next.id, resolvedCapabilityId: next.id, previous: dynamic, next });
+    expect(change.fields.mediaInputs).toEqual([inputs[0]]);
+  });
+
+  it("reserves an audio reference slot for the selected speaker when switching from a workflow", () => {
+    const next = { ...image, adapterId: "VOLC_SEED_AUDIO_1", kind: "AUDIO_GENERATION" as const,
+      maxReferenceImages: 1, maxReferenceAudios: 2, settings: { defaultParameters: { speaker: "synthetic-voice" } } };
+    const change = planMediaCapabilityChange({ kind: "AUDIO", fields: { ...fields,
+      mediaInputs: [imageInput, audioInput, { ...audioInput, versionId: "extra-audio" }] },
+      capabilityId: next.id, resolvedCapabilityId: next.id, previous: dynamic, next });
+    expect(change.fields.mediaInputs).toEqual([audioInput]);
+  });
+
+  it("assigns existing GPT Image references to RunningHub image slots when switching models", () => {
+    const next: MediaCapability = { ...image, id: "runninghub-edit", adapterId: "RUNNINGHUB_IMAGE",
+      settings: { runningHub: { ...definition, outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }] } } };
+    const change = planMediaCapabilityChange({ kind: "IMAGE", fields: { ...fields,
+      mediaInputs: [imageInput], prompt: `Edit ${MENTION_MARKER}`, mentions: [imageInput] },
+    capabilityId: next.id, resolvedCapabilityId: next.id, previous: image, next });
+    expect(change.fields).toMatchObject({ parameters: { dynamicValues: { frame: imageInput.versionId } },
+      mediaInputs: [imageInput], prompt: `Edit ${MENTION_MARKER}`,
+      mentions: [{ versionId: imageInput.versionId, role: "REFERENCE" }] });
+  });
+
+  it("matches media types and active slots in published order, pruning only excess references", () => {
+    const second = { ...imageInput, versionId: "second-image" };
+    const excess = { ...imageInput, versionId: "excess-image" };
+    const videoInput = { ...imageInput, versionId: "video-version", role: "VIDEO_REFERENCE" as const };
+    const next: MediaCapability = { ...dynamic, settings: { runningHub: { ...definition, fields: [
+      { ...definition.fields[3]!, defaultValue: false },
+      { ...definition.fields[0]!, key: "disabled", enabledWhen: { field: "sound", value: true } },
+      { ...definition.fields[0]!, key: "audio", type: "AUDIO" },
+      { ...definition.fields[0]!, key: "first" },
+      { ...definition.fields[0]!, key: "video", type: "VIDEO" },
+      { ...definition.fields[0]!, key: "second" },
+    ] } } };
+    const inputs = [imageInput, second, audioInput, videoInput, excess];
+    const before: MediaDraftFields = { ...fields, mediaInputs: inputs,
+      prompt: inputs.map(() => MENTION_MARKER).join("/"), mentions: inputs };
+    const snapshot = structuredClone(before);
+    const change = planMediaCapabilityChange({ kind: "VIDEO", fields: before,
+      capabilityId: next.id, resolvedCapabilityId: next.id, previous: video, next });
+    expect(change.fields.parameters?.dynamicValues).toEqual({ first: imageInput.versionId, second: second.versionId,
+      audio: audioInput.versionId, video: videoInput.versionId });
+    expect(change.fields.mediaInputs).toEqual(inputs.slice(0, -1));
+    expect(change.fields.prompt).toBe(`${MENTION_MARKER}/${MENTION_MARKER}/${MENTION_MARKER}/${MENTION_MARKER}/`);
+    expect(change.fields.mentions).toHaveLength(4);
+    expect(before).toEqual(snapshot);
+  });
+
+  it("keeps compatible multi-slot assignments and reassigns references from disabled slots", () => {
+    const next: MediaCapability = { ...dynamic, settings: { runningHub: { ...definition, fields: [
+      ...definition.fields, { ...definition.fields[0]!, key: "shared" },
+      { ...definition.fields[0]!, key: "inactive", enabledWhen: { field: "sound", value: true } },
+      { ...definition.fields[0]!, key: "fallback" },
+    ] } } };
+    const second = { ...imageInput, versionId: "second-image" };
+    const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, mediaInputs: [imageInput, second],
+      parameters: { dynamicValues: { frame: imageInput.versionId, shared: imageInput.versionId, inactive: second.versionId, sound: false } } },
+    capabilityId: next.id, resolvedCapabilityId: next.id, previous: next, next });
+    expect(change.fields.parameters?.dynamicValues).toEqual({ frame: imageInput.versionId,
+      shared: imageInput.versionId, fallback: second.versionId, sound: false });
+    expect(change.fields.mediaInputs).toEqual([imageInput, second]);
+  });
+
+  it("retains image references and mentions within the ordinary model capacity when leaving a workflow", () => {
+    const inputs = [imageInput, { ...imageInput, versionId: "second-image" }, audioInput];
+    const next = { ...image, maxReferenceImages: 1 };
+    const change = planMediaCapabilityChange({ kind: "IMAGE", fields: { ...fields, mediaInputs: inputs,
+      parameters: { dynamicValues: { frame: imageInput.versionId } },
+      prompt: inputs.map(() => MENTION_MARKER).join("/"), mentions: inputs },
+    capabilityId: next.id, resolvedCapabilityId: next.id, previous: dynamic, next });
+    expect(change.fields.mediaInputs).toEqual([imageInput]);
+    expect(change.fields.prompt).toBe(`${MENTION_MARKER}//`);
+    expect(change.fields.parameters).not.toHaveProperty("dynamicValues");
+  });
+
+  it("filters unsupported media types and capacity when leaving a workflow for ordinary audio", () => {
+    const next: MediaCapability = { ...image, kind: "AUDIO_GENERATION", maxReferenceImages: 1, maxReferenceAudios: 1 };
+    const videoInput = { ...imageInput, versionId: "video-version", role: "VIDEO_REFERENCE" as const };
+    const change = planMediaCapabilityChange({ kind: "AUDIO", fields: { ...fields,
+      mediaInputs: [videoInput, imageInput, audioInput, { ...audioInput, versionId: "extra-audio" }],
+      parameters: { dynamicValues: { frame: imageInput.versionId } } },
+    capabilityId: next.id, resolvedCapabilityId: next.id, previous: dynamic, next });
+    expect(change.fields.mediaInputs).toEqual([imageInput]);
+    expect(change.fields.parameters).toEqual({});
+  });
+
   it.each(["GENERAL_REFERENCE", "START_END"] as const)("selects supported %s for an empty draft when switching from a text model", (mode) => {
     const next: MediaCapability = { ...video, id: "image-only-video", supportedVideoInputModes: [mode], defaultVideoInputMode: mode };
     const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, videoInputMode: "TEXT" },
@@ -116,7 +270,7 @@ describe("media capability changes", () => {
     expect(planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields,
       parameters: { dynamicValues: { frame: imageInput.versionId } }, mediaInputs: [imageInput] },
     capabilityId: remapped.id, resolvedCapabilityId: remapped.id, previous: dynamic, next: remapped }).fields)
-      .toMatchObject({ parameters: { dynamicValues: {} }, mediaInputs: [], videoInputMode: "TEXT" });
+      .toMatchObject({ parameters: { dynamicValues: { frame: imageInput.versionId } }, mediaInputs: [imageInput], videoInputMode: "GENERAL_REFERENCE" });
   });
 
   it("preserves Comfy slots and scalar values while retaining normal generation controls", () => {
@@ -133,20 +287,22 @@ describe("media capability changes", () => {
     expect(change.fields.mediaInputs).toEqual([imageInput]);
   });
 
-  it("clears dynamic parameters and exact inputs when leaving RunningHub", () => {
+  it("clears dynamic parameters and retains compatible exact inputs when leaving RunningHub", () => {
     const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields,
       parameters: { dynamicValues: { frame: imageInput.versionId } }, mediaInputs: [imageInput],
       prompt: `Use ${MENTION_MARKER}`, mentions: [imageInput] },
     capabilityId: null, resolvedCapabilityId: video.id, previous: dynamic, next: video });
-    expect(change.fields).toEqual({ capabilityId: video.id, parameters: {}, mediaInputs: [],
-      prompt: "Use ", mentions: [], durationSeconds: null, videoInputMode: "TEXT" });
+    expect(change.fields).toEqual({ capabilityId: null, parameters: { aspectRatio: "AUTO" }, mediaInputs: [imageInput],
+      prompt: `Use ${MENTION_MARKER}`, mentions: [imageInput], videoInputMode: "GENERAL_REFERENCE" });
   });
 
   it.each(["GENERAL_REFERENCE", "START_END"] as const)("uses supported %s immediately when leaving RunningHub for an image-only model", (mode) => {
     const next: MediaCapability = { ...video, supportedVideoInputModes: [mode], defaultVideoInputMode: mode };
     const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields, parameters: { dynamicValues: { frame: imageInput.versionId } }, mediaInputs: [imageInput] },
       capabilityId: next.id, resolvedCapabilityId: next.id, previous: dynamic, next });
-    expect(change.fields).toMatchObject({ videoInputMode: mode, mediaInputs: [] });
+    expect(change.fields).toMatchObject({ videoInputMode: mode, mediaInputs: [
+      { ...imageInput, role: mode === "START_END" ? "START_FRAME" : "REFERENCE" },
+    ] });
   });
 
   it("keeps duration only when the next dynamic contract explicitly sources it", () => {

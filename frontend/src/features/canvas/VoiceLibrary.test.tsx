@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import { setLocale, SUPPORTED_LOCALES, t } from "../../shared/i18n";
 import { selectValue } from "../../test/controls";
@@ -18,6 +18,29 @@ function mount() {
 }
 
 describe("localized voice metadata", () => {
+  beforeEach(() => localStorage.removeItem("agenvas.voice-preferences.v1"));
+
+  it("uses keyboard tabs to browse recent and favorite voices without losing the search", async () => {
+    const onSelect = mount();
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("searchbox"), "Vivi");
+    await user.click(screen.getByRole("button", { name: t("audio.voiceLibrary.favoriteNamed", { "0": "Vivi 2.0" }) }));
+    await user.click(screen.getByText("Vivi 2.0", { selector: "strong" }));
+    expect(onSelect).toHaveBeenCalledWith("zh_female_vv_uranus_bigtts");
+    screen.getByRole("tab", { name: t("common.all") }).focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: t("audio.voiceLibrary.recent") })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Vivi 2.0", { selector: "strong" })).toBeInTheDocument();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: t("audio.voiceLibrary.favorites") })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("searchbox")).toHaveValue("Vivi");
+    expect(screen.getByRole("button", { name: t("audio.voiceLibrary.previewNamed", { "0": "Vivi 2.0" }) })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: t("audio.voiceLibrary.favoriteNamed", { "0": "Vivi 2.0" }) }));
+    expect(screen.getByText(t("audio.voiceLibrary.empty"))).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: t("audio.voiceLibrary.automaticVoice") }));
+    expect(onSelect).toHaveBeenLastCalledWith("");
+  });
+
   it("filters by stable language and scene identities and selects the provider voice ID", async () => {
     const onSelect = mount();
     await selectValue(screen.getByRole("combobox", { name: t("audio.voiceLibrary.language") }), "en");

@@ -153,22 +153,28 @@ public final class RunningHubAdapter implements MediaAdapter {
 
     ProviderResultManifest manifest(JsonNode response, RunningHubDefinition definition, String origin) {
         JsonNode raw = response.path("results");
-        if (!raw.isArray() || raw.isEmpty() || raw.size() > RunningHubDefinition.MAX_OUTPUTS) throw new RunningHubClient.ProtocolFailure();
+        if (!raw.isArray() || raw.isEmpty()) throw new RunningHubClient.ProtocolFailure();
         List<ProviderResultManifest.Result> results = new ArrayList<>();
         Map<RunningHubDefinition.Output, Integer> counts = new HashMap<>();
         Set<String> seen = new HashSet<>();
         for (JsonNode item : raw) {
             String url = item.path("url").asText("");
             String nodeId = item.path("nodeId").asText("");
-            RunningHubClient.validateDownload(origin, url);
             if (ARCHIVE_TYPE.equalsIgnoreCase(item.path("outputType").asText(""))) {
+                // Once the matching mappings are full, an ancillary ZIP cannot improve
+                // the selection. Do not download it or let its contents reject a ready result.
+                boolean needed = definition.outputs().stream().anyMatch(output ->
+                        (output.nodeId() == null || output.nodeId().equals(nodeId))
+                        && counts.getOrDefault(output, 0) < output.maxCount());
+                if (!needed) continue;
+                RunningHubClient.validateDownload(origin, url);
                 try (var archive = RunningHubResultArchive.open(client.download(origin, url))) {
-                    for (var member : archive.members()) addResult(results, counts, seen, definition, nodeId, member.kind(), url, member.entry());
+                    for (var member : archive.members()) addResult(results, counts, seen, definition, origin, nodeId, member.kind(), url, member.entry());
                 }
             } else {
                 var outputKind = RunningHubResultArchive.outputKind(item.path("outputType").asText(""));
-                if (outputKind == null) throw new RunningHubClient.ProtocolFailure();
-                addResult(results, counts, seen, definition, nodeId, outputKind, url, null);
+                if (outputKind == null) continue;
+                addResult(results, counts, seen, definition, origin, nodeId, outputKind, url, null);
             }
         }
         if (results.stream().noneMatch(ProviderResultManifest.Result::primary)) throw new RunningHubClient.ProtocolFailure();
@@ -183,14 +189,18 @@ public final class RunningHubAdapter implements MediaAdapter {
     }
 
     private void addResult(List<ProviderResultManifest.Result> results, Map<RunningHubDefinition.Output, Integer> counts,
-            Set<String> seen, RunningHubDefinition definition, String nodeId, RunningHubDefinition.OutputKind kind,
+            Set<String> seen, RunningHubDefinition definition, String origin, String nodeId, RunningHubDefinition.OutputKind kind,
             String url, ProviderResultManifest.ArchiveEntry entry) {
         var output = definition.outputs().stream().filter(binding -> binding.kind() == kind
                 && (binding.nodeId() == null || binding.nodeId().equals(nodeId))).findFirst()
-                .orElseThrow(RunningHubClient.ProtocolFailure::new);
+                .orElse(null);
+        // maxCount is a selection cap in provider/member order, not an assertion
+        // about how many files a workflow may produce. Unmapped companions are optional.
+        if (output == null || counts.getOrDefault(output, 0) >= output.maxCount()
+                || results.size() >= RunningHubDefinition.MAX_OUTPUTS) return;
         if (!seen.add(nodeId + ":" + kind + ":" + url + ":" + (entry == null ? "" : entry.name()))) return;
-        if (counts.merge(output, 1, Integer::sum) > output.maxCount() || results.size() >= RunningHubDefinition.MAX_OUTPUTS)
-            throw new RunningHubClient.ProtocolFailure();
+        RunningHubClient.validateDownload(origin, url);
+        counts.merge(output, 1, Integer::sum);
         boolean main = output.primary() && results.stream().noneMatch(ProviderResultManifest.Result::primary);
         results.add(new ProviderResultManifest.Result(results.size(), nodeId, kind, main, url, entry));
     }

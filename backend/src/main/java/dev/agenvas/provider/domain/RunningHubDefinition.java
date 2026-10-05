@@ -329,9 +329,9 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         if (node == null || !node.matches("[0-9]{1,32}") || !bindableFieldName(field)
                 || !seen.add(node + ":" + field)) throw invalid(ApiMessage.of("api.running-hub-definition.node-mapping-must-be-valid-and-cannot-be-duplicated"));
     }
-    /** Discovery also encounters ComfyUI upload-widget labels that are not supported bindings. */
+    /** Dots belong to the exact remote input name; they are never traversed as JSON paths. */
     public static boolean bindableFieldName(String field) {
-        return field != null && field.matches("[A-Za-z_][A-Za-z0-9_]{0,79}") && !RESERVED_KEYS.contains(field);
+        return field != null && field.matches("[A-Za-z_][A-Za-z0-9_.]{0,79}") && !RESERVED_KEYS.contains(field);
     }
     private static void requireObject(JsonNode value, Set<String> allowed) {
         if (value == null || !value.isObject() || !allowed.containsAll(value.propertyNames())) throw invalid(ApiMessage.of("api.running-hub-definition.capability-definition-contains-unknown-fields-or-invalid-objects"));

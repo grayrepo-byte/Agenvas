@@ -5,6 +5,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
@@ -56,6 +57,7 @@ class MediaDraftReplacementPostgresIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", () -> assetsRoot.toString());
+        registry.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
     }
     @Autowired IdentityService identities;
     @Autowired ProjectService projects;
@@ -68,8 +70,151 @@ class MediaDraftReplacementPostgresIT {
     @Autowired ObjectMapper mapper;
     @Autowired JdbcClient jdbc;
     @Autowired MediaDraftRestoreService replacements;
+    @Autowired dev.agenvas.provider.application.MediaCapabilityService capabilities;
+    @Autowired dev.agenvas.asset.infrastructure.MediaToolRunner mediaTools;
     @Autowired javax.sql.DataSource dataSource;
     private static AdminPrincipal sharedOwner;
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = Artifact.Kind.class, names = {"AUDIO", "VIDEO"})
+    void mixedWorkflowSwitchRetainsTheMatchingMediaLineAndDisconnectClearsItsSlot(Artifact.Kind kind) throws Exception {
+        var owner = owner();
+        var project = projects.create(owner.userId(), "Mixed media switch " + kind, Project.AspectRatio.SQUARE_1_1);
+        var connection = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic mixed workflow", "RUNNINGHUB",
+                "https://www.runninghub.ai", "fake-runninghub-key");
+        var definition = mapper.readTree("""
+                {"schemaVersion":1,"protocolVersion":"V2","targetType":"WORKFLOW","targetId":"123456",
+                "usePersonalQueue":false,"addMetadata":false,"fields":[
+                {"key":"sound","label":"Sound","type":"AUDIO","required":false,"advanced":false,"nodeId":"1","fieldName":"audio"},
+                {"key":"clip","label":"Clip","type":"VIDEO","required":false,"advanced":false,"nodeId":"2","fieldName":"video"}],
+                "outputs":[{"kind":"%s","primary":true,"maxCount":1}]}
+                """.formatted(kind));
+        var initial = capabilities.publishCapability(connection.id(), "Initial " + kind, "RUNNINGHUB_" + kind,
+                mapper.createObjectNode().set("runningHub", definition));
+        var nextDefinition = definition.deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) nextDefinition).putArray("fields").add(mapper.readTree("""
+                {"key":"source","label":"Source","type":"%s","required":true,"advanced":false,"nodeId":"3","fieldName":"media"}
+                """.formatted(kind)));
+        var next = capabilities.publishCapability(connection.id(), "Next " + kind, "RUNNINGHUB_" + kind,
+                mapper.createObjectNode().set("runningHub", nextDefinition));
+        var target = artifacts.create(owner.userId(), project.id(), kind, "Target", null);
+        UUID targetItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), target.artifact().id());
+        var draft = drafts.save(owner.userId(), project.id(), targetItem, 0, "Initial", mapper.createObjectNode(),
+                null, initial.id(), kind == Artifact.Kind.VIDEO ? dev.agenvas.artifact.domain.MediaDraft.VideoInputMode.TEXT : null,
+                List.of(), List.of(), null);
+        var versions = new java.util.EnumMap<Artifact.Kind, UUID>(Artifact.Kind.class);
+        for (Artifact.Kind sourceKind : List.of(Artifact.Kind.AUDIO, Artifact.Kind.VIDEO)) {
+            UUID asset = sourceKind == Artifact.Kind.AUDIO
+                    ? dev.agenvas.testing.AudioAssetFixture.archive(assets, mediaTools, owner.userId(), project.id())
+                    : syntheticVideoAsset(owner.userId(), project.id());
+            var source = artifacts.create(owner.userId(), project.id(), sourceKind, "Synthetic " + sourceKind,
+                    mapper.valueToTree(Map.of("sourceType", "UPLOAD", "assetId", asset)));
+            UUID sourceItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), source.artifact().id());
+            versions.put(sourceKind, source.resourceDefaultVersion().id());
+            draft = connections.connect(owner.userId(), project.id(), sourceItem, targetItem, versions.get(sourceKind),
+                    CanvasConnection.RelationType.MEDIA_INPUT, draft.version()).draft();
+        }
+        var role = kind == Artifact.Kind.AUDIO ? dev.agenvas.artifact.domain.MediaDraft.InputRole.AUDIO_REFERENCE
+                : dev.agenvas.artifact.domain.MediaDraft.InputRole.VIDEO_REFERENCE;
+        var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
+        var mvc = webAppContextSetup(context).apply(springSecurity()).build();
+        String path = "/api/v1/projects/" + project.id() + "/canvas-items/" + targetItem + "/media-draft";
+        var body = mapper.createObjectNode().put("expectedVersion", draft.version()).put("prompt", "Use ￼")
+                .put("capabilityId", next.id().toString());
+        if (kind == Artifact.Kind.VIDEO) body.put("videoInputMode", "GENERAL_REFERENCE");
+        body.putObject("parameters").putObject("dynamicValues").put("source", versions.get(kind).toString());
+        body.putArray("mediaInputs").add(mapper.valueToTree(Map.of("versionId", versions.get(kind), "role", role, "color", "#7C3AED")));
+        body.putArray("mentions").add(mapper.valueToTree(Map.of("versionId", versions.get(kind), "role", role)));
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body)))
+                .andExpect(status().isOk());
+        var saved = drafts.get(owner.userId(), project.id(), targetItem);
+        assertThat(saved.mediaInputs()).singleElement().satisfies(input -> {
+            assertThat(input.versionId()).isEqualTo(versions.get(kind));
+            assertThat(input.role()).isEqualTo(role);
+            assertThat(input.sources()).singleElement().satisfies(source ->
+                    assertThat(source.type()).isEqualTo(dev.agenvas.artifact.domain.MediaDraft.SourceType.CONNECTION));
+        });
+        assertThat(saved.mentions()).hasSize(1);
+        var lines = connections.list(owner.userId(), project.id());
+        assertThat(lines).singleElement().satisfies(line -> assertThat(line.sourceArtifactVersionId()).isEqualTo(versions.get(kind)));
+        var disconnected = connections.disconnect(owner.userId(), project.id(), lines.getFirst().id(), saved.version(), null).draft();
+        assertThat(disconnected.mediaInputs()).isEmpty();
+        assertThat(disconnected.parameters().path("dynamicValues").has("source")).isFalse();
+        assertThat(disconnected.mentions()).isEmpty();
+        assertThat(disconnected.prompt()).isEqualTo("Use ");
+        assertThat(lineCount(project.id())).isZero();
+    }
+
+    private UUID syntheticVideoAsset(UUID ownerId, UUID projectId) throws Exception {
+        var path = java.nio.file.Files.createTempFile("agenvas-switch-video-", ".mp4");
+        try {
+            mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                    "color=c=blue:s=320x240:r=24", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", path.toString()));
+            try (var input = java.nio.file.Files.newInputStream(path)) {
+                return assets.archiveVideo(ownerId, projectId, input).id();
+            }
+        } finally { java.nio.file.Files.deleteIfExists(path); }
+    }
+
+    @Test void capabilitySwitchKeepsMatchedLinesAndAtomicallyRemovesUnmatchedLines() throws Exception {
+        var owner = owner();
+        var project = projects.create(owner.userId(), "Capability switch", Project.AspectRatio.SQUARE_1_1);
+        var target = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Target", null);
+        UUID targetItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), target.artifact().id());
+        List<UUID> versions = new java.util.ArrayList<>();
+        for (int index = 0; index < 2; index++) {
+            var source = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Reference " + index,
+                    mapper.valueToTree(Map.of("sourceType", "UPLOAD", "assetId",
+                            ImageAssetFixture.archive(assets, owner.userId(), project.id()))));
+            UUID sourceItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), source.artifact().id());
+            versions.add(source.resourceDefaultVersion().id());
+            connections.connect(owner.userId(), project.id(), sourceItem, targetItem, versions.get(index),
+                    CanvasConnection.RelationType.MEDIA_INPUT, index);
+        }
+        var connection = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic RunningHub", "RUNNINGHUB",
+                "https://www.runninghub.ai", "fake-runninghub-key");
+        var capability = capabilities.publishCapability(connection.id(), "Synthetic editor", "RUNNINGHUB_IMAGE",
+                mapper.readTree("""
+                {"runningHub":{"schemaVersion":1,"protocolVersion":"V2","targetType":"WORKFLOW","targetId":"123456",
+                "usePersonalQueue":false,"addMetadata":false,"fields":[
+                {"key":"hero","label":"Hero","type":"IMAGE","required":true,"advanced":false,"nodeId":"1","fieldName":"image"}],
+                "outputs":[{"kind":"IMAGE","primary":true,"maxCount":1}]}}
+                """));
+        var before = drafts.get(owner.userId(), project.id(), targetItem);
+        var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
+        var mvc = webAppContextSetup(context).apply(springSecurity()).build();
+        String path = "/api/v1/projects/" + project.id() + "/canvas-items/" + targetItem + "/media-draft";
+        var body = mapper.valueToTree(Map.of("expectedVersion", before.version(), "prompt", "Edit ￼",
+                "capabilityId", capability.id(), "parameters", Map.of("dynamicValues", Map.of("hero", versions.getFirst())),
+                "mediaInputs", List.of(Map.of("versionId", versions.getFirst(), "role", "REFERENCE", "color", "#7C3AED")),
+                "mentions", List.of(Map.of("versionId", versions.getFirst(), "role", "REFERENCE"))));
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body)))
+                .andExpect(status().isOk());
+        var saved = drafts.get(owner.userId(), project.id(), targetItem);
+        assertThat(saved.mediaInputs()).singleElement().satisfies(input -> {
+            assertThat(input.versionId()).isEqualTo(versions.getFirst());
+            assertThat(input.sources()).singleElement().satisfies(source ->
+                    assertThat(source.type()).isEqualTo(dev.agenvas.artifact.domain.MediaDraft.SourceType.CONNECTION));
+        });
+        assertThat(connections.list(owner.userId(), project.id())).singleElement().satisfies(line ->
+                assertThat(line.sourceArtifactVersionId()).isEqualTo(versions.getFirst()));
+        assertThat(saved.parameters().path("dynamicValues").path("hero").asText()).isEqualTo(versions.getFirst().toString());
+        // A failed switch must roll back topology cleanup as well as the draft and event.
+        int beforeEvents = events(project.id());
+        var invalid = mapper.createObjectNode().put("expectedVersion", saved.version()).put("prompt", "Invalid")
+                .put("capabilityId", UUID.randomUUID().toString());
+        invalid.putArray("mediaInputs");
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(invalid)))
+                .andExpect(status().isNotFound());
+        assertThat(drafts.get(owner.userId(), project.id(), targetItem)).isEqualTo(saved);
+        assertThat(lineCount(project.id())).isEqualTo(1);
+        assertThat(events(project.id())).isEqualTo(beforeEvents);
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body)))
+                .andExpect(status().isConflict());
+        assertThat(lineCount(project.id())).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from task where project_id = :project")
+                .param("project", project.id()).query(Integer.class).single()).isZero();
+    }
 
     @Test void replacesConnectedInputsAtomicallyWithoutGenerating() throws Exception {
         var owner = owner();

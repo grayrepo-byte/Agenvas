@@ -79,6 +79,24 @@ class RunningHubImportServiceTest {
         assertThat(preview.definition().fields().get(1).type()).isEqualTo(RunningHubDefinition.FieldType.STRING);
         assertThat(preview.definition().sourceSha256()).hasSize(64);
     }
+    @Test void workflowImportKeepsDottedScalarNamesWithoutExpandingNestedObjects() {
+        var source = mapper.readTree("""
+            {"516":{"class_type":"SyntheticSampler","inputs":{
+              "sampling_mode.top_p":0.9,"sampling_mode.presence_penalty":0,
+              "sampling_mode.repetition_penalty":1.1,"sampling_mode.temperature":0.7,
+              "sampling_mode.seed":42,"sampling_mode.top_k":50,"sampling_mode.min_p":0.1,
+              "sampling_mode":{"top_p":0.5},"model":["4",0]}}}
+            """);
+        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION, source);
+        assertThat(preview.definition().fields()).hasSize(7).allSatisfy(field -> {
+            assertThat(field.nodeId()).isEqualTo("516");
+            assertThat(field.fieldName()).startsWith("sampling_mode.");
+            assertThat(field.defaultValue()).isEqualTo(source.path("516").path("inputs").get(field.fieldName()));
+        });
+        assertThat(preview.warnings()).hasSize(2).noneMatch(warning -> warning.key().contains("unsupported-mapping-format"));
+        assertThat(RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()), Task.Kind.IMAGE_GENERATION))
+                .isEqualTo(preview.definition());
+    }
     @Test void workflowImportRetainsItsFullSourceAndOutputOnlyNodesAcrossContractRoundTrip() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("""

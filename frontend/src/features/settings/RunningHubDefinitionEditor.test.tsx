@@ -50,6 +50,26 @@ function currentDefinition() {
   return JSON.parse(screen.getByTestId("definition").textContent ?? "") as RunningHubDefinition;
 }
 
+describe("RunningHubDefinitionEditor node field names", () => {
+  it("accepts dotted open and fixed bindings without changing local parameter keys", async () => {
+    await mount();
+    const open = within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "节点字段" });
+    const fixed = screen.getByRole("textbox", { name: "固定字段" });
+    fireEvent.change(open, { target: { value: "sampling_mode.top_p" } });
+    fireEvent.change(fixed, { target: { value: "sampling_mode.seed" } });
+    expect(open).toHaveProperty("validity.valid", true);
+    expect(fixed).toHaveProperty("validity.valid", true);
+    expect(currentDefinition().fields[1]).toMatchObject({ key: "strength", fieldName: "sampling_mode.top_p" });
+    expect(currentDefinition().fixedBindings?.[0]).toMatchObject({ fieldName: "sampling_mode.seed" });
+    for (const value of [".top_p", "sampling_mode/top_p", "sampling mode.top_p", "a".repeat(81)]) {
+      fireEvent.change(open, { target: { value } });
+      fireEvent.change(fixed, { target: { value } });
+      expect(open).toHaveProperty("validity.valid", false);
+      expect(fixed).toHaveProperty("validity.valid", false);
+    }
+  });
+});
+
 describe("RunningHubDefinitionEditor saved import JSON", () => {
   it("reopens and re-parses saved JSON without replacing configured fields, fixed bindings or outputs", async () => {
     const source = {
@@ -399,12 +419,36 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     fireEvent.blur(input);
     const row = screen.getByRole("row", { name: "强度" });
     fireEvent.click(within(row).getByRole("button", { name: "更多设置" }));
-    await showNodes("1");
+    await showNodes("1", "2");
     expect(screen.queryByRole("textbox", { name: "条件值（JSON 标量）" })).not.toBeInTheDocument();
     fireEvent.invalid(input);
     expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 模式 · 节点 2 · 强度");
     expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
     expect(screen.getByRole("textbox", { name: "条件值（JSON 标量）" })).toBe(input);
     expect(currentDefinition().fields[1]?.enabledWhen?.value).toBe(true);
+  });
+
+  it("excludes unchecked scalar controls from validation and restores their invalid drafts on reselect", async () => {
+    await mount();
+    const input = inputFor("默认值");
+    fireEvent.change(input, { target: { value: "invalid" } });
+    fireEvent.blur(input);
+    const fixed = inputFor("固定值（JSON 标量）");
+    fireEvent.change(fixed, { target: { value: "invalid fixed value" } });
+    fireEvent.blur(fixed);
+    await showNodes("1");
+    expect(input).toBeDisabled();
+    expect(fixed).toBeDisabled();
+    expect((input as HTMLInputElement).checkValidity()).toBe(true);
+    expect((fixed as HTMLInputElement).checkValidity()).toBe(true);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await showNodes("1", "2");
+    expect(inputFor("默认值")).toBe(input);
+    expect(input).toHaveValue("invalid");
+    expect(input).toBeEnabled();
+    expect(input).toHaveProperty("validity.valid", false);
+    expect(inputFor("固定值（JSON 标量）")).toBe(fixed);
+    expect(fixed).toHaveValue("invalid fixed value");
+    expect(fixed).toHaveProperty("validity.valid", false);
   });
 });

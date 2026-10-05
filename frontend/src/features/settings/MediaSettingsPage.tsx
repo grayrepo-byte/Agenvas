@@ -5,12 +5,13 @@ import { cn } from "cn";
 import { useId,useRef,useState,type FormEvent } from "react";
 import { Link,Navigate } from "react-router";
 import {
-HTTP_STATUS,ApiError,createMediaCapability,createMediaConnection,getCurrentUser,
+HTTP_STATUS,ApiError,deleteMediaCapability,createMediaCapability,createMediaConnection,getCurrentUser,
 getMediaSettings,setMediaDefault,updateMediaCapability,
 updateMediaConnection,
 type MediaCapability,type MediaConnection,type MediaSettings,
 } from "../../shared/api/client";
 import { AUTODL_ADAPTER,AUTODL_DEFAULT_WORKFLOW,autoDlResolutionTiers,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
+import { MEDIA_FUNCTIONS_QUERY_KEY } from "../../shared/mediaFunctions";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
@@ -30,12 +31,16 @@ import "./MediaSettingsPage.css";
 import { ComfyWorkflowEditor } from "./ComfyWorkflowEditor";
 import { isComfyAdapter } from "./comfyWorkflow";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
-type AdapterSettings = MediaCapability["settings"];
+import { selectRunningHubNodes } from "./runningHubSelection";
+
+// Node selection is an editor draft, never an API setting or capability-version field.
+type AdapterSettings = MediaCapability["settings"] & { runningHubSelectedNodeIds?: string[] };
 const MODEL_LIMIT = 120;
 
 const settingsKey = ["settings", "media"] as const;
 const NAME_LIMIT = 160;
 const cloudImageFields = [{ key: "model", get label() { return t("settings.mediaSettings.modelName"); } }] as const;
+class CapabilityDraftError extends Error {}
 
 function fixedModelFields(adapterId: string) {
   return adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2"
@@ -43,7 +48,12 @@ function fixedModelFields(adapterId: string) {
 }
 
 function fixedModelSettings(adapterId: string, values: AdapterSettings) {
-  if (adapterId.startsWith("RUNNINGHUB_")) return { runningHub: values.runningHub, ...(values.pricing?.amount.trim() ? { pricing: values.pricing } : {}) };
+  if (adapterId.startsWith("RUNNINGHUB_")) {
+    const runningHub = values.runningHub ? selectRunningHubNodes(values.runningHub, values.runningHubSelectedNodeIds) : undefined;
+    const orphaned = runningHub?.fields.find((field) => field.enabledWhen && !runningHub.fields.some((parent) => parent.key === field.enabledWhen?.field));
+    if (orphaned) throw new CapabilityDraftError(t("settings.runningHub.unselectedCondition", { "0": orphaned.label }));
+    return { runningHub, ...(values.pricing?.amount.trim() ? { pricing: values.pricing } : {}) };
+  }
   const fields = Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
     [key, values[key as keyof AdapterSettings]?.toString().trim() ?? ""]));
   const { defaultParameters, defaultDurationSeconds, minimumSeconds, maximumSeconds,
@@ -121,11 +131,12 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
   useLocale();
   const fieldId = useId();
   const [tab, setTab] = useState<EditorTab>("model");
-  function changeWorkflowOutput(kind: keyof typeof RUNNINGHUB_OUTPUT_ADAPTERS, runningHub = values.runningHub) {
+  function changeWorkflowOutput(kind: keyof typeof RUNNINGHUB_OUTPUT_ADAPTERS, runningHub = values.runningHub,
+    runningHubSelectedNodeIds = values.runningHubSelectedNodeIds) {
     onAdapterChange(RUNNINGHUB_OUTPUT_ADAPTERS[kind]);
     const pricing = values.pricing?.unit === kind || (kind !== "IMAGE" && values.pricing?.unit === "SECOND")
       ? values.pricing : undefined;
-    onChange({ ...values, pricing, runningHub: runningHub ? { ...runningHub,
+    onChange({ ...values, pricing, runningHubSelectedNodeIds, runningHub: runningHub ? { ...runningHub,
       outputs: runningHub.outputs.map((output) => output.primary ? { ...output, kind } : output) } : undefined });
   }
   if (isComfyAdapter(adapterId)) return <fieldset disabled={disabled} className="ui-stack media-settings-fieldset">
@@ -144,9 +155,10 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
         .find((outputKind) => RUNNINGHUB_OUTPUT_ADAPTERS[outputKind] === event.target.value);
       if (kind) changeWorkflowOutput(kind);
     }}>{availableAdapters.map((adapter) => <option key={adapter} value={adapter}>{adapterLabel(adapter)}</option>)}</Select></FieldLabel></Field>
-    <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub} onChange={(runningHub, primaryKind) => {
-      if (primaryKind) changeWorkflowOutput(primaryKind, runningHub);
-      else onChange({ ...values, runningHub });
+    <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub}
+      selectedNodeIds={values.runningHubSelectedNodeIds} onChange={(runningHub, primaryKind, runningHubSelectedNodeIds) => {
+      if (primaryKind) changeWorkflowOutput(primaryKind, runningHub, runningHubSelectedNodeIds);
+      else onChange({ ...values, runningHub, runningHubSelectedNodeIds });
     }} />
     <CapabilityConfigurationFields section="pricing" adapterId={adapterId} values={values} onChange={onChange} />
   </fieldset></div>;
@@ -214,7 +226,7 @@ function stableCreateKey(previous: { payload: string; key: string } | null,
 }
 
 function errorMessage(cause: unknown): string {
-  return cause instanceof ApiError ? cause.message : t("settings.shared.saveFailed");
+  return cause instanceof ApiError || cause instanceof CapabilityDraftError ? cause.message : t("settings.shared.saveFailed");
 }
 
 /** Keep a draft's CAS token until its own save or an explicit reload accepts a new baseline. */
@@ -253,6 +265,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
   const [modelNames, setModelNames] = useState<AdapterSettings>(capability.settings);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState<MediaCapability | null>(null);
   const [workflowReady, setWorkflowReady] = useState(false);
   const save = useMutation({
     mutationFn: () => updateMediaCapability(connectionId, capability.id, {
@@ -278,9 +291,27 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       setError(errorMessage(cause));
     },
   });
+  const remove = useMutation({
+    mutationFn: () => {
+      if (!deleting) throw new Error(t("settings.mediaSettings.selectCapability"));
+      return deleteMediaCapability(connectionId, deleting.id, deleting.version);
+    },
+    onSuccess: (result) => {
+      apply(result);
+      queryClient.setQueryData(["media-settings"], result);
+      void queryClient.invalidateQueries({ queryKey: MEDIA_FUNCTIONS_QUERY_KEY });
+      setDeleting(null);
+    },
+    onError: (cause) => {
+      if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) {
+        void queryClient.invalidateQueries({ queryKey: settingsKey });
+      }
+    },
+  });
+  const deleteStale = deleting !== null && deleting.version !== capability.version;
   const sameKindAdapters = capability.adapterId.startsWith("RUNNINGHUB_") ? availableAdapters
     : availableAdapters.filter((id) => adapterMetadata(id)?.kind === capability.kind);
-  const rowBusy = busy || save.isPending;
+  const rowBusy = busy || save.isPending || remove.isPending;
   function loadLatest() {
     acceptBaseline(capability);
     setName(capability.name);
@@ -310,8 +341,24 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
           onClick={() => act("default", capability)}>{t("settings.mediaSettings.setDefault")}</Button>
         <Button variant="ghost"  type="button" disabled={rowBusy}
           onClick={() => act("capability", capability)}>{capability.enabled ? t("settings.mediaSettings.disable") : t("settings.mediaSettings.enable")}</Button>
+        <Button variant="ghost" type="button" disabled={rowBusy}
+          onClick={() => { remove.reset(); setDeleting(capability); }}>{t("settings.mediaSettings.deleteCapability")}</Button>
       </div></TableCell>
     </TableRow>
+    {deleting ? <Dialog compact title={t("settings.mediaSettings.deleteCapabilityNamed", { "0": deleting.name })}
+      description={connectionName} busy={rowBusy} onClose={() => setDeleting(null)}
+      onSubmit={(event) => { event.preventDefault(); if (!rowBusy && !deleteStale) remove.mutate(); }}
+      footer={<>
+        <Button variant="outline" type="button" disabled={rowBusy} onClick={() => setDeleting(null)}>{t("common.cancel")}</Button>
+        <Button variant="destructive" type="submit" disabled={rowBusy || deleteStale}>
+          {remove.isPending ? t("settings.mediaSettings.deletingCapability") : t("settings.mediaSettings.confirmDeleteCapability")}
+        </Button>
+      </>}>
+      <p>{t("settings.mediaSettings.deleteCapabilityHint")}</p>
+      {deleteStale ? <ConfigurationUpdatedNotice scope={t("settings.mediaSettings.capabilityParameters")} disabled={rowBusy}
+        onReload={() => { remove.reset(); setDeleting(capability); }} /> : null}
+      {remove.isError ? <Notice tone="danger">{errorMessage(remove.error)}</Notice> : null}
+    </Dialog> : null}
     {editing ? <Dialog className={cn(isComfyAdapter(adapterId) && "comfy-capability-dialog", adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.editCapabilityNamed", { "0": capability.name })} description={`${connectionName} · ${adapterLabel(adapterId)}`}
       onClose={() => setEditing(false)} busy={rowBusy} onSubmit={(event) => {
         event.preventDefault(); if (isStale || rowBusy || isComfyAdapter(adapterId) && !workflowReady) return; setError(""); save.mutate();

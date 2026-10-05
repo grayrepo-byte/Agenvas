@@ -8,7 +8,7 @@ import { server } from "../../test/server";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 
 describe("UnknownTaskRetryPanel", () => {
-  it("creates a new attempt from a single retry, with no acknowledgement step", async () => {
+  it.each([false, true])("creates a new attempt from a single retry (compact: %s)", async (compact) => {
     const user = userEvent.setup();
     let created = 0;
     let idempotencyKey: string | null = null;
@@ -25,12 +25,12 @@ describe("UnknownTaskRetryPanel", () => {
       }),
     );
     render(<QueryClientProvider client={createQueryClient()}>
-      <UnknownTaskRetryPanel projectId="project-1" taskId="task-risk" taskVersion={7} />
+      <UnknownTaskRetryPanel compact={compact} projectId="project-1" taskId="task-risk" taskVersion={7} />
     </QueryClientProvider>);
     expect(screen.getByText("结果未知")).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("已创建新任务：new-task");
+    expect(await screen.findByText("已创建新任务：new-task。")).toBeVisible();
     expect(created).toBe(1);
     expect(idempotencyKey).toBeTruthy();
   });

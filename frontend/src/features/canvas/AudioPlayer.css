@@ -8,7 +8,8 @@
 .audio-player-title { margin: 0 0 6px; overflow: hidden; font-size: 13px; font-weight: 600; line-height: 20px; text-overflow: ellipsis; white-space: nowrap; }
 .audio-player-time { display: block; font-variant-numeric: tabular-nums; font-size: 11px; line-height: 16px; color: var(--ui-text-muted); }
 .audio-player-progress { position: relative; flex: none; margin-top: 16px; border-radius: 4px; }
-.audio-player-progress:focus-within { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+/* Pointer seeking keeps the card's outer selection ring; keyboard focus remains visible. */
+.audio-player-progress:has(> .audio-player-seek:focus-visible) { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .audio-player-waveform { display: flex; align-items: center; gap: 3px; height: 48px; }
 .audio-player-waveform > span { flex: 1; min-width: 0; border-radius: 3px; background: var(--ui-border-strong); }
 .audio-player-waveform > .is-played { background: var(--ui-accent); }

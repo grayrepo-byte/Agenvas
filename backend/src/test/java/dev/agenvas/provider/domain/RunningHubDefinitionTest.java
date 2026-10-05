@@ -56,6 +56,28 @@ class RunningHubDefinitionTest {
         var credential = schema(); ((ObjectNode) credential.path("fields").get(0)).put("fieldName", "apiKey");
         assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, credential, Task.Kind.IMAGE_GENERATION)).isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
     }
+    @Test void dottedNamesAreExactBindingsForWorkflowAndAppButLocalKeysStayIdentifiers() {
+        for (var targetType : RunningHubDefinition.TargetType.values()) {
+            var schema = schema().put("targetType", targetType.name());
+            ((ObjectNode) schema.path("fields").get(0)).put("fieldName", "sampling_mode.top_p");
+            schema.putArray("fixedBindings").addObject().put("nodeId", "3")
+                    .put("fieldName", "sampling_mode.seed").put("value", 42);
+            var definition = RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION);
+            assertThat(definition.fields().getFirst().fieldName()).isEqualTo("sampling_mode.top_p");
+            assertThat(definition.fixedBindings().getFirst().fieldName()).isEqualTo("sampling_mode.seed");
+            ((ObjectNode) schema.path("fixedBindings").get(0)).put("fieldName", "sampling_mode.top_p");
+            assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION)).hasMessageContaining("映射");
+            ((ObjectNode) schema.path("fixedBindings").get(0)).put("fieldName", "sampling_mode.seed");
+            ((ObjectNode) schema.path("fields").get(0)).put("key", "sampling_mode.top_p");
+            assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                    .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        }
+    }
+    @Test void dottedNamesKeepLengthCharacterAndReservedNameConstraints() {
+        assertThat(RunningHubDefinition.bindableFieldName("a." + "b".repeat(78))).isTrue();
+        for (String name : new String[]{"a." + "b".repeat(79), ".top_p", "sampling_mode/top_p", "sampling mode.top_p", "apiKey", "__proto__"})
+            assertThat(RunningHubDefinition.bindableFieldName(name)).as(name).isFalse();
+    }
     @Test void inactiveRequiredFieldDoesNotBlockRun() {
         var schema = schema();
         ((ObjectNode) schema.path("fields").get(1)).set("enabledWhen", mapper.readTree("{\"field\":\"strength\",\"value\":1}"));

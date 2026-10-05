@@ -22,6 +22,7 @@ import java.util.concurrent.CancellationException;
 import javax.imageio.ImageIO;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Bounded local processing of authorized archived video; no arbitrary URLs, commands or filters. */
 @Component
@@ -29,6 +30,7 @@ public class LocalVideoProcessor {
     private static final Duration TIMEOUT = Duration.ofMinutes(3);
     private static final long MAX_SCRATCH_BYTES = 128L * 1024 * 1024;
     private static final long MAX_AUDIO_BYTES = 32L * 1024 * 1024;
+    private static final long MAX_SILENT_VIDEO_BYTES = 200L * 1024 * 1024;
     private static final String FRAME_PATTERN = "frame-%04d.png";
     private final ArtifactService artifacts;
     private final AssetService assets;
@@ -137,6 +139,42 @@ public class LocalVideoProcessor {
         return assets.get(context.ownerId(), context.lease().projectId(), UUID.fromString(version.content().path("assetId").asText()));
     }
 
+    /** Copies the pinned source video stream without audio or re-encoding; never calls the media provider. */
+    ObjectNode silentVideoResult(AttemptContext context) {
+        Path scratch = null;
+        try {
+            var source = source(context);
+            scratch = Files.createTempDirectory("agenvas-silent-video-",
+                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+            Path output = scratch.resolve("silent.mp4");
+            var command = new ArrayList<>(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
+                    "-protocol_whitelist", "file,pipe", "-i", source.path().toString(),
+                    "-map", "0:v:0", "-an", "-c:v", "copy", "-map_metadata", "-1", "-map_chapters", "-1",
+                    "-movflags", "+faststart", "-y", output.toString()));
+            run(context, command, scratch, System.nanoTime() + TIMEOUT.toNanos(), MAX_SILENT_VIDEO_BYTES);
+            tick(context);
+            var task = context.lease();
+            // Audio and silent video need separate immutable archive identities within the same Task.
+            UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:silent-video:v1:" + task.id())
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            var asset = assets.archiveTaskVideo(context.ownerId(), task.projectId(), archiveId, () -> open(output));
+            ObjectNode content = MediaResult.content(mapper, task, asset.id(), VideoOperation.SILENT_VIDEO_LABEL);
+            content.withObject("parameters").put("operation", VideoOperation.EXTRACT_AUDIO.name())
+                    .put("videoOperationOutput", VideoOperation.SILENT_VIDEO_RESULT).put("local", true);
+            return content;
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot separate silent video", failure);
+        } finally {
+            if (scratch != null) {
+                try (var paths = Files.walk(scratch)) {
+                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+                } catch (IOException failure) {
+                    org.slf4j.LoggerFactory.getLogger(LocalVideoProcessor.class).warn("Silent video scratch cleanup failed");
+                }
+            }
+        }
+    }
+
     private boolean hasAudio(Path file) {
         return !mapper.readTree(tools.ffprobe(List.of("-v", "error", "-protocol_whitelist", "file,pipe",
                 "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "json", file.toString())))
@@ -150,13 +188,17 @@ public class LocalVideoProcessor {
     }
 
     private void run(AttemptContext context, List<String> arguments, Path scratch, long deadline) {
+        run(context, arguments, scratch, deadline, MAX_SCRATCH_BYTES);
+    }
+
+    private void run(AttemptContext context, List<String> arguments, Path scratch, long deadline, long maxBytes) {
         Duration remaining = Duration.ofNanos(deadline - System.nanoTime());
         if (remaining.isNegative() || remaining.isZero()) throw new ProcessingTimeout();
         try {
             tools.ffmpegExport(arguments, scratch, remaining,
                     () -> tasks.get(context.ownerId(), context.lease().projectId(), context.lease().id()).cancelRequested(),
-                    () -> { tick(context); checkScratch(scratch); });
-            checkScratch(scratch);
+                    () -> { tick(context); checkScratch(scratch, maxBytes); });
+            checkScratch(scratch, maxBytes);
         } catch (RuntimeException failure) {
             if (System.nanoTime() >= deadline) throw new ProcessingTimeout();
             throw failure;
@@ -166,12 +208,12 @@ public class LocalVideoProcessor {
     private static final class ProcessingTimeout extends RuntimeException {}
     private static final class ScratchLimit extends RuntimeException {}
 
-    private void checkScratch(Path directory) {
+    private void checkScratch(Path directory, long maxBytes) {
         try (var files = Files.list(directory)) {
             long bytes = 0;
             for (Path file : files.filter(Files::isRegularFile).toList()) {
                 bytes += Files.size(file);
-                if (bytes > MAX_SCRATCH_BYTES) throw new ScratchLimit();
+                if (bytes > maxBytes) throw new ScratchLimit();
             }
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot inspect video processing scratch", failure);

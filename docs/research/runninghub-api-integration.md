@@ -197,6 +197,8 @@ SDK 可用于核对请求与响应、构造本地假 HTTP 协议测试；项目�
 
 字段支持 STRING、NUMBER、INTEGER、BOOLEAN、SELECT 与 IMAGE/AUDIO/VIDEO 具名槽位，以及必填、默认值、范围、说明、高级参数、简单等值条件、节点映射和提交编码。素材字段只保存项目内精确 ArtifactVersion UUID；服务端校验授权与媒体类型，上传实际归档字节后替换为 RunningHub 内部文件名或其上传接口返回的 URL。用户不能填写任意外部素材 URL。
 
+节点字段名可以包含点号，如 `sampling_mode.top_p`。开放字段与固定参数按 `[A-Za-z_][A-Za-z0-9_.]{0,79}` 校验，将完整名称作为 `fieldName` 原样提交；不要改成下划线，也不把点号拆成 JSON 路径。真正的嵌套对象与连线仍不会自动成为可编辑候选。旧导入曾跳过的字段可重新解析已保存 JSON 补齐，核对后保存新能力版本；旧能力和任务不自动改变。
+
 ### 10.2 管理员接入下一个目标
 
 1. 打开 **设置 → 媒体服务**，添加 RunningHub 连接，填写 HTTPS API 根地址（默认 `https://www.runninghub.ai`），保存 Key；一个连接可复用在多个能力上。API、上传返回值与下载不使用域名白名单；保留 URL / DNS 检查和禁止重定向，下载不携带 Key。

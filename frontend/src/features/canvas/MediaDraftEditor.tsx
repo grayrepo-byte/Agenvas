@@ -50,6 +50,7 @@ import { runningHubErrors,runningHubUsedVersions,runningHubFieldValue,type Runni
 import { WorkflowMediaInputs, WorkflowParametersDialog } from "./WorkflowDraftControls";
 import { MediaReferenceSourceMenu } from "./MediaReferenceSourceMenu";
 import { activeWorkflowMediaFields, workflowDefinition, workflowDraftValues } from "./workflowDraft";
+import { EditorFeedbackRow } from "./EditorFeedbackRow";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { VoiceLibrary } from "./VoiceLibrary";
 import { readContentText } from "./artifactContent";
@@ -303,7 +304,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       if (popover === "libraryReferences" && libraryBusy) return;
       const listbox = event.target instanceof Element ? event.target.closest('[role="listbox"]') : null;
       // Select portals sit outside the picker; the trigger's ARIA link identifies only its own menu.
-      if (popover === "libraryReferences" && listbox?.id
+      if ((popover === "libraryReferences" || popover === "voices") && listbox?.id
         && [...popoverRef.current?.querySelectorAll('[role="combobox"][aria-controls]') ?? []]
           .some((control) => control.getAttribute("aria-controls") === listbox.id)) return;
       if (event.target instanceof Node && !popoverRef.current?.contains(event.target)
@@ -311,6 +312,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        // The voice filter owns the first Escape; keep the library open while
+        // Radix dismisses its menu and restores focus to the filter trigger.
+        if (popover === "voices" && popoverRef.current?.querySelector('[role="combobox"][aria-expanded="true"]')) return;
         event.preventDefault();
         event.stopPropagation();
         if (popover === "libraryReferences" && libraryBusy) return;
@@ -333,7 +337,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       pendingSaveRef.current = { request: input, result };
       return result;
     },
-    onSuccess: (saved, input) => {
+    onMutate: (input) => ({ capabilityChanged: queryClient.getQueryData<MediaDraft>(key)?.capabilityId !== input.capabilityId }),
+    onSuccess: (saved, input, context) => {
       pendingSaveRef.current = undefined;
       setExpectedVersion(saved.version);
       queryClient.setQueryData(key, saved);
@@ -342,6 +347,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         .filter(([name]) => name !== "expectedVersion")) as DraftFields;
       if (latest && JSON.stringify(latest) === JSON.stringify(submitted)) setDirty(false);
       setError(null);
+      // A capability switch may remove unmatched connection sources in the save transaction.
+      if (context?.capabilityChanged) void queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] });
     },
     onError: (failure) => { pendingSaveRef.current = undefined; setError(failure); },
   });
@@ -1445,45 +1452,47 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     </div>
     </fieldset>
     <div className="media-draft-feedback">
-      {editorReadOnly && directTasks.isSuccess ? <p role="status">{t("media.editor.editingLocked")}</p> : null}
-      {fields.styleId && !supportsStyle ? <p role="alert">{t("styles.promptRequired")}</p> : null}
-      {fields.styleId && supportsStyle && styles.isPending ? <p role="status">{t("styles.loading")}</p> : null}
-      {fields.styleId && styles.error ? <div role="alert">{t("styles.loadFailed")}<Button variant="ghost" type="button"
-        onClick={() => void styles.refetch()}>{t("common.retry")}</Button></div> : null}
-      {fields.styleId && styles.isSuccess && !selectedStyle?.enabled ? <p role="alert">{t("styles.unavailableHint")}</p> : null}
+      {editorReadOnly && directTasks.isSuccess ? <EditorFeedbackRow>{t("media.editor.editingLocked")}</EditorFeedbackRow> : null}
+      {fields.styleId && !supportsStyle ? <EditorFeedbackRow tone="danger">{t("styles.promptRequired")}</EditorFeedbackRow> : null}
+      {fields.styleId && supportsStyle && styles.isPending ? <EditorFeedbackRow tone="loading">{t("styles.loading")}</EditorFeedbackRow> : null}
+      {fields.styleId && styles.error ? <EditorFeedbackRow tone="danger" action={<Button variant="ghost" size="xs" type="button"
+        onClick={() => void styles.refetch()}>{t("common.retry")}</Button>}>{t("styles.loadFailed")}</EditorFeedbackRow> : null}
+      {fields.styleId && styles.isSuccess && !selectedStyle?.enabled ? <EditorFeedbackRow tone="danger">{t("styles.unavailableHint")}</EditorFeedbackRow> : null}
       {workflow ? <>
-        {fields.mediaInputs.filter((input) => !dynamicUsedVersions.has(input.versionId)).map((input) => <p key={input.versionId} role="status">{t("media.editor.unassignedSlots")}<Button variant="ghost" type="button" disabled={editorReadOnly || dirty || save.isPending || removeConnectedInput.isPending} onClick={() => removeReference(input.versionId)}>{t("media.editor.removeUnusedReferences")}</Button></p>)}
-        {runningHub?.retainSeconds ? <p>{t("media.editor.instanceRetentionCostHint", { "0": runningHub.retainSeconds })}</p> : null}
+        {fields.mediaInputs.filter((input) => !dynamicUsedVersions.has(input.versionId)).map((input) => <EditorFeedbackRow key={input.versionId} action={<Button variant="ghost" size="xs" type="button" disabled={editorReadOnly || dirty || save.isPending || removeConnectedInput.isPending} onClick={() => removeReference(input.versionId)}>{t("media.editor.removeUnusedReferences")}</Button>}>{t("media.editor.unassignedSlots")}</EditorFeedbackRow>)}
+        {runningHub?.retainSeconds ? <EditorFeedbackRow>{t("media.editor.instanceRetentionCostHint", { "0": runningHub.retainSeconds })}</EditorFeedbackRow> : null}
       </> : null}
-      {uploading ? <CanvasLoadingState compact label={t("media.editor.referenceUploading")} /> : null}
-      {uploadError ? <div role="alert">{t("media.editor.referenceUploadFailed", { "0": uploadError.message })}{failedUploads.length ? <Button variant="ghost" className="media-draft-text-action" type="button"
-          disabled={editorReadOnly || uploading} onClick={() => void uploadFiles(failedUploads)}>{t("media.editor.retryFailedImages")}</Button> : null}
-      </div> : null}
-      {run.isPending ? <CanvasLoadingState compact label={t("media.editor.submittingTask")} /> : null}
-      {run.error ? <p role="alert">{t("media.editor.runFailed", { "0": run.error.message })}</p> : null}
-      {directTasks.isPending ? <p role="status">{t("media.editor.taskChecking")}</p> : null}
-      {directTasks.error ? <div role="alert">{t("media.editor.taskStatusFailed", { "0": directTasks.error.message })}<Button variant="ghost" className="media-draft-text-action" type="button" onClick={() => void directTasks.refetch()}>{t("media.editor.retryTaskCheck")}</Button></div> : null}
-      {settings.isSuccess && fields.capabilityId && !chosenCapability ? <p role="status">{t("media.editor.modelUnavailableHint")}</p> : null}
-      {settings.isSuccess && !fields.capabilityId && !chosenCapability ? <p role="status">{t("media.editor.defaultModelMissingHint")}</p> : null}
-      {settings.error ? <div role="alert">{t("media.editor.modelSettingsFailed")}<Button variant="ghost" className="media-draft-text-action" onClick={() => void settings.refetch()} type="button">{t("media.editor.retryModels")}</Button></div> : null}
-      {chosenCapability?.adapterId === "ARK_SEEDANCE_2_I2V" && videoCount > 0 ? <p className="ui-muted">{t("media.editor.videoRelayHint")}</p> : null}
+      {uploading ? <EditorFeedbackRow tone="loading">{t("media.editor.referenceUploading")}</EditorFeedbackRow> : null}
+      {uploadError ? <EditorFeedbackRow tone="danger" action={failedUploads.length ? <Button variant="ghost" size="xs" type="button"
+          disabled={editorReadOnly || uploading} onClick={() => void uploadFiles(failedUploads)}>{t("media.editor.retryFailedImages")}</Button> : null}>
+        {t("media.editor.referenceUploadFailed", { "0": uploadError.message })}</EditorFeedbackRow> : null}
+      {run.isPending ? <EditorFeedbackRow tone="loading">{t("media.editor.submittingTask")}</EditorFeedbackRow> : null}
+      {run.error ? <EditorFeedbackRow tone="danger">{t("media.editor.runFailed", { "0": run.error.message })}</EditorFeedbackRow> : null}
+      {directTasks.isPending ? <EditorFeedbackRow tone="loading">{t("media.editor.taskChecking")}</EditorFeedbackRow> : null}
+      {directTasks.error ? <EditorFeedbackRow tone="danger" action={<Button variant="ghost" size="xs" type="button" onClick={() => void directTasks.refetch()}>{t("media.editor.retryTaskCheck")}</Button>}>
+        {t("media.editor.taskStatusFailed", { "0": directTasks.error.message })}</EditorFeedbackRow> : null}
+      {settings.isSuccess && fields.capabilityId && !chosenCapability ? <EditorFeedbackRow tone="warning">{t("media.editor.modelUnavailableHint")}</EditorFeedbackRow> : null}
+      {settings.isSuccess && !fields.capabilityId && !chosenCapability ? <EditorFeedbackRow tone="warning">{t("media.editor.defaultModelMissingHint")}</EditorFeedbackRow> : null}
+      {settings.error ? <EditorFeedbackRow tone="danger" action={<Button variant="ghost" size="xs" onClick={() => void settings.refetch()} type="button">{t("media.editor.retryModels")}</Button>}>{t("media.editor.modelSettingsFailed")}</EditorFeedbackRow> : null}
+      {chosenCapability?.adapterId === "ARK_SEEDANCE_2_I2V" && videoCount > 0 ? <EditorFeedbackRow>{t("media.editor.videoRelayHint")}</EditorFeedbackRow> : null}
       {latestTask && (latestTask.status === "FAILED" || latestTask.status === "BLOCKED")
-        ? <p role="alert">{t("media.editor.generationIncomplete", { "0": taskErrorDetail(latestTask.errorCode) })}</p> : null}
-      {latestTask?.status === "READY" ? <div className="media-draft-task-status">
-        {queue.data ? <span>{t("media.editor.queuePosition", { "0": queue.data.waitingAhead, "1": QUEUE_LABELS[queue.data.reason] })}</span> : null}
-        {queue.error ? <span role="alert">{t("media.editor.queuePositionUnavailable")}</span> : null}
-        {latestTask.runId === null ? <Button variant="ghost" className="media-draft-text-action" type="button"
-          disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? t("media.editor.canceling") : t("media.editor.cancelQueue")}</Button> : null}
-      </div> : null}
-      {cancel.error ? <p role="alert">{t("media.editor.cancelFailed", { "0": cancel.error.message })}</p> : null}
-      {latestTask?.status === "UNKNOWN" ? latestTask.runId === null ? <UnknownTaskRetryPanel errorCode={latestTask.errorCode}
+        ? <EditorFeedbackRow tone="danger">{t("media.editor.generationIncomplete", { "0": taskErrorDetail(latestTask.errorCode) })}</EditorFeedbackRow> : null}
+      {latestTask?.status === "READY" && latestTask.runId === null ? <EditorFeedbackRow tone={queue.error ? "warning" : "neutral"} action={
+        <Button variant="ghost" size="xs" type="button" disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? t("media.editor.canceling") : t("media.editor.cancelQueue")}</Button>
+      }>{queue.error ? t("media.editor.queuePositionUnavailable") : queue.data
+        ? t("media.editor.queuePosition", { "0": queue.data.waitingAhead, "1": QUEUE_LABELS[queue.data.reason] })
+        : t("tasks.status.queued")}</EditorFeedbackRow> : null}
+      {cancel.error ? <EditorFeedbackRow tone="danger">{t("media.editor.cancelFailed", { "0": cancel.error.message })}</EditorFeedbackRow> : null}
+      {latestTask && (latestTask.status === "UNKNOWN" || latestTask.status === "BLOCKED" && Boolean(latestTask.providerRequestId))
+        ? latestTask.runId === null ? <UnknownTaskRetryPanel compact errorCode={latestTask.errorCode} taskStatus={latestTask.status}
         projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} />
-        : <p role="status">{t("tasks.status.unknown")}</p> : null}
-      {error ? <div role="alert"><span>{error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT
-        ? t("media.editor.draftConflict") : error.message}</span>
-        <Button variant="ghost" className="media-draft-text-action" disabled={editorReadOnly} onClick={() => void retry()} type="button">
+        : <EditorFeedbackRow tone="warning">{t("tasks.status.unknown")}</EditorFeedbackRow> : null}
+      {error ? <EditorFeedbackRow tone="danger" action={
+        <Button variant="ghost" size="xs" disabled={editorReadOnly} onClick={() => void retry()} type="button">
           {error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? t("media.editor.refreshVersion")
-            : failedRemovalVersionId ? t("media.editor.retryRemoval") : t("common.retrySave")}</Button></div> : null}
+            : failedRemovalVersionId ? t("media.editor.retryRemoval") : t("common.retrySave")}</Button>
+      }>{error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT
+        ? t("media.editor.draftConflict") : error.message}</EditorFeedbackRow> : null}
     </div>
   </div>;
 }

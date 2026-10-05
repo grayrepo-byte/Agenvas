@@ -148,6 +148,18 @@ public class VideoOperationService {
             else input.put("parentVersionId", output.selectedVersionId().toString());
             if (operation.taskKind() == Task.Kind.VIDEO_GENERATION && seconds != null) input.put("durationSeconds", seconds);
             if (local) input.put("sourceDurationMs", asset.durationMs());
+            if (operation == VideoOperation.EXTRACT_AUDIO) {
+                // Both outputs are fixed at acceptance; deleting either node must not recreate it on completion.
+                var silent = canvas.forkMediaDerivationWithinChange(ownerId, projectId, itemId,
+                        UUID.randomUUID(), sourceDraft.version(), 1, VideoOperation.SILENT_VIDEO_LABEL);
+                var silentTarget = input.putObject(VideoOperation.SILENT_VIDEO_TARGET);
+                silentTarget.put("artifactId", silent.subjectId().toString())
+                        .put("canvasItemId", silent.id().toString())
+                        .put("parentVersionId", silent.selectedVersionId().toString())
+                        .put("artifactVersion", sourceArtifact.version())
+                        .put("resultSelectionEpoch", canvas.mediaSelectionEpoch(ownerId, projectId, silent.id()))
+                        .put("resultDraftVersion", drafts.get(ownerId, projectId, silent.id()).version());
+            }
             input.set("videoOperationRequest", request);
             input.putObject("videoOperation").put("name", operation.name()).put("sourceVersionId", sourceVersionId.toString());
             ObjectNode frozen = input.putObject("mediaInput");

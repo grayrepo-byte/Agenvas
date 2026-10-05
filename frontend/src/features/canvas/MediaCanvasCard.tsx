@@ -36,6 +36,7 @@ import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText } from "./artifactContent";
 import { AudioPlayer } from "./AudioPlayer";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
+import { ImageResizePanel } from "./ImageResizePanel";
 import { CropPanel } from "./CropPanel";
 import { MediaPreviewDialog } from "./MediaPreviewDialog";
 import { MediaCardUpload } from "./MediaCardUpload";
@@ -227,6 +228,8 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />{t("media.card.smartEdit")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             onClick={() => runOperation("DEPTH_MAP")}><Stack size={17} />{t("media.card.extractDepth")}</Button>
+          <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
+            onClick={() => setOperationOpen("RESIZE")}><ArrowsOutSimple data-icon="inline-start" />{t("image.resize.title")}</Button>
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
             <DropdownMenuTrigger asChild><Button variant="ghost" type="button" ref={menuButton}>
               <MagicWand />{t("media.card.extensions")}<CaretDown /></Button></DropdownMenuTrigger>
@@ -268,6 +271,11 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
                   capabilities={[capability]} configuredMethod extraControls={controls} submitDisabled={submitDisabled}
                   busy={operation.isPending} error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
                   onSubmit={(parameters, instruction) => submit(parameters, instruction)} />
+                : operationOpen === "RESIZE" ? <ImageResizePanel key={item.selectedVersionId}
+                  sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height}
+                  loading={metadata.isPending} metadataError={metadata.error} onRetryMetadata={() => void metadata.refetch()}
+                  busy={operation.isPending} error={operation.error} extraControls={controls} submitDisabled={submitDisabled}
+                  onClose={() => { setOperationOpen(null); operation.reset(); }} onSubmit={(parameters) => submit(parameters)} />
                 : operationOpen === "CROP" ? <CropPanel sourceUrl={assetContentUrl(artifact.projectId, assetId)}
                   sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height} busy={operation.isPending}
                   error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }} onSubmit={(parameters) => submit(parameters)} />
@@ -363,6 +371,7 @@ const OPERATION_TITLES: Record<ImageOperation, string> = {
   get REMOVE_BACKGROUND() { return t("media.card.removeBackground"); },
   get OBJECT_REMOVE() { return t("media.card.removeObject"); }, get VIEW_ANGLE() { return t("media.card.changeAngle"); },
   get DEPTH_MAP() { return t("media.card.extractDepth"); }, get UPSCALE() { return t("media.card.upscaleTitle"); }, get CROP() { return t("media.card.crop"); },
+  get RESIZE() { return t("image.resize.title"); },
   get ROTATE() { return t("media.card.rotate"); }, get FLIP_HORIZONTAL() { return t("media.card.flipHorizontal"); }, get FLIP_VERTICAL() { return t("media.card.flipVertical"); },
 };
 
