@@ -1787,3 +1787,30 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 同步规格、领域词汇、ADR 0015、OpenAPI 描述并重新生成 TypeScript；无需数据库迁移。
 - [x] 本次五类定向测试共 38 项通过：LocalVideoProcessorTest、CanvasTaskResultSelectionTest、MediaFunctionServiceTest、VideoOperationPostgresIT、RunningHubPostgresIT。真实 PostgreSQL 和 FFmpeg 覆盖双输出、无音轨、尺寸/时长、来源不变、幂等、目标删除及草稿冲突；补充视频逐包 SHA-256 对比的定向复验通过，确认视频流保持一致；假 RunningHub 覆盖清单归档失败恢复且只提交/查询原请求一次。OpenAPI 生成成功，差异空白检查通过。
 - [ ] 全量测试、浏览器端到端、真实 Provider 和用户运行环境部署未运行。
+
+## 2026-10-05 RunningHub 结果选择与阻断直连任务重试
+
+- [x] 数量上限改为结果选择上限：按 Provider 返回与 ZIP 成员顺序取各映射前 N 个，跳过超量、未映射媒体及未知类型，映射取满后不下载附带 ZIP。只含 ZIP 的结果继续支持归档；所选清单仍必须有主输出，ZIP 字节/成员数、路径、CRC 及媒体解码限制保留。16 个限制属于选用清单，不拒绝超过 16 个候选的原响应或 ZIP。
+- [x] 已受理 BLOCKED 的直连图片/视频/音频任务提供“重试”，点击创建独立 READY 新任务，复用冻结输入、能力绑定及输出目标，独立预留用量；旧任务、外部请求 ID、费用和错误历史保留。替代关联释放旧卡片占位，CAS、幂等、权限、取消和当前配置校验保留。界面显示“生成未完成”及可读原因；不自动复活旧任务或提交付费生成。
+- [x] 同步 MVP §6.8/6.13/12.6、CONTEXT、ADR 0006/0025、OpenAPI 说明及生成 TypeScript。无结构性 API 变化、数据库迁移、jOOQ 或依赖升级；运行服务需同时更新前后端才能使用重试入口。
+- [x] 后端五类定向测试共 52 项通过，无失败或跳过：RunningHubAdapterTest 11、RunningHubResultArchiveTest 15、RunningHubClientTest 11、ManualUnknownRetryPostgresIT 1、RunningHubPostgresIT 14。集成使用真实 PostgreSQL、Mock/本地假 RunningHub 和合成 PNG/MP4/ZIP；覆盖超量选择、独立类型/节点映射、附带 ZIP 不下载、只含 ZIP 超量、安全边界、视频新尝试、并发同键幂等、原任务/用量保留及卡片占位更新。没有实际第三方重新生成。
+- [x] MediaDraftEditor、UnknownTaskRetryPanel、taskErrorMessages、projectCache 四个文件合计 152 项前端测试通过；修复前已复现缺少重试按钮与服务端拒绝 BLOCKED 新尝试，修复后专项通过。TypeScript、生产构建、变更文件 ESLint、四语言检查和差异空白检查通过；构建有既有大 chunk 提示。
+- [ ] 额外 MediaCanvasCard 测试 85 项通过、3 项失败，均查找已经不存在的“图片能力”combobox；隔离 HEAD 源码定向复验这三项，同样失败。本次未修改这些既有测试及对应功能。
+- [ ] 全量测试、浏览器端到端、修改后的真实 Provider 生成及部署未运行；现有真实任务未重提或改写。
+- [x] 同类排查发现的 ComfyUiHistory 发布输出、固定图片/视频，以及 AutoDlVideoAdapter 多视频数量误判已在后续修复，验证见下节。
+- [ ] AgentTurnCommitService 的模型轮次/修复上限和部分失败仍把 AgentRun 留在 BLOCKED 并占活动槽位；该路径本次只做代码排查，尚未修改或构造新行为测试。
+- [ ] 能力版本在任务阻断后发生变化时，新尝试仍因旧绑定校验冲突，原已受理任务继续占卡片；Agent 来源媒体任务也不使用直连新尝试接口。需要后续设计显式终止/替代旧任务并从当前草稿重新受理的出口，不能靠自动覆盖冻结输入处理。
+
+### 2026-10-05 ComfyUI / AutoDL 多结果选择修复
+
+- [x] ComfyUiHistory 的发布工作流、固定图片和固定视频改为按供应商顺序选择首个合格正式输出，跳过预览、不匹配媒体和不安全路径，只返回一个文件。固定视频支持整批单个动画标记或按文件对应的标记；空结果、无合格输出、错误 prompt/节点和畸形状态继续报告错误。
+- [x] AutoDlVideoAdapter 首次查询及链接过期后的原 task_id 查询均选择第一个正式视频；多个视频不再报告缺失，其他媒体及多余结果不下载。恢复查询不重新生成，URL/DNS/MIME/大小/解码校验继续生效。
+- [x] 修复前定向单元命令复现多结果误报（AutoDL 三项断言失败、ComfyUI 四项协议错误）；修复后七类测试共 107 项通过，失败/错误/跳过均为零：ComfyUiHistoryTest 92、AutoDlVideoAdapterTest 4、AutoDlClientTest 7，以及 ComfyUiImagePostgresIT、ComfyUiVideoPostgresIT、ComfyUiWorkflowPostgresIT、AutoDlVideoPostgresIT 各 1 项。集成使用真实 PostgreSQL、本地假 HTTP 和合成图片/含音轨 MP4，验证只下载选中文件、不可变归档、原任务恢复和不重复提交。
+- [x] 同步 MVP §6.12/13.4、ADR 0024/0030 与 AutoDL 接入说明；差异空白检查通过。本轮无 API 结构、数据库、jOOQ、前端或依赖变化。
+- [ ] 全量测试、浏览器端到端、真实 ComfyUI/AutoDL 生成与部署未运行；没有改写或重提真实用户任务。其他 BLOCKED 状态与 Agent 槽位问题不在本轮修改范围。
+
+### 合并 develop 复验
+
+- [x] 合并保留 develop 的紧凑 EditorFeedbackRow 与 compact 重试面板，并在两种面板布局中接入已受理 BLOCKED 的新尝试入口；视频音频分离与本次结果选择的验收记录均保留。重新生成 OpenAPI TypeScript，无额外生成差异。
+- [x] develop 合并结果的十二类后端专项测试共 160 项通过，无失败/错误/跳过，包含真实 PostgreSQL、假 Provider 和本地媒体归档；四类前端专项测试共 154 项通过。TypeScript、变更文件 ESLint、四语言检查、生产构建与差异空白检查通过；构建仍有既有大 chunk 提示。
+- [ ] 全量测试、浏览器端到端、真实 Provider 生成、远端推送与部署未运行。

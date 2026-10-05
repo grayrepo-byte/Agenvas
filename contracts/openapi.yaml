@@ -2984,7 +2984,8 @@ paths:
         schema: {type: string, format: uuid}
     post:
       operationId: createManualUnknownAttempt
-      summary: 为结果未知的任务创建独立的新尝试
+      summary: 为结果未知或已受理但阻断的直连媒体任务创建独立的新尝试
+      description: 仅接受未取消的 UNKNOWN（无外部请求 ID）或 BLOCKED（已有外部请求 ID）直连媒体任务。重试创建新的生成任务并独立预留用量；保留原任务、请求 ID、输入与费用记录，原任务不再占用发起卡片。不会恢复原请求查询。已变化的任务版本或能力配置返回冲突。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -4995,7 +4996,11 @@ components:
               nodeId: {type: [string, "null"], pattern: "^[0-9]{1,32}$"}
               kind: {type: string, enum: [IMAGE, VIDEO, AUDIO]}
               primary: {type: boolean}
-              maxCount: {type: integer, minimum: 1, maximum: 16}
+              maxCount:
+                type: integer
+                minimum: 1
+                maximum: 16
+                description: 按 Provider 结果及 ZIP 成员顺序选取此映射的前 N 个媒体结果。超出的结果和未映射附件跳过，不因返回数量超过上限而拒绝整个任务。
     RunningHubField:
       type: object
       additionalProperties: false

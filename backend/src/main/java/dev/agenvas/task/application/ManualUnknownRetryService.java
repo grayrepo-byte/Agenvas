@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 为结果未知的直接媒体任务建立可审计的新替代尝试，原任务与提交记录始终保留。 */
+/** 为结果未知或已受理但阻断的直接媒体任务建立新尝试，保留原任务和提交记录。 */
 @Service
 public class ManualUnknownRetryService {
 
@@ -33,7 +33,7 @@ public class ManualUnknownRetryService {
     private final ProjectService projects;
     /** 对已有输出目标再次比较产物版本。 */
     private final ArtifactService artifacts;
-    /** 新尝试独立预留媒体用量，原 UNKNOWN 费用记录不消失。 */
+    /** 新尝试独立预留媒体用量，原尝试的费用记录不消失。 */
     private final UsageService usage;
     /** 与替代关系同事务写入项目事件。 */
     private final ProjectEventService events;
@@ -70,11 +70,11 @@ public class ManualUnknownRetryService {
 
     /**
      * 用户发起重试后，在同一项目事务中创建一次新的媒体任务与独立用量预留。
-     * 必须重新核验原 UNKNOWN 任务、媒体能力与固定输出目标；原 UNKNOWN 记录始终保留。
+     * 必须核验原任务、媒体能力与固定输出目标；UNKNOWN 或已受理 BLOCKED 的原记录始终保留。
      *
      * @param ownerId 经认证的用户 ID
      * @param projectId 原任务所属项目
-     * @param originalTaskId 状态仍为 UNKNOWN 的直接媒体任务
+     * @param originalTaskId 仍为 UNKNOWN 或已受理 BLOCKED 的直接媒体任务
      * @param expectedTaskVersion 用户读取到的原任务版本
      * @param idempotencyKey 同一重试命令的客户端键；相同键不能用于别的任务或版本
      * @return 新建或同键重放得到的替代任务
@@ -113,9 +113,10 @@ public class ManualUnknownRetryService {
     /** 直接媒体任务的替代尝试保留原固定输入，并单独预留用量。 */
     private Task retryDirect(UUID ownerId, UUID projectId, Task original,
             long expectedTaskVersion, String idempotencyKey) {
+        boolean retryable = original.status() == Task.Status.UNKNOWN && original.providerRequestId() == null
+                || original.status() == Task.Status.BLOCKED && original.providerRequestId() != null;
         if (original.version() != expectedTaskVersion
-                || original.status() != Task.Status.UNKNOWN || original.cancelRequested()
-                || original.providerRequestId() != null
+                || !retryable || original.cancelRequested()
                 || (original.kind() != Task.Kind.IMAGE_GENERATION
                         && original.kind() != Task.Kind.VIDEO_GENERATION
                         && original.kind() != Task.Kind.AUDIO_GENERATION)) {
@@ -125,7 +126,7 @@ public class ManualUnknownRetryService {
         MediaCapabilityBinding binding = repository.mediaBinding(original.id())
                 .orElseThrow(() -> conflict(ApiMessage.of("api.manual-unknown-retry-service.the-original-media-capabilities-are-unavailable-and-new-attempts-cannot")));
         int seconds = original.kind() == Task.Kind.VIDEO_GENERATION
-                ? original.input().path("durationSeconds").asInt(-1) : 0;
+                ? original.input().path("durationSeconds").asInt(0) : 0;
         if (!mediaCapabilities.isCurrentBinding(binding, original.kind(), seconds)) {
             throw conflict(ApiMessage.of("api.manual-unknown-retry-service.media-capabilities-have-changed-please-create-a-new-draft-task"));
         }
@@ -162,7 +163,7 @@ public class ManualUnknownRetryService {
         payload.put("taskId", task.id().toString());
         payload.put("status", task.status().name());
         payload.put("cancelRequested", task.cancelRequested());
-        payload.put("possibleExternalCost", task.status() == Task.Status.UNKNOWN);
+        payload.put("possibleExternalCost", task.status() == Task.Status.UNKNOWN || task.providerRequestId() != null);
         if (replacementId != null) payload.put("replacementTaskId", replacementId.toString());
         return new ProjectEventService.EventDraft("task.status.changed", 1,
                 task.id(), task.version(), payload);

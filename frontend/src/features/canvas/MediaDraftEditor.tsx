@@ -1480,7 +1480,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         ? t("media.editor.queuePosition", { "0": queue.data.waitingAhead, "1": QUEUE_LABELS[queue.data.reason] })
         : t("tasks.status.queued")}</EditorFeedbackRow> : null}
       {cancel.error ? <EditorFeedbackRow tone="danger">{t("media.editor.cancelFailed", { "0": cancel.error.message })}</EditorFeedbackRow> : null}
-      {latestTask?.status === "UNKNOWN" ? latestTask.runId === null ? <UnknownTaskRetryPanel compact errorCode={latestTask.errorCode}
+      {latestTask && (latestTask.status === "UNKNOWN" || latestTask.status === "BLOCKED" && Boolean(latestTask.providerRequestId))
+        ? latestTask.runId === null ? <UnknownTaskRetryPanel compact errorCode={latestTask.errorCode} taskStatus={latestTask.status}
         projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} />
         : <EditorFeedbackRow tone="warning">{t("tasks.status.unknown")}</EditorFeedbackRow> : null}
       {error ? <EditorFeedbackRow tone="danger" action={

@@ -815,7 +815,7 @@ export async function getTask(projectId: string, taskId: string): Promise<Task> 
   return readJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}`, t("api.errors.taskStatusUnavailable"));
 }
 
-/** Starts a separately reserved attempt for a task whose result is unknown. */
+/** Creates a separately reserved generation attempt for an unknown or accepted blocked direct task. */
 export async function createManualUnknownAttempt(projectId: string, taskId: string,
   key: string, request: ManualUnknownAttemptRequest): Promise<Task> {
   return writeJson<Task>(`/api/v1/projects/${projectId}/tasks/${taskId}/new-attempt`, {

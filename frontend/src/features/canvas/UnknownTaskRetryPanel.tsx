@@ -9,9 +9,9 @@ import { taskErrorMessage } from "./taskErrorMessages";
 import { EditorFeedbackRow } from "./EditorFeedbackRow";
 
 /** Offers one explicit retry for a task whose external result could not be confirmed. */
-export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCode, onChanged, compact = false }: {
+export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCode, taskStatus = "UNKNOWN", onChanged, compact = false }: {
   projectId: string; taskId: string; taskVersion: number;
-  errorCode?: Task["errorCode"]; onChanged?: () => void | Promise<void>;
+  errorCode?: Task["errorCode"]; taskStatus?: "UNKNOWN" | "BLOCKED"; onChanged?: () => void | Promise<void>;
   compact?: boolean;
 }) {
   useLocale();
@@ -37,7 +37,7 @@ export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCod
   });
 
   if (compact) return <>
-    <EditorFeedbackRow tone="warning" title={t("tasks.status.unknown")} action={
+    <EditorFeedbackRow tone="warning" title={taskStatus === "BLOCKED" ? t("media.card.blocked") : t("tasks.status.unknown")} action={
       <Button variant="ghost" size="xs" disabled={retry.isPending}
         onClick={() => retry.mutate()} type="button">
         {retry.isPending ? t("common.retrying") : t("common.retry")}
@@ -48,7 +48,8 @@ export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCod
   </>;
 
   return <div className="agent-chat-panel agent-chat-unknown">
-    <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />{t("tasks.status.unknown")}</p>
+    <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />{taskStatus === "BLOCKED"
+      ? t("media.card.blocked") : t("tasks.status.unknown")}</p>
     {/* 说明为什么未知：超时、断线、结果下载失败与协议不符的重试预期并不相同。 */}
     {reason ? <p>{reason}</p> : errorCode ? <p>{errorCode}</p> : null}
     <Button variant="ghost" className="agent-chat-panel-secondary" disabled={retry.isPending}
