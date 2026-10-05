@@ -1542,6 +1542,33 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });
 
+  it("creates a new task for an accepted blocked request while retaining its draft", async () => {
+    const blocked = { ...task("BLOCKED"), providerRequestId: "synthetic-accepted", version: 7,
+      errorCode: "PROVIDER_POLL_RETRY_EXHAUSTED" };
+    const replacement = { ...task("READY"), id: "replacement-task", attemptNo: 2 };
+    let calls = 0;
+    const state: ReturnType<typeof setup> = setup({ tasks: [blocked], handlers: [
+      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/new-attempt`, async ({ request }) => {
+        expect(await request.json()).toEqual({ expectedTaskVersion: 7 });
+        expect(request.headers.get("Idempotency-Key")).toBeTruthy();
+        calls++;
+        state.setTasks([replacement]);
+        return HttpResponse.json(replacement);
+      }),
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/replacement-task/queue`, () =>
+        HttpResponse.json({ waitingAhead: 0, reason: "WAITING_WORKER" })),
+    ] });
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeDisabled());
+    const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
+    const previous = prompt.textContent;
+    const retry = await screen.findByRole("button", { name: "重试" });
+    await userEvent.setup().click(retry);
+    await waitFor(() => expect(calls).toBe(1));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument());
+    expect(prompt.textContent).toBe(previous);
+    expect(state.saves).toHaveLength(0);
+  });
+
   it.each(["READY", "UNKNOWN"] as const)("keeps Agent %s tasks occupied without direct task controls", async (status) => {
     const queueRequest = vi.fn();
     setup({ tasks: [{ ...task(status), runId: "agent-run" }], handlers: [

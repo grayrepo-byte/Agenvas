@@ -42,17 +42,80 @@ class ComfyUiHistoryTest {
                 .isEqualTo(new ComfyUiHistory.PublishedReady("image.png", "render/day", "image/png"));
     }
 
-    @Test void publishedOutputRejectsTraversalUnexpectedTypesAndMultipleResults() {
+    @Test void publishedOutputRejectsTraversalAndUnexpectedTypes() {
         var output = new ComfyUiWorkflowDefinition.Output("9", "images");
         for (String folder : java.util.List.of("../private", "/absolute", "a/../b", "a\\b", "a//b", "a/%2e%2e"))
             assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "output", folder), promptId, output, Task.Kind.IMAGE_GENERATION))
                     .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
         assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "input", ""), promptId, output, Task.Kind.IMAGE_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
         assertThatThrownBy(() -> ComfyUiHistory.published(history(true, "success", "image.png", "output", ""), promptId, output, Task.Kind.VIDEO_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
-        var response = history(true, "success", "image.png", "output", "");
+    }
+
+    @Test void publishedOutputSelectsFirstSafeMatchingMediaInProviderOrder() {
+        var response = history(true, "success", "preview.png", "temp", "");
         var files = (tools.jackson.databind.node.ArrayNode) response.at("/" + promptId + "/outputs/9/images");
-        files.add(files.get(0).deepCopy());
-        assertThatThrownBy(() -> ComfyUiHistory.published(response, promptId, output, Task.Kind.IMAGE_GENERATION)).isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        files.addObject().put("filename", "../unsafe.mp4").put("type", "output");
+        files.addObject().put("filename", "image.png").put("type", "output");
+        files.addObject().put("filename", "first.mp4").put("type", "output").put("subfolder", "render/day");
+        files.addObject().put("filename", "second.mp4").put("type", "output");
+        assertThat(ComfyUiHistory.published(response, promptId,
+                new ComfyUiWorkflowDefinition.Output("9", "images"), Task.Kind.VIDEO_GENERATION))
+                .isEqualTo(new ComfyUiHistory.PublishedReady("first.mp4", "render/day", "video/mp4"));
+        assertThat(ComfyUiHistory.published(response, promptId,
+                new ComfyUiWorkflowDefinition.Output("9", "images"), Task.Kind.IMAGE_GENERATION))
+                .isEqualTo(new ComfyUiHistory.PublishedReady("image.png", "", "image/png"));
+    }
+
+    @Test void fixedImageSelectsFirstSafeOutputAndIgnoresPreviewsAndExtras() {
+        var response = history(true, "success", "preview.png", "temp", "");
+        var files = (tools.jackson.databind.node.ArrayNode) response.at("/" + promptId + "/outputs/9/images");
+        files.addObject().put("filename", "../unsafe.png").put("type", "output");
+        files.addObject().put("filename", "clip.mp4").put("type", "output");
+        files.addObject().put("filename", "first.png").put("type", "output");
+        files.addObject().put("filename", "second.png").put("type", "output");
+        assertThat(ComfyUiHistory.image(response, promptId, "9"))
+                .isEqualTo(new ComfyUiHistory.Ready("first.png"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"[true]", "[false,true,true]"})
+    void fixedVideoSelectsFirstSafeMp4WithSharedOrPerFileAnimationFlags(String flags) {
+        var response = videoHistory(true, "success", "preview.png", true);
+        var output = (ObjectNode) response.at("/" + promptId + "/outputs/14");
+        var files = (tools.jackson.databind.node.ArrayNode) output.path("images");
+        files.addObject().put("filename", "first.mp4").put("type", "output");
+        files.addObject().put("filename", "second.mp4").put("type", "output");
+        output.set("animated", mapper.readTree(flags));
+        assertThat(ComfyUiHistory.video(response, promptId, "14"))
+                .isEqualTo(new ComfyUiHistory.VideoReady("first.mp4"));
+    }
+
+    @Test void fixedVideoSkipsNonAnimatedAndUnsafeMp4Candidates() {
+        var response = videoHistory(true, "success", "still.mp4", false);
+        var output = (ObjectNode) response.at("/" + promptId + "/outputs/14");
+        var files = (tools.jackson.databind.node.ArrayNode) output.path("images");
+        files.addObject().put("filename", "../unsafe.mp4").put("type", "output");
+        files.addObject().put("filename", "preview.mp4").put("type", "temp");
+        files.addObject().put("filename", "first.mp4").put("type", "output");
+        output.set("animated", mapper.readTree("[false,true,true,true]"));
+        assertThat(ComfyUiHistory.video(response, promptId, "14"))
+                .isEqualTo(new ComfyUiHistory.VideoReady("first.mp4"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "{}", "[]"})
+    void absentOrEmptyOutputCollectionsStillCannotComplete(String filesJson) {
+        var image = history(true, "success", "image.png", "output", "");
+        ((ObjectNode) image.at("/" + promptId + "/outputs/9")).set("images", mapper.readTree(filesJson));
+        assertThatThrownBy(() -> ComfyUiHistory.image(image, promptId, "9"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        assertThatThrownBy(() -> ComfyUiHistory.published(image, promptId,
+                new ComfyUiWorkflowDefinition.Output("9", "images"), Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
+        var video = videoHistory(true, "success", "clip.mp4", true);
+        ((ObjectNode) video.at("/" + promptId + "/outputs/14")).set("images", mapper.readTree(filesJson));
+        assertThatThrownBy(() -> ComfyUiHistory.video(video, promptId, "14"))
+                .isInstanceOf(ComfyUiClient.ProtocolFailure.class);
     }
 
     @Test

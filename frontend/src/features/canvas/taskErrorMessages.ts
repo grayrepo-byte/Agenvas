@@ -30,6 +30,7 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get LLM_SERVICE_UNAVAILABLE() { return t("agent.retry.unavailable"); },
   get LLM_CALL_TIMEOUT() { return t("agent.retry.timeout"); },
   get EXECUTION_HISTORY_CLEANED() { return t("tasks.errors.executionExpired"); },
+  get PROVIDER_POLL_RETRY_EXHAUSTED() { return t("tasks.errors.pollRetryExhausted"); },
   // 措辞保持中性：连接超时也走这个码，那时请求可能根本没发出去，
   // 所以不能说成「已提交但没拿到结果」。
   get [PROVIDER_FAILURE_CODES.CALL_TIMEOUT]() { return t("tasks.errors.callTimeout"); },

@@ -1476,7 +1476,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? t("media.editor.canceling") : t("media.editor.cancelQueue")}</Button> : null}
       </div> : null}
       {cancel.error ? <p role="alert">{t("media.editor.cancelFailed", { "0": cancel.error.message })}</p> : null}
-      {latestTask?.status === "UNKNOWN" ? latestTask.runId === null ? <UnknownTaskRetryPanel errorCode={latestTask.errorCode}
+      {latestTask && (latestTask.status === "UNKNOWN" || latestTask.status === "BLOCKED" && Boolean(latestTask.providerRequestId))
+        ? latestTask.runId === null ? <UnknownTaskRetryPanel errorCode={latestTask.errorCode} taskStatus={latestTask.status}
         projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} />
         : <p role="status">{t("tasks.status.unknown")}</p> : null}
       {error ? <div role="alert"><span>{error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT

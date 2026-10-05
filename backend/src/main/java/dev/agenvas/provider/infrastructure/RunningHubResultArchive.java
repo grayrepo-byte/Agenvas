@@ -86,8 +86,8 @@ public final class RunningHubResultArchive implements AutoCloseable {
                 String extension = extension(entry.getName());
                 if ("zip".equals(extension)) throw new RunningHubClient.ProtocolFailure();
                 var kind = entry.isDirectory() ? null : outputKind(extension);
-                if (kind != null && members.size() >= RunningHubDefinition.MAX_OUTPUTS)
-                    throw new RunningHubClient.ProtocolFailure();
+                // The adapter caps selected results. ZIP ingestion has separate byte
+                // and entry limits, so an archive containing extra media remains usable.
                 Path file = kind == null ? null : temporary(".media");
                 MessageDigest digest = sha256();
                 CRC32 crc = new CRC32();

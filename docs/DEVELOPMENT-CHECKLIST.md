@@ -1763,3 +1763,24 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 最新远端前端 951 项测试/构建、后端单元 867 项（跳过 1 项）及 PostgreSQL 集成 258 项（跳过 4 项）全部通过；jOOQ 一次性数据库固定 55432 端口偶发冲突。CI 改为 Docker 分配本机端口并覆盖现有 JDBC URL，步骤退出清理容器和匿名卷。本机占用 55432 的红/绿复验通过，真实 PostgreSQL 迁移/codegen 成功且生成源码无差异；actionlint 和差异空白检查通过。
 
 - [x] jOOQ 启动检查改为显式 TCP，避免初始化用 Unix socket 临时服务的误就绪。本机控制官方 PostgreSQL 初始化阶段，旧 socket 检查误报就绪而 TCP 正确拒绝；释放初始化后 TCP 成功。再次执行完整更新后 CI 脚本，在 55432 已占用时迁移/codegen 与容器清理通过，生成文件无差异。
+
+## 2026-10-05 RunningHub 结果选择与阻断直连任务重试
+
+- [x] 数量上限改为结果选择上限：按 Provider 返回与 ZIP 成员顺序取各映射前 N 个，跳过超量、未映射媒体及未知类型，映射取满后不下载附带 ZIP。只含 ZIP 的结果继续支持归档；所选清单仍必须有主输出，ZIP 字节/成员数、路径、CRC 及媒体解码限制保留。16 个限制属于选用清单，不拒绝超过 16 个候选的原响应或 ZIP。
+- [x] 已受理 BLOCKED 的直连图片/视频/音频任务提供“重试”，点击创建独立 READY 新任务，复用冻结输入、能力绑定及输出目标，独立预留用量；旧任务、外部请求 ID、费用和错误历史保留。替代关联释放旧卡片占位，CAS、幂等、权限、取消和当前配置校验保留。界面显示“生成未完成”及可读原因；不自动复活旧任务或提交付费生成。
+- [x] 同步 MVP §6.8/6.13/12.6、CONTEXT、ADR 0006/0025、OpenAPI 说明及生成 TypeScript。无结构性 API 变化、数据库迁移、jOOQ 或依赖升级；运行服务需同时更新前后端才能使用重试入口。
+- [x] 后端五类定向测试共 52 项通过，无失败或跳过：RunningHubAdapterTest 11、RunningHubResultArchiveTest 15、RunningHubClientTest 11、ManualUnknownRetryPostgresIT 1、RunningHubPostgresIT 14。集成使用真实 PostgreSQL、Mock/本地假 RunningHub 和合成 PNG/MP4/ZIP；覆盖超量选择、独立类型/节点映射、附带 ZIP 不下载、只含 ZIP 超量、安全边界、视频新尝试、并发同键幂等、原任务/用量保留及卡片占位更新。没有实际第三方重新生成。
+- [x] MediaDraftEditor、UnknownTaskRetryPanel、taskErrorMessages、projectCache 四个文件合计 152 项前端测试通过；修复前已复现缺少重试按钮与服务端拒绝 BLOCKED 新尝试，修复后专项通过。TypeScript、生产构建、变更文件 ESLint、四语言检查和差异空白检查通过；构建有既有大 chunk 提示。
+- [ ] 额外 MediaCanvasCard 测试 85 项通过、3 项失败，均查找已经不存在的“图片能力”combobox；隔离 HEAD 源码定向复验这三项，同样失败。本次未修改这些既有测试及对应功能。
+- [ ] 全量测试、浏览器端到端、修改后的真实 Provider 生成及部署未运行；现有真实任务未重提或改写。
+- [x] 同类排查发现的 ComfyUiHistory 发布输出、固定图片/视频，以及 AutoDlVideoAdapter 多视频数量误判已在后续修复，验证见下节。
+- [ ] AgentTurnCommitService 的模型轮次/修复上限和部分失败仍把 AgentRun 留在 BLOCKED 并占活动槽位；该路径本次只做代码排查，尚未修改或构造新行为测试。
+- [ ] 能力版本在任务阻断后发生变化时，新尝试仍因旧绑定校验冲突，原已受理任务继续占卡片；Agent 来源媒体任务也不使用直连新尝试接口。需要后续设计显式终止/替代旧任务并从当前草稿重新受理的出口，不能靠自动覆盖冻结输入处理。
+
+### 2026-10-05 ComfyUI / AutoDL 多结果选择修复
+
+- [x] ComfyUiHistory 的发布工作流、固定图片和固定视频改为按供应商顺序选择首个合格正式输出，跳过预览、不匹配媒体和不安全路径，只返回一个文件。固定视频支持整批单个动画标记或按文件对应的标记；空结果、无合格输出、错误 prompt/节点和畸形状态继续报告错误。
+- [x] AutoDlVideoAdapter 首次查询及链接过期后的原 task_id 查询均选择第一个正式视频；多个视频不再报告缺失，其他媒体及多余结果不下载。恢复查询不重新生成，URL/DNS/MIME/大小/解码校验继续生效。
+- [x] 修复前定向单元命令复现多结果误报（AutoDL 三项断言失败、ComfyUI 四项协议错误）；修复后七类测试共 107 项通过，失败/错误/跳过均为零：ComfyUiHistoryTest 92、AutoDlVideoAdapterTest 4、AutoDlClientTest 7，以及 ComfyUiImagePostgresIT、ComfyUiVideoPostgresIT、ComfyUiWorkflowPostgresIT、AutoDlVideoPostgresIT 各 1 项。集成使用真实 PostgreSQL、本地假 HTTP 和合成图片/含音轨 MP4，验证只下载选中文件、不可变归档、原任务恢复和不重复提交。
+- [x] 同步 MVP §6.12/13.4、ADR 0024/0030 与 AutoDL 接入说明；差异空白检查通过。本轮无 API 结构、数据库、jOOQ、前端或依赖变化。
+- [ ] 全量测试、浏览器端到端、真实 ComfyUI/AutoDL 生成与部署未运行；没有改写或重提真实用户任务。其他 BLOCKED 状态与 Agent 槽位问题不在本轮修改范围。

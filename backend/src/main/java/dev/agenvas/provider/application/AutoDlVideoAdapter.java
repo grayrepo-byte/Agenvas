@@ -72,16 +72,17 @@ public final class AutoDlVideoAdapter implements MediaAdapter {
         catch (AutoDlClient.ResultExpired expired) { return new Submission.Blocked("AUTODL_RESULT_EXPIRED"); }
     }
     private Submission completed(AttemptContext context, AutoDlClient.TaskState state) {
-        var results = state.results().stream().filter(result -> "video".equals(result.type())).toList();
-        if (results.size() != 1) return new Submission.Blocked("AUTODL_RESULT_MISSING_VIDEO");
-        try { return new Submission.Completed(client.downloadVideo(results.getFirst().url())); }
+        // One task archives one video; extra outputs do not make a successful response ambiguous.
+        var result = state.results().stream().filter(candidate -> "video".equals(candidate.type())).findFirst();
+        if (result.isEmpty()) return new Submission.Blocked("AUTODL_RESULT_MISSING_VIDEO");
+        try { return new Submission.Completed(client.downloadVideo(result.get().url())); }
         catch (AutoDlClient.ResultExpired expired) {
             // A fresh signed URL may be obtained only from the original task, never a new submission.
             var refreshed = client.query(credential(context), context.originalRequestId());
-            var videos = refreshed.results().stream().filter(result -> "video".equals(result.type())).toList();
-            if (!"SUCCESS".equals(refreshed.status()) || videos.size() != 1
-                    || videos.getFirst().url().equals(results.getFirst().url())) throw expired;
-            return new Submission.Completed(client.downloadVideo(videos.getFirst().url()));
+            var video = refreshed.results().stream().filter(candidate -> "video".equals(candidate.type())).findFirst();
+            if (!"SUCCESS".equals(refreshed.status()) || video.isEmpty()
+                    || video.get().url().equals(result.get().url())) throw expired;
+            return new Submission.Completed(client.downloadVideo(video.get().url()));
         }
     }
     private Snapshot snapshot(AttemptContext context) {

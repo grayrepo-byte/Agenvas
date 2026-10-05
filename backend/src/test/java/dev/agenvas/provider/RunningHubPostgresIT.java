@@ -82,6 +82,7 @@ class RunningHubPostgresIT {
     @Autowired MediaExecutionWorker worker;
     @Autowired DirectMediaTaskService direct;
     @Autowired TaskService tasks;
+    @Autowired dev.agenvas.task.application.ManualUnknownRetryService retries;
     @Autowired UsageService usage;
     @Autowired CallLogService callLogs;
     @Autowired MediaToolRunner mediaTools;
@@ -116,7 +117,7 @@ class RunningHubPostgresIT {
             assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
             assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(1);
             assertThat(provider.firstDownloads).hasValue(1); assertThat(provider.secondDownloads).hasValue(2);
-            assertThat(provider.zipDownloads).hasValue(1);
+            assertThat(provider.zipDownloads).hasValue(0);
             assertThat(completed.output().path("additionalResults")).hasSize(1);
             assertThat(completed.output().path("selected").asBoolean()).isFalse();
             assertThat(drafts.get(owner, fixture.project.id(), fixture.card).prompt()).isEqualTo("new local draft");
@@ -125,6 +126,41 @@ class RunningHubPostgresIT {
             assertThat(restarted.pollOnce("rh-repeat")).isZero();
             assertThat(canvas.list(owner, fixture.project.id())).hasSize(2);
             assertThat(completed.output().path("providerUsage").path("consumeMoney").isNull()).isTrue();
+        }
+    }
+
+    @Test void explicitBlockedVideoRetryCreatesANewGenerationAndSelectsTheFirstResult() throws Exception {
+        try (var provider = new Fake(1, false, false)) {
+            var file = Files.createTempFile("rh-selection-fixture", ".mp4");
+            try {
+                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi",
+                        "-i", "color=c=black:s=32x32:r=1", "-t", "1", "-pix_fmt", "yuv420p", "-y", file.toString()));
+                provider.firstType = "mp4";
+                provider.firstBytes = Files.readAllBytes(file);
+                provider.zipBytes = zip(new String[] { "companion.mp4" }, new byte[][] { provider.firstBytes });
+                var fixture = fixture(provider, Artifact.Kind.VIDEO, "AI_APP", false);
+                Task original = accept(fixture, "Synthetic video retry");
+                worker.submitOnce("rh-original-submit");
+                jdbc.sql("update task set status='BLOCKED', error_code='PROVIDER_POLL_RETRY_EXHAUSTED', "
+                                + "version=version+1 where id=:id").param("id", original.id()).update();
+                Task blocked = tasks.get(owner, fixture.project.id(), original.id());
+                Task replacement = retries.create(owner, fixture.project.id(), original.id(), blocked.version(), "retry-blocked-video");
+                assertThat(retries.create(owner, fixture.project.id(), original.id(), blocked.version(), "retry-blocked-video").id())
+                        .isEqualTo(replacement.id());
+                assertThat(provider.submits).hasValue(1);
+                worker.submitOnce("rh-replacement-submit");
+                due(replacement.id()); worker.pollOnce("rh-replacement-poll");
+                Task completed = tasks.get(owner, fixture.project.id(), replacement.id());
+                assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+                assertThat(completed.output().path("selected").asBoolean()).isTrue();
+                assertThat(completed.output().path("additionalResults")).isEmpty();
+                assertThat(provider.submits).hasValue(2);
+                assertThat(provider.queries).hasValue(1);
+                assertThat(provider.zipDownloads).hasValue(0);
+                assertThat(canvas.list(owner, fixture.project.id())).hasSize(1);
+                assertThat(tasks.get(owner, fixture.project.id(), original.id())).isEqualTo(blocked);
+                assertThat(tasks.providerResultManifest(completed).orElseThrow().results()).hasSize(1);
+            } finally { Files.deleteIfExists(file); }
         }
     }
 
@@ -455,6 +491,8 @@ class RunningHubPostgresIT {
         final AtomicReference<String> submitted = new AtomicReference<>();
         final AtomicReference<String> submissionPath = new AtomicReference<>();
         volatile String secondType = "png";
+        volatile String firstType = "png";
+        volatile byte[] firstBytes;
         volatile byte[] secondBytes;
         final byte[] imageBytes;
         volatile byte[] zipBytes;
@@ -476,7 +514,7 @@ class RunningHubPostgresIT {
                 } else if (path.equals("/openapi/v2/query")) {
                     queries.incrementAndGet();
                     response = ("{\"status\":\"SUCCESS\",\"results\":["
-                            + (zipOnly ? "" : "{\"nodeId\":\"9\",\"outputType\":\"png\",\"url\":\"" + origin() + "/first.png\"}"
+                            + (zipOnly ? "" : "{\"nodeId\":\"9\",\"outputType\":\"" + firstType + "\",\"url\":\"" + origin() + "/first.png\"}"
                                 + (resultCount > 1 ? ",{\"nodeId\":\"9\",\"outputType\":\"" + secondType + "\",\"url\":\"" + origin() + "/second.png\"}" : "") + ",")
                             + "{\"nodeId\":\"99\",\"outputType\":\"zip\",\"url\":\"" + origin() + "/companion.zip\"}"
                             + "],\"usage\":{\"consumeMoney\":null,\"consumeCoins\":0.25,\"taskCostTime\":3}}").getBytes(StandardCharsets.UTF_8);
@@ -487,7 +525,8 @@ class RunningHubPostgresIT {
                     if (path.equals("/first.png")) firstDownloads.incrementAndGet();
                     else if (path.equals("/companion.zip") && zipDownloads.incrementAndGet() == 2 && failZipArchiveOnce) status = 503;
                     else if (path.equals("/second.png") && secondDownloads.incrementAndGet() == 1 && failSecondOnce) status = 503;
-                    response = path.equals("/companion.zip") ? zipBytes : path.equals("/second.png") && secondBytes != null ? secondBytes : imageBytes;
+                    response = path.equals("/companion.zip") ? zipBytes : path.equals("/second.png") && secondBytes != null
+                            ? secondBytes : path.equals("/first.png") && firstBytes != null ? firstBytes : imageBytes;
                 }
                 exchange.sendResponseHeaders(status, response.length); exchange.getResponseBody().write(response); exchange.close();
             }); server.start();

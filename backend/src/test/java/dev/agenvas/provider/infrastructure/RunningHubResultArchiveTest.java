@@ -98,11 +98,12 @@ class RunningHubResultArchiveTest {
         assertThat(input.closed).isTrue();
     }
 
-    @Test void rejectsMoreThanTheGlobalMediaOutputLimit() throws Exception {
+    @Test void archiveCandidatesAreBoundedByEntryLimitsRatherThanTheResultSelectionCap() throws Exception {
         List<String> names = java.util.stream.IntStream.rangeClosed(0, RunningHubDefinition.MAX_OUTPUTS)
                 .mapToObj(index -> index + ".png").toList();
-        assertThatThrownBy(() -> RunningHubResultArchive.open(payload(zip(names, 1))))
-                .isInstanceOf(RunningHubClient.ProtocolFailure.class);
+        try (var archive = RunningHubResultArchive.open(payload(zip(names, 1)))) {
+            assertThat(archive.members()).hasSize(RunningHubDefinition.MAX_OUTPUTS + 1);
+        }
     }
 
     private static MediaPayload payload(byte[] bytes) { return new MediaPayload(new ByteArrayInputStream(bytes), "application/zip"); }
