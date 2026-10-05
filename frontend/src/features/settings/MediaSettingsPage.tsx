@@ -330,7 +330,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
           onClick={() => act("default", capability)}>{t("settings.mediaSettings.setDefault")}</Button>
         <Button variant="ghost"  type="button" disabled={rowBusy}
           onClick={() => act("capability", capability)}>{capability.enabled ? t("settings.mediaSettings.disable") : t("settings.mediaSettings.enable")}</Button>
-        <Button variant="destructive" type="button" disabled={rowBusy}
+        <Button variant="ghost" type="button" disabled={rowBusy}
           onClick={() => { remove.reset(); setDeleting(capability); }}>{t("settings.mediaSettings.deleteCapability")}</Button>
       </div></TableCell>
     </TableRow>
