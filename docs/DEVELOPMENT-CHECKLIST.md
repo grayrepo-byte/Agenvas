@@ -1835,3 +1835,11 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 根据 CI 三个失败分片及本地定向复现，确认 Flyway 删除升级测试执行了 V11/V12 却期待一项迁移，图片功能与视频设置测试仍期待新增 IMAGE_RESIZE 前的 18 项功能。删除升级专项明确限定 V10→V11；两个功能列表断言改为核对完整 MediaFunction 枚举，覆盖缺项、重复和额外项，不依赖固定数量。
 - [x] 使用 CI 的 ci-integration profile 定向执行 FlywayBaselinePostgresIT、ImageFunctionPostgresIT、VideoOperationPostgresIT，真实 PostgreSQL 下 27 项通过（12/5/10），失败、错误、跳过均为零；使用合成素材、本地媒体处理，不调用真实 Provider。差异空白检查通过。本轮只修改三个集成测试与本记录，无生产行为、API、迁移或依赖变化。
 - [ ] 全量测试、修改后 GitHub 托管 CI、真实 Provider 调用及部署未运行。
+
+### 2026-10-05 RunningHub 节点勾选发布范围
+
+- [x] 定向复现证明取消节点勾选仅隐藏表格，保存请求仍包含其开放字段和固定参数。按本次用户要求覆盖原显示筛选语义：保存、发布及离线预览只使用勾选节点的映射；未勾选节点保留本次编辑草稿供重新勾选恢复，控件不参与保存校验。输出映射、导入原文和节点目录独立保留，选择状态不进入 API 或能力版本；已有能力需重新编辑并保存，不自动清理旧版本。
+- [x] 保存失败和显式重试保留选择；清空选择可排除全部映射，修改其他字段或输出后仍按选择保存。已勾选字段引用未勾选条件字段时，提交前提示修复，不自动补选节点或清除条件。同步四语提示、规格 6.13 与 ADR 0025；无 API、数据库迁移或依赖变化。
+- [x] `pnpm exec vitest run --no-file-parallelism` 定向运行 RunningHubDefinitionEditor、MediaSettingsPage、RunningHubForm 三文件，66 项通过；覆盖工作流/AI 应用的保存请求与重新打开、新能力发布、清空选择、无效标量草稿恢复、失败重试及条件修复。`pnpm run test:runninghub-node-picker` 在 2560×1179、1440×900、390×844、844×390 四个生产 CSS 视口通过，覆盖真实模态菜单滚轮隔离、输出选择及排除未勾选无效开放/固定映射的浏览器原生提交。
+- [x] `pnpm run typecheck`、`pnpm run lint`、`pnpm run build` 与差异空白检查通过；构建保留既有大 chunk 提示。复现与浏览器素材均为合成配置，不调用真实 Provider。
+- [ ] 全量测试、后端单元/数据库专项、真实 RunningHub 调用与部署未运行。

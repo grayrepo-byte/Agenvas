@@ -419,12 +419,36 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     fireEvent.blur(input);
     const row = screen.getByRole("row", { name: "强度" });
     fireEvent.click(within(row).getByRole("button", { name: "更多设置" }));
-    await showNodes("1");
+    await showNodes("1", "2");
     expect(screen.queryByRole("textbox", { name: "条件值（JSON 标量）" })).not.toBeInTheDocument();
     fireEvent.invalid(input);
     expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 模式 · 节点 2 · 强度");
     expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
     expect(screen.getByRole("textbox", { name: "条件值（JSON 标量）" })).toBe(input);
     expect(currentDefinition().fields[1]?.enabledWhen?.value).toBe(true);
+  });
+
+  it("excludes unchecked scalar controls from validation and restores their invalid drafts on reselect", async () => {
+    await mount();
+    const input = inputFor("默认值");
+    fireEvent.change(input, { target: { value: "invalid" } });
+    fireEvent.blur(input);
+    const fixed = inputFor("固定值（JSON 标量）");
+    fireEvent.change(fixed, { target: { value: "invalid fixed value" } });
+    fireEvent.blur(fixed);
+    await showNodes("1");
+    expect(input).toBeDisabled();
+    expect(fixed).toBeDisabled();
+    expect((input as HTMLInputElement).checkValidity()).toBe(true);
+    expect((fixed as HTMLInputElement).checkValidity()).toBe(true);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await showNodes("1", "2");
+    expect(inputFor("默认值")).toBe(input);
+    expect(input).toHaveValue("invalid");
+    expect(input).toBeEnabled();
+    expect(input).toHaveProperty("validity.valid", false);
+    expect(inputFor("固定值（JSON 标量）")).toBe(fixed);
+    expect(fixed).toHaveValue("invalid fixed value");
+    expect(fixed).toHaveProperty("validity.valid", false);
   });
 });

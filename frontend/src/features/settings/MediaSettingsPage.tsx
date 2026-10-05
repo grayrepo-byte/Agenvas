@@ -31,12 +31,16 @@ import "./MediaSettingsPage.css";
 import { ComfyWorkflowEditor } from "./ComfyWorkflowEditor";
 import { isComfyAdapter } from "./comfyWorkflow";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
-type AdapterSettings = MediaCapability["settings"];
+import { selectRunningHubNodes } from "./runningHubSelection";
+
+// Node selection is an editor draft, never an API setting or capability-version field.
+type AdapterSettings = MediaCapability["settings"] & { runningHubSelectedNodeIds?: string[] };
 const MODEL_LIMIT = 120;
 
 const settingsKey = ["settings", "media"] as const;
 const NAME_LIMIT = 160;
 const cloudImageFields = [{ key: "model", get label() { return t("settings.mediaSettings.modelName"); } }] as const;
+class CapabilityDraftError extends Error {}
 
 function fixedModelFields(adapterId: string) {
   return adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2"
@@ -44,7 +48,12 @@ function fixedModelFields(adapterId: string) {
 }
 
 function fixedModelSettings(adapterId: string, values: AdapterSettings) {
-  if (adapterId.startsWith("RUNNINGHUB_")) return { runningHub: values.runningHub, ...(values.pricing?.amount.trim() ? { pricing: values.pricing } : {}) };
+  if (adapterId.startsWith("RUNNINGHUB_")) {
+    const runningHub = values.runningHub ? selectRunningHubNodes(values.runningHub, values.runningHubSelectedNodeIds) : undefined;
+    const orphaned = runningHub?.fields.find((field) => field.enabledWhen && !runningHub.fields.some((parent) => parent.key === field.enabledWhen?.field));
+    if (orphaned) throw new CapabilityDraftError(t("settings.runningHub.unselectedCondition", { "0": orphaned.label }));
+    return { runningHub, ...(values.pricing?.amount.trim() ? { pricing: values.pricing } : {}) };
+  }
   const fields = Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
     [key, values[key as keyof AdapterSettings]?.toString().trim() ?? ""]));
   const { defaultParameters, defaultDurationSeconds, minimumSeconds, maximumSeconds,
@@ -122,11 +131,12 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
   useLocale();
   const fieldId = useId();
   const [tab, setTab] = useState<EditorTab>("model");
-  function changeWorkflowOutput(kind: keyof typeof RUNNINGHUB_OUTPUT_ADAPTERS, runningHub = values.runningHub) {
+  function changeWorkflowOutput(kind: keyof typeof RUNNINGHUB_OUTPUT_ADAPTERS, runningHub = values.runningHub,
+    runningHubSelectedNodeIds = values.runningHubSelectedNodeIds) {
     onAdapterChange(RUNNINGHUB_OUTPUT_ADAPTERS[kind]);
     const pricing = values.pricing?.unit === kind || (kind !== "IMAGE" && values.pricing?.unit === "SECOND")
       ? values.pricing : undefined;
-    onChange({ ...values, pricing, runningHub: runningHub ? { ...runningHub,
+    onChange({ ...values, pricing, runningHubSelectedNodeIds, runningHub: runningHub ? { ...runningHub,
       outputs: runningHub.outputs.map((output) => output.primary ? { ...output, kind } : output) } : undefined });
   }
   if (isComfyAdapter(adapterId)) return <fieldset disabled={disabled} className="ui-stack media-settings-fieldset">
@@ -145,9 +155,10 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
         .find((outputKind) => RUNNINGHUB_OUTPUT_ADAPTERS[outputKind] === event.target.value);
       if (kind) changeWorkflowOutput(kind);
     }}>{availableAdapters.map((adapter) => <option key={adapter} value={adapter}>{adapterLabel(adapter)}</option>)}</Select></FieldLabel></Field>
-    <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub} onChange={(runningHub, primaryKind) => {
-      if (primaryKind) changeWorkflowOutput(primaryKind, runningHub);
-      else onChange({ ...values, runningHub });
+    <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub}
+      selectedNodeIds={values.runningHubSelectedNodeIds} onChange={(runningHub, primaryKind, runningHubSelectedNodeIds) => {
+      if (primaryKind) changeWorkflowOutput(primaryKind, runningHub, runningHubSelectedNodeIds);
+      else onChange({ ...values, runningHub, runningHubSelectedNodeIds });
     }} />
     <CapabilityConfigurationFields section="pricing" adapterId={adapterId} values={values} onChange={onChange} />
   </fieldset></div>;
@@ -215,7 +226,7 @@ function stableCreateKey(previous: { payload: string; key: string } | null,
 }
 
 function errorMessage(cause: unknown): string {
-  return cause instanceof ApiError ? cause.message : t("settings.shared.saveFailed");
+  return cause instanceof ApiError || cause instanceof CapabilityDraftError ? cause.message : t("settings.shared.saveFailed");
 }
 
 /** Keep a draft's CAS token until its own save or an explicit reload accepts a new baseline. */

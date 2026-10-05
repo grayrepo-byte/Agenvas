@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act,render,screen,waitFor,within } from "@testing-library/react";
+import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http,HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
@@ -158,7 +158,9 @@ describe("MediaSettingsPage", () => {
     const published: unknown[] = [];
     const definition = { schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false, addMetadata: false,
       fields: [{ key: "style", label: "创作风格", type: "SELECT", nodeId: "1", fieldName: "style", required: true, advanced: false,
-        defaultValue: "photo", options: [{ label: "写实", value: "photo" }, { label: "插画", value: "illustration" }] }],
+        defaultValue: "photo", options: [{ label: "写实", value: "photo" }, { label: "插画", value: "illustration" }] },
+        { key: "strength", label: "强度", type: "NUMBER", nodeId: "2", fieldName: "strength", required: false, advanced: false, defaultValue: 1 }],
+      fixedBindings: [{ nodeId: "2", fieldName: "seed", value: 8 }],
       outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }] };
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
@@ -182,22 +184,162 @@ describe("MediaSettingsPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
     const importedField = await within(dialog).findByRole("row", { name: "创作风格" });
     expect(importedField).toBeVisible();
-    expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 创作风格");
+    expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 创作风格 · 节点 2 · 强度");
     expect(within(importedField).getByRole("textbox", { name: "节点字段" })).toHaveValue("style");
     expect(within(importedField).getByRole("textbox", { name: "默认值" })).toHaveValue('"photo"');
     await clickControl(within(dialog).getByRole("button", { name: "选择节点" }));
     expect(screen.getByRole("menuitemcheckbox", { name: "节点 1 · 创作风格" })).toHaveAttribute("aria-checked", "true");
+    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 强度" }));
     await user.keyboard("{Escape}");
     await user.click(within(dialog).getByText("创作者表单预览 · 离线"));
     expect(await within(dialog).findByRole("combobox", { name: "创作风格 *" })).toHaveValue("0");
+    expect(within(dialog).queryByRole("spinbutton", { name: "强度" })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("combobox", { name: "创作风格 *" }));
     expect(screen.getByRole("option", { name: "写实" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(within(dialog).queryByRole("checkbox", { name: "已核对开放字段、素材格式与输出映射" })).not.toBeInTheDocument();
     expect(published).toEqual([]);
     await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
-    await waitFor(() => expect(published).toEqual([{ name: "背景应用", adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition } }]));
+    await waitFor(() => expect(published).toEqual([{ name: "背景应用", adapterId: "RUNNINGHUB_IMAGE",
+      settings: { runningHub: { ...definition, fields: [definition.fields[0]], fixedBindings: [] } } }]));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it.each(["AI_APP", "WORKFLOW"] as const)("excludes unchecked RunningHub %s nodes from the saved capability and reopening", async (targetType) => {
+    const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
+      schemaVersion: 1, protocolVersion: "V2", targetType, targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [
+        { key: "prompt", label: "提示词", type: "STRING", nodeId: "1", fieldName: "text", required: false, advanced: false },
+        { key: "strength", label: "强度", type: "NUMBER", nodeId: "2", fieldName: "strength", defaultValue: 1, required: false, advanced: false },
+      ],
+      fixedBindings: [{ nodeId: "2", fieldName: "seed", value: 8 }],
+      outputs: [{ nodeId: "2", kind: "IMAGE", primary: true, maxCount: 1 }],
+      nodeOptions: [{ nodeId: "2", label: "输出图片" }],
+      importSource: targetType === "WORKFLOW" ? { "2": { inputs: { strength: 1, seed: 8 } } }
+        : [{ nodeId: "2", fieldName: "strength", fieldValue: 1 }],
+    };
+    const savedDefinition = { ...definition, fields: [definition.fields[0]!], fixedBindings: [] };
+    let fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub" }, {
+      adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition },
+    });
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        writes.push(await request.json());
+        fixture = settingsFixture({ platform: "RUNNINGHUB", name: "RunningHub" }, {
+          adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: savedDefinition }, version: 5, capabilityVersion: 3,
+        });
+        return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    const dialog = screen.getByRole("dialog");
+    await clickControl(within(dialog).getByRole("button", { name: "选择节点" }));
+    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 强度" }));
+    await user.keyboard("{Escape}");
+    expect(within(dialog).queryByRole("row", { name: "强度" })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByText("创作者表单预览 · 离线"));
+    expect(within(dialog).queryByRole("spinbutton", { name: "强度" })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(writes).toEqual([{ expectedVersion: 4, name: "Portrait", enabled: true,
+      adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: savedDefinition } }]));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    const reopened = screen.getByRole("dialog");
+    expect(within(reopened).getByRole("row", { name: "提示词" })).toBeVisible();
+    expect(within(reopened).queryByRole("row", { name: "强度" })).not.toBeInTheDocument();
+    expect(within(reopened).getByRole("combobox", { name: "输出节点" })).toHaveTextContent("节点 2 · 输出图片");
+  });
+
+  it("clears all RunningHub mappings without validating unchecked drafts and retains the selection across failed saves", async () => {
+    const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
+      schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [{ key: "strength", label: "强度", type: "NUMBER", nodeId: "2", fieldName: "strength",
+        defaultValue: 1, required: false, advanced: false }],
+      fixedBindings: [{ nodeId: "2", fieldName: "seed", value: 8 }],
+      outputs: [{ nodeId: "2", kind: "IMAGE", primary: true, maxCount: 1 }],
+    };
+    const fixture = settingsFixture({ platform: "RUNNINGHUB" }, { adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition } });
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        writes.push(await request.json());
+        return writes.length === 1 ? HttpResponse.json({ detail: "Unavailable", code: "SYNTHETIC_FAILURE", status: 503 }, {
+          status: 503, headers: { "Content-Type": "application/problem+json" },
+        }) : HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    const dialog = screen.getByRole("dialog");
+    const input = within(within(dialog).getByRole("row", { name: "强度" })).getByRole("textbox", { name: "默认值" });
+    fireEvent.change(input, { target: { value: "invalid" } }); fireEvent.blur(input);
+    const fixed = within(dialog).getByRole("textbox", { name: "固定值（JSON 标量）" });
+    fireEvent.change(fixed, { target: { value: "invalid" } }); fireEvent.blur(fixed);
+    async function choose(action: string) {
+      await clickControl(within(dialog).getByRole("button", { name: "选择节点" }));
+      await clickControl(screen.getByRole("menuitem", { name: action }));
+      await user.keyboard("{Escape}");
+    }
+    await choose("清空选择");
+    expect(input).toBeDisabled(); expect(fixed).toBeDisabled();
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), { target: { value: "321" } });
+    const save = within(dialog).getByRole("button", { name: "保存能力" });
+    await user.click(save);
+    expect(await within(dialog).findByText("Unavailable")).toBeInTheDocument();
+    expect(writes).toEqual([{ expectedVersion: 4, name: "Portrait", enabled: true, adapterId: "RUNNINGHUB_IMAGE",
+      settings: { runningHub: { ...definition, targetId: "321", fields: [], fixedBindings: [] } } }]);
+    await choose("全选节点");
+    expect(input).toHaveValue("invalid"); expect(input).toBeEnabled();
+    expect(fixed).toHaveValue("invalid"); expect(fixed).toBeEnabled();
+    await choose("清空选择");
+    await user.click(save);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual(writes[0]);
+  });
+
+  it("requires repairing a RunningHub visibility condition when its parent node is unchecked", async () => {
+    const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
+      schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [
+        { key: "mode", label: "模式", type: "BOOLEAN", nodeId: "1", fieldName: "mode", defaultValue: true, required: false, advanced: false },
+        { key: "strength", label: "强度", type: "NUMBER", nodeId: "2", fieldName: "strength", defaultValue: 1,
+          required: false, advanced: false, enabledWhen: { field: "mode", value: true } },
+      ], outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+    };
+    const fixture = settingsFixture({ platform: "RUNNINGHUB" }, { adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition } });
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        writes.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    const dialog = screen.getByRole("dialog");
+    await clickControl(within(dialog).getByRole("button", { name: "选择节点" }));
+    await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 1 · 模式" }));
+    await user.keyboard("{Escape}");
+    await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
+    expect(await within(dialog).findByText("“强度”的显示条件引用了未勾选节点的字段，请重新勾选该节点或修改显示条件。")).toBeInTheDocument();
+    expect(writes).toEqual([]);
+    await user.click(within(within(dialog).getByRole("row", { name: "强度" })).getByRole("button", { name: "更多设置" }));
+    await selectValue(within(dialog).getByRole("combobox", { name: "显示条件" }), "");
+    await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).toEqual({ expectedVersion: 4, name: "Portrait", enabled: true, adapterId: "RUNNINGHUB_IMAGE",
+      settings: { runningHub: { ...definition, fields: [{ ...definition.fields[1], enabledWhen: null }] } } });
   });
 
   it("validates and saves an edited workflow on explicit submit, preserving failed drafts until an explicit retry", async () => {

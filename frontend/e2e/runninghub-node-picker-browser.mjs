@@ -199,9 +199,16 @@ try {
     await waitFor(() => !document.querySelector('[role="listbox"]'));
     await waitFor((selector) => document.activeElement === document.querySelector(selector), outputPicker);
     assert.equal(await page(() => Boolean(document.querySelector('[role="dialog"]'))), true, "Escape must leave the editor open");
+    await pointerClick('.ui-dialog-footer button[type="submit"]');
+    await waitFor(() => Boolean(document.querySelector('[data-testid="published-definition"]').textContent));
+    const published = await page(() => JSON.parse(document.querySelector('[data-testid="published-definition"]').textContent));
+    assert.equal(published.fields.length, 39, "Unchecked node must be excluded when saving");
+    assert.ok(published.fields.every((field) => field.nodeId !== "40"), "Unchecked fields must not return after editing the output");
+    assert.deepEqual(published.fixedBindings, [], "Unchecked fixed bindings must be excluded despite invalid drafts");
+    assert.equal(published.outputs[0].nodeId, "102", "Input selection must preserve the selected output node");
     console.log(JSON.stringify({viewport,before,down,up}));
   }
-  console.log("RunningHub node picker mouse wheel regression passed (four production-CSS viewports)");
+  console.log("RunningHub node picker scrolling and selected-mapping save regression passed (four production-CSS viewports)");
 
 } finally {
   socket?.close();
