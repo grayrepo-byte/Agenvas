@@ -83,7 +83,8 @@ class ImageFunctionPostgresIT {
     }
 
     @Test void keepsImageAndVideoRoutesAndGenerationDefaultsIndependent() {
-        assertThat(functions.list()).hasSize(18);
+        assertThat(functions.list()).extracting(setting -> setting.operation())
+                .containsExactlyInAnyOrder(MediaFunction.values());
         var video = setting(MediaFunction.VIDEO_DEPTH_MAP);
         var image = setting(MediaFunction.IMAGE_DEPTH_MAP);
         UUID generationDefault = capabilities.defaultCapabilityId(Task.Kind.IMAGE_GENERATION);

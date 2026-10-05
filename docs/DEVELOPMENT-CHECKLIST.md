@@ -1829,3 +1829,9 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [ ] 浏览器端到端与实际界面布局验证未运行；全量测试、真实 Provider 调用及部署未运行。缩放为本地像素处理，集成素材为合成 PNG，不涉及真实模型生成。
 
 图片缩放合并 develop 复验：保留 develop 的能力删除、音频分离双输出、结果选择与重试、EditorFeedbackRow 及后台日历等改动；合并双方规格、ADR 和四语新增词条。缩放迁移因 V11 已被能力删除占用改为 V12，真实临时 PostgreSQL 验证 V1–V11 初始化及 V12 升级保留已有绑定和版本，重新生成 OpenAPI TypeScript 与 jOOQ。102 项前端定向测试、63 项后端单元及 1 项真实 PostgreSQL 派生集成通过；1 项既有真实深度测试因未提供模型跳过。迁移重命名首轮遇到构建目录旧 V11 资源残留，clean 后复验通过。TypeScript、相关 ESLint、四语/主题检查、Vite 构建及差异空白检查通过，保留既有大 chunk 提示。全量测试、浏览器端到端、真实 Provider 调用及部署未运行。
+
+### 2026-10-05 PR #31 CI 断言修复
+
+- [x] 根据 CI 三个失败分片及本地定向复现，确认 Flyway 删除升级测试执行了 V11/V12 却期待一项迁移，图片功能与视频设置测试仍期待新增 IMAGE_RESIZE 前的 18 项功能。删除升级专项明确限定 V10→V11；两个功能列表断言改为核对完整 MediaFunction 枚举，覆盖缺项、重复和额外项，不依赖固定数量。
+- [x] 使用 CI 的 ci-integration profile 定向执行 FlywayBaselinePostgresIT、ImageFunctionPostgresIT、VideoOperationPostgresIT，真实 PostgreSQL 下 27 项通过（12/5/10），失败、错误、跳过均为零；使用合成素材、本地媒体处理，不调用真实 Provider。差异空白检查通过。本轮只修改三个集成测试与本记录，无生产行为、API、迁移或依赖变化。
+- [ ] 全量测试、修改后 GitHub 托管 CI、真实 Provider 调用及部署未运行。

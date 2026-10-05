@@ -29,6 +29,8 @@ class FlywayBaselinePostgresIT {
 
     private static final String INITIAL_BASELINE_VERSION = "1";
     private static final String BEFORE_PERMANENT_SETUP_VERSION = "8";
+    private static final String BEFORE_CAPABILITY_DELETION_VERSION = "10";
+    private static final String CAPABILITY_DELETION_VERSION = "11";
     private static final String INITIAL_BASELINE_SCRIPT = "V1__initial_schema.sql";
     private static final String FOREIGN_KEY_VIOLATION = "23503";
     private static final String CHECK_VIOLATION = "23514";
@@ -85,7 +87,7 @@ class FlywayBaselinePostgresIT {
     void capabilityDeletionUpgradePreservesExistingCapabilitiesAndSelections() throws Exception {
         Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration").target("10").load().migrate();
+                .locations("classpath:db/migration").target(BEFORE_CAPABILITY_DELETION_VERSION).load().migrate();
         long capabilities;
         long versions;
         long defaults;
@@ -94,7 +96,11 @@ class FlywayBaselinePostgresIT {
             versions = count(connection, "select count(*) from media_capability_version");
             defaults = count(connection, "select count(*) from media_default where capability_id is not null");
         }
-        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+        // Isolate the deletion upgrade so later migrations cannot change this preservation check.
+        Flyway deletionUpgrade = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target(CAPABILITY_DELETION_VERSION).load();
+        assertThat(deletionUpgrade.migrate().migrationsExecuted).isEqualTo(1);
         try (Connection connection = connection()) {
             assertThat(count(connection, "select count(*) from media_capability where deleted_at is null")).isEqualTo(capabilities);
             assertThat(count(connection, "select count(*) from media_capability_version")).isEqualTo(versions);

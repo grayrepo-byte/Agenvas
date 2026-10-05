@@ -281,7 +281,9 @@ class VideoOperationPostgresIT {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
         var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(url).with(auth))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn().getResponse().getContentAsString();
-        assertThat(mapper.readTree(response)).hasSize(18);
+        assertThat(mapper.readTree(response)).extracting(setting -> setting.path("operation").asText())
+                .containsExactlyInAnyOrder(java.util.Arrays.stream(MediaFunction.values())
+                        .map(MediaFunction::name).toArray(String[]::new));
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(url + "/VIDEO_EXTRACT_AUDIO")
                 .with(auth).contentType("application/json").content("{\"expectedVersion\":0,\"capabilityId\":null}"))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
