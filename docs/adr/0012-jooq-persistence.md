@@ -36,7 +36,7 @@ docker run -d --name agenvas-jooq-codegen \
 ./mvnw -Pjooq-codegen generate-sources
 ```
 
-profile 默认连 `localhost:55432`，可用 `-Djooq.codegen.jdbcUrl=...` 覆盖。**不要把它指向开发库或部署库**：Flyway 会执行迁移，且 jOOQ 会对整个 schema 建元数据。
+profile 默认连 `localhost:55432`，可用 `-Djooq.codegen.jdbcUrl=...` 覆盖。CI 让 Docker 自动分配仅绑定 127.0.0.1 的宿主端口，读回实际端口后覆盖 JDBC URL，避免与 Testcontainers 临时映射端口冲突；一次性容器及匿名卷在步骤结束时清理。**不要把它指向开发库或部署库**：Flyway 会执行迁移，且 jOOQ 会对整个 schema 建元数据。
 
 ## 迁移约定
 

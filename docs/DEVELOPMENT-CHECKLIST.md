@@ -1757,3 +1757,5 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 取消前远端修复提交的前端 951 项测试及构建、后端单元 867 项（跳过 1 项）及 PostgreSQL 集成 258 项（跳过 4 项）、jOOQ 漂移检查、Compose 检查及源码密钥扫描均通过；该流水线最终因 Jackson/gosu 镜像漏洞报告失败，不能声称漏洞已修复。
 - [x] actionlint 与差异空白检查通过；结构检查确认仅保留 secret/license scanner、首个 SBOM 步骤安装 Trivy、三服务双架构矩阵和版本标签发布依赖完整。
 - [ ] 更新后的完整远端 CI 以修复 PR 检查结果为准；Docker Hub 发布、真实 Provider 调用和部署未运行。
+
+- [x] 最新远端前端 951 项测试/构建、后端单元 867 项（跳过 1 项）及 PostgreSQL 集成 258 项（跳过 4 项）全部通过；jOOQ 一次性数据库固定 55432 端口偶发冲突。CI 改为 Docker 分配本机端口并覆盖现有 JDBC URL，步骤退出清理容器和匿名卷。本机占用 55432 的红/绿复验通过，真实 PostgreSQL 迁移/codegen 成功且生成源码无差异；actionlint 和差异空白检查通过。
