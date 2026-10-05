@@ -419,7 +419,7 @@ class RunningHubPostgresIT {
             var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
                     new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "rh-admin"), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
             String url = "/api/v1/settings/media-connections/" + connection.id() + "/runninghub/preview";
-            String body = "{\"targetType\":\"AI_APP\",\"targetId\":\"123\",\"kind\":\"IMAGE_GENERATION\",\"source\":{\"nodeInfoList\":[{\"nodeId\":\"1\",\"fieldName\":\"text\",\"fieldType\":\"STRING\",\"fieldValue\":\"hello\"}]}}";
+            String body = "{\"targetType\":\"AI_APP\",\"targetId\":\"123\",\"kind\":\"IMAGE_GENERATION\",\"source\":{\"nodeInfoList\":[{\"nodeId\":\"516\",\"fieldName\":\"sampling_mode.top_p\",\"fieldType\":\"NUMBER\",\"fieldValue\":0.9}]}}";
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body)
                     .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
@@ -429,7 +429,38 @@ class RunningHubPostgresIT {
                     .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn().getResponse().getContentAsString();
             assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(1);
+            assertThat(mapper.readTree(response).path("definition").path("fields").get(0).path("fieldName").asText())
+                    .isEqualTo("sampling_mode.top_p");
             assertThat(response).doesNotContain("fake-runninghub-key"); assertThat(provider.submits).hasValue(0); assertThat(provider.queries).hasValue(0);
+        }
+    }
+
+    @Test void dottedOpenAndFixedBindingsSurviveSavingFreezingAndHttpSubmission() throws Exception {
+        for (String targetType : List.of("WORKFLOW", "AI_APP")) try (var provider = new Fake(1, false, false)) {
+            var fixture = fixture(provider, Artifact.Kind.IMAGE, targetType, false);
+            var original = catalog.capabilitySnapshot(fixture.capability);
+            ObjectNode settings = (ObjectNode) mapper.readTree(original.specJson()).path("settings").deepCopy();
+            ObjectNode definition = (ObjectNode) settings.path("runningHub");
+            definition.withArray("fields").addObject().put("key", "topP").put("label", "采样概率")
+                    .put("type", "NUMBER").put("nodeId", "516").put("fieldName", "sampling_mode.top_p").put("defaultValue", 0.9);
+            definition.putArray("fixedBindings").addObject().put("nodeId", "516")
+                    .put("fieldName", "sampling_mode.seed").put("value", 42);
+            catalog.updateCapability(original.connection().id(), fixture.capability, original.capability().version(),
+                    "Dotted bindings", true, "RUNNINGHUB_IMAGE", settings);
+            var parameters = mapper.createObjectNode();
+            parameters.putObject("dynamicValues").put("topP", 0.8);
+            var draft = drafts.save(owner, fixture.project.id(), fixture.card, 0, "", parameters, null,
+                    fixture.capability, null, List.of(), List.of(), null);
+            var task = direct.run(owner, fixture.project.id(), fixture.artifact.id(), fixture.card, draft.version(), UUID.randomUUID().toString());
+            assertThat(task.input().path("mediaInput").path("runningHubContract").path("fields").get(0).path("fieldName").asText())
+                    .isEqualTo("sampling_mode.top_p");
+            assertThat(worker.submitOnce("rh-dotted-binding")).isEqualTo(1);
+            assertThat(mapper.readTree(provider.submitted.get()).path("nodeInfoList")).isEqualTo(mapper.readTree("""
+                [{"nodeId":"516","fieldName":"sampling_mode.top_p","fieldValue":0.8},
+                 {"nodeId":"516","fieldName":"sampling_mode.seed","fieldValue":42}]
+                """));
+            assertThat(tasks.get(owner, fixture.project.id(), task.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+            assertThat(provider.submits).hasValue(1);
         }
     }
 

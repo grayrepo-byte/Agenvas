@@ -3783,6 +3783,7 @@ export interface components {
             fields: components["schemas"]["RunningHubField"][];
             fixedBindings?: {
                 nodeId: string;
+                /** @description Exact remote input name, including literal dots; never interpreted as a JSON path. */
                 fieldName: string;
                 value: components["schemas"]["RunningHubScalar"];
                 /** @enum {string|null} */
@@ -3816,7 +3817,7 @@ export interface components {
                 value: components["schemas"]["RunningHubScalar"];
             }[] | null;
             nodeId: string;
-            /** @description Exact declared node input. RunningHub additionally requires [A-Za-z_][A-Za-z0-9_]{0,79}; ComfyUI permits imported graph input names including symbols and Unicode. */
+            /** @description Exact declared node input. RunningHub additionally requires [A-Za-z_][A-Za-z0-9_.]{0,79}, preserving literal dots without JSON path traversal; ComfyUI permits imported graph input names including symbols and Unicode. */
             fieldName: string;
             /** @enum {string|null} */
             source?: "PARAMETER" | "PROMPT" | "DURATION_SECONDS" | null;

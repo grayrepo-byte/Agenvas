@@ -4981,7 +4981,7 @@ components:
             required: [nodeId, fieldName, value]
             properties:
               nodeId: {type: string, pattern: "^[0-9]{1,32}$"}
-              fieldName: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]{0,79}$"}
+              fieldName: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_.]{0,79}$", description: "Exact remote input name, including literal dots; never interpreted as a JSON path."}
               value: {$ref: "#/components/schemas/RunningHubScalar"}
               encoding: {type: [string, "null"], enum: [NATIVE, STRING, null]}
         outputs:
@@ -5030,7 +5030,7 @@ components:
               label: {type: string, minLength: 1, maxLength: 160}
               value: {$ref: "#/components/schemas/RunningHubScalar"}
         nodeId: {type: string, pattern: "^[0-9]{1,32}$"}
-        fieldName: {type: string, minLength: 1, maxLength: 160, description: "Exact declared node input. RunningHub additionally requires [A-Za-z_][A-Za-z0-9_]{0,79}; ComfyUI permits imported graph input names including symbols and Unicode."}
+        fieldName: {type: string, minLength: 1, maxLength: 160, description: "Exact declared node input. RunningHub additionally requires [A-Za-z_][A-Za-z0-9_.]{0,79}, preserving literal dots without JSON path traversal; ComfyUI permits imported graph input names including symbols and Unicode."}
         source: {type: [string, "null"], enum: [PARAMETER, PROMPT, DURATION_SECONDS, null]}
         encoding: {type: [string, "null"], enum: [NATIVE, STRING, null]}
         resourceFormat: {type: [string, "null"], enum: [FILE_NAME, URL, null]}

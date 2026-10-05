@@ -50,6 +50,26 @@ function currentDefinition() {
   return JSON.parse(screen.getByTestId("definition").textContent ?? "") as RunningHubDefinition;
 }
 
+describe("RunningHubDefinitionEditor node field names", () => {
+  it("accepts dotted open and fixed bindings without changing local parameter keys", async () => {
+    await mount();
+    const open = within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "节点字段" });
+    const fixed = screen.getByRole("textbox", { name: "固定字段" });
+    fireEvent.change(open, { target: { value: "sampling_mode.top_p" } });
+    fireEvent.change(fixed, { target: { value: "sampling_mode.seed" } });
+    expect(open).toHaveProperty("validity.valid", true);
+    expect(fixed).toHaveProperty("validity.valid", true);
+    expect(currentDefinition().fields[1]).toMatchObject({ key: "strength", fieldName: "sampling_mode.top_p" });
+    expect(currentDefinition().fixedBindings?.[0]).toMatchObject({ fieldName: "sampling_mode.seed" });
+    for (const value of [".top_p", "sampling_mode/top_p", "sampling mode.top_p", "a".repeat(81)]) {
+      fireEvent.change(open, { target: { value } });
+      fireEvent.change(fixed, { target: { value } });
+      expect(open).toHaveProperty("validity.valid", false);
+      expect(fixed).toHaveProperty("validity.valid", false);
+    }
+  });
+});
+
 describe("RunningHubDefinitionEditor saved import JSON", () => {
   it("reopens and re-parses saved JSON without replacing configured fields, fixed bindings or outputs", async () => {
     const source = {
