@@ -15,7 +15,9 @@ import dev.agenvas.identity.application.AdminAccountRepository;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.identity.application.SetupStatusService;
 import dev.agenvas.shared.error.ApiProblemException;
+import java.sql.Connection;
 import java.time.OffsetDateTime;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,11 +56,13 @@ class IdentitySetupPostgresIT {
     @Autowired JdbcClient jdbc;
     @Autowired WebApplicationContext context;
     @Autowired PlatformTransactionManager transactions;
+    @Autowired DataSource dataSource;
     private MockMvc mvc;
 
     @BeforeEach
     void resetOnlyThisDisposableDatabase() {
-        jdbc.sql("truncate app_user cascade").update();
+        // Only accounts need resetting; TRUNCATE CASCADE locks unrelated worker tables exclusively.
+        jdbc.sql("delete from app_user").update();
         jdbc.sql("update installation_lock set initialized_at=null").update();
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
     }
@@ -112,6 +116,26 @@ class IdentitySetupPostgresIT {
         jdbc.sql("update installation_lock set initialized_at=null").update();
         jdbc.sql("update app_user set status='DISABLED' where id=:id").param("id", admin.userId()).update();
         assertSetupClosed();
+    }
+
+    @Test
+    void fixtureResetDoesNotRequireExclusiveLocksOnTaskTables() throws Exception {
+        identities.setup("admin", "synthetic-test-password");
+        try (Connection reader = dataSource.getConnection()) {
+            reader.setAutoCommit(false);
+            try (var statement = reader.createStatement()) {
+                // A scheduler's read transaction may still hold this shared table lock during reset.
+                statement.execute("select id from task limit 1");
+                new TransactionTemplate(transactions).executeWithoutResult(transaction -> {
+                    jdbc.sql("set local lock_timeout='1s'").update();
+                    resetOnlyThisDisposableDatabase();
+                });
+                assertThat(jdbc.sql("select count(*) from app_user").query(Integer.class).single()).isZero();
+                assertThat(setupStatus.isSetupRequired()).isTrue();
+            } finally {
+                reader.rollback();
+            }
+        }
     }
 
     private void assertSetupClosed() {
