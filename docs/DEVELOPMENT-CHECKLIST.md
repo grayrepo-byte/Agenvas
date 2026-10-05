@@ -1763,3 +1763,11 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 最新远端前端 951 项测试/构建、后端单元 867 项（跳过 1 项）及 PostgreSQL 集成 258 项（跳过 4 项）全部通过；jOOQ 一次性数据库固定 55432 端口偶发冲突。CI 改为 Docker 分配本机端口并覆盖现有 JDBC URL，步骤退出清理容器和匿名卷。本机占用 55432 的红/绿复验通过，真实 PostgreSQL 迁移/codegen 成功且生成源码无差异；actionlint 和差异空白检查通过。
 
 - [x] jOOQ 启动检查改为显式 TCP，避免初始化用 Unix socket 临时服务的误就绪。本机控制官方 PostgreSQL 初始化阶段，旧 socket 检查误报就绪而 TCP 正确拒绝；释放初始化后 TCP 成功。再次执行完整更新后 CI 脚本，在 55432 已占用时迁移/codegen 与容器清理通过，生成文件无差异。
+
+### 2026-10-05 视频音频分离双输出
+
+- [x] 音频分离在受理时创建音频与无声视频两个独立节点、空白草稿和两条可删除派生线；一次持久 Task 原子保存两个结果，原视频及资源默认版本保持不变。无声视频直接复制固定视频流、移除音轨，保留尺寸和时长。
+- [x] 两个节点共享排队/执行/失败状态，独立保护选择 epoch 与草稿版本；目标移除不重建，任一目标移除或草稿改变不阻止另一目标的正常结果选用。云端音频归档同时产生本地无声视频，原清单恢复不重复提交生成。
+- [x] 同步规格、领域词汇、ADR 0015、OpenAPI 描述并重新生成 TypeScript；无需数据库迁移。
+- [x] 本次五类定向测试共 38 项通过：LocalVideoProcessorTest、CanvasTaskResultSelectionTest、MediaFunctionServiceTest、VideoOperationPostgresIT、RunningHubPostgresIT。真实 PostgreSQL 和 FFmpeg 覆盖双输出、无音轨、尺寸/时长、来源不变、幂等、目标删除及草稿冲突；补充视频逐包 SHA-256 对比的定向复验通过，确认视频流保持一致；假 RunningHub 覆盖清单归档失败恢复且只提交/查询原请求一次。OpenAPI 生成成功，差异空白检查通过。
+- [ ] 全量测试、浏览器端到端、真实 Provider 和用户运行环境部署未运行。
