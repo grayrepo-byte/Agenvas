@@ -304,7 +304,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       if (popover === "libraryReferences" && libraryBusy) return;
       const listbox = event.target instanceof Element ? event.target.closest('[role="listbox"]') : null;
       // Select portals sit outside the picker; the trigger's ARIA link identifies only its own menu.
-      if (popover === "libraryReferences" && listbox?.id
+      if ((popover === "libraryReferences" || popover === "voices") && listbox?.id
         && [...popoverRef.current?.querySelectorAll('[role="combobox"][aria-controls]') ?? []]
           .some((control) => control.getAttribute("aria-controls") === listbox.id)) return;
       if (event.target instanceof Node && !popoverRef.current?.contains(event.target)
@@ -312,6 +312,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     }
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        // The voice filter owns the first Escape; keep the library open while
+        // Radix dismisses its menu and restores focus to the filter trigger.
+        if (popover === "voices" && popoverRef.current?.querySelector('[role="combobox"][aria-expanded="true"]')) return;
         event.preventDefault();
         event.stopPropagation();
         if (popover === "libraryReferences" && libraryBusy) return;

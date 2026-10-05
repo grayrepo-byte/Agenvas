@@ -857,6 +857,27 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(saves.at(-1)?.parameters.speechRate).toBe(-20));
   });
 
+  it("keeps the voice library open when filtering and dismisses a filter before the library on Escape", async () => {
+    setup({ kind: "AUDIO", settings: audioSettings });
+    const user = userEvent.setup();
+    await screen.findByRole("textbox", { name: "音频提示词" });
+    const trigger = screen.getByRole("button", { name: "选择音色" });
+    await user.click(trigger);
+    await changeControl(screen.getByRole("combobox", { name: "音色语言" }), { target: { value: "en" } });
+    expect(screen.getByRole("dialog", { name: "音色库" })).toBeVisible();
+    expect(screen.getByText("Tim", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.queryByText("Vivi 2.0", { selector: "strong" })).not.toBeInTheDocument();
+    const scene = screen.getByRole("combobox", { name: "音色场景" });
+    await user.click(scene);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(scene).toHaveFocus();
+    expect(screen.getByRole("dialog", { name: "音色库" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "音色库" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it.each([
     { name: "reserves an audio slot for the selected voice", roles: ["AUDIO_REFERENCE", "AUDIO_REFERENCE"], speaker: "zh_female_xiaohe_uranus_bigtts", kind: "AUDIO", allowed: false },
     { name: "rejects an image alongside an audio reference", roles: ["AUDIO_REFERENCE"], speaker: "", kind: "IMAGE", allowed: false },
