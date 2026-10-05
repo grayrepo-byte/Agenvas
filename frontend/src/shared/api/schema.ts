@@ -1138,7 +1138,11 @@ export interface paths {
          */
         put: operations["updateMediaCapability"];
         post?: never;
-        delete?: never;
+        /**
+         * 使用 expectedVersion 删除能力并清空默认选择及功能绑定
+         * @description Removes the capability from settings and published catalogs. Immutable versions and existing drafts remain available for accepted task recovery and reference cleanup. New runs and edits are rejected. Built-in LOCAL capabilities cannot be deleted.
+         */
+        delete: operations["deleteMediaCapability"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7783,6 +7787,43 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    deleteMediaCapability: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                connectionId: string;
+                capabilityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 删除后的脱敏配置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     setMediaDefault: {

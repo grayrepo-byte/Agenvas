@@ -82,6 +82,27 @@ class FlywayBaselinePostgresIT {
     }
 
     @Test
+    void capabilityDeletionUpgradePreservesExistingCapabilitiesAndSelections() throws Exception {
+        Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("10").load().migrate();
+        long capabilities;
+        long versions;
+        long defaults;
+        try (Connection connection = connection()) {
+            capabilities = count(connection, "select count(*) from media_capability");
+            versions = count(connection, "select count(*) from media_capability_version");
+            defaults = count(connection, "select count(*) from media_default where capability_id is not null");
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+        try (Connection connection = connection()) {
+            assertThat(count(connection, "select count(*) from media_capability where deleted_at is null")).isEqualTo(capabilities);
+            assertThat(count(connection, "select count(*) from media_capability_version")).isEqualTo(versions);
+            assertThat(count(connection, "select count(*) from media_default where capability_id is not null")).isEqualTo(defaults);
+        }
+    }
+
+    @Test
     void permanentSetupUpgradeRecognizesAnExistingDisabledAdministrator() throws Exception {
         Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())

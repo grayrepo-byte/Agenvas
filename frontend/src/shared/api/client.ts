@@ -343,6 +343,13 @@ export async function updateMediaCapability(connectionId: string, capabilityId: 
   });
 }
 
+export async function deleteMediaCapability(connectionId: string, capabilityId: string,
+  expectedVersion: number): Promise<MediaSettings> {
+  return writeJson<MediaSettings>(`/api/v1/settings/media-connections/${encodeURIComponent(connectionId)}/capabilities/${encodeURIComponent(capabilityId)}?expectedVersion=${expectedVersion}`, {
+    method: "DELETE",
+  });
+}
+
 export async function setMediaDefault(kind: "IMAGE_GENERATION" | "VIDEO_GENERATION" | "AUDIO_GENERATION",
   input: SetMediaDefaultRequest): Promise<MediaSettings> {
   return writeJson<MediaSettings>(`/api/v1/settings/media-defaults/${kind}`, {

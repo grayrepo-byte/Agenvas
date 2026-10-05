@@ -1474,6 +1474,28 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+    delete:
+      operationId: deleteMediaCapability
+      summary: 使用 expectedVersion 删除能力并清空默认选择及功能绑定
+      description: Removes the capability from settings and published catalogs. Immutable versions and existing drafts remain available for accepted task recovery and reference cleanup. New runs and edits are rejected. Built-in LOCAL capabilities cannot be deleted.
+      tags: [Settings]
+      parameters:
+        - name: expectedVersion
+          in: query
+          required: true
+          schema: {type: integer, format: int64, minimum: 0}
+      responses:
+        "200":
+          description: 删除后的脱敏配置
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MediaSettings"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/ValidationError"}
   /api/v1/settings/media-defaults/{kind}:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}

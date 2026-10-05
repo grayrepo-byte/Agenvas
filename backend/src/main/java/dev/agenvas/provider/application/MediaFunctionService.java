@@ -34,7 +34,10 @@ public class MediaFunctionService {
 
     @Transactional
     public void update(MediaFunction operation, long expectedVersion, UUID capabilityId) {
-        if (capabilityId != null) compatibleBinding(operation, capabilityId);
+        if (capabilityId != null) {
+            catalog.lockCapabilityForConfiguration(capabilityId);
+            compatibleBinding(operation, capabilityId);
+        }
         if (!repository.update(operation, expectedVersion, capabilityId, clock.instant())) {
             throw problem(HttpStatus.CONFLICT, "MEDIA_FUNCTION_CONFLICT", ApiMessage.of("api.media-function.conflict"));
         }
