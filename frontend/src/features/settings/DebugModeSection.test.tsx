@@ -28,7 +28,7 @@ describe("DebugModeSection", () => {
     expect(toggle).not.toBeChecked();
     expect(await screen.findByText("已关闭")).toBeInTheDocument();
     expect(screen.getByText(/可能包含完整提示词/)).toBeInTheDocument();
-    expect(screen.getByText(/所有 header 均不保存/)).toBeInTheDocument();
+    expect(screen.getByText(/所有 HTTP header（含 Authorization、Cookie、Set-Cookie）均不保存/)).toBeInTheDocument();
     await userEvent.setup().click(screen.getByText("开启 debug 模式"));
     expect(toggle).toBeChecked();
     expect(save).not.toHaveBeenCalled();
