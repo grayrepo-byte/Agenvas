@@ -92,6 +92,9 @@ jobs:
   security-source:
     name: Source secret scan
     runs-on: ubuntu-latest
+    env:
+      # Secret scanning must not resolve Maven dependencies over the network.
+      TRIVY_OFFLINE_SCAN: 'true'
     steps:
       # This job runs on fork PRs. Do not pass Provider or deployment secrets to it.
       - uses: actions/checkout@v4
