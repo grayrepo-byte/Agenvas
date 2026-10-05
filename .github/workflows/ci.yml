@@ -72,13 +72,14 @@ jobs:
             -e POSTGRES_PASSWORD=codegen-only -p 127.0.0.1::5432 postgres:17.11-alpine
           codegen_endpoint=$(docker port "$codegen_container" 5432/tcp)
           codegen_port=${codegen_endpoint##*:}
+          # The initialization server accepts Unix sockets only; wait for final TCP startup.
           for _ in $(seq 1 30); do
-            if docker exec "$codegen_container" pg_isready -U agenvas -d agenvas >/dev/null 2>&1; then
+            if docker exec "$codegen_container" pg_isready -h 127.0.0.1 -U agenvas -d agenvas >/dev/null 2>&1; then
               break
             fi
             sleep 1
           done
-          docker exec "$codegen_container" pg_isready -U agenvas -d agenvas
+          docker exec "$codegen_container" pg_isready -h 127.0.0.1 -U agenvas -d agenvas
           ./mvnw --batch-mode --no-transfer-progress -Pjooq-codegen \
             "-Djooq.codegen.jdbcUrl=jdbc:postgresql://127.0.0.1:$codegen_port/agenvas" generate-sources
           # 用 porcelain 而非 git diff：新增表会产生未跟踪文件，git diff 看不到。

@@ -130,4 +130,4 @@ RunningHub 固定 V2 协议复用现有 OkHttp、Jackson、Spring MVC、任务�
 
 按用户决定移除源码依赖和三个服务双架构镜像的漏洞扫描及 HIGH/CRITICAL 发布门禁。保留固定版本 Trivy 的源码密钥扫描、CycloneDX SBOM 与许可证 JSON；SBOM 显式只启用 license scanner，首个镜像清单步骤负责安装 Trivy。应用双架构原生构建、官方 PostgreSQL 拉取和版本标签发布规则继续生效；依赖和运行镜像版本未变。本轮改动不表示此前 Jackson/gosu 漏洞报告已修复，CI 成功不能证明没有漏洞。
 
-CI 的 jOOQ 漂移检查不再占用固定 55432 端口；Docker 自动预留仅绑定本机的端口，通过现有 jdbcUrl 属性传给 profile，并在成功或失败后清理一次性容器/匿名卷。本机在刻意占用 55432 时验证旧绑定失败、新工作流脚本完成真实 PostgreSQL 迁移和 codegen，生成源码与提交一致；无依赖、迁移或生成源码变更。
+CI 的 jOOQ 漂移检查不再占用固定 55432 端口；Docker 自动预留仅绑定本机的端口，通过现有 jdbcUrl 属性传给 profile，就绪检查仅接受正式服务的 TCP 连接，并在成功或失败后清理一次性容器/匿名卷。本机在刻意占用 55432 时验证旧绑定失败、新工作流脚本完成真实 PostgreSQL 迁移和 codegen，生成源码与提交一致；无依赖、迁移或生成源码变更。

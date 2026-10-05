@@ -1759,3 +1759,5 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [ ] 更新后的完整远端 CI 以修复 PR 检查结果为准；Docker Hub 发布、真实 Provider 调用和部署未运行。
 
 - [x] 最新远端前端 951 项测试/构建、后端单元 867 项（跳过 1 项）及 PostgreSQL 集成 258 项（跳过 4 项）全部通过；jOOQ 一次性数据库固定 55432 端口偶发冲突。CI 改为 Docker 分配本机端口并覆盖现有 JDBC URL，步骤退出清理容器和匿名卷。本机占用 55432 的红/绿复验通过，真实 PostgreSQL 迁移/codegen 成功且生成源码无差异；actionlint 和差异空白检查通过。
+
+- [x] jOOQ 启动检查改为显式 TCP，避免初始化用 Unix socket 临时服务的误就绪。本机控制官方 PostgreSQL 初始化阶段，旧 socket 检查误报就绪而 TCP 正确拒绝；释放初始化后 TCP 成功。再次执行完整更新后 CI 脚本，在 55432 已占用时迁移/codegen 与容器清理通过，生成文件无差异。
