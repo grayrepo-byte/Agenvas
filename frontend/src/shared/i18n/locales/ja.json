@@ -2287,5 +2287,10 @@
   "settings.comfy.parameterOptions": "列挙選択肢（JSON 配列）",
   "settings.comfy.parameterHint": "ここで宣言したパラメーターはキャンバスの拡張パラメーター表で編集します。テキスト入力をプロンプト、画像入力を名前付きリソーススロットに割り当てます。未割り当ての入力は固定値を維持します。",
   "settings.comfy.parameterInvalid": "パラメーターの型、既定値、範囲、選択肢が無効です。元のノード入力の型に合わせてください。",
-  "settings.comfy.duplicateMapping": "同じノード入力を重複して割り当てることはできません。パラメーターキーも一意である必要があります。"
+  "settings.comfy.duplicateMapping": "同じノード入力を重複して割り当てることはできません。パラメーターキーも一意である必要があります。",
+  "ui.dateTime.chooseDate": "日付を選択",
+  "ui.dateTime.previousMonth": "前の月",
+  "ui.dateTime.nextMonth": "次の月",
+  "ui.dateTime.clear": "日付をクリア",
+  "ui.dateTime.timeLabel": "{0}（時:分:秒）"
 }

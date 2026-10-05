@@ -53,6 +53,8 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 2026-10-04 图片与视频查看器新增精确正式版本：[`yet-another-react-lightbox` 3.32.2](https://yet-another-react-lightbox.com/)（MIT）。使用包内 Zoom、Fullscreen、Video 插件，React/React DOM peer 范围为 `^16.8.0 || ^17 || ^18 || ^19`，与当前 React 19 基线兼容。图片支持缩放、平移和全屏；视频使用原生控件且默认不自动播放。验证范围为查看器与画布媒体入口的定向前端测试、TypeScript、相关 lint、四语言目录检查和 Vite 构建；实际检查结果记录在开发清单，不涉及后端或真实 Provider。
 
+2026-10-05 调用日志日期组件新增精确正式版本：[`react-day-picker` 10.0.2](https://daypicker.dev/) 与 [`date-fns` 4.4.0](https://date-fns.org/)，通过 shadcn CLI 加入 Calendar 与 Popover 源码。使用 React DayPicker 单日选择、四语言 locale 与 date-fns 本地时间格式化；沿用现有 Radix、Phosphor、主题及其他依赖版本。验证范围为调用日志 Mock HTTP 组件测试、TypeScript、lint、四语言/主题检查与 Vite 构建；实际结果见开发清单。
+
 ## 容器镜像
 
 | 用途 | 精确镜像 | 多架构 digest |

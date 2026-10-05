@@ -929,6 +929,8 @@ RunningHub 合并 main 复验：保留 AutoDL V65 / ADR 0024，RunningHub 使用
 
 无后端、API 或数据库迁移；全量测试、真实 Provider、部署和所有画布操作的浏览器验收未运行。生产构建仍提示部分分块超过 500 kB。
 
+2026-10-05 调用日志日期控件：开始/结束时间改用公共 shadcn Calendar + Popover 与秒级 Input 草稿，支持四语言、本地时区、单独清空日期、Escape 焦点恢复和无效时间/倒置区间校验；筛选表单改用 FieldGroup / Field / FieldError，关联项目入口改为 Button。新增精确 date-fns 4.4.0、react-day-picker 10.0.2 与公共组件源码；API、后端与数据库无变更。CallLogsPage 的 21 项 Mock HTTP 组件测试通过，Asia/Shanghai 时区复验通过；TypeScript、lint（含四语言和主题检查）、Vite 生产构建与差异空白检查通过，构建保留既有大 chunk 提示。全量测试、后端测试、浏览器视觉验收和真实 Provider 调用未运行。
+
 ## 2026-10-02 代码维护：上传请求与 ComfyUI 图片输入
 
 - [x] 图片、音频、视频及个人资产库上传复用同一会话、CSRF、语言协商和 ProblemDetail 处理；multipart 边界仍由浏览器设置，JSON 请求保留原 Content-Type。项目上传上限仍分别为 20 / 50 / 500 MiB，集中为具名常量。

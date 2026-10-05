@@ -6,7 +6,7 @@ import { MemoryRouter,Route,Routes } from "react-router";
 import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { CallLog,CallLogPage,Task } from "../../shared/api/client";
-import { changeControl,selectValue } from "../../test/controls";
+import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { CallLogsPage } from "./CallLogsPage";
 
@@ -34,6 +34,25 @@ function showPage(path = "/settings/calls") {
     <Route path="/projects/:projectId" element={<h1>项目画布</h1>} />
   </Routes></MemoryRouter></QueryClientProvider>);
   return client;
+}
+
+async function chooseDateTime(label: string, value: string) {
+  const user = userEvent.setup();
+  const date = new Date(value);
+  await user.click(screen.getByRole("button", { name: label }));
+  const dialog = screen.getByRole("dialog", { name: label });
+  const findDay = () => [...dialog.querySelectorAll<HTMLButtonElement>("button[data-day]")]
+    .find((button) => button.dataset.day === date.toLocaleDateString());
+  let day = findDay();
+  for (let month = 0; !day && month < 24; month++) {
+    await user.click(within(dialog).getByRole("button", { name: date < new Date() ? "上个月" : "下个月" }));
+    day = findDay();
+  }
+  if (!day) throw new Error(`Calendar day unavailable: ${value}`);
+  await user.click(day);
+  const time = screen.getByRole("textbox", { name: `${label}（时:分:秒）` });
+  await user.clear(time);
+  await user.type(time, value.slice(11));
 }
 
 describe("CallLogsPage", () => {
@@ -126,8 +145,8 @@ describe("CallLogsPage", () => {
     await selectValue(screen.getByLabelText("调用类型"), "VIDEO");
     await selectValue(screen.getByLabelText("调用状态"), "UNKNOWN");
     await user.type(screen.getByLabelText("Trace ID"), "trace-filter");
-    await changeControl(screen.getByLabelText("开始时间"), { target: { value: "2026-09-25T08:00:00" } });
-    await changeControl(screen.getByLabelText("结束时间"), { target: { value: "2026-09-26T09:00:00" } });
+    await chooseDateTime("开始时间", "2026-09-25T08:00:00");
+    await chooseDateTime("结束时间", "2026-09-26T09:00:00");
     await user.click(screen.getByRole("button", { name: "筛选日志" }));
     await waitFor(() => expect(requests.at(-1)?.get("traceId")).toBe("trace-filter"));
     expect(Object.fromEntries(requests.at(-1)!)).toEqual({ projectId: PROJECT_ID, kind: "VIDEO", status: "UNKNOWN", traceId: "trace-filter",
@@ -239,13 +258,57 @@ describe("CallLogsPage", () => {
     expect(reads).toHaveBeenCalledTimes(2);
   });
 
+  it("restores local time from URL filters and clears an individual calendar filter", async () => {
+    const requests: URLSearchParams[] = [];
+    const from = new Date("2026-09-25T08:12:34").toISOString();
+    const to = new Date("2026-09-26T09:23:45").toISOString();
+    server.use(http.get("/api/v1/call-logs", ({ request }) => {
+      requests.push(new URL(request.url).searchParams);
+      return HttpResponse.json(page());
+    }));
+    const user = userEvent.setup();
+    showPage(`/settings/calls?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+    await screen.findByText("test-model");
+    expect(screen.getByRole("textbox", { name: "开始时间（时:分:秒）" })).toHaveValue("08:12:34");
+    expect(screen.getByRole("textbox", { name: "结束时间（时:分:秒）" })).toHaveValue("09:23:45");
+    expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
+    await user.click(screen.getByRole("button", { name: "筛选日志" }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests.at(-1)?.get("from")).toBe(from);
+    expect(requests.at(-1)?.get("to")).toBe(to);
+    await user.click(screen.getByRole("button", { name: "开始时间" }));
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: "开始时间" })).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "开始时间" }));
+    await user.click(within(screen.getByRole("dialog", { name: "开始时间" })).getByRole("button", { name: "清空日期" }));
+    expect(screen.getByRole("textbox", { name: "开始时间（时:分:秒）" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "筛选日志" }));
+    await waitFor(() => expect(requests.at(-1)?.has("from")).toBe(false));
+    expect(requests.at(-1)?.get("to")).toBe(to);
+  });
+
+  it("keeps an invalid time draft without sending a request", async () => {
+    const reads = vi.fn();
+    server.use(http.get("/api/v1/call-logs", () => { reads(); return HttpResponse.json(page()); }));
+    showPage(`/settings/calls?from=${encodeURIComponent(new Date("2026-09-25T08:00:00").toISOString())}`);
+    await screen.findByText("test-model");
+    const user = userEvent.setup();
+    const time = screen.getByRole("textbox", { name: "开始时间（时:分:秒）" });
+    await user.clear(time);
+    await user.type(time, "25:00:00");
+    await user.click(screen.getByRole("button", { name: "筛选日志" }));
+    expect(time).toBeInvalid();
+    expect(time).toHaveValue("25:00:00");
+    expect(reads).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects an inverted date range before issuing another read", async () => {
     const reads = vi.fn();
     server.use(http.get("/api/v1/call-logs", () => { reads(); return HttpResponse.json(page()); }));
     showPage();
     await screen.findByText("test-model");
-    await changeControl(screen.getByLabelText("开始时间"), { target: { value: "2026-09-27T08:00:00" } });
-    await changeControl(screen.getByLabelText("结束时间"), { target: { value: "2026-09-26T08:00:00" } });
+    await chooseDateTime("开始时间", "2026-09-27T08:00:00");
+    await chooseDateTime("结束时间", "2026-09-26T08:00:00");
     await userEvent.setup().click(screen.getByRole("button", { name: "筛选日志" }));
     expect(screen.getByRole("alert")).toHaveTextContent("结束时间不能早于开始时间");
     expect(reads).toHaveBeenCalledTimes(1);
