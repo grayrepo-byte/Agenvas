@@ -1,0 +1,72 @@
+/* Compact public work traces and frozen media approvals follow the existing Beautiful UI chat surface. */
+.agent-chat-transcript { display: flow-root; min-width: 0; }
+.agent-chat-transcript > * + * { margin-top: 14px; }
+.agent-execution-trace {
+  min-width: 0;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+.agent-execution-trace__summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 7px 0;
+  list-style: none;
+  cursor: pointer;
+}
+.agent-execution-trace__summary::-webkit-details-marker,
+.agent-media-approval__output > summary::-webkit-details-marker { display: none; }
+.agent-execution-trace__summary > svg { flex: none; color: var(--ui-text-subtle); }
+.agent-execution-trace__summary > span { min-width: 0; overflow-wrap: anywhere; }
+.agent-execution-trace__summary > small { margin-left: auto; color: var(--ui-text-subtle); font-size: 10px; white-space: nowrap; }
+.agent-execution-trace__caret { transition: transform 150ms ease; }
+.agent-execution-trace[open] .agent-execution-trace__caret { transform: rotate(180deg); }
+.agent-execution-trace__steps { margin: 4px 0 5px 6px; padding-left: 12px; border-left: 1px solid var(--ui-border); }
+.agent-execution-trace__round + .agent-execution-trace__round { margin-top: 12px; }
+.agent-execution-trace__round-label { margin: 0 0 3px; color: var(--ui-text-subtle); font-size: 10px; }
+.agent-execution-trace .agent-chat-task { border: 0; border-radius: 6px; background: transparent; overflow: visible; }
+.agent-execution-trace .agent-chat-task__headline { min-height: 30px; padding: 4px 0; gap: 7px; }
+.agent-execution-trace .agent-chat-task__icon { width: 15px; height: 18px; border-radius: 0; background: transparent; }
+.agent-execution-trace .agent-chat-task__label { font-weight: 400; font-size: 12px; }
+.agent-execution-trace .agent-chat-task__status { border: 0; padding: 0; background: transparent; font-size: 10px; }
+.agent-execution-trace .agent-chat-task__detail { margin: 5px 0 7px 22px; padding: 0; border: 0; font-size: 11px; }
+.agent-chat-tool-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 42%; min-width: 0; margin: 0; padding: 2px 7px; border: 1px solid var(--ui-border); border-radius: 6px; color: var(--ui-text-muted); background: var(--ui-surface-raised); font-size: 10px; overflow-wrap: anywhere; }
+.agent-chat-tool-chip > svg { flex: none; }
+.agent-chat-stream-label { color: var(--ui-text-subtle); font-size: 10px; margin-left: 3px; }
+.agent-chat-stream-notice { margin: 8px 0 0; color: var(--ui-text-muted); font-size: 11px; }
+.agent-chat-message--assistant .agent-chat-message__body { white-space: normal; }
+.agent-media-approval { --agent-chat-ink: var(--ui-text); --agent-chat-muted: var(--ui-text-muted); --agent-chat-surface: var(--ui-surface); --agent-chat-field: var(--ui-surface-raised); --agent-chat-line: var(--ui-border); box-shadow: none; }
+.agent-media-approval .agent-chat-approval__heading { padding: 12px 12px 0; }
+.agent-media-approval .agent-chat-approval__content { padding: 10px 12px 12px; }
+.agent-media-approval .agent-chat-approval__footer { padding: 10px 12px; }
+.agent-media-approval__status { display: flex; align-items: center; gap: 6px; margin: 0 0 9px; color: var(--ui-text-muted); font-size: 11px; }
+.agent-media-approval--succeeded .agent-media-approval__status { color: var(--ui-success); }
+.agent-media-approval--failed .agent-media-approval__status { color: var(--ui-danger); }
+.agent-media-approval__output { padding: 8px 0; border-top: 1px solid var(--ui-border); }
+.agent-media-approval__output > summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; list-style: none; cursor: pointer; }
+.agent-media-approval__output > summary > span { min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+.agent-media-approval__output > summary > small { flex: none; color: var(--ui-text-subtle); font-size: 10px; }
+.agent-media-approval__prompt { margin: 10px 0; padding: 8px 9px; border-radius: 7px; background: var(--ui-field); color: var(--ui-text-secondary); white-space: pre-wrap; font-size: 12px; }
+.agent-media-approval__fields { margin: 0; font-size: 11px; }
+.agent-media-approval__fields > div { display: grid; grid-template-columns: minmax(65px, 30%) minmax(0, 1fr); gap: 8px; padding: 3px 0; }
+.agent-media-approval__fields dt { color: var(--ui-text-subtle); overflow-wrap: anywhere; }
+.agent-media-approval__fields dd { margin: 0; color: var(--ui-text-secondary); overflow-wrap: anywhere; }
+.agent-media-approval__capability-id { display: block; color: var(--ui-text-subtle); font-family: inherit; font-size: 10px; }
+.agent-media-approval__inputs { margin-top: 9px; color: var(--ui-text-muted); font-size: 10px; }
+.agent-media-approval__inputs strong { font-weight: 500; }
+.agent-media-approval__inputs p { margin: 3px 0 0; }
+.agent-media-approval__inputs ul { margin: 4px 0 0; padding: 0; list-style: none; }
+.agent-media-approval__inputs li { display: flex; flex-wrap: wrap; gap: 3px 7px; padding: 3px 0; }
+.agent-media-approval__inputs code { font-family: inherit; color: var(--ui-text-subtle); font-size: 10px; overflow-wrap: anywhere; }
+.agent-media-approval__cost-hint { margin: 9px 0 0; color: var(--ui-text-muted); font-size: 10px; line-height: 1.55; }
+.agent-media-approval__decision { width: 100%; min-width: 0; }
+.agent-media-approval__decision > p { margin: 0 0 8px; color: var(--ui-text-subtle); font-size: 10px; }
+.agent-media-approval__buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.agent-media-approval__results { display: flex; flex-direction: column; gap: 5px; margin: 9px 0 0; padding: 0; list-style: none; }
+.agent-media-approval__results li { display: flex; justify-content: space-between; gap: 8px; color: var(--ui-text-muted); font-size: 11px; }
+.agent-media-approval__warning, .agent-media-approval__error { margin: 9px 0 0; padding: 7px 8px; border-radius: 7px; font-size: 11px; }
+.agent-media-approval__warning { color: var(--ui-warning); background: var(--ui-warning-bg); }
+.agent-media-approval__error { color: var(--ui-danger); background: var(--ui-danger-bg); }
+.agent-execution-trace summary:focus-visible, .agent-media-approval summary:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: 3px; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { .agent-execution-trace__caret { transition: none; } }

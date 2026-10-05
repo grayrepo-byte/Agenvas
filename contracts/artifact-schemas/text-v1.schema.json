@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agenvas:artifact:text:1",
+  "title": "TEXT Artifact content v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "text"
+  ],
+  "properties": {
+    "format": {
+      "type": "string",
+      "enum": [
+        "PLAIN_TEXT",
+        "MARKDOWN"
+      ]
+    },
+    "text": {
+      "type": "string",
+      "minLength": 0,
+      "maxLength": 20000,
+      "description": "允许空字符串作为新文字节点的初始正文版本。"
+    }
+  }
+}

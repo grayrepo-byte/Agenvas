@@ -1,0 +1,35 @@
+{
+  "runningHub": {
+    "schemaVersion": 1,
+    "protocolVersion": "V2",
+    "targetType": "AI_APP",
+    "targetId": "2084320751339032577",
+    "instanceType": "default",
+    "usePersonalQueue": false,
+    "fields": [
+      {"key":"prompt","label":"提示词","type":"STRING","required":true,"nodeId":"150","fieldName":"value","source":"PROMPT"},
+      {"key":"seconds","label":"时长/秒","type":"INTEGER","required":true,"minimum":5,"maximum":15,"nodeId":"186","fieldName":"value","source":"DURATION_SECONDS","encoding":"STRING"},
+      {"key":"reference","label":"参考图1","type":"IMAGE","required":true,"nodeId":"141","fieldName":"image","resourceFormat":"FILE_NAME"},
+      {"key":"aspectRatio","label":"比例选择","type":"SELECT","defaultValue":"16:9 (Widescreen)","nodeId":"115","fieldName":"aspect_ratio","options":[{"label":"16:9","value":"16:9 (Widescreen)"},{"label":"9:16","value":"9:16 (Portrait Widescreen)"},{"label":"1:1","value":"1:1 (Square)"}]},
+      {"key":"megapixels","label":"像素/百万","type":"NUMBER","defaultValue":0.2,"minimum":0.2,"maximum":2,"nodeId":"147","fieldName":"value","encoding":"STRING"},
+      {"key":"steps","label":"采样步数","type":"INTEGER","defaultValue":8,"minimum":1,"advanced":true,"nodeId":"192","fieldName":"value","encoding":"STRING"}
+    ],
+    "fixedBindings": [
+      {"nodeId":"142","fieldName":"image","value":"None"},
+      {"nodeId":"143","fieldName":"image","value":"None"},
+      {"nodeId":"161","fieldName":"image","value":"None"},
+      {"nodeId":"175","fieldName":"image","value":"None"},
+      {"nodeId":"176","fieldName":"image","value":"None"},
+      {"nodeId":"144","fieldName":"audio","value":"None"},
+      {"nodeId":"160","fieldName":"audio","value":"None"},
+      {"nodeId":"189","fieldName":"audio","value":"None"},
+      {"nodeId":"171","fieldName":"value","value":false,"encoding":"STRING"},
+      {"nodeId":"163","fieldName":"value","value":false,"encoding":"STRING"},
+      {"nodeId":"185","fieldName":"value","value":false,"encoding":"STRING"},
+      {"nodeId":"169","fieldName":"value","value":false,"encoding":"STRING"},
+      {"nodeId":"158","fieldName":"value","value":false,"encoding":"STRING"},
+      {"nodeId":"159","fieldName":"strength_model","value":0,"encoding":"STRING"}
+    ],
+    "outputs": [{"kind":"VIDEO","primary":true,"maxCount":1}]
+  }
+}

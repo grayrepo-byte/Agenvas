@@ -1,0 +1,62 @@
+shared/ui/LoadingState.tsx and shared/ui/LoadingState.css adapt the Drive loader,
+pixel-on keyframes and shimmer from Beautiful UI by Shane Levine.
+
+Component source:
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/LoadingState.tsx
+Animation source:
+https://github.com/slev12397/beautiful-ui/blob/main/app/globals.css
+Project: https://www.beautifului.dev/
+License: https://www.beautifului.dev/license
+
+Modifications: scoped dark-theme styles, required application status label,
+optional elapsed time derived from the persisted task timestamp, compact mode,
+and reduced-motion styling. No demo progress or media is included.
+
+AgentChatPrimitives.tsx and AgentChatPrimitives.css adapt chat message layout,
+task row/status badges, expandable action details and approval card structure:
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/ChatComposer.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/TaskRows.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/ToolChips.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/ApprovalCard.tsx
+
+Modifications: scoped black theme, Phosphor icons, native details disclosure,
+application-provided messages/statuses and approval content, and reused
+CanvasLoadingState. Demo timers, scripted results, reasoning text, automatic
+approval advancement, and simulated progress are omitted.
+
+ContentCanvasCard.tsx and ContentCanvasCard.css adapt content bars and source
+chips from ContextCards.tsx. ArtifactCardFrame.tsx and ArtifactCardFrame.css
+share the contextual action layout from SelectionActions.tsx across content
+and media cards. MediaDraftEditor.tsx
+and MediaDraftEditor.css adapt reference chips, popovers and compact task rows:
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/ContextCards.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/SelectionActions.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/PromptBar.tsx
+https://github.com/slev12397/beautiful-ui/blob/main/components/primitives/TaskRows.tsx
+
+Modifications: scoped canvas black theme, application-owned content and exact
+archived image versions, CAS-protected editing, real task states, accessible
+controls, Phosphor icons and reduced-motion styling. No demo content, simulated
+task progression, or private reasoning is included.
+
+MIT License
+
+Copyright (c) 2026 Shane Levine
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

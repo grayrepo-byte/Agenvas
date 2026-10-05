@@ -1,0 +1,88 @@
+/* Beautiful UI content-bar/source-chip hierarchy, using the canvas media palette. */
+.content-canvas-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.content-card-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-bottom: 1px solid #ffffff0e;
+  color: #c9c9c9;
+}
+
+.content-card-bar > svg { flex-shrink: 0; color: #9a9a9a; }
+.content-card-bar h3 { min-width: 0; margin: 0; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+
+.content-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  overscroll-behavior: contain;
+  scrollbar-color: #555 transparent;
+  scrollbar-width: thin;
+  cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.content-card-body:focus-visible { outline: none; }
+.content-canvas-card:not(.is-selected):focus-within { box-shadow: 0 0 0 var(--ui-focus-width) var(--ui-focus); }
+.content-card-text { margin: 0; overflow-wrap: anywhere; color: #dedede; font-size: 13px; font-weight: 400; line-height: 1.75; white-space: pre-wrap; }
+.content-card-sources { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; min-width: 0; overflow: hidden; padding: 8px 12px 11px; }
+.content-card-chip { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border: 1px solid #ffffff0d; border-radius: 999px; background: #303030; color: #b7b7b7; font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.content-card-chip svg { color: #8f8f8f; }
+.content-card-locked { flex-shrink: 0; margin-left: auto; color: #a5a5a5; }
+
+.content-card-empty { display: flex; flex: 1 1 auto; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 0; padding: 12px; color: #929292; font-size: 11px; text-align: center; }
+.content-card-empty > svg { flex-shrink: 0; color: #606060; }
+.content-card-empty button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 14px; border: 1px solid #454545; border-radius: 999px; background: #333; color: #f3f3f3; font-size: 12px; cursor: pointer; }
+.content-card-empty button:hover { background: #424242; }
+.content-card-empty button:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+
+.text-card-editor { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+.text-card-editor-body { position: relative; display: flex; flex-direction: column; padding: 8px 12px; }
+.content-canvas-card .text-card-editor-body textarea {
+  box-sizing: border-box; width: 100%; min-height: 0; flex: 1 1 auto; resize: none;
+  border: 0; border-radius: 7px; background: transparent; color: #dedede; padding: 5px 3px;
+  font: inherit; font-size: 13px; line-height: 1.75; outline: none; white-space: pre-wrap;
+}
+.text-card-editor-body textarea::placeholder { color: #777; }
+/* The card owns the focus boundary; avoid a second frame around its editable body. */
+.text-card-editor-body textarea.ui-focusable { box-shadow: none; }
+.text-card-editor-body textarea.ui-focusable:focus-visible { outline: none; box-shadow: none; }
+.text-card-editor-footer { overflow: visible; flex-wrap: wrap; }
+.text-card-editor-footer .ui-select { width: auto; }
+.text-card-count { color: #888; font-size: 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.text-card-editor-footer .content-card-locked { margin-left: 0; }
+.text-card-save {
+  display: inline-flex; width: 26px; height: 26px; flex: none; align-items: center; justify-content: center;
+  margin-left: auto; border: 0; border-radius: 50%; background: var(--ui-accent); color: var(--ui-accent-foreground); cursor: pointer;
+}
+.text-card-save:disabled { cursor: not-allowed; opacity: .38; }
+.text-card-save:hover:enabled { background: var(--ui-accent-hover); }
+.text-card-done {
+  display: inline-flex; width: 26px; height: 26px; flex: none; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: #303030; color: #bbb; cursor: pointer;
+}
+.text-card-done:disabled { cursor: not-allowed; opacity: .45; }
+.text-card-save:focus-visible, .text-card-version-tag:focus-visible,
+.text-card-version-option:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+.text-card-version-picker { position: relative; flex: none; }
+.text-card-version-menu {   width: 190px; max-height: 240px; }
+
+.text-card-version-option { justify-content: space-between; }
+
+.text-card-notice, .text-card-error {
+  flex: none; margin: 0 0 5px; border-radius: 6px; padding: 5px 7px; font-size: 9px; line-height: 1.4;
+}
+.text-card-notice { background: #2c261b; color: #dfc28b; }
+.text-card-notice button { margin-left: 6px; color: #f0d9af; text-decoration: underline; }
+.text-card-error { background: #342020; color: #ffb4b4; }
+.text-card-saved { position: absolute; right: 14px; bottom: 10px; color: #8fb9a3; font-size: 9px; }

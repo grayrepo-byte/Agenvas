@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.env
+**/.env
+**/.env.*
+**/.DS_Store
+**/node_modules
+**/target
+frontend/dist
+frontend/coverage
+docs

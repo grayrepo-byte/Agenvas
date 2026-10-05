@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:agenvas:artifact:image:1",
+  "title": "IMAGE Artifact content v1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/writable"
+    },
+    {
+      "$ref": "#/$defs/libraryImport"
+    },
+    {
+      "$ref": "#/$defs/skillImport"
+    }
+  ],
+  "$defs": {
+    "writable": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/upload"
+        },
+        {
+          "$ref": "#/$defs/generated"
+        }
+      ]
+    },
+    "upload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceType",
+        "assetId"
+      ],
+      "properties": {
+        "sourceType": {
+          "const": "UPLOAD"
+        },
+        "assetId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "generated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assetId",
+        "prompt",
+        "workflowVersion",
+        "parameters",
+        "sourceTaskId"
+      ],
+      "properties": {
+        "assetId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000
+        },
+        "negativePrompt": {
+          "type": "string",
+          "maxLength": 8000
+        },
+        "workflowVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "sourceTaskId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "libraryImport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceType",
+        "assetId"
+      ],
+      "properties": {
+        "sourceType": {
+          "const": "LIBRARY_IMPORT",
+          "readOnly": true
+        },
+        "assetId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "description": "Server-authored library provenance; ordinary artifact writes cannot create it."
+    },
+    "skillImport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceType",
+        "assetId"
+      ],
+      "properties": {
+        "sourceType": {
+          "const": "SKILL_IMPORT",
+          "readOnly": true
+        },
+        "assetId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "description": "Server-authored Skill installation provenance; ordinary artifact writes cannot create it."
+    }
+  }
+}

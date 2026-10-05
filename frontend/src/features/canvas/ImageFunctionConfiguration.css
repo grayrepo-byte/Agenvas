@@ -1,0 +1,7 @@
+.image-function-controls, .image-function-parameters { min-width: 0; }
+.image-function-controls > p { margin: 0; overflow-wrap: anywhere; }
+.image-function-controls .image-function-method { color: var(--ui-text); font-size: var(--ui-text-sm); font-weight: 500; }
+.image-function-controls .image-function-cost { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.image-function-parameters .runninghub-form { gap: var(--ui-space-4); }
+.image-function-controls > .image-function-parameters { padding-block: var(--ui-space-3); border-block: 1px solid var(--ui-border); }
+.image-function-parameters > [role="status"] { margin: 0; color: var(--ui-warning); font-size: var(--ui-text-xs); overflow-wrap: anywhere; }

@@ -1,0 +1,273 @@
+/* Layouts adapted from Beautiful UI's ChatComposer, TaskRows, ToolChips and
+   ApprovalCard. Source and MIT notice: beautiful-ui-LICENSE.txt. */
+.agent-chat-message,
+.agent-chat-task,
+.agent-chat-approval {
+  --agent-chat-ink: #f4f4f5;
+  --agent-chat-muted: #a1a1aa;
+  --agent-chat-faint: #73737a;
+  --agent-chat-surface: #1e1e1e;
+  --agent-chat-field: #292929;
+  --agent-chat-hover: #323232;
+  --agent-chat-line: rgba(255, 255, 255, 0.12);
+  --agent-chat-success: #a3d9b1;
+  --agent-chat-failure: #f4a2a7;
+  --agent-chat-unknown: #e9c68b;
+  --agent-chat-focus: var(--ui-focus);
+  --agent-chat-control-transition: 160ms;
+
+  min-width: 0;
+  color: var(--agent-chat-ink);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.agent-chat-message {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+
+.agent-chat-message__identity {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--agent-chat-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.agent-chat-message__identity svg {
+  flex: none;
+}
+
+.agent-chat-message__body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.agent-chat-message__body > :first-child {
+  margin-top: 0;
+}
+
+.agent-chat-message__body > :last-child {
+  margin-bottom: 0;
+}
+
+.agent-chat-message--user {
+  align-self: flex-end;
+  align-items: flex-end;
+  width: fit-content;
+  max-width: 90%;
+  margin-left: auto;
+}
+
+.agent-chat-message--user .agent-chat-message__body {
+  padding: 9px 12px;
+  border: 1px solid var(--agent-chat-line);
+  border-radius: 13px 13px 4px 13px;
+  background: var(--agent-chat-field);
+  white-space: pre-wrap;
+}
+
+.agent-chat-message--assistant .agent-chat-message__body {
+  padding: 1px 0;
+}
+
+.agent-chat-task {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--agent-chat-line);
+  border-radius: 11px;
+  background: var(--agent-chat-surface);
+}
+
+.agent-chat-task__headline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 39px;
+  min-width: 0;
+  padding: 8px 10px;
+  list-style: none;
+}
+
+.agent-chat-task__disclosure > summary {
+  cursor: pointer;
+  transition: background-color var(--agent-chat-control-transition) ease;
+}
+
+.agent-chat-task__disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-chat-task__disclosure > summary:hover {
+  background: var(--agent-chat-hover);
+}
+
+.agent-chat-task__disclosure > summary:focus-visible {
+  outline: 2px solid var(--agent-chat-focus);
+  outline-offset: -3px;
+  border-radius: 9px;
+}
+
+.agent-chat-task__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  color: var(--agent-chat-muted);
+  background: var(--agent-chat-field);
+}
+
+.agent-chat-task__label,
+.agent-chat-task__running {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.agent-chat-task__running .canvas-loading-state {
+  justify-content: flex-start;
+}
+
+.agent-chat-task__status {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--agent-chat-line);
+  border-radius: 999px;
+  color: var(--agent-chat-muted);
+  font-size: 10px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+.agent-chat-task--completed .agent-chat-task__icon,
+.agent-chat-task--completed .agent-chat-task__status {
+  background: rgba(89, 163, 110, 0.13);
+  color: var(--agent-chat-success);
+}
+
+.agent-chat-task--failed .agent-chat-task__icon,
+.agent-chat-task--failed .agent-chat-task__status {
+  background: rgba(197, 78, 88, 0.13);
+  color: var(--agent-chat-failure);
+}
+
+.agent-chat-task--unknown .agent-chat-task__icon,
+.agent-chat-task--unknown .agent-chat-task__status {
+  background: rgba(183, 137, 59, 0.13);
+  color: var(--agent-chat-unknown);
+}
+
+.agent-chat-task--canceled .agent-chat-task__label {
+  color: var(--agent-chat-muted);
+}
+
+.agent-chat-task__caret {
+  flex: none;
+  color: var(--agent-chat-faint);
+  transition: transform var(--agent-chat-control-transition) ease;
+}
+
+.agent-chat-task__disclosure[open] .agent-chat-task__caret {
+  transform: rotate(180deg);
+}
+
+.agent-chat-task__detail {
+  margin: 0 12px 11px 20px;
+  padding-left: 18px;
+  border-left: 1px solid var(--agent-chat-line);
+  color: var(--agent-chat-muted);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.agent-chat-approval {
+  width: 100%;
+  border: 1px solid var(--agent-chat-line);
+  border-radius: 13px;
+  background: var(--agent-chat-surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  animation: agent-approval-enter 240ms ease-out both;
+}
+
+.agent-chat-approval__heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 14px 14px 0;
+}
+
+.agent-chat-approval__heading-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-chat-approval__heading h4 {
+  margin: 1px 0 0;
+  color: var(--agent-chat-ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.agent-chat-approval__heading p {
+  margin: 4px 0 0;
+  color: var(--agent-chat-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.agent-chat-approval__content {
+  min-width: 0;
+  padding: 12px 14px 14px;
+}
+
+.agent-chat-approval__content > :first-child {
+  margin-top: 0;
+}
+
+.agent-chat-approval__content > :last-child {
+  margin-bottom: 0;
+}
+
+.agent-chat-approval__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--agent-chat-line);
+  border-radius: 0 0 13px 13px;
+  background: var(--agent-chat-field);
+}
+
+.agent-chat-approval__footer .agent-chat-panel-actions { margin-top: 0; }
+.agent-chat-approval__footer button { border-radius: 999px; }
+.agent-chat-approval__footer .agent-chat-panel-primary {
+  border-color: var(--ui-accent);
+  background: var(--ui-accent);
+  color: var(--ui-accent-foreground);
+}
+.agent-chat-approval__footer .agent-chat-panel-primary:hover:enabled { background: var(--ui-accent-hover); }
+
+@keyframes agent-approval-enter {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat-approval { animation: none; }
+  .agent-chat-task__disclosure > summary,
+  .agent-chat-task__caret {
+    transition: none;
+  }
+}

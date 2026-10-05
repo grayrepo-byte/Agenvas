@@ -1,0 +1,118 @@
+import { useMutation,useQueryClient } from "@tanstack/react-query";
+import { useEffect,useRef,useState,type FormEvent } from "react";
+import {
+HTTP_STATUS,ApiError,listCanvasItems,
+uploadAudioAsset,
+uploadCanvasItemVersion,uploadImageAsset,
+type Artifact,type CanvasItem
+} from "../../shared/api/client";
+import { t,useLocale } from "../../shared/i18n";
+import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
+import { Button } from "../../shared/ui/primitives/button";
+import { Input } from "../../shared/ui/primitives/input";
+
+/** Upload fills an empty media node, and only derives when the source already has a result. */
+export function MediaCardUpload({ artifact, item, initialFile, onDone, compact = false }: {
+  artifact: Artifact; item: CanvasItem; initialFile: File; onDone: () => void; compact?: boolean;
+}) {
+  useLocale();
+  const isAudio = artifact.kind === "AUDIO";
+  const label = isAudio ? t("common.audio") : t("common.image");
+  const queryClient = useQueryClient();
+  const [file, setFile] = useState<File | null>(initialFile);
+  const [expectedVersion, setExpectedVersion] = useState(item.version);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const initialUploadStarted = useRef(false);
+  const progress = useRef<{ file: File; targetItemId: string; assetId?: string } | null>({
+    file: initialFile,
+    targetItemId: item.selectedVersionId ? crypto.randomUUID() : item.id,
+  });
+  const upload = useMutation({
+    mutationFn: async (image: File) => {
+      if (progress.current?.file !== image) progress.current = {
+        file: image,
+        targetItemId: item.selectedVersionId ? crypto.randomUUID() : item.id,
+      };
+      const pending = progress.current;
+      if (!pending.assetId) pending.assetId = (await (isAudio ? uploadAudioAsset : uploadImageAsset)(artifact.projectId, image)).id;
+      const request = { targetItemId: pending.targetItemId, expectedVersion,
+        content: { sourceType: "UPLOAD" as const, assetId: pending.assetId } };
+      try {
+        await uploadCanvasItemVersion(artifact.projectId, item.id, request);
+      } catch (failure) {
+        if (!(failure instanceof ApiError) || failure.status < HTTP_STATUS.INTERNAL_SERVER_ERROR) throw failure;
+        // Reuse the same target ID so a response lost after commit cannot create another node.
+        await uploadCanvasItemVersion(artifact.projectId, item.id, request);
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["snapshot", artifact.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["media-draft", artifact.projectId, item.id] }),
+        queryClient.invalidateQueries({ queryKey: ["artifact-versions", artifact.projectId, artifact.id] }),
+      ]);
+      onDone();
+    },
+  });
+  useEffect(() => {
+    if (initialUploadStarted.current) return;
+    initialUploadStarted.current = true;
+    upload.mutate(initialFile);
+  }, [initialFile, upload]);
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (file) upload.mutate(file);
+  }
+  async function refreshVersion() {
+    setRefreshing(true); setRefreshError(null);
+    try {
+      const current = (await listCanvasItems(artifact.projectId)).items
+        .find((candidate) => candidate.id === item.id);
+      if (!current) throw new Error(t("media.upload.cardDeleted"));
+      setExpectedVersion(current.version);
+      upload.reset();
+    } catch (failure) {
+      setRefreshError(failure instanceof Error ? failure.message : t("media.upload.versionLoadFailed"));
+    } finally { setRefreshing(false); }
+  }
+  const conflict = upload.error instanceof ApiError && upload.error.status === HTTP_STATUS.CONFLICT;
+  const errorMessage = conflict
+    ? t("media.upload.conflict")
+    : upload.error?.message;
+  if (compact) return <div className="media-card-upload-status nodrag nowheel nopan">
+    {upload.isPending ? <p role="status">{t("media.upload.uploadingMedia", { "0": label })}</p> : null}
+    {upload.error ? <div className="media-card-error" role="alert">
+      <span>{errorMessage}</span>
+      <Button variant="ghost" type="button" disabled={!file || refreshing} onClick={() => file && upload.mutate(file)}>
+        {refreshing ? t("common.loading") : t("media.retryUpload")}
+      </Button>
+      {conflict ? <Button variant="ghost" type="button"
+        disabled={refreshing} onClick={() => void refreshVersion()}>{t("media.upload.refreshVersion")}</Button> : null}
+    </div> : null}
+    {refreshError ? <p className="media-card-error" role="alert">{refreshError}</p> : null}
+  </div>;
+  return <form className="media-card-upload-form" onSubmit={submit}>
+    <p>{item.selectedVersionId ? t("media.upload.derivedUploadHint", { "0": artifact.title, "1": label })
+      : t("media.upload.uploadHint", { "0": label, "1": artifact.title })}</p>
+    <p className="text-xs text-[var(--muted)]">{t("media.upload.selectedFile", { "0": file?.name })}</p>
+    <label>{t("media.upload.replaceTitle", { "0": label })}<Input type="file" accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
+      disabled={upload.isPending} onChange={(event) => {
+        const selected = event.target.files?.[0] ?? null;
+        setFile(selected);
+        upload.reset();
+        if (selected) upload.mutate(selected);
+      }} /></label>
+    <p className="text-xs text-[var(--muted)]">{isAudio ? t("media.upload.audioFormatsHint") : t("media.upload.imageFormatsHint")}</p>
+    <Button variant="default"  type="submit" disabled={!file || upload.isPending || refreshing}>
+      {upload.isPending ? t("media.upload.uploading") : upload.error ? t("media.retryUpload") : t("media.upload.uploadAndCreate")}</Button>
+    {upload.error ? <p role="alert">{errorMessage}</p> : null}
+    {conflict ? <Button variant="outline"
+      type="button" disabled={refreshing} onClick={() => void refreshVersion()}>
+      {refreshing ? t("common.loading") : t("media.upload.refreshVersion")}</Button> : null}
+    {expectedVersion !== item.version ? <p role="status">{t("media.upload.versionRefreshedHint")}</p> : null}
+    {refreshError ? <p role="alert">{refreshError}</p> : null}
+  </form>;
+}

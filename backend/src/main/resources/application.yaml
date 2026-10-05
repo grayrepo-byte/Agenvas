@@ -1,0 +1,99 @@
+spring:
+  application:
+    name: agenvas-server
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  datasource:
+    url: ${AGENVAS_DB_URL:jdbc:postgresql://localhost:5432/agenvas}
+    username: ${AGENVAS_DB_USER:agenvas}
+    password: ${AGENVAS_DB_PASSWORD:agenvas}
+  flyway:
+    enabled: true
+  session:
+    jdbc:
+      initialize-schema: never
+    timeout: 12h
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 501MB
+  ai:
+    model:
+      chat: ${AGENVAS_LLM_CHAT_ADAPTER:none}
+      embedding: none
+      image: none
+      audio:
+        transcription: none
+        speech: none
+      moderation: none
+    openai:
+      base-url: ${AGENVAS_LLM_BASE_URL:https://api.openai.com}
+      api-key: ${AGENVAS_LLM_API_KEY:}
+      chat:
+        model: ${AGENVAS_LLM_MODEL:}
+
+server:
+  shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${AGENVAS_SECURE_COOKIES:false}
+
+logging:
+  structured:
+    format:
+      console: ecs
+
+management:
+  metrics:
+    distribution:
+      percentiles:
+        http.server.requests: 0.95
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db
+
+springdoc:
+  api-docs:
+    enabled: ${AGENVAS_OPENAPI_ENABLED:false}
+  swagger-ui:
+    enabled: ${AGENVAS_OPENAPI_ENABLED:false}
+
+agenvas:
+  recovery-mode: ${AGENVAS_RECOVERY_MODE:false}
+  credentials:
+    master-key-base64: ${AGENVAS_CREDENTIAL_MASTER_KEY:}
+    key-version: ${AGENVAS_CREDENTIAL_KEY_VERSION:1}
+    previous-keys: ${AGENVAS_CREDENTIAL_PREVIOUS_KEYS:}
+  settings:
+    llm:
+      allow-loopback-http: ${AGENVAS_LLM_ALLOW_LOOPBACK_HTTP:false}
+  llm:
+    mode: ${AGENVAS_LLM_MODE:mock}
+    config-version: ${AGENVAS_LLM_CONFIG_VERSION:1}
+    tool-calling-verified: ${AGENVAS_LLM_TOOL_CALLING_VERIFIED:false}
+    scheduler-enabled: ${AGENVAS_LLM_SCHEDULER_ENABLED:true}
+  task:
+    # 租约必须同时覆盖两件事：整次同步 Provider 调用，以及客户端的超时上限
+    # （OpenAiImage2Client / GoogleNanoBananaClient 均为 5 分钟）。短于调用耗时的租约会让
+    # 已生成的结果在写回时被恢复扫描判为 UNKNOWN 并丢弃；短于客户端超时的租约则会让
+    # 「当场按原因码判定」失效，退化为兜底扫描的笼统码。默认 30 分钟同时满足两者。
+    lease-duration: ${AGENVAS_TASK_LEASE_DURATION:PT30M}
+  provider:
+    mode: ${AGENVAS_PROVIDER_MODE:mock}
+    mock:
+      fixture: ${AGENVAS_MOCK_FIXTURE:SUCCESS}
+    local-image:
+      depth-model: ${AGENVAS_DEPTH_MODEL:}
+  storage:
+    root: ${AGENVAS_STORAGE_ROOT:data/assets}

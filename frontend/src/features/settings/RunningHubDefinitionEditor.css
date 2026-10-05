@@ -1,0 +1,45 @@
+.ui-dialog.app-page.runninghub-capability-dialog {
+  --ui-dialog-width: 1480px;
+  height: calc(100dvh - var(--ui-space-8));
+  max-height: calc(100dvh - var(--ui-space-8));
+}
+.runninghub-capability-dialog .ui-dialog-form { flex: 1; }
+.runninghub-capability-dialog .ui-dialog-body { flex: 1; }
+.runninghub-definition-editor { gap: var(--ui-space-3); }
+.runninghub-definition-editor > button { align-self: flex-start; }
+.runninghub-definition-editor > fieldset { min-width: 0; gap: var(--ui-space-2); }
+.runninghub-definition-editor > fieldset > button { align-self: flex-start; }
+.runninghub-node-picker { max-width: 480px; }
+.runninghub-mapping-scroll { min-width: 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); }
+.runninghub-mapping-table { min-width: 1120px; table-layout: fixed; }
+.runninghub-mapping-table th { background: var(--ui-field); }
+.runninghub-mapping-table th:nth-child(1) { width: 82px; }
+.runninghub-mapping-table th:nth-child(2) { width: 135px; }
+.runninghub-mapping-table th:nth-child(3) { width: 160px; }
+.runninghub-mapping-table th:nth-child(4) { width: 125px; }
+.runninghub-mapping-table th:nth-child(5) { width: 110px; }
+.runninghub-mapping-table th:nth-child(6) { width: 150px; }
+.runninghub-mapping-table th:nth-child(7) { width: 180px; }
+.runninghub-mapping-table th:nth-child(8) { width: 54px; }
+.runninghub-mapping-table th:nth-child(9) { width: 90px; }
+.runninghub-mapping-table [data-slot="field"] { min-width: 0; }
+.runninghub-mapping-table > tbody > tr > td > [data-slot="field"] .ui-field > [data-slot="input"],
+.runninghub-secondary-table .ui-field > [data-slot="input"],
+.runninghub-mapping-table > tbody > tr > td > [data-slot="field"] .ui-field > .ui-select,
+.runninghub-secondary-table .ui-field > .ui-select { margin-top: 0; }
+.runninghub-mapping-table td { vertical-align: top; }
+.runninghub-mapping-table td:has(> [role="checkbox"]) { vertical-align: middle; text-align: center; }
+.runninghub-secondary-table { min-width: 700px; }
+.runninghub-mapping-actions { display: flex; align-items: center; gap: var(--ui-space-1); }
+.runninghub-field-details { padding: var(--ui-space-3); }
+.runninghub-field-details legend { color: var(--ui-text-muted); }
+.runninghub-field-details .ui-form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.runninghub-editor-section { min-width: 0; padding-block: var(--ui-space-2); }
+.runninghub-editor-section > summary { cursor: pointer; }
+.runninghub-editor-section > .runninghub-section-content { margin-top: var(--ui-space-4); gap: var(--ui-space-4); }
+.runninghub-section-content [data-slot="field-group"] { gap: var(--ui-space-4); }
+.runninghub-section-content [data-slot="field"] { min-width: 0; gap: var(--ui-space-2); }
+.runninghub-section-content [data-slot="field-label"] { overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .ui-dialog.app-page.runninghub-capability-dialog { height: calc(100dvh - var(--ui-space-4)); max-height: calc(100dvh - var(--ui-space-4)); }
+}

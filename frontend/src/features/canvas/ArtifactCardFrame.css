@@ -1,0 +1,106 @@
+/* Shared black surface and contextual actions adapted from Beautiful UI SelectionActions (MIT).
+   See beautiful-ui-LICENSE.txt. */
+.artifact-canvas-card {
+  --artifact-title-font-size: 12px;
+  --artifact-title-height: 20px;
+  --artifact-title-node-gap: 8px;
+  --artifact-title-icon-size: 14px;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  border-radius: 14px;
+  background: #262626;
+  color: #ededed;
+}
+
+/* An outer shadow follows the card radius without taking space from the preview. */
+.artifact-canvas-card.is-selected { box-shadow: 0 0 0 2px var(--ui-accent); }
+.artifact-card-title {
+  position: absolute;
+  z-index: 4;
+  bottom: calc(100% + var(--artifact-title-node-gap));
+  left: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 4px);
+  height: var(--artifact-title-height);
+  color: var(--ui-text-secondary);
+  font-size: var(--artifact-title-font-size);
+  font-weight: 600;
+  line-height: var(--artifact-title-height);
+}
+.artifact-card-title-icon { display: flex; flex: none; color: var(--ui-text-subtle); }
+.artifact-card-title-icon > svg { width: var(--artifact-title-icon-size); height: var(--artifact-title-icon-size); }
+.artifact-card-caption {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-card-title-editor {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  font: inherit;
+}
+.artifact-card-title-editor .artifact-card-caption {
+  position: static;
+  display: block;
+  max-width: 100%;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  height: var(--artifact-title-height);
+  line-height: var(--artifact-title-height);
+  text-align: left;
+  cursor: text;
+}
+.artifact-card-title-input {
+  box-sizing: border-box;
+  display: block;
+  height: var(--artifact-title-height);
+  min-width: 64px;
+  max-width: 100%;
+  margin: 0;
+  border: 1px solid var(--ui-focus);
+  border-radius: 4px;
+  padding: 1px 5px;
+  background: #232323;
+  color: #ededed;
+  font: inherit;
+  line-height: normal;
+  outline: none;
+  box-shadow: 0 0 0 1px var(--ui-focus);
+}
+.artifact-card-title-input:focus {
+  border-color: var(--ui-focus);
+  box-shadow: 0 0 0 1px var(--ui-focus);
+}
+.artifact-card-title-input.is-error {
+  border-color: #ff5d67;
+  box-shadow: 0 0 0 1px #c83545;
+}
+.artifact-card-title-input:disabled { opacity: .7; cursor: progress; }
+
+.artifact-card-toolbar { position: relative; display: flex; align-items: center; gap: 4px; width: max-content; max-width: calc(100vw - 48px); padding: 6px 8px; border: 1px solid #484848; border-radius: 999px; background: #232323; box-shadow: 0 6px 18px #0005; }
+.react-flow__node-toolbar.artifact-card-toolbar-raised { z-index: 1003 !important; }
+/* Only toolbar actions get pill styling. Nested panels keep their own controls and states. */
+.artifact-card-toolbar > :where(button),
+.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button),
+.artifact-card-toolbar > a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border: none; border-radius: 999px; color: #eee; background: transparent; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.artifact-card-toolbar > :where(button:hover:not(:disabled), button.is-open, button[aria-expanded="true"]),
+.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:hover:not(:disabled), button.is-open, button[aria-expanded="true"]),
+.artifact-card-toolbar > a:hover { background: #3a3a3a; }
+.artifact-card-toolbar > :where(button:disabled),
+.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:disabled) { opacity: .48; cursor: not-allowed; }
+.artifact-card-toolbar > :where(button, a):focus-visible,
+.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button):focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }

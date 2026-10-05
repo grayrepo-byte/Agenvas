@@ -1,0 +1,1079 @@
+[
+  {
+    "uuid": "minimax_h3_b99_001",
+    "name": "H3文生视频",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "prompt": {
+        "required": true,
+        "type": "string",
+        "min_length": 1,
+        "max_length": 10000
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "736p竖",
+        "options": [
+          {
+            "label": "736p竖"
+          },
+          {
+            "label": "736p横"
+          },
+          {
+            "label": "736p(1:1)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 865339729647738,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_b99_002",
+    "name": "H3首尾帧生成视频",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "first_frame": {
+        "required": true,
+        "type": "image"
+      },
+      "last_frame": {
+        "required": true,
+        "type": "image"
+      },
+      "prompt": {
+        "required": true,
+        "type": "string",
+        "min_length": 1,
+        "max_length": 10000
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "736p竖",
+        "options": [
+          {
+            "label": "736p竖"
+          },
+          {
+            "label": "736p横"
+          },
+          {
+            "label": "736p(1:1)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 865339729647738,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_b99_003_12s",
+    "name": "H3多图生视频12秒",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 12
+      },
+      "prompt": {
+        "required": true,
+        "type": "string",
+        "min_length": 1,
+        "max_length": 10000
+      },
+      "ref_image_0": {
+        "required": true,
+        "type": "image"
+      },
+      "ref_image_1": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_2": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_3": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_4": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_5": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_6": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_7": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_8": {
+        "required": false,
+        "type": "image"
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "736p竖",
+        "options": [
+          {
+            "label": "736p竖"
+          },
+          {
+            "label": "736p横"
+          },
+          {
+            "label": "736p(1:1)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 865339729647738,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_image_audio_to_video_v2",
+    "name": "H3多图多音频生视频",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 10
+      },
+      "prompt": {
+        "required": true,
+        "type": "prompt",
+        "min_length": 1,
+        "max_length": 10000
+      },
+      "ref_audio_0": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_audio_1": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_audio_2": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_image_0": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_1": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_2": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_3": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_4": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_5": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_6": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_7": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_8": {
+        "required": false,
+        "type": "image"
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖",
+        "options": [
+          {
+            "label": "480p竖"
+          },
+          {
+            "label": "768p竖"
+          },
+          {
+            "label": "1080p竖"
+          },
+          {
+            "label": "480p横"
+          },
+          {
+            "label": "768p横"
+          },
+          {
+            "label": "1080p横"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 731242627237534,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_image_audio_to_video_v2_15s",
+    "name": "H3多图多音频生视频15秒",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "prompt": {
+        "required": true,
+        "type": "prompt",
+        "min_length": 1,
+        "max_length": 10000
+      },
+      "ref_audio_0": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_audio_1": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_audio_2": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_image_0": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_1": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_2": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_3": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_4": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_5": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_6": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_7": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_8": {
+        "required": false,
+        "type": "image"
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖",
+        "options": [
+          {
+            "label": "480p竖"
+          },
+          {
+            "label": "768p竖"
+          },
+          {
+            "label": "480p横"
+          },
+          {
+            "label": "768p横"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 731242627237534,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_lightx2v",
+    "name": "H3首尾帧生成视频",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "first_frame": {
+        "required": true,
+        "type": "image"
+      },
+      "last_frame": {
+        "required": true,
+        "type": "image"
+      },
+      "prompt": {
+        "required": true,
+        "type": "prompt",
+        "min_length": 1,
+        "max_length": 2000000
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖",
+        "options": [
+          {
+            "label": "480p竖"
+          },
+          {
+            "label": "768p竖"
+          },
+          {
+            "label": "480p横"
+          },
+          {
+            "label": "768p横"
+          },
+          {
+            "label": "480p(1:1)"
+          },
+          {
+            "label": "768p(1:1)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 479044338007328,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_lightx2v_no_pic",
+    "name": "H3文生视频",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "prompt": {
+        "required": true,
+        "type": "prompt",
+        "min_length": 1,
+        "max_length": 200000
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖",
+        "options": [
+          {
+            "label": "480p竖"
+          },
+          {
+            "label": "768p竖"
+          },
+          {
+            "label": "480p横"
+          },
+          {
+            "label": "768p横"
+          },
+          {
+            "label": "480p(1:1)"
+          },
+          {
+            "label": "768p(1:1)"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_lightx2v_v5",
+    "name": "H3多图参考生视频",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 10
+      },
+      "prompt": {
+        "required": true,
+        "type": "prompt",
+        "min_length": 1,
+        "max_length": 500000
+      },
+      "ref_image_0": {
+        "required": true,
+        "type": "image"
+      },
+      "ref_image_1": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_2": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_3": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_4": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_5": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_6": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_7": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_8": {
+        "required": false,
+        "type": "image"
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖",
+        "options": [
+          {
+            "label": "480p竖"
+          },
+          {
+            "label": "768p竖"
+          },
+          {
+            "label": "1080p竖"
+          },
+          {
+            "label": "480p横"
+          },
+          {
+            "label": "768p横"
+          },
+          {
+            "label": "1080p横"
+          },
+          {
+            "label": "480p(1:1)"
+          },
+          {
+            "label": "768p(1:1)"
+          },
+          {
+            "label": "1080p(1:1)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 212238359716024,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_lightx2v_v5_15s",
+    "name": "H3多图生视频15秒",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "prompt": {
+        "required": true,
+        "type": "prompt",
+        "min_length": 1,
+        "max_length": 500000
+      },
+      "ref_image_0": {
+        "required": true,
+        "type": "image"
+      },
+      "ref_image_1": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_2": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_3": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_4": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_5": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_6": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_7": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_8": {
+        "required": false,
+        "type": "image"
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖",
+        "options": [
+          {
+            "label": "480p竖"
+          },
+          {
+            "label": "768p竖"
+          },
+          {
+            "label": "480p横"
+          },
+          {
+            "label": "768p横"
+          },
+          {
+            "label": "480p(1:1)"
+          },
+          {
+            "label": "768p(1:1)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 212238359716024,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_z0901",
+    "name": "H3文生视频（高质量创意直出）",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "prompt": {
+        "required": true,
+        "type": "string",
+        "min_length": 1,
+        "max_length": 10000
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖(768*1344)",
+        "options": [
+          {
+            "label": "480p竖(480*864)"
+          },
+          {
+            "label": "480p横(864*480)"
+          },
+          {
+            "label": "768p竖(768*1344)"
+          },
+          {
+            "label": "768p横(1344*768)"
+          },
+          {
+            "label": "1088p竖(1088*1920)"
+          },
+          {
+            "label": "1088p横(1920*1088)"
+          },
+          {
+            "label": "1440p竖(1440*2560)"
+          },
+          {
+            "label": "1440p横(2560*1440)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 865339729647738,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_z0902",
+    "name": "H3六图生视频（多图一致性创作）",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "prompt": {
+        "required": true,
+        "type": "string",
+        "min_length": 1,
+        "max_length": 10000
+      },
+      "ref_image_0": {
+        "required": true,
+        "type": "image"
+      },
+      "ref_image_1": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_2": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_3": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_4": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_5": {
+        "required": false,
+        "type": "image"
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖(768*1376)",
+        "options": [
+          {
+            "label": "480p竖(480*864)"
+          },
+          {
+            "label": "480p横(864*480)"
+          },
+          {
+            "label": "768p竖(768*1376)"
+          },
+          {
+            "label": "768p横(1376*768)"
+          },
+          {
+            "label": "1088p竖(1088*1920)"
+          },
+          {
+            "label": "1088p横(1920*1088)"
+          },
+          {
+            "label": "1440p竖(1440*2560)"
+          },
+          {
+            "label": "1440p横(2560*1440)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 629515677062289,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_z0903",
+    "name": "H3六图三音频生视频（高质量音画融合）",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "prompt": {
+        "required": true,
+        "type": "string",
+        "min_length": 1,
+        "max_length": 10000
+      },
+      "ref_audio_0": {
+        "required": true,
+        "type": "audio"
+      },
+      "ref_audio_1": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_audio_2": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_image_0": {
+        "required": true,
+        "type": "image"
+      },
+      "ref_image_1": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_2": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_3": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_4": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_5": {
+        "required": false,
+        "type": "image"
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖(768*1376)",
+        "options": [
+          {
+            "label": "480p竖(480*864)"
+          },
+          {
+            "label": "480p横(864*480)"
+          },
+          {
+            "label": "768p竖(768*1376)"
+          },
+          {
+            "label": "768p横(1376*768)"
+          },
+          {
+            "label": "1088p竖(1088*1920)"
+          },
+          {
+            "label": "1088p横(1920*1088)"
+          },
+          {
+            "label": "1440p竖(1440*2560)"
+          },
+          {
+            "label": "1440p横(2560*1440)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 757947932117433,
+        "min": 1,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_zm_u08",
+    "name": "H3多图多音频生视频(高速版)",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "prompt": {
+        "required": true,
+        "type": "prompt",
+        "min_length": 1,
+        "max_length": 10000
+      },
+      "ref_audio_0": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_audio_1": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_audio_2": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_image_0": {
+        "required": true,
+        "type": "image"
+      },
+      "ref_image_1": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_2": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_3": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_4": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_5": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_6": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_7": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_8": {
+        "required": false,
+        "type": "image"
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖",
+        "options": [
+          {
+            "label": "480p横"
+          },
+          {
+            "label": "480p竖"
+          },
+          {
+            "label": "768p横"
+          },
+          {
+            "label": "768p竖"
+          },
+          {
+            "label": "480p(1:1)"
+          },
+          {
+            "label": "768p(1:1)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 806661161901022,
+        "min": 0,
+        "max": 999999999999999
+      }
+    }
+  },
+  {
+    "uuid": "minimax_h3_zm_u24",
+    "name": "H3多图多音频生视频(升级画质)",
+    "input_rules": {
+      "duration": {
+        "required": false,
+        "type": "integer",
+        "default": 5,
+        "min": 1,
+        "max": 15
+      },
+      "prompt": {
+        "required": true,
+        "type": "prompt",
+        "min_length": 1,
+        "max_length": 10000
+      },
+      "ref_audio_0": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_audio_1": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_audio_2": {
+        "required": false,
+        "type": "audio"
+      },
+      "ref_image_0": {
+        "required": true,
+        "type": "image"
+      },
+      "ref_image_1": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_2": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_3": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_4": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_5": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_6": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_7": {
+        "required": false,
+        "type": "image"
+      },
+      "ref_image_8": {
+        "required": false,
+        "type": "image"
+      },
+      "resolution": {
+        "required": false,
+        "type": "enum",
+        "default": "768p竖",
+        "options": [
+          {
+            "label": "480p横"
+          },
+          {
+            "label": "480p竖"
+          },
+          {
+            "label": "768p横"
+          },
+          {
+            "label": "768p竖"
+          },
+          {
+            "label": "480p(1:1)"
+          },
+          {
+            "label": "768p(1:1)"
+          }
+        ]
+      },
+      "seed": {
+        "required": false,
+        "type": "integer",
+        "default": 683072603085674,
+        "min": 0,
+        "max": 999999999999999
+      }
+    }
+  }
+]

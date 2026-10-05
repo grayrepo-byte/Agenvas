@@ -1,0 +1,23 @@
+[
+  {"nodeId":"141","nodeName":"参考图1","fieldName":"image","fieldType":"IMAGE","fieldValue":"None"},
+  {"nodeId":"142","nodeName":"参考图2","fieldName":"image","fieldType":"IMAGE","fieldValue":"None"},
+  {"nodeId":"143","nodeName":"参考图3","fieldName":"image","fieldType":"IMAGE","fieldValue":"None"},
+  {"nodeId":"161","nodeName":"参考图4","fieldName":"image","fieldType":"IMAGE","fieldValue":"None"},
+  {"nodeId":"175","nodeName":"参考图5","fieldName":"image","fieldType":"IMAGE","fieldValue":"None"},
+  {"nodeId":"176","nodeName":"参考图6","fieldName":"image","fieldType":"IMAGE","fieldValue":"None"},
+  {"nodeId":"144","nodeName":"参考音频1","fieldName":"audio","fieldType":"AUDIO","fieldValue":"None"},
+  {"nodeId":"160","nodeName":"参考音频2","fieldName":"audio","fieldType":"AUDIO","fieldValue":"None"},
+  {"nodeId":"189","nodeName":"参考音频3","fieldName":"audio","fieldType":"AUDIO","fieldValue":"None"},
+  {"nodeId":"164","nodeName":"参考视频","fieldName":"video","fieldType":"VIDEO","fieldValue":"None"},
+  {"nodeId":"150","nodeName":"提示词","fieldName":"value","fieldType":"STRING","fieldValue":"A red geometric sphere slowly rotates above a blue pedestal in a clean studio. Static camera, subtle motion, no people, no text."},
+  {"nodeId":"115","nodeName":"比例选择","fieldName":"aspect_ratio","fieldType":"LIST","fieldValue":"16:9 (Widescreen)","fieldData":["COMBO",{"default":"1:1 (Square)","options":["1:1 (Square)","2:3 (Portrait Photo)","3:2 (Photo)","3:4 (Portrait Standard)","4:3 (Standard)","9:16 (Portrait Widescreen)","16:9 (Widescreen)","21:9 (Ultrawide)"],"multiselect":false}]},
+  {"nodeId":"186","nodeName":"时长/秒","fieldName":"value","fieldType":"INT","fieldValue":"5"},
+  {"nodeId":"147","nodeName":"像素/百万","fieldName":"value","fieldType":"FLOAT","fieldValue":"0.2"},
+  {"nodeId":"192","nodeName":"采样步数","fieldName":"value","fieldType":"INT","fieldValue":"8"},
+  {"nodeId":"171","nodeName":"最高画质参考","fieldName":"value","fieldType":"BOOLEAN","fieldValue":"false"},
+  {"nodeId":"163","nodeName":"参考视频开关","fieldName":"value","fieldType":"BOOLEAN","fieldValue":"false"},
+  {"nodeId":"185","nodeName":"提示词优化","fieldName":"value","fieldType":"BOOLEAN","fieldValue":"false"},
+  {"nodeId":"169","nodeName":"补帧开关","fieldName":"value","fieldType":"BOOLEAN","fieldValue":"false"},
+  {"nodeId":"158","nodeName":"仅Zip输出","fieldName":"value","fieldType":"BOOLEAN","fieldValue":"false"},
+  {"nodeId":"159","nodeName":"LoRA强度","fieldName":"strength_model","fieldType":"FLOAT","fieldValue":"0"}
+]

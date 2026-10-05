@@ -1,0 +1,81 @@
+/* Single theme entry point for pages, shared controls and canvas interactions.
+   Brand variants derive from the sampled reference blue; never copy them into features. */
+:root {
+  /* Modal surfaces sit above canvas NodeToolbars; portal order handles nested dialogs. */
+  --ui-z-dialog: 2400;
+  --ui-z-popup: 2500;
+  --ui-bg: #151516;
+  --ui-surface: #1c1c1e;
+  --ui-surface-raised: #232325;
+  --ui-field: #19191b;
+  --ui-hover: #303033;
+  --ui-selected: #363639;
+  --ui-border: #363639;
+  --ui-border-strong: #515157;
+  --ui-text: #ededf0;
+  --ui-text-secondary: #c9c9cf;
+  --ui-text-muted: #9b9ba3;
+  --ui-text-subtle: #777780;
+  --ui-scrollbar-size: 8px;
+  --ui-scrollbar-thumb: var(--ui-border-strong);
+  --ui-scrollbar-thumb-hover: var(--ui-text-subtle);
+  --ui-editor-text-size: 14px;
+  --ui-editor-line-height: 1.75;
+  /* Reference button's dominant fill: RGB(61, 154, 255). */
+  --ui-accent: #3d9aff;
+  --ui-accent-foreground: #fff;
+  --ui-accent-hover: color-mix(in srgb, var(--ui-accent) 85%, white);
+  --ui-accent-text: color-mix(in srgb, var(--ui-accent) 65%, white);
+  --ui-accent-subtle: color-mix(in srgb, var(--ui-accent) 14%, var(--ui-surface));
+  --ui-accent-ring: color-mix(in srgb, var(--ui-accent) 30%, transparent);
+  --ui-accent-glow: color-mix(in srgb, var(--ui-accent) 24%, transparent);
+  --ui-focus: var(--ui-accent-hover);
+  /* Relation types retain separate visual identities; selection uses the brand focus. */
+  --ui-relation-input: var(--ui-accent);
+  --ui-relation-derivation: var(--ui-accent-text);
+  --ui-relation-reference: #64748b;
+  --ui-relation-agent-output: #059669;
+  --ui-status-neutral: #526071;
+  /* Light temperature is an image-operation preview, independent of the brand. */
+  --ui-light-temperature-cool: #587b89;
+  --ui-success: #a5cfb7;
+  --ui-success-bg: #202d24;
+  --ui-success-border: #36513f;
+  --ui-warning: #dfbf8b;
+  --ui-warning-bg: #2c271e;
+  --ui-warning-border: #514531;
+  --ui-danger: #e9a6b4;
+  --ui-danger-bg: #312129;
+  --ui-danger-border: #5a3441;
+  --ui-info: #bac6e0;
+  --ui-info-bg: #20232b;
+  --ui-info-border: #363b47;
+  --ui-space-1: 4px;
+  --ui-space-2: 8px;
+  --ui-space-3: 12px;
+  --ui-space-4: 16px;
+  --ui-space-5: 20px;
+  --ui-space-6: 24px;
+  --ui-space-8: 32px;
+  --ui-text-xs: 11px;
+  --ui-text-sm: 12px;
+  --ui-text-md: 13px;
+  --ui-text-lg: 15px;
+  --ui-radius-sm: 6px;
+  --ui-radius-md: 8px;
+  --ui-radius-lg: 12px;
+  --ui-control-height: 40px;
+  --ui-control-height-compact: 32px;
+  --ui-model-menu-width: 340px;
+  --ui-menu-shadow: 0 12px 32px #0005, inset 0 1px 0 #ffffff04;
+  --ui-panel-shadow: 0 3px 12px #00000010;
+  --ui-focus-width: 1px;
+  --ui-focus-offset: 2px;
+  --ui-focus-shadow: 0 0 0 var(--ui-focus-width) var(--ui-accent-ring);
+  --ui-inset-highlight: inset 0 0 0 1px #ffffff04;
+  --ui-duration: 150ms;
+  --ui-sidebar-width: 224px;
+  --ui-sidebar-width-collapsed: 64px;
+  --ui-page-gutter: clamp(20px, 2vw, 40px);
+  --ui-settings-aside-width: 400px;
+}
