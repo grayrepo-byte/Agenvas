@@ -18,6 +18,7 @@
     "test:media-preview": "node e2e/media-preview-browser.mjs",
     "test:video-hover": "node e2e/video-hover-browser.mjs",
     "test:editor-feedback-layout": "node e2e/editor-feedback-browser.mjs",
+    "test:audio-node": "node e2e/audio-node-browser.mjs",
     "test:media-function-parameters": "node e2e/media-function-parameters-browser.mjs",
     "test:runninghub-node-picker": "node e2e/runninghub-node-picker-browser.mjs",
     "test:i18n": "node --test scripts/check-i18n.test.mjs && vitest run src/shared/i18n/i18n.test.tsx src/features/canvas/VoiceLibrary.test.tsx src/features/settings/AutoDlWorkflowFields.test.tsx",
