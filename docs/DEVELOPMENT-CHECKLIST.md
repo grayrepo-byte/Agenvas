@@ -1742,3 +1742,10 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] RunningHubDefinitionEditor、MediaSettingsPage、ComfyWorkflowEditor 三文件串行定向测试共 65 项通过，最后 JSON 格式化大小修订后 ComfyWorkflowEditor 16 项再次通过。42 项后端单元与 20 项真实 PostgreSQL 专项通过，无失败或跳过；覆盖源 JSON 回环、大小/凭据边界、能力版本保存、原版本保留、目录及图片/视频任务输入剥离。并行检查期间既有前端用例曾超时，串行复验通过，未放宽断言或超时。
 - [x] 完整前端 lint（四语/主题）、TypeScript、Vite 生产构建与差异空白检查通过，保留既有大 chunk 提示。测试工作流、HTTP 与能力配置均为合成数据，持久化检查使用真实 PostgreSQL。
 - [ ] 全量测试、浏览器专项复验、真实 ComfyUI / RunningHub Provider 调用及部署本轮未运行；此前输出下拉的四视口验收记录保留，不作为本轮 JSON 编辑流程的浏览器验收。
+
+## 2026-10-05 CI 回归用例修复
+
+- [x] 对齐 Debug 设置的 HTTP header 风险文案断言，以及 LLM debug 正文按当前决定保留合成凭据样式文本的断言；继续验证认证 header 不保存、非 LLM 正文过滤与管理员本人项目权限。
+- [x] 草稿替换与图片派生的来源不变检查使用数据库读回的完整快照；Agent 重试受控时钟使用 PostgreSQL 微秒精度，保留完整状态及精确完成时间断言。ComfyUI 地址变更专项显式配置合成测试主密钥，不依赖本机环境。
+- [x] DebugModeSection 4 项前端测试、对应 ESLint、DebugHttpCaptureTest 19 项后端单元测试与五个测试类的 53 项真实 PostgreSQL 集成测试通过，无失败或跳过；差异空白检查通过。仅修改测试和验收记录，无生产行为、API 合约、数据库迁移或依赖变化。
+- [ ] 本地全量测试、真实 Provider 调用与部署未运行；远端完整验收以修复 PR 的 CI 检查结果为准。

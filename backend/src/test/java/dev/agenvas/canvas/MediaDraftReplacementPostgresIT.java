@@ -83,10 +83,12 @@ class MediaDraftReplacementPostgresIT {
         connections.connect(owner.userId(), project.id(), sourceItem, targetItem, source.resourceDefaultVersion().id(),
                 CanvasConnection.RelationType.MEDIA_INPUT, 0);
         var connectedDraft = drafts.get(owner.userId(), project.id(), targetItem);
-        var before = drafts.save(owner.userId(), project.id(), targetItem,
+        drafts.save(owner.userId(), project.id(), targetItem,
                 connectedDraft.version(), "Existing prompt", connectedDraft.parameters(), null,
                 connectedDraft.capabilityId(), connectedDraft.videoInputMode(), List.of(), List.of(),
                 PHOTOGRAPHIC_STYLE_ID);
+        // Compare persisted snapshots: PostgreSQL rounds the save response's nanosecond timestamps.
+        var before = drafts.get(owner.userId(), project.id(), targetItem);
         int eventCount = events(project.id());
         var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         var mvc = webAppContextSetup(context).apply(springSecurity()).build();

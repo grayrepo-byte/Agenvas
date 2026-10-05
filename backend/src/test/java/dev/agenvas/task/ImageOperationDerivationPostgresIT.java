@@ -91,13 +91,15 @@ class ImageOperationDerivationPostgresIT {
         parameters.put("resolution", "2K");
         parameters.put("quality", "high");
         parameters.put("generationCount", 4);
-        MediaDraft sourceDraft = drafts.save(owner.userId(), project.id(), sourceCardId, 0,
+        drafts.save(owner.userId(), project.id(), sourceCardId, 0,
                 "Previous prompt \uFFFC", parameters, null,
                 capabilities.defaultFor(Task.Kind.IMAGE_GENERATION).capabilityId(), null,
                 List.of(new MediaDraftService.SaveMediaInput(reference.resourceDefaultVersion().id(),
                         MediaDraft.InputRole.REFERENCE, "#7C3AED")),
                 List.of(new MediaDraft.PromptMention(reference.resourceDefaultVersion().id(),
                         MediaDraft.InputRole.REFERENCE)), UUID.fromString("00000000-0000-4000-8000-000000000301"));
+        // Compare persisted snapshots so the unchanged source includes PostgreSQL timestamp precision.
+        MediaDraft sourceDraft = drafts.get(owner.userId(), project.id(), sourceCardId);
 
         ObjectNode crop = mapper.createObjectNode();
         crop.put("x", 0);

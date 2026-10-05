@@ -28,6 +28,7 @@ import java.util.function.Consumer;
 import dev.agenvas.audit.domain.LlmStreamLog;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -90,7 +91,8 @@ class AgentModelRetryPostgresIT {
     }
     @BeforeEach void setupRun() {
         clock.ticking = false;
-        clock.now = Instant.now();
+        // Exact completion-time assertions use PostgreSQL's persisted microsecond precision.
+        clock.now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         gateway.calls.set(0);
         gateway.failures = 1;
         gateway.toolCalling = true;

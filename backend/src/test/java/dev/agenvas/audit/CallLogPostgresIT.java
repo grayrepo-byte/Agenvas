@@ -505,8 +505,9 @@ class CallLogPostgresIT {
                     ignored -> CallOutcome.succeeded(null));
             String llmStored = jdbc.sql("select exchanges_json::text from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id and c.kind='LLM'")
                     .param("id", project.id()).query(String.class).single();
-            assertThat(llmStored).contains("RAW_PROMPT", "RAW_RESPONSE", "PRIVATE_REASONING")
-                    .doesNotContain("sk-debug-secret", "Authorization");
+            // LLM debug preserves body text, including this synthetic echo, but never HTTP headers.
+            assertThat(llmStored).contains("RAW_PROMPT", "RAW_RESPONSE", "PRIVATE_REASONING", "sk-debug-secret")
+                    .doesNotContain("Authorization", "Bearer sk-debug-secret");
             calls.updateSettings(false, calls.settings().version());
             calls.record(descriptor, invoke, ignored -> CallOutcome.succeeded(null));
             assertThat(jdbc.sql("select count(*) from call_log_debug d join call_log c on c.id=d.call_id where c.project_id=:id")
