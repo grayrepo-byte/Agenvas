@@ -6,11 +6,13 @@ import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import "./AgentChatPanels.css";
 import { taskErrorMessage } from "./taskErrorMessages";
+import { EditorFeedbackRow } from "./EditorFeedbackRow";
 
 /** Offers one explicit retry for a task whose external result could not be confirmed. */
-export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCode, onChanged }: {
+export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCode, onChanged, compact = false }: {
   projectId: string; taskId: string; taskVersion: number;
   errorCode?: Task["errorCode"]; onChanged?: () => void | Promise<void>;
+  compact?: boolean;
 }) {
   useLocale();
   const retryKey = useRef<string | null>(null);
@@ -33,6 +35,17 @@ export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCod
       ]);
     },
   });
+
+  if (compact) return <>
+    <EditorFeedbackRow tone="warning" title={t("tasks.status.unknown")} action={
+      <Button variant="ghost" size="xs" disabled={retry.isPending}
+        onClick={() => retry.mutate()} type="button">
+        {retry.isPending ? t("common.retrying") : t("common.retry")}
+      </Button>
+    }>{reason ?? errorCode}</EditorFeedbackRow>
+    {retry.data ? <EditorFeedbackRow tone="success">{t("tasks.retry.newTask", { "0": retry.data.id })}</EditorFeedbackRow> : null}
+    {retry.error ? <EditorFeedbackRow tone="danger">{t("tasks.retry.retryFailed")}</EditorFeedbackRow> : null}
+  </>;
 
   return <div className="agent-chat-panel agent-chat-unknown">
     <p className="agent-chat-panel-notice-title"><WarningCircle aria-hidden="true" />{t("tasks.status.unknown")}</p>

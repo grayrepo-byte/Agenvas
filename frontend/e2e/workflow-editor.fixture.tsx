@@ -92,7 +92,13 @@ window.fetch = async (input, init) => {
     value = libraryCommand;
   }
   else if (path.endsWith("/library/commands/synthetic-library-command")) value = libraryCommand;
-  else if (path.endsWith("/run") || path.endsWith("/tasks") || path.endsWith("/media-styles")) value = [];
+  else if (path.endsWith("/queue")) value = { waitingAhead: 2, reason: "WAITING_WORKER" };
+  else if (path.endsWith("/run")) value = query.has("task") ? [{
+    id: "synthetic-task", projectId, runId: null, kind: capability.kind,
+    status: query.get("task"), version: 0, createdAt: now, updatedAt: now,
+    errorCode: query.has("longError") ? "Synthetic detail ".repeat(18) : "PROVIDER_SUBMISSION_UNKNOWN",
+  }] : [];
+  else if (path.endsWith("/tasks") || path.endsWith("/media-styles")) value = [];
   else value = { items: [] };
   return Response.json(value);
 };
