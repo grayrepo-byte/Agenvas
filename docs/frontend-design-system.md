@@ -9,6 +9,7 @@
 | 配色、间距、字号、圆角、控件高度、阴影与动效时长 | `frontend/src/shared/ui/design-tokens.css` |
 | shadcn 基础组件 | `frontend/components.json`、`frontend/src/shared/ui/primitives/` |
 | 多行编辑的字体、行高与滚动条 | `styles.css` 的 `ui-multiline`，消费 `design-tokens.css` 的编辑器与滚动条变量 |
+| 日期与时间选择 | `frontend/src/shared/ui/DateTimePicker.tsx`，组合 `primitives/calendar.tsx`、`popover.tsx`、`input.tsx` |
 | 单选表单兼容层 | `frontend/src/shared/ui/Select.tsx`、`Dropdown.css` |
 | 动作、模型、版本、输入模式与引用菜单 | `frontend/src/shared/ui/primitives/dropdown-menu.tsx`、`command.tsx` |
 | 页面表单、面板、提示、状态、摘要与图标容器 | `PagePrimitives.tsx`、`PageTheme.css` |
@@ -34,6 +35,10 @@
 使用基于 shadcn/Radix 的 `Select` 兼容层，继续传入标准 `option`、`optgroup`、`value/defaultValue`、`onChange`、`name`、`required` 和 `disabled`。常规控件使用 shadcn 默认尺寸；画布使用 `density="compact"`。视觉、交互和选项结构由 `primitives/select.tsx` 维护，语义颜色映射到现有 `--ui-*` 主题。
 
 隐藏原生 select 只作为表单提交、必填校验和 change 事件桥接；label 指向可见的 shadcn 触发器。选项由 Radix Portal 与定位机制管理，避开画布缩放和祖先容器裁切；靠近视口底部向上展开，宽度与高度限制在视口内。提供方向键、Home/End、Enter/Space、前缀键入、Escape、Tab 和外部点击；禁用选项与禁用 optgroup 不可选择，禁用 fieldset 不可打开。选项更新会同步到已打开的面板，保存与业务版本检查仍由原应用服务处理。
+
+## 日期与时间
+
+调用日志使用公共 `DateTimePicker`：shadcn Calendar 置于 Radix Popover 内，选择后关闭并返回触发器焦点，支持 Escape 与单独清空日期。旁边的 Input 编辑 `HH:mm:ss`，未选日期时禁用。日期、星期与日历按钮支持四语言；表单保留本地日期/时间草稿，业务提交时转换为 UTC。布局由页面 FieldGroup 管理，控件颜色继续消费公共主题。
 
 ## 动作菜单
 

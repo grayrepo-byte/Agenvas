@@ -2287,5 +2287,10 @@
   "settings.comfy.parameterOptions": "Enum options (JSON array)",
   "settings.comfy.parameterHint": "These parameters appear in the canvas extended parameters table. Map a text input to the prompt and image inputs to named resource slots; unmapped inputs keep their fixed values.",
   "settings.comfy.parameterInvalid": "The parameter type, default, bounds, or options are invalid. Keep values compatible with the original node input type.",
-  "settings.comfy.duplicateMapping": "A node input may only be mapped once, and parameter keys must be unique."
+  "settings.comfy.duplicateMapping": "A node input may only be mapped once, and parameter keys must be unique.",
+  "ui.dateTime.chooseDate": "Pick a date",
+  "ui.dateTime.previousMonth": "Previous month",
+  "ui.dateTime.nextMonth": "Next month",
+  "ui.dateTime.clear": "Clear date",
+  "ui.dateTime.timeLabel": "{0} (HH:mm:ss)"
 }
