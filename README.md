@@ -43,7 +43,7 @@
 
 ### 1. 一键启动
 
-先安装并启动 **Docker Engine / Docker Desktop**，确认包含 **Docker Compose v2**。启动和登录无需 Git、本地编译环境、GPU、`.env` 或模型 Key。
+通过下面的命令启动前，先安装并启动 **Docker Engine / Docker Desktop**，确认包含 **Docker Compose v2**。启动和登录无需 Git、本地编译环境、GPU、`.env` 或模型 Key。
 
 首次安装，在 **macOS / Linux** 终端复制执行整段命令：
 
@@ -54,19 +54,13 @@ mkdir agenvas && cd agenvas && \
   docker compose up -d --wait
 ```
 
-<details>
-<summary><strong>Windows 启动命令（命令提示符 / cmd.exe）</strong></summary>
+**Windows：让 AI Agent 安装**
 
-```bat
-mkdir agenvas && cd agenvas && ^
-  curl.exe -fL https://raw.githubusercontent.com/grayrepo-byte/Agenvas/main/docker-compose.yml ^
-    -o docker-compose.yml && ^
-  docker compose up -d --wait
-```
+把 [安装提示词](docs/operations/windows-ai-install-prompt.md)发给 WorkBuddy 等能执行本机操作的 AI Agent，让它检查环境、安装并启动 Agenvas。完成后，打开它给出的地址创建账号。
 
-</details>
+自行安装见 [Windows 安装指南](docs/operations/windows-install.md)。
 
-命令会新建 `agenvas` 目录、下载 Compose 文件、拉取镜像，并等待三个服务健康。保留该目录，后续管理在其中执行。已有 Compose 文件时，直接在文件所在目录运行 `docker compose up -d --wait`。
+以上步骤会准备 `agenvas` 目录和 Compose 文件、拉取镜像，并等待三个服务健康。保留该目录，后续管理在其中执行。已有 Compose 文件时，直接在文件所在目录运行 `docker compose up -d --wait`。
 
 数据库密码和凭证加密密钥首次启动时自动生成并持久保存，无需填写。首次下载镜像可能需要几分钟。
 
@@ -172,7 +166,7 @@ docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/c
 docker compose -f docker-compose.local.yml up -d --build --wait
 ```
 
-也可使用 `./deploy/update-local.sh`，先完成全部镜像构建，再更新容器并等待健康检查；完成后仅显示容器名、服务、状态和端口，避免完整启动命令撑宽状态表。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
+也可使用 `./deploy/update-local.sh`，先完成全部镜像构建，再更新容器并等待健康检查；后端仅执行 `package -DskipTests`，不自动运行 `mvn verify`，完整测试按需手动执行或由 CI 执行。完成后仅显示容器名、服务、状态和端口，避免完整启动命令撑宽状态表。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
 
 镜像部署和源码构建默认项目名均为 `agenvas`，沿用相同数据库、素材和密钥卷，切换时须备份并保证版本兼容。它们是同一环境的两种启动方式；若要并行运行，需用 `-p` 指定独立项目名并修改端口。
 
