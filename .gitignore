@@ -302,3 +302,7 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Python CI helper bytecode
+__pycache__/
+*.py[cod]

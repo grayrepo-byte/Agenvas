@@ -21,6 +21,7 @@
     "test:runninghub-node-picker": "node e2e/runninghub-node-picker-browser.mjs",
     "test:i18n": "node --test scripts/check-i18n.test.mjs && vitest run src/shared/i18n/i18n.test.tsx src/features/canvas/VoiceLibrary.test.tsx src/features/settings/AutoDlWorkflowFields.test.tsx",
     "build": "tsc --noEmit && vite build",
+    "build:ci": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {

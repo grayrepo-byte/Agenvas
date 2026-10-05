@@ -39,11 +39,19 @@ RUN case "$(uname -m)" in \
     && rm -r ai
 
 COPY backend/src src
-RUN ./mvnw --batch-mode --no-transfer-progress verify -DskipITs \
-    -Dagenvas.test.depth-model="${DEPTH_MODEL_FILE}" \
-    -Donnxruntime.native.path=/workspace/onnxruntime-native
+RUN ./mvnw --batch-mode --no-transfer-progress package -DskipTests
 
-FROM eclipse-temurin:21.0.9_10-jre-noble@sha256:d3eb69add1874bc785382d6282db53a67841f602a1139dee6c4a1221d8c56568
+# CI retains one native-architecture model/JNI smoke test without rerunning the unit suite.
+# Ordinary source builds only package the application; the full suites belong to CI jobs.
+ARG VERIFY_DEPTH_MODEL=false
+RUN if [ "${VERIFY_DEPTH_MODEL}" = true ]; then \
+      ./mvnw --batch-mode --no-transfer-progress test \
+        '-Dtest=LocalImageProcessorAdapterTest#runsConfiguredDepthAnythingModel' \
+        -Dagenvas.test.depth-model="${DEPTH_MODEL_FILE}" \
+        -Donnxruntime.native.path=/workspace/onnxruntime-native; \
+    fi
+
+FROM eclipse-temurin:21.0.9_10-jre-noble@sha256:d3eb69add1874bc785382d6282db53a67841f602a1139dee6c4a1221d8c56568 AS runtime
 
 RUN sed -i 's|http://ports.ubuntu.com|https://ports.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources \
     && apt-get -o Acquire::Retries=5 -o APT::Update::Error-Mode=any update \

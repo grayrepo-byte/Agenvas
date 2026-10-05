@@ -218,13 +218,24 @@ Configure these under **Settings → Secrets and variables → Actions** in the 
 
 Prepare two public Docker Hub repositories, `grayrepo/agenvas-server` and `grayrepo/agenvas-web`, allowing anonymous deployment pulls. CI publishes directly under `grayrepo`; to change the publisher, edit the workflow and Compose addresses. PostgreSQL is pulled from its official repository; CI retains its SBOM and license inventory.
 
-`.github/workflows/ci.yml` runs on pushes to `main`, `v*.*.*` version tags, and manual dispatches; only pushes of `v*.*.*` version tags upload to Docker Hub, while `main` pushes and manual runs build and collect inventories without publishing. After frontend/backend tests, Compose checks, source secret scanning, and image builds and inventories on both architectures succeed, it publishes multi-platform manifests from the inventoried application images:
+`.github/workflows/ci.yml` runs on PRs, pushes to `main`, `v*.*.*` version tags, and manual dispatches. Tests and image builds run in parallel:
+
+| Trigger | Validation | Images and inventories |
+| --- | --- | --- |
+| Code PR | Frontend, backend unit tests, all four PostgreSQL IT shards, jOOQ, Compose, secret scan | server/web amd64 builds |
+| Documentation-only PR | Planning checks, secret scan, CI Gate | Heavy jobs skipped |
+| main / manual | Full validation | server/web amd64 + arm64 builds |
+| Version tag push | Full validation | Application builds and official PostgreSQL inventories on both architectures; publication after CI Gate |
+
+`CI Gate` always appears and rejects failed, cancelled, or unexpectedly skipped checks. Select it when configuring a required branch check. Buildx caches are scoped by service and architecture; PRs only read them. Server packaging skips the full test suite, while CI retains one depth-model/JNI smoke test per native architecture.
+
+Only version-tag pushes upload to Docker Hub. Release images are inventoried once, then the JSON is converted to CycloneDX. The same images are loaded from short-lived artifacts and pushed after all checks pass. Failure reports are retained for 7 days, publication images for 1 day, and SBOM/license evidence for 90 days.
 
 - Every publication: `sha-<full 40-character commit SHA>`.
 - `v0.1.0` version tag: also publishes `0.1.0` with the leading `v` removed.
 - Stable version tag (no prerelease suffix, e.g. `v0.1.0`): also points `latest` at that version for the default Compose file; a prerelease (e.g. `v0.1.0-rc.1`) retains its suffix and never updates `latest`.
 
-PRs run checks without Docker Hub credentials or pushes, and `main` pushes or manual runs on non-tag refs only build and collect inventories. Each service and architecture retains SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
+PRs, `main` pushes, and manual runs never access Docker Hub credentials or push images. Release service/architecture jobs retain SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
 
 The workflow follows [Docker's multi-platform build documentation](https://docs.docker.com/build/ci/github-actions/multi-platform/) and [Docker image tagging rules](https://github.com/docker/metadata-action).
 

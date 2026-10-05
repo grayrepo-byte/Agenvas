@@ -1826,13 +1826,17 @@ agent-canvas/
 
 前端：冻结安装 → 类型检查 → lint → 单测 → 构建 → 核心 Playwright E2E。
 
-后端：Maven Wrapper verify → 格式检查 → 单测 → PostgreSQL 集成测试 → 契约测试 → 迁移测试。
+后端：独立 Maven Wrapper 单测任务与四个 PostgreSQL 集成测试分片并行；分片从 Failsafe 默认命名规则自动发现全部测试类，每个类只分配一次，继续使用各自隔离的真实 PostgreSQL。独立 jOOQ 任务重跑迁移与生成，检查提交源码无漂移。默认本地 `./mvnw verify` 仍执行完整单测与集成测试。
 
 跨栈：OpenAPI 破坏性变更检查 → 生成代码无未提交差异 → Mock 黄金路径 → 幂等与故障测试。
 
 安全：密钥扫描、许可证清单/SBOM。2026-10-05 按用户决定取消 CI 源码依赖和容器镜像漏洞扫描及 HIGH/CRITICAL 发布门禁；保留密钥泄露阻断和各镜像依赖/许可证清单。CI 成功不代表漏洞检查通过。
 
-镜像发布：GitHub CI 在 main 推送、`v*.*.*` 标签推送或手动触发时运行；只有 `v*.*.*` 版本标签推送会上传 Docker Hub，main 推送、PR 与非标签手动运行只构建和生成清单。前后端测试、Compose 定向配置检查、源码密钥扫描通过后，在 amd64 / arm64 原生 Runner 上构建 server/web，并直接拉取官方 `postgres:17.11-alpine`，保留各架构 SBOM 与许可证清单。PostgreSQL 不自建、不推送，不沿用已退役派生镜像的 gosu 扫描排除。生成清单后的同一应用镜像以当前运行中间标签推送，所有服务与架构通过后才创建最终应用多架构标签：`sha-<完整提交 SHA>`、稳定版本标签（无预发布后缀）的 latest、版本标签去除前导 v 后的版本。预发布版本保留后缀且不更新 latest；PR 不读取 Docker Hub 凭据且不推送。发布地址直接固定为 grayrepo，凭据为仓库 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`；缺失时明确失败，不宣称发布成功。新增 Docker Actions 固定到 commit。
+CI 分层：代码 PR 执行前端验证、后端单测、全部四个 IT 分片、jOOQ 漂移、Compose 与密钥检查，并在 amd64 原生 Runner 构建 server/web；main 与手动运行增加 arm64 原生构建。仅修改显式允许的根 README、LICENSE、CHANGELOG 与 docs 的 PR 跳过重任务，但仍运行规划校验、密钥扫描与始终存在的 `CI Gate`；未知路径、代码删除和跨目录重命名进入完整验证。main、版本标签及手动运行不使用纯文档跳过。Gate 对失败、取消、缺失结果及非预期跳过返回失败，可作为分支规则的统一 Required Check。
+
+镜像构建与测试并行，使用按服务/架构隔离的 Buildx GHA v2 层缓存；PR 只读缓存，受信任的 main、标签及手动任务写入。server 镜像打包跳过完整测试，但 CI 每个原生架构保留内置深度模型与 ONNX JNI 的单项冒烟；运行镜像的 apt/apk 更新层不从缓存复用。前端 CI 在独立类型检查后执行不重复 tsc 的 `build:ci`，本地 `build` 仍包含类型检查。
+
+镜像发布：只有 `v*.*.*` 版本标签的 push 上传 Docker Hub，PR、main 与手动运行不读取 Docker Hub 凭据且不推送。标签任务构建 server/web 双架构，并拉取官方 `postgres:17.11-alpine`，各镜像只执行一次包/许可证 JSON 收集，再由 `trivy convert` 生成 CycloneDX；不重新启用漏洞扫描。SBOM/许可证证据保留 90 天，失败测试报告保留 7 天，待发布应用镜像工件保留 1 天。CI Gate 通过后下载并加载同一已记录清单的应用镜像，不重新构建，再推送当前运行的中间标签；全部架构推送成功后才创建最终应用多架构标签：`sha-<完整提交 SHA>`、稳定版本标签（无预发布后缀）的 latest、版本标签去除前导 v 后的版本。预发布版本保留后缀且不更新 latest。PostgreSQL 不自建、不推送，不沿用退役派生镜像的扫描排除。发布地址固定为 grayrepo，凭据为仓库 Secrets `DOCKERHUB_USERNAME`、`DOCKERHUB_TOKEN`；缺失时明确失败。Docker Actions 固定到 commit。
 
 真实模型冒烟是显式手动或受控触发，不在来自 fork 的 PR 中注入真实密钥，也不无限消耗真实 API 费用。
 

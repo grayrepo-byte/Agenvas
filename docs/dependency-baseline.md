@@ -33,7 +33,7 @@
 
 本地 Testcontainers PostgreSQL 仅用于测试且不启用 TLS；Maven Surefire/Failsafe 的测试进程固定 JDBC `sslmode=disable`，避免驱动在 Docker Desktop 端口代理上进行不必要的 SSL 协商。此设置不进入 Spring Boot 生产运行配置，也不改变部署数据库的 TLS 策略。
 
-jOOQ 生成源码（145 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的 backend job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
+jOOQ 生成源码（145 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的独立 jooq-codegen job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
 
 Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；本项目使用 BOM 管理的 `spring-ai-client-chat` 与 OpenAI 兼容模型 starter，避免混入 1.x API。默认禁用 Spring AI 的所有外部模型自动配置；独立 JVM 的默认 Mock 与开发 Compose 的显式 Mock 加载应用自有确定性 `ChatGateway` 和 `GenerationGateway`。默认部署 Compose 使用 `configured`，管理员配置数据库模型或部署者配置候选聊天适配器的端点、模型与 Key 后才会创建真实聊天客户端。两种模式仍经过同一持久化 Runtime/Task 路径。
 
@@ -63,7 +63,7 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 | Web/Nginx | `nginx:1.28.0-alpine` | `sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284` |
 | 数据库运行镜像 | 官方 `postgres:17.11-alpine` | 按用户决定直接使用固定版本标签，不构建派生镜像 |
 
-server 和 web 使用非 root 用户、只读根文件系统及受限 tmpfs；PostgreSQL 在各 Compose 内联入口中首次生成持久密钥后，交由官方入口初始化数据库并以 postgres 用户运行。server 从只读 credentials-data 文件读取数据库密码与凭证主密钥，目录为 0700、文件为 0600，UID 100/GID 101。默认宿主端口只绑定 `127.0.0.1`。部署定向测试使用 Python 3 标准库和隔离官方 PostgreSQL，运行服务不需要 Python；8 项通过，详见 T02。
+server 和 web 使用非 root 用户、只读根文件系统及受限 tmpfs；PostgreSQL 在各 Compose 内联入口中首次生成持久密钥后，交由官方入口初始化数据库并以 postgres 用户运行。server 从只读 credentials-data 文件读取数据库密码与凭证主密钥，目录为 0700、文件为 0600，UID 100/GID 101。默认镜像部署仅发布 Web 8088 到 `0.0.0.0`；源码与 Mock Compose 保留三个端口的 `127.0.0.1` 绑定。部署定向测试使用 Python 3 标准库和隔离官方 PostgreSQL，运行服务不需要 Python；8 项通过，详见 T02。
 
 Web 运行镜像在固定 Alpine 基础镜像上执行 `apk upgrade --no-cache`；server 使用固定 Ubuntu Noble/Temurin glibc 镜像并执行 `apt-get upgrade`，因为 Maven 发布的 ONNX Runtime Linux 原生库依赖 glibc，不能在 Alpine/musl 上可靠加载。实际 OS 包版本由每次镜像 SBOM 记录，不能仅凭基础镜像 digest 推断。2026-10-04 按用户决定，PostgreSQL 直接使用[官方固定版本镜像](https://hub.docker.com/_/postgres)，移除自建 Dockerfile、su-exec 替换和 gosu 路径扫描排除；CI 直接拉取并扫描官方镜像。旧派生镜像扫描和初始化结果是历史记录，不代表当前官方镜像的安全验收。
 
@@ -131,3 +131,9 @@ RunningHub 固定 V2 协议复用现有 OkHttp、Jackson、Spring MVC、任务�
 按用户决定移除源码依赖和三个服务双架构镜像的漏洞扫描及 HIGH/CRITICAL 发布门禁。保留固定版本 Trivy 的源码密钥扫描、CycloneDX SBOM 与许可证 JSON；SBOM 显式只启用 license scanner，首个镜像清单步骤负责安装 Trivy。应用双架构原生构建、官方 PostgreSQL 拉取和版本标签发布规则继续生效；依赖和运行镜像版本未变。本轮改动不表示此前 Jackson/gosu 漏洞报告已修复，CI 成功不能证明没有漏洞。
 
 CI 的 jOOQ 漂移检查不再占用固定 55432 端口；Docker 自动预留仅绑定本机的端口，通过现有 jdbcUrl 属性传给 profile，就绪检查仅接受正式服务的 TCP 连接，并在成功或失败后清理一次性容器/匿名卷。本机在刻意占用 55432 时验证旧绑定失败、新工作流脚本完成真实 PostgreSQL 迁移和 codegen，生成源码与提交一致；无依赖、迁移或生成源码变更。
+
+## 2026-10-05 CI 分层与缓存验证范围
+
+不升级应用依赖、构建基础镜像、Maven/Surefire/Failsafe、Trivy 或现有 Docker Actions；新增稳定版 `docker/build-push-action` v7 固定到 `c3c9e263c25d99ce0380d002d59b67737d91b0dc`。使用[Docker GHA v2 缓存](https://docs.docker.com/build/cache/backends/gha/)，按服务/架构隔离；PR 只读，main、标签及手动任务更新。运行时系统包更新层不复用缓存。清单使用 Trivy 0.74.0 单次 JSON 收集与[convert](https://trivy.dev/docs/latest/configuration/reporting/#converting)，不重新扫描、不恢复漏洞门禁。后端 CI 的 `ci-integration` profile 只跳过 Surefire，仍执行 Failsafe；普通 verify 与 package -DskipTests 的语义保持原样。前端 build:ci 仅省去已由独立步骤完成的 tsc，本地 build 保留类型检查。
+
+本机验证范围与未验证事项见开发清单 T04；GHA 远程缓存命中、完整四分片的托管运行和 CI 耗时收益须由 GitHub Actions 实测，不依据估算宣称提速。
