@@ -4288,6 +4288,7 @@ export interface components {
             /** @description TEXT 必须提供 format 与 text，text 可为空字符串以创建文字节点的初始正文版本。IMAGE/VIDEO 可为 null，此时只创建稳定资源身份；放入画布时再为新卡片初始化空草稿。 */
             content: components["schemas"]["WritableArtifactContent"] | null;
         };
+        /** @description 普通保存保留既有连线来源；capabilityId 变化时按请求中的精确 mediaInputs 整理引用与拓扑，匹配版本保留全部来源，未匹配版本的媒体输入连线在同一 CAS 事务中移除。校验失败或版本冲突整体回滚。 */
         SaveMediaDraftRequest: {
             /** Format: int64 */
             expectedVersion: number;

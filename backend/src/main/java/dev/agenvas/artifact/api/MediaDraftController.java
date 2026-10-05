@@ -46,7 +46,7 @@ public class MediaDraftController {
     public MediaDraft save(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @PathVariable UUID canvasItemId,
             @Valid @RequestBody SaveDraftRequest request) {
-        return drafts.save(principal.userId(), projectId, canvasItemId,
+        return restore.save(principal.userId(), projectId, canvasItemId,
                 request.expectedVersion(), request.prompt(), request.parameters(),
                 request.durationSeconds(), request.capabilityId(), request.videoInputMode(),
                 request.mediaInputs(), request.mentions(), request.styleId());

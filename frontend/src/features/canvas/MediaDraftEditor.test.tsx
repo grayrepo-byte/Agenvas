@@ -151,6 +151,58 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("menuitemradio", { name: /细节生图/ })).toHaveAttribute("aria-checked", "true");
   });
 
+  it.each(["VIDEO", "AUDIO"] as const)("assigns a connected %s reference when switching to a RunningHub workflow", async (kind) => {
+    const previous = kind === "VIDEO" ? { ...versatileVideoCapability, maxReferenceVideos: 2 } : audioCapability;
+    const role = kind === "VIDEO" ? "VIDEO_REFERENCE" as const : "AUDIO_REFERENCE" as const;
+    const label = kind === "VIDEO" ? "参考视频" : "参考音频";
+    const next: MediaCapability = { ...previous, id: "rh-matching", adapterId: `RUNNINGHUB_${kind}`, name: "素材匹配工作流",
+      settings: { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123",
+        usePersonalQueue: false, addMetadata: false, fields: [
+          { key: "source", label, type: kind, nodeId: "1", fieldName: "media", required: true, advanced: false },
+          { key: "prompt", label: "提示词", type: "STRING", nodeId: "2", fieldName: "prompt", source: "PROMPT", required: false, advanced: false },
+        ], outputs: [{ kind, primary: true, maxCount: 1 }] } } };
+    const { saves } = setup({ kind, draft: { ...initialDraft, capabilityId: previous.id,
+      durationSeconds: kind === "VIDEO" ? 5 : null, videoInputMode: kind === "VIDEO" ? "GENERAL_REFERENCE" : null,
+      prompt: "使用 \uFFFC", mentions: [{ versionId: "source-v1", role }], mediaInputs: [
+        { versionId: "source-v1", artifactId: "source-media", order: 0, role, color: "#F15CAF",
+          sources: [{ id: "connected", type: "CONNECTION", connectionId: "media-line" }] },
+      ] }, settings: { connections: [{ ...settings.connections[0]!, capabilities: [previous, next] }],
+        defaults: [{ kind: previous.kind, capabilityId: previous.id, version: 0 }] }, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, kind, id: "source-media", title: "原素材", resourceDefaultVersionId: "source-v1" },
+      ] })), http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/source-media/versions`, () => HttpResponse.json({
+        items: [{ id: "source-v1", versionNo: 1, content: { assetId: "source-asset" } }],
+      })),
+    ] });
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole("button", { name: "选择生成模型" });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitemradio", { name: /素材匹配工作流/ }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ capabilityId: next.id, durationSeconds: null,
+      parameters: { dynamicValues: { source: "source-v1" } }, mediaInputs: [{ versionId: "source-v1", role }],
+      prompt: "使用 \uFFFC", mentions: [{ versionId: "source-v1", role }] }));
+    expect(screen.getByRole("button", { name: `清空${label}` })).toBeVisible();
+  });
+
+  it("switches a connected video draft to a text-only model and saves a consistent empty reference set", async () => {
+    const next: MediaCapability = { ...videoCapability, id: "text-video", name: "纯文本视频", maxReferenceImages: 0,
+      supportedVideoInputModes: ["TEXT"], defaultVideoInputMode: "TEXT", supportsEndFrame: false };
+    const { saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, capabilityId: versatileVideoCapability.id,
+      durationSeconds: 5, videoInputMode: "GENERAL_REFERENCE", prompt: "参考 \uFFFC", mentions: [{ versionId: "image-v1", role: "REFERENCE" }],
+      mediaInputs: [{ versionId: "image-v1", artifactId: "source-media", order: 0, role: "REFERENCE", color: "#F15CAF",
+        sources: [{ id: "connected", type: "CONNECTION", connectionId: "image-line" }] }] },
+      settings: { connections: [{ ...settings.connections[0]!, capabilities: [versatileVideoCapability, next] }],
+        defaults: [{ kind: "VIDEO_GENERATION", capabilityId: versatileVideoCapability.id, version: 0 }] } });
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole("button", { name: "选择生成模型" });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitemradio", { name: /纯文本视频/ }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ capabilityId: next.id,
+      videoInputMode: "TEXT", mediaInputs: [], mentions: [], prompt: "参考 " }));
+  });
+
   it("switches image capabilities directly, preserving compatible parameters and resetting incompatible ones", async () => {
     const nextCapability: MediaCapability = { ...imageCapability, id: "next-image-capability", name: "切换生图",
       supportedImageAspectRatios: ["AUTO", "1:1"], supportedImageResolutions: ["1K", "2K"],
@@ -172,7 +224,36 @@ describe("MediaDraftEditor", () => {
     } finally { confirmation.mockRestore(); }
   });
 
-  it.each(["RUNNINGHUB_IMAGE", "COMFY_IMAGE_V1"])("switches %s capabilities directly and prunes incompatible fields and prompt references", async (adapterId) => {
+  it.each(["RUNNINGHUB_IMAGE", "COMFY_IMAGE_V1"])("keeps a connected GPT Image reference visible and assigned when switching to %s", async (adapterId) => {
+    const slots = [{ key: "hero", label: "主体图", type: "IMAGE" as const, nodeId: "2", fieldName: "image", required: true, advanced: false }];
+    const next: MediaCapability = { ...imageCapability, id: "workflow-edit", name: "图片编辑工作流", adapterId,
+      settings: adapterId === "COMFY_IMAGE_V1" ? { comfyInputs: slots } : { runningHub: {
+        schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false,
+        addMetadata: false, fields: slots, outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+      } } };
+    const { saves } = setup({ draft: { ...initialDraft, capabilityId: imageCapability.id,
+      prompt: "编辑 \uFFFC", mentions: [{ versionId: "hero-v1", role: "REFERENCE" }], mediaInputs: [
+        { versionId: "hero-v1", artifactId: "reference-image", order: 0, role: "REFERENCE", color: "#F15CAF",
+          sources: [{ id: "connected", type: "CONNECTION", connectionId: "image-line" }] },
+      ] }, settings: { ...settings, connections: [{ ...settings.connections[0]!, capabilities: [imageCapability, next] }] },
+      handlers: [http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, id: "reference-image", title: "主体", resourceDefaultVersionId: "hero-v1" },
+      ] })), http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => HttpResponse.json({
+        items: [{ id: "hero-v1", versionNo: 1, content: { assetId: "hero-asset" } }],
+      }))] });
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole("button", { name: "选择生成模型" });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitemradio", { name: /图片编辑工作流/ }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ capabilityId: next.id,
+      parameters: { dynamicValues: { hero: "hero-v1" } }, mediaInputs: [{ versionId: "hero-v1", role: "REFERENCE" }],
+      prompt: "编辑 \uFFFC", mentions: [{ versionId: "hero-v1", role: "REFERENCE" }] }));
+    expect(screen.getByRole("button", { name: "清空主体图" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "选择主体图" })).toHaveAttribute("title", expect.stringContaining("主体 · v1"));
+  });
+
+  it.each(["RUNNINGHUB_IMAGE", "COMFY_IMAGE_V1"])("switches %s capabilities directly and reassigns compatible image references", async (adapterId) => {
     const fields: NonNullable<MediaCapability["settings"]["comfyInputs"]> = [
       { key: "strength", label: "变化强度", type: "NUMBER", nodeId: "1", fieldName: "strength", required: true,
         advanced: false, minimum: 0, maximum: 1 },
@@ -211,10 +292,12 @@ describe("MediaDraftEditor", () => {
       await user.click(trigger);
       await user.click(screen.getByRole("menuitemradio", { name: /目标工作流/ }));
       await waitFor(() => expect(saves.at(-1)).toMatchObject({ capabilityId: nextCapability.id,
-        parameters: { dynamicValues: { strength: 0.5, hero: "hero-v1" } },
-        mediaInputs: [{ versionId: "hero-v1", role: "REFERENCE", color: "#F15CAF" }],
-        prompt: "保留 \uFFFC，移除 ", mentions: [{ versionId: "hero-v1", role: "REFERENCE" }] }));
-      expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ strength: 0.5, hero: "hero-v1" });
+        parameters: { dynamicValues: { strength: 0.5, hero: "hero-v1", detail: "detail-v1" } },
+        mediaInputs: [{ versionId: "hero-v1", role: "REFERENCE", color: "#F15CAF" },
+          { versionId: "detail-v1", role: "REFERENCE", color: "#67C7F3" }],
+        prompt: "保留 \uFFFC，移除 \uFFFC", mentions: [{ versionId: "hero-v1", role: "REFERENCE" },
+          { versionId: "detail-v1", role: "REFERENCE" }] }));
+      expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ strength: 0.5, hero: "hero-v1", detail: "detail-v1" });
       expect(trigger).toHaveTextContent("目标工作流");
       expect(confirmation).not.toHaveBeenCalled();
     } finally { confirmation.mockRestore(); }

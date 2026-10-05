@@ -337,7 +337,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       pendingSaveRef.current = { request: input, result };
       return result;
     },
-    onSuccess: (saved, input) => {
+    onMutate: (input) => ({ capabilityChanged: queryClient.getQueryData<MediaDraft>(key)?.capabilityId !== input.capabilityId }),
+    onSuccess: (saved, input, context) => {
       pendingSaveRef.current = undefined;
       setExpectedVersion(saved.version);
       queryClient.setQueryData(key, saved);
@@ -346,6 +347,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         .filter(([name]) => name !== "expectedVersion")) as DraftFields;
       if (latest && JSON.stringify(latest) === JSON.stringify(submitted)) setDirty(false);
       setError(null);
+      // A capability switch may remove unmatched connection sources in the save transaction.
+      if (context?.capabilityChanged) void queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] });
     },
     onError: (failure) => { pendingSaveRef.current = undefined; setError(failure); },
   });

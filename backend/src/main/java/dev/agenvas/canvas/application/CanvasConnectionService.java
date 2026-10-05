@@ -292,6 +292,13 @@ public class CanvasConnectionService {
     /** Clears all editable media lines into a target before a full historical-input restore. */
     public long clearTargetMediaConnectionsWithinChange(UUID ownerId, UUID projectId,
             UUID targetCanvasItemId, long expectedDraftVersion) {
+        return retainTargetMediaConnectionsWithinChange(ownerId, projectId, targetCanvasItemId,
+                expectedDraftVersion, Set.of());
+    }
+
+    /** A capability switch keeps sources for matched exact versions and removes only rejected ones. */
+    public long retainTargetMediaConnectionsWithinChange(UUID ownerId, UUID projectId,
+            UUID targetCanvasItemId, long expectedDraftVersion, Set<UUID> retainedVersionIds) {
         MediaDraft current = drafts.get(ownerId, projectId, targetCanvasItemId);
         if (current.version() != expectedDraftVersion) {
             throw new ApiProblemException(HttpStatus.CONFLICT, "VERSION_CONFLICT",
@@ -299,7 +306,8 @@ public class CanvasConnectionService {
         }
         List<CanvasConnection> affected = connections.list(ownerId, projectId).stream()
                 .filter(connection -> connection.targetCanvasItemId().equals(targetCanvasItemId)
-                        && connection.relationType() == CanvasConnection.RelationType.MEDIA_INPUT)
+                        && connection.relationType() == CanvasConnection.RelationType.MEDIA_INPUT
+                        && !retainedVersionIds.contains(connection.sourceArtifactVersionId()))
                 .toList();
         for (CanvasConnection connection : affected) {
             current = drafts.removeConnectionInputWithinChange(ownerId, projectId,
