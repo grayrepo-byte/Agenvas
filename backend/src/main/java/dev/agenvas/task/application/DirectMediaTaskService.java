@@ -661,6 +661,12 @@ public class DirectMediaTaskService {
             if (!source.artifactId().equals(artifactId)) {
                 throw invalid(ApiMessage.of("api.direct-media-task-service.the-processing-source-must-be-the-version-of-the-image"));
             }
+            if (operation == ImageOperation.RESIZE) {
+                var sourceAsset = assets.requireReadyMedia(ownerId, projectId,
+                        UUID.fromString(source.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
+                dev.agenvas.task.domain.ImageResizeSpec.parse(operationParameters)
+                        .dimensions(sourceAsset.width(), sourceAsset.height());
+            }
             MediaCapabilityBinding binding = functions.resolve(
                     dev.agenvas.provider.domain.MediaFunction.forImage(operation), expectedFunctionVersion);
             if (binding.capabilityVersion() != expectedCapabilityVersion) {

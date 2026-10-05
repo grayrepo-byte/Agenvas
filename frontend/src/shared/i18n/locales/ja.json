@@ -2287,5 +2287,18 @@
   "settings.comfy.parameterOptions": "列挙選択肢（JSON 配列）",
   "settings.comfy.parameterHint": "ここで宣言したパラメーターはキャンバスの拡張パラメーター表で編集します。テキスト入力をプロンプト、画像入力を名前付きリソーススロットに割り当てます。未割り当ての入力は固定値を維持します。",
   "settings.comfy.parameterInvalid": "パラメーターの型、既定値、範囲、選択肢が無効です。元のノード入力の型に合わせてください。",
-  "settings.comfy.duplicateMapping": "同じノード入力を重複して割り当てることはできません。パラメーターキーも一意である必要があります。"
+  "settings.comfy.duplicateMapping": "同じノード入力を重複して割り当てることはできません。パラメーターキーも一意である必要があります。",
+  "image.resize.hint": "縦横比を維持して新しい画像ノードを作成し、元画像を保持します。拡大にはピクセル補間を使用します。",
+  "image.resize.invalidValue": "割合は 0.01～1000、最長辺は 1～40000 の整数を指定してください。",
+  "image.resize.longestEdge": "最長辺（px）",
+  "image.resize.longestEdgeMode": "最長辺のピクセル数",
+  "image.resize.metadataFailed": "元画像のサイズを読み取れません。再試行してください。",
+  "image.resize.mode": "サイズ変更方式",
+  "image.resize.percentage": "拡大縮小率（%）",
+  "image.resize.percentageMode": "割合",
+  "image.resize.pixelLimit": "出力は 4000 万ピクセル以下にしてください。",
+  "image.resize.sourceSize": "元画像：{0} × {1} px",
+  "image.resize.submit": "サイズ変更を開始",
+  "image.resize.targetSize": "出力：{0} × {1} px",
+  "image.resize.title": "サイズ変更"
 }

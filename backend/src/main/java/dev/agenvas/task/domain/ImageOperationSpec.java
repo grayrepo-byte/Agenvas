@@ -99,6 +99,12 @@ public final class ImageOperationSpec {
                 result.put("lightX", lightX);
                 result.put("lightY", lightY);
             }
+            case RESIZE -> {
+                var resize = ImageResizeSpec.parse(source);
+                result.put("resizeMode", resize.mode().name());
+                if (resize.mode() == ImageResizeSpec.Mode.PERCENTAGE) result.put("percentage", resize.value());
+                else result.put("longestEdge", (int) resize.value());
+            }
             case UPSCALE -> {
                 int scale = source.path("scale").asInt(MIN_UPSCALE_FACTOR);
                 if (scale != MIN_UPSCALE_FACTOR && scale != MAX_UPSCALE_FACTOR) throw invalid(ApiMessage.of("api.direct-media-task-service.magnification-can-only-be-2-or-4"));
@@ -219,6 +225,7 @@ public final class ImageOperationSpec {
             case DEPTH_MAP -> "Extract a relative monocular depth map from the source image.";
             case UPSCALE -> "Upscale the source image by " + parameters.path("scale").asInt()
                     + "x while preserving its composition and subject identity.";
+            case RESIZE -> "Local proportional resize";
             case CROP -> "Local crop";
             case ROTATE -> "Local rotation";
             case FLIP_HORIZONTAL -> "Local horizontal mirror";

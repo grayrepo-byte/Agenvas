@@ -16,6 +16,7 @@ import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.task.domain.ImageResizeSpec;
 import jakarta.annotation.PreDestroy;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -63,7 +64,9 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         try {
             JsonNode operation = operation(context.lease());
             String name = operation.path("name").asText();
-            source(context, operation);
+            BufferedImage image = source(context, operation);
+            if ("RESIZE".equals(name)) ImageResizeSpec.parse(operation.path("parameters"))
+                    .dimensions(image.getWidth(), image.getHeight());
             if ("DEPTH_MAP".equals(name)) {
                 Path model = properties.depthModelPath();
                 if (model == null || !Files.isRegularFile(model)) {
@@ -126,6 +129,10 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         return switch (name) {
             case "DEPTH_MAP" -> depth(source);
             case "UPSCALE" -> upscale(source, parameters.path("scale").asInt());
+            case "RESIZE" -> {
+                var dimensions = ImageResizeSpec.parse(parameters).dimensions(source.getWidth(), source.getHeight());
+                yield upscaleTo(source, dimensions.width(), dimensions.height());
+            }
             case "CROP" -> crop(source, parameters);
             case "ROTATE" -> rotate(source, parameters.path("quarterTurns").asInt());
             case "FLIP_HORIZONTAL" -> flip(source, true);
@@ -137,6 +144,7 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
     private void validateParameters(String name, JsonNode parameters) {
         switch (name) {
             case "DEPTH_MAP", "FLIP_HORIZONTAL", "FLIP_VERTICAL" -> { }
+            case "RESIZE" -> ImageResizeSpec.parse(parameters);
             case "UPSCALE" -> {
                 int scale = parameters.path("scale").asInt();
                 if (scale != 2 && scale != 4) throw new IllegalArgumentException("Invalid scale");

@@ -1,6 +1,7 @@
 package dev.agenvas.task;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
@@ -178,6 +179,39 @@ class ImageOperationDerivationPostgresIT {
         assertThat(connections.list(owner.userId(), project.id())).singleElement()
                 .extracting(CanvasConnection::relationType)
                 .isEqualTo(CanvasConnection.RelationType.MEDIA_INPUT);
+
+        // Resize follows the same immutable branch, version pinning and replay path as crop.
+        for (var resize : List.of(mapper.createObjectNode().put("resizeMode", "PERCENTAGE").put("percentage", 50),
+                mapper.createObjectNode().put("resizeMode", "LONGEST_EDGE").put("longestEdge", 5))) {
+            String key = "resize-" + resize.path("resizeMode").asText();
+            var resized = directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
+                    sourceCardId, sourceVersionId, 1, ImageOperation.RESIZE, "", 0, 1, List.of(), null, resize, key);
+            assertThat(directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
+                    sourceCardId, sourceVersionId, 1, ImageOperation.RESIZE, "", 0, 1, List.of(), null, resize, key).id())
+                    .isEqualTo(resized.id());
+            UUID resizedCard = UUID.fromString(resized.input().path("canvasItemId").asText());
+            assertFreshDraft(owner, project, resizedCard, MediaDraft.DisplayMode.DRAFT);
+            assertThat(worker.submitOnce("resize-worker")).isEqualTo(1);
+            var finished = tasks.get(owner.userId(), project.id(), resized.id());
+            assertThat(finished.status()).isEqualTo(Task.Status.SUCCEEDED);
+            assertThat(finished.output().path("selected").asBoolean()).isTrue();
+            var result = canvas.listMediaVersions(owner.userId(), project.id(), resizedCard).getFirst();
+            var asset = assets.metadata(owner.userId(), project.id(), UUID.fromString(result.content().path("assetId").asText()));
+            int edge = resize.has("percentage") ? 1 : 5;
+            assertThat(asset.width()).isEqualTo(edge);
+            assertThat(asset.height()).isEqualTo(edge);
+            assertThat(canvas.list(owner.userId(), project.id()).stream().filter(entry -> entry.item().id().equals(sourceCardId))
+                    .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(sourceVersionId);
+            assertThat(drafts.get(owner.userId(), project.id(), sourceCardId)).isEqualTo(sourceDraft);
+            assertThat(connections.list(owner.userId(), project.id()).stream()
+                    .filter(connection -> connection.targetCanvasItemId().equals(resizedCard))).hasSize(1);
+        }
+        int nodeCount = canvas.list(owner.userId(), project.id()).size();
+        assertThatThrownBy(() -> directMedia.runImageOperation(owner.userId(), project.id(), image.artifact().id(),
+                sourceCardId, sourceVersionId, 1, ImageOperation.RESIZE, "", 0, 1, List.of(), null,
+                mapper.createObjectNode().put("resizeMode", "LONGEST_EDGE").put("longestEdge", 40000), "oversized-resize"))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(nodeCount);
     }
 
     private void assertFreshDraft(AdminPrincipal owner, Project project, UUID cardId,

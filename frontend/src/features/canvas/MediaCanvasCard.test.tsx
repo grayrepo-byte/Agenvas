@@ -370,8 +370,8 @@ describe("MediaCanvasCard", () => {
       await screen.findByRole("img", { name: "湖边 的预览" });
       await clickControl(screen.getByRole("button", { name: "扩展" }));
       await clickControl(screen.getByRole("menuitem", { name: /表情调整.*AI/ }));
-      await waitFor(() => expect(screen.getByRole("combobox", { name: "图片能力" }))
-        .toHaveValue("ai-capability"));
+      expect(await screen.findByText("GPT Image")).toBeVisible();
+      expect(screen.queryByRole("combobox", { name: "图片能力" })).not.toBeInTheDocument();
       await changeControl(screen.getByRole("textbox", { name: "目标表情" }), { target: { value: "微笑" } });
       await clickControl(screen.getByRole("button", { name: "开始处理" }));
       await waitFor(() => expect(submissions).toBe(1));
@@ -763,14 +763,68 @@ describe("MediaCanvasCard", () => {
 
     await clickControl(await screen.findByRole("button", { name: "扩展" }));
     await clickControl(screen.getByRole("menuitem", { name: /图层分离.*AI/ }));
-    const capability = screen.getByRole("combobox", { name: "图片能力" });
-    expect(capability).toHaveValue("transparent-capability");
+    expect(await screen.findByText("Transparent model")).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "图片能力" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Opaque model" })).not.toBeInTheDocument();
     await changeControl(screen.getByRole("combobox", { name: "输出图层" }), {
       target: { value: "BACKGROUND" },
     });
-    expect(screen.getByRole("combobox", { name: "图片能力" })).toBeDisabled();
-    expect(screen.getByRole("combobox", { name: "图片能力" })).toHaveValue("transparent-capability");
+    expect(screen.getByText("Transparent model")).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "图片能力" })).not.toBeInTheDocument();
+  });
+
+  describe("resize tool", () => {
+    beforeEach(() => server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode: "RESULT", version: 0 })),
+      http.get("/api/v1/projects/project-1/assets/image-asset", () => HttpResponse.json({ id: "image-asset", width: 1200, height: 800 })),
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings())),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(imageFunctionsFixture())),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    ));
+    function showImage() {
+      return showCard({ ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+        id: "image-version", versionNo: 1, schemaVersion: 1, content: { assetId: "image-asset", sourceType: "UPLOAD" },
+        inputReferences: [], createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+      } });
+    }
+    it.each(["PERCENTAGE", "LONGEST_EDGE"] as const)("submits %s with the exact source and configured versions", async (mode) => {
+      let request: unknown;
+      server.use(http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request: incoming }) => {
+        request = await incoming.json(); return HttpResponse.json({ id: "resize-task", status: "READY" });
+      }));
+      showImage();
+      await clickControl(screen.getByRole("button", { name: "缩放" }));
+      const panel = await screen.findByRole("dialog", { name: "缩放" });
+      await within(panel).findByText("原图：1200 × 800 px");
+      if (mode === "LONGEST_EDGE") await clickControl(within(panel).getByRole("radio", { name: "最长边像素" }));
+      await clickControl(within(panel).getByRole("button", { name: "开始缩放" }));
+      await waitFor(() => expect(request).toEqual({ canvasItemId: "item-1", sourceVersionId: "image-version", expectedCanvasItemVersion: 0,
+        expectedFunctionVersion: 3, expectedCapabilityVersion: 1, operation: "RESIZE", instruction: null,
+        parameters: mode === "PERCENTAGE" ? { resizeMode: mode, percentage: 50 } : { resizeMode: mode, longestEdge: 1024 } }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "缩放" })).not.toBeInTheDocument());
+    });
+    it("retains input and replays the original command after an uncertain response and layout change", async () => {
+      const requests: unknown[] = [];
+      const keys: (string | null)[] = [];
+      server.use(http.post("/api/v1/projects/project-1/artifacts/image-1/image-operations", async ({ request }) => {
+        requests.push(await request.json()); keys.push(request.headers.get("Idempotency-Key"));
+        return requests.length === 1 ? HttpResponse.error() : HttpResponse.json({ id: "resize-task", status: "READY" });
+      }));
+      const card = showImage();
+      await clickControl(screen.getByRole("button", { name: "缩放" }));
+      await screen.findByText("目标：600 × 400 px");
+      await changeControl(screen.getByRole("spinbutton"), { target: { value: "25" } });
+      await clickControl(screen.getByRole("button", { name: "开始缩放" }));
+      await screen.findByRole("alert");
+      expect(screen.getByRole("spinbutton")).toHaveValue(25);
+      const selected = { ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+        id: "image-version", versionNo: 1, schemaVersion: 1 as const, content: { assetId: "image-asset", sourceType: "UPLOAD" as const },
+        inputReferences: [], createdByKind: "USER" as const, runId: null, createdAt: artifact.createdAt } };
+      card.setItem({ ...itemFor(selected), version: 5 });
+      await clickControl(screen.getByRole("button", { name: "开始缩放" }));
+      await waitFor(() => expect(requests).toHaveLength(2));
+      expect(requests[1]).toEqual(requests[0]); expect(keys[0]).toBeTruthy(); expect(keys[1]).toBe(keys[0]);
+    });
   });
 
   describe("configured image tools", () => {

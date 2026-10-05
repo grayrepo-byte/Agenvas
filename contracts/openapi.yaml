@@ -5606,7 +5606,7 @@ components:
       enum: [DEPTH_MAP, EXTRACT_AUDIO, UPSCALE]
     MediaFunction:
       type: string
-      enum: [IMAGE_SMART_EDIT, IMAGE_RELIGHT, IMAGE_OUTPAINT, IMAGE_THREE_VIEW, IMAGE_LAYER_SPLIT, IMAGE_EXPRESSION_EDIT, IMAGE_REMOVE_BACKGROUND, IMAGE_OBJECT_REMOVE, IMAGE_VIEW_ANGLE, IMAGE_DEPTH_MAP, IMAGE_UPSCALE, IMAGE_CROP, IMAGE_ROTATE, IMAGE_FLIP_HORIZONTAL, IMAGE_FLIP_VERTICAL, VIDEO_DEPTH_MAP, VIDEO_EXTRACT_AUDIO, VIDEO_UPSCALE]
+      enum: [IMAGE_SMART_EDIT, IMAGE_RELIGHT, IMAGE_OUTPAINT, IMAGE_THREE_VIEW, IMAGE_LAYER_SPLIT, IMAGE_EXPRESSION_EDIT, IMAGE_REMOVE_BACKGROUND, IMAGE_OBJECT_REMOVE, IMAGE_VIEW_ANGLE, IMAGE_DEPTH_MAP, IMAGE_UPSCALE, IMAGE_RESIZE, IMAGE_CROP, IMAGE_ROTATE, IMAGE_FLIP_HORIZONTAL, IMAGE_FLIP_VERTICAL, VIDEO_DEPTH_MAP, VIDEO_EXTRACT_AUDIO, VIDEO_UPSCALE]
     MediaFunctionSetting:
       type: object
       required: [operation, capabilityId, version]
@@ -5645,7 +5645,7 @@ components:
           type: string
           enum: [SMART_EDIT, RELIGHT, OUTPAINT, THREE_VIEW, LAYER_SPLIT,
             EXPRESSION_EDIT, REMOVE_BACKGROUND, OBJECT_REMOVE, VIEW_ANGLE,
-            DEPTH_MAP, UPSCALE, CROP, ROTATE, FLIP_HORIZONTAL, FLIP_VERTICAL]
+            DEPTH_MAP, UPSCALE, RESIZE, CROP, ROTATE, FLIP_HORIZONTAL, FLIP_VERTICAL]
         instruction: {type: [string, "null"], maxLength: 4000}
         expectedFunctionVersion: {type: integer, format: int64, minimum: 0}
         expectedCapabilityVersion: {type: integer, minimum: 1}
@@ -5663,6 +5663,9 @@ components:
         dynamicValues:
           type: object
           additionalProperties: {type: [string, number, boolean]}
+        resizeMode: {type: string, enum: [PERCENTAGE, LONGEST_EDGE], description: "RESIZE requires exactly the value for the selected mode; dimensions round to the nearest pixel (minimum 1), output is limited to 40 MP."}
+        percentage: {type: number, minimum: 0.01, maximum: 1000}
+        longestEdge: {type: integer, minimum: 1, maximum: 40000}
         scale: {type: integer, enum: [2, 4]}
         x: {type: number, minimum: 0, maximum: 1}
         y: {type: number, minimum: 0, maximum: 1}

@@ -2287,5 +2287,18 @@
   "settings.comfy.parameterOptions": "Enum options (JSON array)",
   "settings.comfy.parameterHint": "These parameters appear in the canvas extended parameters table. Map a text input to the prompt and image inputs to named resource slots; unmapped inputs keep their fixed values.",
   "settings.comfy.parameterInvalid": "The parameter type, default, bounds, or options are invalid. Keep values compatible with the original node input type.",
-  "settings.comfy.duplicateMapping": "A node input may only be mapped once, and parameter keys must be unique."
+  "settings.comfy.duplicateMapping": "A node input may only be mapped once, and parameter keys must be unique.",
+  "image.resize.hint": "Keep the aspect ratio and create a new image node, preserving the original. Enlargement uses pixel interpolation.",
+  "image.resize.invalidValue": "Percentage must be 0.01–1000; longest edge must be an integer from 1–40000.",
+  "image.resize.longestEdge": "Longest edge (px)",
+  "image.resize.longestEdgeMode": "Longest edge",
+  "image.resize.metadataFailed": "Could not read the original dimensions. Retry.",
+  "image.resize.mode": "Resize mode",
+  "image.resize.percentage": "Scale (%)",
+  "image.resize.percentageMode": "Percentage",
+  "image.resize.pixelLimit": "The output cannot exceed 40 million pixels.",
+  "image.resize.sourceSize": "Original: {0} × {1} px",
+  "image.resize.submit": "Resize image",
+  "image.resize.targetSize": "Target: {0} × {1} px",
+  "image.resize.title": "Resize"
 }

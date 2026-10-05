@@ -17,6 +17,7 @@ public enum MediaFunction {
     IMAGE_VIEW_ANGLE(ImageOperation.VIEW_ANGLE),
     IMAGE_DEPTH_MAP(ImageOperation.DEPTH_MAP),
     IMAGE_UPSCALE(ImageOperation.UPSCALE),
+    IMAGE_RESIZE(ImageOperation.RESIZE),
     IMAGE_CROP(ImageOperation.CROP),
     IMAGE_ROTATE(ImageOperation.ROTATE),
     IMAGE_FLIP_HORIZONTAL(ImageOperation.FLIP_HORIZONTAL),

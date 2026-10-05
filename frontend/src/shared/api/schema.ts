@@ -4317,7 +4317,7 @@ export interface components {
         /** @enum {string} */
         VideoOperation: "DEPTH_MAP" | "EXTRACT_AUDIO" | "UPSCALE";
         /** @enum {string} */
-        MediaFunction: "IMAGE_SMART_EDIT" | "IMAGE_RELIGHT" | "IMAGE_OUTPAINT" | "IMAGE_THREE_VIEW" | "IMAGE_LAYER_SPLIT" | "IMAGE_EXPRESSION_EDIT" | "IMAGE_REMOVE_BACKGROUND" | "IMAGE_OBJECT_REMOVE" | "IMAGE_VIEW_ANGLE" | "IMAGE_DEPTH_MAP" | "IMAGE_UPSCALE" | "IMAGE_CROP" | "IMAGE_ROTATE" | "IMAGE_FLIP_HORIZONTAL" | "IMAGE_FLIP_VERTICAL" | "VIDEO_DEPTH_MAP" | "VIDEO_EXTRACT_AUDIO" | "VIDEO_UPSCALE";
+        MediaFunction: "IMAGE_SMART_EDIT" | "IMAGE_RELIGHT" | "IMAGE_OUTPAINT" | "IMAGE_THREE_VIEW" | "IMAGE_LAYER_SPLIT" | "IMAGE_EXPRESSION_EDIT" | "IMAGE_REMOVE_BACKGROUND" | "IMAGE_OBJECT_REMOVE" | "IMAGE_VIEW_ANGLE" | "IMAGE_DEPTH_MAP" | "IMAGE_UPSCALE" | "IMAGE_RESIZE" | "IMAGE_CROP" | "IMAGE_ROTATE" | "IMAGE_FLIP_HORIZONTAL" | "IMAGE_FLIP_VERTICAL" | "VIDEO_DEPTH_MAP" | "VIDEO_EXTRACT_AUDIO" | "VIDEO_UPSCALE";
         MediaFunctionSetting: {
             operation: components["schemas"]["MediaFunction"];
             /** Format: uuid */
@@ -4351,7 +4351,7 @@ export interface components {
             /** Format: int64 */
             expectedCanvasItemVersion: number;
             /** @enum {string} */
-            operation: "SMART_EDIT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
+            operation: "SMART_EDIT" | "RELIGHT" | "OUTPAINT" | "THREE_VIEW" | "LAYER_SPLIT" | "EXPRESSION_EDIT" | "REMOVE_BACKGROUND" | "OBJECT_REMOVE" | "VIEW_ANGLE" | "DEPTH_MAP" | "UPSCALE" | "RESIZE" | "CROP" | "ROTATE" | "FLIP_HORIZONTAL" | "FLIP_VERTICAL";
             instruction?: string | null;
             /** Format: int64 */
             expectedFunctionVersion: number;
@@ -4365,6 +4365,13 @@ export interface components {
             dynamicValues?: {
                 [key: string]: string | number | boolean;
             };
+            /**
+             * @description RESIZE requires exactly the value for the selected mode; dimensions round to the nearest pixel (minimum 1), output is limited to 40 MP.
+             * @enum {string}
+             */
+            resizeMode?: "PERCENTAGE" | "LONGEST_EDGE";
+            percentage?: number;
+            longestEdge?: number;
             /** @enum {integer} */
             scale?: 2 | 4;
             x?: number;

@@ -2287,5 +2287,18 @@
   "settings.comfy.parameterOptions": "枚举选项（JSON 数组）",
   "settings.comfy.parameterHint": "这里声明的参数在画布“扩展参数”表格中编辑。选择一个文本输入映射为提示词，图片输入显示为具名资源槽位；未映射的输入保持固定值。",
   "settings.comfy.parameterInvalid": "扩展参数的类型、默认值、范围或选项无效，请与原节点输入类型保持一致。",
-  "settings.comfy.duplicateMapping": "同一节点输入不能重复映射，扩展参数的稳定字段键也不能重复。"
+  "settings.comfy.duplicateMapping": "同一节点输入不能重复映射，扩展参数的稳定字段键也不能重复。",
+  "image.resize.hint": "保持宽高比，生成新图片节点并保留原图。放大使用像素插值。",
+  "image.resize.invalidValue": "百分比须为 0.01–1000，最长边须为 1–40000 的整数。",
+  "image.resize.longestEdge": "最长边（px）",
+  "image.resize.longestEdgeMode": "最长边像素",
+  "image.resize.metadataFailed": "无法读取原图尺寸，请重试。",
+  "image.resize.mode": "缩放方式",
+  "image.resize.percentage": "缩放比例（%）",
+  "image.resize.percentageMode": "百分比",
+  "image.resize.pixelLimit": "目标图片不能超过 4000 万像素。",
+  "image.resize.sourceSize": "原图：{0} × {1} px",
+  "image.resize.submit": "开始缩放",
+  "image.resize.targetSize": "目标：{0} × {1} px",
+  "image.resize.title": "缩放"
 }

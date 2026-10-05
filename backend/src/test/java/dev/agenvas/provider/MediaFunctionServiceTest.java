@@ -63,7 +63,7 @@ class MediaFunctionServiceTest {
         var binding = new MediaCapabilityBinding(UUID.randomUUID(), 1, id, 1, MediaAdapterRegistry.GOOGLE_NANO_BANANA_2, "a".repeat(64));
         when(catalog.resolve(id, Task.Kind.IMAGE_GENERATION, 0)).thenReturn(binding);
         when(catalog.inputPolicy(binding)).thenReturn(new MediaAdapterRegistry(java.util.List.of()).declaration(binding.adapterId()));
-        for (var function : java.util.List.of(MediaFunction.IMAGE_CROP, MediaFunction.IMAGE_REMOVE_BACKGROUND, MediaFunction.IMAGE_LAYER_SPLIT)) {
+        for (var function : java.util.List.of(MediaFunction.IMAGE_RESIZE, MediaFunction.IMAGE_CROP, MediaFunction.IMAGE_REMOVE_BACKGROUND, MediaFunction.IMAGE_LAYER_SPLIT)) {
             assertThatThrownBy(() -> service.update(function, 0, id)).isInstanceOf(ApiProblemException.class)
                     .extracting("code").isEqualTo("MEDIA_FUNCTION_INCOMPATIBLE");
         }
