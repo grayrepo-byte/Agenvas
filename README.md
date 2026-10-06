@@ -82,7 +82,7 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 
 </details>
 
-**Windows：让 AI Agent 安装 (推荐) **
+**Windows：让 AI 协助 安装**
 
 把 [安装提示词](docs/operations/windows-ai-install-prompt.md)发给 WorkBuddy 等能执行本机操作的 AI Agent，让它检查环境、安装并启动 Agenvas。完成后，打开它给出的地址创建账号。
 
