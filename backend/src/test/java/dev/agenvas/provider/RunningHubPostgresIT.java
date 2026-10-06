@@ -92,8 +92,41 @@ class RunningHubPostgresIT {
     @Autowired WebApplicationContext webContext;
     @Autowired dev.agenvas.provider.application.MediaFunctionService functions;
     @Autowired dev.agenvas.task.application.VideoOperationService videoOperations;
+    @Autowired dev.agenvas.agent.application.AgentInstanceService agents;
+    @Autowired dev.agenvas.run.application.AgentRunService runs;
+    @Autowired dev.agenvas.llm.application.AgentTurnCommitService turnCommits;
+    @Autowired dev.agenvas.llm.application.AgentMediaApprovalService approvals;
     private static UUID owner;
     @BeforeEach void owner() { if (owner == null) owner = identities.setup("rh-admin", "runninghub-password-123").userId(); }
+
+    @Test void invalidAgentProposalRollsBackDraftsAndReturnsARepairableInputError() throws Exception {
+        try (var provider = new Fake(1, false, false)) {
+            Fixture fixture = fixture(provider, Artifact.Kind.IMAGE, "AI_APP", false);
+            var agent = agents.create(owner, fixture.project().id(), "Synthetic creator", "Propose an image", List.of());
+            var run = runs.create(owner, fixture.project().id(), agent.id(), "Propose an image", "invalid-proposal-run").run();
+            String worker = "proposal-input-test";
+            Task lease = tasks.claimAgentTurns(worker, 1).getFirst();
+            var started = turnCommits.start(lease, worker);
+            ObjectNode request = mapper.createObjectNode();
+            var output = request.putArray("outputs").addObject().put("kind", "IMAGE")
+                    .put("title", "Synthetic proposal").put("prompt", "Draw a tree")
+                    .put("capabilityId", fixture.capability().toString());
+            output.putObject("parameters").put("aspectRatio", "16:9");
+            long before = jdbc.sql("select count(*) from artifact where project_id=:project")
+                    .param("project", fixture.project().id()).query(Long.class).single();
+
+            assertThatThrownBy(() -> approvals.propose(new dev.agenvas.llm.application.TrustedToolContext(
+                            owner, fixture.project().id(), run.id()), started, UUID.randomUUID(), 0, "synthetic-call", request.toString()))
+                    .isInstanceOfSatisfying(dev.agenvas.shared.error.ApiProblemException.class,
+                            problem -> assertThat(problem.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
+            assertThat(jdbc.sql("select count(*) from artifact where project_id=:project")
+                    .param("project", fixture.project().id()).query(Long.class).single()).isEqualTo(before);
+            assertThat(approvals.list(owner, fixture.project().id(), run.id())).isEmpty();
+            assertThat(provider.submits).hasValue(0);
+            assertThat(tasks.listByRun(owner, fixture.project().id(), run.id())).hasSize(1);
+            runs.cancel(owner, fixture.project().id(), run.id());
+        }
+    }
 
     @Test void cloudAudioSeparationArchivesBothOutputsAfterRecoveryWithoutAnotherSubmission() throws Exception {
         try (var provider = new Fake(1, false, false)) {

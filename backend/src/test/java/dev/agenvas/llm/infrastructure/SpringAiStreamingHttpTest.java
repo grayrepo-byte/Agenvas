@@ -41,6 +41,55 @@ class SpringAiStreamingHttpTest {
     private static final String MODEL_ID = "synthetic-stream-model";
 
     @Test
+    void completesReasoningStreamWithUsageOnTheFinalStopChunk() throws Exception {
+        List<String> deltas = new CopyOnWriteArrayList<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream output = exchange.getResponseBody()) {
+                for (int index = 0; index < 35; index++) {
+                    chunk(output, "{\"reasoning_content\":\"Synthetic private thought.\"}", null);
+                }
+                chunk(output, "{\"content\":\"Test complete\"}", null);
+                event(output, "{\"id\":\"chatcmpl-stream\",\"object\":\"chat.completion.chunk\","
+                        + "\"created\":1700000000,\"model\":\"" + MODEL_ID + "\","
+                        + "\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}],"
+                        + "\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":3,\"total_tokens\":15,"
+                        + "\"prompt_tokens_details\":{\"cached_tokens\":10,\"cache_write_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":10,\"text_tokens\":12,\"image_tokens\":0,\"video_tokens\":0,\"audio_tokens\":0},"
+                        + "\"completion_tokens_details\":{\"reasoning_tokens\":2,\"audio_tokens\":0,\"text_tokens\":3,\"image_tokens\":0,\"video_tokens\":0,\"accepted_prediction_tokens\":0,\"rejected_prediction_tokens\":0}}}");
+                event(output, "[DONE]");
+            } finally { exchange.close(); }
+        });
+        server.start();
+        try {
+            String endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+            SafeLlmTransport transport = new SafeLlmTransport(endpoint,
+                    new dev.agenvas.settings.application.LlmEndpointPolicy(
+                            new dev.agenvas.settings.application.LlmEndpointProperties(true)));
+            OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
+                    .baseUrl(endpoint)
+                    .apiKey("synthetic-unusable-key").model(MODEL_ID).maxRetries(0)
+                    .streamUsage(true).timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build())
+                    .httpClientBuilderCustomizer(builder -> builder.interceptor(transport.interceptor())).build();
+            AtomicReference<dev.agenvas.audit.domain.LlmStreamLog> log = new AtomicReference<>();
+            ChatGateway.Exchange result;
+            try (var capture = dev.agenvas.shared.http.DebugHttpCapture.openLlm(ignored -> {})) {
+                result = SpringAiChatGateway.withDebugCapture(model, CONFIG_VERSION).callStreaming(
+                        List.of(new UserMessage("Report completion")), List.of(), Map.of(),
+                        new ChatGateway.ConfigIdentity("spring-ai", CONFIG_VERSION), deltas::add, true, log::set);
+            }
+            assertThat(log.get().metrics().status()).isEqualTo(dev.agenvas.audit.domain.LlmStreamLog.EndStatus.COMPLETED);
+            assertThat(String.join("", deltas)).isEqualTo("Test complete");
+            var checkpoint = new LlmProtocolCodec(new ObjectMapper()).response(result.response());
+            assertThat(checkpoint.toString()).doesNotContain("Synthetic private thought");
+            assertThat(checkpoint.path("metadata").path("usage").path("completionTokens").asInt()).isEqualTo(3);
+            assertThat(result.response().getResult().getOutput().getText()).isEqualTo("Test complete");
+        } finally { server.stop(0); }
+    }
+
+    @Test
     void sendsImagePixelsWithReadableToolDefinitionsThroughTheRealAdapter() throws Exception {
         byte[] png = Base64.getDecoder().decode(
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4uoAAAAASUVORK5CYII=");

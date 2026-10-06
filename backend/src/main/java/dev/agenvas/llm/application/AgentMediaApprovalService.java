@@ -177,7 +177,11 @@ public class AgentMediaApprovalService {
         } catch (ApiProblemException problem) {
             // Reused draft/preflight validators retain their safe explanation; the Runtime
             // recognizes tool argument failures and can repair the saved model response.
-            if (problem.status() == HttpStatus.BAD_REQUEST
+            // RunningHub/ComfyUI input validators use 422, while native media
+            // validators use 400. Both reject the proposed arguments before
+            // approval or Provider dispatch and must enter the same bounded repair.
+            if ((problem.status() == HttpStatus.BAD_REQUEST
+                    || problem.status() == HttpStatus.UNPROCESSABLE_ENTITY)
                     && !"TOOL_ARGUMENT_INVALID".equals(problem.code())) {
                 throw new ApiProblemException(problem.status(), "TOOL_ARGUMENT_INVALID",
                         problem.title(), problem.detail(), false);

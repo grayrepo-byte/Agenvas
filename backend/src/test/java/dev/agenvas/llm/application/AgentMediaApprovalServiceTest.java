@@ -86,6 +86,41 @@ class AgentMediaApprovalServiceTest {
     }
 
     @Test
+    void providerInputValidationCanEnterTheBoundedToolRepairFlow() {
+        AgentRun run = run(AgentRun.Status.RUNNING, 1);
+        when(runs.get(ownerId, projectId, runId)).thenReturn(run);
+        when(approvals.findByToolCall(projectId, runId, 1, "call-media"))
+                .thenReturn(Optional.empty());
+        Artifact artifact = mock(Artifact.class);
+        when(artifact.id()).thenReturn(artifactId);
+        when(artifacts.create(ownerId, projectId, Artifact.Kind.IMAGE, "Image", null))
+                .thenReturn(new ArtifactService.ArtifactView(artifact, null));
+        CanvasItem item = mock(CanvasItem.class);
+        when(item.id()).thenReturn(canvasItemId);
+        when(item.subjectId()).thenReturn(artifactId);
+        when(canvas.placeArtifactsInAgentOutputWithinChange(ownerId, projectId,
+                run.agentInstanceId(), List.of(artifactId)))
+                .thenReturn(new CanvasService.OutputPlacements(List.of(item), List.of()));
+        when(capabilities.forDraft(null, Task.Kind.IMAGE_GENERATION)).thenReturn(binding);
+        when(drafts.get(ownerId, projectId, canvasItemId)).thenReturn(mock(MediaDraft.class));
+        when(drafts.save(eq(ownerId), eq(projectId), eq(canvasItemId), eq(0L), eq("Draw"),
+                any(), eq(null), eq(binding.capabilityId()), eq(null), anyList(), anyList(), eq(null)))
+                .thenAnswer(invocation -> dev.agenvas.provider.domain.RunningHubDefinition.inputValues(
+                        mapper, List.of(), invocation.getArgument(5), "Draw", null, false));
+
+        assertThatThrownBy(() -> service.propose(new TrustedToolContext(ownerId, projectId, runId), run,
+                UUID.randomUUID(), 1, "call-media",
+                "{\"outputs\":[{\"kind\":\"IMAGE\",\"title\":\"Image\",\"prompt\":\"Draw\","
+                        + "\"parameters\":{\"aspectRatio\":\"16:9\"}}]}"))
+                .isInstanceOfSatisfying(ApiProblemException.class, problem -> {
+                    assertThat(problem.code()).isEqualTo("TOOL_ARGUMENT_INVALID");
+                    assertThat(problem.status()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                });
+        verify(approvals, never()).insert(any());
+        verifyNoInteractions(mediaTasks);
+    }
+
+    @Test
     void proposalCreatesOnlyDraftAndFreezesPreflight() {
         AgentRun run = run(AgentRun.Status.RUNNING, 1);
         when(runs.get(ownerId, projectId, runId)).thenReturn(run);
