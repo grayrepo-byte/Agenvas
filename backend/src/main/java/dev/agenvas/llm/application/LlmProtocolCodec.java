@@ -23,9 +23,9 @@ import tools.jackson.databind.node.ObjectNode;
 public class LlmProtocolCodec {
 
     /** 单轮请求检查点的 UTF-8 字节上限，防止无界上下文进入数据库。 */
-    private static final int MAX_REQUEST_BYTES = 512 * 1024;
+    private static final int MAX_REQUEST_BYTES = 32 * 1024 * 1024;
     /** 单轮响应检查点的 UTF-8 字节上限，包含所有 generation 与工具调用。 */
-    private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+    public static final int MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
     /** 在应用协议与 Jackson JSON 树之间转换消息和供应商元数据。 */
     private final ObjectMapper mapper;
 
