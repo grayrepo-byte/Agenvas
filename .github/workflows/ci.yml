@@ -351,3 +351,22 @@ jobs:
             "$IMAGE_NAME:ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-amd64" \
             "$IMAGE_NAME:ci-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-arm64"
           printf 'Published amd64/arm64 tags:\n%s\n' "$IMAGE_TAGS" >> "$GITHUB_STEP_SUMMARY"
+
+  github-release:
+    name: Publish GitHub Release and notes
+    needs: [ci-gate, publish-dockerhub]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Generate version changes and publish release metadata without rebuilding images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python3 .github/scripts/release.py publish "$RELEASE_TAG"

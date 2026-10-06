@@ -105,8 +105,20 @@ class GateTest(unittest.TestCase):
         jobs = set(re.findall(r"^  ([a-z][a-z-]+):$", workflow.split("\njobs:\n", 1)[1], re.M))
         gate = workflow.split("\n  ci-gate:", 1)[1].split("\n  push-images:", 1)[0]
         dependencies = set(re.search(r"needs: \[([^]]+)\]", gate).group(1).replace(" ", "").split(","))
-        self.assertEqual(dependencies, jobs - {"ci-gate", "push-images", "publish-dockerhub"})
+        self.assertEqual(dependencies, jobs - {"ci-gate", "push-images", "publish-dockerhub", "github-release"})
         self.assertEqual(dependencies, set(ci.CODE_JOBS + ci.ALWAYS_JOBS))
+
+    def test_release_write_permission_is_gated_by_successful_tag_image_publication(self):
+        workflow = (SCRIPT_DIR.parents[1] / ".github/workflows/ci.yml").read_text()
+        release_job = workflow.split("\n  github-release:\n", 1)[1]
+        self.assertIn("needs: [ci-gate, publish-dockerhub]", release_job)
+        self.assertIn("if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')", release_job)
+        self.assertNotIn("always()", release_job)
+        self.assertEqual(workflow.count("contents: write"), 1)
+        self.assertIn("permissions:\n      contents: write", release_job)
+        self.assertIn("fetch-depth: 0", release_job)
+        self.assertIn('release.py publish "$RELEASE_TAG"', release_job)
+        self.assertNotIn("secrets.DOCKERHUB_", release_job)
 
     def needs(self, code_changed):
         expected = "success" if code_changed else "skipped"

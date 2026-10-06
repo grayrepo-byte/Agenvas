@@ -1862,3 +1862,12 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] RunningHubPostgresIT 发现预览专项在真实 PostgreSQL 17.11 上通过，使用本地假 HTTP 验证自动发现两类名称、离线可空名称、no-store、管理员/CSRF 边界、不泄露作者/凭据/调用示例且不触发生成。`pnpm run typecheck`、`pnpm run lint`、OpenAPI 类型生成及差异空白检查通过。
 - [x] 本轮匿名只读请求确认官方公开应用和工作流详情返回匹配 ID 及名称；未使用 Key、提交生成或下载素材。前后端自动发现行为测试使用合成响应，不代表真实 Provider 的带 Key 权限和生成兼容性。
 - [ ] 全量测试、浏览器端到端、带 Key 的真实 RunningHub 发现/生成和部署未运行。
+
+### 2026-10-06 CI 自动创建 GitHub Release 与发布说明
+
+- [x] 确认此前版本标签流水线只有 Docker Hub 发布，未创建 GitHub Release；按用户要求补上后续版本自动发布说明。Release job 仅版本标签推送执行，依赖 CI Gate 和 server/web 双架构 Docker Hub 全部发布成功；仅该 job 获得 `contents: write`，checkout 不保留凭据，总超时 5 分钟，不重建镜像。
+- [x] 说明包含精确版本镜像地址、源码提交、Git 标签范围的实际非合并提交，以及 GitHub 生成的 PR/贡献者/完整变更链接。稳定版本从上个可达稳定标签比较；预发布从上个可达低版本比较，按 SemVer 数值标识符排序，首版可没有基准。远端标签与验证提交不一致时阻止发布，不创建或移动标签。
+- [x] 重跑保留已有说明，仅补齐空白的已发布说明；已有草稿不擅自发布，列表/API 失败不当作 Release 不存在。预发布和旧稳定版本补发不替换较新的 Latest。使用 Python 标准库及 runner 现有 GitHub CLI，无新增 Actions 或应用依赖；中英文 README、依赖基线同步，无 API 或数据库迁移。
+- [x] `python3 -m unittest discover -s .github/scripts -p 'test_*.py'` 共 31 项通过，覆盖 CI 发布权限/依赖、既有规划/分片/门禁、版本范围、首版、预发布数值排序、GitHub 写操作的合成响应、重复运行、空白说明、草稿保护、API 失败及标签移动。`actionlint` 与差异空白检查通过。真实只读 GitHub API 已生成并核对 v0.0.2 的预览及 v0.0.1 比较范围；临时预览已清理。
+- [x] 用户选择只修改后续 CI、暂不补发历史版本；未创建或修改 v0.0.2 的 GitHub Release，也未重建/推送镜像。
+- [ ] 新工作流的 GitHub 托管运行、真实 Release 写入、应用全量测试与 Docker 构建/发布未运行；后续版本需包含此工作流改动。

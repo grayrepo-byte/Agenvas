@@ -139,3 +139,7 @@ CI 的 jOOQ 漂移检查不再占用固定 55432 端口；Docker 自动预留仅
 不升级应用依赖、构建基础镜像、Maven/Surefire/Failsafe、Trivy 或现有 Docker Actions；新增稳定版 `docker/build-push-action` v7 固定到 `c3c9e263c25d99ce0380d002d59b67737d91b0dc`。使用[Docker GHA v2 缓存](https://docs.docker.com/build/cache/backends/gha/)，按服务/架构隔离；PR 只读，main、标签及手动任务更新。运行时系统包更新层不复用缓存。清单使用 Trivy 0.74.0 单次 JSON 收集与[convert](https://trivy.dev/docs/latest/configuration/reporting/#converting)，不重新扫描、不恢复漏洞门禁。后端 CI 的 `ci-integration` profile 只跳过 Surefire，仍执行 Failsafe；普通 verify 与 package -DskipTests 的语义保持原样。前端 build:ci 仅省去已由独立步骤完成的 tsc，本地 build 保留类型检查。
 
 本机验证范围与未验证事项见开发清单 T04；GHA 远程缓存命中、完整四分片的托管运行和 CI 耗时收益须由 GitHub Actions 实测，不依据估算宣称提速。
+
+## 2026-10-06 GitHub Release Notes
+
+不升级应用依赖、构建镜像或 Docker Actions；新增 Release job 复用 GitHub Ubuntu runner 的 Python 标准库与 GitHub CLI。仅版本标签推送在 CI Gate 和 server/web 双架构 Docker Hub 发布成功后获得 job 级 `contents: write`；其他 job 继续只读。通过 [Release Notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release) 生成 PR/贡献者/变更链接，结合 Git 标签区间实际提交与版本镜像地址构造说明，再用 [gh release create/edit](https://cli.github.com/manual/gh_release_create) 创建或补齐空白说明，不新建/移动标签、不覆盖已有说明或发布草稿。PR、main、普通手动运行不创建 Release，也不重建镜像。脚本核对远端标签与验证提交；预发布和旧稳定版本补发不抢占 Latest。实际检查与尚未验证范围见开发清单。
