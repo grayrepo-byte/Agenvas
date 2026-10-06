@@ -9,6 +9,7 @@ function rows(value:unknown) {return Array.isArray(value) ? value.map(record) : 
 export function CreativeSkillSource({source}:{source:unknown}) {
   useLocale();
   const skill=record(source);
+  if (Array.isArray(skill.skills)) return <>{rows(skill.skills).map((item,index)=><CreativeSkillSource key={`${text(item.skillVersionId)}:${index}`} source={item} />)}</>;
   if (!text(skill.skillVersionId))return null;
   const version=typeof skill.versionNumber==="number" ? skill.versionNumber : "";
   const resources=rows(skill.resources),inputs=rows(skill.inputs),assets=rows(skill.assets);

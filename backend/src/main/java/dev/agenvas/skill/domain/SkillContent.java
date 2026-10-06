@@ -30,7 +30,7 @@ public final class SkillContent {
     public record Draft(UUID skillId, UUID ownerId, long version, DraftContent content, Instant updatedAt) {}
     public record Version(UUID id, UUID ownerId, UUID skillId, long versionNumber, String bundleHash,
             Bundle bundle, Instant createdAt) {}
-    public record Binding(UUID agentId, UUID projectId, UUID ownerId, UUID skillId, UUID skillVersionId, Instant updatedAt) {}
+    public record Binding(UUID agentId, UUID projectId, UUID ownerId, UUID skillId, UUID skillVersionId, int position, Instant updatedAt) {}
     public record PublishInput(int schemaVersion, long draftVersion, DraftContent draft) {}
     public record PublishOperation(UUID id, UUID ownerId, UUID skillId, String commandKey, String payloadHash,
             PublishInput input, tools.jackson.databind.JsonNode progress, OperationStatus status, long epoch,

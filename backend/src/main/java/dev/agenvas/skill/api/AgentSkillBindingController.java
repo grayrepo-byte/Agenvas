@@ -34,7 +34,7 @@ public class AgentSkillBindingController {
     @PutMapping("/skill-binding")
     public SkillRunService.BindingResponse save(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
             @PathVariable UUID agentId, @RequestHeader("Idempotency-Key") String key, @Valid @RequestBody BindingRequest request) {
-        return skills.saveBinding(principal.userId(),projectId,agentId,request.expectedAgentVersion(),request.skillId(),request.skillVersionId(),key);
+        return skills.saveBinding(principal.userId(),projectId,agentId,request.expectedAgentVersion(),request.skills(),key);
     }
     @PostMapping("/skill-installations") @ResponseStatus(HttpStatus.ACCEPTED)
     public SkillRunService.Installation install(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
@@ -51,6 +51,6 @@ public class AgentSkillBindingController {
         return new SkillRunService.Installation(response.id(),response.status(),response.skillId(),response.skillVersionId(),
                 response.errorCode(),messages.persisted(response.errorDetail(),http));
     }
-    public record BindingRequest(@NotNull @PositiveOrZero Long expectedAgentVersion, UUID skillId, UUID skillVersionId) {}
+    public record BindingRequest(@NotNull @PositiveOrZero Long expectedAgentVersion, @Valid @NotNull @jakarta.validation.constraints.Size(max = SkillRunService.MAX_SKILLS) java.util.List<SkillRunService.VersionRef> skills) {}
     public record InstallRequest(@NotNull UUID skillId, @NotNull UUID skillVersionId) {}
 }

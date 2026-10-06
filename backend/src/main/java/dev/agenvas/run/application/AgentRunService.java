@@ -314,7 +314,9 @@ public class AgentRunService {
                     appendInheritedBindings(snapshot, context.inherited());
                     skills.freezeIntoRun(ownerId, projectId, pinnedAgent, runId, skillSelection, snapshot);
                     policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.current(
-                            !snapshot.path("creativeSkill").path("resources").isEmpty())));
+                            !snapshot.path("creativeSkills").isEmpty(),
+                            java.util.stream.StreamSupport.stream(snapshot.path("creativeSkills").spliterator(), false)
+                                    .anyMatch(skill -> !skill.path("resources").isEmpty()))));
                     AgentConversation advanced = conversations.appendTurn(ownerId, conversation,
                             instruction, expectedConversationVersion, now);
                     AgentRun run = new AgentRun(runId, projectId, agentId, conversation.id(),
@@ -470,7 +472,7 @@ public class AgentRunService {
         var skill = skills.preview(ownerId, projectId, agentId, selection);
         ObjectNode policy = policySnapshot();
         policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.current(
-                skill != null && !skill.resources().isEmpty())));
+                !skill.isEmpty(), skill.stream().anyMatch(item -> !item.resources().isEmpty()))));
         ChatGateway.ModelDetails model = chatGateway.modelDetails();
         return new RunPreflight(agent.id(), agent.version(), agent.name(),
                 agent.instruction(), List.copyOf(bindings), model.available(), model.providerAdapter(),
@@ -500,7 +502,7 @@ public class AgentRunService {
             String agentInstruction, List<PreflightBinding> bindings,
             boolean modelAvailable, String providerAdapter, String modelId,
             boolean toolCalling, ObjectNode policySnapshot, UUID conversationId, Long conversationVersion,
-            long conversationTurnCount, int inheritedBindingCount, boolean memoryTruncated, SkillRunService.Summary creativeSkill) {}
+            long conversationTurnCount, int inheritedBindingCount, boolean memoryTruncated, List<SkillRunService.Summary> creativeSkills) {}
 
     /** 预检时将作为首轮文本上下文的产物版本绑定。
      * @param artifactId 输入产物 ID
@@ -749,7 +751,7 @@ public class AgentRunService {
     /** 把本次 Run 的模型配置版本及回合、工具预算写入不可变策略快照。 */
     private ObjectNode policySnapshot() {
         ObjectNode policy = objectMapper.createObjectNode();
-        policy.put("schemaVersion", 3);
+        policy.put("schemaVersion", 4);
         policy.put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
         policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.CURRENT));
         policy.put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);

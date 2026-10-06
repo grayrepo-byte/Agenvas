@@ -2095,7 +2095,7 @@
   "skills.choose": "选择 Skill",
   "skills.clear": "解除默认绑定",
   "skills.saveBinding": "保存默认绑定",
-  "skills.bindingHint": "只在 Agent 节点执行；更改绑定不影响活动 Run。",
+  "skills.bindingHint": "可配置多个默认 Skill；更改绑定不影响活动 Run。",
   "skills.installing": "正在准备项目参考文件…",
   "skills.installed": "项目参考已准备",
   "skills.install": "准备项目参考",
@@ -2115,7 +2115,7 @@
   "skills.restore": "恢复 Skill",
   "skills.trashReadOnly": "此 Skill 已在回收站。恢复后才能编辑、发布或试用；历史运行保留固定版本。",
   "skills.entry": "Skill",
-  "skills.pickerHint": "选择本次使用的创作 Skill 和发布版本；未选择时不会注入 Skill。",
+  "skills.pickerHint": "可选择多个 Skill 和固定发布版本；Agent 会根据本次任务按需加载主说明和附件。",
   "skills.use": "使用 Skill",
   "media.editor.videoReferenceLimits": "最多 {0} 张图片、{1} 段视频、{2} 段音频",
   "media.editor.videoRelayHint": "本地视频参考需要管理员配置可公网访问的媒体中继；已有对象存储素材直接使用签名链接。",
@@ -2314,5 +2314,9 @@
   "image.resize.targetSize": "目标：{0} × {1} px",
   "image.resize.title": "缩放",
   "settings.runningHub.exposeField": "暴露",
-  "settings.runningHub.exposeFieldLabel": "暴露参数 · {0}"
+  "settings.runningHub.exposeFieldLabel": "暴露参数 · {0}",
+  "skills.addChoice": "添加 Skill",
+  "skills.removeChoice": "移除 Skill",
+  "skills.selectedCount": "已选 {0} 个 Skill",
+  "skills.selectionLimit": "已选 {0} / {1} 个 Skill"
 }

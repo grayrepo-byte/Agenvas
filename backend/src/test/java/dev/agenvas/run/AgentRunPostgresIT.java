@@ -130,7 +130,7 @@ class AgentRunPostgresIT {
                 });
         assertThat(preflight.modelAvailable()).isFalse();
         assertThat(preflight.policySnapshot().path("maxModelTurns").asInt()).isEqualTo(12);
-        assertThat(preflight.policySnapshot().path("schemaVersion").asInt()).isEqualTo(3);
+        assertThat(preflight.policySnapshot().path("schemaVersion").asInt()).isEqualTo(4);
         assertThat(preflight.policySnapshot().path("systemPromptVersion").asInt())
                 .isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         String reviewedModelSource = preflight.policySnapshot()

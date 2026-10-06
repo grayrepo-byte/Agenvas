@@ -331,11 +331,23 @@ public class AgentMediaApprovalService {
                 inputs.add(new MediaDraftService.SaveMediaInput(versionId, role, INPUT_COLOR));
             }
         }
-        JsonNode skill = run.contextSnapshot().path("creativeSkill");
-        if (skill.isObject()) {
+        var activeSkills = RunSkills.activated(run, toolLedger.skillReads(run.projectId(), run.id()));
+        // GUIDE restrictions apply across selected Skills, even before activation.
+        for (JsonNode selected : RunSkills.available(run)) for (JsonNode reference : selected.path("assets")) {
+            boolean present = inputs.stream().anyMatch(media -> media.versionId().toString().equals(reference.path("artifactVersionId").asText()));
+            boolean activated = activeSkills.stream().anyMatch(skill -> skill.path("skillVersionId").equals(selected.path("skillVersionId")));
+            if (present && ("GUIDE".equals(reference.path("usage").asText()) || !activated)) throw invalid("skill-reference-input");
+        }
+        if (!activeSkills.isEmpty() && activeSkills.stream().noneMatch(skill ->
+                java.util.stream.StreamSupport.stream(skill.path("outputKinds").spliterator(), false)
+                        .anyMatch(allowed -> kind.name().equals(allowed.asText())))) throw invalid("skill-output-kind");
+        for (JsonNode skill : activeSkills) {
             boolean outputAllowed = false;
             for (JsonNode allowed : skill.path("outputKinds")) if (kind.name().equals(allowed.asText())) outputAllowed = true;
-            if (!outputAllowed) throw invalid("skill-output-kind");
+            if (!outputAllowed) {
+                if (run.policySnapshot().path("toolPolicyVersion").asInt(1) < RunToolPolicy.CURRENT_VERSION) throw invalid("skill-output-kind");
+                continue; // A combined catalogue can contain Skills for different output kinds.
+            }
             for (JsonNode reference : skill.path("assets")) {
                 boolean present = inputs.stream().anyMatch(media -> media.versionId().toString().equals(reference.path("artifactVersionId").asText()));
                 if (("GUIDE".equals(reference.path("usage").asText()) && present)
@@ -366,21 +378,31 @@ public class AgentMediaApprovalService {
     }
 
     private JsonNode freezeSkillSource(AgentRun run) {
-        JsonNode source = run.contextSnapshot().get("creativeSkill");
-        if (!(source instanceof ObjectNode)) return null;
-        ObjectNode frozen = (ObjectNode) source.deepCopy();
-        var reads = toolLedger.skillResourceReads(run.projectId(), run.id());
-        Set<String> used = new java.util.HashSet<>();
-        var ranges = frozen.putArray("resourceReads");
-        for (JsonNode read : reads) {
-            used.add(read.path("path").asText());
-            ranges.addObject().put("path", read.path("path").asText())
-                    .put("contentHash", read.path("contentHash").asText())
-                    .put("offset", read.path("offset").asInt()).put("endOffset", read.path("endOffset").asInt()).put("total", read.path("total").asInt());
+        var reads = toolLedger.skillReads(run.projectId(), run.id());
+        var active = RunSkills.activated(run, reads);
+        if (active.isEmpty()) return null;
+        var sources = mapper.createArrayNode();
+        for (JsonNode source : active) {
+            ObjectNode frozen = (ObjectNode) source.deepCopy();
+            Set<String> used = new java.util.HashSet<>();
+            var ranges = frozen.putArray("resourceReads");
+            for (JsonNode read : reads) {
+                boolean sameVersion = source.path("skillVersionId").asText().equals(read.path("skillVersionId").asText());
+                if (!sameVersion || "SKILL.md".equals(read.path("path").asText())) continue;
+                used.add(read.path("path").asText());
+                ranges.addObject().put("path", read.path("path").asText())
+                        .put("contentHash", read.path("contentHash").asText())
+                        .put("offset", read.path("offset").asInt()).put("endOffset", read.path("endOffset").asInt()).put("total", read.path("total").asInt());
+            }
+            var resources = frozen.putArray("resources");
+            for (JsonNode resource : source.path("resources")) if (used.contains(resource.path("path").asText())) resources.add(resource.deepCopy());
+            sources.add(frozen);
         }
-        var resources = frozen.putArray("resources");
-        for (JsonNode resource : source.path("resources")) if (used.contains(resource.path("path").asText())) resources.add(resource.deepCopy());
-        return frozen;
+        // Preserve the persisted single-Skill representation for historical Run recovery.
+        if (run.policySnapshot().path("toolPolicyVersion").asInt(1) < RunToolPolicy.CURRENT_VERSION) return sources.get(0);
+        ObjectNode result = mapper.createObjectNode().put("schemaVersion", 2);
+        result.set("skills", sources);
+        return result;
     }
 
     private ObjectNode object(String arguments) {

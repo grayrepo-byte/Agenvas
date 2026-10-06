@@ -65,7 +65,7 @@ export function SkillsPage() {
 }
 export function SkillError({error,onRefresh}:{error:Error;onRefresh?:()=>void}) {
   useLocale();
-  return <Notice tone="danger"><p>{error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? t("skills.conflict") : t("skills.errorPreserved",{"0":error.message})}</p>{onRefresh ? <Button variant="outline" onClick={onRefresh}>{t("skills.refresh")}</Button> : null}</Notice>;
+  return <Notice tone="danger"><p>{error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? t("skills.conflict") : t("skills.errorPreserved",{"0":error.message})}</p>{onRefresh ? <Button variant="outline" type="button" onClick={onRefresh}>{t("skills.refresh")}</Button> : null}</Notice>;
 }
 function SkillEditor({skill,onSkillChanged}:{skill:CreativeSkill;onSkillChanged:(skill:CreativeSkill)=>void}) {
   const draft = useQuery({queryKey:["skill-draft",skill.id],queryFn:()=>getSkillDraft(skill.id)});

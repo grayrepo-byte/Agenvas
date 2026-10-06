@@ -147,8 +147,7 @@ class ProjectExportManifestPostgresIT {
         assertThat(skills.processNext()).isTrue();
         UUID skillVersionId = skills.getOperation(owner.userId(), publication.id()).resultVersionId();
         var agent = agents.create(owner.userId(), project.id(), "Export Creator", "Use the selected method", List.of());
-        skillRuns.saveBinding(owner.userId(), project.id(), agent.id(), agent.version(), skill.id(), skillVersionId,
-                "manifest-agent-binding");
+        skillRuns.saveBinding(owner.userId(), project.id(), agent.id(), agent.version(), List.of(new SkillRunService.VersionRef(skill.id(), skillVersionId)), "manifest-agent-binding");
         skillRuns.install(owner.userId(), project.id(), agent.id(), skill.id(), skillVersionId, "manifest-skill-install");
         assertThat(skillRuns.processNext()).isTrue();
         var secondDraft = skills.saveDraft(owner.userId(), skill.id(), firstDraft.version(),
@@ -160,14 +159,12 @@ class ProjectExportManifestPostgresIT {
         assertThat(skills.processNext()).isTrue();
         UUID uninstalledVersionId = skills.getOperation(owner.userId(), secondPublication.id()).resultVersionId();
         var uninstalledAgent = agents.create(owner.userId(), project.id(), "Future Creator", "Use a different fixed version", List.of());
-        skillRuns.saveBinding(owner.userId(), project.id(), uninstalledAgent.id(), uninstalledAgent.version(),
-                skill.id(), uninstalledVersionId, "manifest-uninstalled-agent-binding");
-        assertThat(skillRuns.preview(owner.userId(), project.id(), agent.id(), null).installed()).isTrue();
-        assertThat(skillRuns.preview(owner.userId(), project.id(), uninstalledAgent.id(), null).installed()).isFalse();
+        skillRuns.saveBinding(owner.userId(), project.id(), uninstalledAgent.id(), uninstalledAgent.version(), List.of(new SkillRunService.VersionRef(skill.id(), uninstalledVersionId)), "manifest-uninstalled-agent-binding");
+        assertThat(skillRuns.preview(owner.userId(), project.id(), agent.id(), null).getFirst().installed()).isTrue();
+        assertThat(skillRuns.preview(owner.userId(), project.id(), uninstalledAgent.id(), null).getFirst().installed()).isFalse();
         var otherProject = projects.create(owner.userId(), "Other project", Project.AspectRatio.LANDSCAPE_16_9);
         var otherAgent = agents.create(owner.userId(), otherProject.id(), "Other Creator", "Keep this binding private to the other project", List.of());
-        skillRuns.saveBinding(owner.userId(), otherProject.id(), otherAgent.id(), otherAgent.version(),
-                skill.id(), uninstalledVersionId, "other-project-agent-binding");
+        skillRuns.saveBinding(owner.userId(), otherProject.id(), otherAgent.id(), otherAgent.version(), List.of(new SkillRunService.VersionRef(skill.id(), uninstalledVersionId)), "other-project-agent-binding");
         ObjectNode skillSource = mapper.createObjectNode().put("schemaVersion", 1)
                 .put("skillId", skill.id().toString()).put("skillVersionId", skillVersionId.toString())
                 .put("bundleHash", skills.getVersion(owner.userId(), skill.id(), skillVersionId).bundleHash());
@@ -189,7 +186,7 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(6);
+        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(7);
         assertThat(manifest.path("project").path("id").asText())
                 .isEqualTo(project.id().toString());
         assertThat(manifest.path("project").has("ownerId")).isFalse();

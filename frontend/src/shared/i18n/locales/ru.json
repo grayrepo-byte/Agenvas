@@ -2095,7 +2095,7 @@
   "skills.choose": "Выбрать Skill",
   "skills.clear": "Удалить привязку",
   "skills.saveBinding": "Сохранить привязку",
-  "skills.bindingHint": "Skill выполняются только в Agent; изменения не влияют на активные Run.",
+  "skills.bindingHint": "Можно настроить несколько Skills по умолчанию. Изменения не влияют на активные Run.",
   "skills.installing": "Подготовка референсов проекта…",
   "skills.installed": "Референсы проекта готовы",
   "skills.install": "Подготовить референсы",
@@ -2115,7 +2115,7 @@
   "skills.restore": "Восстановить Skill",
   "skills.trashReadOnly": "Этот Skill в корзине. Восстановите его для редактирования, публикации или пробного запуска; прошлые Run сохраняют зафиксированную версию.",
   "skills.entry": "Skill",
-  "skills.pickerHint": "Выберите Skill и опубликованную версию для этого запуска. Без выбора Skill не добавляется.",
+  "skills.pickerHint": "Выберите несколько Skills и фиксированные версии. Agent загружает инструкции и материалы по необходимости.",
   "skills.use": "Использовать Skill",
   "media.editor.videoReferenceLimits": "До {0} изображений, {1} видео и {2} аудиозаписей",
   "media.editor.videoRelayHint": "Для локальных видеореференсов администратор должен настроить публичную ретрансляцию. Облачные файлы используют подписанные ссылки напрямую.",
@@ -2314,5 +2314,9 @@
   "image.resize.targetSize": "Результат: {0} × {1} px",
   "image.resize.title": "Изменить размер",
   "settings.runningHub.exposeField": "Открыть",
-  "settings.runningHub.exposeFieldLabel": "Открыть параметр · {0}"
+  "settings.runningHub.exposeFieldLabel": "Открыть параметр · {0}",
+  "skills.addChoice": "Добавить Skill",
+  "skills.removeChoice": "Удалить Skill",
+  "skills.selectedCount": "Выбрано Skills: {0}",
+  "skills.selectionLimit": "Выбрано {0} / {1} Skills"
 }

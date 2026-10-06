@@ -2095,7 +2095,7 @@
   "skills.choose": "Choose Skill",
   "skills.clear": "Clear default binding",
   "skills.saveBinding": "Save default binding",
-  "skills.bindingHint": "Skills run only in Agents; binding changes do not affect active Runs.",
+  "skills.bindingHint": "Configure multiple default Skills. Changes do not affect active Runs.",
   "skills.installing": "Preparing project references…",
   "skills.installed": "Project references ready",
   "skills.install": "Prepare project references",
@@ -2115,7 +2115,7 @@
   "skills.restore": "Restore Skill",
   "skills.trashReadOnly": "This Skill is in trash. Restore it to edit, publish, or try it; historical Runs keep their fixed version.",
   "skills.entry": "Skill",
-  "skills.pickerHint": "Choose a creative Skill and published version for this run. No Skill is injected when none is selected.",
+  "skills.pickerHint": "Select multiple Skills and fixed published versions. The Agent loads relevant instructions and attachments on demand.",
   "skills.use": "Use Skill",
   "media.editor.videoReferenceLimits": "Up to {0} images, {1} videos and {2} audio clips",
   "media.editor.videoRelayHint": "Local video references require a public media relay configured by an administrator. Existing object storage assets use signed links directly.",
@@ -2314,5 +2314,9 @@
   "image.resize.targetSize": "Target: {0} × {1} px",
   "image.resize.title": "Resize",
   "settings.runningHub.exposeField": "Expose",
-  "settings.runningHub.exposeFieldLabel": "Expose parameter · {0}"
+  "settings.runningHub.exposeFieldLabel": "Expose parameter · {0}",
+  "skills.addChoice": "Add Skill",
+  "skills.removeChoice": "Remove Skill",
+  "skills.selectedCount": "{0} Skills selected",
+  "skills.selectionLimit": "{0} / {1} Skills selected"
 }

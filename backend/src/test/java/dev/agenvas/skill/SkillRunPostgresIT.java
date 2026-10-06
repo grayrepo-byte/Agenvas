@@ -3,6 +3,7 @@ package dev.agenvas.skill;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -139,14 +140,80 @@ class SkillRunPostgresIT {
         auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
     }
 
+    @Test void multipleSelectionsFreezeTogetherAndOnlyActivatedSkillsEnterApprovalProvenance() throws Exception {
+        var scenario = scenario(false);
+        var first = publishedSkill(scenario, false, SkillContent.Usage.PROVIDER_REFERENCE, false);
+        var second = publishedSkill(scenario, false, SkillContent.Usage.PROVIDER_REFERENCE, false);
+        var refs = List.of(new SkillRunService.VersionRef(first.skillId(), first.versionId()),
+                new SkillRunService.VersionRef(second.skillId(), second.versionId()));
+        var saved = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), refs, "multi-default");
+        assertThat(skillRuns.getBinding(owner.userId(), scenario.project().id(), scenario.agent().id()).skills()).containsExactlyElementsOf(refs);
+        assertProblem("SKILL_SELECTION_INVALID", () -> skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), saved.agentVersion(),
+                List.of(refs.getFirst(), refs.getFirst()), "duplicate-default"));
+        for (var ref : refs) {
+            skillRuns.install(owner.userId(), scenario.project().id(), scenario.agent().id(), ref.skillId(), ref.skillVersionId(), "multi-install-" + ref.skillId());
+            assertThat(skillRuns.processNext()).isTrue();
+        }
+        assertThat(skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(), null)).hasSize(2);
+        String bindingJson = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                "/api/v1/projects/" + scenario.project().id() + "/agents/" + scenario.agent().id() + "/skill-binding").with(auth))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(mapper.readTree(bindingJson).path("skills")).hasSize(2);
+        String previewJson = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(
+                "/api/v1/projects/" + scenario.project().id() + "/runs/preflight").with(auth).with(csrf())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(mapper.writeValueAsString(Map.of(
+                        "agentId", scenario.agent().id(), "skillSelection", Map.of("mode", "DEFAULT", "skills", List.of())))))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(mapper.readTree(previewJson).path("creativeSkills")).hasSize(2);
+        AgentRun run = createRun(scenario, saved.agentVersion(), "multi-run", new SkillRunService.Selection(SkillRunService.SelectionMode.DEFAULT, List.of())).run();
+        assertThat(run.contextSnapshot().path("creativeSkills")).hasSize(2);
+        assertThat(initialContext.assemble(owner.userId(), scenario.project().id(), run.id()))
+                .allSatisfy(message -> assertThat(message.getText()).doesNotContain(first.body(), first.resourceText()));
+        String proposal = mapper.writeValueAsString(Map.of("outputs", List.of(Map.of("kind", "IMAGE", "title", "Combined catalogue result", "prompt", "Synthetic poster", "parameters", Map.of()))));
+        gateway.prepare(run.id(), List.of(toolCall("load-first", "read_skill", "{\"skillVersionId\":\"" + first.versionId() + "\"}"),
+                toolCall("read-first", "read_skill_resource", "{\"skillVersionId\":\"" + first.versionId() + "\",\"path\":\"references/style-guide.md\",\"limit\":10}"),
+                toolCall("propose-combined", "propose_media_generation", proposal)));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertProblem("TOOL_ARGUMENT_INVALID", () -> reader.skillResource(runs.get(owner.userId(), scenario.project().id(), run.id()), UUID.randomUUID(),
+                "{\"skillVersionId\":\"" + second.versionId() + "\",\"path\":\"references/style-guide.md\"}"));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        JsonNode source = approvals.list(owner.userId(), scenario.project().id(), run.id()).getFirst().outputs().getFirst().preview().path("creativeSkill");
+        assertThat(source.path("skills")).hasSize(1);
+        assertThat(source.path("skills").path(0).path("skillVersionId").asText()).isEqualTo(first.versionId().toString());
+        assertThat(source.path("skills").path(0).path("resourceReads")).hasSize(1);
+        runs.cancel(owner.userId(), scenario.project().id(), run.id());
+    }
+
+    @Test void rejectedAtomicReadBatchDoesNotActivateItsMainFile() throws Exception {
+        var scenario = scenario(false);
+        var skill = publishedSkill(scenario, false, SkillContent.Usage.PROVIDER_REFERENCE, false);
+        skillRuns.install(owner.userId(), scenario.project().id(), scenario.agent().id(), skill.skillId(), skill.versionId(), "rollback-install");
+        assertThat(skillRuns.processNext()).isTrue();
+        AgentRun run = createRun(scenario, scenario.agent().version(), "rollback-read", new SkillRunService.Selection(
+                SkillRunService.SelectionMode.VERSIONS, List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(), List.of())))).run();
+        String main = "{\"skillVersionId\":\"" + skill.versionId() + "\"}";
+        String resource = "{\"skillVersionId\":\"" + skill.versionId() + "\",\"path\":\"references/style-guide.md\"}";
+        var batch = AssistantMessage.builder().content("").toolCalls(List.of(
+                new AssistantMessage.ToolCall("rollback-main", "function", "read_skill", main),
+                new AssistantMessage.ToolCall("rollback-missing", "function", "read_skill_resource", resource.replace("style-guide.md", "missing.md")))).build();
+        gateway.prepare(run.id(), List.of(batch, toolCall("committed-main", "read_skill", main), new AssistantMessage("The selected method is loaded.")));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertProblem("TOOL_ARGUMENT_INVALID", () -> reader.skillResource(runs.get(owner.userId(), scenario.project().id(), run.id()), UUID.randomUUID(), resource));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(reader.skillResource(runs.get(owner.userId(), scenario.project().id(), run.id()), UUID.randomUUID(), resource)
+                .path("data").path("content").asText()).isEqualTo(skill.resourceText());
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(runs.get(owner.userId(), scenario.project().id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+    }
+
     @Test void selectionAndLocalInstallationRequireAnAgentAndDoNotStartGeneration() throws Exception {
         var scenario = scenario(true);
         var skill = publishedSkill(scenario, true);
         int callsBefore = gateway.calls.get();
         assertProblem("RESOURCE_NOT_FOUND", () -> skillRuns.install(owner.userId(), scenario.project().id(),
                 scenario.subject().artifact().id(), skill.skillId(), skill.versionId(), "media-install-rejected"));
-        assertProblem("RESOURCE_NOT_FOUND", () -> skillRuns.saveBinding(owner.userId(), scenario.project().id(),
-                scenario.subject().artifact().id(), 0, skill.skillId(), skill.versionId(), "media-binding-rejected"));
+        assertProblem("RESOURCE_NOT_FOUND", () -> skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.subject().artifact().id(), 0, List.of(new SkillRunService.VersionRef(skill.skillId(), skill.versionId())), "media-binding-rejected"));
         var install = skillRuns.install(owner.userId(), scenario.project().id(), scenario.agent().id(),
                 skill.skillId(), skill.versionId(), "agent-install");
         assertThat(install.status()).isEqualTo(SkillRunService.InstallStatus.ACCEPTED);
@@ -158,17 +225,14 @@ class SkillRunPostgresIT {
         assertThat(canvas.list(owner.userId(), scenario.project().id())).hasSize(2);
         assertThat(artifacts.listProject(owner.userId(), scenario.project().id())).hasSize(2);
 
-        var binding = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(),
-                scenario.agent().version(), skill.skillId(), skill.versionId(), "agent-binding");
+        var binding = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(new SkillRunService.VersionRef(skill.skillId(), skill.versionId())), "agent-binding");
         assertThat(binding.agentVersion()).isEqualTo(scenario.agent().version() + 1);
-        assertThat(skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(),
-                scenario.agent().version(), skill.skillId(), skill.versionId(), "agent-binding")).isEqualTo(binding);
+        assertThat(skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(new SkillRunService.VersionRef(skill.skillId(), skill.versionId())), "agent-binding")).isEqualTo(binding);
         assertThat(agents.get(owner.userId(), scenario.project().id(), scenario.agent().id()).bindings()).hasSize(1);
         assertThat(gateway.calls).hasValue(callsBefore);
         assertThat(runs.list(owner.userId(), scenario.project().id(), scenario.agent().id(), null, null).items()).isEmpty();
         assertThat(tasks.listActiveDirect(owner.userId(), scenario.project().id())).isEmpty();
-        assertProblem("AGENT_VERSION_CONFLICT", () -> skillRuns.saveBinding(owner.userId(), scenario.project().id(),
-                scenario.agent().id(), scenario.agent().version(), null, null, "stale-agent-binding"));
+        assertProblem("AGENT_VERSION_CONFLICT", () -> skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(), "stale-agent-binding"));
     }
 
     @Test void runChecksRequiredExactInputAndKeepsBodyResourcesAndReferencesAfterNewVersionAndUnbinding() throws Exception {
@@ -180,20 +244,17 @@ class SkillRunPostgresIT {
         assertThat(skillRuns.processNext()).isTrue();
         assertThat(skillRuns.getInstallation(owner.userId(), scenario.project().id(), scenario.agent().id(), install.id()).status())
                 .isEqualTo(SkillRunService.InstallStatus.SUCCEEDED);
-        var binding = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(),
-                scenario.agent().version(), skill.skillId(), skill.versionId(), "freeze-binding");
+        var binding = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(new SkillRunService.VersionRef(skill.skillId(), skill.versionId())), "freeze-binding");
         assertProblem("SKILL_INPUT_REQUIRED", () -> createRun(scenario, binding.agentVersion(), "missing-subject",
-                new SkillRunService.Selection(SkillRunService.SelectionMode.DEFAULT, null, null, List.of())));
+                new SkillRunService.Selection(SkillRunService.SelectionMode.DEFAULT, List.of())));
         assertProblem("SKILL_INPUT_NOT_BOUND", () -> createRun(scenario, binding.agentVersion(), "forged-subject",
-                new SkillRunService.Selection(SkillRunService.SelectionMode.DEFAULT, null, null,
-                        List.of(new SkillRunService.Input("subject-image", UUID.randomUUID())))));
+                new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(), List.of(new SkillRunService.Input("subject-image", UUID.randomUUID())))))));
         assertThat(runs.list(owner.userId(), scenario.project().id(), scenario.agent().id(), null, null).items()).isEmpty();
         assertThat(gateway.calls).hasValue(callsBefore);
 
-        var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.DEFAULT, null, null,
-                List.of(new SkillRunService.Input("subject-image", scenario.subject().resourceDefaultVersion().id())));
+        var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(), List.of(new SkillRunService.Input("subject-image", scenario.subject().resourceDefaultVersion().id())))));
         AgentRun run = createRun(scenario, binding.agentVersion(), "fixed-skill-run", selection).run();
-        JsonNode frozen = run.contextSnapshot().path("creativeSkill");
+        JsonNode frozen = run.contextSnapshot().path("creativeSkills").path(0);
         assertThat(frozen.path("skillVersionId").asText()).isEqualTo(skill.versionId().toString());
         assertThat(frozen.path("skillMd").asText()).isEqualTo(skill.body());
         assertThat(frozen.path("resources").path(0).path("content").asText()).isEqualTo(skill.resourceText());
@@ -206,7 +267,7 @@ class SkillRunPostgresIT {
                 .content().path("sourceType").asText()).isEqualTo("SKILL_IMPORT");
         assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), scenario.project().id(), run.id()))
-                .anySatisfy(message -> assertThat(message.getText()).contains(skill.body()));
+                .allSatisfy(message -> assertThat(message.getText()).doesNotContain(skill.body(), skill.resourceText()));
 
         var copied = skills.copyVersionToDraft(owner.userId(), skill.skillId(), skill.versionId(), 1);
         var edited = skills.saveDraft(owner.userId(), skill.skillId(), copied.version(),
@@ -216,23 +277,21 @@ class SkillRunPostgresIT {
         var newer = skills.publish(owner.userId(), skill.skillId(), edited.version(), "freeze-newer-version");
         assertThat(skills.processNext()).isTrue();
         assertThat(skills.getOperation(owner.userId(), newer.id()).resultVersionId()).isNotEqualTo(skill.versionId());
-        skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), binding.agentVersion(),
-                null, null, "unbind-active-skill");
+        skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), binding.agentVersion(), List.of(), "unbind-active-skill");
         AgentRun restored = runs.get(owner.userId(), scenario.project().id(), run.id());
-        assertSameJson(restored.contextSnapshot().path("creativeSkill"), frozen);
-        var page = reader.skillResource(restored, UUID.randomUUID(),
-                "{\"path\":\"references/style-guide.md\",\"offset\":0,\"limit\":21}");
-        assertThat(page.path("data").path("content").asText()).isEqualTo("Original warm palette");
-        assertThat(page.path("data").path("nextOffset").asInt()).isEqualTo(21);
+        assertSameJson(restored.contextSnapshot().path("creativeSkills").path(0), frozen);
         assertProblem("TOOL_ARGUMENT_INVALID", () -> reader.skillResource(restored, UUID.randomUUID(),
-                "{\"path\":\"../../private.txt\",\"offset\":0,\"limit\":21}"));
-        gateway.prepare(run.id(), List.of(toolCall("read-style", "read_skill_resource",
-                        "{\"path\":\"references/style-guide.md\",\"offset\":21,\"limit\":2}"),
+                "{\"skillVersionId\":\"" + skill.versionId() + "\",\"path\":\"references/style-guide.md\"}"));
+        assertThat(reader.skill(restored, UUID.randomUUID(), "{\"skillVersionId\":\"" + skill.versionId() + "\"}")
+                .path("data").path("content").asText()).isEqualTo(skill.body());
+        gateway.prepare(run.id(), List.of(toolCall("load-main", "read_skill", "{\"skillVersionId\":\"" + skill.versionId() + "\"}"), toolCall("read-style", "read_skill_resource",
+                        "{\"skillVersionId\":\"" + skill.versionId() + "\",\"path\":\"references/style-guide.md\",\"offset\":21,\"limit\":2}"),
                 new AssistantMessage("The fixed style guide is read.")));
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertThat(gateway.lastTools).anySatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("read_skill_resource"));
         assertThat(gateway.lastMessages.getLast()).isInstanceOf(ToolResponseMessage.class);
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         var reply = (ToolResponseMessage) gateway.lastMessages.getLast();
         assertThat(mapper.readTree(reply.getResponses().getFirst().responseData()).path("data").path("content").asText()).isEqualTo("; ");
         assertThat(runs.get(owner.userId(), scenario.project().id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
@@ -254,11 +313,10 @@ class SkillRunPostgresIT {
                             + scenario.agent().id() + "/skill-installations/" + accepted.id()).with(auth))
                     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
             assertThat(mapper.readTree(response).path("status").asText()).isEqualTo("SUCCEEDED");
-            var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSION,
-                    skill.skillId(), skill.versionId(), List.of());
-            assertThat(skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(), selection).installed()).isTrue();
+            var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(), List.of())));
+            assertThat(skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(), selection).getFirst().installed()).isTrue();
             AgentRun run = createRun(scenario, scenario.agent().version(), "cleanup-freeze-" + fixedAsset, selection).run();
-            JsonNode frozen = run.contextSnapshot().path("creativeSkill");
+            JsonNode frozen = run.contextSnapshot().path("creativeSkills").path(0);
             assertThat(frozen.path("skillMd").asText()).isEqualTo(skill.body());
             assertThat(frozen.path("assets").size()).isEqualTo(fixedAsset ? 1 : 0);
             assertThat(exports.build(owner.userId(), scenario.project().id()).creativeSkills()).singleElement()
@@ -273,7 +331,7 @@ class SkillRunPostgresIT {
             while (skillRuns.cleanupNext()) { }
             assertThat(skillRuns.getInstallation(owner.userId(), scenario.project().id(), scenario.agent().id(), accepted.id()).status())
                     .isEqualTo(SkillRunService.InstallStatus.SUCCEEDED);
-            assertThat(skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(), selection).installed()).isTrue();
+            assertThat(skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(), selection).getFirst().installed()).isTrue();
             if (fixedAsset) {
                 UUID artifactId = UUID.fromString(frozen.path("assets").path(0).path("artifactId").asText());
                 UUID versionId = UUID.fromString(frozen.path("assets").path(0).path("artifactVersionId").asText());
@@ -296,20 +354,19 @@ class SkillRunPostgresIT {
         skillRuns.install(owner.userId(), scenario.project().id(), scenario.agent().id(),
                 skill.skillId(), skill.versionId(), "approved-install");
         assertThat(skillRuns.processNext()).isTrue();
-        var binding = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(),
-                scenario.agent().version(), skill.skillId(), skill.versionId(), "approved-binding");
+        var binding = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(new SkillRunService.VersionRef(skill.skillId(), skill.versionId())), "approved-binding");
         AgentRun run = createRun(scenario, binding.agentVersion(), "approved-skill-run",
-                new SkillRunService.Selection(SkillRunService.SelectionMode.DEFAULT, null, null,
-                        List.of(new SkillRunService.Input("subject-image", scenario.subject().resourceDefaultVersion().id())))).run();
-        String styleVersion = run.contextSnapshot().path("creativeSkill").path("assets").path(0).path("artifactVersionId").asText();
+                new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(), List.of(new SkillRunService.Input("subject-image", scenario.subject().resourceDefaultVersion().id())))))).run();
+        String styleVersion = run.contextSnapshot().path("creativeSkills").path(0).path("assets").path(0).path("artifactVersionId").asText();
         String proposal = mapper.writeValueAsString(Map.of("outputs", List.of(Map.of(
                 "kind", "IMAGE", "title", "Warm subject result", "prompt", "Warm synthetic subject", "parameters", Map.of(),
                 "mediaInputs", List.of(Map.of("versionId", scenario.subject().resourceDefaultVersion().id(), "role", "REFERENCE"),
                         Map.of("versionId", styleVersion, "role", "REFERENCE"))))));
-        gateway.prepare(run.id(), List.of(toolCall("read-before-media", "read_skill_resource",
-                        "{\"path\":\"references/style-guide.md\",\"offset\":0,\"limit\":21}"),
+        gateway.prepare(run.id(), List.of(toolCall("load-main", "read_skill", "{\"skillVersionId\":\"" + skill.versionId() + "\"}"), toolCall("read-before-media", "read_skill_resource",
+                        "{\"skillVersionId\":\"" + skill.versionId() + "\",\"path\":\"references/style-guide.md\",\"offset\":0,\"limit\":21}"),
                 toolCall("propose-style-image", "propose_media_generation", proposal),
                 new AssistantMessage("The approved style image is ready for user inspection.")));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertThat(runs.get(owner.userId(), scenario.project().id(), run.id()).status()).isEqualTo(AgentRun.Status.WAITING_TASKS);
@@ -319,11 +376,11 @@ class SkillRunPostgresIT {
                 .allSatisfy(task -> assertThat(task.kind()).isEqualTo(Task.Kind.AGENT_TURN));
         var target = pending.outputs().getFirst();
         JsonNode source = target.preview().path("creativeSkill");
-        assertThat(source.path("skillMd").asText()).isEqualTo(skill.body());
-        assertThat(source.path("resources").path(0).path("content").asText()).isEqualTo(skill.resourceText());
-        assertThat(source.path("resourceReads").path(0).path("path").asText()).isEqualTo("references/style-guide.md");
-        assertThat(source.path("resourceReads").path(0).path("endOffset").asInt()).isEqualTo(21);
-        assertThat(source.path("assets").path(0).path("artifactVersionId").asText()).isEqualTo(styleVersion);
+        assertThat(source.path("skills").path(0).path("skillMd").asText()).isEqualTo(skill.body());
+        assertThat(source.path("skills").path(0).path("resources").path(0).path("content").asText()).isEqualTo(skill.resourceText());
+        assertThat(source.path("skills").path(0).path("resourceReads").path(0).path("path").asText()).isEqualTo("references/style-guide.md");
+        assertThat(source.path("skills").path(0).path("resourceReads").path(0).path("endOffset").asInt()).isEqualTo(21);
+        assertThat(source.path("skills").path(0).path("assets").path(0).path("artifactVersionId").asText()).isEqualTo(styleVersion);
         var ordinaryPreflight = directMedia.preflight(owner.userId(), scenario.project().id(), target.artifactId(), target.canvasItemId(), target.draftVersion());
         var approvedPreflight = directMedia.preflightApproved(owner.userId(), scenario.project().id(), target.artifactId(), target.canvasItemId(), target.draftVersion(), source);
         assertThat(approvedPreflight.frozenInputHash()).isNotEqualTo(ordinaryPreflight.frozenInputHash());
@@ -366,16 +423,14 @@ class SkillRunPostgresIT {
             var skill = publishedSkill(scenario, true, usage);
             skillRuns.install(owner.userId(), scenario.project().id(), scenario.agent().id(), skill.skillId(), skill.versionId(), "guard-install-" + usage);
             assertThat(skillRuns.processNext()).isTrue();
-            var binding = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(),
-                    scenario.agent().version(), skill.skillId(), skill.versionId(), "guard-binding-" + usage);
+            var binding = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(new SkillRunService.VersionRef(skill.skillId(), skill.versionId())), "guard-binding-" + usage);
             AgentRun run = createRun(scenario, binding.agentVersion(), "guard-run-" + usage,
-                    new SkillRunService.Selection(SkillRunService.SelectionMode.DEFAULT, null, null,
-                            List.of(new SkillRunService.Input("subject-image", scenario.subject().resourceDefaultVersion().id())))).run();
-            gateway.prepare(run.id(), List.of(toolCall("guard-read", "read_skill_resource",
-                    "{\"path\":\"references/style-guide.md\",\"offset\":0,\"limit\":21}")));
+                    new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(), List.of(new SkillRunService.Input("subject-image", scenario.subject().resourceDefaultVersion().id())))))).run();
+            gateway.prepare(run.id(), List.of(toolCall("guard-read", "read_skill",
+                    "{\"skillVersionId\":\"" + skill.versionId() + "\"}")));
             assertThat(worker.runOnce(WORKER)).isEqualTo(1);
             AgentRun active = runs.get(owner.userId(), scenario.project().id(), run.id());
-            String styleVersion = active.contextSnapshot().path("creativeSkill").path("assets").path(0).path("artifactVersionId").asText();
+            String styleVersion = active.contextSnapshot().path("creativeSkills").path(0).path("assets").path(0).path("artifactVersionId").asText();
             List<Map<String, Object>> mediaInputs = usage == SkillContent.Usage.GUIDE
                     ? List.of(Map.of("versionId", scenario.subject().resourceDefaultVersion().id(), "role", "REFERENCE"),
                             Map.of("versionId", styleVersion, "role", "REFERENCE"))
@@ -396,7 +451,7 @@ class SkillRunPostgresIT {
     @Test void historicalPolicyOmitsNewToolAndRejectsItsSavedCallDuringRepair() {
         var scenario = scenario(false);
         AgentRun run = createRun(scenario, 0, "historical-policy-run",
-                new SkillRunService.Selection(SkillRunService.SelectionMode.NONE, null, null, List.of())).run();
+                new SkillRunService.Selection(SkillRunService.SelectionMode.NONE, List.of())).run();
         // A synthetic pre-upgrade record is a fixture; all behavioral assertions use public interfaces.
         ObjectNode legacy = (ObjectNode) run.policySnapshot().deepCopy();
         legacy.put("schemaVersion", 2).put("systemPromptVersion", 3);
@@ -404,7 +459,7 @@ class SkillRunPostgresIT {
         jdbc.sql("update agent_run set policy_snapshot_json=cast(:policy as jsonb) where id=:run")
                 .param("policy", mapper.writeValueAsString(legacy)).param("run", run.id()).update();
         gateway.prepare(run.id(), List.of(toolCall("forged-historical-read", "read_skill_resource",
-                        "{\"path\":\"references/style-guide.md\",\"offset\":0,\"limit\":21}"),
+                        "{\"skillVersionId\":\"" + UUID.randomUUID() + "\",\"path\":\"references/style-guide.md\",\"offset\":0,\"limit\":21}"),
                 new AssistantMessage("The historical policy continues without the unavailable tool.")));
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertThat(gateway.lastTools).noneSatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("read_skill_resource"));

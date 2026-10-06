@@ -23,7 +23,8 @@ public class InitialModelContextService {
     public static final int IMAGE_INPUT_SYSTEM_PROMPT_VERSION = 5;
     public static final int CREATIVE_SYSTEM_PROMPT_VERSION = 6;
     public static final int SEPARATED_PROTOCOL_SYSTEM_PROMPT_VERSION = 7;
-    public static final int CURRENT_SYSTEM_PROMPT_VERSION = SEPARATED_PROTOCOL_SYSTEM_PROMPT_VERSION;
+    public static final int PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION = 8;
+    public static final int CURRENT_SYSTEM_PROMPT_VERSION = PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION;
 
     /** 每次模型调用允许拼入的绑定上下文字符总量。 */
     private static final int MAX_CONTEXT_CHARS = 64_000;
@@ -126,6 +127,19 @@ public class InitialModelContextService {
             Never invent resource IDs or treat a textual mention as an actual reference.
             """;
 
+    private static final String SYSTEM_RULES_V8 = SYSTEM_RULES_V7 + """
+            Available creative Skills initially contain only names and descriptions, plus their
+            immutable version IDs. Select the Skills relevant to the current request. Call
+            read_skill with the exact skillVersionId to activate each relevant Skill and receive
+            its full SKILL.md, resource manifest, input mappings and reference aliases. You may
+            combine multiple Skills; you do not need to activate every available Skill.
+            Only after reading a Skill's main instructions, call read_skill_resource with that
+            same skillVersionId and an exact registered path when supporting detail is needed.
+            Selected but unread Skills are not active and do not constrain media proposals.
+            For each media output, active Skills that support its kind supply the required inputs
+            and reference rules. Reference aliases and resource paths are local to a Skill version.
+            """;
+
     /** 读取创建时固定的 Run 上下文、指令和策略版本。 */
     private final AgentRunService runs;
     /** 按快照中的 artifactId/versionId 重新读取并鉴权精确版本。 */
@@ -174,12 +188,22 @@ public class InitialModelContextService {
                 : "Agent " + agentName + " creative instructions (user configuration):\n" + agentInstruction;
         messages.add(run.policySnapshot().path("systemPromptVersion").asInt() >= CREATIVE_SYSTEM_PROMPT_VERSION
                 ? new SystemMessage(creativeInstructions) : new UserMessage("Agent " + agentName + " instructions:\n" + agentInstruction));
-        JsonNode skill = snapshot.path("creativeSkill");
-        if (skill.isObject()) {
-            messages.add(new UserMessage("Selected creative Skill (user content):\n"
-                    + required(skill, "skillMd") + "\nFrozen resources (read on demand):\n"
-                    + skill.path("resourceManifest") + "\nExact reference aliases and purposes:\n"
-                    + skill.path("assets") + "\nUser input slots:\n" + skill.path("inputs")));
+        if (run.policySnapshot().path("systemPromptVersion").asInt() >= PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION) {
+            var catalog = new StringBuilder("Available creative Skills (read_skill to activate):\n");
+            for (JsonNode selected : RunSkills.available(run)) {
+                catalog.append("skillVersionId=").append(required(selected, "skillVersionId"))
+                        .append(" name=").append(required(selected, "name"))
+                        .append(" description=").append(required(selected, "description")).append('\n');
+            }
+            messages.add(new UserMessage(catalog.toString()));
+        } else {
+            JsonNode skill = snapshot.path("creativeSkill");
+            if (skill.isObject()) {
+                messages.add(new UserMessage("Selected creative Skill (user content):\n"
+                        + required(skill, "skillMd") + "\nFrozen resources (read on demand):\n"
+                        + skill.path("resourceManifest") + "\nExact reference aliases and purposes:\n"
+                        + skill.path("assets") + "\nUser input slots:\n" + skill.path("inputs")));
+            }
         }
         StringBuilder availableMedia = new StringBuilder(
                 "Published media capabilities for this project:\n");
@@ -196,6 +220,9 @@ public class InitialModelContextService {
         messages.add(new UserMessage(availableMedia.toString()));
         StringBuilder boundInputs = new StringBuilder("Explicitly bound immutable inputs:\n");
         for (JsonNode binding : bindings) {
+            // Selected Skill references are disclosed by read_skill, never by the initial catalogue.
+            if (run.policySnapshot().path("systemPromptVersion").asInt() >= PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION
+                    && binding.has("skillVersionId")) continue;
             UUID artifactId = uuid(binding, "artifactId");
             UUID versionId = uuid(binding, "selectedVersionId");
             ArtifactVersion version = artifacts.requireVersion(ownerId, projectId,
@@ -295,6 +322,7 @@ public class InitialModelContextService {
             case IMAGE_INPUT_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V5;
             case CREATIVE_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V6;
             case SEPARATED_PROTOCOL_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V7;
+            case PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V8;
             default -> throw new IllegalStateException("Run system prompt version is unsupported");
         };
     }

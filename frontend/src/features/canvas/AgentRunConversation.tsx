@@ -29,7 +29,7 @@ const TASK_LABELS: Record<Task["kind"], string> = {
   get IMAGE_GENERATION() { return t("agent.run.generateImage"); }, get AUDIO_GENERATION() { return t("agent.run.generateAudio"); }, get VIDEO_GENERATION() { return t("media.generateVideo"); },
 };
 const TOOL_LABELS: Record<string, string> = {
-  get read_skill_resource() { return t("skills.resources"); }, get read_project_summary() { return t("agent.run.readProject"); }, get read_selection() { return t("agent.run.readSelection"); },
+  get read_skill() { return t("skills.body"); }, get read_skill_resource() { return t("skills.resources"); }, get read_project_summary() { return t("agent.run.readProject"); }, get read_selection() { return t("agent.run.readSelection"); },
   get read_artifacts() { return t("agent.run.readArtifact"); }, get read_task_status() { return t("agent.run.readTask"); },
   get create_text() { return t("agent.run.createTextArtifact"); }, get revise_artifact() { return t("agent.run.updateArtifact"); },
   get place_artifacts() { return t("agent.run.placeArtifact"); }, get arrange_items() { return t("agent.run.arrangeCards"); },

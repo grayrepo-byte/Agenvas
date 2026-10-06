@@ -2095,7 +2095,7 @@
   "skills.choose": "Skill を選択",
   "skills.clear": "既定の関連付けを解除",
   "skills.saveBinding": "既定の関連付けを保存",
-  "skills.bindingHint": "Skill は Agent のみで実行。変更は実行中の Run に影響しません。",
+  "skills.bindingHint": "複数の既定 Skill を設定できます。変更は実行中の Run に影響しません。",
   "skills.installing": "プロジェクト参照を準備中…",
   "skills.installed": "プロジェクト参照の準備完了",
   "skills.install": "プロジェクト参照を準備",
@@ -2115,7 +2115,7 @@
   "skills.restore": "Skill を復元",
   "skills.trashReadOnly": "この Skill はゴミ箱にあります。復元すると編集・公開・試用できます。過去の Run は固定バージョンを保持します。",
   "skills.entry": "Skill",
-  "skills.pickerHint": "今回使用する Skill と公開バージョンを選択してください。未選択の場合、Skill は追加されません。",
+  "skills.pickerHint": "複数の Skill と公開バージョンを選択できます。Agent は必要な主説明と資料を読み込みます。",
   "skills.use": "Skill を使用",
   "media.editor.videoReferenceLimits": "画像{0}枚、動画{1}本、音声{2}件まで",
   "media.editor.videoRelayHint": "ローカル動画の参照には管理者による公開メディア中継の設定が必要です。既存のクラウド素材には署名付きリンクを使用します。",
@@ -2314,5 +2314,9 @@
   "image.resize.targetSize": "出力：{0} × {1} px",
   "image.resize.title": "サイズ変更",
   "settings.runningHub.exposeField": "公開",
-  "settings.runningHub.exposeFieldLabel": "パラメーターを公開 · {0}"
+  "settings.runningHub.exposeFieldLabel": "パラメーターを公開 · {0}",
+  "skills.addChoice": "Skill を追加",
+  "skills.removeChoice": "Skill を削除",
+  "skills.selectedCount": "{0} 個の Skill を選択",
+  "skills.selectionLimit": "{0} / {1} 個の Skill を選択"
 }

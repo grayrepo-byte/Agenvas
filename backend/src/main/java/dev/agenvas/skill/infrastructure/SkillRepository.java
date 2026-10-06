@@ -164,28 +164,28 @@ public class SkillRepository {
         db.update(SKILL_PUBLISH_OPERATION).set(SKILL_PUBLISH_OPERATION.PINS_CLEANED, true)
                 .where(SKILL_PUBLISH_OPERATION.OWNER_ID.eq(owner).and(SKILL_PUBLISH_OPERATION.ID.eq(id))).execute();
     }
-    public Optional<SkillContent.Binding> binding(UUID owner, UUID project, UUID agent) {
+    public List<SkillContent.Binding> bindings(UUID owner, UUID project, UUID agent) {
         return db.selectFrom(AGENT_SKILL_BINDING).where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner)
                 .and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project)).and(AGENT_SKILL_BINDING.AGENT_ID.eq(agent)))
-                .fetchOptional().map(this::binding);
+                .orderBy(AGENT_SKILL_BINDING.POSITION).fetch(this::binding);
     }
     public List<SkillContent.Binding> projectBindings(UUID owner, UUID project) {
         return db.selectFrom(AGENT_SKILL_BINDING).where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner)
                 .and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project)))
-                .orderBy(AGENT_SKILL_BINDING.AGENT_ID).fetch(this::binding);
+                .orderBy(AGENT_SKILL_BINDING.AGENT_ID, AGENT_SKILL_BINDING.POSITION).fetch(this::binding);
     }
-    public void saveBinding(UUID owner, UUID project, UUID agent, UUID skill, UUID version, Instant now) {
-        if (skill == null && version == null) {
-            db.deleteFrom(AGENT_SKILL_BINDING).where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner)
-                    .and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project)).and(AGENT_SKILL_BINDING.AGENT_ID.eq(agent))).execute();
-            return;
+    /** Replace the catalogue under the owning Agent configuration CAS transaction. */
+    public void saveBindings(UUID owner, UUID project, UUID agent, List<SkillContent.Binding> bindings, Instant now) {
+        db.deleteFrom(AGENT_SKILL_BINDING).where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner)
+                .and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project)).and(AGENT_SKILL_BINDING.AGENT_ID.eq(agent))).execute();
+        for (int index = 0; index < bindings.size(); index++) {
+            var binding = bindings.get(index);
+            int inserted = db.insertInto(AGENT_SKILL_BINDING).set(AGENT_SKILL_BINDING.AGENT_ID, agent)
+                    .set(AGENT_SKILL_BINDING.PROJECT_ID, project).set(AGENT_SKILL_BINDING.OWNER_ID, owner)
+                    .set(AGENT_SKILL_BINDING.SKILL_ID, binding.skillId()).set(AGENT_SKILL_BINDING.SKILL_VERSION_ID, binding.skillVersionId())
+                    .set(AGENT_SKILL_BINDING.POSITION, index).set(AGENT_SKILL_BINDING.UPDATED_AT, time(now)).execute();
+            if (inserted != 1) throw new IllegalStateException("Skill binding was not inserted");
         }
-        db.insertInto(AGENT_SKILL_BINDING).set(AGENT_SKILL_BINDING.AGENT_ID, agent).set(AGENT_SKILL_BINDING.PROJECT_ID, project)
-                .set(AGENT_SKILL_BINDING.OWNER_ID, owner).set(AGENT_SKILL_BINDING.SKILL_ID, skill)
-                .set(AGENT_SKILL_BINDING.SKILL_VERSION_ID, version).set(AGENT_SKILL_BINDING.UPDATED_AT, time(now))
-                .onConflict(AGENT_SKILL_BINDING.AGENT_ID).doUpdate().set(AGENT_SKILL_BINDING.SKILL_ID, skill)
-                .set(AGENT_SKILL_BINDING.SKILL_VERSION_ID, version).set(AGENT_SKILL_BINDING.UPDATED_AT, time(now))
-                .where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner).and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project))).execute();
     }
     private SkillContent.PublishOperation operation(dev.agenvas.db.tables.records.SkillPublishOperationRecord row) {
         return new SkillContent.PublishOperation(row.getId(), row.getOwnerId(), row.getSkillId(), row.getCommandKey(), row.getPayloadHash(),
@@ -195,7 +195,7 @@ public class SkillRepository {
     }
     private SkillContent.Binding binding(dev.agenvas.db.tables.records.AgentSkillBindingRecord row) {
         return new SkillContent.Binding(row.getAgentId(), row.getProjectId(), row.getOwnerId(),
-                row.getSkillId(), row.getSkillVersionId(), instant(row.getUpdatedAt()));
+                row.getSkillId(), row.getSkillVersionId(), row.getPosition(), instant(row.getUpdatedAt()));
     }
     private JSONB json(Object value) { return JSONB.valueOf(mapper.writeValueAsString(value)); }
     private OffsetDateTime time(Instant value) { return value == null ? null : value.atOffset(ZoneOffset.UTC); }

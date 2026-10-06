@@ -4068,12 +4068,12 @@ export interface components {
             createdAt: string;
         };
         ProjectExportManifest: {
-            /** @description 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId）；未安装时 mapping.assets 为空。 */
+            /** @description 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId、position）；未安装时 mapping.assets 为空。 */
             creativeSkills?: {
                 [key: string]: unknown;
             }[];
             /** @constant */
-            schemaVersion: 6;
+            schemaVersion: 7;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -4908,6 +4908,10 @@ export interface components {
              */
             conversationHistoryThroughTurn?: number;
             conversationMemory?: components["schemas"]["ConversationMemory"];
+            /** @description Selected immutable Skill snapshots; complete content is persisted here but only names and descriptions are disclosed initially. Historical Runs may retain creativeSkill instead. */
+            creativeSkills?: {
+                [key: string]: unknown;
+            }[];
             bindings: components["schemas"]["RunInputSnapshot"][];
             /** @description 创建 Run 时由服务端核对并固定的画布选择；不扩大工具权限 */
             selection?: {
@@ -4946,6 +4950,11 @@ export interface components {
             expectedVersion?: number;
             /** @constant */
             source?: "CONVERSATION_OUTPUT";
+            /**
+             * Format: uuid
+             * @description Skill reference disclosed only after activation.
+             */
+            skillVersionId?: string;
         };
         RunPreflightBinding: {
             /** Format: uuid */
@@ -4969,7 +4978,7 @@ export interface components {
             /** Format: int64 */
             conversationTurnCount: number;
             inheritedBindingCount: number;
-            creativeSkill?: components["schemas"]["RunSkillSummary"] | null;
+            creativeSkills: components["schemas"]["RunSkillSummary"][];
             /** @description 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。 */
             memoryTruncated: boolean;
             bindings: components["schemas"]["RunPreflightBinding"][];
@@ -4979,18 +4988,18 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description New Run policies are schema v3 and pin systemPromptVersion=7 plus their context-appropriate tool allowlist. Version 7 separates program-owned tool/approval protocol from the unmodified frozen card creative system prompt; managed prompts cannot change server authorization. IMAGE previews are sent only after committed read_artifacts requests, never automatically at Run start; Skill resource reading is exposed only when frozen resources exist. Historical v1 snapshots lack this field and cannot safely start an uncheckpointed model turn. */
+        /** @description New policies are schema v4 with systemPromptVersion=8 and toolPolicyVersion=2. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads attachments. Historical policies retain their frozen protocol and tool definitions. */
         RunPolicySnapshot: {
             /** @enum {integer} */
-            schemaVersion: 1 | 2 | 3;
+            schemaVersion: 1 | 2 | 3 | 4;
             /** @enum {integer} */
-            toolPolicyVersion?: 1;
+            toolPolicyVersion?: 1 | 2;
             allowedTools?: string[];
             /**
-             * @description New v3 snapshots pin version 7; historical versions 1/2/3/4/5/6 retain their original rules and creative message roles; absent on historical v1 snapshots.
+             * @description New v4 snapshots pin version 8; historical rules and creative message roles remain frozen.
              * @enum {integer}
              */
-            systemPromptVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+            systemPromptVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
             modelConfigSource: string;
             modelConfigVersion: number;
             maxModelTurns: number;
@@ -5494,21 +5503,21 @@ export interface components {
         };
         /** Format: binary */
         SkillMediaBytes: string;
+        SkillVersionRef: {
+            /** Format: uuid */
+            skillId: string;
+            /** Format: uuid */
+            skillVersionId: string;
+        };
         AgentSkillBinding: {
             /** Format: int64 */
             agentVersion: number;
-            /** Format: uuid */
-            skillId: string | null;
-            /** Format: uuid */
-            skillVersionId: string | null;
+            skills: components["schemas"]["SkillVersionRef"][];
         };
         SaveAgentSkillBindingRequest: {
             /** Format: int64 */
             expectedAgentVersion: number;
-            /** Format: uuid */
-            skillId: string | null;
-            /** Format: uuid */
-            skillVersionId: string | null;
+            skills: components["schemas"]["SkillVersionRef"][];
         };
         InstallAgentSkillRequest: {
             /** Format: uuid */
@@ -5533,14 +5542,18 @@ export interface components {
             /** Format: uuid */
             artifactVersionId: string;
         };
+        SkillRunChoice: {
+            /** Format: uuid */
+            skillId: string;
+            /** Format: uuid */
+            skillVersionId: string;
+            inputs: components["schemas"]["SkillRunInput"][];
+        };
+        /** @description Ordered available Skill catalogue. NONE and DEFAULT use an empty list; VERSIONS selects one to eight distinct Skills, each pinned to one version. Selection does not imply activation. */
         SkillSelection: {
             /** @enum {string} */
-            mode: "DEFAULT" | "NONE" | "VERSION";
-            /** Format: uuid */
-            skillId?: string;
-            /** Format: uuid */
-            skillVersionId?: string;
-            inputs?: components["schemas"]["SkillRunInput"][];
+            mode: "DEFAULT" | "NONE" | "VERSIONS";
+            skills: components["schemas"]["SkillRunChoice"][];
         };
         RunPreflightRequest: {
             /** Format: uuid */

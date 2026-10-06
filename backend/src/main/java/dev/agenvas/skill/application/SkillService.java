@@ -178,16 +178,14 @@ public final class SkillService {
         });
     }
     /** Trusted Agent application service performs project ownership and Agent CAS in its outer event transaction. */
-    public Optional<SkillContent.Binding> getBinding(UUID owner, UUID project, UUID agent) { return repository.binding(owner, project, agent); }
-    /** Trusted export caller validates project ownership and supplies its consistent read transaction. */
+    public List<SkillContent.Binding> getBindings(UUID owner, UUID project, UUID agent) { return repository.bindings(owner, project, agent); }
+    /** Trusted export caller supplies the project scope and consistent read transaction. */
     public List<SkillContent.Binding> getProjectBindings(UUID owner, UUID project) { return repository.projectBindings(owner, project); }
-    public void saveBinding(UUID owner, UUID project, UUID agent, UUID skill, UUID version) {
-        if ((skill == null) != (version == null)) throw conflict();
-        tx.executeWithoutResult(status -> {
-            if (skill != null) { active(require(owner, skill, true)); getBundle(owner, skill, version); }
-            repository.saveBinding(owner, project, agent, skill, version, clock.instant());
-        });
+    public void saveBindings(UUID owner, UUID project, UUID agent, List<SkillContent.Binding> bindings) {
+        // The owning Agent service validates fixed versions before its configuration CAS.
+        tx.executeWithoutResult(status -> repository.saveBindings(owner, project, agent, bindings, clock.instant()));
     }
+
     public LibraryService.MediaFile file(UUID owner, UUID skillId, UUID versionId, String alias, boolean thumbnail) {
         var value = getBundle(owner, skillId, versionId);
         var asset = value.bundle().assets().stream().filter(item -> item.alias().equals(alias)).findFirst().orElseThrow(this::notFound);

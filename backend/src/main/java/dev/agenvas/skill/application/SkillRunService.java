@@ -14,6 +14,10 @@ import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.skill.domain.SkillContent;
 import dev.agenvas.skill.infrastructure.JooqSkillInstallRepository;
 import dev.agenvas.skill.infrastructure.JooqSkillInstallRepository.Operation;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
@@ -34,17 +38,23 @@ import tools.jackson.databind.node.ObjectNode;
 /** Agent-only selection, durable project installation and immutable Run context. */
 @Service
 public class SkillRunService {
-    public enum SelectionMode { DEFAULT, NONE, VERSION }
+    public enum SelectionMode { DEFAULT, NONE, VERSIONS }
     public enum InstallStatus { ACCEPTED, PREPARING, SUCCEEDED, FAILED, CLEANING }
-    public record Input(String alias, UUID artifactVersionId) {}
-    public record Selection(SelectionMode mode, UUID skillId, UUID skillVersionId, List<Input> inputs) {}
-    public record BindingResponse(long agentVersion, UUID skillId, UUID skillVersionId) {}
+    public record Input(@NotBlank @Size(max = 64) String alias, @NotNull UUID artifactVersionId) {}
+    /** Input aliases are local to a fixed candidate, including when other Skills use the same alias. */
+    public record Choice(@NotNull UUID skillId, @NotNull UUID skillVersionId,
+            @Valid @NotNull @Size(max = MAX_INPUTS) List<Input> inputs) {}
+    public record Selection(@NotNull SelectionMode mode,
+            @Valid @NotNull @Size(max = MAX_SKILLS) List<Choice> skills) {}
+    public record VersionRef(@NotNull UUID skillId, @NotNull UUID skillVersionId) {}
+    public record BindingResponse(long agentVersion, List<VersionRef> skills) {}
     public record Installation(UUID id, InstallStatus status, UUID skillId, UUID skillVersionId, String errorCode, String errorDetail) {}
     public record Summary(UUID skillId, UUID skillVersionId, String title, long versionNumber, String bundleHash,
             List<SkillContent.InputSlot> inputSlots, List<SkillContent.PublishedResource> resources,
             List<SkillService.AssetResponse> assets, boolean installed) {}
     private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(SkillRunService.class);
     private static final Duration LEASE = Duration.ofMinutes(5);
+    public static final int MAX_SKILLS = 8;
     private static final int MAX_BINDINGS = 40;
     private static final int MAX_INPUTS = 14;
     private static final int MAX_KEY = 200;
@@ -68,29 +78,36 @@ public class SkillRunService {
     }
 
     public BindingResponse getBinding(UUID owner, UUID project, UUID agent) {
-        AgentInstance instance=agents.get(owner,project,agent);
-        return skills.getBinding(owner,project,agent).map(binding -> new BindingResponse(instance.version(),binding.skillId(),binding.skillVersionId()))
-                .orElse(new BindingResponse(instance.version(),null,null));
+        AgentInstance instance = agents.get(owner, project, agent);
+        return new BindingResponse(instance.version(), skills.getBindings(owner, project, agent).stream()
+                .map(binding -> new VersionRef(binding.skillId(), binding.skillVersionId())).toList());
     }
 
-    public BindingResponse saveBinding(UUID owner, UUID project, UUID agent, long expected, UUID skill, UUID version, String key) {
+    public BindingResponse saveBinding(UUID owner, UUID project, UUID agent, long expected, List<VersionRef> selected, String key) {
         checkKey(key);
-        if ((skill==null)!=(version==null) || expected<0) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
-        String hash=Sha256.hex(agent+"\n"+expected+"\n"+skill+"\n"+version);
-        return events.recordChange(owner,project,() -> {
-            agents.get(owner,project,agent); // Ordinary canvas IDs cannot enter this boundary.
-            var prior=operations.bindingCommand(owner,project,key);
-            if(prior.isPresent()) {
-                if(!prior.get().payloadHash().equals(hash)) throw problem("IDEMPOTENCY_CONFLICT",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.idempotency-conflict"));
-                return ProjectEventService.Change.unchanged(mapper.treeToValue(prior.get().response(),BindingResponse.class));
+        if (selected == null || selected.size() > MAX_SKILLS || expected < 0)
+            throw problem("SKILL_SELECTION_INVALID", HttpStatus.BAD_REQUEST, ApiMessage.of("api.skill-run.skill-selection-invalid"));
+        var ids = new HashSet<UUID>();
+        for (var item : selected) {
+            if (item == null || item.skillId() == null || item.skillVersionId() == null || !ids.add(item.skillId()))
+                throw problem("SKILL_SELECTION_INVALID", HttpStatus.BAD_REQUEST, ApiMessage.of("api.skill-run.skill-selection-invalid"));
+        }
+        String hash = Sha256.hex(agent + "\n" + expected + "\n" + mapper.writeValueAsString(selected));
+        return events.recordChange(owner, project, () -> {
+            agents.get(owner, project, agent);
+            var prior = operations.bindingCommand(owner, project, key);
+            if (prior.isPresent()) {
+                if (!prior.get().payloadHash().equals(hash)) throw problem("IDEMPOTENCY_CONFLICT", HttpStatus.CONFLICT, ApiMessage.of("api.skill-run.idempotency-conflict"));
+                return ProjectEventService.Change.unchanged(mapper.treeToValue(prior.get().response(), BindingResponse.class));
             }
-            if(skill!=null) skills.requireSelectableVersion(owner,skill,version);
-            AgentInstance changed=agents.touchConfigurationWithinChange(owner,project,agent,expected);
-            skills.saveBinding(owner,project,agent,skill,version);
-            BindingResponse response=new BindingResponse(changed.version(),skill,version);
-            operations.saveBindingCommand(owner,project,agent,key,hash,mapper.valueToTree(response),clock.instant());
-            ObjectNode payload=mapper.createObjectNode().put("agentId",agent.toString());
-            return ProjectEventService.Change.changed(response,new ProjectEventService.EventDraft("agent.instance.changed",1,agent,changed.version(),payload));
+            for (var item : selected) selectedVersion(owner, project, agent, new Choice(item.skillId(), item.skillVersionId(), List.of()));
+            AgentInstance changed = agents.touchConfigurationWithinChange(owner, project, agent, expected);
+            skills.saveBindings(owner, project, agent, selected.stream().map(item -> new SkillContent.Binding(
+                    agent, project, owner, item.skillId(), item.skillVersionId(), selected.indexOf(item), clock.instant())).toList());
+            BindingResponse response = new BindingResponse(changed.version(), List.copyOf(selected));
+            operations.saveBindingCommand(owner, project, agent, key, hash, mapper.valueToTree(response), clock.instant());
+            ObjectNode payload = mapper.createObjectNode().put("agentId", agent.toString());
+            return ProjectEventService.Change.changed(response, new ProjectEventService.EventDraft("agent.instance.changed", 1, agent, changed.version(), payload));
         }).value();
     }
 
@@ -106,7 +123,7 @@ public class SkillRunService {
                 return ProjectEventService.Change.unchanged(response(requireOperation(owner,project,prior.get().operationId())));
             }
             // A retained default binding may explicitly reuse its frozen version after trash.
-            boolean bound=skills.getBinding(owner,project,agent).filter(b -> b.skillId().equals(skill)&&b.skillVersionId().equals(version)).isPresent();
+            boolean bound=skills.getBindings(owner,project,agent).stream().anyMatch(b -> b.skillId().equals(skill)&&b.skillVersionId().equals(version));
             SkillContent.Version bundle=bound?skills.getBundle(owner,skill,version):skills.requireSelectableVersion(owner,skill,version);
             Operation operation=operations.version(owner,project,version).orElse(null);
             if(operation==null) {
@@ -199,19 +216,26 @@ public class SkillRunService {
         return true;
     }
 
-    public Summary preview(UUID owner, UUID project, UUID agent, Selection selection) {
-        var version=selectedVersion(owner,project,agent,selection);
-        if(version==null) return null;
-        var published=skills.getVersion(owner,version.skillId(),version.id());
-        boolean installed=operations.version(owner,project,version.id()).filter(Operation::registered).isPresent();
-        return new Summary(version.skillId(),version.id(),skills.get(owner,version.skillId()).title(),version.versionNumber(),version.bundleHash(),
-                version.bundle().inputSlots(),version.bundle().resources(),published.assets(),installed);
+    public List<Summary> preview(UUID owner, UUID project, UUID agent, Selection selection) {
+        return selectedChoices(owner, project, agent, selection).stream().map(choice -> {
+            var version = selectedVersion(owner, project, agent, choice);
+            var published = skills.getVersion(owner, version.skillId(), version.id());
+            boolean installed = operations.version(owner, project, version.id()).filter(Operation::registered).isPresent();
+            return new Summary(version.skillId(), version.id(), skills.get(owner, version.skillId()).title(), version.versionNumber(), version.bundleHash(),
+                    version.bundle().inputSlots(), version.bundle().resources(), published.assets(), installed);
+        }).toList();
     }
 
     /** Call only within the final Run creation transaction, after Agent/conversation CAS checks. */
     public void freezeIntoRun(UUID owner, UUID project, AgentInstance agent, UUID runId, Selection selection, ObjectNode context) {
-        var version=selectedVersion(owner,project,agent.id(),selection);
-        if(version==null) return;
+        ArrayNode frozen = context.putArray("creativeSkills");
+        for (var choice : selectedChoices(owner, project, agent.id(), selection)) {
+            frozen.add(freezeSkill(owner, project, agent, runId, choice, context));
+        }
+    }
+
+    private ObjectNode freezeSkill(UUID owner, UUID project, AgentInstance agent, UUID runId, Choice choice, ObjectNode context) {
+        var version = selectedVersion(owner, project, agent.id(), choice);
         Operation installed=operations.version(owner,project,version.id()).filter(Operation::registered)
                 .orElseThrow(() -> problem("SKILL_INSTALL_PENDING",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.skill-install-pending")));
         ObjectNode snapshot=mapper.createObjectNode().put("schemaVersion",SkillContent.SCHEMA_VERSION);
@@ -223,7 +247,7 @@ public class SkillRunService {
         ArrayNode manifest=snapshot.putArray("resourceManifest");
         version.bundle().resources().forEach(resource -> manifest.addObject().put("path",resource.path()).put("contentHash",resource.contentHash()));
         ArrayNode inputs=snapshot.putArray("inputs");
-        List<Input> requested=selection==null||selection.inputs()==null?List.of():selection.inputs();
+        List<Input> requested=choice.inputs()==null?List.of():choice.inputs();
         if(requested.size()>MAX_INPUTS) throw problem("SKILL_INPUT_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-input-invalid"));
         HashSet<String> aliases=new HashSet<>();
         for(var input:requested) {
@@ -253,10 +277,10 @@ public class SkillRunService {
                     .put("contentHash",source.contentHash()).put("usage",source.usage().name()).put("required",source.required())
                     .put("purpose",source.purpose()).put("artifactId",artifactId.toString()).put("artifactVersionId",versionId.toString());
             bindings.addObject().put("artifactId",artifactId.toString()).put("selectedVersionId",versionId.toString())
-                    .put("kind",source.kind().name()).put("title",source.title());
+                    .put("kind",source.kind().name()).put("title",source.title()).put("skillVersionId",version.id().toString());
         }
         if(bindings.size()>MAX_BINDINGS) throw problem("SKILL_CONTEXT_LIMIT",HttpStatus.UNPROCESSABLE_ENTITY,ApiMessage.of("api.skill-run.skill-context-limit"));
-        context.set("creativeSkill",snapshot);
+        return snapshot;
     }
 
     /** Export fixed source content and exact project mappings without private archive metadata. */
@@ -273,7 +297,7 @@ public class SkillRunService {
                     ignored -> exportVersion(owner, binding.skillId(), binding.skillVersionId()));
             ((ArrayNode) entry.path("agentBindings")).addObject()
                     .put("agentId", binding.agentId().toString()).put("skillId", binding.skillId().toString())
-                    .put("skillVersionId", binding.skillVersionId().toString());
+                    .put("skillVersionId", binding.skillVersionId().toString()).put("position", binding.position());
         }
         return versions.values().stream().map(entry -> (JsonNode) entry).toList();
     }
@@ -288,24 +312,30 @@ public class SkillRunService {
         }
         return safe;
     }
-    private SkillContent.Version selectedVersion(UUID owner, UUID project, UUID agent, Selection selection) {
-        if(selection!=null && selection.mode()==null) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
-        SelectionMode mode=selection==null?SelectionMode.DEFAULT:selection.mode();
-        if(mode!=SelectionMode.VERSION && selection!=null&&(selection.skillId()!=null||selection.skillVersionId()!=null)) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
-        if(mode==SelectionMode.NONE) {
-            if(selection.inputs()!=null&&!selection.inputs().isEmpty()) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
-            return null;
+    private List<Choice> selectedChoices(UUID owner, UUID project, UUID agent, Selection selection) {
+        SelectionMode mode = selection == null ? SelectionMode.DEFAULT : selection.mode();
+        List<Choice> requested = selection == null || selection.skills() == null ? List.of() : selection.skills();
+        if (mode == null || requested.size() > MAX_SKILLS || (mode == SelectionMode.NONE && !requested.isEmpty()))
+            throw problem("SKILL_SELECTION_INVALID", HttpStatus.BAD_REQUEST, ApiMessage.of("api.skill-run.skill-selection-invalid"));
+        if (mode == SelectionMode.NONE) return List.of();
+        if (mode == SelectionMode.DEFAULT) {
+            if (!requested.isEmpty()) throw problem("SKILL_SELECTION_INVALID", HttpStatus.BAD_REQUEST, ApiMessage.of("api.skill-run.skill-selection-invalid"));
+            return skills.getBindings(owner, project, agent).stream().map(binding -> new Choice(binding.skillId(), binding.skillVersionId(), List.of())).toList();
         }
-        if(mode==SelectionMode.DEFAULT) {
-            var binding = skills.getBinding(owner,project,agent);
-            if(binding.isEmpty() && selection!=null && selection.inputs()!=null && !selection.inputs().isEmpty()) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
-            return binding.map(value -> skills.getBundle(owner,value.skillId(),value.skillVersionId())).orElse(null);
+        if (requested.isEmpty()) throw problem("SKILL_SELECTION_INVALID", HttpStatus.BAD_REQUEST, ApiMessage.of("api.skill-run.skill-selection-invalid"));
+        var ids = new HashSet<UUID>();
+        for (var choice : requested) {
+            if (choice == null || choice.skillId() == null || choice.skillVersionId() == null || !ids.add(choice.skillId()))
+                throw problem("SKILL_SELECTION_INVALID", HttpStatus.BAD_REQUEST, ApiMessage.of("api.skill-run.skill-selection-invalid"));
         }
-        if(selection.skillId()==null||selection.skillVersionId()==null) throw problem("SKILL_SELECTION_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.skill-selection-invalid"));
-        boolean retained = skills.getBinding(owner,project,agent).filter(binding -> binding.skillId().equals(selection.skillId())
-                && binding.skillVersionId().equals(selection.skillVersionId())).isPresent();
-        return retained ? skills.getBundle(owner,selection.skillId(),selection.skillVersionId())
-                : skills.requireSelectableVersion(owner,selection.skillId(),selection.skillVersionId());
+        return requested;
+    }
+
+    private SkillContent.Version selectedVersion(UUID owner, UUID project, UUID agent, Choice choice) {
+        boolean retained = skills.getBindings(owner, project, agent).stream().anyMatch(binding -> binding.skillId().equals(choice.skillId())
+                && binding.skillVersionId().equals(choice.skillVersionId()));
+        return retained ? skills.getBundle(owner, choice.skillId(), choice.skillVersionId())
+                : skills.requireSelectableVersion(owner, choice.skillId(), choice.skillVersionId());
     }
     private Operation requireOperation(UUID owner, UUID project, UUID id) {return operations.find(owner,project,id).orElseThrow(() -> problem("SKILL_INSTALL_NOT_FOUND",HttpStatus.NOT_FOUND,ApiMessage.of("api.skill-run.skill-install-not-found")));}
     private Installation response(Operation op){return new Installation(op.id(),op.registered()?InstallStatus.SUCCEEDED:InstallStatus.valueOf(op.status()),op.skillId(),op.skillVersionId(),op.errorCode(),op.errorDetail());}

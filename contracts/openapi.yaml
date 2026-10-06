@@ -5312,9 +5312,9 @@ components:
       properties:
         creativeSkills:
           type: array
-          description: 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId）；未安装时 mapping.assets 为空。
+          description: 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId、position）；未安装时 mapping.assets 为空。
           items: {type: object, additionalProperties: true}
-        schemaVersion: {type: integer, const: 6}
+        schemaVersion: {type: integer, const: 7}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -6284,6 +6284,11 @@ components:
           minimum: 0
           description: 创建 Run 前已受理的会话消息水位；仅终态历史可进入记忆
         conversationMemory: {$ref: "#/components/schemas/ConversationMemory"}
+        creativeSkills:
+          type: array
+          maxItems: 8
+          description: Selected immutable Skill snapshots; complete content is persisted here but only names and descriptions are disclosed initially. Historical Runs may retain creativeSkill instead.
+          items: {type: object, additionalProperties: true}
         bindings:
           type: array
           items: {$ref: "#/components/schemas/RunInputSnapshot"}
@@ -6331,6 +6336,7 @@ components:
         title: {type: string}
         expectedVersion: {type: integer, format: int64, minimum: 0}
         source: {type: string, const: CONVERSATION_OUTPUT}
+        skillVersionId: {type: string, format: uuid, description: Skill reference disclosed only after activation.}
     RunPreflightBinding:
       type: object
       additionalProperties: false
@@ -6343,7 +6349,7 @@ components:
     RunPreflight:
       type: object
       additionalProperties: false
-      required: [agentId, agentVersion, agentName, agentInstruction, bindings, modelAvailable, providerAdapter, modelId, toolCalling, policySnapshot, conversationId, conversationVersion, conversationTurnCount, inheritedBindingCount, memoryTruncated]
+      required: [agentId, agentVersion, agentName, agentInstruction, bindings, modelAvailable, providerAdapter, modelId, toolCalling, policySnapshot, conversationId, conversationVersion, conversationTurnCount, inheritedBindingCount, memoryTruncated, creativeSkills]
       properties:
         agentId: {type: string, format: uuid}
         agentVersion: {type: integer, format: int64, minimum: 0}
@@ -6353,10 +6359,7 @@ components:
         conversationVersion: {type: [integer, "null"], format: int64, minimum: 0}
         conversationTurnCount: {type: integer, format: int64, minimum: 0}
         inheritedBindingCount: {type: integer, minimum: 0, maximum: 40}
-        creativeSkill:
-          oneOf:
-            - {$ref: "#/components/schemas/RunSkillSummary"}
-            - {type: "null"}
+        creativeSkills: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/RunSkillSummary"}}
         memoryTruncated: {type: boolean, description: 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。}
         bindings:
           type: array
@@ -6370,14 +6373,16 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        New Run policies are schema v3 and pin systemPromptVersion=7 plus their context-appropriate tool allowlist. Version 7 separates program-owned tool/approval protocol from the unmodified frozen card creative system prompt; managed prompts cannot change server authorization. IMAGE previews are sent only after committed read_artifacts requests, never automatically at Run start; Skill resource reading is exposed only when frozen resources exist. Historical v1
-        snapshots lack this field and cannot safely start an uncheckpointed model turn.
+        New policies are schema v4 with systemPromptVersion=8 and toolPolicyVersion=2.
+        Selected Skills initially disclose only name, description and immutable version ID;
+        read_skill activates their main instructions, then read_skill_resource reads attachments.
+        Historical policies retain their frozen protocol and tool definitions.
       required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions]
       properties:
-        schemaVersion: {type: integer, enum: [1, 2, 3]}
-        toolPolicyVersion: {type: integer, enum: [1]}
+        schemaVersion: {type: integer, enum: [1, 2, 3, 4]}
+        toolPolicyVersion: {type: integer, enum: [1, 2]}
         allowedTools: {type: array, uniqueItems: true, items: {type: string}}
-        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6, 7], description: New v3 snapshots pin version 7; historical versions 1/2/3/4/5/6 retain their original rules and creative message roles; absent on historical v1 snapshots.}
+        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6, 7, 8], description: New v4 snapshots pin version 8; historical rules and creative message roles remain frozen.}
         modelConfigSource: {type: string}
         modelConfigVersion: {type: integer, minimum: 1}
         maxModelTurns: {type: integer, minimum: 1}
@@ -6910,22 +6915,27 @@ components:
     SkillMediaBytes:
       type: string
       format: binary
+    SkillVersionRef:
+      type: object
+      additionalProperties: false
+      required: [skillId, skillVersionId]
+      properties:
+        skillId: {type: string, format: uuid}
+        skillVersionId: {type: string, format: uuid}
     AgentSkillBinding:
       type: object
       additionalProperties: false
-      required: [agentVersion, skillId, skillVersionId]
+      required: [agentVersion, skills]
       properties:
         agentVersion: {type: integer, format: int64, minimum: 0}
-        skillId: {type: [string, "null"], format: uuid}
-        skillVersionId: {type: [string, "null"], format: uuid}
+        skills: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillVersionRef"}}
     SaveAgentSkillBindingRequest:
       type: object
       additionalProperties: false
-      required: [expectedAgentVersion, skillId, skillVersionId]
+      required: [expectedAgentVersion, skills]
       properties:
         expectedAgentVersion: {type: integer, format: int64, minimum: 0}
-        skillId: {type: [string, "null"], format: uuid}
-        skillVersionId: {type: [string, "null"], format: uuid}
+        skills: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillVersionRef"}}
     InstallAgentSkillRequest:
       type: object
       additionalProperties: false
@@ -6951,15 +6961,22 @@ components:
       properties:
         alias: {type: string, maxLength: 64}
         artifactVersionId: {type: string, format: uuid}
-    SkillSelection:
+    SkillRunChoice:
       type: object
       additionalProperties: false
-      required: [mode]
+      required: [skillId, skillVersionId, inputs]
       properties:
-        mode: {type: string, enum: [DEFAULT, NONE, VERSION]}
         skillId: {type: string, format: uuid}
         skillVersionId: {type: string, format: uuid}
         inputs: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/SkillRunInput"}}
+    SkillSelection:
+      type: object
+      additionalProperties: false
+      required: [mode, skills]
+      description: Ordered available Skill catalogue. NONE and DEFAULT use an empty list; VERSIONS selects one to eight distinct Skills, each pinned to one version. Selection does not imply activation.
+      properties:
+        mode: {type: string, enum: [DEFAULT, NONE, VERSIONS]}
+        skills: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillRunChoice"}}
     RunPreflightRequest:
       type: object
       additionalProperties: false

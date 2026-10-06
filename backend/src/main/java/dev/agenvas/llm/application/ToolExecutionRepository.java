@@ -15,8 +15,8 @@ public interface ToolExecutionRepository {
     /** 仅投影已提交动作的白名单字段；不读取完整工具结果或模型回合。 */
     List<RunAction> listCompletedActions(UUID projectId, UUID runId, int limit);
 
-    /** Returns committed Skill resource read metadata for frozen approval provenance. */
-    List<JsonNode> skillResourceReads(UUID projectId, UUID runId);
+    /** Returns committed main-file activation and attachment read metadata for frozen approval provenance. */
+    List<JsonNode> skillReads(UUID projectId, UUID runId);
 
     /** 仅在项目作用域内读取精确工具调用。 */
     Optional<ToolExecution> find(UUID projectId, UUID runId, int stepIndex, String toolCallId);

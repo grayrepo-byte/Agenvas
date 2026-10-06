@@ -281,7 +281,7 @@ export function AgentChatCard({ data, selected, selectionControl, resizeVisible 
           || (current.conversationId !== targetId && current.conversationId !== conversationId)) return;
         if (!reviewed.modelAvailable) throw new RunPreparationError(t("agent.chat.chatModelMissing"));
         if (!reviewed.toolCalling) throw new RunPreparationError(t("agent.chat.toolsUnsupported"));
-        if (reviewed.creativeSkill?.installed === false) throw new RunPreparationError(t("agent.chat.skillNotReady"));
+        if (reviewed.creativeSkills.some((skill)=>!skill.installed)) throw new RunPreparationError(t("agent.chat.skillNotReady"));
         if (reviewed.policySnapshot.systemPromptVersion == null || reviewed.conversationVersion == null
           || reviewed.conversationId !== targetId || reviewed.agentVersion !== agentVersion || reviewed.agentId !== agent.id) {
           throw new RunPreparationError(t("agent.chat.configurationChanged"));
