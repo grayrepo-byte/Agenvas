@@ -29,7 +29,7 @@ public final class RunningHubImportService {
     public RunningHubImportService(JooqMediaCapabilityRepository repository, CredentialCipher cipher, RunningHubClient client, ObjectMapper mapper) {
         this.repository = repository; this.cipher = cipher; this.client = client; this.mapper = mapper;
     }
-    public record Preview(RunningHubDefinition definition, List<ApiMessage> warnings) {}
+    public record Preview(RunningHubDefinition definition, List<ApiMessage> warnings, List<String> recommendedFieldKeys, String targetName) {}
 
     public Preview preview(UUID connectionId, RunningHubDefinition.TargetType type, String targetId, Task.Kind kind, JsonNode source) {
         if (type == null || targetId == null || !targetId.matches("[0-9]{1,32}")
@@ -37,18 +37,24 @@ public final class RunningHubImportService {
             throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.requires-real-target-id-and-primary-output-type-api-documentation"));
         var connection = repository.connection(connectionId).orElseThrow(() -> RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.connection-does-not-exist")));
         if (connection.platform() != MediaPlatform.RUNNINGHUB || !connection.enabled()) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.please-select-an-enabled-runninghub-connection"));
+        String targetName = null;
         if (source == null || source.isNull()) {
             var version = repository.connectionVersion(connectionId, connection.currentVersion()).orElseThrow();
             String key = cipher.decryptMedia(connectionId, version.version(), new CredentialCipher.Encrypted(version.credentialCiphertext(), version.credentialNonce(), version.credentialKeyVersion()));
-            try { source = client.metadata(version.origin(), key, type, targetId); }
+            try {
+                var metadata = client.metadata(version.origin(), key, type, targetId);
+                source = metadata.source();
+                targetName = metadata.targetName();
+            }
             catch (RuntimeException unavailable) {
                 throw new ApiProblemException(HttpStatus.BAD_GATEWAY, "RUNNINGHUB_DISCOVERY_UNAVAILABLE", ApiMessage.of("api.running-hub-import-service.parameter-found-not-available"),
                         ApiMessage.of("api.running-hub-import-service.please-check-the-target-id-and-permissions-or-import-the"), true);
             }
-            // Only the input contract is retained. Upstream demos may also include curl and credentials.
+            // Only the input contract is retained; the optional name stays outside importSource.
             if (type == RunningHubDefinition.TargetType.AI_APP) source = source.path("nodeInfoList");
         }
-        return candidates(type, targetId, kind, source);
+        var preview = candidates(type, targetId, kind, source);
+        return new Preview(preview.definition(), preview.warnings(), preview.recommendedFieldKeys(), targetName);
     }
 
     Preview candidates(RunningHubDefinition.TargetType type, String targetId, Task.Kind kind, JsonNode source) {
@@ -64,11 +70,14 @@ public final class RunningHubImportService {
         if (source.has("nodeInfoList")) source = source.path("nodeInfoList");
         RunningHubDefinition.rejectImportCredentials(source);
         List<RunningHubDefinition.Field> fields = new ArrayList<>();
+        List<RunningHubInputDiscovery.PromptRole> promptPriorities = new ArrayList<>();
         List<RunningHubDefinition.NodeOption> nodeOptions = new ArrayList<>();
         List<ApiMessage> warnings = new ArrayList<>();
         warnings.add(ApiMessage.of("api.running-hub-import-service.the-imported-results-are-candidate-fields-please-confirm-the-open"));
         if (type == RunningHubDefinition.TargetType.WORKFLOW) {
             if (!source.isObject()) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.workflow-requires-comfyui-api-format-object"));
+            Set<String> negativeNodes = RunningHubInputDiscovery.conditioningAncestors(source, true);
+            Set<String> positiveNodes = RunningHubInputDiscovery.conditioningAncestors(source, false);
             for (var node : source.properties()) {
                 if (!node.getKey().matches("[0-9]{1,32}")) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.invalid-workflow-node-id"));
                 // Preserve names only, never the graph or connected inputs, for the output picker.
@@ -85,9 +94,14 @@ public final class RunningHubImportService {
                         continue;
                     }
                     String label = node.getValue().path("_meta").path("title").asText(node.getValue().path("class_type").asText("节点 " + node.getKey())) + " · " + input.getKey();
-                    fields.add(field(fields.size(), node.getKey(), input.getKey(), label,
-                            value.isBoolean() ? RunningHubDefinition.FieldType.BOOLEAN : value.isIntegralNumber() ? RunningHubDefinition.FieldType.INTEGER
-                                    : value.isNumber() ? RunningHubDefinition.FieldType.NUMBER : RunningHubDefinition.FieldType.STRING, value, List.of(), null));
+                    var declaredType = value.isBoolean() ? RunningHubDefinition.FieldType.BOOLEAN : value.isIntegralNumber() ? RunningHubDefinition.FieldType.INTEGER
+                            : value.isNumber() ? RunningHubDefinition.FieldType.NUMBER : RunningHubDefinition.FieldType.STRING;
+                    var hint = RunningHubInputDiscovery.hint(declaredType, input.getKey(), node.getValue().path("class_type").asText(""), title);
+                    var priority = hint.promptPriority();
+                    if (negativeNodes.contains(node.getKey())) priority = RunningHubInputDiscovery.PromptRole.NONE;
+                    else if (priority != RunningHubInputDiscovery.PromptRole.NONE && positiveNodes.contains(node.getKey())) priority = RunningHubInputDiscovery.PromptRole.POSITIVE_CONDITIONING;
+                    promptPriorities.add(priority);
+                    fields.add(field(fields.size(), node.getKey(), input.getKey(), label, hint.type(), value, List.of(), null));
                 }
             }
             warnings.add(ApiMessage.of("api.running-hub-import-service.workflow-json-does-not-contain-complete-field-rules-internal-parameters"));
@@ -109,6 +123,9 @@ public final class RunningHubImportService {
                     fieldType = RunningHubDefinition.FieldType.STRING;
                     warnings.add(ApiMessage.of("api.running-hub-import-service.node-field-has-no-recognized-list-options-add-dropdown-options", node, name));
                 }
+                var hint = RunningHubInputDiscovery.hint(fieldType, name, input.path("nodeName").asText(""), appLabel(input, name));
+                fieldType = hint.type();
+                promptPriorities.add(hint.promptPriority());
                 if (Set.of(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.AUDIO, RunningHubDefinition.FieldType.VIDEO).contains(fieldType)) value = null;
                 else if (value != null && fieldType == RunningHubDefinition.FieldType.STRING) value = mapper.valueToTree(value.asText());
                 else if (value != null && value.isTextual() && Set.of(RunningHubDefinition.FieldType.INTEGER, RunningHubDefinition.FieldType.NUMBER, RunningHubDefinition.FieldType.BOOLEAN).contains(fieldType)) {
@@ -121,18 +138,29 @@ public final class RunningHubImportService {
                 fields.add(field(fields.size(), node, name, appLabel(input, name), fieldType, value, options, input.path("description").asText(null)));
             }
         }
+        int primaryPrompt = RunningHubInputDiscovery.primaryPrompt(promptPriorities);
+        if (primaryPrompt >= 0) {
+            var prompt = fields.get(primaryPrompt);
+            fields.set(primaryPrompt, new RunningHubDefinition.Field(prompt.key(), prompt.label(), prompt.description(), prompt.type(),
+                    prompt.required(), prompt.defaultValue(), prompt.minimum(), prompt.maximum(), prompt.maxLength(), prompt.options(),
+                    prompt.advanced(), prompt.nodeId(), prompt.fieldName(), RunningHubDefinition.Source.PROMPT,
+                    prompt.encoding(), prompt.resourceFormat(), prompt.enabledWhen()));
+        }
         if (fields.size() > RunningHubDefinition.MAX_FIELDS) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.there-are-more-than-64-fields-please-import-the-selected"));
         RunningHubDefinition definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION, RunningHubDefinition.PROTOCOL_VERSION, type, targetId,
                 List.copyOf(fields), List.of(), List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.valueOf(kind.name().replace("_GENERATION", "")), true, 1)),
                 "default", false, false, null, Sha256.hex(source.toString()),
                 type == RunningHubDefinition.TargetType.WORKFLOW ? List.copyOf(nodeOptions) : null, source.deepCopy());
         definition.validate(kind);
-        return new Preview(definition, List.copyOf(warnings));
+        var recommended = fields.stream().filter(field -> field.media() || field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
+                .map(RunningHubDefinition.Field::key).toList();
+        return new Preview(definition, List.copyOf(warnings), recommended, null);
     }
     private RunningHubDefinition.Field field(int index, String node, String name, String label, RunningHubDefinition.FieldType type, JsonNode value, List<RunningHubDefinition.Option> options, String description) {
-        return new RunningHubDefinition.Field("input" + (index + 1), label, description, type, false, value, null, null, null,
+        boolean media = Set.of(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.AUDIO, RunningHubDefinition.FieldType.VIDEO).contains(type);
+        return new RunningHubDefinition.Field("input" + (index + 1), label, description, type, false, media ? null : value, null, null, null,
                 options, false, node, name, RunningHubDefinition.Source.PARAMETER, RunningHubDefinition.Encoding.NATIVE,
-                RunningHubDefinition.ResourceFormat.FILE_NAME, null);
+                media && RunningHubInputDiscovery.urlInput(name) ? RunningHubDefinition.ResourceFormat.URL : RunningHubDefinition.ResourceFormat.FILE_NAME, null);
     }
     /** App descriptions identify reference slots; node names often only identify a shared class. */
     private String appLabel(JsonNode input, String fieldName) {

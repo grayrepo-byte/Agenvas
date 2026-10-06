@@ -32,8 +32,15 @@ public class ToolBatchExecutionService {
     @Transactional
     public void executeLeased(TrustedToolContext context, int stepIndex,
             List<AssistantMessage.ToolCall> calls, Task lease, String workerId) {
+        int images = 0;
         for (AssistantMessage.ToolCall call : calls) {
-            tools.executeLeased(context, stepIndex, call.id(), lease, workerId);
+            var data = tools.executeLeased(context, stepIndex, call.id(), lease, workerId).path("data");
+            if (data.isArray()) {
+                for (var item : data) if (item.path(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY).asBoolean()) images++;
+            } else if (data.path(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY).asBoolean()) images++;
+            // Throw inside the shared transaction: neither earlier reads nor business
+            // changes from an invalid multi-image batch may commit or attach pixels.
+            if (images > 1) throw ReadToolService.oneImageAtATime();
         }
     }
 }

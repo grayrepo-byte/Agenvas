@@ -16,6 +16,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
+import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.ForeignKey;
@@ -34,12 +35,13 @@ import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
+import org.jooq.impl.Internal;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 
 
 /**
- * Agent 选定的 Skill 不可变版本
+ * Agent selected immutable Skill versions, ordered for the available catalogue
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentSkillBinding extends TableImpl<AgentSkillBindingRecord> {
@@ -91,12 +93,18 @@ public class AgentSkillBinding extends TableImpl<AgentSkillBindingRecord> {
      */
     public final TableField<AgentSkillBindingRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
+    /**
+     * The column <code>public.agent_skill_binding.position</code>. Zero-based
+     * position in the Agent default Skill selection; at most one hundred
+     */
+    public final TableField<AgentSkillBindingRecord, Integer> POSITION = createField(DSL.name("position"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.INTEGER)), this, "Zero-based position in the Agent default Skill selection; at most one hundred");
+
     private AgentSkillBinding(Name alias, Table<AgentSkillBindingRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
 
     private AgentSkillBinding(Name alias, Table<AgentSkillBindingRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Agent 选定的 Skill 不可变版本"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Agent selected immutable Skill versions, ordered for the available catalogue"), TableOptions.table(), where);
     }
 
     /**
@@ -164,6 +172,11 @@ public class AgentSkillBinding extends TableImpl<AgentSkillBindingRecord> {
     }
 
     @Override
+    public List<UniqueKey<AgentSkillBindingRecord>> getUniqueKeys() {
+        return Arrays.asList(Keys.AGENT_SKILL_BINDING_POSITION_KEY);
+    }
+
+    @Override
     public List<ForeignKey<AgentSkillBindingRecord, ?>> getReferences() {
         return Arrays.asList(Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_OWNER_ID_SKILL_ID_SKILL_VERSION_ID_FKEY, Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_PROJECT_ID_AGENT_ID_FKEY);
     }
@@ -192,6 +205,13 @@ public class AgentSkillBinding extends TableImpl<AgentSkillBindingRecord> {
             _agentInstance = new AgentInstancePath(this, Keys.AGENT_SKILL_BINDING__AGENT_SKILL_BINDING_PROJECT_ID_AGENT_ID_FKEY, null);
 
         return _agentInstance;
+    }
+
+    @Override
+    public List<Check<AgentSkillBindingRecord>> getChecks() {
+        return Arrays.asList(
+            Internal.createCheck(this, DSL.name("agent_skill_binding_position_check"), "(((\"position\" >= 0) AND (\"position\" <= 99)))", true)
+        );
     }
 
     @Override

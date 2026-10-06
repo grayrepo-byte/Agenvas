@@ -38,7 +38,7 @@ class RunningHubImportServiceTest {
                 object.put("description", object.path("nodeName").asText());
                 object.put("nodeName", "LoadImage");
             }
-            payload.putObject("data").put("id", "2084320751339032577").set("inputNodes", nodes);
+            payload.putObject("data").put("id", "2084320751339032577").put("name", "  Synthetic video app  ").set("inputNodes", nodes);
             server.createContext("/api/webapp/detail", exchange -> {
                 calls.incrementAndGet();
                 assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
@@ -60,6 +60,8 @@ class RunningHubImportServiceTest {
             var preview = new RunningHubImportService(repository, cipher, new RunningHubClient(mapper), mapper)
                     .preview(connectionId, RunningHubDefinition.TargetType.AI_APP, "2084320751339032577", Task.Kind.VIDEO_GENERATION, null);
             assertThat(preview.definition().fields()).hasSize(21);
+            assertThat(preview.targetName()).isEqualTo("Synthetic video app");
+            assertThat(preview.definition().importSource().toString()).doesNotContain("Synthetic video app");
             assertThat(preview.definition().fields().stream().filter(field -> field.type() == RunningHubDefinition.FieldType.IMAGE))
                     .extracting(RunningHubDefinition.Field::label)
                     .containsExactly("参考图1", "参考图2", "参考图3", "参考图4", "参考图5", "参考图6");
@@ -72,12 +74,73 @@ class RunningHubImportServiceTest {
             server.stop(0);
         }
     }
-    @Test void workflowImportExcludesConnectionsAndDoesNotInferPromptOrImageFromFieldNames() {
+    @Test void workflowImportRecognizesTextButDoesNotTurnAnUnknownImageStringIntoAMediaSlot() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
                 mapper.readTree("{\"6\":{\"class_type\":\"Text\",\"inputs\":{\"text\":\"draw\",\"model\":[\"4\",0]}},\"10\":{\"inputs\":{\"image\":\"remote.png\"}}}"));
-        assertThat(preview.definition().fields()).hasSize(2).allMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PARAMETER && !field.required());
+        assertThat(preview.definition().fields()).hasSize(2).allMatch(field -> !field.required());
+        assertThat(preview.definition().fields().getFirst().effectiveSource()).isEqualTo(RunningHubDefinition.Source.PROMPT);
         assertThat(preview.definition().fields().get(1).type()).isEqualTo(RunningHubDefinition.FieldType.STRING);
+        assertThat(preview.recommendedFieldKeys()).containsExactly("input1");
+        assertThat(preview.targetName()).isNull();
         assertThat(preview.definition().sourceSha256()).hasSize(64);
+    }
+    @Test void workflowDiscoverySuggestsPromptAndMediaWhileLeavingSameNodeTuningParametersManual() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.VIDEO_GENERATION,
+                mapper.readTree("""
+                    {"1":{"class_type":"RH_Text","inputs":{"text":"draw a scene","seed":8}},
+                     "2":{"class_type":"LoadImage","inputs":{"image":"sample.png","upload":true}},
+                     "3":{"class_type":"VHS_LoadVideo","inputs":{"video":"demo.mp4","force_rate":24}},
+                     "4":{"class_type":"LoadAudio","inputs":{"audio":"demo.wav"}},
+                     "5":{"class_type":"AudioInput","inputs":{"audio_url":"https://media.invalid/demo.wav"}},
+                     "6":{"class_type":"CheckpointLoaderSimple","inputs":{"ckpt_name":"model.safetensors"}},
+                     "7":{"class_type":"KSampler","inputs":{"steps":20,"cfg":7.0,"model":["6",0]}}}
+                    """));
+        assertThat(preview.recommendedFieldKeys()).containsExactly("input1", "input3", "input5", "input7", "input8");
+        assertThat(preview.definition().fields().getFirst().effectiveSource()).isEqualTo(RunningHubDefinition.Source.PROMPT);
+        assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media)).extracting(RunningHubDefinition.Field::type)
+                .containsExactly(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.VIDEO, RunningHubDefinition.FieldType.AUDIO, RunningHubDefinition.FieldType.AUDIO);
+        assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media)).allMatch(field -> field.defaultValue() == null);
+        assertThat(preview.definition().fields().stream().filter(field -> field.fieldName().equals("audio_url")).findFirst().orElseThrow().effectiveResourceFormat())
+                .isEqualTo(RunningHubDefinition.ResourceFormat.URL);
+        preview.definition().validate(Task.Kind.VIDEO_GENERATION);
+    }
+    @Test void negativeConditioningPathsDoNotConsumeTheCanvasPromptEvenThroughAnIntermediateTextEncoder() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
+                mapper.readTree("""
+                    {"1":{"class_type":"Text","inputs":{"text":"blur"}},
+                     "2":{"class_type":"CLIPTextEncode","inputs":{"text":["1",0]}},
+                     "3":{"class_type":"CLIPTextEncode","inputs":{"text":"a landscape"}},
+                     "4":{"class_type":"KSampler","inputs":{"negative":["2",0],"positive":["3",0],"seed":42}}}
+                    """));
+        assertThat(preview.definition().fields().getFirst().effectiveSource()).isEqualTo(RunningHubDefinition.Source.PARAMETER);
+        assertThat(preview.definition().fields().get(1).effectiveSource()).isEqualTo(RunningHubDefinition.Source.PROMPT);
+        assertThat(preview.recommendedFieldKeys()).containsExactly("input2");
+    }
+    @Test void ambiguousTextInputsAndNegativeLabelsRemainManualRatherThanCreatingDuplicatePromptSources() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION,
+                mapper.readTree("""
+                    {"1":{"class_type":"Text","inputs":{"text":"first"}},
+                     "2":{"class_type":"Text","inputs":{"text":"second"}},
+                     "3":{"class_type":"CLIPTextEncode","_meta":{"title":"负向提示词"},"inputs":{"text":"bad"}}}
+                    """));
+        assertThat(preview.recommendedFieldKeys()).isEmpty();
+        assertThat(preview.definition().fields()).allMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PARAMETER);
+        preview.definition().validate(Task.Kind.IMAGE_GENERATION);
+    }
+    @Test void appDiscoveryUsesDeclaredMediaTypesAndTextSemanticsWithoutExposingEnumsAndSeeds() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
+                mapper.readTree("""
+                    [{"nodeId":"1","nodeName":"Text","fieldName":"text","fieldType":"STRING","fieldValue":"scene"},
+                     {"nodeId":"2","fieldName":"negative_prompt","fieldType":"STRING","fieldValue":"blur"},
+                     {"nodeId":"3","fieldName":"image","fieldType":"IMAGE","description":"参考图"},
+                     {"nodeId":"4","nodeName":"LoadVideo","fieldName":"file","fieldType":"STRING","fieldValue":"None"},
+                     {"nodeId":"5","fieldName":"seed","fieldType":"INTEGER","fieldValue":"42"},
+                     {"nodeId":"6","fieldName":"aspect_ratio","fieldType":"LIST","fieldValue":"16:9","fieldData":["16:9","1:1"]}]
+                    """));
+        assertThat(preview.recommendedFieldKeys()).containsExactly("input1", "input3", "input4");
+        assertThat(preview.definition().fields().get(3).type()).isEqualTo(RunningHubDefinition.FieldType.VIDEO);
+        assertThat(preview.definition().fields().get(4).defaultValue().asInt()).isEqualTo(42);
+        assertThat(preview.definition().fields().get(5).options()).hasSize(2);
     }
     @Test void workflowImportKeepsDottedScalarNamesWithoutExpandingNestedObjects() {
         var source = mapper.readTree("""

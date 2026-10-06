@@ -51,6 +51,54 @@ class FlywayBaselinePostgresIT {
     }
 
     @Test
+    void multipleSkillUpgradePreservesTheExistingVersionAndAllowsAnotherOrderedBinding() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("12").load().migrate();
+        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), agent = UUID.randomUUID();
+        UUID first = UUID.randomUUID(), second = UUID.randomUUID(), firstVersion = UUID.randomUUID(), secondVersion = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertOwner(connection, owner);insertProject(connection, project, owner);insertAgent(connection, project, agent);
+            for (UUID skill : List.of(first, second)) execute(connection,
+                    "insert into creative_skill(id,owner_id,title,created_at,updated_at) values (?,?,'Synthetic Skill',now(),now())", skill, owner);
+            execute(connection, "insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (?,?,?,1,repeat('0',64),'{\"schemaVersion\":1}',now())", firstVersion, owner, first);
+            execute(connection, "insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (?,?,?,1,repeat('1',64),'{\"schemaVersion\":1}',now())", secondVersion, owner, second);
+            execute(connection, "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,updated_at) values (?,?,?,?,?,now())", agent, project, owner, first, firstVersion);
+        }
+        Flyway multipleUpgrade = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("13").load();
+        assertThat(multipleUpgrade.migrate().migrationsExecuted).isEqualTo(1);
+        try (Connection connection = connection()) {
+            assertThat(text(connection, "select skill_version_id::text from agent_skill_binding where agent_id=? and position=0", agent)).isEqualTo(firstVersion.toString());
+            execute(connection, "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,position,updated_at) values (?,?,?,?,?,1,now())", agent, project, owner, second, secondVersion);
+            assertThat(count(connection, "select count(*) from agent_skill_binding where agent_id=?", agent)).isEqualTo(2);
+            assertThatThrownBy(() -> execute(connection, "update agent_skill_binding set position=8 where agent_id=? and skill_id=?", agent, second)).isInstanceOf(SQLException.class);
+            assertThatThrownBy(() -> execute(connection, "update agent_skill_binding set position=0 where agent_id=? and skill_id=?", agent, second)).isInstanceOf(SQLException.class);
+        }
+    }
+
+    @Test void hundredSkillUpgradePreservesExistingBindingsAndAddsUniqueBuiltinIdentity() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("13").load().migrate();
+        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), agent = UUID.randomUUID();
+        UUID skill = UUID.randomUUID(), version = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertOwner(connection, owner);insertProject(connection, project, owner);insertAgent(connection, project, agent);
+            execute(connection, "insert into creative_skill(id,owner_id,title,created_at,updated_at) values (?,?,'Synthetic Skill',now(),now())", skill, owner);
+            execute(connection, "insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (?,?,?,1,repeat('0',64),'{\"schemaVersion\":1}',now())", version, owner, skill);
+            execute(connection, "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,position,updated_at) values (?,?,?,?,?,7,now())", agent, project, owner, skill, version);
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 13);
+        try (Connection connection = connection()) {
+            assertThat(text(connection, "select skill_version_id::text from agent_skill_binding where agent_id=? and position=7", agent)).isEqualTo(version.toString());
+            assertThat(text(connection, "select builtin_key from creative_skill where id=?", skill)).isNull();
+            execute(connection, "update agent_skill_binding set position=99 where agent_id=?", agent);
+            assertThatThrownBy(() -> execute(connection, "update agent_skill_binding set position=100 where agent_id=?", agent)).isInstanceOf(SQLException.class);
+            execute(connection, "update creative_skill set builtin_key='drama-skills/synthetic' where id=?", skill);
+            assertThatThrownBy(() -> execute(connection, "insert into creative_skill(id,owner_id,title,builtin_key,created_at,updated_at) values (?,?,'Duplicate','drama-skills/synthetic',now(),now())", UUID.randomUUID(), owner)).isInstanceOf(SQLException.class);
+        }
+    }
+
+    @Test
     void initializesEmptyDatabaseAndRepeatedMigrationPreservesBusinessData() throws Exception {
         assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size());
         assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo(MigrationVersions.latest());

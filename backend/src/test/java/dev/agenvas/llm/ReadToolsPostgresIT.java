@@ -223,8 +223,12 @@ class ReadToolsPostgresIT {
                 .isEqualTo("CANVAS_ITEM_LOCKED");
 
         assertThat(worker.runOnce("reader-worker")).isEqualTo(1);
-        assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
-                .isEqualTo(AgentRun.Status.BLOCKED);
+        // Fatal tool errors with no outstanding work end the Run and release its project slot.
+        AgentRun failed = runs.get(owner.userId(), project.id(), run.id());
+        assertThat(failed.status()).isEqualTo(AgentRun.Status.FAILED);
+        assertThat(failed.completedAt()).isNotNull();
+        assertThat(jdbc.sql("select active_run_id is null from project where id = :projectId")
+                .param("projectId", project.id()).query(Boolean.class).single()).isTrue();
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
                 .param("runId", run.id()).query(Long.class).single()).isEqualTo(8);
         assertThat(gateway.calls.get()).isEqualTo(3);
@@ -292,8 +296,8 @@ class ReadToolsPostgresIT {
                 JsonNode firstPlace = mapper.readTree(results.getResponses().get(4).responseData());
                 JsonNode secondPlace = mapper.readTree(results.getResponses().get(5).responseData());
                 assertThat(summary.at("/data/name").asText()).isEqualTo("Reader project");
-                assertThat(summary.at("/data/runLimits/maxToolExecutions").asInt())
-                        .isEqualTo(40);
+                assertThat(summary.at("/data/runLimits/maxToolExecutions").isNull())
+                        .isTrue();
                 assertThat(selection.at("/data/0/itemId").asText())
                         .isEqualTo(selectedItemId.toString());
                 assertThat(selection.at("/data/1/itemId").asText())

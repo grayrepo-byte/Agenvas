@@ -92,7 +92,7 @@ class AgentTurnSchedulerPostgresIT {
     }
 
     @Test
-    void repeatedToolRequestsStopAtTwelveDurableTurnsWithoutClientPolling() throws Exception {
+    void historicalNumericBudgetStillStopsAtTwelveDurableTurnsWithoutClientPolling() throws Exception {
         AdminPrincipal owner = owner();
         Project project = projects.create(owner.userId(), "Bounded scheduler project",
                 Project.AspectRatio.LANDSCAPE_16_9);
@@ -103,15 +103,17 @@ class AgentTurnSchedulerPostgresIT {
         try {
             AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                     "Keep checking project status", "bounded-scheduler-run").run();
+            jdbc.sql("update agent_run set policy_snapshot_json = jsonb_set(policy_snapshot_json, '{maxModelTurns}', '12'::jsonb) where id = :id")
+                    .param("id", queued.id()).update();
             Instant deadline = Instant.now().plus(Duration.ofSeconds(20));
             AgentRun current = runs.get(owner.userId(), project.id(), queued.id());
-            while (current.status() != AgentRun.Status.BLOCKED
+            while (!current.status().terminal()
                     && Instant.now().isBefore(deadline)) {
                 worker.runOnce("bounded-turn-test-worker");
                 Thread.sleep(25);
                 current = runs.get(owner.userId(), project.id(), queued.id());
             }
-            assertThat(current.status()).isEqualTo(AgentRun.Status.BLOCKED);
+            assertThat(current.status()).isEqualTo(AgentRun.Status.FAILED);
             assertThat(gateway.calls.get() - callsBefore).isEqualTo(12);
             assertThat(tasks.listByRun(owner.userId(), project.id(), queued.id()))
                     .hasSize(12)
@@ -124,6 +126,34 @@ class AgentTurnSchedulerPostgresIT {
         } finally {
             gateway.keepRequestingTools.set(false);
         }
+    }
+
+    @Test
+    void unboundedRunPassesTwelveAndFortyTurnsWithBoundedContextAndCanFinish() throws Exception {
+        AdminPrincipal owner = owner();
+        Project project = projects.create(owner.userId(), "Long synthetic run", Project.AspectRatio.LANDSCAPE_16_9);
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Reader", "Keep concise public observations", List.of());
+        int before = gateway.calls.get();
+        gateway.stopAfter.set(before + 90);
+        try {
+            AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(), "Synthetic long reading sequence", "long-run").run();
+            assertThat(queued.policySnapshot().path("maxModelTurns").isNull()).isTrue();
+            assertThat(queued.policySnapshot().path("maxToolExecutions").isNull()).isTrue();
+            AgentRun current = queued;
+            Instant deadline = Instant.now().plusSeconds(60);
+            while (!current.status().terminal() && current.status() != AgentRun.Status.BLOCKED && Instant.now().isBefore(deadline)) {
+                worker.runOnce("long-run-worker");
+                current = runs.get(owner.userId(), project.id(), queued.id());
+            }
+            assertThat(current.status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+            assertThat(gateway.calls.get() - before).isEqualTo(91);
+            assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id").param("id", queued.id())
+                    .query(Long.class).single()).isEqualTo(90);
+            assertThat(jdbc.sql("select max(jsonb_array_length(request_json->'messages')) from llm_turn where run_id = :id")
+                    .param("id", queued.id()).query(Integer.class).single()).isLessThan(80);
+            assertThat(jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 90")
+                    .param("id", queued.id()).query(String.class).single()).contains("runContextMemory", "Public observation");
+        } finally { gateway.stopAfter.set(0); }
     }
 
     /** Both tests share one PostgreSQL installation with a one-time administrator setup. */
@@ -157,13 +187,14 @@ class AgentTurnSchedulerPostgresIT {
 
         private final AtomicInteger calls = new AtomicInteger();
         private final AtomicBoolean keepRequestingTools = new AtomicBoolean();
+        private final AtomicInteger stopAfter = new AtomicInteger();
 
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
             int call = calls.incrementAndGet();
-            AssistantMessage response = keepRequestingTools.get()
-                    ? AssistantMessage.builder().content("").toolCalls(List.of(
+            AssistantMessage response = (keepRequestingTools.get() || call <= stopAfter.get())
+                    ? AssistantMessage.builder().content("Public observation for call " + call).toolCalls(List.of(
                             new AssistantMessage.ToolCall("read-" + call, "function",
                                     "read_project_summary", "{}"))).build()
                     : new AssistantMessage("Done.");

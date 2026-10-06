@@ -94,6 +94,21 @@ class AgentStreamTest {
     }
 
     @Test
+    void retainsUtf8PublicTextUpTo8MiBAndRejectsExcessWithoutPublishingIt() {
+        Task lease = current.get();
+        service.startAgentStream(lease, WORKER);
+        String text = "😀" + "x".repeat(8 * 1024 * 1024 - 4);
+        assertThat(service.appendAgentStream(lease, WORKER, 0, text)).isEqualTo(1);
+        assertThatThrownBy(() -> service.appendAgentStream(lease, WORKER, 1, "x"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("size limit");
+        assertThat(current.get().output().path("assistantStream").path("text").asText()).isEqualTo(text);
+        assertThatThrownBy(() -> service.completeAgentStream(lease, WORKER, text + "x"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("size limit");
+        service.completeAgentStream(lease, WORKER, text);
+        verify(events, times(3)).append(eq(owner), eq(project), any());
+    }
+
+    @Test
     void duplicateOrSkippedChunkAndOldEpochCannotAppendOrComplete() {
         Task lease = current.get();
         service.startAgentStream(lease, WORKER);

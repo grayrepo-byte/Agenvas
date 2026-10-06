@@ -30,7 +30,7 @@ class ReadToolServiceTest {
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final ReadToolService reader = new ReadToolService(
-            mock(ProjectService.class), artifacts, tasks, mapper);
+            mock(ProjectService.class), artifacts, tasks, mapper, mock(dev.agenvas.llm.application.ToolExecutionRepository.class));
     private final TrustedToolContext context = new TrustedToolContext(
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
 
@@ -74,6 +74,7 @@ class ReadToolServiceTest {
     void missingSkillResourceDoesNotClaimTheReadToolsAreUnavailable() {
         AgentRun run = mock(AgentRun.class);
         when(run.contextSnapshot()).thenReturn(mapper.createObjectNode());
+        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("toolPolicyVersion", 1));
         assertThatThrownBy(() -> reader.skillResource(run, UUID.randomUUID(), "{\"path\":\"guide.md\"}"))
                 .isInstanceOf(ApiProblemException.class)
                 .hasMessageContaining("资源")

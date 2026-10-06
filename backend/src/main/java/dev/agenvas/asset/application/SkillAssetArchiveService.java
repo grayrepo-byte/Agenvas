@@ -1,6 +1,5 @@
 package dev.agenvas.asset.application;
 
-import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.PrivateMediaArchive.Media;
 import dev.agenvas.asset.domain.Asset;
@@ -9,27 +8,22 @@ import dev.agenvas.library.application.LibraryService.PinnedSkillAsset;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import java.util.UUID;
-import java.util.function.BooleanSupplier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Trusted immutable-media boundary for Skill publication and project installation.
+ * Trusted immutable-media boundary for Skill publication, direct reading and legacy file cleanup.
  * The Skill module owns persistent operation IDs, lease fencing and cleanup records;
- * this service only copies verified bytes and registers ready content through application APIs.
+ * this service archives verified bytes without creating project content.
  */
 @Service
 public class SkillAssetArchiveService {
     private final PrivateMediaArchive archive;
     private final AssetService assets;
-    private final ArtifactService artifacts;
 
-    public SkillAssetArchiveService(PrivateMediaArchive archive, AssetService assets,
-            ArtifactService artifacts) {
+    public SkillAssetArchiveService(PrivateMediaArchive archive, AssetService assets) {
         this.archive = archive;
         this.assets = assets;
-        this.artifacts = artifacts;
     }
 
     /** Copies outside business transactions. Stable operation IDs recover the same archive. */
@@ -51,44 +45,12 @@ public class SkillAssetArchiveService {
                 thumbnail ? media.thumbnailByteSize() : media.byteSize());
     }
 
-    /** Prepares project-owned bytes; no database or canvas changes occur here. */
-    public Asset prepareProjectImport(UUID owner, UUID project, UUID assetId, Media media) {
-        return prepareProjectImport(owner, project, assetId, media, () -> true);
-    }
-
-    /** The operation lease is checked only after acquiring the preparation/cleanup lock. */
-    public Asset prepareProjectImport(UUID owner, UUID project, UUID assetId, Media media,
-            BooleanSupplier stillActive) {
-        requireOwnedImage(owner, media);
-        Asset prepared = assets.prepareLibraryImport(owner, project, assetId, Asset.MediaKind.IMAGE,
-                archive.file(owner, media, false), stillActive);
-        requireHash(prepared.sha256(), media.sha256());
-        return prepared;
-    }
-
-    /**
-     * Registers exact content in the caller's fenced installation/Run transaction.
-     * The caller persists the returned version mapping in that transaction, making replay
-     * reuse it rather than create another version. No canvas placement or draft is implied.
-     */
-    @Transactional
-    public ArtifactService.ArtifactView registerProjectImport(UUID owner, Asset prepared, String title) {
-        if (prepared.mediaKind() != Asset.MediaKind.IMAGE)
-            throw new IllegalStateException("Only image Skill installation is supported");
-        assets.registerLibraryImport(owner, prepared);
-        return artifacts.createSkillImport(owner, prepared.projectId(), title, prepared.id());
-    }
-
     /** Cleanup must be called only for an operation eligible under its persistent lease. */
     public void discardPin(UUID owner, String pinKey) { archive.discardPin(owner, pinKey); }
 
     public void discardArchive(UUID owner, Media media) {
         requireOwnedImage(owner, media);
         archive.discard(owner, media);
-    }
-
-    public void discardUnregisteredProjectImport(UUID owner, Asset prepared) {
-        assets.discardUnregisteredLibraryImport(owner, prepared);
     }
 
     /** Persistent cleanup jobs may finish idempotently without deleting registered content. */

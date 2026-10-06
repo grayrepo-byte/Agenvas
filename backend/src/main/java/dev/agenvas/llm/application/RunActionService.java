@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class RunActionService {
 
-    /** 与一个 Run 的工具执行预算一致，避免公开历史查询无界增长。 */
+    /** This public-list page size is independent of the Run's tool execution count. */
     private static final int MAX_ACTIONS_PER_RUN = 40;
 
     private final AgentRunService runs;

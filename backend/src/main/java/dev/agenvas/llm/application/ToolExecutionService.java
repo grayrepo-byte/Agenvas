@@ -180,7 +180,8 @@ public class ToolExecutionService {
         if (run.status() != AgentRun.Status.RUNNING) {
             throw conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accepting-tool-execution"));
         }
-        if (ledger.countByRun(context.projectId(), context.runId()) >= AgentRun.MAX_TOOL_EXECUTIONS) {
+            if (run.hasToolExecutionLimit()
+                    && run.toolExecutionLimitReached(ledger.countByRun(context.projectId(), context.runId()))) {
             throw conflict(ApiMessage.of("api.tool-execution-service.run-tool-execution-budget-is-exhausted"));
         }
         if (!RunToolPolicy.allowed(run.policySnapshot()).contains(toolName)) {
@@ -194,6 +195,8 @@ public class ToolExecutionService {
         JsonNode result = switch (toolName) {
             case "read_project_summary" -> reader.projectSummary(context, run,
                     operationId, arguments);
+            case "read_skill" -> reader.skill(run, operationId, arguments);
+            case "read_skill_asset" -> reader.skillAsset(run, operationId, arguments);
             case "read_skill_resource" -> reader.skillResource(run, operationId, arguments);
             case "read_selection" -> reader.selection(run, operationId, arguments);
             case "read_artifacts" -> reader.artifacts(context, run, operationId, arguments);

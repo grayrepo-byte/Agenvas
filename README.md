@@ -268,6 +268,17 @@ Vite 默认运行于 `5173`，将 `/api` 代理到 `localhost:8080`。
 
 PR、main 推送和手动运行不访问 Docker Hub 凭据、不推送镜像。发布时每个服务和架构保留 SBOM 与许可证清单，成功发布的标签显示在 Actions 摘要中。`ci-<运行 ID>-<尝试次数>-<架构>` 为中间标签，部署使用 `latest` 或自行指定最终版本、提交标签或 digest。
 
+server/web 双架构镜像全部发布成功后，流水线自动创建对应标签的 GitHub Release。发布说明包含版本镜像地址、源码提交、上个版本到当前标签的实际提交列表，以及 GitHub 自动生成的 PR/贡献者/完整变更链接；稳定版本从上个稳定标签比较，预发布版本可以从上个预发布标签比较。预发布标记为 prerelease，不成为 Latest；补发旧稳定版本也不替换较新的 Latest。重复运行保留已有说明，只补齐空白说明；已有草稿保留并要求手动发布。Release job 单独授予 `contents: write`，只在版本标签推送、CI Gate 和 Docker Hub 发布成功后执行，不重新构建镜像。
+
+历史标签不会因为这次修改而自动补发。确认该标签的 CI 和两种架构镜像已发布后，可先预览说明，再明确补建 Release：
+
+```sh
+python3 .github/scripts/release.py notes v0.0.2 --repo grayrepo-byte/Agenvas --output release-notes.md
+python3 .github/scripts/release.py publish v0.0.2 --repo grayrepo-byte/Agenvas
+```
+
+本地命令复用已登录的 GitHub CLI，不把 Token 写入命令行；`notes` 只生成说明，`publish` 才写入 GitHub。脚本核对远端标签和源码提交，不新建或移动标签。自动生成能力使用 [GitHub Release Notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release)。
+
 发布实现参考 [Docker 多架构构建说明](https://docs.docker.com/build/ci/github-actions/multi-platform/)与 [Docker 镜像标签规则](https://github.com/docker/metadata-action)。
 
 </details>
@@ -292,6 +303,10 @@ configs/        Agent、Skill 与受信媒体工作流配置
 deploy/         Compose、Nginx 与容器构建
 docs/           规格、设计与开发文档
 ```
+
+## 开源鸣谢
+
+Agenvas 内置的短剧创作 Skills 来源于 [zenstory-ai/drama-skills](https://github.com/zenstory-ai/drama-skills)。感谢该项目的作者与贡献者开源分享创作技能与工作流。
 
 ## 许可证
 

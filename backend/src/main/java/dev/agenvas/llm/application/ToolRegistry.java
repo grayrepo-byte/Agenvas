@@ -86,11 +86,28 @@ public class ToolRegistry {
                      "versionId":{"type":"string","format":"uuid"},
                      "expectedVersion":{"type":"integer","minimum":0}}}}}}
             """;
+    private static final String PROGRESSIVE_SKILL_RESOURCE_SCHEMA = """
+            {"type":"object","additionalProperties":false,"required":["skillVersionId","path"],
+             "properties":{"skillVersionId":{"type":"string","format":"uuid"},
+             "path":{"type":"string","maxLength":160},"offset":{"type":"integer","minimum":0},
+             "limit":{"type":"integer","minimum":1,"maximum":4000}}}
+            """;
     public List<ToolCallback> modelDefinitions(tools.jackson.databind.JsonNode policy) {
         var allowed = RunToolPolicy.allowed(policy);
         return modelDefinitions().stream().filter(tool -> allowed.contains(
                 tool.getToolDefinition().name())).map(tool -> {
                     var current = tool.getToolDefinition();
+                    if (policy.path("systemPromptVersion").asInt()
+                            >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION
+                            && ("read_artifacts".equals(current.name()) || "read_skill_asset".equals(current.name())))
+                        return definition(current.name(), current.description()
+                                + ". Request at most one image in the entire assistant tool batch. "
+                                + "Observe its pixels and record concise public facts with its exact reference before reading another image. "
+                                + "Only the current image remains attached; prior observations and tool references remain as text. "
+                                + "Text versions may still be read in batches.", current.inputSchema());
+                    if ("read_skill_resource".equals(current.name()) && policy.path("toolPolicyVersion").asInt(1) >= RunToolPolicy.PROGRESSIVE_VERSION)
+                        return definition(current.name(), "Read a registered text attachment after read_skill has activated its exact version. Offsets count Unicode code points.",
+                                PROGRESSIVE_SKILL_RESOURCE_SCHEMA);
                     if (!"read_artifacts".equals(current.name())
                             || policy.path("systemPromptVersion").asInt()
                                     < InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) return tool;
@@ -127,6 +144,15 @@ public class ToolRegistry {
                         + "Never poll read_task_status for these tasks or claim user authorization. "
                         + "Use one output per request, with generationCount=1; await the server's final tool reply.",
                         PROPOSE_MEDIA_SCHEMA),
+                definition("read_skill", "Activate one Skill from the available catalogue and read its full frozen SKILL.md plus reference and attachment manifests.",
+                        "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"skillVersionId\"],\"properties\":{\"skillVersionId\":{\"type\":\"string\",\"format\":\"uuid\"}}}"),
+                definition("read_skill_asset", "Read one registered Skill reference image after read_skill has activated its exact version. "
+                        + "Its image preview follows the committed reply as LLM context only; it has no project artifact ID and cannot be a Provider media input.",
+                        """
+                        {"type":"object","additionalProperties":false,"required":["skillVersionId","alias"],
+                         "properties":{"skillVersionId":{"type":"string","format":"uuid"},
+                         "alias":{"type":"string","minLength":1,"maxLength":64}}}
+                        """),
                 definition("read_skill_resource", "Read one text resource frozen in this Run's selected Skill; "
                         + "paths and URLs outside the resource manifest are never accessible. Offsets count Unicode code points.",
                         """

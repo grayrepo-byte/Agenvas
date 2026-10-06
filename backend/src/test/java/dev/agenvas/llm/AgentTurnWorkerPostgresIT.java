@@ -100,10 +100,14 @@ class AgentTurnWorkerPostgresIT {
                 "Try without a configured model", "unavailable-model-run").run();
         assertThat(worker.runOnce("worker-test")).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), unavailable.id()).status())
-                .isEqualTo(AgentRun.Status.BLOCKED);
+                .isEqualTo(AgentRun.Status.FAILED);
         assertThat(tasks.listByRun(owner.userId(), project.id(), unavailable.id()))
                 .singleElement().satisfies(task ->
                         assertThat(task.status()).isEqualTo(Task.Status.FAILED));
+        assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", project.id()).query(Boolean.class).single()).isTrue();
+        AgentRun next = runs.create(owner.userId(), project.id(), agent.id(),
+                "A new instruction can be sent immediately", "after-failure-run").run();
+        runs.cancel(owner.userId(), project.id(), next.id());
 
         gateway.toolCalling = true;
         gateway.calls.set(0);
@@ -123,7 +127,10 @@ class AgentTurnWorkerPostgresIT {
             jdbc.sql("alter table task drop constraint test_reject_continuation").update();
         }
         assertThat(runs.get(owner.userId(), failedContinuation.id(), rollbackRun.id()).status())
-                .isEqualTo(AgentRun.Status.BLOCKED);
+                .isEqualTo(AgentRun.Status.FAILED);
+        assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", failedContinuation.id()).query(Boolean.class).single()).isTrue();
+        assertThat(jdbc.sql("select count(*) from artifact where project_id = :projectId")
+                .param("projectId", failedContinuation.id()).query(Long.class).single()).isEqualTo(1);
         assertThat(runs.get(owner.userId(), failedContinuation.id(), rollbackRun.id()).nextStepIndex())
                 .isZero();
         assertThat(tasks.listByRun(owner.userId(), failedContinuation.id(), rollbackRun.id()))

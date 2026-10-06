@@ -1049,7 +1049,6 @@ export type SkillOperation = components["schemas"]["SkillOperation"];
 export type SkillSelection = components["schemas"]["SkillSelection"];
 export type AgentSkillBinding = components["schemas"]["AgentSkillBinding"];
 export type SaveAgentSkillBindingRequest = components["schemas"]["SaveAgentSkillBindingRequest"];
-export type SkillInstallation = components["schemas"]["SkillInstallation"];
 export type SaveSkillDraftRequest = NonNullable<paths["/api/v1/skills/{skillId}/draft"]["put"]["requestBody"]>["content"]["application/json"];
 
 export function listSkills(query = "", cursor?: string, trash = false) {
@@ -1099,15 +1098,6 @@ export function saveAgentSkillBinding(projectId: string, agentId: string, reques
     method: "PUT", headers: { "Idempotency-Key": key }, body: JSON.stringify(request),
   });
 }
-export function installAgentSkill(projectId: string, agentId: string, skillId: string, skillVersionId: string, key: string) {
-  return writeJson<SkillInstallation>(`/api/v1/projects/${projectId}/agents/${agentId}/skill-installations`, {
-    method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ skillId, skillVersionId }),
-  });
-}
-export function getSkillInstallation(projectId: string, agentId: string, operationId: string) {
-  return readJson<SkillInstallation>(`/api/v1/projects/${projectId}/agents/${agentId}/skill-installations/${operationId}`, t("api.errors.requestFailed"));
-}
-
 export function copySkill(skillId: string, skillVersionId: string, title: string) {
   return writeJson<CreativeSkill>(`/api/v1/skills/${skillId}/copy`, { method: "POST", body: JSON.stringify({title,skillVersionId}) });
 }

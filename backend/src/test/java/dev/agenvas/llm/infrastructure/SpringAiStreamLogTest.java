@@ -23,6 +23,37 @@ import reactor.core.publisher.Flux;
 class SpringAiStreamLogTest {
     private static final long TIMEOUT_SECONDS = 5;
 
+    @Test void waitsForInFlightPublicBatchBeforeCompletingTheResponse() throws Exception {
+        var source = reactor.core.publisher.Sinks.many().unicast().<ChatResponse>onBackpressureBuffer();
+        var gateway = gateway(source.asFlux());
+        CountDownLatch writing = new CountDownLatch(1), releaseWrite = new CountDownLatch(1);
+        List<String> outputs = new CopyOnWriteArrayList<>();
+        AtomicInteger active = new AtomicInteger(), maxActive = new AtomicInteger();
+        try (var caller = Executors.newSingleThreadExecutor()) {
+            Future<dev.agenvas.llm.application.ChatGateway.Exchange> call = caller.submit(() -> gateway.callStreaming(
+                    List.of(new UserMessage("test")), List.of(), Map.of(), gateway.configIdentity(), delta -> {
+                        maxActive.accumulateAndGet(active.incrementAndGet(), Math::max);
+                        try {
+                            writing.countDown();
+                            if (!releaseWrite.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)) throw new IllegalStateException("Write not released");
+                            outputs.add(delta);
+                        } catch (InterruptedException failure) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(failure);
+                        } finally { active.decrementAndGet(); }
+                    }));
+            source.emitNext(chunk("Test "), reactor.core.publisher.Sinks.EmitFailureHandler.FAIL_FAST);
+            assertThat(writing.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            source.emitNext(chunk("complete"), reactor.core.publisher.Sinks.EmitFailureHandler.FAIL_FAST);
+            source.emitComplete(reactor.core.publisher.Sinks.EmitFailureHandler.FAIL_FAST);
+            releaseWrite.countDown();
+            var result = call.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            assertThat(maxActive).hasValue(1);
+            assertThat(String.join("", outputs)).isEqualTo("Test complete");
+            assertThat(result.response().getResult().getOutput().getText()).isEqualTo("Test complete");
+        } finally { releaseWrite.countDown(); }
+    }
+
     @Test void completesWithPublicResponseAndSeparateDebugContentFromTheSameSubscription() {
         var tool = new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{}");
         var response = new ChatResponse(List.of(new Generation(AssistantMessage.builder().content("answer")

@@ -43,10 +43,34 @@ public record AgentRun(
         Instant updatedAt,
         Instant completedAt) {
 
-    /** 包含响应修复在内的单次 Run 模型回合上限。 */
-    public static final int MAX_MODEL_TURNS = 12;
-    /** 重放已完成工具结果不重复占用这个副作用预算。 */
-    public static final int MAX_TOOL_EXECUTIONS = 40;
+    /** Historical policies retain their frozen budgets; null in v6 means no count limit. */
+    private static final int LEGACY_MAX_TOOL_EXECUTIONS = 40;
+
+    public boolean modelTurnLimitReached(int stepIndex) {
+        return limitReached("maxModelTurns", 12, stepIndex);
+    }
+
+    /** Unbounded policies do not require an ever-growing ledger count before each tool. */
+    public boolean hasToolExecutionLimit() {
+        return configuredLimit("maxToolExecutions", LEGACY_MAX_TOOL_EXECUTIONS) != null;
+    }
+
+    public boolean toolExecutionLimitReached(long completedCount) {
+        return limitReached("maxToolExecutions", LEGACY_MAX_TOOL_EXECUTIONS, completedCount);
+    }
+
+    private boolean limitReached(String field, int legacyDefault, long count) {
+        Long value = configuredLimit(field, legacyDefault);
+        return value != null && count >= value;
+    }
+
+    private Long configuredLimit(String field, int legacyDefault) {
+        JsonNode limit = policySnapshot.path(field);
+        if (limit.isNull() && policySnapshot.path("schemaVersion").asInt() >= 6) return null;
+        long value = limit.isMissingNode() ? legacyDefault : limit.isIntegralNumber() ? limit.longValue() : -1;
+        if (value < 1 || value > Integer.MAX_VALUE) throw new IllegalStateException("Invalid frozen Run budget");
+        return value;
+    }
 
     /** 持久化运行状态；等待任务和阻断均未释放项目活动槽位。 */
     public enum Status {
@@ -56,13 +80,13 @@ public record AgentRun(
         RUNNING,
         /** 同 Run 的媒体任务执行中，等待结果后恢复编排。 */
         WAITING_TASKS,
-        /** 需要修复或人工处理，仍保留运行上下文。 */
+        /** 存在未决事项，仍保留运行上下文与项目槽位。 */
         BLOCKED,
         /** 取消意图已落库，正在停止后续任务编排。 */
         CANCEL_REQUESTED,
         /** 本系统后续编排已停止；外部请求可能仍在执行。 */
         CANCELED,
-        /** Run 已以失败结束。 */
+        /** Run 已以失败结束，释放槽位并保留已有产物。 */
         FAILED,
         /** Run 已按当前目标成功结束。 */
         SUCCEEDED;

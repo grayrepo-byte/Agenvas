@@ -2887,7 +2887,8 @@ paths:
       summary: 以 CAS 和幂等键批准或拒绝整个固定批次
       description: >-
         APPROVE 只授权当前审批快照；重新核验草稿、能力和输入版本后受理持久媒体任务。
-        REJECT 不提交 Provider。相同幂等键和请求返回同一审批的当前状态，不重复受理；
+        REJECT 不提交 Provider，并同事务撤回草稿未变、无媒体结果且无独立生成任务的空输出节点及连线；
+        用户已编辑或已开始创作的节点保留，审批与产物审计保留。相同幂等键和请求返回同一审批的当前状态，不重复受理；
         同键不同请求、版本变化或非 PENDING 审批返回冲突。
         尚为 PENDING 的过期审批转为 EXPIRED，返回 200 并通知 Agent。批准前没有第三方生成调用。
       tags: [Runs]
@@ -3959,68 +3960,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/agents/{agentId}/skill-installations:
-    parameters:
-      - {$ref: "#/components/parameters/AcceptLanguage"}
-      - name: projectId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-      - name: agentId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    post:
-      operationId: installAgentSkill
-      parameters:
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema: {type: string, minLength: 1, maxLength: 200}
-      tags: [Skills]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/InstallAgentSkillRequest"}
-      responses:
-        "202":
-          description: 已鉴权的固定内容或持久操作状态
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/SkillInstallation"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/agents/{agentId}/skill-installations/{operationId}:
-    parameters:
-      - {$ref: "#/components/parameters/AcceptLanguage"}
-      - name: projectId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-      - name: agentId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-      - name: operationId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    get:
-      operationId: getAgentSkillInstallation
-      tags: [Skills]
-      responses:
-        "200":
-          description: 已鉴权的固定内容或持久操作状态
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/SkillInstallation"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
 components:
   schemas:
     MediaStyleSummary:
@@ -5054,9 +4993,19 @@ components:
     RunningHubImportPreview:
       type: object
       additionalProperties: false
-      required: [definition, warnings]
+      required: [definition, warnings, recommendedFieldKeys, targetName]
       properties:
         definition: {$ref: "#/components/schemas/RunningHubDefinition"}
+        targetName:
+          type: [string, "null"]
+          maxLength: 160
+          description: Optional trimmed AI app or workflow display name from read-only discovery. Null when unavailable or importing local JSON. Autofills an empty capability name only; not retained in the imported input contract.
+        recommendedFieldKeys:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          description: Suggested exposed candidate keys for the editor (unambiguous canvas prompt and media inputs). Other fields remain available for manual exposure. Editor selection only; never stored in a capability or used to authorize execution.
+          items: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"}
         warnings:
           type: array
           description: Public discovery warnings localized using Accept-Language. Imported field labels and definition values retain their original content.
@@ -5302,9 +5251,9 @@ components:
       properties:
         creativeSkills:
           type: array
-          description: 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId）；未安装时 mapping.assets 为空。
+          description: 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId、position）；未安装时 mapping.assets 为空。
           items: {type: object, additionalProperties: true}
-        schemaVersion: {type: integer, const: 6}
+        schemaVersion: {type: integer, const: 7}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -6164,7 +6113,7 @@ components:
     AgentRunStatus:
       type: string
       enum: [QUEUED, RUNNING, WAITING_TASKS, BLOCKED, CANCEL_REQUESTED, CANCELED, FAILED, SUCCEEDED]
-      description: WAITING_TASKS 同时表示等待媒体审批或已批准媒体任务；审批详情通过 media-approvals 接口读取。
+      description: WAITING_TASKS 同时表示等待媒体审批或已批准媒体任务；审批详情通过 media-approvals 接口读取。无法继续的模型故障在没有未决 Task 或媒体审批时自动结束为 FAILED，释放项目活动槽位并保留已有结果；有未决事项时保持 BLOCKED。
     AgentMediaApprovalStatus:
       type: string
       enum: [PENDING, APPROVED, SUCCEEDED, FAILED, REJECTED, EXPIRED, CANCELED]
@@ -6184,7 +6133,7 @@ components:
         kind: {type: string, enum: [IMAGE, VIDEO, AUDIO]}
         title: {type: string}
         artifactId: {type: string, format: uuid}
-        canvasItemId: {type: string, format: uuid}
+        canvasItemId: {type: string, format: uuid, description: 固定输出节点 ID；拒绝后未修改的空节点可被撤回，历史 ID 不保证仍在画布上。}
         draftVersion: {type: integer, format: int64, minimum: 0}
         preview:
           type: object
@@ -6274,6 +6223,11 @@ components:
           minimum: 0
           description: 创建 Run 前已受理的会话消息水位；仅终态历史可进入记忆
         conversationMemory: {$ref: "#/components/schemas/ConversationMemory"}
+        creativeSkills:
+          type: array
+          maxItems: 100
+          description: Selected immutable Skill snapshots; complete content is persisted here but only names and descriptions are disclosed initially. Historical Runs may retain creativeSkill instead.
+          items: {type: object, additionalProperties: true}
         bindings:
           type: array
           items: {$ref: "#/components/schemas/RunInputSnapshot"}
@@ -6321,6 +6275,7 @@ components:
         title: {type: string}
         expectedVersion: {type: integer, format: int64, minimum: 0}
         source: {type: string, const: CONVERSATION_OUTPUT}
+        skillVersionId: {type: string, format: uuid, description: Skill reference disclosed only after activation.}
     RunPreflightBinding:
       type: object
       additionalProperties: false
@@ -6333,7 +6288,7 @@ components:
     RunPreflight:
       type: object
       additionalProperties: false
-      required: [agentId, agentVersion, agentName, agentInstruction, bindings, modelAvailable, providerAdapter, modelId, toolCalling, policySnapshot, conversationId, conversationVersion, conversationTurnCount, inheritedBindingCount, memoryTruncated]
+      required: [agentId, agentVersion, agentName, agentInstruction, bindings, modelAvailable, providerAdapter, modelId, toolCalling, policySnapshot, conversationId, conversationVersion, conversationTurnCount, inheritedBindingCount, memoryTruncated, creativeSkills]
       properties:
         agentId: {type: string, format: uuid}
         agentVersion: {type: integer, format: int64, minimum: 0}
@@ -6343,10 +6298,7 @@ components:
         conversationVersion: {type: [integer, "null"], format: int64, minimum: 0}
         conversationTurnCount: {type: integer, format: int64, minimum: 0}
         inheritedBindingCount: {type: integer, minimum: 0, maximum: 40}
-        creativeSkill:
-          oneOf:
-            - {$ref: "#/components/schemas/RunSkillSummary"}
-            - {type: "null"}
+        creativeSkills: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/RunSkillSummary"}}
         memoryTruncated: {type: boolean, description: 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。}
         bindings:
           type: array
@@ -6360,18 +6312,21 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        New Run policies are schema v3 and pin systemPromptVersion=7 plus their context-appropriate tool allowlist. Version 7 separates program-owned tool/approval protocol from the unmodified frozen card creative system prompt; managed prompts cannot change server authorization. IMAGE previews are sent only after committed read_artifacts requests, never automatically at Run start; Skill resource reading is exposed only when frozen resources exist. Historical v1
-        snapshots lack this field and cannot safely start an uncheckpointed model turn.
+        New policies are schema v6 with systemPromptVersion=10 and toolPolicyVersion=3.
+        Selected Skills initially disclose only name, description and immutable version ID;
+        read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports.
+        New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references.
+        Null count limits mean no per-Run model/tool count cap. Historical numeric policies retain their frozen protocol and limits.
       required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions]
       properties:
-        schemaVersion: {type: integer, enum: [1, 2, 3]}
-        toolPolicyVersion: {type: integer, enum: [1]}
+        schemaVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6]}
+        toolPolicyVersion: {type: integer, enum: [1, 2, 3]}
         allowedTools: {type: array, uniqueItems: true, items: {type: string}}
-        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6, 7], description: New v3 snapshots pin version 7; historical versions 1/2/3/4/5/6 retain their original rules and creative message roles; absent on historical v1 snapshots.}
+        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], description: New v6 snapshots pin version 10; historical rules and creative message roles remain frozen.}
         modelConfigSource: {type: string}
         modelConfigVersion: {type: integer, minimum: 1}
-        maxModelTurns: {type: integer, minimum: 1}
-        maxToolExecutions: {type: integer, minimum: 1}
+        maxModelTurns: {type: [integer, "null"], minimum: 1, description: Null means no model-turn count limit; historical numeric policies remain frozen.}
+        maxToolExecutions: {type: [integer, "null"], minimum: 1, description: Null means no per-Run tool execution count limit; historical numeric policies remain frozen.}
     AgentRun:
       type: object
       additionalProperties: false
@@ -6733,12 +6688,13 @@ components:
     CreativeSkill:
       type: object
       additionalProperties: false
-      required: [id, title, description, trashed, currentVersionId, version, createdAt, updatedAt]
+      required: [id, title, description, trashed, builtin, currentVersionId, version, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         title: {type: string}
         description: {type: string}
         trashed: {type: boolean}
+        builtin: {type: boolean, description: Packaged read-only Skill. It can be selected and tried, but has no editable draft or copy operation.}
         currentVersionId: {type: [string, "null"], format: uuid}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
@@ -6782,6 +6738,15 @@ components:
       properties:
         path: {type: string, maxLength: 160}
         content: {type: string, maxLength: 8000}
+        contentHash: {type: string}
+    SkillVersionResource:
+      type: object
+      additionalProperties: false
+      description: Immutable text attachment. Builtin Skills also include JSON, JSONL and YAML templates; files are never executed.
+      required: [path, content, contentHash]
+      properties:
+        path: {type: string, maxLength: 160}
+        content: {type: string, maxLength: 32000}
         contentHash: {type: string}
     SkillDraftAsset:
       type: object
@@ -6860,10 +6825,10 @@ components:
         bundleHash: {type: string}
         name: {type: string}
         description: {type: string}
-        skillMd: {type: string, maxLength: 8000}
+        skillMd: {type: string, maxLength: 16000}
         outputKinds: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/ArtifactKind"}}
         inputSlots: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/SkillInputSlot"}}
-        resources: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillResource"}}
+        resources: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionResource"}}
         assets: {type: array, items: {$ref: "#/components/schemas/SkillPublishedAsset"}}
         createdAt: {type: string, format: date-time}
     PublishSkillRequest:
@@ -6900,40 +6865,27 @@ components:
     SkillMediaBytes:
       type: string
       format: binary
-    AgentSkillBinding:
-      type: object
-      additionalProperties: false
-      required: [agentVersion, skillId, skillVersionId]
-      properties:
-        agentVersion: {type: integer, format: int64, minimum: 0}
-        skillId: {type: [string, "null"], format: uuid}
-        skillVersionId: {type: [string, "null"], format: uuid}
-    SaveAgentSkillBindingRequest:
-      type: object
-      additionalProperties: false
-      required: [expectedAgentVersion, skillId, skillVersionId]
-      properties:
-        expectedAgentVersion: {type: integer, format: int64, minimum: 0}
-        skillId: {type: [string, "null"], format: uuid}
-        skillVersionId: {type: [string, "null"], format: uuid}
-    InstallAgentSkillRequest:
+    SkillVersionRef:
       type: object
       additionalProperties: false
       required: [skillId, skillVersionId]
       properties:
         skillId: {type: string, format: uuid}
         skillVersionId: {type: string, format: uuid}
-    SkillInstallation:
+    AgentSkillBinding:
       type: object
       additionalProperties: false
-      required: [id, status, skillId, skillVersionId, errorCode, errorDetail]
+      required: [agentVersion, skills]
       properties:
-        id: {type: string, format: uuid}
-        status: {type: string, enum: [ACCEPTED, PREPARING, SUCCEEDED, FAILED, CLEANING]}
-        skillId: {type: string, format: uuid}
-        skillVersionId: {type: string, format: uuid}
-        errorCode: {type: [string, "null"]}
-        errorDetail: {type: [string, "null"]}
+        agentVersion: {type: integer, format: int64, minimum: 0}
+        skills: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionRef"}}
+    SaveAgentSkillBindingRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedAgentVersion, skills]
+      properties:
+        expectedAgentVersion: {type: integer, format: int64, minimum: 0}
+        skills: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionRef"}}
     SkillRunInput:
       type: object
       additionalProperties: false
@@ -6941,15 +6893,22 @@ components:
       properties:
         alias: {type: string, maxLength: 64}
         artifactVersionId: {type: string, format: uuid}
-    SkillSelection:
+    SkillRunChoice:
       type: object
       additionalProperties: false
-      required: [mode]
+      required: [skillId, skillVersionId, inputs]
       properties:
-        mode: {type: string, enum: [DEFAULT, NONE, VERSION]}
         skillId: {type: string, format: uuid}
         skillVersionId: {type: string, format: uuid}
         inputs: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/SkillRunInput"}}
+    SkillSelection:
+      type: object
+      additionalProperties: false
+      required: [mode, skills]
+      description: Ordered available Skill catalogue. NONE and DEFAULT use an empty list; VERSIONS selects one to one hundred distinct Skills, each pinned to one version. Selection does not imply activation.
+      properties:
+        mode: {type: string, enum: [DEFAULT, NONE, VERSIONS]}
+        skills: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillRunChoice"}}
     RunPreflightRequest:
       type: object
       additionalProperties: false
@@ -6961,7 +6920,7 @@ components:
     RunSkillSummary:
       type: object
       additionalProperties: false
-      required: [skillId, skillVersionId, title, versionNumber, bundleHash, inputSlots, resources, assets, installed]
+      required: [skillId, skillVersionId, title, versionNumber, bundleHash, inputSlots, resources, assets]
       properties:
         skillId: {type: string, format: uuid}
         skillVersionId: {type: string, format: uuid}
@@ -6969,9 +6928,8 @@ components:
         versionNumber: {type: integer, format: int64, minimum: 0}
         bundleHash: {type: string}
         inputSlots: {type: array, items: {$ref: "#/components/schemas/SkillInputSlot"}}
-        resources: {type: array, items: {$ref: "#/components/schemas/SkillResource"}}
+        resources: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionResource"}}
         assets: {type: array, items: {$ref: "#/components/schemas/SkillPublishedAsset"}}
-        installed: {type: boolean}
   responses:
     ValidationError:
       description: 请求参数无效

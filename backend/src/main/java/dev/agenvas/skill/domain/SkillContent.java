@@ -11,6 +11,8 @@ public final class SkillContent {
     public static final int SCHEMA_VERSION = 1;
     private SkillContent() {}
     public enum Usage { GUIDE, PROVIDER_REFERENCE }
+    /** New Run delivery is separate from immutable historical publication usage. */
+    public enum AssetDelivery { LLM_CONTEXT }
     public enum Status { ACTIVE, TRASHED }
     public enum OperationStatus { ACCEPTED, ARCHIVING, SUCCEEDED, FAILED }
     public record InputSlot(String alias, Artifact.Kind kind, @com.fasterxml.jackson.annotation.JsonProperty(required = true) boolean required) {}
@@ -25,12 +27,12 @@ public final class SkillContent {
     public record Bundle(int schemaVersion, String name, String description, String skillMd,
             List<Artifact.Kind> outputKinds, List<InputSlot> inputSlots, List<PublishedResource> resources,
             List<PublishedAsset> assets) {}
-    public record Catalogue(UUID id, UUID ownerId, String title, String description, UUID currentVersionId,
+    public record Catalogue(UUID id, UUID ownerId, String title, String description, String builtinKey, UUID currentVersionId,
             Instant trashedAt, long version, Instant createdAt, Instant updatedAt) {}
     public record Draft(UUID skillId, UUID ownerId, long version, DraftContent content, Instant updatedAt) {}
     public record Version(UUID id, UUID ownerId, UUID skillId, long versionNumber, String bundleHash,
             Bundle bundle, Instant createdAt) {}
-    public record Binding(UUID agentId, UUID projectId, UUID ownerId, UUID skillId, UUID skillVersionId, Instant updatedAt) {}
+    public record Binding(UUID agentId, UUID projectId, UUID ownerId, UUID skillId, UUID skillVersionId, int position, Instant updatedAt) {}
     public record PublishInput(int schemaVersion, long draftVersion, DraftContent draft) {}
     public record PublishOperation(UUID id, UUID ownerId, UUID skillId, String commandKey, String payloadHash,
             PublishInput input, tools.jackson.databind.JsonNode progress, OperationStatus status, long epoch,

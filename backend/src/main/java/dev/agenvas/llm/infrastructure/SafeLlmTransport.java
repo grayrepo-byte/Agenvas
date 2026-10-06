@@ -1,6 +1,7 @@
 package dev.agenvas.llm.infrastructure;
 
 import dev.agenvas.llm.application.LlmCallTimeouts;
+import dev.agenvas.llm.application.LlmProtocolCodec;
 import dev.agenvas.settings.application.LlmEndpointPolicy;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
@@ -24,8 +25,8 @@ import okio.Okio;
 /** 限定模型请求只能访问已准入端点，并在连接时校验 DNS 解析结果。 */
 final class SafeLlmTransport {
 
-    /** The protocol checkpoint remains capped at 1 MiB; repeated SSE envelopes get fixed wire overhead. */
-    static final long MAX_STREAM_RESPONSE_BYTES = 4L * 1024 * 1024;
+    /** 为 SSE 重复封装预留四倍协议预算；32 MiB 原始字节限制仍在 SDK 解析前生效。 */
+    static final long MAX_STREAM_RESPONSE_BYTES = 4L * LlmProtocolCodec.MAX_RESPONSE_BYTES;
 
     /** 准入策略检查通过的配置端点，作为请求校验的来源。 */
     private final HttpUrl base;

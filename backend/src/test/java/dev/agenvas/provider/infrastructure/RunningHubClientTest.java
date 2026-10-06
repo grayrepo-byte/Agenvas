@@ -63,7 +63,7 @@ class RunningHubClientTest {
                 "{\"code\":0,\"data\":{\"id\":\"456\",\"inputNodes\":[{}]}}", "not json")) {
             try (var fixture = new Server(200, "{\"code\":0,\"data\":{\"nodeInfoList\":[{\"nodeId\":\"1\",\"fieldName\":\"text\"}],\"curl\":\"ignore\"}}")) {
                 fixture.replies.put("/api/webapp/detail", detail);
-                assertThat(new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.AI_APP, "123").path("nodeInfoList")).hasSize(1);
+                assertThat(new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.AI_APP, "123").source().path("nodeInfoList")).hasSize(1);
                 assertThat(fixture.path.get()).isEqualTo("/api/webapp/apiCallDemo?webappId=123").doesNotContain("test-key");
                 assertThat(fixture.authorization.get()).isEqualTo("Bearer test-key");
                 assertThat(fixture.calls).hasValue(2);
@@ -82,17 +82,19 @@ class RunningHubClientTest {
     @Test void publicAppInputsAreDiscoveredWhenApiCallDemoRequiresAQueryKey() throws Exception {
         try (var fixture = new Server(200, "{\"code\":500,\"msg\":\"UNKNOWN_ERROR\",\"data\":null}")) {
             fixture.replies.put("/api/webapp/detail", """
-                    {"code":0,"data":{"id":"123","inputNodes":[
+                    {"code":0,"data":{"id":"123","name":"  Synthetic app  ","inputNodes":[
                       {"nodeId":"150","nodeName":"Prompt","fieldName":"value","fieldType":"STRING","fieldValue":"A synthetic shape"},
                       {"nodeId":"115","fieldName":"aspect_ratio","fieldType":"LIST","fieldValue":"16:9",
                        "fieldData":["COMBO",{"options":["1:1","16:9"]}]}],
                       "curl":"private demo must not be retained","owner":{"name":"unrelated metadata"}}}
                     """);
             var metadata = new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.AI_APP, "123");
-            assertThat(metadata.path("nodeInfoList")).hasSize(2);
-            assertThat(metadata.path("nodeInfoList").get(1).path("fieldData").get(1).path("options")).hasSize(2);
-            assertThat(metadata.has("curl")).isFalse();
-            assertThat(metadata.has("owner")).isFalse();
+            assertThat(metadata.targetName()).isEqualTo("Synthetic app");
+            assertThat(metadata.source().path("nodeInfoList")).hasSize(2);
+            assertThat(metadata.source().path("nodeInfoList").get(1).path("fieldData").get(1).path("options")).hasSize(2);
+            assertThat(metadata.source().has("curl")).isFalse();
+            assertThat(metadata.source().has("owner")).isFalse();
+            assertThat(metadata.source().has("name")).isFalse();
             assertThat(fixture.path.get()).isEqualTo("/api/webapp/detail").doesNotContain("test-key");
             assertThat(fixture.method.get()).isEqualTo("POST");
             assertThat(mapper.readTree(fixture.body.get())).isEqualTo(mapper.readTree("{\"webappId\":\"123\"}"));
@@ -102,7 +104,57 @@ class RunningHubClientTest {
     }
     @Test void workflowPromptStringIsDecodedTwice() throws Exception {
         try (var fixture = new Server(200, "{\"code\":0,\"data\":{\"prompt\":\"{\\\"3\\\":{\\\"inputs\\\":{\\\"seed\\\":7}}}\"}}")) {
-            assertThat(new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.WORKFLOW, "123").path("3").path("inputs").path("seed").asInt()).isEqualTo(7);
+            fixture.replies.put("/api/portal/workflow/detail", "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic workflow \",\"owner\":{\"name\":\"unrelated\"}}}");
+            var metadata = new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.WORKFLOW, "123");
+            assertThat(metadata.source().path("3").path("inputs").path("seed").asInt()).isEqualTo(7);
+            assertThat(metadata.targetName()).isEqualTo("Synthetic workflow");
+            assertThat(metadata.source().has("name")).isFalse();
+            assertThat(fixture.path.get()).isEqualTo("/api/portal/workflow/detail");
+            assertThat(fixture.authorization.get()).isNull();
+            assertThat(mapper.readTree(fixture.body.get())).isEqualTo(mapper.readTree("{\"workflowId\":\"123\"}"));
+            assertThat(fixture.calls).hasValue(2);
+        }
+    }
+    @Test void workflowNameFailureOrWrongIdentityDoesNotFailParameterDiscovery() throws Exception {
+        for (String detail : List.of("not json", "{\"code\":403}", "{\"code\":0,\"data\":{\"id\":\"456\",\"name\":\"Wrong target\"}}",
+                "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":null}}")) {
+            try (var fixture = new Server(200, "{\"code\":0,\"data\":{\"prompt\":\"{\\\"3\\\":{\\\"inputs\\\":{\\\"seed\\\":7}}}\"}}")) {
+                fixture.replies.put("/api/portal/workflow/detail", detail);
+                var metadata = new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.WORKFLOW, "123");
+                assertThat(metadata.source().path("3").path("inputs").path("seed").asInt()).isEqualTo(7);
+                assertThat(metadata.targetName()).isNull();
+                assertThat(fixture.calls).hasValue(2);
+            }
+        }
+    }
+    @Test void appDemoRetainsOnlyItsDocumentedNameAndInputs() throws Exception {
+        try (var fixture = new Server(200, "{\"code\":0,\"data\":{\"webappName\":\" Synthetic demo app \",\"nodeInfoList\":[{\"nodeId\":\"1\",\"fieldName\":\"text\"}],\"curl\":\"test-key\"}}")) {
+            fixture.replies.put("/api/webapp/detail", "{\"code\":403}");
+            var metadata = new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.AI_APP, "123");
+            assertThat(metadata.targetName()).isEqualTo("Synthetic demo app");
+            assertThat(metadata.source().toString()).doesNotContain("test-key", "curl", "webappName");
+            assertThat(fixture.path.get()).isEqualTo("/api/webapp/apiCallDemo?webappId=123");
+            assertThat(fixture.authorization.get()).isEqualTo("Bearer test-key");
+        }
+    }
+    @Test void missingBlankNonTextAndCredentialBearingNamesRemainOptionalAndLongNamesAreBounded() throws Exception {
+        try (var fixture = new Server(200, "{}")) {
+            var detail = mapper.createObjectNode();
+            detail.put("code", 0);
+            var data = detail.putObject("data").put("id", "123");
+            data.putArray("inputNodes").addObject().put("nodeId", "1").put("fieldName", "text");
+            for (String name : List.of("null", "23", "{}", "\"  \"", "\"test-key private demo\"")) {
+                data.set("name", mapper.readTree(name));
+                fixture.replies.put("/api/webapp/detail", detail.toString());
+                var metadata = new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.AI_APP, "123");
+                assertThat(metadata.targetName()).isNull();
+                assertThat(metadata.source().path("nodeInfoList")).hasSize(1);
+            }
+            data.put("name", "  " + "a".repeat(159) + "🎨" + "b".repeat(8) + "  ");
+            fixture.replies.put("/api/webapp/detail", detail.toString());
+            assertThat(new RunningHubClient(mapper).metadata(fixture.origin(), "test-key", RunningHubDefinition.TargetType.AI_APP, "123").targetName())
+                    .isEqualTo("a".repeat(159));
+            assertThat(fixture.calls).hasValue(6);
         }
     }
     @Test void uploadAcceptsDocumentedSuccessVariantsAndKeepsResourceSemantics() throws Exception {

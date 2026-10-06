@@ -9,12 +9,12 @@ import dev.agenvas.db.tables.AgentSkillBinding;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-import org.jooq.Record1;
+import org.jooq.Record2;
 import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Agent 选定的 Skill 不可变版本
+ * Agent selected immutable Skill versions, ordered for the available catalogue
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindingRecord> {
@@ -109,13 +109,29 @@ public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindi
         return (OffsetDateTime) get(5);
     }
 
+    /**
+     * Setter for <code>public.agent_skill_binding.position</code>. Zero-based
+     * position in the Agent default Skill selection; at most one hundred
+     */
+    public void setPosition(Integer value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.agent_skill_binding.position</code>. Zero-based
+     * position in the Agent default Skill selection; at most one hundred
+     */
+    public Integer getPosition() {
+        return (Integer) get(6);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
 
     @Override
-    public Record1<UUID> key() {
-        return (Record1) super.key();
+    public Record2<UUID, UUID> key() {
+        return (Record2) super.key();
     }
 
     // -------------------------------------------------------------------------
@@ -132,7 +148,7 @@ public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindi
     /**
      * Create a detached, initialised AgentSkillBindingRecord
      */
-    public AgentSkillBindingRecord(UUID agentId, UUID projectId, UUID ownerId, UUID skillId, UUID skillVersionId, OffsetDateTime updatedAt) {
+    public AgentSkillBindingRecord(UUID agentId, UUID projectId, UUID ownerId, UUID skillId, UUID skillVersionId, OffsetDateTime updatedAt, Integer position) {
         super(AgentSkillBinding.AGENT_SKILL_BINDING);
 
         setAgentId(agentId);
@@ -141,6 +157,7 @@ public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindi
         setSkillId(skillId);
         setSkillVersionId(skillVersionId);
         setUpdatedAt(updatedAt);
+        setPosition(position);
         resetChangedOnNotNull();
     }
 }

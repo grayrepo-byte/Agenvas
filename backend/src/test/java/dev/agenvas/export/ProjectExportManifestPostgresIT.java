@@ -146,11 +146,12 @@ class ProjectExportManifestPostgresIT {
         var publication = skills.publish(owner.userId(), skill.id(), firstDraft.version(), "manifest-skill-publish");
         assertThat(skills.processNext()).isTrue();
         UUID skillVersionId = skills.getOperation(owner.userId(), publication.id()).resultVersionId();
+        var builtin = skills.list(owner.userId(), "short-drama-write", false, null).items().getFirst();
+        var builtinVersion = skills.getVersion(owner.userId(), builtin.id(), builtin.currentVersionId());
         var agent = agents.create(owner.userId(), project.id(), "Export Creator", "Use the selected method", List.of());
-        skillRuns.saveBinding(owner.userId(), project.id(), agent.id(), agent.version(), skill.id(), skillVersionId,
-                "manifest-agent-binding");
-        skillRuns.install(owner.userId(), project.id(), agent.id(), skill.id(), skillVersionId, "manifest-skill-install");
-        assertThat(skillRuns.processNext()).isTrue();
+        skillRuns.saveBinding(owner.userId(), project.id(), agent.id(), agent.version(), List.of(
+                new SkillRunService.VersionRef(skill.id(), skillVersionId),
+                new SkillRunService.VersionRef(builtin.id(), builtin.currentVersionId())), "manifest-agent-binding");
         var secondDraft = skills.saveDraft(owner.userId(), skill.id(), firstDraft.version(),
                 new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, firstDraft.skillMd() + "\nUse the cold palette.\n",
                         firstDraft.outputKinds(), firstDraft.inputSlots(),
@@ -158,16 +159,14 @@ class ProjectExportManifestPostgresIT {
                         firstDraft.assets()));
         var secondPublication = skills.publish(owner.userId(), skill.id(), secondDraft.version(), "manifest-skill-publish-next");
         assertThat(skills.processNext()).isTrue();
-        UUID uninstalledVersionId = skills.getOperation(owner.userId(), secondPublication.id()).resultVersionId();
-        var uninstalledAgent = agents.create(owner.userId(), project.id(), "Future Creator", "Use a different fixed version", List.of());
-        skillRuns.saveBinding(owner.userId(), project.id(), uninstalledAgent.id(), uninstalledAgent.version(),
-                skill.id(), uninstalledVersionId, "manifest-uninstalled-agent-binding");
-        assertThat(skillRuns.preview(owner.userId(), project.id(), agent.id(), null).installed()).isTrue();
-        assertThat(skillRuns.preview(owner.userId(), project.id(), uninstalledAgent.id(), null).installed()).isFalse();
+        UUID secondVersionId = skills.getOperation(owner.userId(), secondPublication.id()).resultVersionId();
+        var secondAgent = agents.create(owner.userId(), project.id(), "Future Creator", "Use a different fixed version", List.of());
+        skillRuns.saveBinding(owner.userId(), project.id(), secondAgent.id(), secondAgent.version(), List.of(new SkillRunService.VersionRef(skill.id(), secondVersionId)), "manifest-second-agent-binding");
+        assertThat(skillRuns.preview(owner.userId(), project.id(), agent.id(), null).getFirst().skillVersionId()).isEqualTo(skillVersionId);
+        assertThat(skillRuns.preview(owner.userId(), project.id(), secondAgent.id(), null).getFirst().skillVersionId()).isEqualTo(secondVersionId);
         var otherProject = projects.create(owner.userId(), "Other project", Project.AspectRatio.LANDSCAPE_16_9);
         var otherAgent = agents.create(owner.userId(), otherProject.id(), "Other Creator", "Keep this binding private to the other project", List.of());
-        skillRuns.saveBinding(owner.userId(), otherProject.id(), otherAgent.id(), otherAgent.version(),
-                skill.id(), uninstalledVersionId, "other-project-agent-binding");
+        skillRuns.saveBinding(owner.userId(), otherProject.id(), otherAgent.id(), otherAgent.version(), List.of(new SkillRunService.VersionRef(skill.id(), secondVersionId)), "other-project-agent-binding");
         ObjectNode skillSource = mapper.createObjectNode().put("schemaVersion", 1)
                 .put("skillId", skill.id().toString()).put("skillVersionId", skillVersionId.toString())
                 .put("bundleHash", skills.getVersion(owner.userId(), skill.id(), skillVersionId).bundleHash());
@@ -189,7 +188,7 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(6);
+        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(7);
         assertThat(manifest.path("project").path("id").asText())
                 .isEqualTo(project.id().toString());
         assertThat(manifest.path("project").has("ownerId")).isFalse();
@@ -213,29 +212,31 @@ class ProjectExportManifestPostgresIT {
         assertThat(targetCard.path("mediaDraft").path("styleId").asText()).isEqualTo(style.id().toString());
         assertThat(targetCard.path("mediaDraft").path("style").path("promptSuffix").asText())
                 .isEqualTo("Soft paper texture");
-        assertThat(manifest.path("creativeSkills").size()).isEqualTo(2);
-        JsonNode installedSkill = findSkillVersion(manifest.path("creativeSkills"), skillVersionId);
-        assertThat(installedSkill.path("version").path("skillMd").asText()).isEqualTo(firstDraft.skillMd());
-        assertThat(installedSkill.path("version").path("resources").get(0).path("content").asText())
+        assertThat(manifest.path("creativeSkills").size()).isEqualTo(3);
+        JsonNode exportedBuiltin = findSkillVersion(manifest.path("creativeSkills"), builtin.currentVersionId());
+        assertThat(exportedBuiltin.path("version").path("skillMd").asText()).isEqualTo(builtinVersion.skillMd());
+        assertThat(exportedBuiltin.path("version").path("resources")).hasSize(builtinVersion.resources().size());
+        assertThat(exportedBuiltin.path("version").path("assets")).isEmpty();
+        assertThat(exportedBuiltin.path("mapping").path("assets")).isEmpty();
+        assertSkillBinding(exportedBuiltin, agent.id(), builtin.id(), builtin.currentVersionId());
+        assertThat(exportedBuiltin.path("agentBindings").path(0).path("position").asInt()).isEqualTo(1);
+        JsonNode firstSkill = findSkillVersion(manifest.path("creativeSkills"), skillVersionId);
+        assertThat(firstSkill.path("version").path("skillMd").asText()).isEqualTo(firstDraft.skillMd());
+        assertThat(firstSkill.path("version").path("resources").get(0).path("content").asText())
                 .isEqualTo("Use the warm watercolor palette.");
-        assertSkillBinding(installedSkill, agent.id(), skill.id(), skillVersionId);
-        assertThat(installedSkill.path("mapping").path("schemaVersion").asInt()).isEqualTo(SkillContent.SCHEMA_VERSION);
-        assertThat(installedSkill.path("mapping").path("assets").size()).isEqualTo(1);
-        JsonNode installedMapping = installedSkill.path("mapping").path("assets").get(0);
-        assertThat(installedMapping.path("alias").asText()).isEqualTo("style-reference");
-        assertThat(artifacts.requireVersion(owner.userId(), project.id(),
-                UUID.fromString(installedMapping.path("artifactId").asText()),
-                UUID.fromString(installedMapping.path("artifactVersionId").asText()))
-                .content().path("sourceType").asText()).isEqualTo("SKILL_IMPORT");
-        JsonNode uninstalledSkill = findSkillVersion(manifest.path("creativeSkills"), uninstalledVersionId);
-        assertThat(uninstalledSkill.path("version").path("skillMd").asText()).isEqualTo(secondDraft.skillMd());
-        assertThat(uninstalledSkill.path("version").path("resources").get(0).path("content").asText())
+        assertSkillBinding(firstSkill, agent.id(), skill.id(), skillVersionId);
+        assertThat(firstSkill.path("mapping").path("schemaVersion").asInt()).isEqualTo(SkillContent.SCHEMA_VERSION);
+        assertThat(firstSkill.path("mapping").path("assets")).isEmpty();
+        JsonNode secondSkill = findSkillVersion(manifest.path("creativeSkills"), secondVersionId);
+        assertThat(secondSkill.path("version").path("skillMd").asText()).isEqualTo(secondDraft.skillMd());
+        assertThat(secondSkill.path("version").path("resources").get(0).path("content").asText())
                 .isEqualTo("Use the cold watercolor palette.");
-        assertSkillBinding(uninstalledSkill, uninstalledAgent.id(), skill.id(), uninstalledVersionId);
-        assertThat(uninstalledSkill.path("mapping").path("schemaVersion").asInt()).isEqualTo(SkillContent.SCHEMA_VERSION);
-        assertThat(uninstalledSkill.path("mapping").path("assets").isArray()).isTrue();
-        assertThat(uninstalledSkill.path("mapping").path("assets").isEmpty()).isTrue();
+        assertSkillBinding(secondSkill, secondAgent.id(), skill.id(), secondVersionId);
+        assertThat(secondSkill.path("mapping").path("schemaVersion").asInt()).isEqualTo(SkillContent.SCHEMA_VERSION);
+        assertThat(secondSkill.path("mapping").path("assets").isArray()).isTrue();
+        assertThat(secondSkill.path("mapping").path("assets").isEmpty()).isTrue();
         for (JsonNode exportedSkill : manifest.path("creativeSkills")) {
+            if (exportedSkill == exportedBuiltin) continue;
             assertThat(exportedSkill.path("version").path("assets").size()).isEqualTo(1);
             assertThat(exportedSkill.path("version").path("assets").get(0).has("contentUrl")).isFalse();
             assertThat(exportedSkill.path("version").path("assets").get(0).has("thumbnailUrl")).isFalse();

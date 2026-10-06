@@ -266,6 +266,17 @@ Only version-tag pushes upload to Docker Hub. Release images are inventoried onc
 
 PRs, `main` pushes, and manual runs never access Docker Hub credentials or push images. Release service/architecture jobs retain SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
 
+After both server/web multi-platform images are published, the workflow creates a GitHub Release for the version tag. Notes include versioned image addresses, the source commit, commits since the previous version, and GitHub-generated PR, contributor, and changelog links. Stable versions compare against the previous stable tag; prereleases may compare against an earlier prerelease. Prereleases and backfills older than an existing stable release never become Latest. Retries preserve existing notes and only fill empty notes; existing drafts are preserved and require manual publication. Only this tag-only job has `contents: write`; it waits for CI Gate and successful Docker Hub publication and does not rebuild images.
+
+Existing tags are not backfilled automatically. Once their CI and images on both architectures have been verified, preview the notes before explicitly publishing the Release:
+
+```sh
+python3 .github/scripts/release.py notes v0.0.2 --repo grayrepo-byte/Agenvas --output release-notes.md
+python3 .github/scripts/release.py publish v0.0.2 --repo grayrepo-byte/Agenvas
+```
+
+Local commands use your authenticated GitHub CLI without placing tokens in command arguments. `notes` only generates a preview; `publish` writes to GitHub. The script checks the remote tag and source commit without creating or moving tags. Generated content uses the [GitHub Release Notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release).
+
 The workflow follows [Docker's multi-platform build documentation](https://docs.docker.com/build/ci/github-actions/multi-platform/) and [Docker image tagging rules](https://github.com/docker/metadata-action).
 
 </details>
@@ -290,6 +301,10 @@ configs/        Agent, Skill, and trusted media workflow configuration
 deploy/         Compose, Nginx, and container builds
 docs/           Specifications, designs, and development documentation
 ```
+
+## Open-source acknowledgements
+
+Agenvas's built-in short-drama creation Skills come from [zenstory-ai/drama-skills](https://github.com/zenstory-ai/drama-skills). We thank the project's authors and contributors for sharing their creative skills and workflows as open source.
 
 ## License
 

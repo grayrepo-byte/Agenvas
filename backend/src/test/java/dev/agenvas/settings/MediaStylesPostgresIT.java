@@ -166,7 +166,8 @@ class MediaStylesPostgresIT {
             assertThat(drafts.get(owner.userId(), fixture.project().id(), item.item().id()).styleId()).isEqualTo(style.id());
         }
         var export = exports.build(owner.userId(), fixture.project().id());
-        assertThat(export.schemaVersion()).isEqualTo(6);
+        // Export v7 includes ordered multi-Skill bindings while retaining frozen styles.
+        assertThat(export.schemaVersion()).isEqualTo(7);
         assertThat(export.canvasItems().getFirst().mediaDraft().styleId()).isEqualTo(style.id());
         assertThat(export.canvasItems().getFirst().mediaDraft().style().promptSuffix()).isEqualTo("neon night");
         assertThatThrownBy(() -> direct.run(owner.userId(), fixture.project().id(), fixture.artifact().id(), fixture.card(),

@@ -23,7 +23,10 @@ public class InitialModelContextService {
     public static final int IMAGE_INPUT_SYSTEM_PROMPT_VERSION = 5;
     public static final int CREATIVE_SYSTEM_PROMPT_VERSION = 6;
     public static final int SEPARATED_PROTOCOL_SYSTEM_PROMPT_VERSION = 7;
-    public static final int CURRENT_SYSTEM_PROMPT_VERSION = SEPARATED_PROTOCOL_SYSTEM_PROMPT_VERSION;
+    public static final int PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION = 8;
+    public static final int SKILL_IMAGE_SYSTEM_PROMPT_VERSION = 9;
+    public static final int SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION = 10;
+    public static final int CURRENT_SYSTEM_PROMPT_VERSION = SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION;
 
     /** 每次模型调用允许拼入的绑定上下文字符总量。 */
     private static final int MAX_CONTEXT_CHARS = 64_000;
@@ -126,6 +129,59 @@ public class InitialModelContextService {
             Never invent resource IDs or treat a textual mention as an actual reference.
             """;
 
+    private static final String SYSTEM_RULES_V8 = SYSTEM_RULES_V7 + """
+            Available creative Skills initially contain only names and descriptions, plus their
+            immutable version IDs. Select the Skills relevant to the current request. Call
+            read_skill with the exact skillVersionId to activate each relevant Skill and receive
+            its full SKILL.md, resource manifest, input mappings and reference aliases. You may
+            combine multiple Skills; you do not need to activate every available Skill.
+            Only after reading a Skill's main instructions, call read_skill_resource with that
+            same skillVersionId and an exact registered path when supporting detail is needed.
+            Selected but unread Skills are not active and do not constrain media proposals.
+            For each media output, active Skills that support its kind supply the required inputs
+            and reference rules. Reference aliases and resource paths are local to a Skill version.
+            """;
+
+    /** Skill-owned images are supplied on demand to the model, without project import or canvas placement. */
+    private static final String SYSTEM_RULES_V9 = SYSTEM_RULES_V8
+            .replace("Use the\nexact alias-to-version mappings for references. GUIDE assets are context only;\nrequired PROVIDER_REFERENCE assets must appear in the proposed media inputs.",
+                    "Fixed Skill image aliases describe LLM context only, not project artifacts or Provider media inputs.")
+            .replace("input mappings and reference aliases", "input mappings and image aliases")
+            .replace("For each media output, active Skills that support its kind supply the required inputs\nand reference rules.",
+                    "For each media output, active Skills that support its kind supply the required user input slots.")
+            + """
+            After read_skill commits, call read_skill_asset with the same skillVersionId and an
+            exact image alias only when its pixels are needed. The committed reply is followed
+            by an image preview attachment. Read only images that are attached; activation alone
+            does not send images. Fixed Skill images stay owned by the published Skill: no project
+            artifacts or canvas cards are created. They have no artifact/version IDs and must never
+            be submitted as mediaInputs to a Provider, regardless of their historical usage label.
+            Project reference images supplied through user input slots remain ordinary authorized
+            project artifact versions. Skill and project image previews share the Run limit of
+            eight distinct images, two MiB each and eight MiB combined.
+            """;
+
+    /** Observe each image before moving on; previous pixels do not accumulate in later requests. */
+    private static final String SYSTEM_RULES_V10 = SYSTEM_RULES_V9
+            .replace("share the Run limit of\neight distinct images", "share the per-request safety limit of\neight distinct images") + """
+            Read image pixels one image at a time. Each assistant tool batch may request only one
+            IMAGE version through read_artifacts or one Skill image through read_skill_asset.
+            Text versions may still be read in batches. After seeing the attached image, record
+            concise observable facts, identity/continuity anchors and any relevant defects in
+            your public reply, linked to its exact version ID or Skill version and alias, before
+            requesting another image. These are visual observations, never private reasoning.
+            Only the most recently read image remains attached in following model requests.
+            Earlier tool replies and public observations remain as text; use them for continuity
+            and reread one exact image when its pixels are needed again. Do not claim to have
+            inspected an image merely because its generation prompt or metadata is present.
+            Never fill an image limit for its own sake or request every image without a purpose.
+            This Run has no fixed model-turn or tool-execution count limit. Complete the user's
+            task or stop when canceled; all per-request safety limits and approvals still apply.
+            Older context may be projected into bounded public observations and exact references.
+            Activated Skill main instructions remain available; reread exact text/image references
+            or Skill resources for omitted detail rather than guessing from a partial summary.
+            """;
+
     /** 读取创建时固定的 Run 上下文、指令和策略版本。 */
     private final AgentRunService runs;
     /** 按快照中的 artifactId/versionId 重新读取并鉴权精确版本。 */
@@ -174,12 +230,22 @@ public class InitialModelContextService {
                 : "Agent " + agentName + " creative instructions (user configuration):\n" + agentInstruction;
         messages.add(run.policySnapshot().path("systemPromptVersion").asInt() >= CREATIVE_SYSTEM_PROMPT_VERSION
                 ? new SystemMessage(creativeInstructions) : new UserMessage("Agent " + agentName + " instructions:\n" + agentInstruction));
-        JsonNode skill = snapshot.path("creativeSkill");
-        if (skill.isObject()) {
-            messages.add(new UserMessage("Selected creative Skill (user content):\n"
-                    + required(skill, "skillMd") + "\nFrozen resources (read on demand):\n"
-                    + skill.path("resourceManifest") + "\nExact reference aliases and purposes:\n"
-                    + skill.path("assets") + "\nUser input slots:\n" + skill.path("inputs")));
+        if (run.policySnapshot().path("systemPromptVersion").asInt() >= PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION) {
+            var catalog = new StringBuilder("Available creative Skills (read_skill to activate):\n");
+            for (JsonNode selected : RunSkills.available(run)) {
+                catalog.append("skillVersionId=").append(required(selected, "skillVersionId"))
+                        .append(" name=").append(required(selected, "name"))
+                        .append(" description=").append(required(selected, "description")).append('\n');
+            }
+            messages.add(new UserMessage(catalog.toString()));
+        } else {
+            JsonNode skill = snapshot.path("creativeSkill");
+            if (skill.isObject()) {
+                messages.add(new UserMessage("Selected creative Skill (user content):\n"
+                        + required(skill, "skillMd") + "\nFrozen resources (read on demand):\n"
+                        + skill.path("resourceManifest") + "\nExact reference aliases and purposes:\n"
+                        + skill.path("assets") + "\nUser input slots:\n" + skill.path("inputs")));
+            }
         }
         StringBuilder availableMedia = new StringBuilder(
                 "Published media capabilities for this project:\n");
@@ -196,6 +262,9 @@ public class InitialModelContextService {
         messages.add(new UserMessage(availableMedia.toString()));
         StringBuilder boundInputs = new StringBuilder("Explicitly bound immutable inputs:\n");
         for (JsonNode binding : bindings) {
+            // Selected Skill references are disclosed by read_skill, never by the initial catalogue.
+            if (run.policySnapshot().path("systemPromptVersion").asInt() >= PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION
+                    && binding.has("skillVersionId")) continue;
             UUID artifactId = uuid(binding, "artifactId");
             UUID versionId = uuid(binding, "selectedVersionId");
             ArtifactVersion version = artifacts.requireVersion(ownerId, projectId,
@@ -295,6 +364,9 @@ public class InitialModelContextService {
             case IMAGE_INPUT_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V5;
             case CREATIVE_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V6;
             case SEPARATED_PROTOCOL_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V7;
+            case PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V8;
+            case SKILL_IMAGE_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V9;
+            case SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V10;
             default -> throw new IllegalStateException("Run system prompt version is unsupported");
         };
     }

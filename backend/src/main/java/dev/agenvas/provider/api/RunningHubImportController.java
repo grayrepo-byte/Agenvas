@@ -30,7 +30,7 @@ public final class RunningHubImportController {
         this.imports = imports;
         this.messages = messages;
     }
-    public record PreviewResponse(RunningHubDefinition definition, java.util.List<String> warnings) {}
+    public record PreviewResponse(RunningHubDefinition definition, java.util.List<String> warnings, java.util.List<String> recommendedFieldKeys, String targetName) {}
     public record ImportRequest(@NotNull RunningHubDefinition.TargetType targetType,
             @NotNull @Pattern(regexp = "[0-9]{1,32}") String targetId, @NotNull Task.Kind kind, JsonNode source) {}
     @PostMapping("/preview")
@@ -39,6 +39,6 @@ public final class RunningHubImportController {
         Objects.requireNonNull(administrator, "Administrator required");
         var preview = imports.preview(connectionId, request.targetType(), request.targetId(), request.kind(), request.source());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new PreviewResponse(preview.definition(),
-                preview.warnings().stream().map(warning -> messages.text(warning, httpRequest)).toList()));
+                preview.warnings().stream().map(warning -> messages.text(warning, httpRequest)).toList(), preview.recommendedFieldKeys(), preview.targetName()));
     }
 }

@@ -11,6 +11,8 @@ import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -20,6 +22,9 @@ import tools.jackson.databind.node.ObjectNode;
 /** 在同一项目变更事务中提交模型回合的 Run 状态、任务结果和后续调度决定。 */
 @Service
 public class AgentTurnCommitService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentTurnCommitService.class);
+    /** Scan cursor is auxiliary only; every candidate is reread from the database under its project lock. */
+    private volatile UUID blockedRecoveryAfterId;
 
     /** 反查任务所有者，并核验回合任务的持久化状态。 */
     private final TaskRepository taskRepository;
@@ -102,7 +107,7 @@ public class AgentTurnCommitService {
 
     /**
      * 先确认响应和全部工具结果已落库，再按 FINISH 或继续回合原子推进任务与 Run。
-     * 达到回合上限时阻断 Run，且不再创建新的模型任务。
+     * 达到历史回合上限时结束已无法继续的 Run，且不再创建新的模型任务。
      *
      * @param lease 要完成的模型回合任务租约
      * @param workerId 当前租约持有者
@@ -134,11 +139,10 @@ public class AgentTurnCommitService {
                 if (run.status() != AgentRun.Status.RUNNING) {
                     throw new IllegalStateException("Run state prevents model continuation");
                 }
-                if (stepIndex >= AgentRun.MAX_MODEL_TURNS - 1) {
-                    // 当前响应及工具账本已持久化；达到上限后停止，不创建第 13 轮任务。
+                if (run.modelTurnLimitReached(stepIndex + 1)) {
+                    // 当前响应及工具账本已持久化；达到固定预算后停止创建回合。
                     tasks.fail(lease, workerId, "MODEL_TURN_LIMIT");
-                    runs.transition(ownerId, lease.projectId(), lease.runId(),
-                            run.version(), AgentRun.Status.BLOCKED);
+                    finishFailedRun(ownerId, lease, run, stepIndex);
                     return ProjectEventService.Change.unchanged(Decision.LIMIT_REACHED);
                 }
                 // Completing the leased turn and publishing the next READY task share this
@@ -172,14 +176,14 @@ public class AgentTurnCommitService {
     }
 
     /**
-     * 工具批次因参数或计划错误回滚后，最多创建两个修复回合；超限时阻断 Run。
+     * 工具批次因参数或计划错误回滚后，最多创建两个修复回合；超限时结束运行。
      * 原始无效响应仍留在检查点，供修复上下文引用和问题核查。
      *
      * @param lease 产生无效响应的当前任务租约
      * @param workerId 当前租约持有者
      * @param errorCode 允许模型修复的稳定错误码
      * @param errorDetail 截断到 300 字符后保存的安全错误说明
-     * @return 已创建修复回合时为 true，达到上限并阻断时为 false
+     * @return 已创建修复回合时为 true，达到上限并停止时为 false
      */
     @Transactional
     public boolean scheduleRepair(Task lease, String workerId, String errorCode,
@@ -199,10 +203,9 @@ public class AgentTurnCommitService {
             if (attempt < 0 || attempt > 2) {
                 throw new IllegalStateException("Invalid model repair count");
             }
-            if (attempt >= 2 || stepIndex >= AgentRun.MAX_MODEL_TURNS - 1) {
+            if (attempt >= 2 || run.modelTurnLimitReached(stepIndex + 1)) {
                 tasks.fail(lease, workerId, "MODEL_OUTPUT_INVALID");
-                runs.transition(ownerId, lease.projectId(), lease.runId(),
-                        run.version(), AgentRun.Status.BLOCKED);
+                finishFailedRun(ownerId, lease, run, stepIndex);
                 return ProjectEventService.Change.unchanged(false);
             }
             ObjectNode input = mapper.createObjectNode();
@@ -226,28 +229,59 @@ public class AgentTurnCommitService {
     }
 
     /**
-     * 仅在仍有效的租约与可执行 Run 状态下记录本地失败并阻断运行；先前已提交的工具结果保留。
+     * 仅在仍有效的租约下结束无法继续的本地回合；未决媒体保持阻断，已提交产物保留。
      *
      * @param lease 发生失败的当前模型任务租约
      * @param workerId 当前租约持有者
      * @param errorCode 可向任务历史展示的稳定错误码
      */
     @Transactional
-    public void block(Task lease, String workerId, String errorCode) {
+    public void finishFailure(Task lease, String workerId, String errorCode) {
         UUID ownerId = ownerId(lease);
         events.recordChange(ownerId, lease.projectId(), () -> {
             leaseGuard.requireActive(lease, workerId);
             AgentRun run = runs.get(ownerId, lease.projectId(), lease.runId());
-            requireStep(lease, run);
+            int stepIndex = requireStep(lease, run);
             if (run.status() != AgentRun.Status.RUNNING
                     && run.status() != AgentRun.Status.QUEUED) {
                 throw new IllegalStateException("Run state changed before failure handling");
             }
             tasks.fail(lease, workerId, errorCode);
-            runs.transition(ownerId, lease.projectId(), lease.runId(),
-                    run.version(), AgentRun.Status.BLOCKED);
+            finishFailedRun(ownerId, lease, run, stepIndex);
             return ProjectEventService.Change.unchanged(null);
         });
+    }
+
+    /** Called after Task failure in the same transaction; only a settled failure releases the Run slot. */
+    private void finishFailedRun(UUID ownerId, Task lease, AgentRun run, int stepIndex) {
+        boolean settled = tasks.hasSettledAgentFailure(ownerId, lease.projectId(), lease.runId(), stepIndex)
+                && !mediaOutcomes.hasOutstanding(lease.projectId(), lease.runId());
+        runs.transition(ownerId, lease.projectId(), lease.runId(), run.version(),
+                settled ? AgentRun.Status.FAILED : AgentRun.Status.BLOCKED);
+    }
+
+    /** Close old stranded model failures without replaying a checkpoint, tool or media request. */
+    public int finishBlockedFailures(int limit) {
+        var candidates = runs.blockedRecoveryCandidates(blockedRecoveryAfterId, limit);
+        blockedRecoveryAfterId = candidates.size() < limit ? null : candidates.getLast().runId();
+        int closed = 0;
+        for (var candidate : candidates) {
+            try {
+                boolean ended = events.recordChange(candidate.ownerId(), candidate.projectId(), () -> {
+                    AgentRun run = runs.get(candidate.ownerId(), candidate.projectId(), candidate.runId());
+                    if (run.status() != AgentRun.Status.BLOCKED
+                            || !tasks.hasSettledAgentFailure(candidate.ownerId(), candidate.projectId(), candidate.runId(), run.nextStepIndex())
+                            || mediaOutcomes.hasOutstanding(candidate.projectId(), candidate.runId()))
+                        return ProjectEventService.Change.unchanged(false);
+                    runs.transition(candidate.ownerId(), candidate.projectId(), candidate.runId(), run.version(), AgentRun.Status.FAILED);
+                    return ProjectEventService.Change.unchanged(true);
+                }).value();
+                if (ended) closed++;
+            } catch (RuntimeException changed) {
+                LOGGER.warn("Failed Agent Run {} could not be settled: {}", candidate.runId(), changed.getClass().getSimpleName());
+            }
+        }
+        return closed;
     }
 
     /** Retry only an unresponded model request, never replaying committed tool/media effects. */
@@ -302,7 +336,7 @@ public class AgentTurnCommitService {
     private int requireStep(Task lease, AgentRun run) {
         int stepIndex = lease.input().path("stepIndex").asInt(-1);
         if (lease.input().path("schemaVersion").asInt(-1) != 1
-                || stepIndex < 0 || stepIndex >= 12
+                || stepIndex < 0 || run.modelTurnLimitReached(stepIndex)
                 || (run.nextStepIndex() != stepIndex
                         && !(run.nextStepIndex() == stepIndex + 1
                                 && (run.status() == AgentRun.Status.WAITING_TASKS
@@ -346,7 +380,7 @@ public class AgentTurnCommitService {
         WAIT,
         /** 无后续工具调用，Run 可以结束。 */
         FINISH,
-        /** 已达到模型回合上限，Run 被阻断。 */
+        /** 已达到历史模型回合上限，Run 停止续接。 */
         LIMIT_REACHED
     }
 }

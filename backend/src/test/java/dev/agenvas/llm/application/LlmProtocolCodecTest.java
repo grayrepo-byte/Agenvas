@@ -3,6 +3,7 @@ package dev.agenvas.llm.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,64 @@ class LlmProtocolCodecTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final LlmProtocolCodec codec = new LlmProtocolCodec(mapper);
+
+    @Test
+    void restoresMediaContinuationLargerThanTheOldRequestLimit() {
+        AssistantMessage assistant = AssistantMessage.builder().content("")
+                .toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "media-call", "function", "propose_media_generation", "{}"))).build();
+        ObjectNode result = mapper.createObjectNode().put("status", "SUCCEEDED");
+        // Synthetic repeated Skill previews reproduce a completed media batch's large receipt.
+        result.put("creativeSkill", "创作规范".repeat(50_000));
+        ToolResponseMessage reply = codec.toolResults(assistant, Map.of("media-call", result));
+        List<Message> continuation = List.of(new UserMessage("Continue from the completed media"),
+                assistant, reply);
+
+        ObjectNode request = codec.request(continuation, List.of());
+
+        assertThat(request.toString().getBytes(StandardCharsets.UTF_8).length)
+                .isGreaterThan(512 * 1024);
+        assertThat(codec.requestMessages(request)).containsExactlyElementsOf(continuation);
+    }
+
+    @Test
+    void acceptsExact32MiBUtf8RequestAndRejectsOneExtraByteOnWriteAndRestore() throws Exception {
+        int limitBytes = 32 * 1024 * 1024;
+        ObjectNode empty = codec.request(List.of(new UserMessage(""), new UserMessage("")), List.of());
+        int envelopeBytes = empty.toString().getBytes(StandardCharsets.UTF_8).length;
+        // The supplementary Unicode character occupies four UTF-8 bytes, not two Java chars.
+        // Split history into messages so the JSON round trip also respects Jackson's per-string bound.
+        String first = "😀" + "x".repeat(limitBytes / 2 - 4);
+        String last = "x".repeat(limitBytes / 2 - envelopeBytes);
+        List<Message> messages = List.of(new UserMessage(first), new UserMessage(last));
+        ObjectNode request = codec.request(messages, List.of());
+
+        assertThat(request.toString().getBytes(StandardCharsets.UTF_8)).hasSize(limitBytes);
+        assertThat(codec.requestMessages(mapper.readTree(request.toString()))).containsExactlyElementsOf(messages);
+        assertThatThrownBy(() -> codec.request(List.of(new UserMessage(first), new UserMessage(last + "x")), List.of()))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("size limit");
+        ((ObjectNode) request.path("messages").get(1)).put("text", last + "x");
+        assertThatThrownBy(() -> codec.requestMessages(request))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("size limit");
+    }
+
+    @Test
+    void acceptsExact8MiBUtf8ResponseAndRejectsOneExtraByteOnWriteAndRestore() {
+        int limitBytes = 8 * 1024 * 1024;
+        ObjectNode empty = codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage("")))));
+        int envelopeBytes = empty.toString().getBytes(StandardCharsets.UTF_8).length;
+        String text = "😀" + "x".repeat(limitBytes - envelopeBytes - 4);
+        ObjectNode response = codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage(text)))));
+
+        assertThat(response.toString().getBytes(StandardCharsets.UTF_8)).hasSize(limitBytes);
+        assertThat(codec.selectedAssistant(response).getText()).isEqualTo(text);
+        assertThatThrownBy(() -> codec.response(new ChatResponse(
+                List.of(new Generation(new AssistantMessage(text + "x"))))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("size limit");
+        ((ObjectNode) response.path("generations").get(0).path("assistant")).put("text", text + "x");
+        assertThatThrownBy(() -> codec.selectedAssistant(response))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("size limit");
+    }
 
     @Test
     void restoresRequestAssistantMetadataAndOrderedToolReplies() {

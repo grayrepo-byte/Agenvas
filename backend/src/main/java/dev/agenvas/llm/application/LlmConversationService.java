@@ -11,10 +11,13 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 只从已提交的模型检查点和工具账本重建后续对话，避免以内存状态作为恢复依据。 */
 @Service
 public class LlmConversationService {
+    /** A per-request resource limit, independent of the number of completed Run turns. */
+    static final int MAX_HISTORY_MESSAGES = LlmProtocolCodec.MAX_MESSAGES;
 
     /** 先验证调用者对 Run 的项目作用域。 */
     private final AgentRunRepository runs;
@@ -26,6 +29,7 @@ public class LlmConversationService {
     private final LlmProtocolCodec codec;
     private final AgentMediaOutcomeService mediaOutcomes;
     private final AgentImageInputService images;
+    private final ObjectMapper mapper;
 
     /** 注入 Run 权限、完整模型回合和工具账本读取边界。
      * @param runs 验证调用者可访问该 Run
@@ -35,18 +39,19 @@ public class LlmConversationService {
      */
     public LlmConversationService(AgentRunRepository runs, LlmTurnRepository turns,
             ToolExecutionRepository tools, LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes,
-            AgentImageInputService images) {
+            AgentImageInputService images, ObjectMapper mapper) {
         this.runs = runs;
         this.turns = turns;
         this.tools = tools;
         this.codec = codec;
         this.mediaOutcomes = mediaOutcomes;
         this.images = images;
+        this.mapper = mapper;
     }
 
     /**
      * 以已保存请求为起点，追加被选中的 Assistant 响应及每个已完成工具调用的回复。
-     * 工具 ID、名称或结果缺失时拒绝继续；最终消息不产生后续回合，并限制历史为 80 条。
+     * 工具 ID、名称或结果缺失时拒绝继续；最终消息不产生后续回合，并限制历史消息数。
      *
      * @param ownerId 经认证的项目所有者
      * @param projectId 本次 Run 所属项目
@@ -57,17 +62,20 @@ public class LlmConversationService {
     @Transactional(readOnly = true)
     public List<Message> afterToolRound(UUID ownerId, UUID projectId, UUID runId,
             int priorStepIndex) {
-        if (priorStepIndex < 0 || priorStepIndex >= 12) {
+        if (priorStepIndex < 0) {
             throw new IllegalArgumentException("Model step is outside the Run limit");
         }
         var run = runs.find(ownerId, projectId, runId)
                 .orElseThrow(() -> new IllegalArgumentException("Run is not accessible"));
+        if (run.modelTurnLimitReached(priorStepIndex))
+            throw new IllegalArgumentException("Model step is outside the Run limit");
         LlmTurn turn = turns.find(projectId, runId, priorStepIndex)
                 .orElseThrow(() -> new IllegalStateException("Model turn checkpoint is missing"));
         if (turn.status() != LlmTurn.Status.RESPONDED) {
             throw new IllegalStateException("Model response has not been committed");
         }
-        List<Message> history = new ArrayList<>(codec.requestMessages(turn.request()));
+        List<Message> history = new ArrayList<>(AgentMediaToolResult.historyForModel(
+                codec.requestMessages(turn.request()), mapper));
         AssistantMessage assistant = codec.selectedAssistant(turn.response());
         if (assistant.getToolCalls().isEmpty()) {
             throw new IllegalStateException("A final assistant response has no tool continuation");
@@ -91,7 +99,10 @@ public class LlmConversationService {
                 >= InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) {
             images.appendReadPreviews(history, assistant, results);
         }
-        if (history.size() > 80) {
+        if (run.policySnapshot().path("systemPromptVersion").asInt()
+                >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION)
+            history = new ArrayList<>(RunContextWindow.project(history, mapper));
+        if (history.size() > MAX_HISTORY_MESSAGES) {
             throw new IllegalStateException("Model history exceeds the message limit");
         }
         return List.copyOf(history);

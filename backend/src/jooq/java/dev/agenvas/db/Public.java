@@ -122,7 +122,8 @@ public class Public extends SchemaImpl {
     public final AgentRun AGENT_RUN = AgentRun.AGENT_RUN;
 
     /**
-     * Agent 选定的 Skill 不可变版本
+     * Agent selected immutable Skill versions, ordered for the available
+     * catalogue
      */
     public final AgentSkillBinding AGENT_SKILL_BINDING = AgentSkillBinding.AGENT_SKILL_BINDING;
 

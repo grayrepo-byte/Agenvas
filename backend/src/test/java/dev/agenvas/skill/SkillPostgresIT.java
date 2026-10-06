@@ -87,6 +87,89 @@ class SkillPostgresIT {
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
     }
 
+    @Test void concurrentFirstReadsRegisterEightBuiltinsOnceWithoutChangingPersonalSkills() throws Exception {
+        UUID account = UUID.randomUUID();
+        jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
+                .param("id", account).param("login", "builtin-" + account).update();
+        var personal = skills.create(account, "Personal creative method", "Keep this editable draft");
+        CountDownLatch start = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> { start.await(); return skills.list(account, "short-drama", false, null); });
+            var second = executor.submit(() -> { start.await(); return skills.list(account, "short-drama", false, null); });
+            start.countDown();
+            assertThat(first.get().items()).hasSize(8).allMatch(SkillService.SkillResponse::builtin);
+            assertThat(second.get().items()).extracting(SkillService.SkillResponse::id)
+                    .containsExactlyElementsOf(first.get().items().stream().map(SkillService.SkillResponse::id).toList());
+        }
+        assertThat(jdbc.sql("select count(*) from skill_version where owner_id=:owner").param("owner", account).query(Integer.class).single()).isEqualTo(8);
+        assertThat(skills.getDraft(account, personal.id()).version()).isZero();
+        assertThat(skills.get(account, personal.id()).builtin()).isFalse();
+        var one = skills.list(account, "short-drama-write", false, null).items().getFirst();
+        assertThat(skills.getVersion(account, one.id(), one.currentVersionId()).resources()).isNotEmpty();
+        assertThat(skills.list(account, "short-drama", true, null).items()).isEmpty();
+        assertThatThrownBy(() -> skills.get(owner.userId(), one.id())).isInstanceOfSatisfying(ApiProblemException.class,
+                problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
+        assertThatThrownBy(() -> skills.getBundleByVersion(owner.userId(), one.currentVersionId())).isInstanceOfSatisfying(ApiProblemException.class,
+                problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
+    }
+
+    @Test void builtinVersionsAreReadableThroughTheApiAndCannotBeEditedTrashedOrCopied() throws Exception {
+        var builtin = skills.list(owner.userId(), "short-drama-write", false, null).items().getFirst();
+        String path = "/api/v1/skills/" + builtin.id();
+        String response = mvc.perform(get(path).with(auth)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(mapper.readTree(response).path("builtin").asBoolean()).isTrue();
+        mvc.perform(get(path + "/versions/" + builtin.currentVersionId()).with(auth)).andExpect(status().isOk());
+        for (Runnable mutation : List.<Runnable>of(
+                () -> skills.getDraft(owner.userId(), builtin.id()),
+                () -> skills.updateMetadata(owner.userId(), builtin.id(), builtin.version(), "Overwrite", "", true),
+                () -> skills.saveDraft(owner.userId(), builtin.id(), 0, new SkillContent.DraftContent(1, BODY,
+                        List.of(dev.agenvas.artifact.domain.Artifact.Kind.TEXT), List.of(), List.of(), List.of())),
+                () -> skills.publish(owner.userId(), builtin.id(), 0, "overwrite-builtin"),
+                () -> skills.copyVersionToDraft(owner.userId(), builtin.id(), builtin.currentVersionId(), 0),
+                () -> skills.copy(owner.userId(), builtin.id(), builtin.currentVersionId(), "Copy builtin"))) {
+            assertThatThrownBy(mutation::run).isInstanceOfSatisfying(ApiProblemException.class,
+                    problem -> assertThat(problem.code()).isEqualTo("SKILL_BUILTIN_READ_ONLY"));
+        }
+        assertThat(skills.versions(owner.userId(), builtin.id())).hasSize(1);
+        assertThat(skills.get(owner.userId(), builtin.id()).currentVersionId()).isEqualTo(builtin.currentVersionId());
+    }
+
+    @Test void retiredBuiltinsAreExcludedBeforePaginationWhilePersonalSkillsAndHistoricalVersionsRemain() {
+        UUID account = UUID.randomUUID();
+        jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
+                .param("id", account).param("login", "retired-" + account).update();
+        var available = skills.list(account, "short-drama-write", false, null).items().getFirst();
+        var source = skills.getBundle(account, available.id(), available.currentVersionId());
+        for (int index = 0; index < 41; index++) skills.create(account, "short-drama-edit personal " + index, "Personal creative method");
+        var retired = new java.util.ArrayList<SkillContent.Version>();
+        for (String name : List.of("short-drama", "short-drama-produce", "short-drama-edit", "short-drama-write")) {
+            UUID id = UUID.randomUUID();
+            var now = java.time.Instant.now();
+            var version = new SkillContent.Version(UUID.randomUUID(), account, id, 1, source.bundleHash(), source.bundle(), now);
+            transactions.executeWithoutResult(ignored -> repository.registerBuiltin(new SkillContent.Catalogue(id, account,
+                    name, "Previously bundled workflow", "drama-skills/" + name, null, null, 0, now, now), version));
+            retired.add(version);
+        }
+        var first = skills.list(account, "short-drama", false, null);
+        assertThat(first.total()).isEqualTo(49);
+        assertThat(first.items()).hasSize(40);
+        assertThat(first.nextCursor()).isNotNull();
+        var second = skills.list(account, "short-drama", false, first.nextCursor());
+        assertThat(second.total()).isEqualTo(49);
+        assertThat(second.items()).hasSize(9);
+        assertThat(second.nextCursor()).isNull();
+        assertThat(java.util.stream.Stream.concat(first.items().stream(), second.items().stream()).map(SkillService.SkillResponse::id))
+                .doesNotContainAnyElementsOf(retired.stream().map(SkillContent.Version::skillId).toList()).doesNotHaveDuplicates();
+        assertThat(skills.list(account, "short-drama-edit", false, null).total()).isEqualTo(41);
+        for (var version : retired) {
+            var historical = skills.getBundle(account, version.skillId(), version.id());
+            assertThat(historical.id()).isEqualTo(version.id());
+            assertThat(historical.bundle()).isEqualTo(version.bundle());
+            assertThatThrownBy(() -> skills.requireSelectableVersion(account, version.skillId(), version.id()))
+                    .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
+        }
+    }
+
     @Test void missingVersionsAndRequiredInputFlagsCannotBecomeDefaultValues() throws Exception {
         var skill = skills.create(owner.userId(), "Required fields", "");
         var body = mapper.createObjectNode().put("skillMd", BODY);

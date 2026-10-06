@@ -88,6 +88,9 @@ class AgentMediaOutcomeServiceTest {
     @Test
     void toolReplyIsUnavailableUntilFinalAndKeepsTheOriginalReceiptImmutable() {
         var receipt = mapper.createObjectNode().put("approvalId", approvalId.toString()).put("awaitingMedia", true);
+        var preview = receipt.putObject("data").putArray("outputs").addObject().put("kind", "IMAGE").putObject("preview");
+        preview.putObject("creativeSkill").put("skillVersionId", UUID.randomUUID().toString())
+                .put("skillMd", "SYNTHETIC_FULL_BODY");
         when(approvals.findByToolCall(project, runId, 0, "call-1"))
                 .thenReturn(Optional.of(approval(AgentMediaApproval.Status.APPROVED, NOW.plusSeconds(60))));
         assertThatThrownBy(() -> service.finalToolResult(project, runId, 0, "call-1", receipt))
@@ -99,6 +102,8 @@ class AgentMediaOutcomeServiceTest {
         var reply = service.finalToolResult(project, runId, 0, "call-1", receipt);
         assertThat(reply.path("awaitingMedia").asBoolean()).isFalse();
         assertThat(reply.at("/mediaApproval/status").asText()).isEqualTo("REJECTED");
+        assertThat(reply.toString()).doesNotContain("skillMd", "SYNTHETIC_FULL_BODY");
+        assertThat(receipt.at("/data/outputs/0/preview/creativeSkill/skillMd").asText()).isEqualTo("SYNTHETIC_FULL_BODY");
         assertThat(receipt.path("awaitingMedia").asBoolean()).isTrue();
         assertThat(receipt.has("mediaApproval")).isFalse();
     }

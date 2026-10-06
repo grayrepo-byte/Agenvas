@@ -210,7 +210,9 @@ class AgentModelRetryPostgresIT {
         assertThat(task().errorCode()).isEqualTo("LLM_CONFIG_UNAVAILABLE");
         assertThat(task().output() == null || task().output().isNull()).isTrue();
         assertThat(gateway.calls).hasValue(0);
-        assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.BLOCKED);
+        assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.FAILED);
+        assertThat(jdbc.sql("select active_run_id is null from project where id=:id")
+                .param("id", project.id()).query(Boolean.class).single()).isTrue();
     }
     @Test void continuationRetryDoesNotRepeatAnAlreadyCommittedTool() {
         gateway.createFirstTool = true;

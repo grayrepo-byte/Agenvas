@@ -100,7 +100,8 @@ class AgentTurnRepairPostgresIT {
                     .isEqualTo(1);
         }
         assertThat(runs.get(owner.userId(), project.id(), exhausted.id()).status())
-                .isEqualTo(AgentRun.Status.BLOCKED);
+                .isEqualTo(AgentRun.Status.FAILED);
+        assertThat(jdbc.sql("select active_run_id is null from project where id=:id").param("id", project.id()).query(Boolean.class).single()).isTrue();
         assertThat(tasks.listByRun(owner.userId(), project.id(), exhausted.id()))
                 .extracting(Task::status)
                 .containsExactly(Task.Status.SUCCEEDED, Task.Status.SUCCEEDED,

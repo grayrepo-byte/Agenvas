@@ -77,7 +77,7 @@ class LlmDebugCaptureStreamingTest {
                     .media(new org.springframework.ai.content.Media(org.springframework.util.MimeTypeUtils.IMAGE_PNG,
                             new org.springframework.core.io.ByteArrayResource(image))).build();
             var policy = MAPPER.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
-            policy.set("allowedTools", MAPPER.valueToTree(RunToolPolicy.current(false)));
+            policy.set("allowedTools", MAPPER.valueToTree(RunToolPolicy.current(false, false)));
             var tools = new ToolRegistry().modelDefinitions(policy);
             try (var scope = DebugHttpCapture.openLlm(saved::accept)) {
                 // Synthetic credential collision inside the image Base64 must not leave a suffix.

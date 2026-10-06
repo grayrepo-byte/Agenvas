@@ -11,6 +11,9 @@ import tools.jackson.databind.JsonNode;
 
 /** 任务持久化边界；租约和外部提交检查点均在数据库中约束。 */
 public interface TaskRepository {
+    /** Failed current model turn and no queued, running, blocked or UNKNOWN task in the Run. */
+    boolean hasSettledAgentFailure(UUID projectId, UUID runId, int stepIndex);
+
     /** Stop administrator-selected expired units before deleting their recovery ledgers.
      * Caller holds project and task locks; advancing epochs fences every previous worker.
      */

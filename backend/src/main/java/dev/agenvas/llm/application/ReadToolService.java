@@ -46,14 +46,16 @@ public class ReadToolService {
     private final TaskService tasks;
     /** 构造具有稳定结果结构的 JSON 工具响应。 */
     private final ObjectMapper mapper;
+    private final ToolExecutionRepository ledger;
 
     /** 组装项目元数据、产物版本和任务状态三类受限读取能力。 */
     public ReadToolService(ProjectService projects, ArtifactService artifacts, TaskService tasks,
-            ObjectMapper mapper) {
+            ObjectMapper mapper, ToolExecutionRepository ledger) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.tasks = tasks;
         this.mapper = mapper;
+        this.ledger = ledger;
     }
 
     /** 读取项目公开元数据与服务端固定限制，不读取凭证，也不枚举所有画布项。 */
@@ -72,6 +74,10 @@ public class ReadToolService {
         ObjectNode limits = data.putObject("runLimits");
         for (String field : new String[] {"maxModelTurns", "maxToolExecutions"}) {
             JsonNode value = run.policySnapshot().path(field);
+            if (value.isNull() && run.policySnapshot().path("schemaVersion").asInt() >= 6) {
+                limits.putNull(field);
+                continue;
+            }
             if (!value.isIntegralNumber() || value.intValue() < 0) {
                 throw new IllegalStateException("Run policy snapshot is malformed");
             }
@@ -82,10 +88,66 @@ public class ReadToolService {
 
     public static final int MAX_SKILL_RESOURCE_PAGE = 4_000;
 
+    /** Activate only a selected immutable version; its committed read is the activation record. */
+    public JsonNode skill(AgentRun run, UUID operationId, String arguments) {
+        ObjectNode input = parseObject(arguments);
+        if (input.size() != 1 || !input.path("skillVersionId").isTextual())
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        JsonNode skill = selectedSkill(run, input, false);
+        ObjectNode output = result(operationId, "已加载本次 Skill 的主说明");
+        ObjectNode data = output.putObject("data");
+        data.put("skillVersionId", skill.path("skillVersionId").asText()).put("path", "SKILL.md")
+                .put("contentHash", dev.agenvas.shared.crypto.Sha256.hex(skill.path("skillMd").asText()))
+                .put("content", skill.path("skillMd").asText());
+        for (String field : List.of("name", "description", "outputKinds", "resourceManifest", "assets", "inputs"))
+            data.set(field, skill.path(field).deepCopy());
+        if (skill.has("assetDelivery")) data.set("assetDelivery", skill.path("assetDelivery").deepCopy());
+        return output;
+    }
+
+    /** Requests immutable Skill image pixels only after the main instructions committed successfully. */
+    public JsonNode skillAsset(AgentRun run, UUID operationId, String arguments) {
+        ObjectNode input = parseObject(arguments);
+        if (input.size() != 2 || !input.path("skillVersionId").isTextual()
+                || !input.path("alias").isTextual())
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        JsonNode skill = selectedSkill(run, input, true);
+        if (!dev.agenvas.skill.domain.SkillContent.AssetDelivery.LLM_CONTEXT.name().equals(skill.path("assetDelivery").asText()))
+            throw invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run"));
+        for (JsonNode asset : skill.path("assets")) {
+            if (!input.path("alias").asText().equals(asset.path("alias").asText())) continue;
+            if (!"IMAGE".equals(asset.path("kind").asText()) || !asset.path("contentHash").isTextual())
+                throw new IllegalStateException("Frozen Skill image descriptor is malformed");
+            ObjectNode output = result(operationId, "已读取本次 Skill 的参考图片");
+            ObjectNode data = output.putObject("data");
+            data.put("skillId", skill.path("skillId").asText())
+                    .put("skillVersionId", skill.path("skillVersionId").asText())
+                    .put("alias", asset.path("alias").asText()).put("kind", "IMAGE")
+                    .put("contentHash", asset.path("contentHash").asText())
+                    .put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
+            if (sequentialImages(run)) data.put(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY, true);
+            for (String field : List.of("title", "purpose")) data.set(field, asset.path(field).deepCopy());
+            return output;
+        }
+        throw invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run"));
+    }
+
+    private JsonNode selectedSkill(AgentRun run, ObjectNode input, boolean requireActivation) {
+        boolean progressive = run.policySnapshot().path("toolPolicyVersion").asInt(1) >= RunToolPolicy.PROGRESSIVE_VERSION;
+        if (progressive && !input.path("skillVersionId").isTextual())
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        var candidates = requireActivation ? RunSkills.activated(run, ledger.skillReads(run.projectId(), run.id())) : RunSkills.available(run);
+        return candidates.stream().filter(skill -> !input.has("skillVersionId")
+                || skill.path("skillVersionId").asText().equals(input.path("skillVersionId").asText())).findFirst()
+                .orElseThrow(() -> invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run")));
+    }
+
     /** Reads only persisted text from the selected Run snapshot, never filesystem paths. */
     public JsonNode skillResource(AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
-        if (input.properties().stream().anyMatch(entry -> !Set.of("path", "offset", "limit").contains(entry.getKey()))
+        Set<String> fields = run.policySnapshot().path("toolPolicyVersion").asInt(1) >= RunToolPolicy.PROGRESSIVE_VERSION
+                ? Set.of("skillVersionId", "path", "offset", "limit") : Set.of("path", "offset", "limit");
+        if (input.properties().stream().anyMatch(entry -> !fields.contains(entry.getKey()))
                 || !input.path("path").isTextual()
                 || (input.has("offset") && !input.path("offset").isIntegralNumber())
                 || (input.has("limit") && !input.path("limit").isIntegralNumber())) {
@@ -98,7 +160,7 @@ public class ReadToolService {
                 || (input.has("limit") && !input.path("limit").canConvertToInt())) {
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         }
-        JsonNode skill = run.contextSnapshot().path("creativeSkill");
+        JsonNode skill = selectedSkill(run, input, true);
         JsonNode resources = skill.path("resources");
         for (JsonNode resource : resources) {
             if (resource.path("path").asText().equals(input.path("path").asText())) {
@@ -155,6 +217,7 @@ public class ReadToolService {
         ObjectNode output = result(operationId, "已读取允许范围内的产物版本");
         ArrayNode items = output.putArray("data");
         int inlineBytes = 0;
+        int imageCount = 0;
         for (UUID versionId : versionIds) {
             ArtifactVersion version = artifacts.requireAgentVisibleVersion(context.ownerId(),
                     context.projectId(), context.runId(), versionId, run.contextSnapshot());
@@ -169,6 +232,10 @@ public class ReadToolService {
                             >= InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) {
                 // The committed result requests a preview; file reads happen after this transaction.
                 item.put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
+                if (sequentialImages(run)) {
+                    if (++imageCount > 1) throw oneImageAtATime();
+                    item.put(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY, true);
+                }
             }
             // 已归档的媒体可由节点选用，而资源库默认版本仍为空；读取不改变这两个独立选择。
             boolean current = view.resourceDefaultVersion() != null
@@ -197,6 +264,18 @@ public class ReadToolService {
             }
         }
         return output;
+    }
+
+    private static boolean sequentialImages(AgentRun run) {
+        return run.policySnapshot().path("systemPromptVersion").asInt()
+                >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION;
+    }
+
+    /** Also used by the atomic batch boundary to cover separate project and Skill reads. */
+    static ApiProblemException oneImageAtATime() {
+        var message = ApiMessage.of("api.read-tool-service.images-must-be-read-one-at-a-time");
+        return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "TOOL_ARGUMENT_INVALID", message, message, false);
     }
 
     /** 返回本 Run 任务的有限状态快照，不包含 Provider 内部数据。 */

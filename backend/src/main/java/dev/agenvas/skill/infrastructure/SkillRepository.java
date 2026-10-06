@@ -30,7 +30,7 @@ public class SkillRepository {
         var query = db.selectFrom(CREATIVE_SKILL).where(CREATIVE_SKILL.OWNER_ID.eq(owner).and(CREATIVE_SKILL.ID.eq(id)));
         var row = lock ? query.forUpdate().fetchOne() : query.fetchOne();
         return Optional.ofNullable(row).map(value -> new SkillContent.Catalogue(value.getId(), value.getOwnerId(),
-                value.getTitle(), value.getDescription(), value.getCurrentVersionId(), instant(value.getTrashedAt()),
+                value.getTitle(), value.getDescription(), value.getBuiltinKey(), value.getCurrentVersionId(), instant(value.getTrashedAt()),
                 value.getVersion(), instant(value.getCreatedAt()), instant(value.getUpdatedAt())));
     }
     public void create(SkillContent.Catalogue value, SkillContent.DraftContent draft) {
@@ -47,19 +47,25 @@ public class SkillRepository {
                         .and(CREATIVE_SKILL.ID.eq(id)).and(CREATIVE_SKILL.VERSION.eq(expected))).execute() == 1;
     }
     public record Cursor(Instant updatedAt, UUID id) {}
-    private Condition scope(UUID owner, String query, boolean trash) {
-        Condition condition = CREATIVE_SKILL.OWNER_ID.eq(owner).and(trash ? CREATIVE_SKILL.TRASHED_AT.isNotNull() : CREATIVE_SKILL.TRASHED_AT.isNull());
+    private Condition available(List<String> builtinKeys) {
+        return CREATIVE_SKILL.BUILTIN_KEY.isNull().or(CREATIVE_SKILL.BUILTIN_KEY.in(builtinKeys));
+    }
+    private Condition scope(UUID owner, String query, boolean trash, List<String> builtinKeys) {
+        Condition condition = CREATIVE_SKILL.OWNER_ID.eq(owner).and(available(builtinKeys))
+                .and(trash ? CREATIVE_SKILL.TRASHED_AT.isNotNull() : CREATIVE_SKILL.TRASHED_AT.isNull());
         if (query != null && !query.isBlank()) condition = condition.and(CREATIVE_SKILL.TITLE.containsIgnoreCase(query));
         return condition;
     }
-    public int count(UUID owner, String query, boolean trash) { return db.fetchCount(db.selectFrom(CREATIVE_SKILL).where(scope(owner, query, trash))); }
-    public List<SkillContent.Catalogue> list(UUID owner, String query, boolean trash, Cursor cursor, int limit) {
-        Condition condition = scope(owner, query, trash);
+    public int count(UUID owner, String query, boolean trash, List<String> builtinKeys) {
+        return db.fetchCount(db.selectFrom(CREATIVE_SKILL).where(scope(owner, query, trash, builtinKeys)));
+    }
+    public List<SkillContent.Catalogue> list(UUID owner, String query, boolean trash, Cursor cursor, int limit, List<String> builtinKeys) {
+        Condition condition = scope(owner, query, trash, builtinKeys);
         if (cursor != null) condition = condition.and(CREATIVE_SKILL.UPDATED_AT.lt(time(cursor.updatedAt()))
                 .or(CREATIVE_SKILL.UPDATED_AT.eq(time(cursor.updatedAt())).and(CREATIVE_SKILL.ID.lt(cursor.id()))));
         return db.selectFrom(CREATIVE_SKILL).where(condition).orderBy(CREATIVE_SKILL.UPDATED_AT.desc(), CREATIVE_SKILL.ID.desc())
                 .limit(limit).fetch().map(row -> new SkillContent.Catalogue(row.getId(), row.getOwnerId(), row.getTitle(),
-                        row.getDescription(), row.getCurrentVersionId(), instant(row.getTrashedAt()), row.getVersion(),
+                        row.getDescription(), row.getBuiltinKey(), row.getCurrentVersionId(), instant(row.getTrashedAt()), row.getVersion(),
                         instant(row.getCreatedAt()), instant(row.getUpdatedAt())));
     }
     public Optional<SkillContent.Draft> draft(UUID owner, UUID id, boolean lock) {
@@ -72,6 +78,18 @@ public class SkillRepository {
         return db.update(SKILL_DRAFT).set(SKILL_DRAFT.CONTENT_JSON, json(content)).set(SKILL_DRAFT.VERSION, expected + 1)
                 .set(SKILL_DRAFT.UPDATED_AT, time(now)).where(SKILL_DRAFT.OWNER_ID.eq(owner).and(SKILL_DRAFT.SKILL_ID.eq(id))
                         .and(SKILL_DRAFT.VERSION.eq(expected))).execute() == 1;
+    }
+    public List<String> builtinKeys(UUID owner) {
+        return db.select(CREATIVE_SKILL.BUILTIN_KEY).from(CREATIVE_SKILL)
+                .where(CREATIVE_SKILL.OWNER_ID.eq(owner).and(CREATIVE_SKILL.BUILTIN_KEY.isNotNull())).fetch(CREATIVE_SKILL.BUILTIN_KEY);
+    }
+    public void registerBuiltin(SkillContent.Catalogue value, SkillContent.Version version) {
+        int inserted = db.insertInto(CREATIVE_SKILL).set(CREATIVE_SKILL.ID, value.id()).set(CREATIVE_SKILL.OWNER_ID, value.ownerId())
+                .set(CREATIVE_SKILL.TITLE, value.title()).set(CREATIVE_SKILL.DESCRIPTION, value.description())
+                .set(CREATIVE_SKILL.BUILTIN_KEY, value.builtinKey())
+                .set(CREATIVE_SKILL.CREATED_AT, time(value.createdAt())).set(CREATIVE_SKILL.UPDATED_AT, time(value.updatedAt()))
+                .onConflict(CREATIVE_SKILL.OWNER_ID, CREATIVE_SKILL.BUILTIN_KEY).doNothing().execute();
+        if (inserted == 1) publish(version, 0);
     }
     public Optional<SkillContent.Version> version(UUID owner, UUID skillId, UUID versionId) {
         return db.selectFrom(SKILL_VERSION).where(SKILL_VERSION.OWNER_ID.eq(owner).and(SKILL_VERSION.SKILL_ID.eq(skillId))
@@ -164,28 +182,37 @@ public class SkillRepository {
         db.update(SKILL_PUBLISH_OPERATION).set(SKILL_PUBLISH_OPERATION.PINS_CLEANED, true)
                 .where(SKILL_PUBLISH_OPERATION.OWNER_ID.eq(owner).and(SKILL_PUBLISH_OPERATION.ID.eq(id))).execute();
     }
-    public Optional<SkillContent.Binding> binding(UUID owner, UUID project, UUID agent) {
+    public List<SkillContent.Binding> bindings(UUID owner, UUID project, UUID agent) {
         return db.selectFrom(AGENT_SKILL_BINDING).where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner)
                 .and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project)).and(AGENT_SKILL_BINDING.AGENT_ID.eq(agent)))
-                .fetchOptional().map(this::binding);
+                .orderBy(AGENT_SKILL_BINDING.POSITION).fetch(this::binding);
+    }
+    /** Hide retired built-ins for new selections without deleting bindings needed by historical exports. */
+    public List<SkillContent.Binding> availableBindings(UUID owner, UUID project, UUID agent, List<String> builtinKeys) {
+        return db.select(AGENT_SKILL_BINDING.fields()).from(AGENT_SKILL_BINDING)
+                .join(CREATIVE_SKILL).on(CREATIVE_SKILL.ID.eq(AGENT_SKILL_BINDING.SKILL_ID)
+                        .and(CREATIVE_SKILL.OWNER_ID.eq(AGENT_SKILL_BINDING.OWNER_ID)))
+                .where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner).and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project))
+                        .and(AGENT_SKILL_BINDING.AGENT_ID.eq(agent)).and(available(builtinKeys)))
+                .orderBy(AGENT_SKILL_BINDING.POSITION).fetch(row -> binding(row.into(AGENT_SKILL_BINDING)));
     }
     public List<SkillContent.Binding> projectBindings(UUID owner, UUID project) {
         return db.selectFrom(AGENT_SKILL_BINDING).where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner)
                 .and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project)))
-                .orderBy(AGENT_SKILL_BINDING.AGENT_ID).fetch(this::binding);
+                .orderBy(AGENT_SKILL_BINDING.AGENT_ID, AGENT_SKILL_BINDING.POSITION).fetch(this::binding);
     }
-    public void saveBinding(UUID owner, UUID project, UUID agent, UUID skill, UUID version, Instant now) {
-        if (skill == null && version == null) {
-            db.deleteFrom(AGENT_SKILL_BINDING).where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner)
-                    .and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project)).and(AGENT_SKILL_BINDING.AGENT_ID.eq(agent))).execute();
-            return;
+    /** Replace the catalogue under the owning Agent configuration CAS transaction. */
+    public void saveBindings(UUID owner, UUID project, UUID agent, List<SkillContent.Binding> bindings, Instant now) {
+        db.deleteFrom(AGENT_SKILL_BINDING).where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner)
+                .and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project)).and(AGENT_SKILL_BINDING.AGENT_ID.eq(agent))).execute();
+        for (int index = 0; index < bindings.size(); index++) {
+            var binding = bindings.get(index);
+            int inserted = db.insertInto(AGENT_SKILL_BINDING).set(AGENT_SKILL_BINDING.AGENT_ID, agent)
+                    .set(AGENT_SKILL_BINDING.PROJECT_ID, project).set(AGENT_SKILL_BINDING.OWNER_ID, owner)
+                    .set(AGENT_SKILL_BINDING.SKILL_ID, binding.skillId()).set(AGENT_SKILL_BINDING.SKILL_VERSION_ID, binding.skillVersionId())
+                    .set(AGENT_SKILL_BINDING.POSITION, index).set(AGENT_SKILL_BINDING.UPDATED_AT, time(now)).execute();
+            if (inserted != 1) throw new IllegalStateException("Skill binding was not inserted");
         }
-        db.insertInto(AGENT_SKILL_BINDING).set(AGENT_SKILL_BINDING.AGENT_ID, agent).set(AGENT_SKILL_BINDING.PROJECT_ID, project)
-                .set(AGENT_SKILL_BINDING.OWNER_ID, owner).set(AGENT_SKILL_BINDING.SKILL_ID, skill)
-                .set(AGENT_SKILL_BINDING.SKILL_VERSION_ID, version).set(AGENT_SKILL_BINDING.UPDATED_AT, time(now))
-                .onConflict(AGENT_SKILL_BINDING.AGENT_ID).doUpdate().set(AGENT_SKILL_BINDING.SKILL_ID, skill)
-                .set(AGENT_SKILL_BINDING.SKILL_VERSION_ID, version).set(AGENT_SKILL_BINDING.UPDATED_AT, time(now))
-                .where(AGENT_SKILL_BINDING.OWNER_ID.eq(owner).and(AGENT_SKILL_BINDING.PROJECT_ID.eq(project))).execute();
     }
     private SkillContent.PublishOperation operation(dev.agenvas.db.tables.records.SkillPublishOperationRecord row) {
         return new SkillContent.PublishOperation(row.getId(), row.getOwnerId(), row.getSkillId(), row.getCommandKey(), row.getPayloadHash(),
@@ -195,7 +222,7 @@ public class SkillRepository {
     }
     private SkillContent.Binding binding(dev.agenvas.db.tables.records.AgentSkillBindingRecord row) {
         return new SkillContent.Binding(row.getAgentId(), row.getProjectId(), row.getOwnerId(),
-                row.getSkillId(), row.getSkillVersionId(), instant(row.getUpdatedAt()));
+                row.getSkillId(), row.getSkillVersionId(), row.getPosition(), instant(row.getUpdatedAt()));
     }
     private JSONB json(Object value) { return JSONB.valueOf(mapper.writeValueAsString(value)); }
     private OffsetDateTime time(Instant value) { return value == null ? null : value.atOffset(ZoneOffset.UTC); }

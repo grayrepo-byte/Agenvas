@@ -21,11 +21,13 @@ import tools.jackson.databind.node.ObjectNode;
 /** 将 Spring AI 消息转换为版本化的应用协议，恢复时只接受本应用明确支持的消息结构。 */
 @Component
 public class LlmProtocolCodec {
+    /** Per-request resource bound; Run turn counts are governed by their frozen policy. */
+    public static final int MAX_MESSAGES = 80;
 
     /** 单轮请求检查点的 UTF-8 字节上限，防止无界上下文进入数据库。 */
-    private static final int MAX_REQUEST_BYTES = 512 * 1024;
+    private static final int MAX_REQUEST_BYTES = 32 * 1024 * 1024;
     /** 单轮响应检查点的 UTF-8 字节上限，包含所有 generation 与工具调用。 */
-    private static final int MAX_RESPONSE_BYTES = 1024 * 1024;
+    public static final int MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
     /** 在应用协议与 Jackson JSON 树之间转换消息和供应商元数据。 */
     private final ObjectMapper mapper;
 
@@ -104,7 +106,7 @@ public class LlmProtocolCodec {
     }
 
     /**
-     * 从版本化请求快照恢复原消息顺序；拒绝空消息集、超过 80 条或不支持的消息结构。
+     * 从版本化请求快照恢复原消息顺序；拒绝空消息集、超过消息数上限或不支持的消息结构。
      *
      * @param request 先前保存的模型请求 JSON
      * @return 可用于同一协议回合的消息序列
@@ -112,7 +114,7 @@ public class LlmProtocolCodec {
     public List<Message> requestMessages(JsonNode request) {
         requireSchema(request, MAX_REQUEST_BYTES);
         JsonNode values = request.path("messages");
-        if (!values.isArray() || values.isEmpty() || values.size() > 80) {
+        if (!values.isArray() || values.isEmpty() || values.size() > MAX_MESSAGES) {
             throw new IllegalArgumentException("Saved model request has invalid messages");
         }
         List<Message> messages = new ArrayList<>(values.size());

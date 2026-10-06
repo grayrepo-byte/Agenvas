@@ -92,8 +92,41 @@ class RunningHubPostgresIT {
     @Autowired WebApplicationContext webContext;
     @Autowired dev.agenvas.provider.application.MediaFunctionService functions;
     @Autowired dev.agenvas.task.application.VideoOperationService videoOperations;
+    @Autowired dev.agenvas.agent.application.AgentInstanceService agents;
+    @Autowired dev.agenvas.run.application.AgentRunService runs;
+    @Autowired dev.agenvas.llm.application.AgentTurnCommitService turnCommits;
+    @Autowired dev.agenvas.llm.application.AgentMediaApprovalService approvals;
     private static UUID owner;
     @BeforeEach void owner() { if (owner == null) owner = identities.setup("rh-admin", "runninghub-password-123").userId(); }
+
+    @Test void invalidAgentProposalRollsBackDraftsAndReturnsARepairableInputError() throws Exception {
+        try (var provider = new Fake(1, false, false)) {
+            Fixture fixture = fixture(provider, Artifact.Kind.IMAGE, "AI_APP", false);
+            var agent = agents.create(owner, fixture.project().id(), "Synthetic creator", "Propose an image", List.of());
+            var run = runs.create(owner, fixture.project().id(), agent.id(), "Propose an image", "invalid-proposal-run").run();
+            String worker = "proposal-input-test";
+            Task lease = tasks.claimAgentTurns(worker, 1).getFirst();
+            var started = turnCommits.start(lease, worker);
+            ObjectNode request = mapper.createObjectNode();
+            var output = request.putArray("outputs").addObject().put("kind", "IMAGE")
+                    .put("title", "Synthetic proposal").put("prompt", "Draw a tree")
+                    .put("capabilityId", fixture.capability().toString());
+            output.putObject("parameters").put("aspectRatio", "16:9");
+            long before = jdbc.sql("select count(*) from artifact where project_id=:project")
+                    .param("project", fixture.project().id()).query(Long.class).single();
+
+            assertThatThrownBy(() -> approvals.propose(new dev.agenvas.llm.application.TrustedToolContext(
+                            owner, fixture.project().id(), run.id()), started, UUID.randomUUID(), 0, "synthetic-call", request.toString()))
+                    .isInstanceOfSatisfying(dev.agenvas.shared.error.ApiProblemException.class,
+                            problem -> assertThat(problem.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
+            assertThat(jdbc.sql("select count(*) from artifact where project_id=:project")
+                    .param("project", fixture.project().id()).query(Long.class).single()).isEqualTo(before);
+            assertThat(approvals.list(owner, fixture.project().id(), run.id())).isEmpty();
+            assertThat(provider.submits).hasValue(0);
+            assertThat(tasks.listByRun(owner, fixture.project().id(), run.id())).hasSize(1);
+            runs.cancel(owner, fixture.project().id(), run.id());
+        }
+    }
 
     @Test void cloudAudioSeparationArchivesBothOutputsAfterRecoveryWithoutAnotherSubmission() throws Exception {
         try (var provider = new Fake(1, false, false)) {
@@ -419,7 +452,12 @@ class RunningHubPostgresIT {
             var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
                     new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "rh-admin"), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
             String url = "/api/v1/settings/media-connections/" + connection.id() + "/runninghub/preview";
-            String body = "{\"targetType\":\"AI_APP\",\"targetId\":\"123\",\"kind\":\"IMAGE_GENERATION\",\"source\":{\"nodeInfoList\":[{\"nodeId\":\"516\",\"fieldName\":\"sampling_mode.top_p\",\"fieldType\":\"NUMBER\",\"fieldValue\":0.9}]}}";
+            String body = """
+                {"targetType":"AI_APP","targetId":"123","kind":"IMAGE_GENERATION","source":{"nodeInfoList":[
+                  {"nodeId":"516","fieldName":"sampling_mode.top_p","fieldType":"NUMBER","fieldValue":0.9},
+                  {"nodeId":"1","nodeName":"Text","fieldName":"text","fieldType":"STRING","fieldValue":"synthetic scene"},
+                  {"nodeId":"2","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE"}]}}
+                """;
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body)
                     .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
@@ -428,9 +466,48 @@ class RunningHubPostgresIT {
             var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body).with(auth)
                     .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn().getResponse().getContentAsString();
-            assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(1);
+            assertThat(mapper.readTree(response).path("recommendedFieldKeys").isArray()).isTrue();
+            assertThat(mapper.readTree(response).has("targetName")).isTrue();
+            assertThat(mapper.readTree(response).path("targetName").isNull()).isTrue();
+            assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(0).asText()).isEqualTo("input2");
+            assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(1).asText()).isEqualTo("input3");
+            assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(3);
             assertThat(mapper.readTree(response).path("definition").path("fields").get(0).path("fieldName").asText())
                     .isEqualTo("sampling_mode.top_p");
+            var discoveryCalls = new AtomicInteger();
+            var graph = mapper.readTree("{\"1\":{\"class_type\":\"Text\",\"inputs\":{\"text\":\"synthetic scene\"}}}");
+            var workflowResponse = mapper.createObjectNode().put("code", 0);
+            workflowResponse.putObject("data").put("prompt", graph.toString());
+            for (var entry : java.util.Map.of(
+                    "/api/webapp/detail", "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic app \",\"inputNodes\":[{\"nodeId\":\"1\",\"fieldName\":\"text\",\"fieldType\":\"STRING\",\"fieldValue\":\"scene\"}],\"owner\":{\"name\":\"Private owner\"},\"curl\":\"fake-runninghub-key\"}}",
+                    "/api/openapi/getJsonApiFormat", workflowResponse.toString(),
+                    "/api/portal/workflow/detail", "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic workflow \",\"owner\":{\"name\":\"Private owner\"}}}").entrySet()) {
+                provider.server.createContext(entry.getKey(), exchange -> {
+                    discoveryCalls.incrementAndGet();
+                    if (!entry.getKey().equals("/api/openapi/getJsonApiFormat"))
+                        assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+                    byte[] bytes = entry.getValue().getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(200, bytes.length);
+                    exchange.getResponseBody().write(bytes);
+                    exchange.close();
+                });
+            }
+            for (String targetType : List.of("AI_APP", "WORKFLOW")) {
+                String automaticBody = mapper.createObjectNode().put("targetType", targetType).put("targetId", "123")
+                        .put("kind", "IMAGE_GENERATION").toString();
+                String automatic = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
+                        .contentType("application/json").content(automaticBody).with(auth)
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control", "no-store"))
+                        .andReturn().getResponse().getContentAsString();
+                var preview = mapper.readTree(automatic);
+                assertThat(preview.path("targetName").asText()).isEqualTo(targetType.equals("AI_APP") ? "Synthetic app" : "Synthetic workflow");
+                assertThat(preview.path("definition").path("fields")).hasSize(1);
+                assertThat(preview.path("definition").path("importSource").toString()).doesNotContain("Synthetic app", "Synthetic workflow");
+                assertThat(automatic).doesNotContain("Private owner", "fake-runninghub-key", "curl");
+            }
+            assertThat(discoveryCalls).hasValue(3);
             assertThat(response).doesNotContain("fake-runninghub-key"); assertThat(provider.submits).hasValue(0); assertThat(provider.queries).hasValue(0);
         }
     }

@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 import okhttp3.Dns;
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
@@ -31,6 +32,9 @@ public final class RunningHubClient {
     public static final int MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
     private static final int MAX_JSON_BYTES = 1024 * 1024;
     private static final String APP_DETAIL_PATH = "/api/webapp/detail";
+    private static final String WORKFLOW_DETAIL_PATH = "/api/portal/workflow/detail";
+    private static final int MAX_TARGET_NAME_LENGTH = 160;
+    private static final Duration NAME_LOOKUP_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration READ_TIMEOUT = Duration.ofSeconds(60);
     private static final Duration CALL_TIMEOUT = Duration.ofMinutes(2);
@@ -74,28 +78,53 @@ public final class RunningHubClient {
         return json(post(origin, key, "/openapi/v2/query", mapper.createObjectNode().put("taskId", taskId)), false);
     }
 
-    public JsonNode metadata(String origin, String key, RunningHubDefinition.TargetType type, String targetId) {
+    /** Display metadata is separate from the retained input contract and cannot authorize execution. */
+    public record Metadata(JsonNode source, String targetName) {}
+
+    public Metadata metadata(String origin, String key, RunningHubDefinition.TargetType type, String targetId) {
         if (targetId == null || !targetId.matches("[0-9]{1,32}")) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-client.please-enter-a-real-workflow-or-application-id"));
         if (type == RunningHubDefinition.TargetType.WORKFLOW) {
             JsonNode result = json(post(origin, key, "/api/openapi/getJsonApiFormat", mapper.createObjectNode()
                     .put("apiKey", key).put("workflowId", targetId)), false).path("data").path("prompt");
             if (!result.isTextual()) throw new ProtocolFailure();
-            try { return mapper.readTree(result.asText()); }
+            JsonNode source;
+            try { source = mapper.readTree(result.asText()); }
             catch (RuntimeException invalid) { throw new ProtocolFailure(); }
+            return new Metadata(source, workflowName(origin, key, targetId));
         }
         // Public app pages expose the input contract without credentials. The older demo
         // endpoint can require a query key even with Bearer, so prefer the public detail.
         try {
             JsonNode detail = json(post(origin, APP_DETAIL_PATH, mapper.createObjectNode().put("webappId", targetId)), false).path("data");
             if (!targetId.equals(detail.path("id").asText())) throw new ProtocolFailure();
-            return appInputs(detail.path("inputNodes"));
+            return new Metadata(appInputs(detail.path("inputNodes")), targetName(detail.path("name"), key));
         } catch (Rejected | ProtocolFailure unavailable) {
             // Private apps and compatible sites may only expose the authenticated demo.
             // This is read-only discovery; neither request can submit a generation.
             JsonNode demo = json(new Request.Builder().url(validatedOrigin(origin) + "/api/webapp/apiCallDemo?webappId=" + targetId)
                     .header("Authorization", "Bearer " + key).get().build(), false).path("data");
-            return appInputs(demo.path("nodeInfoList"));
+            return new Metadata(appInputs(demo.path("nodeInfoList")), targetName(demo.path("webappName"), key));
         }
+    }
+
+    private String workflowName(String origin, String key, String targetId) {
+        // The public page detail is optional: private/compatible sites may expose the
+        // input contract without a name. Limit its latency and never send credentials.
+        try {
+            JsonNode detail = json(post(origin, WORKFLOW_DETAIL_PATH, mapper.createObjectNode().put("workflowId", targetId)),
+                    false, NAME_LOOKUP_TIMEOUT).path("data");
+            return targetId.equals(detail.path("id").asText()) ? targetName(detail.path("name"), key) : null;
+        } catch (Rejected | ProtocolFailure unavailable) { return null; }
+    }
+
+    private String targetName(JsonNode value, String key) {
+        if (!value.isTextual()) return null;
+        String name = value.asText().strip();
+        if (name.isBlank() || key != null && !key.isEmpty() && name.contains(key)) return null;
+        if (name.length() <= MAX_TARGET_NAME_LENGTH) return name;
+        int end = MAX_TARGET_NAME_LENGTH;
+        if (Character.isHighSurrogate(name.charAt(end - 1))) end--;
+        return name.substring(0, end);
     }
 
     /** Retain only input candidates, never owner information or credential-bearing curl demos. */
@@ -179,7 +208,13 @@ public final class RunningHubClient {
     }
 
     private JsonNode json(Request request, boolean submission) {
-        try (Response response = http.newCall(request).execute()) {
+        return json(request, submission, CALL_TIMEOUT);
+    }
+
+    private JsonNode json(Request request, boolean submission, Duration timeout) {
+        var call = http.newCall(request);
+        call.timeout().timeout(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        try (Response response = call.execute()) {
             if (response.code() >= 400 && response.code() < 500) throw new Rejected();
             if (!response.isSuccessful() || response.body() == null) throw new ProtocolFailure();
             byte[] bytes = response.body().byteStream().readNBytes(MAX_JSON_BYTES + 1);

@@ -216,6 +216,29 @@ public class CanvasService {
                         && item.subjectId().equals(artifactId)).isPresent();
     }
 
+    /**
+     * Withdraws a proposal-owned placeholder under the caller's project lock. A changed
+     * draft or any archived result means the card now holds work that must be preserved.
+     * The caller must also exclude cards with independently accepted generation tasks.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public boolean removeUnchangedEmptyMediaItemWithinChange(UUID ownerId, UUID projectId,
+            UUID itemId, UUID artifactId, long expectedDraftVersion) {
+        CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
+        if (current == null || current.subjectType() != CanvasItem.SubjectType.ARTIFACT
+                || !current.subjectId().equals(artifactId) || current.selectedVersionId() != null
+                || !canvasItems.mediaVersionIds(ownerId, projectId, itemId).isEmpty()
+                || mediaDrafts.get(ownerId, projectId, itemId).version() != expectedDraftVersion) {
+            return false;
+        }
+        remove(ownerId, projectId, new Remove(itemId, current.version()));
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.putArray("itemIds").add(itemId.toString());
+        events.append(ownerId, projectId, new ProjectEventService.EventDraft(
+                "canvas.items.changed", 1, projectId, 0, payload));
+        return true;
+    }
+
     /** Late results still belong to node history; removing the node leaves Artifact audit history. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void recordTaskMediaVersionWithinChange(UUID ownerId, UUID projectId, UUID itemId,

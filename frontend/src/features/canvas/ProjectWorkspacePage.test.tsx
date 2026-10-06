@@ -1386,11 +1386,11 @@ describe("ProjectWorkspacePage", () => {
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" }),
       ),
       http.post("/api/v1/projects/:projectId/runs/preflight", async ({ request }) => {
-        expect(await request.json()).toMatchObject({agentId,skillSelection:{mode:"NONE",inputs:[]}});
+        expect(await request.json()).toMatchObject({agentId,skillSelection:{mode:"NONE",skills:[]}});
         return HttpResponse.json({
           agentId, agentVersion: updated ? 1 : 0, agentName: updated ? "Agent Beta" : "Agent Alpha",
           conversationId: `conversation-${agentId}`, conversationVersion: 0,
-          conversationTurnCount: 0, inheritedBindingCount: 0, memoryTruncated: false,
+          conversationTurnCount: 0, inheritedBindingCount: 0, memoryTruncated: false, creativeSkills: [],
           agentInstruction: updated ? "Updated instruction" : "Initial instruction",
           bindings: [{ artifactId, selectedVersionId: versionId,
             artifactTitle: "Bound brief", artifactKind: "TEXT" }],

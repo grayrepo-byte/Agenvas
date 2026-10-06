@@ -31,7 +31,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** 按所有者读取项目，并只导出明确允许的非密钥配置、产物历史及媒体元数据。 */
 @Service
 public class ProjectExportManifestService {
-    private static final int MANIFEST_SCHEMA_VERSION = 6;
+    private static final int MANIFEST_SCHEMA_VERSION = 7;
 
     /** 校验项目所有者并读取一致性快照中的项目版本。 */
     private final ProjectService projects;
