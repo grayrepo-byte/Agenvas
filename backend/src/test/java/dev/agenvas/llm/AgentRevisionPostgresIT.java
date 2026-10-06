@@ -148,8 +148,12 @@ class AgentRevisionPostgresIT {
                 .isEqualTo("Bound frame prompt");
 
         assertThat(worker.runOnce("revision-worker")).isEqualTo(1);
-        assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
-                .isEqualTo(AgentRun.Status.BLOCKED);
+        // Fatal tool errors with no outstanding work end the Run and release its project slot.
+        AgentRun failed = runs.get(owner.userId(), project.id(), run.id());
+        assertThat(failed.status()).isEqualTo(AgentRun.Status.FAILED);
+        assertThat(failed.completedAt()).isNotNull();
+        assertThat(jdbc.sql("select active_run_id is null from project where id = :projectId")
+                .param("projectId", project.id()).query(Boolean.class).single()).isTrue();
         assertThat(artifacts.listVersions(owner.userId(), project.id(),
                 unbound.artifact().id())).hasSize(1);
         assertThat(artifacts.get(owner.userId(), project.id(), unbound.artifact().id())

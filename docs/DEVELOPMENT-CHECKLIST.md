@@ -1982,3 +1982,12 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 合入 develop 前同步其最新提交；仅开发清单追加位置冲突，保留双方记录。Skill 三文件 20 项测试与五种宽度的生产 CSS 浏览器回归复验通过。
 
 仅前端展示调整；同步创作 Skill 设计，无 API、生成类型、数据库迁移、依赖或授权语义变更。全量测试、后端测试、真实 Provider 与用户实际部署环境未运行。
+
+
+## 2026-10-06 CI 集成测试旧断言与历史策略夹具修正
+
+- [x] 复现四个 CI 集成分片中五个测试类的六个失败用例。AgentRevision、ReadTools 和 PromptInjection 仍预期已结算的模型失败为 BLOCKED，现按 ADR 0039 更新为 FAILED，并检查完成时间及项目活动槽位已释放；原有产物不可变、权限、CAS、无越权工具和无未批准媒体的断言保留。
+- [x] MediaStyles 的导出结构断言从 6 更新为 ADR 0035 规定的 7；风格冻结、草稿复制/恢复和导出内容断言保留。SkillRun 的两份历史策略显式固定当时的 12 回合/40 工具数字预算，不从新策略继承 null。新增实际假模型调用次数检查；修复前该检查复现两份夹具均在模型调用前失败，避免误用上一条用例留下的工具列表。
+- [x] 使用 CI 相同的 Failsafe profile 定向运行：`./mvnw -q -Pci-integration -Dit.test=AgentRevisionPostgresIT,ReadToolsPostgresIT,PromptInjectionPostgresIT,MediaStylesPostgresIT,SkillRunPostgresIT,AgentFailureRecoveryPostgresIT verify`。六个类共 27 项真实 PostgreSQL＋合成模型/Mock 媒体测试通过，零失败、错误或跳过，编译与打包通过；包含排队/UNKNOWN 媒体继续阻断的回归。差异空白检查通过。
+
+仅修改测试和验收记录，无生产代码、CI 工作流、API、迁移或依赖变更。全量、完整四分片、前端、真实 Provider 和远端 CI 复跑未运行；未改变测试发现规则或跳过失败检查。

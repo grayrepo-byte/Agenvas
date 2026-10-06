@@ -699,13 +699,17 @@ class SkillRunPostgresIT {
         // A synthetic pre-upgrade record is a fixture; all behavioral assertions use public interfaces.
         ObjectNode legacy = (ObjectNode) run.policySnapshot().deepCopy();
         legacy.put("schemaVersion", 2).put("systemPromptVersion", 3);
+        // Pre-v6 policies had numeric budgets; copying null would fail before the model call.
+        legacy.put("maxModelTurns", 12).put("maxToolExecutions", 40);
         legacy.remove("toolPolicyVersion"); legacy.remove("allowedTools");
         jdbc.sql("update agent_run set policy_snapshot_json=cast(:policy as jsonb) where id=:run")
                 .param("policy", mapper.writeValueAsString(legacy)).param("run", run.id()).update();
         gateway.prepare(run.id(), List.of(toolCall("forged-historical-read", "read_skill_resource",
                         "{\"skillVersionId\":\"" + UUID.randomUUID() + "\",\"path\":\"references/style-guide.md\",\"offset\":0,\"limit\":21}"),
                 new AssistantMessage("The historical policy continues without the unavailable tool.")));
+        int callsBefore = gateway.calls.get();
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(gateway.calls.get()).as("the historical Run reached its configured model").isEqualTo(callsBefore + 1);
         assertThat(gateway.lastTools).noneSatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("read_skill_resource"));
         assertProblem("TOOL_ARGUMENT_INVALID", () -> toolExecutions.execute(
                 new TrustedToolContext(owner.userId(), scenario.project().id(), run.id()), 0, "forged-historical-read"));
@@ -724,6 +728,8 @@ class SkillRunPostgresIT {
                 new SkillRunService.Selection(SkillRunService.SelectionMode.NONE, List.of())).run();
         ObjectNode legacy = (ObjectNode) run.policySnapshot().deepCopy();
         legacy.put("schemaVersion", 4).put("systemPromptVersion", 8).put("toolPolicyVersion", 2);
+        // Preserve the historical budget contract as well as its tool allowlist.
+        legacy.put("maxModelTurns", 12).put("maxToolExecutions", 40);
         var allowed = legacy.putArray("allowedTools");
         run.policySnapshot().path("allowedTools").forEach(tool -> {
             if (!"read_skill_asset".equals(tool.asText())) allowed.add(tool.asText());
@@ -733,7 +739,9 @@ class SkillRunPostgresIT {
         gateway.prepare(run.id(), List.of(toolCall("historical-image-forged", "read_skill_asset",
                 mapper.writeValueAsString(Map.of("skillVersionId", UUID.randomUUID(), "alias", "style-reference"))),
                 new AssistantMessage("The historical progressive policy continues.")));
+        int callsBefore = gateway.calls.get();
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(gateway.calls.get()).as("the historical Run reached its configured model").isEqualTo(callsBefore + 1);
         assertThat(gateway.lastTools).noneSatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("read_skill_asset"));
         assertProblem("TOOL_ARGUMENT_INVALID", () -> toolExecutions.execute(
                 new TrustedToolContext(owner.userId(), scenario.project().id(), run.id()), 0, "historical-image-forged"));

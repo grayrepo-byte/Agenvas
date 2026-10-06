@@ -105,8 +105,12 @@ class PromptInjectionPostgresIT {
         for (int attempt = 0; attempt < 3; attempt++) {
             assertThat(worker.runOnce("injection-worker")).isEqualTo(1);
         }
-        assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
-                .isEqualTo(AgentRun.Status.BLOCKED);
+        // Fatal tool errors with no outstanding work end the Run and release its project slot.
+        AgentRun failed = runs.get(owner.userId(), project.id(), run.id());
+        assertThat(failed.status()).isEqualTo(AgentRun.Status.FAILED);
+        assertThat(failed.completedAt()).isNotNull();
+        assertThat(jdbc.sql("select active_run_id is null from project where id = :projectId")
+                .param("projectId", project.id()).query(Boolean.class).single()).isTrue();
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .extracting(Task::kind).containsOnly(Task.Kind.AGENT_TURN);
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
@@ -148,7 +152,7 @@ class PromptInjectionPostgresIT {
         for (int attempt = 0; attempt < 3; attempt++) {
             assertThat(worker.runOnce("synthetic-creative-injection-worker")).isEqualTo(1);
         }
-        assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.BLOCKED);
+        assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.FAILED);
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .extracting(Task::kind).containsOnly(Task.Kind.AGENT_TURN);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:runId")
@@ -181,7 +185,7 @@ class PromptInjectionPostgresIT {
             assertThat(worker.runOnce("image-injection-worker")).isEqualTo(1);
         }
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
-                .isEqualTo(AgentRun.Status.BLOCKED);
+                .isEqualTo(AgentRun.Status.FAILED);
         assertThat(jdbc.sql("select count(*) from usage_ledger where project_id = :projectId "
                         + "and task_id is not null and entry_type = 'RESERVATION'")
                 .param("projectId", project.id()).query(Long.class).single()).isZero();
