@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "node scripts/check-theme-colors.mjs && node scripts/check-i18n.mjs && eslint . --max-warnings=0",
     "test": "node --test scripts/check-i18n.test.mjs && vitest run",
+    "test:skills-layout": "node e2e/skills-layout-browser.mjs",
     "test:smart-edit-layout": "node e2e/smart-edit-dialog-browser.mjs",
     "test:media-preview": "node e2e/media-preview-browser.mjs",
     "test:video-hover": "node e2e/video-hover-browser.mjs",
