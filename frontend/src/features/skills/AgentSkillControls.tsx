@@ -1,23 +1,21 @@
 import { BookOpen,CaretDown,Check } from "@phosphor-icons/react";
 import { useInfiniteQuery,useMutation,useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState } from "react";
-import { getAgentSkillBinding,getSkillInstallation,getSkillVersion,installAgentSkill,listArtifacts,listSkills,listSkillVersions,saveAgentSkillBinding,
-  type Agent,type SkillInstallation,type SkillSelection } from "../../shared/api/client";
+import { getAgentSkillBinding,getSkillVersion,listArtifacts,listSkills,listSkillVersions,saveAgentSkillBinding,
+  type Agent,type SkillSelection } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Input } from "../../shared/ui/primitives/input";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { EmptyState,Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
+import { EmptyState,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
 import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
 import { Field,FieldGroup,FieldLabel } from "../../shared/ui/primitives/field";
 import { SkillError } from "./SkillsPage";
 import "./Skills.css";
 
-const INSTALL_POLL_MS = 1500;
 const MAX_SKILLS = 100;
 type Choice = SkillSelection["skills"][number];
-const pendingInstallation = (installation?:SkillInstallation)=>installation?.status==="ACCEPTED" || installation?.status==="PREPARING" || installation?.status==="CLEANING";
 function initialSelection(agentId:string):SkillSelection {
   const params=new URLSearchParams(window.location.search);
   const skillId=params.get("skillId"),skillVersionId=params.get("skillVersionId");
@@ -26,26 +24,16 @@ function initialSelection(agentId:string):SkillSelection {
 }
 /** UI selection fixes availability; only the runtime's read_skill tool activates a Skill. */
 export function useAgentSkillSelection(projectId:string,agent:Agent | null | undefined,initial?:SkillSelection) {
-  const client=useQueryClient();
   const [selection,setSelection]=useState<SkillSelection>(()=>initial??initialSelection(agent?.id??""));
   const binding=useQuery({queryKey:["agent-skill-binding",projectId,agent?.id,agent?.version],queryFn:()=>getAgentSkillBinding(projectId,agent!.id),enabled:Boolean(agent)});
   const choices:Choice[]=selection.mode==="DEFAULT" ? (binding.data?.skills??[]).map((item)=>({...item,inputs:[]})) : selection.skills;
   const versions=useQueries({queries:choices.map((choice)=>({queryKey:["skill-version",choice.skillId,choice.skillVersionId],
     queryFn:()=>getSkillVersion(choice.skillId,choice.skillVersionId)}))});
-  const [operations,setOperations]=useState<Record<string,SkillInstallation>>({});
-  const installations=useQueries({queries:Object.values(operations).map((operation)=>({
-    queryKey:["skill-installation",projectId,agent?.id,operation.id],queryFn:()=>getSkillInstallation(projectId,agent!.id,operation.id),enabled:Boolean(agent),
-    refetchInterval:(query:{state:{data:SkillInstallation | undefined}})=>pendingInstallation(query.state.data??operation) ? INSTALL_POLL_MS : false}))});
-  const progress=Object.values(operations).map((operation,index)=>installations[index]?.data??operation);
-  const install=useMutation({mutationFn:(choice:Choice)=>installAgentSkill(projectId,agent!.id,choice.skillId,choice.skillVersionId,crypto.randomUUID()),onSuccess:(saved)=>{
-    setOperations((previous)=>({...previous,[saved.skillVersionId]:saved}));void client.invalidateQueries({queryKey:["run-preflight",projectId,agent?.id]});
-  }});
   const missingInputs=choices.some((choice,index)=>versions[index]?.data?.inputSlots.some((slot)=>slot.required && !choice.inputs.some((input)=>input.alias===slot.alias)));
-  const busy=install.isPending || progress.some((operation)=>choices.some((choice)=>choice.skillVersionId===operation.skillVersionId) && pendingInstallation(operation));
   const ready=(selection.mode!=="DEFAULT" || (!binding.isPending && !binding.isError))
-    && versions.every((version)=>!version.isFetching && !version.isError && Boolean(version.data)) && !missingInputs && !busy;
+    && versions.every((version)=>!version.isFetching && !version.isError && Boolean(version.data)) && !missingInputs;
   const fingerprint=JSON.stringify({selection,bindingVersion:selection.mode==="DEFAULT" ? binding.data?.agentVersion : null,bundleHashes:versions.map((version)=>version.data?.bundleHash)});
-  return {selection,setSelection,binding,choices,versions,install,installations,progress,missingInputs,busy,ready,fingerprint};
+  return {selection,setSelection,binding,choices,versions,missingInputs,ready,fingerprint};
 }
 export type AgentSkillState=ReturnType<typeof useAgentSkillSelection>;
 
@@ -125,33 +113,33 @@ function AgentSkillPickerDialog({projectId,agent,selection,onClose,onSelect}:{pr
     const existing=state.choices.some((choice)=>choice.skillId===skillId);
     update(existing ? state.choices.filter((choice)=>choice.skillId!==skillId):[...state.choices,{skillId,skillVersionId,inputs:[]}]);
   }
-  const errors=[skills.error,...state.versions.map((query)=>query.error),state.install.error,...state.installations.map((query)=>query.error),resources.error];
+  const errors=[skills.error,...state.versions.map((query)=>query.error),resources.error];
   const error=errors.find(Boolean);
-  return <Dialog title={t("skills.choose")} description={t("skills.pickerHint")} className="skills-dialog agent-skill-picker" busy={state.busy}
+  return <Dialog title={t("skills.choose")} description={t("skills.pickerHint")} className="skills-dialog agent-skill-picker"
     onClose={onClose} onSubmit={(event)=>{event.preventDefault();event.stopPropagation();if(state.ready && !resources.isError)onSelect({mode:state.choices.length ? "VERSIONS":"NONE",skills:state.choices});}}
     footer={<>
-      <Button variant="outline" type="button" disabled={state.busy} onClick={()=>onSelect({mode:"NONE",skills:[]})}>{t("skills.none")}</Button>
-      <Button variant="outline" type="button" disabled={state.busy} onClick={onClose}>{t("common.cancel")}</Button>
-      <Button type="submit" disabled={state.busy || !state.ready || resources.isError}>{t("skills.use")}</Button>
+      <Button variant="outline" type="button" onClick={()=>onSelect({mode:"NONE",skills:[]})}>{t("skills.none")}</Button>
+      <Button variant="outline" type="button" onClick={onClose}>{t("common.cancel")}</Button>
+      <Button type="submit" disabled={!state.ready || resources.isError}>{t("skills.use")}</Button>
     </>}>
     <div className="agent-skill-picker-toolbar">
-      <Input type="search" aria-label={t("skills.search")} placeholder={t("skills.search")} value={search} disabled={state.busy} onChange={(event)=>setSearch(event.target.value)} />
-      {state.binding.data?.skills.length ? <Button variant="outline" type="button" disabled={state.busy} onClick={()=>update(state.binding.data!.skills.map((choice)=>({...choice,inputs:[]})))}>{t("skills.defaultMode")}</Button> : null}
+      <Input type="search" aria-label={t("skills.search")} placeholder={t("skills.search")} value={search} onChange={(event)=>setSearch(event.target.value)} />
+      {state.binding.data?.skills.length ? <Button variant="outline" type="button" onClick={()=>update(state.binding.data!.skills.map((choice)=>({...choice,inputs:[]})))}>{t("skills.defaultMode")}</Button> : null}
     </div>
     <p role="status">{t("skills.selectionLimit",{"0":state.choices.length,"1":MAX_SKILLS})}</p>
     {skills.isPending ? <LoadingState compact label={t("common.loading")} /> : null}
     {skills.isSuccess && !items.length ? <EmptyState icon={<BookOpen />} title={t("skills.empty")} description={t("skills.emptyHint")} /> : null}
     <div className="agent-skill-picker-grid">
       {items.map((skill)=>{const selected=state.choices.some((choice)=>choice.skillId===skill.id);return <Button key={skill.id} variant="outline" type="button"
-        className="agent-skill-picker-card" aria-label={skill.title} aria-pressed={selected} disabled={state.busy || (!selected && state.choices.length>=MAX_SKILLS)}
+        className="agent-skill-picker-card" aria-label={skill.title} aria-pressed={selected} disabled={!selected && state.choices.length>=MAX_SKILLS}
         onClick={()=>toggle(skill.id,skill.currentVersionId!)}>
         {selected ? <Check data-icon="inline-start" />:<BookOpen data-icon="inline-start" />}<strong>{skill.title}</strong>{skill.builtin ? <StatusBadge>{t("skills.builtin")}</StatusBadge> : null}<span>{skill.description}</span>
       </Button>;})}
     </div>
-    {skills.hasNextPage ? <Button variant="outline" type="button" disabled={state.busy || skills.isFetchingNextPage} onClick={()=>void skills.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
+    {skills.hasNextPage ? <Button variant="outline" type="button" disabled={skills.isFetchingNextPage} onClick={()=>void skills.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
     {state.choices.map((choice,index)=><SkillChoicePanel key={choice.skillId} agent={agent} choice={choice} state={state} index={index}
       resources={resources.data} resourcesFetching={resources.isFetching} onChange={(changed)=>update(state.choices.map((item)=>item.skillId===changed.skillId ? changed:item))} />)}
-    {error ? <SkillError error={error} onRefresh={()=>{void skills.refetch();state.versions.forEach((query)=>void query.refetch());state.installations.forEach((query)=>void query.refetch());if(resources.isEnabled)void resources.refetch();}} /> : null}
+    {error ? <SkillError error={error} onRefresh={()=>{void skills.refetch();state.versions.forEach((query)=>void query.refetch());if(resources.isEnabled)void resources.refetch();}} /> : null}
   </Dialog>;
 }
 function SkillChoicePanel({agent,choice,state,index,resources,resourcesFetching,onChange}:{agent:Agent;choice:Choice;state:AgentSkillState;index:number;
@@ -159,32 +147,29 @@ function SkillChoicePanel({agent,choice,state,index,resources,resourcesFetching,
   const query=state.versions[index];
   const selected=query?.data;
   const versions=useQuery({queryKey:["skill-versions",choice.skillId],queryFn:()=>listSkillVersions(choice.skillId)});
-  const progress=state.progress.find((operation)=>operation.skillVersionId===choice.skillVersionId);
   const missing=selected?.inputSlots.some((slot)=>slot.required && !choice.inputs.some((input)=>input.alias===slot.alias));
   return <>
     {query?.isFetching ? <LoadingState compact label={t("common.loading")} /> : null}
     {selected ? <Panel title={selected.name} description={selected.description} className="agent-skill-picker-preview">
       <FieldGroup><Field><FieldLabel>{t("skills.versions")}</FieldLabel>
-        <Select aria-label={`${selected.name} · ${t("skills.versions")}`} value={choice.skillVersionId} disabled={state.busy || versions.isFetching}
+        <Select aria-label={`${selected.name} · ${t("skills.versions")}`} value={choice.skillVersionId} disabled={versions.isFetching}
           onChange={(event)=>onChange({...choice,skillVersionId:event.target.value,inputs:[]})}>
           {!versions.data?.some((version)=>version.id===selected.id) ? <option value={selected.id}>{t("skills.version",{"0":selected.versionNumber})}</option> : null}
           {versions.data?.map((version)=><option key={version.id} value={version.id}>{t("skills.version",{"0":version.versionNumber})}</option>)}
         </Select></Field>
         {selected.inputSlots.map((slot)=><Field key={slot.alias}><FieldLabel>{slot.alias}{slot.required ? ` · ${t("skills.required")}`:""}</FieldLabel>
-          <Select aria-label={`${slot.alias} · ${t("skills.inputVersion")}`} disabled={state.busy || resourcesFetching} value={choice.inputs.find((input)=>input.alias===slot.alias)?.artifactVersionId??""}
+          <Select aria-label={`${slot.alias} · ${t("skills.inputVersion")}`} disabled={resourcesFetching} value={choice.inputs.find((input)=>input.alias===slot.alias)?.artifactVersionId??""}
             onChange={(event)=>{const inputs=choice.inputs.filter((input)=>input.alias!==slot.alias);if(event.target.value)inputs.push({alias:slot.alias,artifactVersionId:event.target.value});onChange({...choice,inputs});}}>
             <option value="">{t("skills.inputVersion")}</option>{agent.bindings.filter((binding)=>resources?.items.some((artifact)=>artifact.id===binding.artifactId && artifact.kind===slot.kind))
               .map((binding)=><option key={binding.selectedVersionId} value={binding.selectedVersionId}>{resources?.items.find((artifact)=>artifact.id===binding.artifactId)?.title}</option>)}
           </Select></Field>)}
       </FieldGroup>
       <details><summary>{t("skills.body")}</summary><pre className="skills-source-preview">{selected.skillMd}</pre></details><p>{t("skills.modelOnly")}</p>
-      <Button variant="outline" type="button" disabled={state.busy} onClick={()=>state.install.mutate(choice)}>{t("skills.install")}</Button>
-      {progress ? <Notice tone={progress.status==="FAILED" ? "danger":"info"}>{pendingInstallation(progress) ? t("skills.installing"):progress.status==="SUCCEEDED" ? t("skills.installed"):progress.errorDetail??progress.errorCode}</Notice> : null}
       {missing ? <p role="status">{t("skills.missingInput")}</p> : null}
       {versions.error ? <SkillError error={versions.error} onRefresh={()=>void versions.refetch()} /> : null}
     </Panel> : null}
   </>;
 }
 export function RunSkillSummary({skill}:{skill:import("../../shared/api/client").RunPreflight["creativeSkills"][number]}) {
-  return <section aria-label={t("skills.preflight")}><p>{skill.title} · {t("skills.version",{"0":skill.versionNumber})}</p><p>{skill.installed ? t("skills.installed"):t("skills.installing")}</p><ul>{skill.resources.map((resource)=><li key={resource.path}><details><summary>{resource.path} · {resource.contentHash}</summary><pre className="skills-source-preview">{resource.content}</pre></details></li>)}{skill.assets.map((asset)=><li key={asset.alias}>{asset.alias} · {asset.purpose} · {asset.usage==="GUIDE" ? t("skills.guide"):t("skills.reference")}</li>)}</ul><p>{t("skills.fees")}</p></section>;
+  return <section aria-label={t("skills.preflight")}><p>{skill.title} · {t("skills.version",{"0":skill.versionNumber})}</p><ul>{skill.resources.map((resource)=><li key={resource.path}><details><summary>{resource.path} · {resource.contentHash}</summary><pre className="skills-source-preview">{resource.content}</pre></details></li>)}{skill.assets.map((asset)=><li key={asset.alias}>{asset.alias} · {asset.purpose}</li>)}</ul><p>{t("skills.fees")}</p></section>;
 }

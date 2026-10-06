@@ -11,6 +11,7 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** 只从已提交的模型检查点和工具账本重建后续对话，避免以内存状态作为恢复依据。 */
 @Service
@@ -26,6 +27,7 @@ public class LlmConversationService {
     private final LlmProtocolCodec codec;
     private final AgentMediaOutcomeService mediaOutcomes;
     private final AgentImageInputService images;
+    private final ObjectMapper mapper;
 
     /** 注入 Run 权限、完整模型回合和工具账本读取边界。
      * @param runs 验证调用者可访问该 Run
@@ -35,13 +37,14 @@ public class LlmConversationService {
      */
     public LlmConversationService(AgentRunRepository runs, LlmTurnRepository turns,
             ToolExecutionRepository tools, LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes,
-            AgentImageInputService images) {
+            AgentImageInputService images, ObjectMapper mapper) {
         this.runs = runs;
         this.turns = turns;
         this.tools = tools;
         this.codec = codec;
         this.mediaOutcomes = mediaOutcomes;
         this.images = images;
+        this.mapper = mapper;
     }
 
     /**
@@ -67,7 +70,8 @@ public class LlmConversationService {
         if (turn.status() != LlmTurn.Status.RESPONDED) {
             throw new IllegalStateException("Model response has not been committed");
         }
-        List<Message> history = new ArrayList<>(codec.requestMessages(turn.request()));
+        List<Message> history = new ArrayList<>(AgentMediaToolResult.historyForModel(
+                codec.requestMessages(turn.request()), mapper));
         AssistantMessage assistant = codec.selectedAssistant(turn.response());
         if (assistant.getToolCalls().isEmpty()) {
             throw new IllegalStateException("A final assistant response has no tool continuation");

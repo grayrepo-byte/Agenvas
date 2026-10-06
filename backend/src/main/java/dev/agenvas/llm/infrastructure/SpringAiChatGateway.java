@@ -36,7 +36,8 @@ import tools.jackson.databind.node.ObjectNode;
 public class SpringAiChatGateway implements ChatGateway {
 
     private static final int MAX_PUBLIC_BATCH_CHUNKS = 64;
-    private static final long MAX_AGGREGATED_PROTOCOL_BYTES = 1024L * 1024;
+    /** 聚合响应与持久检查点共用字节上限，避免流式路径仍沿用较小的旧预算。 */
+    private static final long MAX_AGGREGATED_PROTOCOL_BYTES = LlmProtocolCodec.MAX_RESPONSE_BYTES;
     private static final int PROTOCOL_ENVELOPE_OVERHEAD_BYTES = 1024;
     private final ObjectMapper streamMapper = new ObjectMapper();
     private final LlmProtocolCodec streamCodec = new LlmProtocolCodec(streamMapper);

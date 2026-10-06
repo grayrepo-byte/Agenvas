@@ -11,6 +11,8 @@ public final class SkillContent {
     public static final int SCHEMA_VERSION = 1;
     private SkillContent() {}
     public enum Usage { GUIDE, PROVIDER_REFERENCE }
+    /** New Run delivery is separate from immutable historical publication usage. */
+    public enum AssetDelivery { LLM_CONTEXT }
     public enum Status { ACTIVE, TRASHED }
     public enum OperationStatus { ACCEPTED, ARCHIVING, SUCCEEDED, FAILED }
     public record InputSlot(String alias, Artifact.Kind kind, @com.fasterxml.jackson.annotation.JsonProperty(required = true) boolean required) {}

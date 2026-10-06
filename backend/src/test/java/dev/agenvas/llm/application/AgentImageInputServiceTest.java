@@ -38,8 +38,10 @@ class AgentImageInputServiceTest {
     private final UUID artifact = UUID.randomUUID(), version = UUID.randomUUID(), assetId = UUID.randomUUID();
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final AssetService assets = mock(AssetService.class);
+    private final dev.agenvas.skill.application.SkillService skills = mock(dev.agenvas.skill.application.SkillService.class);
+    private final ToolExecutionRepository ledger = mock(ToolExecutionRepository.class);
     private final ObjectMapper mapper = new ObjectMapper();
-    private final AgentImageInputService service = new AgentImageInputService(artifacts, assets, mapper);
+    private final AgentImageInputService service = new AgentImageInputService(artifacts, assets, mapper, skills, ledger);
     private final AgentImageInputService.Input input = new AgentImageInputService.Input(artifact, version);
 
     private tools.jackson.databind.node.ObjectNode snapshot() {

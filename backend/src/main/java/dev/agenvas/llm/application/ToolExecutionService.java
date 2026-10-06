@@ -195,6 +195,7 @@ public class ToolExecutionService {
             case "read_project_summary" -> reader.projectSummary(context, run,
                     operationId, arguments);
             case "read_skill" -> reader.skill(run, operationId, arguments);
+            case "read_skill_asset" -> reader.skillAsset(run, operationId, arguments);
             case "read_skill_resource" -> reader.skillResource(run, operationId, arguments);
             case "read_selection" -> reader.selection(run, operationId, arguments);
             case "read_artifacts" -> reader.artifacts(context, run, operationId, arguments);

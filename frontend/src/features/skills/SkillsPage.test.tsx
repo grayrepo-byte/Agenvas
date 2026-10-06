@@ -5,7 +5,7 @@ import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes,useLocation } from "react-router";
 import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { CreativeSkill,SkillDraft,SkillVersion,SaveSkillDraftRequest } from "../../shared/api/client";
+import type { CreativeSkill,LibraryEntry,SkillDraft,SkillVersion,SaveSkillDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { SkillsPage } from "./SkillsPage";
 
@@ -42,6 +42,20 @@ it("shows builtin content read-only with attribution and permits trying its fixe
 });
 async function openEditor(){mount();await userEvent.click(await screen.findByRole("button",{name:"温暖手绘"}));return screen.findByRole("textbox",{name:"Skill 正文"});}
 describe("Skill editing and publishing",()=>{
+  it("saves a selected reference image for model context without a provider usage selector",async()=>{
+    const reference:LibraryEntry={id:"library-image",name:"水彩风格参考",category:"OTHER",kind:"IMAGE",textContent:null,contentType:"image/png",byteSize:120,
+      width:8,height:8,durationMs:null,hasThumbnail:false,source:{},favorite:false,trashedAt:null,version:7,createdAt:NOW,updatedAt:NOW};
+    let submitted:SaveSkillDraftRequest|undefined;
+    server.use(http.get("/api/v1/library/entries",()=>HttpResponse.json({items:[reference],nextCursor:null,total:1,categoryCounts:{OTHER:1}})),
+      http.put(`/api/v1/skills/${SKILL_ID}/draft`,async({request})=>{submitted=await request.json() as SaveSkillDraftRequest;return HttpResponse.json({...INITIAL,...submitted,version:2});}));
+    await openEditor();const user=userEvent.setup();await user.click(screen.getByRole("tab",{name:"引用资产"}));
+    await user.click(screen.getByRole("button",{name:"从我的资产选择图片"}));
+    await user.click(await screen.findByRole("button",{name:"用作参考：水彩风格参考"}));
+    expect(screen.getByRole("textbox",{name:"用途"})).toHaveValue(reference.name);
+    expect(screen.queryByRole("combobox",{name:"用途"})).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button",{name:"保存草稿"}));
+    await waitFor(()=>expect(submitted?.assets).toEqual([{alias:"reference-1",libraryEntryId:reference.id,expectedLibraryVersion:7,usage:"GUIDE",required:true,purpose:reference.name}]));
+  });
   it("moves a saved Skill to trash, lists it there, and restores editing with metadata CAS",async()=>{
     let stored=SKILL;const filters:string[]=[];const changes:{expectedVersion:number;trashed:boolean}[]=[];
     server.use(http.get("/api/v1/skills",({request})=>{

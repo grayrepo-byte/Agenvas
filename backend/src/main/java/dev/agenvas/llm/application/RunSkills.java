@@ -15,7 +15,7 @@ final class RunSkills {
         return historical.isObject() ? List.of(historical) : List.of();
     }
     static List<JsonNode> activated(AgentRun run, List<JsonNode> reads) {
-        if (run.policySnapshot().path("toolPolicyVersion").asInt(1) < RunToolPolicy.CURRENT_VERSION) return available(run);
+        if (run.policySnapshot().path("toolPolicyVersion").asInt(1) < RunToolPolicy.PROGRESSIVE_VERSION) return available(run);
         return available(run).stream().filter(skill -> reads.stream().anyMatch(read ->
                 "SKILL.md".equals(read.path("path").asText())
                 && skill.path("skillVersionId").asText().equals(read.path("skillVersionId").asText()))).toList();

@@ -54,6 +54,7 @@ class ProgressiveSkillTest {
         assertInvalid(() -> reader.skillResource(run, UUID.randomUUID(), resourceArgs(first, 0, 2)));
         JsonNode main = reader.skill(run, UUID.randomUUID(), "{\"skillVersionId\":\"" + first + "\"}").path("data");
         assertThat(main.path("content").asText()).isEqualTo("PRIVATE_MAIN_FIRST");
+        assertThat(main.has("assetDelivery")).isFalse();
         assertThat(main.path("resourceManifest").path(0).path("path").asText()).isEqualTo("references/shared.md");
         // An uncommitted read, including a rolled-back tool batch, never grants activation.
         assertInvalid(() -> reader.skillResource(run, UUID.randomUUID(), resourceArgs(first, 0, 2)));
@@ -97,6 +98,41 @@ class ProgressiveSkillTest {
         assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
     }
 
+    @Test void imageReadsRequireCommittedActivationAndExactRegisteredAliasForV3() {
+        AgentRun run = run(3);
+        var selected = (ObjectNode) run.contextSnapshot().path("creativeSkills").path(0);
+        selected.put("skillId", UUID.randomUUID().toString()).put("assetDelivery", "LLM_CONTEXT");
+        selected.putArray("assets").addObject().put("alias", "style").put("kind", "IMAGE")
+                .put("contentHash", "fixed-image-hash").put("title", "Style").put("purpose", "Style reference");
+        String args = "{\"skillVersionId\":\"" + first + "\",\"alias\":\"style\"}";
+        when(ledger.skillReads(any(), any())).thenReturn(List.of());
+        assertInvalid(() -> reader.skillAsset(run, UUID.randomUUID(), args));
+        JsonNode main = reader.skill(run, UUID.randomUUID(), "{\"skillVersionId\":\"" + first + "\"}").path("data");
+        assertInvalid(() -> reader.skillAsset(run, UUID.randomUUID(), args));
+        when(ledger.skillReads(any(), any())).thenReturn(List.of(main));
+        JsonNode read = reader.skillAsset(run, UUID.randomUUID(), args).path("data");
+        assertThat(read.path("alias").asText()).isEqualTo("style");
+        assertThat(read.path("contentHash").asText()).isEqualTo("fixed-image-hash");
+        assertThat(read.path(AgentImageInputService.PREVIEW_REQUEST_KEY).asBoolean()).isTrue();
+        assertThat(read.toString()).doesNotContain("artifactId", "versionId", "objectKey", "thumbnailKey", "base64");
+        assertInvalid(() -> reader.skillAsset(run, UUID.randomUUID(), args.replace("style", "unknown")));
+        assertInvalid(() -> reader.skillAsset(run, UUID.randomUUID(), args.replace(first.toString(), second.toString())));
+    }
+
+    @Test void newImageProtocolIsVersionedWithoutChangingHistoricalProgressiveRules() {
+        var policy = mapper.createObjectNode().put("toolPolicyVersion", 3).put("systemPromptVersion", 9);
+        policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.current(true, true, true)));
+        assertThat(new ToolRegistry().modelDefinitions(policy).stream().map(tool -> tool.getToolDefinition().name()))
+                .contains("read_skill_asset", "read_skill", "read_skill_resource");
+        assertThat(RunToolPolicy.current(true, true, false)).doesNotContain("read_skill_asset");
+        assertThat(InitialModelContextService.systemRules(policy)).contains("read_skill_asset", "LLM context only")
+                .doesNotContain("required PROVIDER_REFERENCE assets must appear", "GUIDE assets are context only");
+        policy.put("toolPolicyVersion", 2).put("systemPromptVersion", 8);
+        assertThatThrownBy(() -> new ToolRegistry().modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
+        assertThat(InitialModelContextService.systemRules(policy)).doesNotContain("read_skill_asset")
+                .contains("required PROVIDER_REFERENCE assets must appear");
+    }
+
     private AgentRun run(int policyVersion) {
         AgentRun run = mock(AgentRun.class);
         ObjectNode snapshot = mapper.createObjectNode();
@@ -104,7 +140,7 @@ class ProgressiveSkillTest {
         selected.add(skill(first, "first-skill", "First purpose", "PRIVATE_MAIN_FIRST", "😀甲😀乙"));
         selected.add(skill(second, "second-skill", "Second purpose", "PRIVATE_MAIN_SECOND", "SECOND_RESOURCE"));
         when(run.contextSnapshot()).thenReturn(snapshot);
-        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("toolPolicyVersion", policyVersion).put("systemPromptVersion", policyVersion == 2 ? 8 : 7));
+        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("toolPolicyVersion", policyVersion).put("systemPromptVersion", policyVersion == 3 ? 9 : policyVersion == 2 ? 8 : 7));
         when(run.projectId()).thenReturn(UUID.randomUUID());when(run.id()).thenReturn(UUID.randomUUID());
         return run;
     }

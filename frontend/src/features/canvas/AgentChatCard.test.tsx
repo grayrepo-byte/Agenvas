@@ -769,7 +769,7 @@ describe("Agent Skill submission",()=>{
       http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`,()=>HttpResponse.json(version)),
       http.post(`${RUNS_URL}/preflight`,async({request})=>{const input=await request.json() as {skillSelection:{mode:string}};preflights.push(input);
         return HttpResponse.json({...PREFLIGHT,creativeSkills:input.skillSelection.mode==="VERSIONS"
-          ? [{skillId,skillVersionId,title:"温暖手绘",versionNumber:1,bundleHash:version.bundleHash,inputSlots:[],resources:[],assets:[],installed:true}]:[]});}),
+          ? [{skillId,skillVersionId,title:"温暖手绘",versionNumber:1,bundleHash:version.bundleHash,inputSlots:[],resources:[],assets:[]}]:[]});}),
       http.post(RUNS_URL,async({request})=>{requests.push(await request.json() as CreateRunRequest);return persistRun();}));
     mountCard();const user=userEvent.setup();await user.type(await readyComposer(),"创建一段文字");
     await user.click(screen.getByRole("button",{name:"选择 Skill"}));const dialog=await screen.findByRole("dialog");

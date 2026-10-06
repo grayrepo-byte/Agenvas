@@ -316,7 +316,9 @@ public class AgentRunService {
                     policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.current(
                             !snapshot.path("creativeSkills").isEmpty(),
                             java.util.stream.StreamSupport.stream(snapshot.path("creativeSkills").spliterator(), false)
-                                    .anyMatch(skill -> !skill.path("resources").isEmpty()))));
+                                    .anyMatch(skill -> !skill.path("resources").isEmpty()),
+                            java.util.stream.StreamSupport.stream(snapshot.path("creativeSkills").spliterator(), false)
+                                    .anyMatch(skill -> !skill.path("assets").isEmpty()))));
                     AgentConversation advanced = conversations.appendTurn(ownerId, conversation,
                             instruction, expectedConversationVersion, now);
                     AgentRun run = new AgentRun(runId, projectId, agentId, conversation.id(),
@@ -472,7 +474,8 @@ public class AgentRunService {
         var skill = skills.preview(ownerId, projectId, agentId, selection);
         ObjectNode policy = policySnapshot();
         policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.current(
-                !skill.isEmpty(), skill.stream().anyMatch(item -> !item.resources().isEmpty()))));
+                !skill.isEmpty(), skill.stream().anyMatch(item -> !item.resources().isEmpty()),
+                skill.stream().anyMatch(item -> !item.assets().isEmpty()))));
         ChatGateway.ModelDetails model = chatGateway.modelDetails();
         return new RunPreflight(agent.id(), agent.version(), agent.name(),
                 agent.instruction(), List.copyOf(bindings), model.available(), model.providerAdapter(),
@@ -751,7 +754,7 @@ public class AgentRunService {
     /** 把本次 Run 的模型配置版本及回合、工具预算写入不可变策略快照。 */
     private ObjectNode policySnapshot() {
         ObjectNode policy = objectMapper.createObjectNode();
-        policy.put("schemaVersion", 4);
+        policy.put("schemaVersion", 5);
         policy.put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
         policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.CURRENT));
         policy.put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);

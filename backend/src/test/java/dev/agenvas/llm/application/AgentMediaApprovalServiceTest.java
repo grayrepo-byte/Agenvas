@@ -86,6 +86,39 @@ class AgentMediaApprovalServiceTest {
     }
 
     @Test
+    void sixOutputsReturnSkillReferencesWhileApprovalDetailsKeepTheFullSnapshot() {
+        var approval = pending(NOW.plusSeconds(60), 6);
+        for (var output : approval.request().path("outputs")) ((ObjectNode) output).put("prompt", "Draw");
+        var input = mapper.createObjectNode();
+        input.set("outputs", approval.request().path("outputs").deepCopy());
+        String arguments = input.toString();
+        ((ObjectNode) approval.request()).put("argumentHash", Sha256.hex(arguments));
+        var skill = mapper.createObjectNode().put("skillId", UUID.randomUUID().toString())
+                .put("skillVersionId", UUID.randomUUID().toString()).put("name", "Synthetic method")
+                .put("bundleHash", "synthetic-bundle-hash").put("skillMd", "x".repeat(32 * 1024));
+        skill.putArray("resources").addObject().put("path", "guide.md").put("content", "PRIVATE_RESOURCE_BODY");
+        for (var target : approval.targets().path("outputs")) {
+            ((ObjectNode) target.path("preview")).set("creativeSkill", skill.deepCopy());
+        }
+        when(approvals.findByToolCall(projectId, runId, 1, "call-media")).thenReturn(Optional.of(approval));
+        when(approvals.find(projectId, runId, approvalId)).thenReturn(Optional.of(approval));
+
+        var result = service.propose(new TrustedToolContext(ownerId, projectId, runId),
+                run(AgentRun.Status.RUNNING, 1), approval.operationId(), 1, "call-media", arguments);
+
+        assertThat(mapper.writeValueAsBytes(result).length).isLessThan(12 * 1024);
+        assertThat(result.toString()).doesNotContain("skillMd", "PRIVATE_RESOURCE_BODY");
+        assertThat(result.at("/data/creativeSkills")).hasSize(1);
+        assertThat(result.at("/data/creativeSkills/0/skillVersionId")).isEqualTo(skill.path("skillVersionId"));
+        assertThat(result.at("/data/outputs")).hasSize(6);
+        assertThat(result.at("/data/outputs/0/artifactId").asText()).isEqualTo(artifactId.toString());
+        assertThat(result.path("awaitingMedia").asBoolean()).isTrue();
+        assertThat(service.get(ownerId, projectId, runId, approvalId).outputs())
+                .allSatisfy(output -> assertThat(output.preview().path("creativeSkill")).isEqualTo(skill));
+        verifyNoInteractions(mediaTasks, artifacts, drafts, canvas);
+    }
+
+    @Test
     void providerInputValidationCanEnterTheBoundedToolRepairFlow() {
         AgentRun run = run(AgentRun.Status.RUNNING, 1);
         when(runs.get(ownerId, projectId, runId)).thenReturn(run);
@@ -380,14 +413,32 @@ class AgentMediaApprovalServiceTest {
     void rejectRecordsTerminalResultAndNotifiesWithoutAProviderTask() {
         when(approvals.findForUpdate(projectId, runId, approvalId))
                 .thenReturn(Optional.of(pending(NOW.plusSeconds(60), 1)));
+        when(canvas.hasArtifactItem(ownerId, projectId, canvasItemId, artifactId)).thenReturn(true);
         var result = service.decide(ownerId, projectId, runId, approvalId, 0,
                 AgentMediaApprovalService.Decision.REJECT, "reject-command");
         assertThat(result.status()).isEqualTo(AgentMediaApproval.Status.REJECTED);
         assertThat(result.result().path("schemaVersion").asInt()).isEqualTo(1);
         assertThat(result.result().path("errorCode").asText()).isEqualTo("AGENT_MEDIA_APPROVAL_REJECTED");
         assertThat(result.result().path("tasks").isEmpty()).isTrue();
-        verifyNoInteractions(mediaTasks);
+        verify(mediaTasks, never()).runApproved(any(), any(), any(), any(), any(), any(), anyLong(), any());
+        verify(canvas).removeUnchangedEmptyMediaItemWithinChange(ownerId, projectId,
+                canvasItemId, artifactId, 1);
         verify(publisher).publishEvent(new AgentMediaApprovalChanged(ownerId, projectId, runId, approvalId));
+    }
+
+    @Test
+    void rejectPreservesTheDestinationOfAnIndependentGenerationTask() {
+        when(approvals.findForUpdate(projectId, runId, approvalId))
+                .thenReturn(Optional.of(pending(NOW.plusSeconds(60), 1)));
+        when(canvas.hasArtifactItem(ownerId, projectId, canvasItemId, artifactId)).thenReturn(true);
+        when(mediaTasks.list(ownerId, projectId, artifactId, canvasItemId))
+                .thenReturn(List.of(mock(Task.class)));
+
+        assertThat(service.decide(ownerId, projectId, runId, approvalId, 0,
+                AgentMediaApprovalService.Decision.REJECT, "reject-independent-task").status())
+                .isEqualTo(AgentMediaApproval.Status.REJECTED);
+
+        verify(canvas, never()).removeUnchangedEmptyMediaItemWithinChange(any(), any(), any(), any(), anyLong());
     }
 
     @Test

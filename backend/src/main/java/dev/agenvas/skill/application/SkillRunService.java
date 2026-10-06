@@ -18,10 +18,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,7 +33,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Agent-only selection, durable project installation and immutable Run context. */
+/** Agent-only selection and immutable Run context; fixed images remain in the Skill archive. */
 @Service
 public class SkillRunService {
     public enum SelectionMode { DEFAULT, NONE, VERSIONS }
@@ -48,14 +46,12 @@ public class SkillRunService {
             @Valid @NotNull @Size(max = MAX_SKILLS) List<Choice> skills) {}
     public record VersionRef(@NotNull UUID skillId, @NotNull UUID skillVersionId) {}
     public record BindingResponse(long agentVersion, List<VersionRef> skills) {}
-    public record Installation(UUID id, InstallStatus status, UUID skillId, UUID skillVersionId, String errorCode, String errorDetail) {}
     public record Summary(UUID skillId, UUID skillVersionId, String title, long versionNumber, String bundleHash,
             List<SkillContent.InputSlot> inputSlots, List<SkillContent.PublishedResource> resources,
-            List<SkillService.AssetResponse> assets, boolean installed) {}
+            List<SkillService.AssetResponse> assets) {}
     private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(SkillRunService.class);
     private static final Duration LEASE = Duration.ofMinutes(5);
     public static final int MAX_SKILLS = 100;
-    private static final int MAX_BINDINGS = 40;
     private static final int MAX_INPUTS = 14;
     private static final int MAX_KEY = 200;
     private final SkillService skills;
@@ -111,94 +107,20 @@ public class SkillRunService {
         }).value();
     }
 
-    /** Acceptance creates only local copy work. It never calls a model or places a canvas card. */
-    public Installation install(UUID owner, UUID project, UUID agent, UUID skill, UUID version, String key) {
-        checkKey(key); gate.requireAcceptingRuns();
-        String hash=Sha256.hex(agent+"\n"+skill+"\n"+version);
-        return events.recordChange(owner,project,() -> {
-            projects.requireActiveProject(owner,project); agents.get(owner,project,agent);
-            var prior=operations.command(owner,project,key);
-            if(prior.isPresent()) {
-                if(!prior.get().payloadHash().equals(hash)) throw problem("IDEMPOTENCY_CONFLICT",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.idempotency-conflict"));
-                return ProjectEventService.Change.unchanged(response(requireOperation(owner,project,prior.get().operationId())));
-            }
-            // A retained default binding may explicitly reuse its frozen version after trash.
-            skills.requireAvailable(owner, skill);
-            boolean bound=skills.getBindings(owner,project,agent).stream().anyMatch(b -> b.skillId().equals(skill)&&b.skillVersionId().equals(version));
-            SkillContent.Version bundle=bound?skills.getBundle(owner,skill,version):skills.requireSelectableVersion(owner,skill,version);
-            Operation operation=operations.version(owner,project,version).orElse(null);
-            if(operation==null) {
-                ObjectNode input=mapper.createObjectNode().put("schemaVersion",SkillContent.SCHEMA_VERSION);
-                input.put("bundleHash",bundle.bundleHash());
-                operation=new Operation(UUID.randomUUID(),owner,project,skill,version,input,null,mapper.createArrayNode(),InstallStatus.ACCEPTED.name(),0,null,null,null);
-                operations.create(operation,clock.instant());
-            } else if(InstallStatus.FAILED.name().equals(operation.status())) {
-                if(!operations.retry(operation,clock.instant())) throw problem("SKILL_INSTALL_CONFLICT",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.skill-install-conflict"));
-                operation=requireOperation(owner,project,operation.id());
-            }
-            operations.saveCommand(owner,project,key,hash,operation.id(),clock.instant());
-            return ProjectEventService.Change.unchanged(response(operation));
-        }).value();
-    }
-
-    public Installation getInstallation(UUID owner, UUID project, UUID agent, UUID operation) {
-        agents.get(owner,project,agent);
-        return response(requireOperation(owner,project,operation));
-    }
-
-    /** Short claim and final fenced transaction surround bounded filesystem copying. */
+    /** Retire unfinished legacy preparation without copying or registering any more project media. */
     public boolean processNext() {
-        var claimed=gate.claimOrEmpty(() -> tx.execute(ignored -> operations.claim(clock.instant(),clock.instant().plus(LEASE))),java.util.Optional.<Operation>empty());
-        if(claimed==null || claimed.isEmpty()) return false;
-        Operation op=claimed.get();
-        List<Asset> prepared=new ArrayList<>();
-        ObjectNode progress=mapper.createObjectNode();
-        ArrayNode retained=progress.putArray("preparedAssets");
-        if(op.result()!=null) for(JsonNode prior:op.result().path("preparedAssets")) retained.add(prior.deepCopy());
-        try {
-            SkillContent.Version version=skills.getBundle(op.ownerId(),op.skillId(),op.skillVersionId());
-            if(!version.bundleHash().equals(op.input().path("bundleHash").asText())) throw new IllegalStateException("Immutable Skill hash mismatch");
-            for(var asset:version.bundle().assets()) {
-                UUID id=UUID.nameUUIDFromBytes(("skill-install:"+op.id()+":"+op.epoch()+":"+asset.alias()).getBytes(StandardCharsets.UTF_8));
-                ObjectNode planned=mapper.createObjectNode().put("id",id.toString()).put("projectId",op.projectId().toString())
-                        .put("mediaKind",Asset.MediaKind.IMAGE.name());
-                tx.executeWithoutResult(ignored -> operations.trackPrepared(op,planned));
-                // Check after acquiring the file lock, so an expired writer cannot recreate cleaned bytes.
-                Asset file=archive.prepareProjectImport(op.ownerId(),op.projectId(),id,asset.media(),
-                        () -> Boolean.TRUE.equals(tx.execute(ignored -> operations.active(op,clock.instant()))));
-                tx.executeWithoutResult(ignored -> operations.trackPrepared(op,mapper.valueToTree(file)));
-                prepared.add(file);
-                boolean saved=false;
-                for(JsonNode existing:retained) if(id.toString().equals(existing.path("id").asText())) saved=true;
-                if(!saved) retained.add(mapper.valueToTree(file));
-                boolean active=Boolean.TRUE.equals(tx.execute(ignored -> operations.checkpoint(op,progress,clock.instant())));
-                if(!active) return true;
-            }
-            events.recordChange(op.ownerId(),op.projectId(),() -> {
-                projects.requireActiveProject(op.ownerId(),op.projectId());
-                if(!operations.active(op,clock.instant())) return ProjectEventService.Change.unchanged(false);
-                ObjectNode result=mapper.createObjectNode().put("schemaVersion",SkillContent.SCHEMA_VERSION);
-                ArrayNode mappings=result.putArray("assets");
-                for(int i=0;i<prepared.size();i++) {
-                    var source=version.bundle().assets().get(i);
-                    var registered=archive.registerProjectImport(op.ownerId(),prepared.get(i),source.title());
-                    ObjectNode mapping=mappings.addObject();
-                    mapping.put("alias",source.alias()).put("artifactId",registered.artifact().id().toString())
-                            .put("artifactVersionId",registered.resourceDefaultVersion().id().toString());
-                }
-                if(!operations.finish(op,InstallStatus.SUCCEEDED.name(),result,null,null,clock.instant())) throw new IllegalStateException("Skill installation lease changed");
-                return ProjectEventService.Change.unchanged(true);
-            });
-        } catch(RuntimeException failure) {
-            LOGGER.warn("Skill installation failed: {}", failure.getClass().getSimpleName());
-            // Files retain deterministic identities for explicit archival retry; no generation occurs.
-            tx.executeWithoutResult(ignored -> operations.finish(op,InstallStatus.FAILED.name(),retained.isEmpty()?null:progress,
-                    "SKILL_INSTALL_FAILED",ApiMessage.of("api.skill-run.operation-failed").source(),clock.instant()));
-        }
-        return true;
+        return Boolean.TRUE.equals(gate.claimOrEmpty(() -> tx.execute(ignored -> {
+            var claimed = operations.claim(clock.instant(), clock.instant().plus(LEASE));
+            if (claimed.isEmpty()) return false;
+            Operation op = claimed.get();
+            // Registered mappings are historical business content; only unfinished work is retired.
+            return operations.finish(op, op.registered() ? InstallStatus.SUCCEEDED.name() : InstallStatus.FAILED.name(),
+                    op.result(), op.registered() ? null : "SKILL_INSTALL_RETIRED",
+                    op.registered() ? null : "Skill images are now loaded directly into LLM context.", clock.instant());
+        }), false));
     }
 
-    /** A durable cleanup lease excludes explicit retry until each unregistered file is removed. */
+    /** Clean only tracked, unregistered files from the retired installation workflow. */
     public boolean cleanupNext() {
         var claimed=gate.claimOrEmpty(() -> tx.execute(ignored -> operations.claimCleanup(clock.instant(),clock.instant().plus(LEASE))),java.util.Optional.<Operation>empty());
         if(claimed==null||claimed.isEmpty()) return false;
@@ -221,9 +143,8 @@ public class SkillRunService {
         return selectedChoices(owner, project, agent, selection).stream().map(choice -> {
             var version = selectedVersion(owner, project, agent, choice);
             var published = skills.getVersion(owner, version.skillId(), version.id());
-            boolean installed = textOnlyBuiltin(owner, version) || operations.version(owner, project, version.id()).filter(Operation::registered).isPresent();
             return new Summary(version.skillId(), version.id(), skills.get(owner, version.skillId()).title(), version.versionNumber(), version.bundleHash(),
-                    version.bundle().inputSlots(), version.bundle().resources(), published.assets(), installed);
+                    version.bundle().inputSlots(), version.bundle().resources(), published.assets());
         }).toList();
     }
 
@@ -231,15 +152,15 @@ public class SkillRunService {
     public void freezeIntoRun(UUID owner, UUID project, AgentInstance agent, UUID runId, Selection selection, ObjectNode context) {
         ArrayNode frozen = context.putArray("creativeSkills");
         for (var choice : selectedChoices(owner, project, agent.id(), selection)) {
-            frozen.add(freezeSkill(owner, project, agent, runId, choice, context));
+            frozen.add(freezeSkill(owner, project, agent, runId, choice));
         }
     }
 
-    private ObjectNode freezeSkill(UUID owner, UUID project, AgentInstance agent, UUID runId, Choice choice, ObjectNode context) {
+    private ObjectNode freezeSkill(UUID owner, UUID project, AgentInstance agent, UUID runId, Choice choice) {
         var version = selectedVersion(owner, project, agent.id(), choice);
-        Operation installed=textOnlyBuiltin(owner, version) ? null : operations.version(owner,project,version.id()).filter(Operation::registered)
-                .orElseThrow(() -> problem("SKILL_INSTALL_PENDING",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.skill-install-pending")));
         ObjectNode snapshot=mapper.createObjectNode().put("schemaVersion",SkillContent.SCHEMA_VERSION);
+        // Fixed images are private Skill references, never project versions or write permissions.
+        snapshot.put("assetDelivery", SkillContent.AssetDelivery.LLM_CONTEXT.name());
         snapshot.put("agentRunId",runId.toString()).put("skillId",version.skillId().toString()).put("skillVersionId",version.id().toString())
                 .put("versionNumber",version.versionNumber()).put("bundleHash",version.bundleHash()).put("name",version.bundle().name())
                 .put("description",version.bundle().description()).put("skillMd",version.bundle().skillMd());
@@ -267,25 +188,12 @@ public class SkillRunService {
                     .put("artifactVersionId",input.artifactVersionId().toString()).put("kind",slot.kind().name()).put("required",slot.required());
         }
         ArrayNode assets=snapshot.putArray("assets");
-        ArrayNode bindings=(ArrayNode)context.path("bindings");
         for(var source:version.bundle().assets()) {
-            JsonNode mapping=null;
-            for(var candidate:installed.result().path("assets")) if(source.alias().equals(candidate.path("alias").asText())) { mapping=candidate;break; }
-            if(mapping==null) throw new IllegalStateException("Skill installation mapping missing");
-            UUID artifactId=UUID.fromString(mapping.path("artifactId").asText()), versionId=UUID.fromString(mapping.path("artifactVersionId").asText());
-            artifacts.requireVersion(owner,project,artifactId,versionId);
             assets.addObject().put("alias",source.alias()).put("kind",source.kind().name()).put("title",source.title())
                     .put("contentHash",source.contentHash()).put("usage",source.usage().name()).put("required",source.required())
-                    .put("purpose",source.purpose()).put("artifactId",artifactId.toString()).put("artifactVersionId",versionId.toString());
-            bindings.addObject().put("artifactId",artifactId.toString()).put("selectedVersionId",versionId.toString())
-                    .put("kind",source.kind().name()).put("title",source.title()).put("skillVersionId",version.id().toString());
+                    .put("purpose",source.purpose());
         }
-        if(bindings.size()>MAX_BINDINGS) throw problem("SKILL_CONTEXT_LIMIT",HttpStatus.UNPROCESSABLE_ENTITY,ApiMessage.of("api.skill-run.skill-context-limit"));
         return snapshot;
-    }
-    /** Packaged text has no project media to archive; selection is immediately usable without an installation Task. */
-    private boolean textOnlyBuiltin(UUID owner, SkillContent.Version version) {
-        return version.bundle().assets().isEmpty() && skills.get(owner, version.skillId()).builtin();
     }
 
     /** Export fixed source content and exact project mappings without private archive metadata. */
@@ -343,8 +251,6 @@ public class SkillRunService {
         return retained ? skills.getBundle(owner, choice.skillId(), choice.skillVersionId())
                 : skills.requireSelectableVersion(owner, choice.skillId(), choice.skillVersionId());
     }
-    private Operation requireOperation(UUID owner, UUID project, UUID id) {return operations.find(owner,project,id).orElseThrow(() -> problem("SKILL_INSTALL_NOT_FOUND",HttpStatus.NOT_FOUND,ApiMessage.of("api.skill-run.skill-install-not-found")));}
-    private Installation response(Operation op){return new Installation(op.id(),op.registered()?InstallStatus.SUCCEEDED:InstallStatus.valueOf(op.status()),op.skillId(),op.skillVersionId(),op.errorCode(),op.errorDetail());}
     private void checkKey(String key){if(key==null||key.isBlank()||key.length()>MAX_KEY)throw problem("IDEMPOTENCY_KEY_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.idempotency-key-invalid"));}
     private ApiProblemException problem(String code, HttpStatus status, ApiMessage detail) {
         return new ApiProblemException(status, code, ApiMessage.of("api.skill-run.invalid"), detail, false);

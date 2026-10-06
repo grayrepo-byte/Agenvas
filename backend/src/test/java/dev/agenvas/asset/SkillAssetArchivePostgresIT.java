@@ -79,7 +79,7 @@ class SkillAssetArchivePostgresIT {
             owner = identities.setup("skill-archive-admin", "skill-password-123");
     }
 
-    @Test void fixedSkillBytesSurvivePermanentSourceDeletionAndInstallWithoutCanvasSideEffects() throws Exception {
+    @Test void fixedSkillBytesSurvivePermanentSourceDeletionAndRemainOutsideProjects() throws Exception {
         var fixture = source("Surviving reference");
         var source = library.skillAssetSource(owner.userId(), fixture.entryId(), 0);
         UUID pinId = UUID.randomUUID();
@@ -102,16 +102,11 @@ class SkillAssetArchivePostgresIT {
                 .containsExactly(fixture.bytes());
 
         Project target = projects.create(owner.userId(), "Skill target", Project.AspectRatio.LANDSCAPE_16_9);
-        UUID projectAssetId = UUID.randomUUID();
-        Asset prepared = skillAssets.prepareProjectImport(owner.userId(), target.id(), projectAssetId, retained);
-        var installed = skillAssets.registerProjectImport(owner.userId(), prepared, source.title());
-        assertThat(installed.resourceDefaultVersion().content().path("sourceType").asText()).isEqualTo("SKILL_IMPORT");
-        assertThat(installed.resourceDefaultVersion().content().path("assetId").asText()).isEqualTo(projectAssetId.toString());
-        assertThat(Files.readAllBytes(assets.get(owner.userId(), target.id(), projectAssetId).path()))
-                .containsExactly(fixture.bytes());
+        assertThat(Files.readAllBytes(skillAssets.file(owner.userId(), retained, true).path())).isNotEmpty();
         assertThat(canvas.list(owner.userId(), target.id())).isEmpty();
-        assertThat(artifacts.listProject(owner.userId(), target.id())).hasSize(1);
-        assertThatThrownBy(() -> skillAssets.prepareProjectImport(UUID.randomUUID(), target.id(), UUID.randomUUID(), retained))
+        assertThat(artifacts.listProject(owner.userId(), target.id())).isEmpty();
+        assertThat(assets.listProjectAssets(owner.userId(), target.id())).isEmpty();
+        assertThatThrownBy(() -> skillAssets.file(UUID.randomUUID(), retained, true))
                 .isInstanceOf(IllegalStateException.class);
     }
 
@@ -146,7 +141,7 @@ class SkillAssetArchivePostgresIT {
         var retained = skillAssets.archivePinned(owner.userId(), UUID.randomUUID(), pin);
         skillAssets.discardPin(owner.userId(), pin.pinKey());
         Project target = projects.create(owner.userId(), "Cleanup target", Project.AspectRatio.LANDSCAPE_16_9);
-        var partial = skillAssets.prepareProjectImport(owner.userId(), target.id(), UUID.randomUUID(), retained);
+        var partial = assets.prepareLibraryImport(owner.userId(), target.id(), UUID.randomUUID(), Asset.MediaKind.IMAGE, skillAssets.file(owner.userId(), retained, false).path());
         // Synthetic crash fixture: the thumbnail remains but the installed original is gone.
         Files.delete(STORAGE_ROOT.resolve(partial.objectKey()));
         assertThat(Files.exists(STORAGE_ROOT.resolve(partial.thumbnailKey()))).isTrue();
@@ -154,8 +149,10 @@ class SkillAssetArchivePostgresIT {
         assertThat(Files.exists(STORAGE_ROOT.resolve(partial.thumbnailKey()))).isFalse();
         assertThat(skillAssets.cleanupPlannedSkillImport(owner.userId(), target.id(), partial.id())).isTrue();
 
-        var ready = skillAssets.prepareProjectImport(owner.userId(), target.id(), UUID.randomUUID(), retained);
-        skillAssets.registerProjectImport(owner.userId(), ready, "Retained reference");
+        var ready = assets.prepareLibraryImport(owner.userId(), target.id(), UUID.randomUUID(), Asset.MediaKind.IMAGE, skillAssets.file(owner.userId(), retained, false).path());
+        // Historical registered Skill import: upgrade cleanup must preserve this business content.
+        assets.registerLibraryImport(owner.userId(), ready);
+        artifacts.createSkillImport(owner.userId(), target.id(), "Retained reference", ready.id());
         assertThat(skillAssets.cleanupPreparedProjectImport(owner.userId(), ready)).isTrue();
         assertThat(skillAssets.cleanupPlannedSkillImport(owner.userId(), target.id(), ready.id())).isTrue();
         assertThat(Files.readAllBytes(assets.get(owner.userId(), target.id(), ready.id()).path())).containsExactly(fixture.bytes());
@@ -171,7 +168,7 @@ class SkillAssetArchivePostgresIT {
         Project target = projects.create(owner.userId(), "Fenced target", Project.AspectRatio.LANDSCAPE_16_9);
         UUID id = UUID.randomUUID();
         assertThat(skillAssets.cleanupPlannedSkillImport(owner.userId(), target.id(), id)).isTrue();
-        assertThatThrownBy(() -> skillAssets.prepareProjectImport(owner.userId(), target.id(), id, retained, () -> false))
+        assertThatThrownBy(() -> assets.prepareLibraryImport(owner.userId(), target.id(), id, Asset.MediaKind.IMAGE, skillAssets.file(owner.userId(), retained, false).path(), () -> false))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Import preparation lease changed");
         assertThat(assets.listProjectAssets(owner.userId(), target.id())).isEmpty();
         try (var files = Files.walk(STORAGE_ROOT)) {

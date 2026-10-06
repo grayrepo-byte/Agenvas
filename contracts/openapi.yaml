@@ -2887,7 +2887,8 @@ paths:
       summary: 以 CAS 和幂等键批准或拒绝整个固定批次
       description: >-
         APPROVE 只授权当前审批快照；重新核验草稿、能力和输入版本后受理持久媒体任务。
-        REJECT 不提交 Provider。相同幂等键和请求返回同一审批的当前状态，不重复受理；
+        REJECT 不提交 Provider，并同事务撤回草稿未变、无媒体结果且无独立生成任务的空输出节点及连线；
+        用户已编辑或已开始创作的节点保留，审批与产物审计保留。相同幂等键和请求返回同一审批的当前状态，不重复受理；
         同键不同请求、版本变化或非 PENDING 审批返回冲突。
         尚为 PENDING 的过期审批转为 EXPIRED，返回 200 并通知 Agent。批准前没有第三方生成调用。
       tags: [Runs]
@@ -3955,68 +3956,6 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/AgentSkillBinding"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/agents/{agentId}/skill-installations:
-    parameters:
-      - {$ref: "#/components/parameters/AcceptLanguage"}
-      - name: projectId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-      - name: agentId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    post:
-      operationId: installAgentSkill
-      parameters:
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema: {type: string, minLength: 1, maxLength: 200}
-      tags: [Skills]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/InstallAgentSkillRequest"}
-      responses:
-        "202":
-          description: 已鉴权的固定内容或持久操作状态
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/SkillInstallation"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-        "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/agents/{agentId}/skill-installations/{operationId}:
-    parameters:
-      - {$ref: "#/components/parameters/AcceptLanguage"}
-      - name: projectId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-      - name: agentId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-      - name: operationId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    get:
-      operationId: getAgentSkillInstallation
-      tags: [Skills]
-      responses:
-        "200":
-          description: 已鉴权的固定内容或持久操作状态
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/SkillInstallation"}
         "400": {$ref: "#/components/responses/ValidationError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -6194,7 +6133,7 @@ components:
         kind: {type: string, enum: [IMAGE, VIDEO, AUDIO]}
         title: {type: string}
         artifactId: {type: string, format: uuid}
-        canvasItemId: {type: string, format: uuid}
+        canvasItemId: {type: string, format: uuid, description: 固定输出节点 ID；拒绝后未修改的空节点可被撤回，历史 ID 不保证仍在画布上。}
         draftVersion: {type: integer, format: int64, minimum: 0}
         preview:
           type: object
@@ -6373,16 +6312,16 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        New policies are schema v4 with systemPromptVersion=8 and toolPolicyVersion=2.
+        New policies are schema v5 with systemPromptVersion=9 and toolPolicyVersion=3.
         Selected Skills initially disclose only name, description and immutable version ID;
-        read_skill activates their main instructions, then read_skill_resource reads attachments.
+        read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports.
         Historical policies retain their frozen protocol and tool definitions.
       required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions]
       properties:
-        schemaVersion: {type: integer, enum: [1, 2, 3, 4]}
-        toolPolicyVersion: {type: integer, enum: [1, 2]}
+        schemaVersion: {type: integer, enum: [1, 2, 3, 4, 5]}
+        toolPolicyVersion: {type: integer, enum: [1, 2, 3]}
         allowedTools: {type: array, uniqueItems: true, items: {type: string}}
-        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6, 7, 8], description: New v4 snapshots pin version 8; historical rules and creative message roles remain frozen.}
+        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6, 7, 8, 9], description: New v5 snapshots pin version 9; historical rules and creative message roles remain frozen.}
         modelConfigSource: {type: string}
         modelConfigVersion: {type: integer, minimum: 1}
         maxModelTurns: {type: integer, minimum: 1}
@@ -6946,24 +6885,6 @@ components:
       properties:
         expectedAgentVersion: {type: integer, format: int64, minimum: 0}
         skills: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionRef"}}
-    InstallAgentSkillRequest:
-      type: object
-      additionalProperties: false
-      required: [skillId, skillVersionId]
-      properties:
-        skillId: {type: string, format: uuid}
-        skillVersionId: {type: string, format: uuid}
-    SkillInstallation:
-      type: object
-      additionalProperties: false
-      required: [id, status, skillId, skillVersionId, errorCode, errorDetail]
-      properties:
-        id: {type: string, format: uuid}
-        status: {type: string, enum: [ACCEPTED, PREPARING, SUCCEEDED, FAILED, CLEANING]}
-        skillId: {type: string, format: uuid}
-        skillVersionId: {type: string, format: uuid}
-        errorCode: {type: [string, "null"]}
-        errorDetail: {type: [string, "null"]}
     SkillRunInput:
       type: object
       additionalProperties: false
@@ -6998,7 +6919,7 @@ components:
     RunSkillSummary:
       type: object
       additionalProperties: false
-      required: [skillId, skillVersionId, title, versionNumber, bundleHash, inputSlots, resources, assets, installed]
+      required: [skillId, skillVersionId, title, versionNumber, bundleHash, inputSlots, resources, assets]
       properties:
         skillId: {type: string, format: uuid}
         skillVersionId: {type: string, format: uuid}
@@ -7008,7 +6929,6 @@ components:
         inputSlots: {type: array, items: {$ref: "#/components/schemas/SkillInputSlot"}}
         resources: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionResource"}}
         assets: {type: array, items: {$ref: "#/components/schemas/SkillPublishedAsset"}}
-        installed: {type: boolean}
   responses:
     ValidationError:
       description: 请求参数无效

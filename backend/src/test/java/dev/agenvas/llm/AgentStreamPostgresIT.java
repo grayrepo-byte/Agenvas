@@ -102,6 +102,22 @@ class AgentStreamPostgresIT {
         assertThat(stream.path("streamEpoch").asLong()).isEqualTo(replacement.leaseEpoch());
     }
 
+    @Test void largePublicPrefixIsDurableAndRecoveredBySnapshotBeforeCompletion() {
+        Task lease = startedTurn();
+        String text = "合成公开内容".repeat(70_000);
+        tasks.startAgentStream(lease, WORKER);
+        tasks.appendAgentStream(lease, WORKER, 0, text);
+
+        assertThat(snapshots.snapshot(owner, lease.projectId()).activeTasks()).singleElement()
+                .satisfies(task -> assertThat(task.output().path("assistantStream").path("text").asText())
+                        .isEqualTo(text));
+        assertThat(streamEventCount(lease)).isEqualTo(2);
+        tasks.completeAgentStream(lease, WORKER, text);
+        var progress = tasks.get(owner, lease.projectId(), lease.id()).output().path("assistantStream");
+        assertThat(progress.path("text").asText()).isEqualTo(text);
+        assertThat(progress.path("status").asText()).isEqualTo("COMPLETED");
+    }
+
     @Test void expiredOrCanceledLeaseCannotPublishAndFailureRetainsTheInterruptedPrefix() {
         Task expired = startedTurn();
         tasks.startAgentStream(expired, WORKER);

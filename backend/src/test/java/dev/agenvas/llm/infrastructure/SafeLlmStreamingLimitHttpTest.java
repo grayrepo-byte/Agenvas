@@ -31,7 +31,45 @@ import tools.jackson.databind.ObjectMapper;
 class SafeLlmStreamingLimitHttpTest {
     private static final long TIMEOUT_SECONDS = 20;
     private static final int FRAGMENT_SIZE = 1024;
-    private static final int MAX_TEST_FRAGMENTS = 65536;
+    // Keep the synthetic response unfinished when the client reaches its bound, even on a fast loopback socket.
+    private static final int MAX_TEST_FRAGMENTS = (int) (8 * SafeLlmTransport.MAX_STREAM_RESPONSE_BYTES / FRAGMENT_SIZE);
+
+    @Test
+    void acceptsFiveMiBPublicResponseThroughTransportAggregationAndCheckpoint() throws Exception {
+        String fragment = "x".repeat(5 * 1024 * 1024 / 2);
+        AtomicInteger requests = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            requests.incrementAndGet();
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream output = exchange.getResponseBody()) {
+                event(output, "{\"content\":\"" + fragment + "\"}");
+                event(output, "{\"content\":\"" + fragment + "\"}");
+                output.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
+            } finally { exchange.close(); }
+        });
+        server.start();
+        String endpoint = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        SafeLlmTransport transport = new SafeLlmTransport(endpoint,
+                new LlmEndpointPolicy(new LlmEndpointProperties(true)));
+        OpenAiChatModel model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder()
+                .baseUrl(endpoint).apiKey("synthetic-unusable-key").model("synthetic-limit-model")
+                .maxRetries(0).streamUsage(false).timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build())
+                .httpClientBuilderCustomizer(builder -> builder.interceptor(transport.interceptor())).build();
+        StringBuilder deltas = new StringBuilder();
+        SpringAiChatGateway gateway = new SpringAiChatGateway(model, 3);
+        try {
+            var exchange = gateway.callStreaming(List.of(new UserMessage("Synthetic long response")),
+                    List.of(), Map.of(), gateway.configIdentity(), deltas::append);
+            String expected = fragment + fragment;
+            assertThat(deltas.toString()).isEqualTo(expected);
+            LlmProtocolCodec codec = new LlmProtocolCodec(new ObjectMapper());
+            assertThat(codec.selectedAssistant(codec.response(exchange.response())).getText()).isEqualTo(expected);
+            assertThat(requests).hasValue(1);
+        } finally { server.stop(0); }
+    }
 
     @Test
     void omittedProviderUsageRemainsUnknownInTheCheckpointInsteadOfFrameworkZero() throws Exception {

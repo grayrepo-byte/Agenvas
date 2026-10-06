@@ -105,27 +105,23 @@ it("shows catalog failures with retry and allows choosing no Skill without a cat
   expect(screen.getByLabelText("active selection")).toHaveTextContent('{"mode":"NONE","skills":[]}');
 });
 
-it("keeps project-reference preparation and its waiting state inside the modal",async()=>{
+it("uses a Skill with fixed reference images directly without project preparation",async()=>{
   server.use(...publishedSkillHandlers());
-  let submitted:unknown;let release:()=>void=()=>{};
-  const pending=new Promise<void>((resolve)=>{release=resolve;});
-  const operation={id:"installation-1",skillId:skill.id,skillVersionId:skillVersion.id,status:"ACCEPTED",errorCode:null,errorDetail:null};
+  const installationRequest=vi.fn();
   server.use(
-    http.get("/api/v1/auth/csrf",()=>HttpResponse.json({headerName:"X-CSRF-TOKEN",token:"synthetic-csrf"})),
-    http.post("/api/v1/projects/project-1/agents/agent-1/skill-installations",async({request})=>{
-      submitted=await request.json();return HttpResponse.json(operation,{status:202});}),
-    http.get("/api/v1/projects/project-1/agents/agent-1/skill-installations/installation-1",async()=>{
-      await pending;return HttpResponse.json({...operation,status:"SUCCEEDED"});}));
+    http.get("/api/v1/skills/skill-1/versions/version-1",()=>HttpResponse.json({...skillVersion,assets:[{
+      alias:"style",kind:"IMAGE",title:"Style reference",contentHash:"synthetic-image-hash",usage:"GUIDE",required:true,purpose:"Palette and lines"
+    }]})),
+    http.all("/api/v1/projects/project-1/agents/agent-1/skill-installations*",()=>{installationRequest();return HttpResponse.json({},{status:500});}));
   showRunPicker();const user=userEvent.setup();await user.click(screen.getByRole("button",{name:"选择 Skill"}));
   const dialog=await screen.findByRole("dialog");await user.click(await within(dialog).findByRole("button",{name:"温暖手绘"}));
-  await user.click(await within(dialog).findByRole("button",{name:"准备项目参考"}));
-  expect(await within(dialog).findByText("正在准备项目参考文件…")).toBeVisible();
-  expect(within(dialog).getByRole("button",{name:"使用 Skill"})).toBeDisabled();
-  expect(submitted).toMatchObject({skillId:skill.id,skillVersionId:skillVersion.id});
-  release();expect(await within(dialog).findByText("项目参考已准备")).toBeVisible();
+  await waitFor(()=>expect(within(dialog).getByRole("button",{name:"使用 Skill"})).toBeEnabled());
+  expect(within(dialog).queryByRole("button",{name:"准备项目参考"})).not.toBeInTheDocument();
+  expect(within(dialog).getByText("Skill 参考图由 Agent 按需读取并提供给模型，不需要准备项目文件。")).toBeVisible();
   await user.click(within(dialog).getByRole("button",{name:"使用 Skill"}));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(screen.getByRole("button",{name:"选择 Skill"})).toHaveTextContent(skill.title);
+  expect(installationRequest).not.toHaveBeenCalled();
 });
 
 it("keeps multiple fixed versions selected and toggles one without clearing the others",async()=>{

@@ -97,11 +97,38 @@ public class ReadToolService {
                 .put("content", skill.path("skillMd").asText());
         for (String field : List.of("name", "description", "outputKinds", "resourceManifest", "assets", "inputs"))
             data.set(field, skill.path(field).deepCopy());
+        if (skill.has("assetDelivery")) data.set("assetDelivery", skill.path("assetDelivery").deepCopy());
         return output;
     }
 
+    /** Requests immutable Skill image pixels only after the main instructions committed successfully. */
+    public JsonNode skillAsset(AgentRun run, UUID operationId, String arguments) {
+        ObjectNode input = parseObject(arguments);
+        if (input.size() != 2 || !input.path("skillVersionId").isTextual()
+                || !input.path("alias").isTextual())
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        JsonNode skill = selectedSkill(run, input, true);
+        if (!dev.agenvas.skill.domain.SkillContent.AssetDelivery.LLM_CONTEXT.name().equals(skill.path("assetDelivery").asText()))
+            throw invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run"));
+        for (JsonNode asset : skill.path("assets")) {
+            if (!input.path("alias").asText().equals(asset.path("alias").asText())) continue;
+            if (!"IMAGE".equals(asset.path("kind").asText()) || !asset.path("contentHash").isTextual())
+                throw new IllegalStateException("Frozen Skill image descriptor is malformed");
+            ObjectNode output = result(operationId, "已读取本次 Skill 的参考图片");
+            ObjectNode data = output.putObject("data");
+            data.put("skillId", skill.path("skillId").asText())
+                    .put("skillVersionId", skill.path("skillVersionId").asText())
+                    .put("alias", asset.path("alias").asText()).put("kind", "IMAGE")
+                    .put("contentHash", asset.path("contentHash").asText())
+                    .put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
+            for (String field : List.of("title", "purpose")) data.set(field, asset.path(field).deepCopy());
+            return output;
+        }
+        throw invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run"));
+    }
+
     private JsonNode selectedSkill(AgentRun run, ObjectNode input, boolean requireActivation) {
-        boolean progressive = run.policySnapshot().path("toolPolicyVersion").asInt(1) >= RunToolPolicy.CURRENT_VERSION;
+        boolean progressive = run.policySnapshot().path("toolPolicyVersion").asInt(1) >= RunToolPolicy.PROGRESSIVE_VERSION;
         if (progressive && !input.path("skillVersionId").isTextual())
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         var candidates = requireActivation ? RunSkills.activated(run, ledger.skillReads(run.projectId(), run.id())) : RunSkills.available(run);
@@ -113,7 +140,7 @@ public class ReadToolService {
     /** Reads only persisted text from the selected Run snapshot, never filesystem paths. */
     public JsonNode skillResource(AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
-        Set<String> fields = run.policySnapshot().path("toolPolicyVersion").asInt(1) >= RunToolPolicy.CURRENT_VERSION
+        Set<String> fields = run.policySnapshot().path("toolPolicyVersion").asInt(1) >= RunToolPolicy.PROGRESSIVE_VERSION
                 ? Set.of("skillVersionId", "path", "offset", "limit") : Set.of("path", "offset", "limit");
         if (input.properties().stream().anyMatch(entry -> !fields.contains(entry.getKey()))
                 || !input.path("path").isTextual()

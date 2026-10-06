@@ -2415,7 +2415,7 @@ export interface paths {
         put?: never;
         /**
          * 以 CAS 和幂等键批准或拒绝整个固定批次
-         * @description APPROVE 只授权当前审批快照；重新核验草稿、能力和输入版本后受理持久媒体任务。 REJECT 不提交 Provider。相同幂等键和请求返回同一审批的当前状态，不重复受理； 同键不同请求、版本变化或非 PENDING 审批返回冲突。 尚为 PENDING 的过期审批转为 EXPIRED，返回 200 并通知 Agent。批准前没有第三方生成调用。
+         * @description APPROVE 只授权当前审批快照；重新核验草稿、能力和输入版本后受理持久媒体任务。 REJECT 不提交 Provider，并同事务撤回草稿未变、无媒体结果且无独立生成任务的空输出节点及连线； 用户已编辑或已开始创作的节点保留，审批与产物审计保留。相同幂等键和请求返回同一审批的当前状态，不重复受理； 同键不同请求、版本变化或非 PENDING 审批返回冲突。 尚为 PENDING 的过期审批转为 EXPIRED，返回 200 并通知 Agent。批准前没有第三方生成调用。
          */
         post: operations["decideAgentMediaApproval"];
         delete?: never;
@@ -3155,57 +3155,6 @@ export interface paths {
         };
         get: operations["getAgentSkillBinding"];
         put: operations["saveAgentSkillBinding"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/agents/{agentId}/skill-installations": {
-        parameters: {
-            query?: never;
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-            };
-            path: {
-                projectId: string;
-                agentId: string;
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["installAgentSkill"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/agents/{agentId}/skill-installations/{operationId}": {
-        parameters: {
-            query?: never;
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-            };
-            path: {
-                projectId: string;
-                agentId: string;
-                operationId: string;
-            };
-            cookie?: never;
-        };
-        get: operations["getAgentSkillInstallation"];
-        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -4821,7 +4770,10 @@ export interface components {
             title: string;
             /** Format: uuid */
             artifactId: string;
-            /** Format: uuid */
+            /**
+             * Format: uuid
+             * @description 固定输出节点 ID；拒绝后未修改的空节点可被撤回，历史 ID 不保证仍在画布上。
+             */
             canvasItemId: string;
             /** Format: int64 */
             draftVersion: number;
@@ -4988,18 +4940,18 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description New policies are schema v4 with systemPromptVersion=8 and toolPolicyVersion=2. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads attachments. Historical policies retain their frozen protocol and tool definitions. */
+        /** @description New policies are schema v5 with systemPromptVersion=9 and toolPolicyVersion=3. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. Historical policies retain their frozen protocol and tool definitions. */
         RunPolicySnapshot: {
             /** @enum {integer} */
-            schemaVersion: 1 | 2 | 3 | 4;
+            schemaVersion: 1 | 2 | 3 | 4 | 5;
             /** @enum {integer} */
-            toolPolicyVersion?: 1 | 2;
+            toolPolicyVersion?: 1 | 2 | 3;
             allowedTools?: string[];
             /**
-             * @description New v4 snapshots pin version 8; historical rules and creative message roles remain frozen.
+             * @description New v5 snapshots pin version 9; historical rules and creative message roles remain frozen.
              * @enum {integer}
              */
-            systemPromptVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+            systemPromptVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
             modelConfigSource: string;
             modelConfigVersion: number;
             maxModelTurns: number;
@@ -5527,24 +5479,6 @@ export interface components {
             expectedAgentVersion: number;
             skills: components["schemas"]["SkillVersionRef"][];
         };
-        InstallAgentSkillRequest: {
-            /** Format: uuid */
-            skillId: string;
-            /** Format: uuid */
-            skillVersionId: string;
-        };
-        SkillInstallation: {
-            /** Format: uuid */
-            id: string;
-            /** @enum {string} */
-            status: "ACCEPTED" | "PREPARING" | "SUCCEEDED" | "FAILED" | "CLEANING";
-            /** Format: uuid */
-            skillId: string;
-            /** Format: uuid */
-            skillVersionId: string;
-            errorCode: string | null;
-            errorDetail: string | null;
-        };
         SkillRunInput: {
             alias: string;
             /** Format: uuid */
@@ -5582,7 +5516,6 @@ export interface components {
             inputSlots: components["schemas"]["SkillInputSlot"][];
             resources: components["schemas"]["SkillVersionResource"][];
             assets: components["schemas"]["SkillPublishedAsset"][];
-            installed: boolean;
         };
         /** TEXT Artifact content v1 */
         "text-v1.schema": {
@@ -11517,78 +11450,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentSkillBinding"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-        };
-    };
-    installAgentSkill: {
-        parameters: {
-            query?: never;
-            header: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-                "Idempotency-Key": string;
-            };
-            path: {
-                projectId: string;
-                agentId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InstallAgentSkillRequest"];
-            };
-        };
-        responses: {
-            /** @description 已鉴权的固定内容或持久操作状态 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillInstallation"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
-        };
-    };
-    getAgentSkillInstallation: {
-        parameters: {
-            query?: never;
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-            };
-            path: {
-                projectId: string;
-                agentId: string;
-                operationId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 已鉴权的固定内容或持久操作状态 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SkillInstallation"];
                 };
             };
             400: components["responses"]["ValidationError"];

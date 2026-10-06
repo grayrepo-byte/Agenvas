@@ -44,7 +44,8 @@ import tools.jackson.databind.node.ObjectNode;
 public class TaskService {
 
     public static final String AGENT_STREAM_PROPERTY = "assistantStream";
-    private static final int MAX_AGENT_STREAM_BYTES = 1024 * 1024;
+    /** 公开回答投影允许 8 MiB 文本，配合模型响应预算；JSON 协议封装另由 LLM 模块校验。 */
+    private static final int MAX_AGENT_STREAM_BYTES = 8 * 1024 * 1024;
     private static final long FIRST_STREAM_CHUNK = 0;
 
     public enum AgentStreamStatus { STREAMING, COMPLETED, INTERRUPTED }

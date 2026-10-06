@@ -59,7 +59,8 @@ public class RepairModelContextService {
         if (failed.status() != LlmTurn.Status.RESPONDED) {
             throw new IllegalStateException("Failed model response is not durable");
         }
-        List<Message> messages = new ArrayList<>(codec.requestMessages(failed.request()));
+        List<Message> messages = new ArrayList<>(AgentMediaToolResult.historyForModel(
+                codec.requestMessages(failed.request()), mapper));
         String code = repairTask.input().path("repairErrorCode").asText("");
         String detail = repairTask.input().path("repairErrorDetail").asText("");
         if (messages.size() <= 77) {

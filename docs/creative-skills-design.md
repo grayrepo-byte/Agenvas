@@ -2,6 +2,8 @@
 
 状态：已接受并实施首阶段（2026-10-02，Issue #27）。用户先确认产品/技术设计和 Agent 节点专用边界，再要求实施。账号级草稿、发布版本、文本资料、固定图片、Agent 选择、Run/审批/结果来源为首阶段；视频/音频参考、多模态分析与制作助手属于后续阶段。以下历史设计说明与当前实现边界以本文件第 10 节为准。
 
+2026-10-06 当前参考图行为由 [ADR 0037](adr/0037-skill-images-as-llm-context.md) 覆盖：取消项目安装与准备按钮，固定图片按需直接进入 LLM 多模态上下文；所有 Skill 可直接选择。本文原安装设计作为历史记录保留，不能用于推导新运行的准备要求。
+
 ## 1. 定位与依据
 
 **创作 Skill 是 Agent 节点使用的可复用创作方法包**：用 `SKILL.md` 说明何时使用、如何处理输入、如何组织提示词和判断输出；用资源附件承载详细知识；用引用资产承载固定参考内容。首阶段实现图片固定参考与文字资料的 Agent 链路，以图片风格迁移作为用例；视频/音频固定参考与相应用例扩展尚未实施。文字创作沿用既有 Agent 工具。图片、视频、音频和文字节点承载输入与产物，不提供 Skill 选择或执行入口。
@@ -187,7 +189,7 @@ Skill 新版本不会自动更新 Agent 选择，用户明确切换发布版本�
 | GET `/skills/operations/{operationId}`、POST `/skills/operations/{operationId}/retry` | 查询 / 恢复本地发布归档 |
 | GET `/skills/{skillId}/versions/{skillVersionId}/assets/{alias}/file`、`/thumbnail` | 账号鉴权的固定图片 / 缩略图读取 |
 | GET/PUT `/projects/{projectId}/agents/{agentId}/skill-binding` | Agent 长期选择/解除；expectedAgentVersion、固定 SkillVersion 与幂等键 |
-| POST `/projects/{projectId}/agents/{agentId}/skill-installations`、GET `/{operationId}` | 受理 / 查询固定版本的项目图片安装 |
+| 原 `/projects/{projectId}/agents/{agentId}/skill-installations` 接口 | 已移除，参考图直接按需进入 LLM（ADR 0037） |
 | 扩展既有 Agent Run 创建/运行前检查请求 | 本次固定 Skill 选择、文本资源清单、本次输入槽位；确认后的内容进入 Run 快照 |
 
 以上接口已按首阶段落地，权威形状见 `contracts/openapi.yaml`；安装为独立持久操作，运行前检查增加 POST 入口接受本次选择。配置/运行请求应显式携带发布版本、本次输入及已有配置基线；资产安装 ID、ownerId、权限与批准结果由服务端确定。只有实际 AgentInstance 及其合法 Agent 节点可绑定，传普通产物节点身份由服务端拒绝，不能只靠前端隐藏入口。相同幂等键不同选择返回 409，不把最新版本藏在重放中。
@@ -307,3 +309,11 @@ Agent 媒体审批同时检查风格与 Skill 快照；Skill 不能替代用户�
 原著章节索引、逐章分析、覆盖检查和进度均为文字卡，按实际 artifactId/versionId 和行范围引用。覆盖报告列出当前实际核对范围、缺章、重复、来源变化、未核对和失败，部分材料不能算全书。多集剧本摄入、时长估算、声音方向和跨镜检查使用对应卡片及明确依据；没有新增自动解析或验证工具。read_artifacts 截断时需要拆卡，不能用预览完成全量分析；创作卡通过 create_text 自动放到 Agent 输出组，修订通过 revise_artifact 及 CAS 追加版本，失败保留候选与进度。
 
 发行限定的内置 key 注册新不可变版本；旧上游版保留但从目录及新选择隐藏，旧默认固定选择不自动重定向，需重新选择当前卡片版。历史运行与导出使用原版本，个人 Skill 不受同名影响。目录、只读查看及试用复用原入口，无需媒体参考安装；媒体仍通过当前能力与用户审批。三层加载、4/8/2 Run 策略、导出版本 7 和原读取限额保持。详见 [ADR 0036](adr/0036-builtin-drama-skills.md)；本次验证与未验证范围见开发清单。
+
+## 2026-10-06 固定参考图作为 LLM 上下文
+
+Skill 发布仍创建独立不可变图片归档，删除个人资产来源或发布新版不改变已选版本。新 Run 冻结安全清单并标记 `assetDelivery=LLM_CONTEXT`，不含项目映射或私有存储字段。主说明读取只公开清单；`read_skill_asset(skillVersionId, alias)` 要求已提交主文件读取，成功提交后把精确引用加入模型消息历史。模型发送前重新鉴权并读取预览，以 Spring AI Media 携带真实字节；请求检查点和工具结果不保存图片字节。文本附件分页协议不变。
+
+固定图不再作为 Provider 图片输入，旧发布 `usage` 值仅保留为不可变历史元数据；新编辑图片默认为上下文参考。用户本次 inputSlots 所映射的项目图片继续遵守媒体审批及必需输入检查。审批来源分开冻结 `resourceReads` 和实际图片 `assetReads(alias, contentHash)`，历史策略保留原单/多 Skill 来源结构及已登记映射。
+
+移除安装 POST/GET、`SkillInstallation` 与预检 `installed` 字段；客户端须同时更新。新运行策略为 5/9/3，旧 1/2 工具策略及 1–8 提示词冻结恢复。无需数据库迁移；旧未完成安装只退役和清理，已有登记内容保留。模型/浏览器实际验证范围记录在开发清单。

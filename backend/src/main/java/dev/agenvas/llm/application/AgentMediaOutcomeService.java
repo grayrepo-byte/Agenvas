@@ -83,7 +83,7 @@ public class AgentMediaOutcomeService {
         if (!approval.status().terminal() || approval.result() == null) {
             throw new IllegalStateException("Media result has not been committed; Run must wait");
         }
-        ObjectNode result = (ObjectNode) receipt.deepCopy();
+        ObjectNode result = (ObjectNode) AgentMediaToolResult.forModel(receipt).deepCopy();
         result.put("awaitingMedia", false);
         result.set("mediaApproval", approval.result());
         return result;

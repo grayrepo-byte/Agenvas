@@ -154,7 +154,7 @@ class InitialModelContextServiceTest {
             messages.add(codec.toolResults(assistant,
                     Map.of(callId, mapper.createObjectNode().put("status", "SUCCEEDED"))));
         }
-        // The existing codec enforces both its 80-message and 512 KiB request boundaries.
+        // The codec still enforces its 80-message and 32 MiB request boundaries.
         assertThat(codec.requestMessages(codec.request(messages, List.of()))).hasSameSizeAs(messages);
     }
 

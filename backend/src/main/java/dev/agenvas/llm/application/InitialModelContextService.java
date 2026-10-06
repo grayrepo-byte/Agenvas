@@ -24,7 +24,8 @@ public class InitialModelContextService {
     public static final int CREATIVE_SYSTEM_PROMPT_VERSION = 6;
     public static final int SEPARATED_PROTOCOL_SYSTEM_PROMPT_VERSION = 7;
     public static final int PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION = 8;
-    public static final int CURRENT_SYSTEM_PROMPT_VERSION = PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION;
+    public static final int SKILL_IMAGE_SYSTEM_PROMPT_VERSION = 9;
+    public static final int CURRENT_SYSTEM_PROMPT_VERSION = SKILL_IMAGE_SYSTEM_PROMPT_VERSION;
 
     /** 每次模型调用允许拼入的绑定上下文字符总量。 */
     private static final int MAX_CONTEXT_CHARS = 64_000;
@@ -138,6 +139,25 @@ public class InitialModelContextService {
             Selected but unread Skills are not active and do not constrain media proposals.
             For each media output, active Skills that support its kind supply the required inputs
             and reference rules. Reference aliases and resource paths are local to a Skill version.
+            """;
+
+    /** Skill-owned images are supplied on demand to the model, without project import or canvas placement. */
+    private static final String SYSTEM_RULES_V9 = SYSTEM_RULES_V8
+            .replace("Use the\nexact alias-to-version mappings for references. GUIDE assets are context only;\nrequired PROVIDER_REFERENCE assets must appear in the proposed media inputs.",
+                    "Fixed Skill image aliases describe LLM context only, not project artifacts or Provider media inputs.")
+            .replace("input mappings and reference aliases", "input mappings and image aliases")
+            .replace("For each media output, active Skills that support its kind supply the required inputs\nand reference rules.",
+                    "For each media output, active Skills that support its kind supply the required user input slots.")
+            + """
+            After read_skill commits, call read_skill_asset with the same skillVersionId and an
+            exact image alias only when its pixels are needed. The committed reply is followed
+            by an image preview attachment. Read only images that are attached; activation alone
+            does not send images. Fixed Skill images stay owned by the published Skill: no project
+            artifacts or canvas cards are created. They have no artifact/version IDs and must never
+            be submitted as mediaInputs to a Provider, regardless of their historical usage label.
+            Project reference images supplied through user input slots remain ordinary authorized
+            project artifact versions. Skill and project image previews share the Run limit of
+            eight distinct images, two MiB each and eight MiB combined.
             """;
 
     /** 读取创建时固定的 Run 上下文、指令和策略版本。 */
@@ -323,6 +343,7 @@ public class InitialModelContextService {
             case CREATIVE_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V6;
             case SEPARATED_PROTOCOL_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V7;
             case PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V8;
+            case SKILL_IMAGE_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V9;
             default -> throw new IllegalStateException("Run system prompt version is unsupported");
         };
     }

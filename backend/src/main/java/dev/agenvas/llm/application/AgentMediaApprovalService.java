@@ -279,6 +279,19 @@ public class AgentMediaApprovalService {
             if (!approvals.update(update, approval.version())) {
                 throw conflict("AGENT_MEDIA_APPROVAL_CONFLICT", "changed");
             }
+            if (update.status() == AgentMediaApproval.Status.REJECTED) {
+                // Only this proposal's untouched placeholders are withdrawn. Direct generation
+                // is a separate user action, so its destination survives even before a result exists.
+                for (JsonNode target : approval.targets().path("outputs")) {
+                    UUID artifactId = uuid(target.path("artifactId"));
+                    UUID itemId = uuid(target.path("canvasItemId"));
+                    if (canvas.hasArtifactItem(ownerId, projectId, itemId, artifactId)
+                            && mediaTasks.list(ownerId, projectId, artifactId, itemId).isEmpty()) {
+                        canvas.removeUnchangedEmptyMediaItemWithinChange(ownerId, projectId,
+                                itemId, artifactId, target.path("draftVersion").longValue());
+                    }
+                }
+            }
             appendEvent(ownerId, update);
             publisher.publishEvent(new AgentMediaApprovalChanged(ownerId, projectId, runId, approvalId));
             return ProjectEventService.Change.unchanged(view(update));
@@ -345,10 +358,12 @@ public class AgentMediaApprovalService {
             boolean outputAllowed = false;
             for (JsonNode allowed : skill.path("outputKinds")) if (kind.name().equals(allowed.asText())) outputAllowed = true;
             if (!outputAllowed) {
-                if (run.policySnapshot().path("toolPolicyVersion").asInt(1) < RunToolPolicy.CURRENT_VERSION) throw invalid("skill-output-kind");
+                if (run.policySnapshot().path("toolPolicyVersion").asInt(1) < RunToolPolicy.PROGRESSIVE_VERSION) throw invalid("skill-output-kind");
                 continue; // A combined catalogue can contain Skills for different output kinds.
             }
             for (JsonNode reference : skill.path("assets")) {
+                // New fixed Skill images are LLM context, not Provider inputs; user input slots below still apply.
+                if (dev.agenvas.skill.domain.SkillContent.AssetDelivery.LLM_CONTEXT.name().equals(skill.path("assetDelivery").asText())) continue;
                 boolean present = inputs.stream().anyMatch(media -> media.versionId().toString().equals(reference.path("artifactVersionId").asText()));
                 if (("GUIDE".equals(reference.path("usage").asText()) && present)
                         || ("PROVIDER_REFERENCE".equals(reference.path("usage").asText()) && reference.path("required").asBoolean() && !present)) {
@@ -386,9 +401,17 @@ public class AgentMediaApprovalService {
             ObjectNode frozen = (ObjectNode) source.deepCopy();
             Set<String> used = new java.util.HashSet<>();
             var ranges = frozen.putArray("resourceReads");
+            var imageReads = dev.agenvas.skill.domain.SkillContent.AssetDelivery.LLM_CONTEXT.name().equals(source.path("assetDelivery").asText())
+                    ? frozen.putArray("assetReads") : null;
             for (JsonNode read : reads) {
                 boolean sameVersion = source.path("skillVersionId").asText().equals(read.path("skillVersionId").asText());
                 if (!sameVersion || "SKILL.md".equals(read.path("path").asText())) continue;
+                if (read.path("alias").isTextual()) {
+                    if (imageReads != null) imageReads.addObject().put("alias", read.path("alias").asText())
+                            .put("contentHash", read.path("contentHash").asText());
+                    continue;
+                }
+                if (!read.path("path").isTextual()) continue;
                 used.add(read.path("path").asText());
                 ranges.addObject().put("path", read.path("path").asText())
                         .put("contentHash", read.path("contentHash").asText())
@@ -399,7 +422,7 @@ public class AgentMediaApprovalService {
             sources.add(frozen);
         }
         // Preserve the persisted single-Skill representation for historical Run recovery.
-        if (run.policySnapshot().path("toolPolicyVersion").asInt(1) < RunToolPolicy.CURRENT_VERSION) return sources.get(0);
+        if (run.policySnapshot().path("toolPolicyVersion").asInt(1) < RunToolPolicy.PROGRESSIVE_VERSION) return sources.get(0);
         ObjectNode result = mapper.createObjectNode().put("schemaVersion", 2);
         result.set("skills", sources);
         return result;
@@ -459,7 +482,7 @@ public class AgentMediaApprovalService {
         result.putObject("affectedVersions");
         result.putArray("taskIds");
         result.putNull("errorCode");
-        result.set("data", mapper.valueToTree(view(approval)));
+        result.set("data", AgentMediaToolResult.approvalData(approval));
         return result;
     }
 
