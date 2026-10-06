@@ -66,6 +66,9 @@ class InitialModelContextServiceTest {
         policy.put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(InitialModelContextService.systemRules(policy))
                 .contains("propose_media_generation").contains("Never poll read_task_status")
+                .contains("one image at a time", "no fixed model-turn or tool-execution count limit",
+                        "bounded public observations", "per-request safety limit")
+                .doesNotContain("share the Run limit")
                 .doesNotContain("no image pixels");
         policy.put("systemPromptVersion", 4);
         assertThat(InitialModelContextService.systemRules(policy)).contains("no image pixels");

@@ -73,7 +73,6 @@ public class JooqToolExecutionRepository implements ToolExecutionRepository {
                 .and(TOOL_EXECUTION.TOOL_NAME.in("read_skill", "read_skill_resource", "read_skill_asset"))
                 .and(DSL.jsonbGetAttributeAsText(TOOL_EXECUTION.RESULT_JSON, "status").eq("SUCCEEDED"))
                 .orderBy(TOOL_EXECUTION.STEP_INDEX, TOOL_EXECUTION.CREATED_AT, TOOL_EXECUTION.ID)
-                .limit(dev.agenvas.run.domain.AgentRun.MAX_TOOL_EXECUTIONS)
                 .fetch(row -> mapper.readTree(row.get(TOOL_EXECUTION.RESULT_JSON).data()).path("data"));
     }
 

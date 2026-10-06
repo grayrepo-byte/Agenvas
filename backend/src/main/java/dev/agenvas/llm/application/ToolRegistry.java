@@ -97,6 +97,14 @@ public class ToolRegistry {
         return modelDefinitions().stream().filter(tool -> allowed.contains(
                 tool.getToolDefinition().name())).map(tool -> {
                     var current = tool.getToolDefinition();
+                    if (policy.path("systemPromptVersion").asInt()
+                            >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION
+                            && ("read_artifacts".equals(current.name()) || "read_skill_asset".equals(current.name())))
+                        return definition(current.name(), current.description()
+                                + ". Request at most one image in the entire assistant tool batch. "
+                                + "Observe its pixels and record concise public facts with its exact reference before reading another image. "
+                                + "Only the current image remains attached; prior observations and tool references remain as text. "
+                                + "Text versions may still be read in batches.", current.inputSchema());
                     if ("read_skill_resource".equals(current.name()) && policy.path("toolPolicyVersion").asInt(1) >= RunToolPolicy.PROGRESSIVE_VERSION)
                         return definition(current.name(), "Read a registered text attachment after read_skill has activated its exact version. Offsets count Unicode code points.",
                                 PROGRESSIVE_SKILL_RESOURCE_SCHEMA);

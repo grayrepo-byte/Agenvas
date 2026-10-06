@@ -36,6 +36,8 @@ public class AgentImageInputService {
     public static final String METADATA_KEY = "agentImageInputs";
     public static final String SKILL_METADATA_KEY = "agentSkillImageInputs";
     public static final String PREVIEW_REQUEST_KEY = "imagePreviewRequested";
+    /** A committed read in the sequential protocol replaces the current pixel attachment. */
+    public static final String SEQUENTIAL_PREVIEW_KEY = "sequentialImagePreview";
     public static final int MAX_IMAGES = 8;
     public static final long MAX_IMAGE_BYTES = 2L * 1024 * 1024;
     public static final long MAX_TOTAL_BYTES = 8L * 1024 * 1024;
@@ -57,6 +59,21 @@ public class AgentImageInputService {
     /** Only successful committed reads add references; checkpoint messages never contain image bytes or storage keys. */
     public void appendReadPreviews(List<Message> history, AssistantMessage assistant,
             Map<String, JsonNode> results) {
+        boolean sequential = assistant.getToolCalls().stream()
+                .filter(call -> "read_artifacts".equals(call.name()) || "read_skill_asset".equals(call.name()))
+                .map(call -> results.get(call.id()))
+                .filter(result -> result != null && ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText()))
+                .anyMatch(result -> result.path("data").path(SEQUENTIAL_PREVIEW_KEY).asBoolean()
+                        || (result.path("data").isArray() && java.util.stream.StreamSupport
+                                .stream(result.path("data").spliterator(), false)
+                                .anyMatch(item -> item.path(SEQUENTIAL_PREVIEW_KEY).asBoolean())));
+        if (sequential) {
+            // Tool replies retain exact references and Assistant messages retain public
+            // observations. Only the current read supplies pixels to the next checkpoint.
+            history.removeIf(message -> message instanceof UserMessage
+                    && (message.getMetadata().containsKey(METADATA_KEY)
+                            || message.getMetadata().containsKey(SKILL_METADATA_KEY)));
+        }
         var existing = new LinkedHashSet<Input>();
         var existingSkills = new LinkedHashSet<SkillInput>();
         for (Message message : history) {
@@ -88,11 +105,19 @@ public class AgentImageInputService {
             }
         }
         if (!added.isEmpty()) history.add(UserMessage.builder()
-                .text("Image previews requested by read_artifacts (exact immutable versions): " + added)
+                .text("Image previews requested by read_artifacts (exact immutable versions): " + added
+                        + (sequential ? sequentialContextNote() : ""))
                 .metadata(Map.of(METADATA_KEY, List.copyOf(added))).build());
         if (!addedSkills.isEmpty()) history.add(UserMessage.builder()
-                .text("Skill reference image previews requested by read_skill_asset (LLM context only): " + addedSkills)
+                .text("Skill reference image previews requested by read_skill_asset (LLM context only): " + addedSkills
+                        + (sequential ? sequentialContextNote() : ""))
                 .metadata(Map.of(SKILL_METADATA_KEY, List.copyOf(addedSkills))).build());
+    }
+
+    private static String sequentialContextNote() {
+        return "\nOnly this read's image pixels are attached. Earlier images remain in tool replies as exact references "
+                + "and in public observations, without pixel attachments. Record concise visible facts with this reference "
+                + "before requesting the next image; reread an exact reference if its pixels are needed again.";
     }
 
     /** Validate requested previews before opening any storage stream; never read unrequested assets. */

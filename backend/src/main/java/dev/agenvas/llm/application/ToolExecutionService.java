@@ -180,7 +180,8 @@ public class ToolExecutionService {
         if (run.status() != AgentRun.Status.RUNNING) {
             throw conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accepting-tool-execution"));
         }
-        if (ledger.countByRun(context.projectId(), context.runId()) >= AgentRun.MAX_TOOL_EXECUTIONS) {
+            if (run.hasToolExecutionLimit()
+                    && run.toolExecutionLimitReached(ledger.countByRun(context.projectId(), context.runId()))) {
             throw conflict(ApiMessage.of("api.tool-execution-service.run-tool-execution-budget-is-exhausted"));
         }
         if (!RunToolPolicy.allowed(run.policySnapshot()).contains(toolName)) {

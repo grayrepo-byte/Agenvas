@@ -118,7 +118,7 @@
   "agent.run.actionsFailed": "アクションレコードの読み取りに失敗しました。",
   "agent.run.actionSnapshotHint": "送信時に次のアクションステータスが記録されます。現在の進行状況がタスク カードに表示されます。",
   "agent.run.arrangeCards": "カードを並べる",
-  "agent.run.failedHint": "実行に失敗し、後続処理を停止しました。入力と既存の結果は保持されています。原因を確認してから新しいタスクを開始してください。",
+  "agent.run.failedHint": "今回の実行は自動的に終了しました。入力と既存の結果は保持されており、新しいタスクを送信できます。失敗の理由は以下をご確認ください。",
   "agent.run.modelCall": "モデル呼び出し",
   "agent.run.attempt": "{0} 回目の試行",
   "agent.run.cancelHint": "このシステムでの後続処理を停止します。外部タスクは継続し、料金が発生する場合があります。",

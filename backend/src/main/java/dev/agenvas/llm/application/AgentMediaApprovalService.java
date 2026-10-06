@@ -90,7 +90,7 @@ public class AgentMediaApprovalService {
             int stepIndex, String toolCallId, String arguments) {
         if (!run.id().equals(context.runId()) || !run.projectId().equals(context.projectId())
                 || !run.userId().equals(context.ownerId()) || stepIndex < 0
-                || stepIndex >= AgentRun.MAX_MODEL_TURNS - 1 || operationId == null
+                || run.modelTurnLimitReached(stepIndex + 1) || operationId == null
                 || toolCallId == null || toolCallId.isBlank()
                 || toolCallId.length() > MAX_TOOL_CALL_ID_LENGTH) {
             throw invalid("proposal-scope");

@@ -75,6 +75,12 @@ public class AgentMediaOutcomeService {
                 approval.stepIndex() == stepIndex && !approval.status().terminal());
     }
 
+    /** Pending approvals can have no Tasks yet; they still prevent ending a blocked Run. */
+    @Transactional(readOnly = true)
+    public boolean hasOutstanding(UUID projectId, UUID runId) {
+        return approvals.listByRun(projectId, runId).stream().anyMatch(approval -> !approval.status().terminal());
+    }
+
     /** Preserve the original tool receipt, then append its immutable final approval/task outcome. */
     public JsonNode finalToolResult(UUID projectId, UUID runId, int stepIndex,
             String toolCallId, JsonNode receipt) {

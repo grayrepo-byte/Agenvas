@@ -226,6 +226,13 @@ public class TaskService {
         return tasks.listByRun(ownerId, projectId, runId);
     }
 
+    /** Metadata-only check; uncertain external work and outstanding tasks prevent automatic closure. */
+    @Transactional(readOnly = true)
+    public boolean hasSettledAgentFailure(UUID ownerId, UUID projectId, UUID runId, int stepIndex) {
+        runs.get(ownerId, projectId, runId);
+        return tasks.hasSettledAgentFailure(projectId, runId, stepIndex);
+    }
+
     @Transactional(readOnly = true)
     public List<Task> listActiveDirect(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);

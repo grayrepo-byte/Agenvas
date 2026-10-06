@@ -74,6 +74,10 @@ public class ReadToolService {
         ObjectNode limits = data.putObject("runLimits");
         for (String field : new String[] {"maxModelTurns", "maxToolExecutions"}) {
             JsonNode value = run.policySnapshot().path(field);
+            if (value.isNull() && run.policySnapshot().path("schemaVersion").asInt() >= 6) {
+                limits.putNull(field);
+                continue;
+            }
             if (!value.isIntegralNumber() || value.intValue() < 0) {
                 throw new IllegalStateException("Run policy snapshot is malformed");
             }
@@ -121,6 +125,7 @@ public class ReadToolService {
                     .put("alias", asset.path("alias").asText()).put("kind", "IMAGE")
                     .put("contentHash", asset.path("contentHash").asText())
                     .put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
+            if (sequentialImages(run)) data.put(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY, true);
             for (String field : List.of("title", "purpose")) data.set(field, asset.path(field).deepCopy());
             return output;
         }
@@ -212,6 +217,7 @@ public class ReadToolService {
         ObjectNode output = result(operationId, "已读取允许范围内的产物版本");
         ArrayNode items = output.putArray("data");
         int inlineBytes = 0;
+        int imageCount = 0;
         for (UUID versionId : versionIds) {
             ArtifactVersion version = artifacts.requireAgentVisibleVersion(context.ownerId(),
                     context.projectId(), context.runId(), versionId, run.contextSnapshot());
@@ -226,6 +232,10 @@ public class ReadToolService {
                             >= InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) {
                 // The committed result requests a preview; file reads happen after this transaction.
                 item.put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
+                if (sequentialImages(run)) {
+                    if (++imageCount > 1) throw oneImageAtATime();
+                    item.put(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY, true);
+                }
             }
             // 已归档的媒体可由节点选用，而资源库默认版本仍为空；读取不改变这两个独立选择。
             boolean current = view.resourceDefaultVersion() != null
@@ -254,6 +264,18 @@ public class ReadToolService {
             }
         }
         return output;
+    }
+
+    private static boolean sequentialImages(AgentRun run) {
+        return run.policySnapshot().path("systemPromptVersion").asInt()
+                >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION;
+    }
+
+    /** Also used by the atomic batch boundary to cover separate project and Skill reads. */
+    static ApiProblemException oneImageAtATime() {
+        var message = ApiMessage.of("api.read-tool-service.images-must-be-read-one-at-a-time");
+        return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "TOOL_ARGUMENT_INVALID", message, message, false);
     }
 
     /** 返回本 Run 任务的有限状态快照，不包含 Provider 内部数据。 */

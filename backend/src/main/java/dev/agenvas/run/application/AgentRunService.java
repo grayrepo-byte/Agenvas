@@ -54,6 +54,7 @@ public class AgentRunService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     /** 历史列表每页最大条数。 */
     private static final int MAX_PAGE_SIZE = 100;
+    private static final int MAX_RECOVERY_BATCH_SIZE = 100;
     private static final int MAX_CONTEXT_RUNS = 40;
     private static final int MAX_CONTEXT_BINDINGS = 40;
 
@@ -358,6 +359,13 @@ public class AgentRunService {
         return require(ownerId, projectId, runId);
     }
 
+    /** Internal bounded recovery scan; it does not change frozen policies or restart any work. */
+    @Transactional(readOnly = true)
+    public List<BlockedRunCandidate> blockedRecoveryCandidates(UUID afterId, int limit) {
+        if (limit < 1 || limit > MAX_RECOVERY_BATCH_SIZE) throw new IllegalArgumentException("Invalid recovery batch size");
+        return runs.blockedRecoveryCandidates(afterId, limit);
+    }
+
     /** 按 Agent 作用域分页读取持久化运行历史，不返回模型原始回合或工具参数。 */
     @Transactional(readOnly = true)
     public RunPage list(UUID ownerId, UUID projectId, UUID agentId,
@@ -570,12 +578,14 @@ public class AgentRunService {
     @Transactional
     public AgentRun advanceStep(UUID ownerId, UUID projectId, UUID runId,
             long expectedVersion, int expectedStepIndex) {
-        if (expectedStepIndex < 0 || expectedStepIndex >= AgentRun.MAX_MODEL_TURNS - 1) {
+        if (expectedStepIndex < 0) {
             throw validation(ApiMessage.of("api.agent-run-service.model-turns-have-reached-the-default-limit"));
         }
         return events.recordChange(ownerId, projectId, () -> {
             AgentRun current = runs.findForUpdate(ownerId, projectId, runId)
                     .orElseThrow(this::notFound);
+            if (current.modelTurnLimitReached(Math.addExact(expectedStepIndex, 1)))
+                throw validation(ApiMessage.of("api.agent-run-service.model-turns-have-reached-the-default-limit"));
             if (current.version() != expectedVersion
                     || current.nextStepIndex() != expectedStepIndex
                     || (current.status() != AgentRun.Status.RUNNING
@@ -754,15 +764,15 @@ public class AgentRunService {
     /** 把本次 Run 的模型配置版本及回合、工具预算写入不可变策略快照。 */
     private ObjectNode policySnapshot() {
         ObjectNode policy = objectMapper.createObjectNode();
-        policy.put("schemaVersion", 5);
+        policy.put("schemaVersion", 6);
         policy.put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
         policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.CURRENT));
         policy.put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         ChatGateway.ConfigIdentity model = chatGateway.configIdentity();
         policy.put("modelConfigVersion", model.version());
         policy.put("modelConfigSource", model.source());
-        policy.put("maxModelTurns", AgentRun.MAX_MODEL_TURNS);
-        policy.put("maxToolExecutions", AgentRun.MAX_TOOL_EXECUTIONS);
+        policy.putNull("maxModelTurns");
+        policy.putNull("maxToolExecutions");
         return policy;
     }
 

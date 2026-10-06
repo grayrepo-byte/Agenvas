@@ -118,7 +118,7 @@
   "agent.run.actionsFailed": "Action record reading failed.",
   "agent.run.actionSnapshotHint": "The following action status is recorded at the time of submission; the current progress is shown in the task card.",
   "agent.run.arrangeCards": "Arrange cards",
-  "agent.run.failedHint": "The run failed and orchestration stopped. Your input and existing results are retained. Check the reason below before starting a new task.",
+  "agent.run.failedHint": "This run ended automatically. Your input and existing results are retained, and you can send a new task. See the failure reason below.",
   "agent.run.modelCall": "Model call",
   "agent.run.attempt": "Attempt {0}",
   "agent.run.cancelHint": "Stops further orchestration in this system. External tasks may continue and incur costs.",

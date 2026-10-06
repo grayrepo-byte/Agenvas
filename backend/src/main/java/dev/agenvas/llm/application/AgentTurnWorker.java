@@ -118,6 +118,7 @@ public class AgentTurnWorker {
      * @return 本次成功认领的任务数，只会是 0 或 1
      */
     public synchronized int runOnce(String workerId) {
+        commits.finishBlockedFailures(taskProperties.maxClaimBatch());
         List<Task> claimed = tasks.claimAgentTurns(workerId, 1);
         for (Task lease : claimed) {
             runClaimed(lease, workerId);
@@ -126,7 +127,7 @@ public class AgentTurnWorker {
     }
 
     /**
-     * 处理一个带 fencing epoch 的任务租约。先恢复或保存模型响应，再执行工具；任何失败只在当前租约仍有效时阻断 Run。
+     * 处理带 fencing epoch 的任务租约；失败在有效租约下自动收尾，临时模型故障先退避重试。
      *
      * @param lease 本次认领返回的任务快照，包含必须匹配的租约 epoch
      * @param workerId 本次租约的持有者标识
@@ -208,10 +209,10 @@ public class AgentTurnWorker {
                             applyResponse(lease, workerId, taskRepository.ownerId(lease.id()).orElseThrow(),
                                     lease.input().path("stepIndex").asInt(-1), recorded);
                         } catch (RuntimeException processingFailure) {
-                            commits.block(lease, workerId, failureCode(processingFailure));
+                            commits.finishFailure(lease, workerId, failureCode(processingFailure));
                         }
                     }
-                } else commits.block(lease, workerId, failureCode(failure));
+                } else commits.finishFailure(lease, workerId, failureCode(failure));
             } catch (RuntimeException changed) {
                 LOGGER.warn("Agent-turn task {} changed before failure could be recorded: {}",
                         lease.id(), changed.getClass().getSimpleName());

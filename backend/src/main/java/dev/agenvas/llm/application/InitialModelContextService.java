@@ -25,7 +25,8 @@ public class InitialModelContextService {
     public static final int SEPARATED_PROTOCOL_SYSTEM_PROMPT_VERSION = 7;
     public static final int PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION = 8;
     public static final int SKILL_IMAGE_SYSTEM_PROMPT_VERSION = 9;
-    public static final int CURRENT_SYSTEM_PROMPT_VERSION = SKILL_IMAGE_SYSTEM_PROMPT_VERSION;
+    public static final int SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION = 10;
+    public static final int CURRENT_SYSTEM_PROMPT_VERSION = SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION;
 
     /** 每次模型调用允许拼入的绑定上下文字符总量。 */
     private static final int MAX_CONTEXT_CHARS = 64_000;
@@ -158,6 +159,27 @@ public class InitialModelContextService {
             Project reference images supplied through user input slots remain ordinary authorized
             project artifact versions. Skill and project image previews share the Run limit of
             eight distinct images, two MiB each and eight MiB combined.
+            """;
+
+    /** Observe each image before moving on; previous pixels do not accumulate in later requests. */
+    private static final String SYSTEM_RULES_V10 = SYSTEM_RULES_V9
+            .replace("share the Run limit of\neight distinct images", "share the per-request safety limit of\neight distinct images") + """
+            Read image pixels one image at a time. Each assistant tool batch may request only one
+            IMAGE version through read_artifacts or one Skill image through read_skill_asset.
+            Text versions may still be read in batches. After seeing the attached image, record
+            concise observable facts, identity/continuity anchors and any relevant defects in
+            your public reply, linked to its exact version ID or Skill version and alias, before
+            requesting another image. These are visual observations, never private reasoning.
+            Only the most recently read image remains attached in following model requests.
+            Earlier tool replies and public observations remain as text; use them for continuity
+            and reread one exact image when its pixels are needed again. Do not claim to have
+            inspected an image merely because its generation prompt or metadata is present.
+            Never fill an image limit for its own sake or request every image without a purpose.
+            This Run has no fixed model-turn or tool-execution count limit. Complete the user's
+            task or stop when canceled; all per-request safety limits and approvals still apply.
+            Older context may be projected into bounded public observations and exact references.
+            Activated Skill main instructions remain available; reread exact text/image references
+            or Skill resources for omitted detail rather than guessing from a partial summary.
             """;
 
     /** 读取创建时固定的 Run 上下文、指令和策略版本。 */
@@ -344,6 +366,7 @@ public class InitialModelContextService {
             case SEPARATED_PROTOCOL_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V7;
             case PROGRESSIVE_SKILL_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V8;
             case SKILL_IMAGE_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V9;
+            case SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION -> SYSTEM_RULES_V10;
             default -> throw new IllegalStateException("Run system prompt version is unsupported");
         };
     }

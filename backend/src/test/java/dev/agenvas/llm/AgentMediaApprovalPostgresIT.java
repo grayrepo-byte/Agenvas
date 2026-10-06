@@ -136,6 +136,7 @@ class AgentMediaApprovalPostgresIT {
     @Autowired private DirectMediaTaskService directMediaTasks;
     @Autowired private PlatformTransactionManager transactions;
     @Autowired private AgentTurnWorker modelWorker;
+    @Autowired private dev.agenvas.llm.application.AgentTurnCommitService commits;
     @Autowired private MediaExecutionWorker mediaWorker;
     @Autowired private AgentMediaApprovalService approvals;
     @Autowired private AgentMediaOutcomeService outcomes;
@@ -341,6 +342,24 @@ class AgentMediaApprovalPostgresIT {
         assertThat(jdbc.sql("select request_json::text from llm_turn where run_id=:run and step_index=0")
                 .param("run", runId).query(String.class).single()).isEqualTo(originalRequest);
         assertThat(mediaTasks(scenario)).isEmpty();
+    }
+
+    @Test
+    void failedTurnWithPendingApprovalIsNotAutomaticallyEnded() {
+        Scenario scenario = propose(outputs("IMAGE"));
+        var current = runs.get(owner.userId(), scenario.project().id(), scenario.run().id());
+        Task failed = tasks.create(owner.userId(), scenario.project().id(), scenario.run().id(), "agent-turn-" + current.nextStepIndex(),
+                Task.Kind.AGENT_TURN, mapper.createObjectNode().put("schemaVersion", 1).put("stepIndex", current.nextStepIndex()), 1);
+        // Persist a legacy blocked failure while the approval has no final reply or media Tasks.
+        jdbc.sql("update task set status='FAILED', error_code='AGENT_TURN_FAILED', completed_at=now() where id=:id")
+                .param("id", failed.id()).update();
+        runs.transition(owner.userId(), scenario.project().id(), scenario.run().id(), current.version(), AgentRun.Status.BLOCKED);
+        assertThat(runs.get(owner.userId(), scenario.project().id(), scenario.run().id()).status()).isEqualTo(AgentRun.Status.BLOCKED);
+        assertThat(tasks.hasSettledAgentFailure(owner.userId(), scenario.project().id(), scenario.run().id(), current.nextStepIndex())).isTrue();
+        assertThat(commits.finishBlockedFailures(100)).isZero();
+        assertThat(currentApproval(scenario).status()).isEqualTo(AgentMediaApproval.Status.PENDING);
+        assertThat(jdbc.sql("select active_run_id from project where id=:id").param("id", scenario.project().id()).query(UUID.class).single()).isEqualTo(scenario.run().id());
+        runs.cancel(owner.userId(), scenario.project().id(), scenario.run().id());
     }
 
     @Test

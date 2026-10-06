@@ -129,8 +129,9 @@ class AgentRunPostgresIT {
                     assertThat(binding.artifactTitle()).isEqualTo("Brief");
                 });
         assertThat(preflight.modelAvailable()).isFalse();
-        assertThat(preflight.policySnapshot().path("maxModelTurns").asInt()).isEqualTo(12);
-        assertThat(preflight.policySnapshot().path("schemaVersion").asInt()).isEqualTo(4);
+        assertThat(preflight.policySnapshot().path("maxModelTurns").isNull()).isTrue();
+        assertThat(preflight.policySnapshot().path("schemaVersion").asInt()).isEqualTo(6);
+        assertThat(preflight.policySnapshot().path("maxToolExecutions").isNull()).isTrue();
         assertThat(preflight.policySnapshot().path("systemPromptVersion").asInt())
                 .isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         String reviewedModelSource = preflight.policySnapshot()
@@ -159,6 +160,8 @@ class AgentRunPostgresIT {
                         .value(reviewedModelSource))
                 .andExpect(jsonPath("$.policySnapshot.modelConfigVersion")
                         .value(reviewedModelVersion))
+                .andExpect(jsonPath("$.policySnapshot.maxModelTurns").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.policySnapshot.maxToolExecutions").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.policySnapshot.systemPromptVersion").value(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION))
                 .andExpect(jsonPath("$.modelAvailable").value(false));
         mvc.perform(get(preflightPath)).andExpect(status().isUnauthorized());
@@ -196,7 +199,7 @@ class AgentRunPostgresIT {
                 .isEqualTo(brief.resourceDefaultVersion().id().toString());
         assertThat(run.contextSnapshot().path("bindings").path(0)
                 .path("expectedVersion").longValue()).isEqualTo(0);
-        assertThat(run.policySnapshot().get("maxModelTurns").intValue()).isEqualTo(12);
+        assertThat(run.policySnapshot().get("maxModelTurns").isNull()).isTrue();
         assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), project.id(), run.id())
                 .getFirst().getText()).contains("image preview attachments", "Inspect only attached images");

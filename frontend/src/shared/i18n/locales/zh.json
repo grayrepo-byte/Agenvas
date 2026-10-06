@@ -118,7 +118,7 @@
   "agent.run.actionsFailed": "动作记录读取失败。",
   "agent.run.actionSnapshotHint": "以下动作状态记录于提交时；当前进度见任务卡片。",
   "agent.run.arrangeCards": "排列卡片",
-  "agent.run.failedHint": "运行失败，已停止后续编排。输入和已有结果已保留；请检查下方原因后再发起新任务。",
+  "agent.run.failedHint": "本次运行已自动结束。输入和已有结果已保留，可以直接发送新任务；失败原因见下方。",
   "agent.run.modelCall": "模型调用",
   "agent.run.attempt": "第 {0} 次尝试",
   "agent.run.cancelHint": "仅停止本系统后续编排；外部任务可能继续执行并产生费用。",

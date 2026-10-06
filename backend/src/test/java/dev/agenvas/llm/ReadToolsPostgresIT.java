@@ -292,8 +292,8 @@ class ReadToolsPostgresIT {
                 JsonNode firstPlace = mapper.readTree(results.getResponses().get(4).responseData());
                 JsonNode secondPlace = mapper.readTree(results.getResponses().get(5).responseData());
                 assertThat(summary.at("/data/name").asText()).isEqualTo("Reader project");
-                assertThat(summary.at("/data/runLimits/maxToolExecutions").asInt())
-                        .isEqualTo(40);
+                assertThat(summary.at("/data/runLimits/maxToolExecutions").isNull())
+                        .isTrue();
                 assertThat(selection.at("/data/0/itemId").asText())
                         .isEqualTo(selectedItemId.toString());
                 assertThat(selection.at("/data/1/itemId").asText())

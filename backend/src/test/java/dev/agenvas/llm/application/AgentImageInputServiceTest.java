@@ -110,6 +110,63 @@ class AgentImageInputServiceTest {
                 .isEqualTo(List.of(input));
         verifyNoInteractions(artifacts, assets);
     }
+    @Test void nineSequentialReadsRetainObservationsAndOnlyTheCurrentImageAcrossCheckpointRecovery() throws Exception {
+        var references = new ArrayList<AgentImageInputService.Input>();
+        var previewIds = new ArrayList<UUID>();
+        for (int i = 0; i < 9; i++) {
+            UUID artifactId = UUID.randomUUID(), versionId = UUID.randomUUID(), previewId = UUID.randomUUID();
+            var visible = mock(ArtifactVersion.class);
+            when(visible.artifactId()).thenReturn(artifactId);
+            when(visible.content()).thenReturn(mapper.createObjectNode().put("assetId", previewId.toString()));
+            when(artifacts.requireAgentVisibleVersion(owner, project, run, versionId, snapshot())).thenReturn(visible);
+            var asset = mock(Asset.class);
+            when(asset.id()).thenReturn(previewId);
+            when(asset.projectId()).thenReturn(project);
+            when(asset.mediaKind()).thenReturn(Asset.MediaKind.IMAGE);
+            when(asset.thumbnailByteSize()).thenReturn((long) PNG.length);
+            when(assets.metadata(owner, project, previewId)).thenReturn(asset);
+            var content = new AssetService.AssetContent(asset, "synthetic-preview-" + i, PNG.length, "image/png");
+            when(assets.content(owner, project, previewId, true)).thenReturn(content);
+            when(assets.open(content, 0, PNG.length)).thenAnswer(ignored -> new ByteArrayInputStream(PNG));
+            references.add(new AgentImageInputService.Input(artifactId, versionId));
+            previewIds.add(previewId);
+        }
+        var codec = new LlmProtocolCodec(mapper);
+        List<Message> history = new ArrayList<>();
+        tools.jackson.databind.JsonNode firstCheckpoint = null;
+        for (var reference : references) {
+            var result = mapper.createObjectNode().put("status", "SUCCEEDED");
+            result.putArray("data").addObject().put("kind", "IMAGE")
+                    .put("artifactId", reference.artifactId().toString())
+                    .put("versionId", reference.versionId().toString())
+                    .put(AgentImageInputService.PREVIEW_REQUEST_KEY, true)
+                    .put(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY, true);
+            var assistant = readCall("read_artifacts");
+            if (!history.isEmpty()) history.add(new AssistantMessage("Observed identity anchors of the previous image"));
+            history.add(assistant);
+            history.add(codec.toolResults(assistant, Map.of("read", result)));
+            service.appendReadPreviews(history, assistant, Map.of("read", result));
+            var saved = codec.request(history, List.of());
+            if (firstCheckpoint == null) firstCheckpoint = saved.deepCopy();
+            history = new ArrayList<>(codec.requestMessages(saved));
+            var dispatched = service.hydrate(owner, project, run, snapshot(), history);
+            assertThat(dispatched.stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
+                    .mapToInt(message -> message.getMedia().size()).sum()).isEqualTo(1);
+            assertThat(((UserMessage) dispatched.getLast()).getMedia()).hasSize(1);
+            assertThat(saved.toString()).doesNotContain(Base64.getEncoder().encodeToString(PNG));
+        }
+        assertThat(history.stream().filter(AssistantMessage.class::isInstance)
+                .filter(message -> message.getText().startsWith("Observed identity anchors"))).hasSize(8);
+        assertThat(firstCheckpoint.toString()).contains(references.getFirst().versionId().toString())
+                .doesNotContain(references.getLast().versionId().toString());
+        tools.jackson.databind.JsonNode actualReferences = mapper.valueToTree(
+                history.getLast().getMetadata().get(AgentImageInputService.METADATA_KEY));
+        tools.jackson.databind.JsonNode expectedReferences = mapper.valueToTree(List.of(references.getLast()));
+        assertThat(actualReferences).isEqualTo(expectedReferences);
+        service.hydrate(owner, project, run, snapshot(), codec.requestMessages(codec.request(history, List.of())));
+        verify(assets, org.mockito.Mockito.times(1)).content(owner, project, previewIds.getFirst(), true);
+        verify(assets, org.mockito.Mockito.times(2)).content(owner, project, previewIds.getLast(), true);
+    }
     @Test void doesNotSendImagesWithoutAReadOrForRejectedAndOtherToolResults() {
         List<Message> history = new ArrayList<>(List.of(new UserMessage("Bound image metadata")));
         service.appendReadPreviews(history, readCall("read_artifacts"), Map.of("read", readResult("REJECTED")));

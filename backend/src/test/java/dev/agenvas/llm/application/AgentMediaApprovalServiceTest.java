@@ -484,9 +484,9 @@ class AgentMediaApprovalServiceTest {
 
     @Test
     void lastModelTurnCannotProposeABatchWithNoResumeCapacity() {
-        AgentRun run = run(AgentRun.Status.RUNNING, AgentRun.MAX_MODEL_TURNS - 1);
+        AgentRun run = run(AgentRun.Status.RUNNING, 11);
         assertThatThrownBy(() -> service.propose(new TrustedToolContext(ownerId, projectId, runId),
-                run, UUID.randomUUID(), AgentRun.MAX_MODEL_TURNS - 1, "call-media", "{}"))
+                run, UUID.randomUUID(), 11, "call-media", "{}"))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         problem -> assertThat(problem.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
         verifyNoInteractions(approvals, mediaTasks, artifacts);

@@ -409,6 +409,29 @@ describe("AgentChatCard", () => {
     expect(screen.getByText("任务失败", { selector: ".agent-chat-heading > span" })).toBeInTheDocument();
   });
 
+  it("restores sending after automatic completion of a blocked run and keeps the composer draft", async () => {
+    const blocked = run({ status: "BLOCKED" });
+    storedRuns = [blocked];
+    let cancellations = 0;
+    let submissions = 0;
+    server.use(
+      http.post(`${RUNS_URL}/${blocked.id}/cancel`, () => { cancellations++; return HttpResponse.json(blocked); }),
+      http.post(RUNS_URL, () => { submissions++; return persistRun(); }),
+    );
+    const client = mountCard(blocked);
+    await userEvent.setup().type(await readyComposer(), "继续使用已完成图片创作");
+    expect(await screen.findByRole("button", { name: "结束本次运行" })).toBeEnabled();
+    storedRuns = [{ ...blocked, status: "FAILED", version: blocked.version + 1, updatedAt: "2026-09-26T10:00:01Z" }];
+    await act(() => client.invalidateQueries({ queryKey: ["conversation-runs", PROJECT_ID, AGENT_ID, CONVERSATION_ID] }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
+    expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue("继续使用已完成图片创作");
+    expect(screen.queryByRole("button", { name: "结束本次运行" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "停止" })).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("本次运行已自动结束");
+    expect(cancellations).toBe(0);
+    expect(submissions).toBe(0);
+  });
+
   it("shows asynchronous failure from a project status event without reloading the card", async () => {
     const current = run({ status: "RUNNING" });
     storedRuns = [current];

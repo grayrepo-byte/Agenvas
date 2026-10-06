@@ -45,6 +45,20 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     private static final int RECENT_TARGET_TASK_LIMIT = 50;
 
     @Override
+    public boolean hasSettledAgentFailure(UUID projectId, UUID runId, int stepIndex) {
+        var unresolved = TASK.as("unresolved_run_task");
+        return dsl.fetchExists(dsl.selectOne().from(TASK)
+                .where(TASK.PROJECT_ID.eq(projectId)).and(TASK.RUN_ID.eq(runId))
+                .and(TASK.KIND.eq(Task.Kind.AGENT_TURN.name()))
+                .and(TASK.STEP_KEY.eq("agent-turn-" + stepIndex))
+                .and(TASK.STATUS.eq(Task.Status.FAILED.name()))
+                .andNotExists(dsl.selectOne().from(unresolved)
+                        .where(unresolved.PROJECT_ID.eq(projectId)).and(unresolved.RUN_ID.eq(runId))
+                        .and(unresolved.STATUS.notIn(Task.Status.SUCCEEDED.name(),
+                                Task.Status.FAILED.name(), Task.Status.CANCELED.name()))));
+    }
+
+    @Override
     public List<Task> stopForHistoryCleanup(List<UUID> taskIds, Instant now) {
         return dsl.update(TASK)
                 .set(TASK.STATUS, Task.Status.CANCELED.name())

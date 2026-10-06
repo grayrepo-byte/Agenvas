@@ -4749,7 +4749,7 @@ export interface components {
             currentConversationId: string | null;
         };
         /**
-         * @description WAITING_TASKS 同时表示等待媒体审批或已批准媒体任务；审批详情通过 media-approvals 接口读取。
+         * @description WAITING_TASKS 同时表示等待媒体审批或已批准媒体任务；审批详情通过 media-approvals 接口读取。无法继续的模型故障在没有未决 Task 或媒体审批时自动结束为 FAILED，释放项目活动槽位并保留已有结果；有未决事项时保持 BLOCKED。
          * @enum {string}
          */
         AgentRunStatus: "QUEUED" | "RUNNING" | "WAITING_TASKS" | "BLOCKED" | "CANCEL_REQUESTED" | "CANCELED" | "FAILED" | "SUCCEEDED";
@@ -4940,22 +4940,24 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description New policies are schema v5 with systemPromptVersion=9 and toolPolicyVersion=3. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. Historical policies retain their frozen protocol and tool definitions. */
+        /** @description New policies are schema v6 with systemPromptVersion=10 and toolPolicyVersion=3. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. Historical numeric policies retain their frozen protocol and limits. */
         RunPolicySnapshot: {
             /** @enum {integer} */
-            schemaVersion: 1 | 2 | 3 | 4 | 5;
+            schemaVersion: 1 | 2 | 3 | 4 | 5 | 6;
             /** @enum {integer} */
             toolPolicyVersion?: 1 | 2 | 3;
             allowedTools?: string[];
             /**
-             * @description New v5 snapshots pin version 9; historical rules and creative message roles remain frozen.
+             * @description New v6 snapshots pin version 10; historical rules and creative message roles remain frozen.
              * @enum {integer}
              */
-            systemPromptVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+            systemPromptVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
             modelConfigSource: string;
             modelConfigVersion: number;
-            maxModelTurns: number;
-            maxToolExecutions: number;
+            /** @description Null means no model-turn count limit; historical numeric policies remain frozen. */
+            maxModelTurns: number | null;
+            /** @description Null means no per-Run tool execution count limit; historical numeric policies remain frozen. */
+            maxToolExecutions: number | null;
         };
         AgentRun: {
             /** Format: uuid */
