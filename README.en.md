@@ -302,6 +302,10 @@ deploy/         Compose, Nginx, and container builds
 docs/           Specifications, designs, and development documentation
 ```
 
+## Open-source acknowledgements
+
+Agenvas's built-in short-drama creation Skills come from [zenstory-ai/drama-skills](https://github.com/zenstory-ai/drama-skills). We thank the project's authors and contributors for sharing their creative skills and workflows as open source.
+
 ## License
 
 Licensed under the [MIT License](LICENSE). Third-party dependencies, model weights, workflows, and components such as FFmpeg retain their own licenses.
