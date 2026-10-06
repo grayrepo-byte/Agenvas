@@ -293,6 +293,10 @@ deploy/         Compose、Nginx 与容器构建
 docs/           规格、设计与开发文档
 ```
 
+## 开源鸣谢
+
+Agenvas 内置的短剧创作 Skills 来源于 [zenstory-ai/drama-skills](https://github.com/zenstory-ai/drama-skills)。感谢该项目的作者与贡献者开源分享创作技能与工作流。
+
 ## 许可证
 
 采用 [MIT License](LICENSE)。第三方依赖、模型权重、工作流与 FFmpeg 等组件保留各自的许可证。
