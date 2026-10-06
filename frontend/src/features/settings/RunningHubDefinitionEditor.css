@@ -11,17 +11,18 @@
 .runninghub-definition-editor > fieldset > button { align-self: flex-start; }
 .runninghub-node-picker { max-width: 480px; }
 .runninghub-mapping-scroll { min-width: 0; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); }
-.runninghub-mapping-table { min-width: 1120px; table-layout: fixed; }
+.runninghub-mapping-table { min-width: 1174px; table-layout: fixed; }
 .runninghub-mapping-table th { background: var(--ui-field); }
-.runninghub-mapping-table th:nth-child(1) { width: 82px; }
-.runninghub-mapping-table th:nth-child(2) { width: 135px; }
-.runninghub-mapping-table th:nth-child(3) { width: 160px; }
-.runninghub-mapping-table th:nth-child(4) { width: 125px; }
-.runninghub-mapping-table th:nth-child(5) { width: 110px; }
-.runninghub-mapping-table th:nth-child(6) { width: 150px; }
-.runninghub-mapping-table th:nth-child(7) { width: 180px; }
-.runninghub-mapping-table th:nth-child(8) { width: 54px; }
-.runninghub-mapping-table th:nth-child(9) { width: 90px; }
+.runninghub-mapping-table th:nth-child(1) { width: 54px; }
+.runninghub-mapping-table th:nth-child(2) { width: 82px; }
+.runninghub-mapping-table th:nth-child(3) { width: 135px; }
+.runninghub-mapping-table th:nth-child(4) { width: 160px; }
+.runninghub-mapping-table th:nth-child(5) { width: 125px; }
+.runninghub-mapping-table th:nth-child(6) { width: 110px; }
+.runninghub-mapping-table th:nth-child(7) { width: 150px; }
+.runninghub-mapping-table th:nth-child(8) { width: 180px; }
+.runninghub-mapping-table th:nth-child(9) { width: 54px; }
+.runninghub-mapping-table th:nth-child(10) { width: 90px; }
 .runninghub-mapping-table [data-slot="field"] { min-width: 0; }
 .runninghub-mapping-table > tbody > tr > td > [data-slot="field"] .ui-field > [data-slot="input"],
 .runninghub-secondary-table .ui-field > [data-slot="input"],

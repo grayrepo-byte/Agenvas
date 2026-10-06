@@ -34,7 +34,7 @@ import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 import { selectRunningHubNodes } from "./runningHubSelection";
 
 // Node selection is an editor draft, never an API setting or capability-version field.
-type AdapterSettings = MediaCapability["settings"] & { runningHubSelectedNodeIds?: string[] };
+type AdapterSettings = MediaCapability["settings"] & { runningHubSelectedNodeIds?: string[]; runningHubSelectedFieldKeys?: string[] };
 const MODEL_LIMIT = 120;
 
 const settingsKey = ["settings", "media"] as const;
@@ -49,7 +49,7 @@ function fixedModelFields(adapterId: string) {
 
 function fixedModelSettings(adapterId: string, values: AdapterSettings) {
   if (adapterId.startsWith("RUNNINGHUB_")) {
-    const runningHub = values.runningHub ? selectRunningHubNodes(values.runningHub, values.runningHubSelectedNodeIds) : undefined;
+    const runningHub = values.runningHub ? selectRunningHubNodes(values.runningHub, values.runningHubSelectedNodeIds, values.runningHubSelectedFieldKeys) : undefined;
     const orphaned = runningHub?.fields.find((field) => field.enabledWhen && !runningHub.fields.some((parent) => parent.key === field.enabledWhen?.field));
     if (orphaned) throw new CapabilityDraftError(t("settings.runningHub.unselectedCondition", { "0": orphaned.label }));
     return { runningHub, ...(values.pricing?.amount.trim() ? { pricing: values.pricing } : {}) };
@@ -131,12 +131,14 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
   useLocale();
   const fieldId = useId();
   const [tab, setTab] = useState<EditorTab>("model");
+  const currentName = useRef(name);
+  currentName.current = name;
   function changeWorkflowOutput(kind: keyof typeof RUNNINGHUB_OUTPUT_ADAPTERS, runningHub = values.runningHub,
-    runningHubSelectedNodeIds = values.runningHubSelectedNodeIds) {
+    runningHubSelectedNodeIds = values.runningHubSelectedNodeIds, runningHubSelectedFieldKeys = values.runningHubSelectedFieldKeys) {
     onAdapterChange(RUNNINGHUB_OUTPUT_ADAPTERS[kind]);
     const pricing = values.pricing?.unit === kind || (kind !== "IMAGE" && values.pricing?.unit === "SECOND")
       ? values.pricing : undefined;
-    onChange({ ...values, pricing, runningHubSelectedNodeIds, runningHub: runningHub ? { ...runningHub,
+    onChange({ ...values, pricing, runningHubSelectedNodeIds, runningHubSelectedFieldKeys, runningHub: runningHub ? { ...runningHub,
       outputs: runningHub.outputs.map((output) => output.primary ? { ...output, kind } : output) } : undefined });
   }
   if (isComfyAdapter(adapterId)) return <fieldset disabled={disabled} className="ui-stack media-settings-fieldset">
@@ -156,9 +158,13 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
       if (kind) changeWorkflowOutput(kind);
     }}>{availableAdapters.map((adapter) => <option key={adapter} value={adapter}>{adapterLabel(adapter)}</option>)}</Select></FieldLabel></Field>
     <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub}
-      selectedNodeIds={values.runningHubSelectedNodeIds} onChange={(runningHub, primaryKind, runningHubSelectedNodeIds) => {
-      if (primaryKind) changeWorkflowOutput(primaryKind, runningHub, runningHubSelectedNodeIds);
-      else onChange({ ...values, runningHub, runningHubSelectedNodeIds });
+      onDiscoveredName={(discoveredName) => {
+        // Read the latest draft: the user can type a name while discovery is pending.
+        if (!currentName.current.trim()) onNameChange(discoveredName);
+      }}
+      selectedNodeIds={values.runningHubSelectedNodeIds} selectedFieldKeys={values.runningHubSelectedFieldKeys} onChange={(runningHub, primaryKind, runningHubSelectedNodeIds, runningHubSelectedFieldKeys) => {
+      if (primaryKind) changeWorkflowOutput(primaryKind, runningHub, runningHubSelectedNodeIds, runningHubSelectedFieldKeys);
+      else onChange({ ...values, runningHub, runningHubSelectedNodeIds, runningHubSelectedFieldKeys });
     }} />
     <CapabilityConfigurationFields section="pricing" adapterId={adapterId} values={values} onChange={onChange} />
   </fieldset></div>;

@@ -1843,3 +1843,22 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] `pnpm exec vitest run --no-file-parallelism` 定向运行 RunningHubDefinitionEditor、MediaSettingsPage、RunningHubForm 三文件，66 项通过；覆盖工作流/AI 应用的保存请求与重新打开、新能力发布、清空选择、无效标量草稿恢复、失败重试及条件修复。`pnpm run test:runninghub-node-picker` 在 2560×1179、1440×900、390×844、844×390 四个生产 CSS 视口通过，覆盖真实模态菜单滚轮隔离、输出选择及排除未勾选无效开放/固定映射的浏览器原生提交。
 - [x] `pnpm run typecheck`、`pnpm run lint`、`pnpm run build` 与差异空白检查通过；构建保留既有大 chunk 提示。复现与浏览器素材均为合成配置，不调用真实 Provider。
 - [ ] 全量测试、后端单元/数据库专项、真实 RunningHub 调用与部署未运行。
+
+### 2026-10-06 RunningHub 参数智能发现与逐字段暴露
+
+- [x] 工作流及 AI 应用的发现/离线导入按节点类型、字段名和标题/说明识别常见文本与图片、视频、音频输入；明确的主提示词映射到画布 PROMPT，素材转为具名引用并清空文件名/URL 默认值。负向名称及负向 conditioning 上游文本排除，多文本用途不明确时保留供手动选择；连线不成为开放参数或本地图执行能力。
+- [x] 默认只暴露已识别的主提示词与素材；种子、模型名、采样设置和枚举保留默认值，按节点及逐字段“暴露”选择发布。未暴露字段跳过原生校验；保存失败、重新勾选及同目标重新发现保留手动配置。新增候选按节点/字段身份应用建议，键冲突重命名及已有提示词优先均有回归覆盖。规格 6.13、ADR 0025、接入指南和四语提示同步。
+- [x] OpenAPI 预览响应新增 `recommendedFieldKeys`，Java 实现及生成 TypeScript 同步；选择只属于编辑草稿，不进入能力版本，无数据库迁移或新依赖，前后端一起升级。
+- [x] 前端三文件串行定向测试 71 项通过：RunningHubDefinitionEditor、MediaSettingsPage、RunningHubForm。后端 RunningHubImportServiceTest、RunningHubDefinitionTest、LocalizedResponseTest 共 31 项通过；RunningHubPostgresIT 的发现预览专项在真实 PostgreSQL 17.11 上通过，覆盖推荐键、管理员/CSRF 边界、点号字段及不触发生成。
+- [x] `pnpm run typecheck`、`pnpm run lint`、OpenAPI 类型生成和差异空白检查通过。定向测试使用合成配置、本地假 HTTP 和 Mock 响应，未使用真实 Provider。
+- [x] `pnpm run test:runninghub-node-picker` 在 2560×1179、1440×900、390×844、844×390 四种生产 CSS 视口通过，覆盖逐字段取消暴露、同节点未暴露无效映射跳过原生校验并从保存内容排除，保留节点多选滚轮隔离与输出节点精确 ID 检查。新增行后的长输出选项点击曾超时，改为滚动到选项末端后真实鼠标点击，四视口复验通过；未放宽断言或超时。
+- [ ] 全量测试、真实 RunningHub 发现/生成和部署未运行。
+
+### 2026-10-06 RunningHub 自动发现填入能力名称
+
+- [x] 自动发现成功时，空白能力名称使用 AI 应用或工作流名称；保留已有名称及请求期间手动输入的名称。AI 应用公开详情提取 `data.name`，Bearer 调用示例回退提取 `data.webappName`；工作流成功读取输入后，通过固定公开详情接口查询同 ID 名称，不发送 Key，总超时 5 秒。名称缺失、无效或查询失败不影响参数发现；离线 JSON 不自动改名。
+- [x] 名称去首尾空白并按 160 字符安全截短，以可空 `targetName` 单独返回，不进入导入原文，不保留作者和调用示例。OpenAPI、Java 和生成 TypeScript 同步；规格 6.13、ADR 0025 与接入研究同步。无数据库迁移或依赖变化。
+- [x] 前端 MediaSettingsPage、RunningHubDefinitionEditor 两文件定向测试 70 项通过，覆盖应用/工作流自动命名后的发布请求、名称缺失时手动命名、已有名称及异步输入保护。后端 RunningHubClientTest、RunningHubImportServiceTest、LocalizedResponseTest 共 31 项通过，覆盖两类名称、应用回退、缺失/空白/非法名称、ID 不匹配、凭据过滤、Unicode 截短、发现失败降级与原始名称不随语言改变。
+- [x] RunningHubPostgresIT 发现预览专项在真实 PostgreSQL 17.11 上通过，使用本地假 HTTP 验证自动发现两类名称、离线可空名称、no-store、管理员/CSRF 边界、不泄露作者/凭据/调用示例且不触发生成。`pnpm run typecheck`、`pnpm run lint`、OpenAPI 类型生成及差异空白检查通过。
+- [x] 本轮匿名只读请求确认官方公开应用和工作流详情返回匹配 ID 及名称；未使用 Key、提交生成或下载素材。前后端自动发现行为测试使用合成响应，不代表真实 Provider 的带 Key 权限和生成兼容性。
+- [ ] 全量测试、浏览器端到端、带 Key 的真实 RunningHub 发现/生成和部署未运行。

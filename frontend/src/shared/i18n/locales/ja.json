@@ -1721,7 +1721,7 @@
   "settings.runningHub.numberInput": "数値",
   "settings.runningHub.defaultOrFormat": "初期値 / 素材形式",
   "settings.runningHub.mappingTable": "パラメーターの対応付け",
-  "settings.runningHub.mappingHint": "ノードを複数選択して公開フィールドと固定パラメーターをまとめて編集できます。範囲、説明、表示条件は詳細設定で調整できます。",
+  "settings.runningHub.mappingHint": "プロンプトと画像・動画・音声入力を識別し、既定で公開します。他のパラメーターは未選択です。ノードを選んで「公開」を個別に選択できます。範囲、説明、表示条件は詳細設定で調整できます。",
   "settings.runningHub.moreSettings": "詳細設定",
   "settings.runningHub.mappingActions": "操作",
   "settings.runningHub.organizeFields": "フィールドを整理する",
@@ -1742,8 +1742,8 @@
   "settings.runningHub.nodeOption": "ノード {0}",
   "settings.runningHub.outputKindChangeHint": "主出力の種類は機能の種類にも反映されます。変更後は元の種類の既定機能を再選択してください。互換性のない見積価格はクリアされます。",
   "settings.runningHub.selectNode": "ノードを選択",
-  "settings.runningHub.selectNodeHint": "選択したノードの公開フィールドと固定パラメーターのみ保存されます。選択を解除しても今回の編集内容は保持され、再選択で復元できます。",
-  "settings.runningHub.unselectedCondition": "「{0}」の表示条件が未選択ノードのフィールドを参照しています。そのノードを再選択するか、表示条件を変更してください。",
+  "settings.runningHub.selectNodeHint": "ノードを選択してパラメーターを確認します。公開を選択したフィールドと選択ノードの固定パラメーターのみ保存されます。選択を解除しても編集内容は保持され、再選択で復元できます。",
+  "settings.runningHub.unselectedCondition": "「{0}」の表示条件が未公開のフィールドを参照しています。そのフィールドとノードを選択するか、表示条件を変更してください。",
   "settings.runningHub.selectNodePlaceholder": "設定するノードを選択してください（複数選択可）",
   "settings.runningHub.selectAllNodes": "すべてのノードを選択",
   "settings.runningHub.clearNodeSelection": "選択を解除",
@@ -2312,5 +2312,7 @@
   "image.resize.sourceSize": "元画像：{0} × {1} px",
   "image.resize.submit": "サイズ変更を開始",
   "image.resize.targetSize": "出力：{0} × {1} px",
-  "image.resize.title": "サイズ変更"
+  "image.resize.title": "サイズ変更",
+  "settings.runningHub.exposeField": "公開",
+  "settings.runningHub.exposeFieldLabel": "パラメーターを公開 · {0}"
 }

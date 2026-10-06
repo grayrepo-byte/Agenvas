@@ -168,7 +168,7 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/settings/media-connections/openai-1/runninghub/preview", async ({ request }) => {
         expect(await request.json()).toEqual({ targetType: "AI_APP", targetId: "123", kind: "IMAGE_GENERATION" });
-        return HttpResponse.json({ definition, warnings: ["确认字段后发布"] });
+        return HttpResponse.json({ definition, warnings: ["确认字段后发布"], recommendedFieldKeys: [], targetName: "远程应用名称" });
       }),
       http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
         published.push(await request.json()); return HttpResponse.json(fixture);
@@ -182,7 +182,13 @@ describe("MediaSettingsPage", () => {
     await selectValue(within(dialog).getByRole("combobox", { name: "目标类型" }), "AI_APP");
     await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
     await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
-    const importedField = await within(dialog).findByRole("row", { name: "创作风格" });
+    await within(dialog).findByText("确认字段后发布");
+    expect(within(dialog).getByRole("textbox", { name: "新能力名称" })).toHaveValue("背景应用");
+    await clickControl(within(dialog).getByRole("button", { name: "选择节点" }));
+    await clickControl(screen.getByRole("menuitem", { name: "全选节点" }));
+    await user.keyboard("{Escape}");
+    const importedField = within(dialog).getByRole("row", { name: "创作风格" });
+    await user.click(within(importedField).getByRole("checkbox", { name: "暴露参数 · 创作风格" }));
     expect(importedField).toBeVisible();
     expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 创作风格 · 节点 2 · 强度");
     expect(within(importedField).getByRole("textbox", { name: "节点字段" })).toHaveValue("style");
@@ -306,6 +312,121 @@ describe("MediaSettingsPage", () => {
     expect(writes[1]).toEqual(writes[0]);
   });
 
+  it.each([
+    { targetType: "AI_APP" as const, targetName: "合成绘图应用" },
+    { targetType: "WORKFLOW" as const, targetName: "合成绘图工作流" },
+    { targetType: "WORKFLOW" as const, targetName: null },
+  ])("autofills an empty capability name from $targetType discovery when its name is available ($targetName)", async ({ targetType, targetName }) => {
+    const definition = {
+      schemaVersion: 1, protocolVersion: "V2", targetType, targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [{ key: "prompt", label: "创作提示", type: "STRING", source: "PROMPT", nodeId: "1", fieldName: "text", required: false, advanced: false }],
+      outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+    };
+    const fixture = settingsFixture({ platform: "RUNNINGHUB", capabilities: [] });
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/runninghub/preview", async ({ request }) => {
+        expect(await request.json()).toEqual({ targetType, targetId: "123", kind: "IMAGE_GENERATION" });
+        return HttpResponse.json({ definition, warnings: [], recommendedFieldKeys: ["prompt"], targetName });
+      }),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        writes.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    const dialog = screen.getByRole("dialog");
+    const name = within(dialog).getByRole("textbox", { name: "新能力名称" });
+    expect(name).toHaveValue("");
+    await selectValue(within(dialog).getByRole("combobox", { name: "目标类型" }), targetType);
+    await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
+    await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
+    await within(dialog).findByRole("row", { name: "创作提示" });
+    expect(name).toHaveValue(targetName ?? "");
+    if (!targetName) await user.type(name, "手动命名");
+    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(writes).toEqual([{ name: targetName ?? "手动命名", adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: definition } }]));
+  });
+
+  it("preserves a capability name typed while automatic discovery is still pending", async () => {
+    const fixture = settingsFixture({ platform: "RUNNINGHUB", capabilities: [] });
+    const discovery = { requested: false, release: () => {} };
+    const responseGate = new Promise<void>((resolve) => { discovery.release = resolve; });
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/runninghub/preview", async () => {
+        discovery.requested = true;
+        await responseGate;
+        return HttpResponse.json({ definition: {
+          schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
+          fields: [{ key: "prompt", label: "创作提示", type: "STRING", source: "PROMPT", nodeId: "1", fieldName: "text", required: false, advanced: false }],
+          outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+        }, warnings: [], recommendedFieldKeys: ["prompt"], targetName: "远程工作流名称" });
+      }),
+    );
+    try {
+      mount(); const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: "发布能力" }));
+      const dialog = screen.getByRole("dialog");
+      await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
+      await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
+      await waitFor(() => expect(discovery.requested).toBe(true));
+      const name = within(dialog).getByRole("textbox", { name: "新能力名称" });
+      await user.type(name, "请求期间手动命名");
+      discovery.release();
+      await within(dialog).findByRole("row", { name: "创作提示" });
+      expect(name).toHaveValue("请求期间手动命名");
+    } finally { discovery.release(); }
+  });
+
+  it("publishes only discovered prompt and media inputs and preserves field choices after a save failure", async () => {
+    const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
+      schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [
+        { key: "prompt", label: "场景提示", type: "STRING", source: "PROMPT", nodeId: "1", fieldName: "text", defaultValue: "scene", required: false, advanced: false },
+        { key: "seed", label: "随机种子", type: "INTEGER", nodeId: "1", fieldName: "seed", defaultValue: 42, required: false, advanced: false },
+        { key: "image", label: "参考图片", type: "IMAGE", nodeId: "2", fieldName: "image", required: false, advanced: false },
+      ], outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+    };
+    const fixture = settingsFixture({ platform: "RUNNINGHUB", capabilities: [] });
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/runninghub/preview", () => HttpResponse.json({ definition, warnings: [], recommendedFieldKeys: ["prompt", "image"] })),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        writes.push(await request.json());
+        return writes.length === 1 ? HttpResponse.json({ detail: "合成保存失败" }, { status: 503 }) : HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "智能工作流");
+    await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
+    await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
+    const seed = await within(dialog).findByRole("row", { name: "随机种子" });
+    expect(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" })).not.toBeChecked();
+    await user.click(within(dialog).getByText("创作者表单预览 · 离线"));
+    expect(within(dialog).queryByRole("spinbutton", { name: "随机种子" })).not.toBeInTheDocument();
+    const publish = within(dialog).getByRole("button", { name: "发布能力" });
+    await user.click(publish);
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).toEqual({ name: "智能工作流", adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: { ...definition, fields: [definition.fields[0], definition.fields[2]] } } });
+    await waitFor(() => expect(publish).toBeEnabled());
+    expect(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" })).not.toBeChecked();
+    await user.click(publish);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(writes).toHaveLength(2);
+    expect(writes[1]).toEqual(writes[0]);
+  });
+
   it("requires repairing a RunningHub visibility condition when its parent node is unchecked", async () => {
     const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
       schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
@@ -332,7 +453,7 @@ describe("MediaSettingsPage", () => {
     await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 1 · 模式" }));
     await user.keyboard("{Escape}");
     await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
-    expect(await within(dialog).findByText("“强度”的显示条件引用了未勾选节点的字段，请重新勾选该节点或修改显示条件。")).toBeInTheDocument();
+    expect(await within(dialog).findByText("“强度”的显示条件引用了未暴露的字段，请勾选该字段及其节点或修改显示条件。")).toBeInTheDocument();
     expect(writes).toEqual([]);
     await user.click(within(within(dialog).getByRole("row", { name: "强度" })).getByRole("button", { name: "更多设置" }));
     await selectValue(within(dialog).getByRole("combobox", { name: "显示条件" }), "");
@@ -426,7 +547,7 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
       http.post("/api/v1/settings/media-connections/openai-1/runninghub/preview", async ({ request }) => {
         discoveryRequests.push(await request.json());
-        return HttpResponse.json({ definition, warnings: [] });
+        return HttpResponse.json({ definition, warnings: [], recommendedFieldKeys: [] });
       }),
       http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
         writes.push(await request.json());

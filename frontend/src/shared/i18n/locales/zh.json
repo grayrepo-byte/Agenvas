@@ -1721,7 +1721,7 @@
   "settings.runningHub.numberInput": "数值",
   "settings.runningHub.defaultOrFormat": "默认值 / 素材格式",
   "settings.runningHub.mappingTable": "参数绑定",
-  "settings.runningHub.mappingHint": "可多选节点，同时编辑所选节点的开放字段和固定参数；范围、说明和显示条件可在更多设置中调整。",
+  "settings.runningHub.mappingHint": "自动识别提示词和图片、视频、音频输入并默认暴露。其他参数默认不勾选，可选择节点后逐项勾选“暴露”；更多设置可调整范围、说明和显示条件。",
   "settings.runningHub.moreSettings": "更多设置",
   "settings.runningHub.mappingActions": "操作",
   "settings.runningHub.organizeFields": "整理字段",
@@ -1742,8 +1742,8 @@
   "settings.runningHub.nodeOption": "节点 {0}",
   "settings.runningHub.outputKindChangeHint": "主输出类型会同步为能力类型；切换后需重新选择原类型的默认能力，不兼容的估算价格将清空。",
   "settings.runningHub.selectNode": "选择节点",
-  "settings.runningHub.selectNodeHint": "可多选节点；仅勾选节点的开放字段和固定参数会保存。取消勾选保留本次编辑草稿，重新勾选可恢复。",
-  "settings.runningHub.unselectedCondition": "“{0}”的显示条件引用了未勾选节点的字段，请重新勾选该节点或修改显示条件。",
+  "settings.runningHub.selectNodeHint": "选择节点查看参数；仅勾选“暴露”的字段和所选节点的固定参数会保存。取消勾选保留本次编辑草稿，重新勾选可恢复。",
+  "settings.runningHub.unselectedCondition": "“{0}”的显示条件引用了未暴露的字段，请勾选该字段及其节点或修改显示条件。",
   "settings.runningHub.selectNodePlaceholder": "请选择要配置的节点（可多选）",
   "settings.runningHub.selectAllNodes": "全选节点",
   "settings.runningHub.clearNodeSelection": "清空选择",
@@ -2312,5 +2312,7 @@
   "image.resize.sourceSize": "原图：{0} × {1} px",
   "image.resize.submit": "开始缩放",
   "image.resize.targetSize": "目标：{0} × {1} px",
-  "image.resize.title": "缩放"
+  "image.resize.title": "缩放",
+  "settings.runningHub.exposeField": "暴露",
+  "settings.runningHub.exposeFieldLabel": "暴露参数 · {0}"
 }

@@ -8,6 +8,7 @@ import type { RunningHubDefinition } from "../../shared/api/client";
 import { clickControl, selectValue } from "../../test/controls";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 import { server } from "../../test/server";
+import { selectRunningHubNodes } from "./runningHubSelection";
 
 const initialDefinition: RunningHubDefinition = {
   schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
@@ -23,9 +24,13 @@ const initialDefinition: RunningHubDefinition = {
 async function mount(selectNode = true, startingDefinition = initialDefinition) {
   function Editor() {
     const [definition, setDefinition] = useState(startingDefinition);
+    const [nodes, setNodes] = useState<string[] | undefined>();
+    const [fields, setFields] = useState<string[] | undefined>();
     return <>
-      <RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={definition} onChange={setDefinition} />
+      <RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={definition} selectedNodeIds={nodes} selectedFieldKeys={fields}
+        onChange={(next, _kind, nodeIds, fieldKeys) => { setDefinition(next); setNodes(nodeIds); setFields(fieldKeys); }} />
       <output data-testid="definition">{JSON.stringify(definition)}</output>
+      <output data-testid="published">{JSON.stringify(selectRunningHubNodes(definition, nodes, fields))}</output>
     </>;
   }
   render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
@@ -49,6 +54,90 @@ async function showNodes(...nodeIds: string[]) {
 function currentDefinition() {
   return JSON.parse(screen.getByTestId("definition").textContent ?? "") as RunningHubDefinition;
 }
+
+function publishedDefinition() {
+  return JSON.parse(screen.getByTestId("published").textContent ?? "") as RunningHubDefinition;
+}
+
+describe("RunningHubDefinitionEditor intelligent discovery", () => {
+  const discovered: RunningHubDefinition = { ...initialDefinition, fixedBindings: [], fields: [
+    { key: "prompt", required: false, advanced: false, label: "画面提示", type: "STRING", source: "PROMPT", nodeId: "10", fieldName: "text", defaultValue: "scene" },
+    { key: "seed", required: false, advanced: false, label: "随机种子", type: "INTEGER", source: "PARAMETER", nodeId: "10", fieldName: "seed", defaultValue: 42 },
+    { key: "image", required: false, advanced: false, label: "参考图", type: "IMAGE", source: "PARAMETER", nodeId: "20", fieldName: "image" },
+    { key: "steps", required: false, advanced: false, label: "采样步数", type: "INTEGER", source: "PARAMETER", nodeId: "30", fieldName: "steps", defaultValue: 20 },
+  ] };
+  function discovery() {
+    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({ definition: discovered, warnings: [], recommendedFieldKeys: ["prompt", "image"] })));
+  }
+  it("exposes only suggested inputs, including individual fields within a selected node", async () => {
+    discovery();
+    await mount(false, { ...initialDefinition, fields: [], fixedBindings: [] });
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    const prompt = await screen.findByRole("row", { name: "画面提示" });
+    expect(within(prompt).getByRole("combobox", { name: "输入来源" })).toHaveValue("PROMPT");
+    const seed = screen.getByRole("row", { name: "随机种子" });
+    expect(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" })).not.toBeChecked();
+    expect(within(seed).getByRole("textbox", { name: "默认值" })).toBeDisabled();
+    expect(screen.queryByRole("row", { name: "采样步数" })).not.toBeInTheDocument();
+    expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["prompt", "image"]);
+    await showNodes("10", "20", "30");
+    const steps = screen.getByRole("row", { name: "采样步数" });
+    await clickControl(within(steps).getByRole("checkbox", { name: "暴露参数 · 采样步数" }));
+    expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["prompt", "image", "steps"]);
+    expect(currentDefinition().fields).toEqual(discovered.fields);
+  });
+  it("keeps manual deselection, scalar drafts and renamed exposed keys when rediscovering the same target", async () => {
+    discovery();
+    await mount(false, discovered);
+    const prompt = screen.getByRole("row", { name: "画面提示" });
+    await clickControl(within(prompt).getByRole("checkbox", { name: "暴露参数 · 画面提示" }));
+    const seed = screen.getByRole("row", { name: "随机种子" });
+    const input = within(seed).getByRole("textbox", { name: "默认值" });
+    fireEvent.change(input, { target: { value: "invalid" } }); fireEvent.blur(input);
+    await clickControl(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" }));
+    expect(input).toBeDisabled();
+    expect((input as HTMLInputElement).checkValidity()).toBe(true);
+    await clickControl(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" }));
+    expect(input).toHaveValue("invalid");
+    expect(input).toHaveProperty("validity.valid", false);
+    fireEvent.change(input, { target: { value: "100" } }); fireEvent.blur(input);
+    fireEvent.change(within(seed).getByRole("textbox", { name: "稳定字段键" }), { target: { value: "customSeed" } });
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "自动发现参数" })).toBeEnabled());
+    expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["customSeed", "image", "steps"]);
+    expect(currentDefinition().fields[1]?.defaultValue).toBe(100);
+    expect(within(screen.getByRole("row", { name: "画面提示" })).getByRole("checkbox", { name: "暴露参数 · 画面提示" })).not.toBeChecked();
+  });
+  it("applies new media suggestions after key collision renaming without reselecting an existing node", async () => {
+    const existing: RunningHubDefinition = { ...initialDefinition, fixedBindings: [], fields: [{ ...initialDefinition.fields[0]!, key: "input1" }] };
+    const imported: RunningHubDefinition = { ...existing, fields: [
+      { ...discovered.fields[2]!, key: "input1" },
+      { ...existing.fields[0]!, key: "input2" },
+    ] };
+    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({ definition: imported, warnings: [], recommendedFieldKeys: ["input1"] })));
+    await mount(false, existing);
+    await showNodes();
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    await screen.findByRole("row", { name: "参考图" });
+    expect(screen.queryByRole("row", { name: "模式" })).not.toBeInTheDocument();
+    expect(publishedDefinition().fields).toEqual([{ ...discovered.fields[2], key: "input2" }]);
+    expect(currentDefinition().fields[0]).toEqual(existing.fields[0]);
+  });
+  it("preserves an existing canvas prompt instead of exposing a newly inferred second prompt", async () => {
+    const existing: RunningHubDefinition = { ...initialDefinition, fixedBindings: [], fields: [
+      { ...discovered.fields[0]!, key: "savedPrompt", nodeId: "99" },
+    ] };
+    discovery();
+    await mount(false, existing);
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    await screen.findByRole("row", { name: "参考图" });
+    expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["savedPrompt", "image"]);
+    expect(currentDefinition().fields.filter((field) => field.source === "PROMPT")).toHaveLength(1);
+    expect(currentDefinition().fields.find((field) => field.key === "prompt")?.source).toBe("PARAMETER");
+  });
+});
 
 describe("RunningHubDefinitionEditor node field names", () => {
   it("accepts dotted open and fixed bindings without changing local parameter keys", async () => {
@@ -90,7 +179,7 @@ describe("RunningHubDefinitionEditor saved import JSON", () => {
     const requests: unknown[] = [];
     server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
       http.post("/api/v1/settings/media-connections/connection/runninghub/preview", async ({ request }) => {
-        requests.push(await request.json()); return HttpResponse.json({ definition: imported, warnings: [] });
+        requests.push(await request.json()); return HttpResponse.json({ definition: imported, warnings: [], recommendedFieldKeys: [] });
       }));
     await mount(false, stored);
     expect(requests).toEqual([]);

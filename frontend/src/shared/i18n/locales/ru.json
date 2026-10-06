@@ -1721,7 +1721,7 @@
   "settings.runningHub.numberInput": "числовое значение",
   "settings.runningHub.defaultOrFormat": "Значение / формат",
   "settings.runningHub.mappingTable": "Привязка параметров",
-  "settings.runningHub.mappingHint": "Выберите несколько узлов для совместного редактирования открытых полей и фиксированных параметров. Диапазоны, описания и условия видимости доступны в дополнительных настройках.",
+  "settings.runningHub.mappingHint": "Промпт и входы изображений, видео и аудио распознаются и открываются по умолчанию. Остальные параметры не выбраны: выберите узел и отметьте «Открыть». Диапазоны, описания и условия видимости доступны в дополнительных настройках.",
   "settings.runningHub.moreSettings": "Настройки",
   "settings.runningHub.mappingActions": "Действия",
   "settings.runningHub.organizeFields": "Организация полей",
@@ -1742,8 +1742,8 @@
   "settings.runningHub.nodeOption": "Узел {0}",
   "settings.runningHub.outputKindChangeHint": "Основной выход определяет тип возможности. После изменения выберите заново возможность по умолчанию для прежнего типа. Несовместимые оценки цены удаляются.",
   "settings.runningHub.selectNode": "Выбрать узел",
-  "settings.runningHub.selectNodeHint": "Сохраняются только открытые поля и фиксированные параметры выбранных узлов. При снятии выбора черновик этой правки сохраняется и восстанавливается при повторном выборе.",
-  "settings.runningHub.unselectedCondition": "Условие видимости поля «{0}» ссылается на поле невыбранного узла. Выберите этот узел снова или измените условие.",
+  "settings.runningHub.selectNodeHint": "Выберите узлы для просмотра параметров. Сохраняются только открытые поля и фиксированные параметры выбранных узлов. Снятие выбора сохраняет черновик для восстановления.",
+  "settings.runningHub.unselectedCondition": "Условие видимости поля «{0}» ссылается на неоткрытое поле. Выберите это поле и его узел или измените условие.",
   "settings.runningHub.selectNodePlaceholder": "Выберите узлы для настройки (можно несколько)",
   "settings.runningHub.selectAllNodes": "Выбрать все узлы",
   "settings.runningHub.clearNodeSelection": "Снять выбор",
@@ -2312,5 +2312,7 @@
   "image.resize.sourceSize": "Исходный размер: {0} × {1} px",
   "image.resize.submit": "Изменить размер",
   "image.resize.targetSize": "Результат: {0} × {1} px",
-  "image.resize.title": "Изменить размер"
+  "image.resize.title": "Изменить размер",
+  "settings.runningHub.exposeField": "Открыть",
+  "settings.runningHub.exposeFieldLabel": "Открыть параметр · {0}"
 }

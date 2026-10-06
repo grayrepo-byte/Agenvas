@@ -57,7 +57,7 @@ async function waitFor(fn, ...args) {
     if (await page(fn, ...args)) return;
     await pause();
   }
-  throw new Error(`Timed out waiting for the node picker fixture: ${await page(() => document.body.innerText)}`);
+  throw new Error(`Timed out waiting for the node picker fixture: ${await page(() => document.body.innerText.slice(0, 1200))}`);
 }
 
 async function pointerClick(selector) {
@@ -175,6 +175,11 @@ try {
     await waitFor(() => !document.querySelector('[role="menu"][aria-label="选择节点"]'));
     assert.equal(await page(() => Boolean(document.querySelector('[role="dialog"]'))),true,"Escape must close only the node menu");
     await waitFor(() => document.activeElement?.getAttribute("aria-label") === "选择节点");
+    const exposeSeed = "button[role='checkbox'][aria-label='暴露参数 · 随机种子']";
+    await page((selector) => document.querySelector(selector).scrollIntoView({ block: "center", inline: "center" }), exposeSeed);
+    await pointerClick(exposeSeed);
+    assert.equal(await page((selector) => document.querySelector(selector).getAttribute("aria-checked"), exposeSeed), "false", "An individual field can be excluded while its node stays selected");
+    assert.equal(await page(() => document.querySelector('[data-parameter-key="manualSeed"] input[required]').disabled), true, "Unexposed invalid fields must bypass native validation");
     const outputPicker = "button[role='combobox'][aria-label='输出节点']";
     await page((selector) => document.querySelector(selector).scrollIntoView({ block: "center", inline: "center" }), outputPicker);
     await pointerClick(outputPicker);
@@ -188,7 +193,7 @@ try {
     });
     assert.ok(bounds.top >= 0 && bounds.bottom <= viewport.height && bounds.left >= 0 && bounds.right <= viewport.width,
       "Output node list must fit in the viewport");
-    await page(() => document.querySelector('[role="option"][data-value="102"]').scrollIntoView({ block: "nearest" }));
+    await page(() => document.querySelector('[role="option"][data-value="102"]').scrollIntoView({ block: "end" }));
     await pointerClick('[role="option"][data-value="102"]');
     await waitFor((selector) => document.querySelector(selector).textContent.includes("节点 102 · 保存图片"), outputPicker);
     assert.equal(await page((selector) => document.querySelector(selector).getAttribute("value"), outputPicker), "102",
@@ -203,6 +208,7 @@ try {
     await waitFor(() => Boolean(document.querySelector('[data-testid="published-definition"]').textContent));
     const published = await page(() => JSON.parse(document.querySelector('[data-testid="published-definition"]').textContent));
     assert.equal(published.fields.length, 39, "Unchecked node must be excluded when saving");
+    assert.ok(published.fields.every((field) => field.key !== "manualSeed"), "Unexposed same-node fields must be excluded when saving");
     assert.ok(published.fields.every((field) => field.nodeId !== "40"), "Unchecked fields must not return after editing the output");
     assert.deepEqual(published.fixedBindings, [], "Unchecked fixed bindings must be excluded despite invalid drafts");
     assert.equal(published.outputs[0].nodeId, "102", "Input selection must preserve the selected output node");

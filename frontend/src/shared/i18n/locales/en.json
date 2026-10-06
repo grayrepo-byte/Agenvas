@@ -1721,7 +1721,7 @@
   "settings.runningHub.numberInput": "numerical value",
   "settings.runningHub.defaultOrFormat": "Default / resource format",
   "settings.runningHub.mappingTable": "Parameter mappings",
-  "settings.runningHub.mappingHint": "Select multiple nodes to edit their exposed fields and fixed parameters together. Expand more settings for ranges, descriptions and visibility conditions.",
+  "settings.runningHub.mappingHint": "Prompt and image, video, and audio inputs are detected and exposed by default. Other parameters start unchecked: select their node and check Expose. Expand more settings for ranges, descriptions, and visibility conditions.",
   "settings.runningHub.moreSettings": "More settings",
   "settings.runningHub.mappingActions": "Actions",
   "settings.runningHub.organizeFields": "Organize fields",
@@ -1742,8 +1742,8 @@
   "settings.runningHub.nodeOption": "Node {0}",
   "settings.runningHub.outputKindChangeHint": "The primary output sets the capability type. After changing it, reselect the default capability for the previous type. Incompatible price estimates are cleared.",
   "settings.runningHub.selectNode": "Select node",
-  "settings.runningHub.selectNodeHint": "Only exposed fields and fixed parameters of selected nodes are saved. Deselecting keeps this editing draft so you can restore it by selecting the node again.",
-  "settings.runningHub.unselectedCondition": "The visibility condition for “{0}” refers to a field on a deselected node. Select that node again or change the condition.",
+  "settings.runningHub.selectNodeHint": "Select nodes to inspect parameters. Only exposed fields and fixed parameters on selected nodes are saved. Deselecting keeps this editing draft for later restoration.",
+  "settings.runningHub.unselectedCondition": "The visibility condition for “{0}” refers to an unexposed field. Select that field and its node, or change the condition.",
   "settings.runningHub.selectNodePlaceholder": "Choose nodes to configure (multiple allowed)",
   "settings.runningHub.selectAllNodes": "Select all nodes",
   "settings.runningHub.clearNodeSelection": "Clear selection",
@@ -2312,5 +2312,7 @@
   "image.resize.sourceSize": "Original: {0} × {1} px",
   "image.resize.submit": "Resize image",
   "image.resize.targetSize": "Target: {0} × {1} px",
-  "image.resize.title": "Resize"
+  "image.resize.title": "Resize",
+  "settings.runningHub.exposeField": "Expose",
+  "settings.runningHub.exposeFieldLabel": "Expose parameter · {0}"
 }

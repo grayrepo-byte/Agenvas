@@ -419,7 +419,12 @@ class RunningHubPostgresIT {
             var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
                     new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "rh-admin"), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
             String url = "/api/v1/settings/media-connections/" + connection.id() + "/runninghub/preview";
-            String body = "{\"targetType\":\"AI_APP\",\"targetId\":\"123\",\"kind\":\"IMAGE_GENERATION\",\"source\":{\"nodeInfoList\":[{\"nodeId\":\"516\",\"fieldName\":\"sampling_mode.top_p\",\"fieldType\":\"NUMBER\",\"fieldValue\":0.9}]}}";
+            String body = """
+                {"targetType":"AI_APP","targetId":"123","kind":"IMAGE_GENERATION","source":{"nodeInfoList":[
+                  {"nodeId":"516","fieldName":"sampling_mode.top_p","fieldType":"NUMBER","fieldValue":0.9},
+                  {"nodeId":"1","nodeName":"Text","fieldName":"text","fieldType":"STRING","fieldValue":"synthetic scene"},
+                  {"nodeId":"2","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE"}]}}
+                """;
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body)
                     .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
@@ -428,9 +433,48 @@ class RunningHubPostgresIT {
             var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body).with(auth)
                     .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                     .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn().getResponse().getContentAsString();
-            assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(1);
+            assertThat(mapper.readTree(response).path("recommendedFieldKeys").isArray()).isTrue();
+            assertThat(mapper.readTree(response).has("targetName")).isTrue();
+            assertThat(mapper.readTree(response).path("targetName").isNull()).isTrue();
+            assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(0).asText()).isEqualTo("input2");
+            assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(1).asText()).isEqualTo("input3");
+            assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(3);
             assertThat(mapper.readTree(response).path("definition").path("fields").get(0).path("fieldName").asText())
                     .isEqualTo("sampling_mode.top_p");
+            var discoveryCalls = new AtomicInteger();
+            var graph = mapper.readTree("{\"1\":{\"class_type\":\"Text\",\"inputs\":{\"text\":\"synthetic scene\"}}}");
+            var workflowResponse = mapper.createObjectNode().put("code", 0);
+            workflowResponse.putObject("data").put("prompt", graph.toString());
+            for (var entry : java.util.Map.of(
+                    "/api/webapp/detail", "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic app \",\"inputNodes\":[{\"nodeId\":\"1\",\"fieldName\":\"text\",\"fieldType\":\"STRING\",\"fieldValue\":\"scene\"}],\"owner\":{\"name\":\"Private owner\"},\"curl\":\"fake-runninghub-key\"}}",
+                    "/api/openapi/getJsonApiFormat", workflowResponse.toString(),
+                    "/api/portal/workflow/detail", "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic workflow \",\"owner\":{\"name\":\"Private owner\"}}}").entrySet()) {
+                provider.server.createContext(entry.getKey(), exchange -> {
+                    discoveryCalls.incrementAndGet();
+                    if (!entry.getKey().equals("/api/openapi/getJsonApiFormat"))
+                        assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+                    byte[] bytes = entry.getValue().getBytes(StandardCharsets.UTF_8);
+                    exchange.sendResponseHeaders(200, bytes.length);
+                    exchange.getResponseBody().write(bytes);
+                    exchange.close();
+                });
+            }
+            for (String targetType : List.of("AI_APP", "WORKFLOW")) {
+                String automaticBody = mapper.createObjectNode().put("targetType", targetType).put("targetId", "123")
+                        .put("kind", "IMAGE_GENERATION").toString();
+                String automatic = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
+                        .contentType("application/json").content(automaticBody).with(auth)
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                        .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control", "no-store"))
+                        .andReturn().getResponse().getContentAsString();
+                var preview = mapper.readTree(automatic);
+                assertThat(preview.path("targetName").asText()).isEqualTo(targetType.equals("AI_APP") ? "Synthetic app" : "Synthetic workflow");
+                assertThat(preview.path("definition").path("fields")).hasSize(1);
+                assertThat(preview.path("definition").path("importSource").toString()).doesNotContain("Synthetic app", "Synthetic workflow");
+                assertThat(automatic).doesNotContain("Private owner", "fake-runninghub-key", "curl");
+            }
+            assertThat(discoveryCalls).hasValue(3);
             assertThat(response).doesNotContain("fake-runninghub-key"); assertThat(provider.submits).hasValue(0); assertThat(provider.queries).hasValue(0);
         }
     }
