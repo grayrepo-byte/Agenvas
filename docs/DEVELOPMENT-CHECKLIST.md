@@ -1963,3 +1963,10 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 18 项定向单元测试、43 项真实 PostgreSQL 集成测试、75 项相关前端测试通过，零失败/错误/跳过。覆盖本次失败与历史自动收尾、完整产物/检查点/策略保持、重复执行、新运行槽位保护、未决媒体与待审批、重试耗尽、停止/租约/公开流，以及旧快照尚为 BLOCKED 时前端自动恢复发送和保留草稿。模型/媒体均为明确 Mock 或合成响应，没有真实 Provider 调用。Maven verify 编译/打包、TypeScript、OpenAPI 重新生成、四语目录检查、相关 ESLint 与差异空白检查通过。
 - [x] 本地 server/web 镜像构建与更新完成，容器健康、readiness UP、运行镜像与新构建一致。只读核验原失败运行已由用户结束，新运行正常完成且四个视频任务均成功；原九张已读取图片版本及归档资产保持，任务/模型回合没有因部署增加。浏览器现有页面事件流连接正常、Agent 准备就绪、有发送输入入口且无手动结束按钮；未刷新或修改用户草稿。
 - [ ] 自动结束使用合成错误与真实 PostgreSQL 验证；真实模型故障、真实 Provider 专项测试、浏览器自动结束端到端和全量测试未运行。本轮没有主动触发真实模型/媒体调用。
+
+### 2026-10-06 移除 Agent 对话 Skill 来源提示
+
+- [x] 删除对话正文独立的“Skill 来源”折叠区及其专用 Run 查询，避免历史 Run 来源与当前输入框选择混淆；保留 Skill 选择入口、媒体审批和结果版本来源。同步规格 6.4、Skill 实施设计与 ADR 0005，无 API、迁移或依赖变化。
+- [x] AgentRunConversation、AgentChatCard、AgentSkillControls、CreativeSkillSource 四文件共 52 项定向 Vitest 测试通过；TypeScript、修改文件 ESLint 和差异空白检查通过。
+- [x] 合并 develop 复验：保留最新多 Skill 与 Agent 运行改动，验收清单追加冲突保留双方记录；上述四文件 57 项测试、TypeScript、修改文件 ESLint 和差异空白检查通过。
+- [ ] 全量测试、浏览器端到端、生产构建、后端测试、真实 Provider 调用及部署未运行。

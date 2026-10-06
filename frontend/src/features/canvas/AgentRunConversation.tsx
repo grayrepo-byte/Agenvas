@@ -1,6 +1,5 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getRun, listRunActions, listRunMediaApprovals, listRunTasks,
+import { listRunActions, listRunMediaApprovals, listRunTasks,
   type AgentMediaApproval, type AgentRun, type Task } from "../../shared/api/client";
 import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
@@ -11,7 +10,6 @@ import { AgentMarkdown } from "./AgentMarkdown";
 import { useRunAssistantStream } from "./agentRunStream";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
-import { CreativeSkillSource } from "../skills/CreativeSkillSource";
 import { taskErrorMessage } from "./taskErrorMessages";
 
 export const RUN_STATUS_LABELS: Record<AgentRun["status"], string> = {
@@ -62,9 +60,6 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
   showFailureNotice?: boolean;
 }) {
   useLocale();
-  const [sourceOpen,setSourceOpen] = useState(false);
-  const sourceRun = useQuery({queryKey:["run",projectId,run.id],queryFn:()=>getRun(projectId,run.id),enabled:sourceOpen && !run.contextSnapshot});
-  const skillSource = run.contextSnapshot?.creativeSkill ?? sourceRun.data?.contextSnapshot.creativeSkill;
   const tasks = useQuery({ queryKey: ["run-history-tasks", projectId, run.id],
     queryFn: () => listRunTasks(projectId, run.id) });
   const actions = useQuery({ queryKey: ["run-actions", projectId, run.id],
@@ -117,7 +112,6 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
   return <section aria-label={t("agent.run.title")} className="agent-run-conversation">
     <p className="agent-chat-run-date"><time dateTime={run.createdAt}>{new Date(run.createdAt).toLocaleString(getFormatLocale())}</time>{run.conversationTurn ? t("agent.run.roundSuffix", { "0": run.conversationTurn }) : ""}</p>
     <AgentChatMessage role="user">{run.instruction}</AgentChatMessage>
-    {skillSource ? <CreativeSkillSource source={skillSource} /> : !run.contextSnapshot ? <details onToggle={(event)=>setSourceOpen(event.currentTarget.open)}><summary>{t("skills.source")}</summary>{sourceRun.isFetching ? <CanvasLoadingState compact label={t("common.loading")} /> : sourceRun.isError ? <p role="alert">{sourceRun.error.message}<Button onClick={()=>void sourceRun.refetch()}>{t("common.retry")}</Button></p> : sourceRun.data ? <p>{t("skills.none")}</p> : null}</details> : null}
     {tasks.isPending || actions.isPending ? <CanvasLoadingState compact label={t("agent.run.messagesLoading")} /> : null}
     {tasks.error ? <div className="agent-chat-error" role="alert">{t("agent.run.messagesFailed")}<Button variant="ghost" className="node-action" onClick={() => void tasks.refetch()} type="button">{t("agent.chat.retryMessages")}</Button></div> : null}
     {actions.error ? <div className="agent-chat-error" role="alert">{t("agent.run.actionsFailed")}<Button variant="ghost" className="node-action" onClick={() => void actions.refetch()} type="button">{t("agent.run.retryActions")}</Button></div> : null}
