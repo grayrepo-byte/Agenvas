@@ -54,7 +54,7 @@ public class SkillRunService {
             List<SkillService.AssetResponse> assets, boolean installed) {}
     private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(SkillRunService.class);
     private static final Duration LEASE = Duration.ofMinutes(5);
-    public static final int MAX_SKILLS = 8;
+    public static final int MAX_SKILLS = 100;
     private static final int MAX_BINDINGS = 40;
     private static final int MAX_INPUTS = 14;
     private static final int MAX_KEY = 200;
@@ -79,7 +79,7 @@ public class SkillRunService {
 
     public BindingResponse getBinding(UUID owner, UUID project, UUID agent) {
         AgentInstance instance = agents.get(owner, project, agent);
-        return new BindingResponse(instance.version(), skills.getBindings(owner, project, agent).stream()
+        return new BindingResponse(instance.version(), skills.getAvailableBindings(owner, project, agent).stream()
                 .map(binding -> new VersionRef(binding.skillId(), binding.skillVersionId())).toList());
     }
 
@@ -123,6 +123,7 @@ public class SkillRunService {
                 return ProjectEventService.Change.unchanged(response(requireOperation(owner,project,prior.get().operationId())));
             }
             // A retained default binding may explicitly reuse its frozen version after trash.
+            skills.requireAvailable(owner, skill);
             boolean bound=skills.getBindings(owner,project,agent).stream().anyMatch(b -> b.skillId().equals(skill)&&b.skillVersionId().equals(version));
             SkillContent.Version bundle=bound?skills.getBundle(owner,skill,version):skills.requireSelectableVersion(owner,skill,version);
             Operation operation=operations.version(owner,project,version).orElse(null);
@@ -220,7 +221,7 @@ public class SkillRunService {
         return selectedChoices(owner, project, agent, selection).stream().map(choice -> {
             var version = selectedVersion(owner, project, agent, choice);
             var published = skills.getVersion(owner, version.skillId(), version.id());
-            boolean installed = operations.version(owner, project, version.id()).filter(Operation::registered).isPresent();
+            boolean installed = textOnlyBuiltin(owner, version) || operations.version(owner, project, version.id()).filter(Operation::registered).isPresent();
             return new Summary(version.skillId(), version.id(), skills.get(owner, version.skillId()).title(), version.versionNumber(), version.bundleHash(),
                     version.bundle().inputSlots(), version.bundle().resources(), published.assets(), installed);
         }).toList();
@@ -236,7 +237,7 @@ public class SkillRunService {
 
     private ObjectNode freezeSkill(UUID owner, UUID project, AgentInstance agent, UUID runId, Choice choice, ObjectNode context) {
         var version = selectedVersion(owner, project, agent.id(), choice);
-        Operation installed=operations.version(owner,project,version.id()).filter(Operation::registered)
+        Operation installed=textOnlyBuiltin(owner, version) ? null : operations.version(owner,project,version.id()).filter(Operation::registered)
                 .orElseThrow(() -> problem("SKILL_INSTALL_PENDING",HttpStatus.CONFLICT,ApiMessage.of("api.skill-run.skill-install-pending")));
         ObjectNode snapshot=mapper.createObjectNode().put("schemaVersion",SkillContent.SCHEMA_VERSION);
         snapshot.put("agentRunId",runId.toString()).put("skillId",version.skillId().toString()).put("skillVersionId",version.id().toString())
@@ -282,6 +283,10 @@ public class SkillRunService {
         if(bindings.size()>MAX_BINDINGS) throw problem("SKILL_CONTEXT_LIMIT",HttpStatus.UNPROCESSABLE_ENTITY,ApiMessage.of("api.skill-run.skill-context-limit"));
         return snapshot;
     }
+    /** Packaged text has no project media to archive; selection is immediately usable without an installation Task. */
+    private boolean textOnlyBuiltin(UUID owner, SkillContent.Version version) {
+        return version.bundle().assets().isEmpty() && skills.get(owner, version.skillId()).builtin();
+    }
 
     /** Export fixed source content and exact project mappings without private archive metadata. */
     public List<JsonNode> exportProject(UUID owner, UUID project) {
@@ -320,7 +325,7 @@ public class SkillRunService {
         if (mode == SelectionMode.NONE) return List.of();
         if (mode == SelectionMode.DEFAULT) {
             if (!requested.isEmpty()) throw problem("SKILL_SELECTION_INVALID", HttpStatus.BAD_REQUEST, ApiMessage.of("api.skill-run.skill-selection-invalid"));
-            return skills.getBindings(owner, project, agent).stream().map(binding -> new Choice(binding.skillId(), binding.skillVersionId(), List.of())).toList();
+            return skills.getAvailableBindings(owner, project, agent).stream().map(binding -> new Choice(binding.skillId(), binding.skillVersionId(), List.of())).toList();
         }
         if (requested.isEmpty()) throw problem("SKILL_SELECTION_INVALID", HttpStatus.BAD_REQUEST, ApiMessage.of("api.skill-run.skill-selection-invalid"));
         var ids = new HashSet<UUID>();
@@ -332,6 +337,7 @@ public class SkillRunService {
     }
 
     private SkillContent.Version selectedVersion(UUID owner, UUID project, UUID agent, Choice choice) {
+        skills.requireAvailable(owner, choice.skillId());
         boolean retained = skills.getBindings(owner, project, agent).stream().anyMatch(binding -> binding.skillId().equals(choice.skillId())
                 && binding.skillVersionId().equals(choice.skillVersionId()));
         return retained ? skills.getBundle(owner, choice.skillId(), choice.skillVersionId())

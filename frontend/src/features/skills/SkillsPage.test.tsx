@@ -10,7 +10,7 @@ import { server } from "../../test/server";
 import { SkillsPage } from "./SkillsPage";
 
 const SKILL_ID="skill-1",VERSION_ID="skill-version-1",NOW="2026-10-02T00:00:00Z";
-const SKILL:CreativeSkill={id:SKILL_ID,title:"温暖手绘",description:"",trashed:false,currentVersionId:VERSION_ID,version:1,createdAt:NOW,updatedAt:NOW};
+const SKILL:CreativeSkill={id:SKILL_ID,title:"温暖手绘",description:"",trashed:false,builtin:false,currentVersionId:VERSION_ID,version:1,createdAt:NOW,updatedAt:NOW};
 const INITIAL:SkillDraft={skillId:SKILL_ID,version:1,skillMd:"---\nname: warm-art\ndescription: A warm illustration guide.\n---\n# Method",outputKinds:["IMAGE"],inputSlots:[],resources:[],assets:[]};
 const VERSION:SkillVersion={id:VERSION_ID,skillId:SKILL_ID,versionNumber:1,name:"warm-art",description:"A warm illustration guide.",bundleHash:"synthetic-hash",skillMd:INITIAL.skillMd,outputKinds:["IMAGE"],inputSlots:[],resources:[],assets:[],createdAt:NOW};
 function Destination(){return <p data-testid="destination">{useLocation().search}</p>;}
@@ -25,6 +25,21 @@ beforeEach(()=>{server.use(
   http.get(`/api/v1/skills/${SKILL_ID}/versions/${VERSION_ID}`,()=>HttpResponse.json(VERSION)),
 );});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
+it("shows builtin content read-only with attribution and permits trying its fixed version",async()=>{
+  const builtin={...SKILL,title:"分集剧本 · short-drama-write",builtin:true};let draftReads=0;
+  server.use(http.get("/api/v1/skills",()=>HttpResponse.json({items:[builtin],nextCursor:null,total:1})),
+    http.get(`/api/v1/skills/${SKILL_ID}/draft`,()=>{draftReads++;return HttpResponse.json(INITIAL);}),
+    http.get("/api/v1/projects",()=>HttpResponse.json({items:[],nextCursor:null,total:0})));
+  mount();await userEvent.click(await screen.findByRole("button",{name:builtin.title}));
+  expect(await screen.findByText(/# Method/)).toHaveTextContent("name: warm-art");
+  expect(screen.getByRole("link",{name:"Drama Skills · MIT"})).toHaveAttribute("href","https://github.com/zenstory-ai/drama-skills");
+  expect(screen.queryByRole("button",{name:"发布版本"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"移入回收站"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("textbox",{name:"Skill 正文"})).not.toBeInTheDocument();
+  expect(draftReads).toBe(0);
+  await userEvent.click(screen.getByRole("button",{name:"在 Agent 中试用"}));
+  expect(await screen.findByRole("dialog",{name:"在 Agent 中试用"})).toBeVisible();
+});
 async function openEditor(){mount();await userEvent.click(await screen.findByRole("button",{name:"温暖手绘"}));return screen.findByRole("textbox",{name:"Skill 正文"});}
 describe("Skill editing and publishing",()=>{
   it("moves a saved Skill to trash, lists it there, and restores editing with metadata CAS",async()=>{

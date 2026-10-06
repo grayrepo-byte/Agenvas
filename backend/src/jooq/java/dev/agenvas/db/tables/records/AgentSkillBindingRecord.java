@@ -111,7 +111,7 @@ public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindi
 
     /**
      * Setter for <code>public.agent_skill_binding.position</code>. Zero-based
-     * position in the Agent default Skill selection; at most eight
+     * position in the Agent default Skill selection; at most one hundred
      */
     public void setPosition(Integer value) {
         set(6, value);
@@ -119,7 +119,7 @@ public class AgentSkillBindingRecord extends UpdatableRecordImpl<AgentSkillBindi
 
     /**
      * Getter for <code>public.agent_skill_binding.position</code>. Zero-based
-     * position in the Agent default Skill selection; at most eight
+     * position in the Agent default Skill selection; at most one hundred
      */
     public Integer getPosition() {
         return (Integer) get(6);

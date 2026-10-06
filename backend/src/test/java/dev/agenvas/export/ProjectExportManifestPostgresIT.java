@@ -146,8 +146,12 @@ class ProjectExportManifestPostgresIT {
         var publication = skills.publish(owner.userId(), skill.id(), firstDraft.version(), "manifest-skill-publish");
         assertThat(skills.processNext()).isTrue();
         UUID skillVersionId = skills.getOperation(owner.userId(), publication.id()).resultVersionId();
+        var builtin = skills.list(owner.userId(), "short-drama-write", false, null).items().getFirst();
+        var builtinVersion = skills.getVersion(owner.userId(), builtin.id(), builtin.currentVersionId());
         var agent = agents.create(owner.userId(), project.id(), "Export Creator", "Use the selected method", List.of());
-        skillRuns.saveBinding(owner.userId(), project.id(), agent.id(), agent.version(), List.of(new SkillRunService.VersionRef(skill.id(), skillVersionId)), "manifest-agent-binding");
+        skillRuns.saveBinding(owner.userId(), project.id(), agent.id(), agent.version(), List.of(
+                new SkillRunService.VersionRef(skill.id(), skillVersionId),
+                new SkillRunService.VersionRef(builtin.id(), builtin.currentVersionId())), "manifest-agent-binding");
         skillRuns.install(owner.userId(), project.id(), agent.id(), skill.id(), skillVersionId, "manifest-skill-install");
         assertThat(skillRuns.processNext()).isTrue();
         var secondDraft = skills.saveDraft(owner.userId(), skill.id(), firstDraft.version(),
@@ -210,7 +214,14 @@ class ProjectExportManifestPostgresIT {
         assertThat(targetCard.path("mediaDraft").path("styleId").asText()).isEqualTo(style.id().toString());
         assertThat(targetCard.path("mediaDraft").path("style").path("promptSuffix").asText())
                 .isEqualTo("Soft paper texture");
-        assertThat(manifest.path("creativeSkills").size()).isEqualTo(2);
+        assertThat(manifest.path("creativeSkills").size()).isEqualTo(3);
+        JsonNode exportedBuiltin = findSkillVersion(manifest.path("creativeSkills"), builtin.currentVersionId());
+        assertThat(exportedBuiltin.path("version").path("skillMd").asText()).isEqualTo(builtinVersion.skillMd());
+        assertThat(exportedBuiltin.path("version").path("resources")).hasSize(builtinVersion.resources().size());
+        assertThat(exportedBuiltin.path("version").path("assets")).isEmpty();
+        assertThat(exportedBuiltin.path("mapping").path("assets")).isEmpty();
+        assertSkillBinding(exportedBuiltin, agent.id(), builtin.id(), builtin.currentVersionId());
+        assertThat(exportedBuiltin.path("agentBindings").path(0).path("position").asInt()).isEqualTo(1);
         JsonNode installedSkill = findSkillVersion(manifest.path("creativeSkills"), skillVersionId);
         assertThat(installedSkill.path("version").path("skillMd").asText()).isEqualTo(firstDraft.skillMd());
         assertThat(installedSkill.path("version").path("resources").get(0).path("content").asText())
@@ -233,6 +244,7 @@ class ProjectExportManifestPostgresIT {
         assertThat(uninstalledSkill.path("mapping").path("assets").isArray()).isTrue();
         assertThat(uninstalledSkill.path("mapping").path("assets").isEmpty()).isTrue();
         for (JsonNode exportedSkill : manifest.path("creativeSkills")) {
+            if (exportedSkill == exportedBuiltin) continue;
             assertThat(exportedSkill.path("version").path("assets").size()).isEqualTo(1);
             assertThat(exportedSkill.path("version").path("assets").get(0).has("contentUrl")).isFalse();
             assertThat(exportedSkill.path("version").path("assets").get(0).has("thumbnailUrl")).isFalse();

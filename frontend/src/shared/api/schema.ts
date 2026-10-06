@@ -5361,6 +5361,8 @@ export interface components {
             title: string;
             description: string;
             trashed: boolean;
+            /** @description Packaged read-only Skill. It can be selected and tried */
+            builtin: boolean;
             /** Format: uuid */
             currentVersionId: string | null;
             /** Format: int64 */
@@ -5395,6 +5397,12 @@ export interface components {
             path: string;
             content: string;
             contentHash?: string;
+        };
+        /** @description Immutable text attachment. Builtin Skills also include JSON, JSONL and YAML templates; files are never executed. */
+        SkillVersionResource: {
+            path: string;
+            content: string;
+            contentHash: string;
         };
         SkillDraftAsset: {
             alias: string;
@@ -5470,7 +5478,7 @@ export interface components {
             skillMd: string;
             outputKinds: components["schemas"]["ArtifactKind"][];
             inputSlots: components["schemas"]["SkillInputSlot"][];
-            resources: components["schemas"]["SkillResource"][];
+            resources: components["schemas"]["SkillVersionResource"][];
             assets: components["schemas"]["SkillPublishedAsset"][];
             /** Format: date-time */
             createdAt: string;
@@ -5549,7 +5557,7 @@ export interface components {
             skillVersionId: string;
             inputs: components["schemas"]["SkillRunInput"][];
         };
-        /** @description Ordered available Skill catalogue. NONE and DEFAULT use an empty list; VERSIONS selects one to eight distinct Skills, each pinned to one version. Selection does not imply activation. */
+        /** @description Ordered available Skill catalogue. NONE and DEFAULT use an empty list; VERSIONS selects one to one hundred distinct Skills, each pinned to one version. Selection does not imply activation. */
         SkillSelection: {
             /** @enum {string} */
             mode: "DEFAULT" | "NONE" | "VERSIONS";
@@ -5572,7 +5580,7 @@ export interface components {
             versionNumber: number;
             bundleHash: string;
             inputSlots: components["schemas"]["SkillInputSlot"][];
-            resources: components["schemas"]["SkillResource"][];
+            resources: components["schemas"]["SkillVersionResource"][];
             assets: components["schemas"]["SkillPublishedAsset"][];
             installed: boolean;
         };

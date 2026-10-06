@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import {http,HttpResponse} from "msw";
 import {afterEach,expect,it,vi} from "vitest";
 import {createQueryClient} from "../../app/queryClient";
-import type {Agent,SaveAgentSkillBindingRequest} from "../../shared/api/client";
+import type {Agent,SaveAgentSkillBindingRequest,SkillSelection} from "../../shared/api/client";
 import {server} from "../../test/server";
 import {AgentRunSkillControls,AgentSkillSettings,useAgentSkillSelection} from "./AgentSkillControls";
 
@@ -35,9 +35,9 @@ it("keeps the edit's original CAS baseline when SSE brings a newer Agent configu
 
 const skill={id:"skill-1",title:"温暖手绘",description:"柔和线条与暖色",currentVersionId:"version-1",trashed:false,version:1,createdAt:agent.createdAt,updatedAt:agent.updatedAt};
 const skillVersion={id:"version-1",skillId:skill.id,versionNumber:1,name:"warm-art",description:skill.description,bundleHash:"synthetic-hash",skillMd:"# Synthetic method",outputKinds:["IMAGE"],inputSlots:[],resources:[],assets:[],createdAt:agent.createdAt};
-function showRunPicker(value=agent) {
+function showRunPicker(value=agent,initial?:SkillSelection) {
   const onChanged=vi.fn();
-  function Subject(){const state=useAgentSkillSelection(value.projectId,value);return <>
+  function Subject(){const state=useAgentSkillSelection(value.projectId,value,initial);return <>
     <output aria-label="active selection">{JSON.stringify(state.selection)}</output>
     <AgentRunSkillControls projectId={value.projectId} agent={value} state={state} onChanged={onChanged}/>
   </>;}
@@ -153,16 +153,35 @@ it("keeps multiple fixed versions selected and toggles one without clearing the 
   expect(onChanged).toHaveBeenCalledTimes(2);
 });
 
-it("bounds selection to eight Skills and lets deselection free a slot",async()=>{
-  const items=Array.from({length:9},(_,index)=>({...skill,id:`skill-${index}`,title:`Method ${index}`,currentVersionId:`version-${index}`}));
+it("allows the hundredth Skill, blocks the next, and lets deselection free a slot",async()=>{
+  const items=Array.from({length:101},(_,index)=>({...skill,id:`skill-${index}`,title:`Method ${index}`,currentVersionId:`version-${index}`}));
   server.use(http.get("/api/v1/skills",()=>HttpResponse.json({items,nextCursor:null,total:items.length})),
     http.get("/api/v1/skills/:skillId/versions",({params})=>HttpResponse.json([{...skillVersion,id:`version-${String(params.skillId).split("-")[1]}`,skillId:params.skillId}])),
     http.get("/api/v1/skills/:skillId/versions/:versionId",({params})=>HttpResponse.json({...skillVersion,id:params.versionId,skillId:params.skillId})));
-  showRunPicker();const user=userEvent.setup();await user.click(screen.getByRole("button",{name:"选择 Skill"}));const dialog=await screen.findByRole("dialog");
-  for(const item of items.slice(0,8))await user.click(await within(dialog).findByRole("button",{name:item.title}));
-  expect(within(dialog).getByRole("button",{name:items[8]!.title})).toBeDisabled();
+  showRunPicker(agent,{mode:"VERSIONS",skills:items.slice(0,99).map((item)=>({skillId:item.id,skillVersionId:item.currentVersionId,inputs:[]}))});
+  const user=userEvent.setup();await user.click(screen.getByRole("button",{name:"选择 Skill"}));const dialog=await screen.findByRole("dialog");
+  expect(within(dialog).getByText("已选 99 / 100 个 Skill")).toBeVisible();
+  await user.click(await within(dialog).findByRole("button",{name:items[99]!.title}));
+  expect(within(dialog).getByRole("button",{name:items[100]!.title})).toBeDisabled();
   await user.click(within(dialog).getByRole("button",{name:items[0]!.title}));
-  expect(within(dialog).getByRole("button",{name:items[8]!.title})).toBeEnabled();
-  await user.click(within(dialog).getByRole("button",{name:items[8]!.title}));
-  expect(within(dialog).getByText("已选 8 / 8 个 Skill")).toBeVisible();
+  expect(within(dialog).getByRole("button",{name:items[100]!.title})).toBeEnabled();
+  await user.click(within(dialog).getByRole("button",{name:items[100]!.title}));
+  expect(within(dialog).getByText("已选 100 / 100 个 Skill")).toBeVisible();
+},20000);
+
+it("selects a builtin Skill alongside a personal Skill",async()=>{
+  const builtin={...skill,id:"builtin-write",title:"分集剧本 · short-drama-write",builtin:true,currentVersionId:"builtin-version"};
+  server.use(...publishedSkillHandlers());
+  server.use(
+    http.get("/api/v1/skills",()=>HttpResponse.json({items:[builtin,skill],nextCursor:null,total:2})),
+    http.get("/api/v1/skills/builtin-write/versions",()=>HttpResponse.json([{...skillVersion,id:"builtin-version",skillId:builtin.id}])),
+    http.get("/api/v1/skills/builtin-write/versions/builtin-version",()=>HttpResponse.json({...skillVersion,id:"builtin-version",skillId:builtin.id})));
+  showRunPicker();const user=userEvent.setup();await user.click(screen.getByRole("button",{name:"选择 Skill"}));
+  const dialog=await screen.findByRole("dialog");const button=await within(dialog).findByRole("button",{name:builtin.title});
+  expect(within(button).getByText("内置")).toBeVisible();await user.click(button);
+  await user.click(within(dialog).getByRole("button",{name:skill.title}));
+  await waitFor(()=>expect(within(dialog).getByRole("button",{name:"使用 Skill"})).toBeEnabled());
+  await user.click(within(dialog).getByRole("button",{name:"使用 Skill"}));
+  expect(screen.getByLabelText("active selection")).toHaveTextContent('"skillId":"builtin-write"');
+  expect(screen.getByLabelText("active selection")).toHaveTextContent('"skillId":"skill-1"');
 });

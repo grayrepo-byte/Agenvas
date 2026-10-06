@@ -207,6 +207,173 @@ class SkillRunPostgresIT {
         assertThat(runs.get(owner.userId(), scenario.project().id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
     }
 
+    @Test void bundledSkillsCanRunTogetherImmediatelyAndKeepProgressiveLoading() throws Exception {
+        var scenario = scenario(false);
+        var catalogue = skills.list(owner.userId(), "short-drama", false, null).items();
+        assertThat(catalogue).hasSize(8);
+        var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, catalogue.stream()
+                .map(skill -> new SkillRunService.Choice(skill.id(), skill.currentVersionId(), List.of())).toList());
+        assertThat(skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(), selection))
+                .hasSize(8).allMatch(SkillRunService.Summary::installed);
+        AgentRun run = createRun(scenario, scenario.agent().version(), "builtin-run", selection).run();
+        var snapshots = run.contextSnapshot().path("creativeSkills");
+        assertThat(snapshots).hasSize(8);
+        var writing = catalogue.stream().filter(skill -> skill.title().endsWith("short-drama-write")).findFirst().orElseThrow();
+        var version = skills.getVersion(owner.userId(), writing.id(), writing.currentVersionId());
+        assertThat(initialContext.assemble(owner.userId(), scenario.project().id(), run.id()))
+                .allSatisfy(message -> assertThat(message.getText()).doesNotContain(version.skillMd(), "Agenvas 创作卡片工作流"));
+        var resource = version.resources().getFirst();
+        gateway.prepare(run.id(), List.of(
+                toolCall("load-builtin", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", version.id()))),
+                toolCall("read-builtin-template", "read_skill_resource", mapper.writeValueAsString(Map.of("skillVersionId", version.id(), "path", resource.path()))),
+                new AssistantMessage("Synthetic screenplay prepared without external calls.")));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(reader.skill(runs.get(owner.userId(), scenario.project().id(), run.id()), UUID.randomUUID(),
+                mapper.writeValueAsString(Map.of("skillVersionId", version.id()))).path("data").path("content").asText()).isEqualTo(version.skillMd());
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(reader.skillResource(runs.get(owner.userId(), scenario.project().id(), run.id()), UUID.randomUUID(),
+                mapper.writeValueAsString(Map.of("skillVersionId", version.id(), "path", resource.path(), "limit", 4000)))
+                .path("data").path("content").asText()).isEqualTo(resource.content().substring(0, resource.content().offsetByCodePoints(0, Math.min(4000, resource.content().codePointCount(0, resource.content().length())))));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(runs.get(owner.userId(), scenario.project().id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+    }
+
+    @Test void retiredBuiltinBindingsCannotStartNewWorkButFrozenRunsAndExportsRemainReadable() throws Exception {
+        var scenario = scenario(false);
+        var retired = publishedSkill(scenario, false, SkillContent.Usage.PROVIDER_REFERENCE, false);
+        var available = skills.list(owner.userId(), "short-drama-write", false, null).items().getFirst();
+        var refs = List.of(new SkillRunService.VersionRef(retired.skillId(), retired.versionId()),
+                new SkillRunService.VersionRef(available.id(), available.currentVersionId()));
+        var saved = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), refs, "retired-default");
+        skillRuns.install(owner.userId(), scenario.project().id(), scenario.agent().id(), retired.skillId(), retired.versionId(), "retired-original-install");
+        assertThat(skillRuns.processNext()).isTrue();
+        AgentRun frozen = createRun(scenario, saved.agentVersion(), "retired-frozen-run", null).run();
+        jdbc.sql("update creative_skill set builtin_key='drama-skills/short-drama-edit' where id=:id")
+                .param("id", retired.skillId()).update();
+        assertThat(skillRuns.getBinding(owner.userId(), scenario.project().id(), scenario.agent().id()).skills()).containsExactly(refs.getLast());
+        assertThat(skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(), null))
+                .extracting(SkillRunService.Summary::skillId).containsExactly(available.id());
+        var explicit = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS,
+                List.of(new SkillRunService.Choice(retired.skillId(), retired.versionId(), List.of())));
+        assertProblem("SKILL_NOT_FOUND", () -> skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(), explicit));
+        assertProblem("SKILL_NOT_FOUND", () -> skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), saved.agentVersion(), refs, "retired-rebind"));
+        assertProblem("SKILL_NOT_FOUND", () -> skillRuns.install(owner.userId(), scenario.project().id(), scenario.agent().id(), retired.skillId(), retired.versionId(), "retired-new-install"));
+        assertThat(skills.getBindings(owner.userId(), scenario.project().id(), scenario.agent().id())).hasSize(2);
+        assertThat(exports.build(owner.userId(), scenario.project().id()).creativeSkills()).hasSize(2);
+        assertSameJson(runs.get(owner.userId(), scenario.project().id(), frozen.id()).contextSnapshot(), frozen.contextSnapshot());
+        gateway.prepare(frozen.id(), List.of(
+                toolCall("load-retired", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", retired.versionId()))),
+                toolCall("read-retired", "read_skill_resource", mapper.writeValueAsString(Map.of("skillVersionId", retired.versionId(), "path", "references/style-guide.md"))),
+                new AssistantMessage("Synthetic historical creative work completed.")));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(reader.skill(runs.get(owner.userId(), scenario.project().id(), frozen.id()), UUID.randomUUID(),
+                mapper.writeValueAsString(Map.of("skillVersionId", retired.versionId()))).path("data").path("content").asText()).isEqualTo(retired.body());
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(reader.skillResource(runs.get(owner.userId(), scenario.project().id(), frozen.id()), UUID.randomUUID(),
+                mapper.writeValueAsString(Map.of("skillVersionId", retired.versionId(), "path", "references/style-guide.md")))
+                .path("data").path("content").asText()).isEqualTo(retired.resourceText());
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(runs.get(owner.userId(), scenario.project().id(), frozen.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+    }
+
+    @Test void nativeNovelWorkflowCreatesChapterAndCoverageCardsAndRevisesWithoutChangingPriorVersions() throws Exception {
+        var project = projects.create(owner.userId(), "Native novel cards", Project.AspectRatio.LANDSCAPE_16_9);
+        String original = "第一章 旧钥匙\n阿青找到钥匙，把它交给小林。\n第二章 门后的信\n小林打开门，发现一封未寄出的信。";
+        var source = artifacts.create(owner.userId(), project.id(), Artifact.Kind.TEXT, "原文 · 两章合成小说",
+                mapper.valueToTree(Map.of("format", "PLAIN_TEXT", "text", original)));
+        UUID sourceVersion = source.resourceDefaultVersion().id();
+        var agent = agents.create(owner.userId(), project.id(), "原著分析", "使用卡片保存章节分析与覆盖范围", List.of(
+                new AgentInstanceService.BindingInput(source.artifact().id(), sourceVersion)));
+        canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceAgent(UUID.randomUUID(), agent.id(),
+                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"), new BigDecimal("420"), 0, null, false),
+                new CanvasService.PlaceArtifact(UUID.randomUUID(), source.artifact().id(), new BigDecimal("400"), BigDecimal.ZERO,
+                        new BigDecimal("320"), new BigDecimal("420"), 0, null, false)));
+        var skill = skills.list(owner.userId(), "short-drama-novel-analyze", false, null).items().getFirst();
+        var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS,
+                List.of(new SkillRunService.Choice(skill.id(), skill.currentVersionId(), List.of())));
+        AgentRun run = runs.create(owner.userId(), project.id(), agent.id(), "分析这两章，保存章节索引、逐章分析和覆盖检查卡", "native-novel-run",
+                agent.version(), List.of(), null, null, null, null, null, selection).run();
+        String indexText = "# 原著章节索引\n范围：仅提供两章\n源 artifactId：" + source.artifact().id() + "\n源 versionId：" + sourceVersion
+                + "\n| sequence | 标题 | 行范围 |\n| 1 | 第一章 旧钥匙 | 1–2 |\n| 2 | 第二章 门后的信 | 3–4 |";
+        gateway.prepare(run.id(), List.of(
+                toolCall("native-load-main", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", skill.currentVersionId()))),
+                toolCall("native-read-guide", "read_skill_resource", mapper.writeValueAsString(Map.of("skillVersionId", skill.currentVersionId(), "path", "references/agenvas-cards.md"))),
+                toolCall("native-read-templates", "read_skill_resource", mapper.writeValueAsString(Map.of("skillVersionId", skill.currentVersionId(), "path", "assets/card-templates.md"))),
+                toolCall("native-read-source", "read_artifacts", mapper.writeValueAsString(Map.of("versionIds", List.of(sourceVersion)))),
+                toolCall("native-create-index", "create_text", mapper.writeValueAsString(Map.of("title", "原著章节索引", "format", "MARKDOWN", "text", indexText)))));
+        for (int turn = 0; turn < 5; turn++) assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        var index = createdTextCard(project.id(), "原著章节索引");
+        UUID indexVersion = index.resourceDefaultVersion().id();
+        String firstAnalysis = "# 原著分析 ch-1\nsequence：1\n索引 versionId：" + indexVersion + "\n原文 versionId：" + sourceVersion
+                + "\n行范围：1–2\n## 概要\n钥匙的保管权发生变化。\n## 情节点\nP1 行动 | 阿青把钥匙交给小林 | 涉及：阿青、小林、钥匙 | 功能：小林获得开门条件 | 来源：第2行"
+                + "\n## 载体记录\n可见行动：钥匙交接。\n## 出场称谓\n阿青、小林。\n## 未决项\n钥匙对应的门尚未明确。";
+        gateway.prepare(run.id(), List.of(toolCall("native-create-first", "create_text", mapper.writeValueAsString(Map.of(
+                "title", "原著分析 ch-1", "format", "MARKDOWN", "text", firstAnalysis)))));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        var first = createdTextCard(project.id(), "原著分析 ch-1");
+        String partial = "# 原著分析覆盖检查\n核对方式：Agent 内容核对\n索引 versionId：" + indexVersion
+                + "\nsequence 1：" + first.resourceDefaultVersion().id() + "，完成\n缺章：2\n已核对：1/2\n下一步：分析 sequence 2";
+        gateway.prepare(run.id(), List.of(toolCall("native-create-coverage", "create_text", mapper.writeValueAsString(Map.of(
+                "title", "原著分析覆盖检查", "format", "MARKDOWN", "text", partial)))));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        var coverage = createdTextCard(project.id(), "原著分析覆盖检查");
+        UUID partialVersion = coverage.resourceDefaultVersion().id();
+        String secondAnalysis = "# 原著分析 ch-2\nsequence：2\n索引 versionId：" + indexVersion + "\n原文 versionId：" + sourceVersion
+                + "\n行范围：3–4\n## 概要\n门后的信带来新的未决信息。\n## 情节点\nP1 行动 | 小林打开门发现未寄的信 | 涉及：小林、门、信 | 功能：形成新的信息缺口 | 来源：第4行"
+                + "\n## 载体记录\n可见行动：开门见信。\n## 出场称谓\n小林。\n## 未决项\n信件内容未明确。";
+        gateway.prepare(run.id(), List.of(toolCall("native-create-second", "create_text", mapper.writeValueAsString(Map.of(
+                "title", "原著分析 ch-2", "format", "MARKDOWN", "text", secondAnalysis)))));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        var second = createdTextCard(project.id(), "原著分析 ch-2");
+        String complete = "# 原著分析覆盖检查\n范围：提供的两章\n核对方式：Agent 内容核对\n索引 versionId：" + indexVersion
+                + "\nsequence 1：" + first.resourceDefaultVersion().id() + "，完成\nsequence 2：" + second.resourceDefaultVersion().id()
+                + "，完成\n已核对：2/2\n缺章：无\n重复：无\n来源变化：无\n未核对：无";
+        gateway.prepare(run.id(), List.of(
+                toolCall("native-revise-coverage", "revise_artifact", mapper.writeValueAsString(Map.of("artifactId", coverage.artifact().id(),
+                        "expectedVersion", coverage.artifact().version(), "content", Map.of("format", "MARKDOWN", "text", complete)))),
+                new AssistantMessage("已保存两章索引、分析和覆盖卡，范围仅限提供的两章。")));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        var updated = artifacts.get(owner.userId(), project.id(), coverage.artifact().id());
+        assertThat(updated.resourceDefaultVersion().id()).isNotEqualTo(partialVersion);
+        assertThat(updated.resourceDefaultVersion().content().path("text").asText()).isEqualTo(complete);
+        assertThat(artifacts.requireVersion(owner.userId(), project.id(), coverage.artifact().id(), partialVersion).content().path("text").asText()).isEqualTo(partial);
+        assertThat(artifacts.requireVersion(owner.userId(), project.id(), source.artifact().id(), sourceVersion).content().path("text").asText()).isEqualTo(original);
+        assertThat(canvas.list(owner.userId(), project.id()).stream().filter(item -> item.item().subjectType() == dev.agenvas.canvas.domain.CanvasItem.SubjectType.ARTIFACT))
+                .hasSize(5).extracting(item -> item.item().title()).contains("原著章节索引", "原著分析 ch-1", "原著分析 ch-2", "原著分析覆盖检查");
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+    }
+
+    private ArtifactService.ArtifactView createdTextCard(UUID project, String title) {
+        UUID id = jdbc.sql("select id from artifact where project_id=:project and title=:title").param("project", project).param("title", title).query(UUID.class).single();
+        return artifacts.get(owner.userId(), project, id);
+    }
+
+    @Test void defaultBindingsAndPreflightAcceptOneHundredDistinctSkillsAndRejectTheNext() throws Exception {
+        var scenario = scenario(false);
+        var bundle = new SkillContent.Bundle(1, "synthetic-method", "Synthetic text method", "---\nname: synthetic-method\ndescription: Synthetic text method\n---\nCreate text.",
+                List.of(Artifact.Kind.TEXT), List.of(), List.of(), List.of());
+        var refs = new java.util.ArrayList<SkillRunService.VersionRef>();
+        for (int index = 0; index < 101; index++) {
+            UUID id = UUID.randomUUID(), version = UUID.randomUUID();
+            jdbc.sql("insert into creative_skill(id,owner_id,title,current_version_id,created_at,updated_at) values (:id,:owner,:title,:version,now(),now())")
+                    .param("id", id).param("owner", owner.userId()).param("title", "Synthetic method " + index).param("version", version).update();
+            jdbc.sql("insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (:version,:owner,:id,1,repeat('0',64),cast(:bundle as jsonb),now())")
+                    .param("version", version).param("owner", owner.userId()).param("id", id).param("bundle", mapper.writeValueAsString(bundle)).update();
+            refs.add(new SkillRunService.VersionRef(id, version));
+        }
+        var saved = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), refs.subList(0, 100), "hundred-defaults");
+        assertThat(saved.skills()).containsExactlyElementsOf(refs.subList(0, 100));
+        assertThat(skillRuns.getBinding(owner.userId(), scenario.project().id(), scenario.agent().id()).skills()).hasSize(100);
+        assertThat(skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(), null)).hasSize(100);
+        assertProblem("SKILL_SELECTION_INVALID", () -> skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), saved.agentVersion(), refs, "too-many-defaults"));
+        var choices = refs.stream().map(ref -> new SkillRunService.Choice(ref.skillId(), ref.skillVersionId(), List.of())).toList();
+        assertThat(skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(),
+                new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, choices.subList(0, 100)))).hasSize(100);
+        assertProblem("SKILL_SELECTION_INVALID", () -> skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(),
+                new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, choices)));
+    }
+
     @Test void selectionAndLocalInstallationRequireAnAgentAndDoNotStartGeneration() throws Exception {
         var scenario = scenario(true);
         var skill = publishedSkill(scenario, true);

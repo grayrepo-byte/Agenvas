@@ -1,0 +1,177 @@
+{
+  "repository": "https://github.com/zenstory-ai/drama-skills",
+  "revision": "c2426e03c0e7722bebcc6a488b6658dc38c65ac3",
+  "version": "0.8.1",
+  "license": "MIT",
+  "skills": [
+    {
+      "name": "short-drama-assets",
+      "title": "视觉资产设定 · short-drama-assets",
+      "description": "从剧本卡拆出角色、造型、场景、道具和连续性状态，产出视觉设定卡。用于资产拆解、复用与变体判断、时代锚点或跨集状态整理。",
+      "resources": [
+        "references/agenvas-cards.md",
+        "assets/card-templates.md",
+        "references/asset-review-checklist.md",
+        "references/character-and-look.md",
+        "references/continuity-delta.md",
+        "references/continuity-lock.md",
+        "references/era-anchors.md",
+        "references/identity-vs-variant.md",
+        "references/location-and-view.md",
+        "references/occurrence-extraction.md",
+        "references/prop-and-state.md",
+        "references/stage-contract.md",
+        "references/voice-direction.md"
+      ]
+    },
+    {
+      "name": "short-drama-develop",
+      "title": "故事开发 · short-drama-develop",
+      "description": "把想法、原著分析或多集剧本文字卡发展成创作简报、改编方案、故事引擎与分集规划卡。用于确定戏剧方向、开发短剧或续接已有系列。",
+      "resources": [
+        "references/agenvas-cards.md",
+        "assets/card-templates.md",
+        "references/adaptation-craft.md",
+        "references/creative-reference-intake.md",
+        "references/director-brief-craft.md",
+        "references/episode-design.md",
+        "references/genre-and-hook-playbook.md",
+        "references/genre-cards.md",
+        "references/genre-cards/亲子隐秘.md",
+        "references/genre-cards/仙侠修真.md",
+        "references/genre-cards/动作任务.md",
+        "references/genre-cards/古装权谋.md",
+        "references/genre-cards/复仇打脸.md",
+        "references/genre-cards/家庭关系.md",
+        "references/genre-cards/悬疑规则.md",
+        "references/genre-cards/生活流.md",
+        "references/genre-cards/破镜重圆.md",
+        "references/genre-cards/系统流.md",
+        "references/genre-cards/职场喜剧.md",
+        "references/genre-cards/豪门婚恋.md",
+        "references/genre-cards/身份错位.md",
+        "references/genre-cards/逆袭.md",
+        "references/genre-cards/重生穿越.md",
+        "references/mechanism-loop.md",
+        "references/multi-episode-intake.md",
+        "references/premise-devices.md",
+        "references/reveal-reversal-payoff.md",
+        "references/serial-character-and-memory.md",
+        "references/stage-contract.md",
+        "references/story-craft.md"
+      ]
+    },
+    {
+      "name": "short-drama-image-prompts",
+      "title": "图片提示词 · short-drama-image-prompts",
+      "description": "依据视觉设定和实际参考图卡编写图片提示词卡。用于角色板、场景板、道具板、状态变体、风格帧或局部编辑；生成另走现有媒体审批。",
+      "resources": [
+        "references/agenvas-cards.md",
+        "assets/card-templates.md",
+        "references/character-and-look.md",
+        "references/common-recipe.md",
+        "references/edit-and-revision.md",
+        "references/location-plate.md",
+        "references/look-and-state-variant.md",
+        "references/lookdev-frame.md",
+        "references/production-sheet-recipes.md",
+        "references/prop-plate.md",
+        "references/review-and-fixtures.md",
+        "references/stage-contract.md"
+      ]
+    },
+    {
+      "name": "short-drama-novel-analyze",
+      "title": "原著分析 · short-drama-novel-analyze",
+      "description": "分析已绑定的小说或长篇文字卡，建立章节索引、改编快评、逐章分析、覆盖检查、聚合与分集候选卡。用于拆书、评估改编价值或从进度卡继续分析。",
+      "resources": [
+        "references/agenvas-cards.md",
+        "assets/card-templates.md",
+        "references/adaptation-triage.md",
+        "references/adaptation-value.md",
+        "references/aggregation-and-entities.md",
+        "references/chapter-extraction.md",
+        "references/stage-contract.md"
+      ]
+    },
+    {
+      "name": "short-drama-review",
+      "title": "创作审查 · short-drama-review",
+      "description": "审查本轮绑定的原著分析、故事、剧本、设定、分镜或提示词卡，输出带精确来源与修订建议的审查卡；保留未验证项，不改写来源。",
+      "resources": [
+        "references/agenvas-cards.md",
+        "assets/card-templates.md",
+        "references/anti-template-repair.md",
+        "references/production-quality-gates.md",
+        "references/project-calibration.md",
+        "references/review-method.md",
+        "references/rubric-assets-prompts.md",
+        "references/rubric-source-analysis.md",
+        "references/rubric-story-script.md",
+        "references/rubric-visual-motion.md",
+        "references/stage-contract.md"
+      ]
+    },
+    {
+      "name": "short-drama-storyboard",
+      "title": "分镜与关键帧 · short-drama-storyboard",
+      "description": "把剧本和视觉设定卡转成分镜、场次调度与关键帧提示词卡。用于镜头设计、导演方案比较、轴线站位或跨镜连续性核对。",
+      "resources": [
+        "references/agenvas-cards.md",
+        "assets/card-templates.md",
+        "references/blocking-playbooks.md",
+        "references/comic-keyframe-lexicon.md",
+        "references/coverage-audition.md",
+        "references/keyframe-craft.md",
+        "references/lighting-craft.md",
+        "references/production-shot-grammar.md",
+        "references/review-and-fixtures.md",
+        "references/scene-visual-plan.md",
+        "references/screenplay-to-keyframe-example.md",
+        "references/shot-craft.md",
+        "references/shot-revision-identity.md",
+        "references/stage-contract.md"
+      ]
+    },
+    {
+      "name": "short-drama-video-prompts",
+      "title": "视频提示词 · short-drama-video-prompts",
+      "description": "依据分镜、关键帧和实际媒体卡写视频动作、表演、运镜及配乐意图卡。用于把镜头转为可生成提示词或修订运动边界，生成通过现有能力提案。",
+      "resources": [
+        "references/agenvas-cards.md",
+        "assets/card-templates.md",
+        "references/camera-audio-continuity.md",
+        "references/delivery-profile.md",
+        "references/generability.md",
+        "references/minimax-h3.md",
+        "references/motion-recipe.md",
+        "references/performance-action-timing.md",
+        "references/production-prompt-grammar.md",
+        "references/review-and-fixtures.md",
+        "references/seedance-2.0.md",
+        "references/seedance-2.5.md",
+        "references/stage-contract.md",
+        "references/target-model-profile.md",
+        "references/wan-3.0.md"
+      ]
+    },
+    {
+      "name": "short-drama-write",
+      "title": "分集剧本 · short-drama-write",
+      "description": "依据已绑定大纲、分集规划或剧本卡编写与修订短剧、漫剧。用于写单集、修改对白与场景、规范化原文或跨场续写，产出剧本文字卡。",
+      "resources": [
+        "references/agenvas-cards.md",
+        "assets/card-templates.md",
+        "references/dialogue-craft.md",
+        "references/production-format-dialect.md",
+        "references/scene-handoff-capsule.md",
+        "references/scene-sound-dramaturgy.md",
+        "references/screenplay-format.md",
+        "references/script-craft.md",
+        "references/stage-contract.md",
+        "references/substitutable-realization.md"
+      ]
+    }
+  ],
+  "edition": "agenvas-canvas-v1"
+}

@@ -57,7 +57,7 @@ export function SkillsPage() {
       {create.error ? <SkillError error={create.error} /> : null}
       {list.isPending ? <LoadingState label={t("common.loading")} /> : null}
       {list.error ? <SkillError error={list.error} onRefresh={()=>void list.refetch()} /> : null}
-      <div className="skills-list">{list.data?.pages.flatMap((page)=>page.items).map((skill)=><Button variant="outline" key={skill.id} aria-pressed={selected?.id===skill.id} onClick={()=>openSkill(skill)}><Sparkle data-icon="inline-start" />{skill.title}</Button>)}</div>
+      <div className="skills-list">{list.data?.pages.flatMap((page)=>page.items).map((skill)=><Button variant="outline" key={skill.id} aria-label={skill.title} aria-pressed={selected?.id===skill.id} onClick={()=>openSkill(skill)}><Sparkle data-icon="inline-start" />{skill.title}{skill.builtin ? <StatusBadge>{t("skills.builtin")}</StatusBadge> : null}</Button>)}</div>
       {list.data?.pages[0]?.total === 0 ? <EmptyState title={trash ? t("skills.trashEmpty") : t("skills.empty")} description={trash ? t("skills.trashHint") : t("skills.emptyHint")} /> : null}
       {list.hasNextPage ? <Button disabled={list.isFetchingNextPage} onClick={()=>void list.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
     </Panel><div>{opened.map((skill)=><div hidden={selected?.id!==skill.id} key={skill.id}><SkillEditor skill={skill} onSkillChanged={openSkill} /></div>)}{!selected ? <EmptyState title={t("skills.emptyHint")} /> : null}</div></div>
@@ -68,6 +68,23 @@ export function SkillError({error,onRefresh}:{error:Error;onRefresh?:()=>void}) 
   return <Notice tone="danger"><p>{error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? t("skills.conflict") : t("skills.errorPreserved",{"0":error.message})}</p>{onRefresh ? <Button variant="outline" type="button" onClick={onRefresh}>{t("skills.refresh")}</Button> : null}</Notice>;
 }
 function SkillEditor({skill,onSkillChanged}:{skill:CreativeSkill;onSkillChanged:(skill:CreativeSkill)=>void}) {
+  return skill.builtin ? <BuiltinSkillViewer skill={skill} /> : <PersonalSkillEditor skill={skill} onSkillChanged={onSkillChanged} />;
+}
+function BuiltinSkillViewer({skill}:{skill:CreativeSkill}) {
+  const version=useQuery({queryKey:["skill-version",skill.id,skill.currentVersionId],queryFn:()=>getSkillVersion(skill.id,skill.currentVersionId!),enabled:Boolean(skill.currentVersionId)});
+  const [tryOpen,setTryOpen]=useState(false);
+  return <Panel title={skill.title} actions={<StatusBadge>{t("skills.builtin")}</StatusBadge>}>
+    <Notice><p>{t("skills.builtinHint")}</p><a href="https://github.com/zenstory-ai/drama-skills" target="_blank" rel="noreferrer">Drama Skills · MIT</a></Notice>
+    <p>{skill.description}</p>
+    {version.isPending ? <LoadingState label={t("common.loading")} /> : null}
+    {version.error ? <SkillError error={version.error} onRefresh={()=>void version.refetch()} /> : null}
+    {version.data ? <><p>{t("skills.immutable")}</p><Button onClick={()=>setTryOpen(true)}>{t("skills.try")}</Button>
+      <pre className="skills-source-preview">{version.data.skillMd}</pre>
+      <ul>{version.data.resources.map((resource)=><li key={resource.path}><details><summary>{resource.path}</summary><pre className="skills-source-preview">{resource.content}</pre></details></li>)}</ul>
+      {tryOpen ? <TrySkillDialog version={version.data} onClose={()=>setTryOpen(false)} /> : null}</> : null}
+  </Panel>;
+}
+function PersonalSkillEditor({skill,onSkillChanged}:{skill:CreativeSkill;onSkillChanged:(skill:CreativeSkill)=>void}) {
   const draft = useQuery({queryKey:["skill-draft",skill.id],queryFn:()=>getSkillDraft(skill.id)});
   useEffect(()=>{if(skill.trashed)void draft.refetch();},[skill.trashed,draft.refetch]);
   if (!draft.data) return <Panel title={skill.title}>{draft.isPending ? <LoadingState label={t("common.loading")} /> : null}{draft.error ? <SkillError error={draft.error} onRefresh={()=>void draft.refetch()} /> : null}</Panel>;

@@ -2,7 +2,7 @@
 
 状态：接受（2026-10-06）。用户确认将创作 Skill 改为「名称和功能描述 → 模型按需加载 SKILL.md → 按需读取附件」，并支持同时选择多个 Skill。此决定覆盖 ADR 0031 实施设计中的单 Skill 上限与首轮正文注入；固定发布版本、Run 快照、鉴权和媒体审批边界继续适用。
 
-遵循 [Agent Skills 的渐进式加载规范](https://agentskills.io/specification#progressive-disclosure)，用户为每个 Run 明确选择最多八个不同 Skill 的固定版本，默认配置也可保存有序的多个版本。未选择时仍显式使用 NONE；账号目录不会自动成为模型可用目录。同一 Skill 同时只能选一个版本，每个版本的输入、附件路径与参考别名独立。
+遵循 [Agent Skills 的渐进式加载规范](https://agentskills.io/specification#progressive-disclosure)，用户为每个 Run 明确选择最多 100 个不同 Skill 的固定版本，默认配置也可保存有序的多个版本。未选择时仍显式使用 NONE；账号目录不会自动成为模型可用目录。同一 Skill 同时只能选一个版本，每个版本的输入、附件路径与参考别名独立。
 
 创建 Run 时冻结全部候选正文、附件与素材映射，以保证后续读取和恢复不受编辑、发布或解绑影响；持久快照不等于模型上下文。首轮只提供名称、功能描述和读取所需的版本 ID。模型通过 read_skill 读取完整主文件及资料/素材清单，再通过带 skillVersionId 的 read_skill_resource 分页读取附件。只有已提交的主文件读取账本记录才构成激活；失败或回滚的工具批次不激活 Skill，也不允许读取其附件。
 
@@ -11,3 +11,5 @@
 新 Run 使用策略 schemaVersion=4、systemPromptVersion=8、toolPolicyVersion=2。历史提示词 1–7、工具策略 1、单 Skill 快照及生成来源继续按原协议恢复和展示，不把旧 Run 重新解释为尚未激活。新来源使用 creativeSkill.schemaVersion=2 的 skills 数组；Task、结果和审批 hash 保留该固定结构。
 
 V13 将默认绑定主键改为 (agent_id, skill_id)，增加有序 position 和八项上限；旧绑定保留精确版本并置于位置 0。绑定接口改用 skills 数组，运行选择改用 VERSIONS/skills，预检返回 creativeSkills 数组，前后端和生成类型必须一起升级。旧客户端需刷新并重新发送选择；旧幂等命令不转换为新选择意图。项目导出 schemaVersion=7 记录多个默认版本及 position，读取方须接受新版本。迁移只新增，不改已提交迁移，不重置现有数据。
+
+2026-10-06 后续用户决定将候选和默认绑定上限提高到 100。V13 的八项约束作为历史迁移保留，由 V14 放宽到 0–99；三层加载和历史协议不变。内置 Drama Skills 的分发与适配见 [ADR 0036](0036-builtin-drama-skills.md)。

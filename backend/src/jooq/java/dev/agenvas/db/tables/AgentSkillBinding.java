@@ -95,9 +95,9 @@ public class AgentSkillBinding extends TableImpl<AgentSkillBindingRecord> {
 
     /**
      * The column <code>public.agent_skill_binding.position</code>. Zero-based
-     * position in the Agent default Skill selection; at most eight
+     * position in the Agent default Skill selection; at most one hundred
      */
-    public final TableField<AgentSkillBindingRecord, Integer> POSITION = createField(DSL.name("position"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.INTEGER)), this, "Zero-based position in the Agent default Skill selection; at most eight");
+    public final TableField<AgentSkillBindingRecord, Integer> POSITION = createField(DSL.name("position"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.INTEGER)), this, "Zero-based position in the Agent default Skill selection; at most one hundred");
 
     private AgentSkillBinding(Name alias, Table<AgentSkillBindingRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -210,7 +210,7 @@ public class AgentSkillBinding extends TableImpl<AgentSkillBindingRecord> {
     @Override
     public List<Check<AgentSkillBindingRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("agent_skill_binding_position_check"), "(((\"position\" >= 0) AND (\"position\" <= 7)))", true)
+            Internal.createCheck(this, DSL.name("agent_skill_binding_position_check"), "(((\"position\" >= 0) AND (\"position\" <= 99)))", true)
         );
     }
 

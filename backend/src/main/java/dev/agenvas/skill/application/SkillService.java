@@ -35,20 +35,21 @@ public final class SkillService {
     private static final String EMPTY_BODY = "---\nname: untitled-skill\ndescription: Describe when this Skill should be used.\n---\n\n# Instructions\n";
     private final SkillRepository repository;
     private final SkillFormat format;
+    private final BuiltinSkillCatalogue builtins;
     private final ObjectProvider<LibraryService> library;
     private final SkillAssetArchiveService archive;
     private final ObjectMapper mapper;
     private final Clock clock;
     private final TransactionTemplate tx;
     private final TransactionTemplate reads;
-    public SkillService(SkillRepository repository, SkillFormat format, ObjectProvider<LibraryService> library,
+    public SkillService(SkillRepository repository, SkillFormat format, BuiltinSkillCatalogue builtins, ObjectProvider<LibraryService> library,
             SkillAssetArchiveService archive, ObjectMapper mapper, Clock clock, PlatformTransactionManager manager) {
-        this.repository = repository; this.format = format; this.library = library; this.archive = archive;
+        this.repository = repository; this.format = format; this.builtins = builtins; this.library = library; this.archive = archive;
         this.mapper = mapper; this.clock = clock; tx = new TransactionTemplate(manager);
         reads = new TransactionTemplate(manager); reads.setReadOnly(true);
         reads.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     }
-    public record SkillResponse(UUID id, String title, String description, boolean trashed, UUID currentVersionId,
+    public record SkillResponse(UUID id, String title, String description, boolean trashed, boolean builtin, UUID currentVersionId,
             long version, Instant createdAt, Instant updatedAt) {}
     public record Page(List<SkillResponse> items, String nextCursor, int total) {}
     public record DraftResponse(UUID skillId, long version, String skillMd, List<Artifact.Kind> outputKinds,
@@ -66,11 +67,12 @@ public final class SkillService {
     public Page list(UUID owner, String query, boolean trash, String cursor) {
         format.text(query == null ? "" : query, SkillFormat.MAX_TITLE_LENGTH, false);
         SkillRepository.Cursor parsed = parseCursor(cursor);
+        ensureBuiltins(owner);
         return reads.execute(status -> {
-            var rows = repository.list(owner, query, trash, parsed, PAGE_SIZE + 1);
+            var rows = repository.list(owner, query, trash, parsed, PAGE_SIZE + 1, builtins.keys());
             var items = rows.stream().limit(PAGE_SIZE).toList();
             String next = rows.size() > PAGE_SIZE ? cursor(items.getLast()) : null;
-            return new Page(items.stream().map(this::response).toList(), next, repository.count(owner, query, trash));
+            return new Page(items.stream().map(this::response).toList(), next, repository.count(owner, query, trash, builtins.keys()));
         });
     }
     public SkillResponse create(UUID owner, String title, String description) {
@@ -78,7 +80,7 @@ public final class SkillService {
         format.text(description, SkillFormat.MAX_DESCRIPTION_LENGTH, false);
         return tx.execute(status -> {
             Instant now = clock.instant();
-            var value = new SkillContent.Catalogue(UUID.randomUUID(), owner, title.strip(), description, null, null, 0, now, now);
+            var value = new SkillContent.Catalogue(UUID.randomUUID(), owner, title.strip(), description, null, null, null, 0, now, now);
             repository.create(value, new SkillContent.DraftContent(SkillContent.SCHEMA_VERSION, EMPTY_BODY,
                     List.of(Artifact.Kind.IMAGE), List.of(), List.of(), List.of()));
             return response(value);
@@ -90,6 +92,7 @@ public final class SkillService {
         format.text(description, SkillFormat.MAX_DESCRIPTION_LENGTH, false);
         return tx.execute(status -> {
             var old = require(owner, skillId, true);
+            editable(old);
             if (old.version() != expected) throw conflict();
             Instant now = clock.instant();
             Instant trashedAt = trash ? old.trashedAt() == null ? now : old.trashedAt() : null;
@@ -98,12 +101,14 @@ public final class SkillService {
         });
     }
     public DraftResponse getDraft(UUID owner, UUID skillId) {
-        return reads.execute(status -> { require(owner, skillId, false); return response(draft(owner, skillId, false)); });
+        return reads.execute(status -> { editable(require(owner, skillId, false)); return response(draft(owner, skillId, false)); });
     }
     public DraftResponse saveDraft(UUID owner, UUID skillId, long expected, SkillContent.DraftContent content) {
         SkillContent.DraftContent checked = format.validateDraft(content);
         return tx.execute(status -> {
-            active(require(owner, skillId, true));
+            var catalogue = require(owner, skillId, true);
+            editable(catalogue);
+            active(catalogue);
             var old = draft(owner, skillId, true);
             if (old.version() != expected) throw conflict();
             var fixed = fixSources(owner, checked);
@@ -126,21 +131,32 @@ public final class SkillService {
         return repository.version(owner, versionId).orElseThrow(this::notFound);
     }
     public SkillContent.Version requireSelectableVersion(UUID owner, UUID skillId, UUID versionId) {
-        return reads.execute(status -> { active(require(owner, skillId, false)); return getBundle(owner, skillId, versionId); });
+        return reads.execute(status -> {
+            requireAvailable(owner, skillId);
+            active(require(owner, skillId, false));
+            return getBundle(owner, skillId, versionId);
+        });
+    }
+    /** Retiring a built-in prevents new use; immutable versions remain readable for existing runs and exports. */
+    public void requireAvailable(UUID owner, UUID skillId) {
+        var value = require(owner, skillId, false);
+        if (value.builtinKey() != null && !builtins.keys().contains(value.builtinKey())) throw notFound();
     }
     public SkillResponse copy(UUID owner, UUID skillId, UUID versionId, String title) {
         format.text(title, SkillFormat.MAX_TITLE_LENGTH, true);
         return tx.execute(status -> {
+            editable(require(owner, skillId, false));
             var source = getBundle(owner, skillId, versionId);
             Instant now = clock.instant();
             var copied = new SkillContent.Catalogue(UUID.randomUUID(), owner, title.strip(), source.bundle().description(),
-                    null, null, 0, now, now);
+                    null, null, null, 0, now, now);
             repository.create(copied, copiedDraft(source));
             return response(copied);
         });
     }
     public DraftResponse copyVersionToDraft(UUID owner, UUID skillId, UUID versionId, long expectedDraftVersion) {
         return tx.execute(status -> {
+            editable(require(owner, skillId, false));
             active(require(owner, skillId, true));
             var source = getBundle(owner, skillId, versionId);
             var old = draft(owner, skillId, true);
@@ -153,6 +169,7 @@ public final class SkillService {
         format.text(key, SkillFormat.MAX_KEY_LENGTH, true);
         String hash = Sha256.hex(mapper.writeValueAsString(List.of(skillId, expectedDraftVersion)));
         return tx.execute(status -> {
+            editable(require(owner, skillId, false));
             var replay = repository.key(owner, key);
             if (replay.isPresent()) return replay(replay.get(), hash);
             active(require(owner, skillId, true));
@@ -179,6 +196,9 @@ public final class SkillService {
     }
     /** Trusted Agent application service performs project ownership and Agent CAS in its outer event transaction. */
     public List<SkillContent.Binding> getBindings(UUID owner, UUID project, UUID agent) { return repository.bindings(owner, project, agent); }
+    public List<SkillContent.Binding> getAvailableBindings(UUID owner, UUID project, UUID agent) {
+        return repository.availableBindings(owner, project, agent, builtins.keys());
+    }
     /** Trusted export caller supplies the project scope and consistent read transaction. */
     public List<SkillContent.Binding> getProjectBindings(UUID owner, UUID project) { return repository.projectBindings(owner, project); }
     public void saveBindings(UUID owner, UUID project, UUID agent, List<SkillContent.Binding> bindings) {
@@ -305,6 +325,22 @@ public final class SkillService {
     private UUID pinId(UUID operation, String alias) { return UUID.nameUUIDFromBytes(("agenvas:skill-pin:v1:" + operation + ":" + alias).getBytes(StandardCharsets.UTF_8)); }
     private UUID fileId(UUID operation, String alias) { return UUID.nameUUIDFromBytes(("agenvas:skill-file:v1:" + operation + ":" + alias).getBytes(StandardCharsets.UTF_8)); }
     private SkillContent.Catalogue require(UUID owner, UUID skill, boolean lock) { return repository.skill(owner, skill, lock).orElseThrow(this::notFound); }
+    private void editable(SkillContent.Catalogue value) {
+        if (value.builtinKey() != null) throw problem(HttpStatus.CONFLICT, "SKILL_BUILTIN_READ_ONLY", ApiMessage.of("api.skill.builtin-read-only"));
+    }
+    /** Unique owner/key insertion serializes concurrent first reads; rollback leaves no half-published catalogue. */
+    private void ensureBuiltins(UUID owner) {
+        if (repository.builtinKeys(owner).containsAll(builtins.keys())) return;
+        tx.executeWithoutResult(status -> {
+            Instant now = clock.instant();
+            for (var entry : builtins.entries()) {
+                UUID skillId = UUID.nameUUIDFromBytes(("agenvas:builtin-skill:" + owner + ":" + entry.key()).getBytes(StandardCharsets.UTF_8));
+                UUID versionId = UUID.nameUUIDFromBytes(("agenvas:builtin-skill-version:" + skillId + ":" + entry.bundleHash()).getBytes(StandardCharsets.UTF_8));
+                var catalogue = new SkillContent.Catalogue(skillId, owner, entry.title(), entry.bundle().description(), entry.key(), null, null, 0, now, now);
+                repository.registerBuiltin(catalogue, new SkillContent.Version(versionId, owner, skillId, 1, entry.bundleHash(), entry.bundle(), now));
+            }
+        });
+    }
     private SkillContent.Draft draft(UUID owner, UUID skill, boolean lock) { return repository.draft(owner, skill, lock).orElseThrow(this::notFound); }
     private SkillContent.PublishOperation requireOperation(UUID owner, UUID id) { return repository.operation(owner, id).orElseThrow(this::notFound); }
     private void active(SkillContent.Catalogue value) { if (value.trashedAt() != null) throw problem(HttpStatus.CONFLICT, "SKILL_TRASHED", ApiMessage.of("api.skill.trashed")); }
@@ -313,7 +349,7 @@ public final class SkillService {
         return response(value);
     }
     private SkillResponse response(SkillContent.Catalogue value) { return new SkillResponse(value.id(), value.title(), value.description(),
-            value.trashedAt() != null, value.currentVersionId(), value.version(), value.createdAt(), value.updatedAt()); }
+            value.trashedAt() != null, value.builtinKey() != null, value.currentVersionId(), value.version(), value.createdAt(), value.updatedAt()); }
     private DraftResponse response(SkillContent.Draft value) { var content = value.content(); return new DraftResponse(value.skillId(), value.version(),
             content.skillMd(), content.outputKinds(), content.inputSlots(), content.resources(), content.assets()); }
     private VersionSummary summary(SkillContent.Version value) { return new VersionSummary(value.id(), value.skillId(), value.versionNumber(),

@@ -1,21 +1,82 @@
-import { QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createQueryClient } from "../../app/queryClient";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale, SUPPORTED_LOCALES, t } from "../../shared/i18n";
 import { selectValue } from "../../test/controls";
 import { VoiceLibrary } from "./VoiceLibrary";
 
 function mount() {
   const onSelect = vi.fn();
-  render(<QueryClientProvider client={createQueryClient()}>
-    <VoiceLibrary projectId="project-test" canvasItemId="audio-test" selected="" mock
-      containerRef={createRef<HTMLDivElement>()} onClose={vi.fn()} onSelect={onSelect} />
-  </QueryClientProvider>);
+  render(<VoiceLibrary selected=""
+      containerRef={createRef<HTMLDivElement>()} onClose={vi.fn()} onSelect={onSelect} />);
   return onSelect;
 }
+
+describe("official voice samples", () => {
+  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    setLocale("zh");
+    localStorage.removeItem("agenvas.voice-preferences.v1");
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  });
+
+  it("plays an official sample without a configured model or any generation request", async () => {
+    const onSelect = mount();
+    const request = vi.spyOn(globalThis, "fetch");
+    await userEvent.setup().click(screen.getByRole("button", { name: "试听 小何 2.0" }));
+    const audio = document.querySelector<HTMLAudioElement>("audio[data-voice-id='zh_female_xiaohe_uranus_bigtts']");
+    expect(audio?.src).toMatch(/^https:\/\/lf3-static\.bytednsdoc\.com\/.*zh_female_xiaohe_uranus_bigtts\.mp3$/);
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalledOnce();
+    expect(request).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "停止试听 小何 2.0" })).toBeEnabled();
+  });
+
+  it("stops the previous voice and ignores its late play result", async () => {
+    let resolvePrevious!: () => void;
+    vi.mocked(HTMLMediaElement.prototype.play).mockImplementationOnce(() => new Promise<void>((resolve) => { resolvePrevious = resolve; }));
+    mount();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "试听 小何 2.0" }));
+    const previous = document.querySelector<HTMLAudioElement>("audio[data-voice-id='zh_female_xiaohe_uranus_bigtts']")!;
+    previous.currentTime = 2;
+    await user.click(screen.getByRole("button", { name: "试听 云舟 2.0" }));
+    expect(previous.currentTime).toBe(0);
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    await act(async () => { resolvePrevious(); });
+    fireEvent.error(previous);
+    expect(screen.getByRole("button", { name: "停止试听 云舟 2.0" })).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "停止试听 云舟 2.0" }));
+    expect(screen.getByRole("button", { name: "试听 云舟 2.0" })).toBeEnabled();
+  });
+
+  it("reports sample playback failure and allows an explicit retry", async () => {
+    vi.mocked(HTMLMediaElement.prototype.play).mockRejectedValueOnce(new Error("sample unavailable"));
+    mount();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "试听 小何 2.0" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("样音播放失败");
+    await user.click(screen.getByRole("button", { name: "试听 小何 2.0" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "停止试听 小何 2.0" })).toBeEnabled();
+  });
+
+  it("stops playback when the library unmounts and resets on natural completion", async () => {
+    const mounted = render(<VoiceLibrary selected="" containerRef={createRef()} onClose={vi.fn()} onSelect={vi.fn()} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "试听 小何 2.0" }));
+    const audio = document.querySelector<HTMLAudioElement>("audio[data-voice-id='zh_female_xiaohe_uranus_bigtts']")!;
+    fireEvent.ended(audio);
+    expect(screen.getByRole("button", { name: "试听 小何 2.0" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "试听 小何 2.0" }));
+    vi.mocked(HTMLMediaElement.prototype.pause).mockClear();
+    mounted.unmount();
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledOnce();
+  });
+});
 
 describe("localized voice metadata", () => {
   beforeEach(() => localStorage.removeItem("agenvas.voice-preferences.v1"));

@@ -6286,7 +6286,7 @@ components:
         conversationMemory: {$ref: "#/components/schemas/ConversationMemory"}
         creativeSkills:
           type: array
-          maxItems: 8
+          maxItems: 100
           description: Selected immutable Skill snapshots; complete content is persisted here but only names and descriptions are disclosed initially. Historical Runs may retain creativeSkill instead.
           items: {type: object, additionalProperties: true}
         bindings:
@@ -6359,7 +6359,7 @@ components:
         conversationVersion: {type: [integer, "null"], format: int64, minimum: 0}
         conversationTurnCount: {type: integer, format: int64, minimum: 0}
         inheritedBindingCount: {type: integer, minimum: 0, maximum: 40}
-        creativeSkills: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/RunSkillSummary"}}
+        creativeSkills: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/RunSkillSummary"}}
         memoryTruncated: {type: boolean, description: 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。}
         bindings:
           type: array
@@ -6748,12 +6748,13 @@ components:
     CreativeSkill:
       type: object
       additionalProperties: false
-      required: [id, title, description, trashed, currentVersionId, version, createdAt, updatedAt]
+      required: [id, title, description, trashed, builtin, currentVersionId, version, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         title: {type: string}
         description: {type: string}
         trashed: {type: boolean}
+        builtin: {type: boolean, description: Packaged read-only Skill. It can be selected and tried, but has no editable draft or copy operation.}
         currentVersionId: {type: [string, "null"], format: uuid}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
@@ -6797,6 +6798,15 @@ components:
       properties:
         path: {type: string, maxLength: 160}
         content: {type: string, maxLength: 8000}
+        contentHash: {type: string}
+    SkillVersionResource:
+      type: object
+      additionalProperties: false
+      description: Immutable text attachment. Builtin Skills also include JSON, JSONL and YAML templates; files are never executed.
+      required: [path, content, contentHash]
+      properties:
+        path: {type: string, maxLength: 160}
+        content: {type: string, maxLength: 32000}
         contentHash: {type: string}
     SkillDraftAsset:
       type: object
@@ -6875,10 +6885,10 @@ components:
         bundleHash: {type: string}
         name: {type: string}
         description: {type: string}
-        skillMd: {type: string, maxLength: 8000}
+        skillMd: {type: string, maxLength: 16000}
         outputKinds: {type: array, maxItems: 4, items: {$ref: "#/components/schemas/ArtifactKind"}}
         inputSlots: {type: array, maxItems: 14, items: {$ref: "#/components/schemas/SkillInputSlot"}}
-        resources: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillResource"}}
+        resources: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionResource"}}
         assets: {type: array, items: {$ref: "#/components/schemas/SkillPublishedAsset"}}
         createdAt: {type: string, format: date-time}
     PublishSkillRequest:
@@ -6928,14 +6938,14 @@ components:
       required: [agentVersion, skills]
       properties:
         agentVersion: {type: integer, format: int64, minimum: 0}
-        skills: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillVersionRef"}}
+        skills: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionRef"}}
     SaveAgentSkillBindingRequest:
       type: object
       additionalProperties: false
       required: [expectedAgentVersion, skills]
       properties:
         expectedAgentVersion: {type: integer, format: int64, minimum: 0}
-        skills: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillVersionRef"}}
+        skills: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionRef"}}
     InstallAgentSkillRequest:
       type: object
       additionalProperties: false
@@ -6973,10 +6983,10 @@ components:
       type: object
       additionalProperties: false
       required: [mode, skills]
-      description: Ordered available Skill catalogue. NONE and DEFAULT use an empty list; VERSIONS selects one to eight distinct Skills, each pinned to one version. Selection does not imply activation.
+      description: Ordered available Skill catalogue. NONE and DEFAULT use an empty list; VERSIONS selects one to one hundred distinct Skills, each pinned to one version. Selection does not imply activation.
       properties:
         mode: {type: string, enum: [DEFAULT, NONE, VERSIONS]}
-        skills: {type: array, maxItems: 8, items: {$ref: "#/components/schemas/SkillRunChoice"}}
+        skills: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillRunChoice"}}
     RunPreflightRequest:
       type: object
       additionalProperties: false
@@ -6996,7 +7006,7 @@ components:
         versionNumber: {type: integer, format: int64, minimum: 0}
         bundleHash: {type: string}
         inputSlots: {type: array, items: {$ref: "#/components/schemas/SkillInputSlot"}}
-        resources: {type: array, items: {$ref: "#/components/schemas/SkillResource"}}
+        resources: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionResource"}}
         assets: {type: array, items: {$ref: "#/components/schemas/SkillPublishedAsset"}}
         installed: {type: boolean}
   responses:

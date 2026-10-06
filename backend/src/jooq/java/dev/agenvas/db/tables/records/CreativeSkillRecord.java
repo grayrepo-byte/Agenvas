@@ -153,6 +153,22 @@ public class CreativeSkillRecord extends UpdatableRecordImpl<CreativeSkillRecord
         return (OffsetDateTime) get(8);
     }
 
+    /**
+     * Setter for <code>public.creative_skill.builtin_key</code>. Packaged
+     * read-only Skill identity; null for user-authored Skills
+     */
+    public void setBuiltinKey(String value) {
+        set(9, value);
+    }
+
+    /**
+     * Getter for <code>public.creative_skill.builtin_key</code>. Packaged
+     * read-only Skill identity; null for user-authored Skills
+     */
+    public String getBuiltinKey() {
+        return (String) get(9);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -176,7 +192,7 @@ public class CreativeSkillRecord extends UpdatableRecordImpl<CreativeSkillRecord
     /**
      * Create a detached, initialised CreativeSkillRecord
      */
-    public CreativeSkillRecord(UUID id, UUID ownerId, String title, String description, UUID currentVersionId, OffsetDateTime trashedAt, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt) {
+    public CreativeSkillRecord(UUID id, UUID ownerId, String title, String description, UUID currentVersionId, OffsetDateTime trashedAt, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, String builtinKey) {
         super(CreativeSkill.CREATIVE_SKILL);
 
         setId(id);
@@ -188,6 +204,7 @@ public class CreativeSkillRecord extends UpdatableRecordImpl<CreativeSkillRecord
         setVersion(version);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
+        setBuiltinKey(builtinKey);
         resetChangedOnNotNull();
     }
 }

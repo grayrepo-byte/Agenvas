@@ -7,7 +7,7 @@ import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Input } from "../../shared/ui/primitives/input";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { EmptyState,Notice,Panel } from "../../shared/ui/PagePrimitives";
+import { EmptyState,Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
 import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
 import { Field,FieldGroup,FieldLabel } from "../../shared/ui/primitives/field";
@@ -15,7 +15,7 @@ import { SkillError } from "./SkillsPage";
 import "./Skills.css";
 
 const INSTALL_POLL_MS = 1500;
-const MAX_SKILLS = 8;
+const MAX_SKILLS = 100;
 type Choice = SkillSelection["skills"][number];
 const pendingInstallation = (installation?:SkillInstallation)=>installation?.status==="ACCEPTED" || installation?.status==="PREPARING" || installation?.status==="CLEANING";
 function initialSelection(agentId:string):SkillSelection {
@@ -145,7 +145,7 @@ function AgentSkillPickerDialog({projectId,agent,selection,onClose,onSelect}:{pr
       {items.map((skill)=>{const selected=state.choices.some((choice)=>choice.skillId===skill.id);return <Button key={skill.id} variant="outline" type="button"
         className="agent-skill-picker-card" aria-label={skill.title} aria-pressed={selected} disabled={state.busy || (!selected && state.choices.length>=MAX_SKILLS)}
         onClick={()=>toggle(skill.id,skill.currentVersionId!)}>
-        {selected ? <Check data-icon="inline-start" />:<BookOpen data-icon="inline-start" />}<strong>{skill.title}</strong><span>{skill.description}</span>
+        {selected ? <Check data-icon="inline-start" />:<BookOpen data-icon="inline-start" />}<strong>{skill.title}</strong>{skill.builtin ? <StatusBadge>{t("skills.builtin")}</StatusBadge> : null}<span>{skill.description}</span>
       </Button>;})}
     </div>
     {skills.hasNextPage ? <Button variant="outline" type="button" disabled={state.busy || skills.isFetchingNextPage} onClick={()=>void skills.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}

@@ -112,7 +112,7 @@ class SpringAiStreamingHttpTest {
                     .apiKey("synthetic-unusable-key").model(MODEL_ID).maxRetries(0)
                     .timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build()).build();
             var policy = mapper.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
-            policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.current(false)));
+            policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.current(false, false)));
             UserMessage user = UserMessage.builder().text("Inspect the synthetic image")
                     .media(new Media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(png))).build();
             var readCall = AssistantMessage.builder().content("").toolCalls(List.of(

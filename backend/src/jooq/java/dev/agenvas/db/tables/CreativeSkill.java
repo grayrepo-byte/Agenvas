@@ -113,6 +113,12 @@ public class CreativeSkill extends TableImpl<CreativeSkillRecord> {
      */
     public final TableField<CreativeSkillRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
 
+    /**
+     * The column <code>public.creative_skill.builtin_key</code>. Packaged
+     * read-only Skill identity; null for user-authored Skills
+     */
+    public final TableField<CreativeSkillRecord, String> BUILTIN_KEY = createField(DSL.name("builtin_key"), SQLDataType.VARCHAR(200), this, "Packaged read-only Skill identity; null for user-authored Skills");
+
     private CreativeSkill(Name alias, Table<CreativeSkillRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -192,7 +198,7 @@ public class CreativeSkill extends TableImpl<CreativeSkillRecord> {
 
     @Override
     public List<UniqueKey<CreativeSkillRecord>> getUniqueKeys() {
-        return Arrays.asList(Keys.CREATIVE_SKILL_OWNER_ID_ID_KEY);
+        return Arrays.asList(Keys.CREATIVE_SKILL_OWNER_BUILTIN_KEY_KEY, Keys.CREATIVE_SKILL_OWNER_ID_ID_KEY);
     }
 
     @Override
@@ -254,6 +260,7 @@ public class CreativeSkill extends TableImpl<CreativeSkillRecord> {
     @Override
     public List<Check<CreativeSkillRecord>> getChecks() {
         return Arrays.asList(
+            Internal.createCheck(this, DSL.name("creative_skill_builtin_key_check"), "(((builtin_key IS NULL) OR (length(btrim((builtin_key)::text)) > 0)))", true),
             Internal.createCheck(this, DSL.name("creative_skill_title_check"), "((length(btrim((title)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("creative_skill_version_check"), "((version >= 0))", true)
         );
