@@ -38,6 +38,7 @@ type AdapterSettings = MediaCapability["settings"] & { runningHubSelectedNodeIds
 const MODEL_LIMIT = 120;
 
 const settingsKey = ["settings", "media"] as const;
+const MEDIA_SETTINGS_TABS = ["connections", "capabilities"] as const;
 const NAME_LIMIT = 160;
 const cloudImageFields = [{ key: "model", get label() { return t("settings.mediaSettings.modelName"); } }] as const;
 class CapabilityDraftError extends Error {}
@@ -584,6 +585,7 @@ function ConnectionRow({ connection, settings, apply }: {
 export function MediaSettingsPage() {
   useLocale();
   const queryClient = useQueryClient();
+  const [selectedTab, setSelectedTab] = useState<typeof MEDIA_SETTINGS_TABS[number]>("connections");
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const settings = useQuery({ queryKey: settingsKey, queryFn: getMediaSettings,
     enabled: currentUser.isSuccess, retry: false });
@@ -637,6 +639,16 @@ export function MediaSettingsPage() {
             disabled={settings.isFetching}>{settings.isFetching ? t("common.retrying") : t("common.refresh")}</Button>
         </Notice> : null}
       {settings.data ? <>
+        <Tabs className="min-w-0" value={selectedTab} onValueChange={(value) => {
+          const tab = MEDIA_SETTINGS_TABS.find((entry) => entry === value);
+          if (tab) setSelectedTab(tab);
+        }}>
+        <TabsList aria-label={t("settings.mediaSettings.title")}>
+          <TabsTrigger value="connections">{t("settings.mediaSettings.connections")}</TabsTrigger>
+          <TabsTrigger value="capabilities">{t("settings.mediaSettings.publishedCapabilities")}</TabsTrigger>
+        </TabsList>
+        {/* Keep row drafts and save feedback when switching between settings sections. */}
+        <TabsContent value="connections" forceMount hidden={selectedTab !== "connections"} className="min-w-0">
         <Panel title={t("settings.mediaSettings.connections")} description={t("settings.mediaSettings.publishHint")}
           actions={<Button variant="default"  type="button" onClick={() => setCreating(true)}><Plus size={15} />{t("settings.mediaSettings.addConnection")}</Button>}>
           {settings.data.connections.length === 0 ? <EmptyState icon={<PlugsConnected size={30} />} title={t("settings.mediaSettings.connectionsEmpty")}
@@ -647,6 +659,8 @@ export function MediaSettingsPage() {
               connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)} />)}</TableBody></Table>
           </div>}
         </Panel>
+        </TabsContent>
+        <TabsContent value="capabilities" forceMount hidden={selectedTab !== "capabilities"} className="min-w-0">
         <Panel title={t("settings.mediaSettings.publishedCapabilities")} description={t("settings.mediaSettings.description")}>
           {settings.data.connections.every((connection) => connection.capabilities.length === 0) ? <p className="ui-muted">{t("settings.mediaSettings.capabilitiesEmpty")}</p>
             : <div className="media-table-scroll" tabIndex={0} role="region" aria-label={t("settings.mediaSettings.capabilitiesTable")}>
@@ -656,6 +670,8 @@ export function MediaSettingsPage() {
                 connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)} />)}</TableBody></Table>
             </div>}
         </Panel>
+        </TabsContent>
+        </Tabs>
         {creating ? <Dialog title={t("settings.mediaSettings.addConnection")} description={t("settings.mediaSettings.connectionHint")} busy={create.isPending}
           onClose={() => setCreating(false)} onSubmit={(event) => { event.preventDefault(); if (create.isPending) return; setError(""); create.mutate(); }}
           footer={<>

@@ -242,6 +242,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
     const dialog = screen.getByRole("dialog");
     await clickControl(within(dialog).getByRole("button", { name: "选择节点" }));
@@ -283,6 +284,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
     const dialog = screen.getByRole("dialog");
     const input = within(within(dialog).getByRole("row", { name: "强度" })).getByRole("textbox", { name: "默认值" });
@@ -447,6 +449,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
     const dialog = screen.getByRole("dialog");
     await clickControl(within(dialog).getByRole("button", { name: "选择节点" }));
@@ -486,6 +489,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
     const dialog = screen.getByRole("dialog");
     const name = within(dialog).getByRole("textbox", { name: "能力名称" });
@@ -559,6 +563,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("combobox", { name: "目标类型" })).toHaveValue(targetType);
@@ -632,6 +637,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
     const dialog = screen.getByRole("dialog");
     const outputs = within(dialog).getByRole("table", { name: "输出映射" });
@@ -676,6 +682,7 @@ describe("MediaSettingsPage", () => {
     await user.clear(connectionName); await user.type(connectionName, "Connection draft");
     await user.type(within(dialog).getByLabelText("替换 API Key（留空则不修改）"), "new-key-draft");
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
     dialog = screen.getByRole("dialog");
     const name = within(dialog).getByRole("textbox", { name: "能力名称" });
@@ -690,6 +697,7 @@ describe("MediaSettingsPage", () => {
     expect(name).toHaveValue("Remote capability");
     expect(within(dialog).getByRole("combobox", { name: "GPT Image 2 质量" })).toHaveValue("low");
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("tab", { name: "媒体连接" }));
     await user.click(screen.getByRole("button", { name: "编辑连接" }));
     dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("textbox", { name: "连接名称" })).toHaveValue("Connection draft");
@@ -721,6 +729,7 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByText("编辑能力参数"));
     const name = screen.getByRole("textbox", { name: "能力名称" });
     await user.clear(name);
@@ -777,6 +786,7 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     const heading = await screen.findByText("Portrait");
     const row = heading.closest("tr");
     if (!row) throw new Error("Missing capability row");
@@ -989,6 +999,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
     const dialog = screen.getByRole("dialog");
     const save = within(dialog).getByRole("button", { name: "保存能力" });
@@ -1079,6 +1090,7 @@ describe("MediaSettingsPage", () => {
     await waitFor(() => expect(submitted).toEqual({ expectedVersion: 1, name: "Google", enabled: true,
       origin: "https://new-gateway.example.com/proxy/v1beta/", apiKey: null }));
     expect(await screen.findByText("Gemini v1beta（兼容）")).toBeInTheDocument();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
     expect(within(screen.getByRole("dialog")).getByText(/与模型名分开配置/)).toBeInTheDocument();
   });
@@ -1098,6 +1110,7 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByText("编辑能力参数"));
     const dialog = screen.getByRole("dialog");
     await user.click(screen.getByRole("tab", { name: "估算价格" }));
@@ -1143,15 +1156,26 @@ describe("MediaSettingsPage", () => {
       adapterId: "GOOGLE_NANO_BANANA_2", settings: { model: "" } }));
   });
 
-  it("keeps forms out of the tables and preserves a draft when Escape closes the dialog", async () => {
+  it("separates the settings tabs and preserves a capability draft after closing and switching tabs", async () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settingsFixture())),
     );
     mount(); const user = userEvent.setup();
-    const edit = await screen.findByRole("button", { name: "编辑能力参数" });
+    const connectionsTab = await screen.findByRole("tab", { name: "媒体连接" });
+    const capabilitiesTab = screen.getByRole("tab", { name: "已发布能力" });
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(connectionsTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
     expect(screen.getByRole("table", { name: "媒体连接" })).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "已发布能力" })).not.toBeInTheDocument();
+    connectionsTab.focus(); await user.keyboard("{ArrowRight}");
+    expect(capabilitiesTab).toHaveFocus();
+    expect(capabilitiesTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    expect(screen.queryByRole("table", { name: "媒体连接" })).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "已发布能力" })).toBeInTheDocument();
+    const edit = screen.getByRole("button", { name: "编辑能力参数" });
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     await user.click(edit);
     const name = screen.getByRole("textbox", { name: "能力名称" });
@@ -1167,6 +1191,10 @@ describe("MediaSettingsPage", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(edit).toHaveFocus();
+    await user.click(connectionsTab);
+    expect(screen.getByRole("table", { name: "媒体连接" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑能力参数" })).not.toBeInTheDocument();
+    await user.click(capabilitiesTab);
     await user.click(edit);
     expect(screen.getByRole("textbox", { name: "能力名称" })).toHaveValue("Unsaved portrait");
     const saveButton = screen.getByRole("button", { name: "保存能力" });
@@ -1328,6 +1356,7 @@ describe("capability deletion", () => {
     const user = userEvent.setup();
     const client = mount();
     client.setQueryData(["media-functions"], []);
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "删除能力" }));
     expect(screen.getByRole("dialog")).toHaveTextContent("历史结果和已受理任务保留");
     expect(versions).toEqual([]);
@@ -1354,6 +1383,7 @@ describe("capability deletion", () => {
         { status: 500, headers: { "Content-Type": "application/problem+json" } });
     }));
     const user = userEvent.setup(); mount();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "删除能力" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(attempts).toBe(1));
@@ -1369,7 +1399,8 @@ describe("capability deletion", () => {
 
   it("allows deleting a disabled capability on a disabled connection", async () => {
     serve(settingsFixture({ enabled: false }, { enabled: false }));
-    mount();
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     expect(await screen.findByRole("button", { name: "删除能力" })).toBeEnabled();
   });
 
@@ -1381,6 +1412,7 @@ describe("capability deletion", () => {
       return HttpResponse.json({ title: "删除失败", detail: "请重试", code: "INTERNAL_ERROR" }, { status: 500, headers: { "Content-Type": "application/problem+json" } });
     }));
     const user = userEvent.setup(); mount();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "删除能力" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     expect(await within(screen.getByRole("dialog")).findByText(/请重试/)).toBeInTheDocument();
@@ -1399,6 +1431,7 @@ describe("capability deletion", () => {
         return HttpResponse.json({ title: "配置冲突", detail: "能力已修改", code: "MEDIA_CAPABILITY_CONFLICT" }, { status: 409 });
       }));
     const user = userEvent.setup(); mount();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(await screen.findByRole("button", { name: "删除能力" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "确认删除" })).toBeDisabled());
@@ -1410,7 +1443,8 @@ describe("capability deletion", () => {
 
   it("does not offer deletion for built-in local capabilities", async () => {
     serve(settingsFixture({ platform: "LOCAL" }, { adapterId: "LOCAL_IMAGE_PROCESSOR" }));
-    mount(); await screen.findByText("Portrait");
+    mount(); await clickControl(await screen.findByRole("tab", { name: "已发布能力" }));
+    await screen.findByText("Portrait");
     expect(screen.queryByRole("button", { name: "删除能力" })).not.toBeInTheDocument();
   });
 });

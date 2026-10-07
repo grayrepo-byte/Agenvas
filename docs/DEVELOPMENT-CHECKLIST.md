@@ -1991,3 +1991,11 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 使用 CI 相同的 Failsafe profile 定向运行：`./mvnw -q -Pci-integration -Dit.test=AgentRevisionPostgresIT,ReadToolsPostgresIT,PromptInjectionPostgresIT,MediaStylesPostgresIT,SkillRunPostgresIT,AgentFailureRecoveryPostgresIT verify`。六个类共 27 项真实 PostgreSQL＋合成模型/Mock 媒体测试通过，零失败、错误或跳过，编译与打包通过；包含排队/UNKNOWN 媒体继续阻断的回归。差异空白检查通过。
 
 仅修改测试和验收记录，无生产代码、CI 工作流、API、迁移或依赖变更。全量、完整四分片、前端、真实 Provider 和远端 CI 复跑未运行；未改变测试发现规则或跳过失败检查。
+
+## 2026-10-07 媒体设置页分区
+
+- [x] `/settings/media` 的媒体连接与已发布能力拆为两个 shadcn/Radix 页签，默认显示连接，每次只显示一个面板；切换保留各行的配置草稿、版本基线与保存反馈，能力发布仍从连接行进入。
+- [x] 媒体设置页 43 项合成 HTTP 组件测试通过，覆盖默认页签、单面板可见性、方向键切换、跨页签草稿保留及既有发布、编辑、默认选择、删除与冲突处理。TypeScript、修改文件 ESLint、四语言/主题检查、Vite 生产构建及差异空白检查通过；构建保留既有大 chunk 提示。
+- [x] 规格 §6.1 与 ADR 0019 同步；无 API、依赖或数据库迁移。
+
+全量测试、浏览器视觉验收、后端测试、真实 Provider 调用与部署未运行。
