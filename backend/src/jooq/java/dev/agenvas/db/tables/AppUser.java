@@ -24,6 +24,7 @@ import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
 import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
 import dev.agenvas.db.tables.SkillPublishOperation.SkillPublishOperationPath;
 import dev.agenvas.db.tables.TaskManualReplacement.TaskManualReplacementPath;
+import dev.agenvas.db.tables.ThirdPartyPromptImport.ThirdPartyPromptImportPath;
 import dev.agenvas.db.tables.records.AppUserRecord;
 
 import java.time.OffsetDateTime;
@@ -416,6 +417,19 @@ public class AppUser extends TableImpl<AppUserRecord> {
             _taskManualReplacement = new TaskManualReplacementPath(this, null, Keys.TASK_MANUAL_REPLACEMENT__TASK_MANUAL_REPLACEMENT_APPROVED_BY_USER_ID_FKEY.getInverseKey());
 
         return _taskManualReplacement;
+    }
+
+    private transient ThirdPartyPromptImportPath _thirdPartyPromptImport;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.third_party_prompt_import</code> table
+     */
+    public ThirdPartyPromptImportPath thirdPartyPromptImport() {
+        if (_thirdPartyPromptImport == null)
+            _thirdPartyPromptImport = new ThirdPartyPromptImportPath(this, null, Keys.THIRD_PARTY_PROMPT_IMPORT__THIRD_PARTY_PROMPT_IMPORT_OWNER_ID_FKEY.getInverseKey());
+
+        return _thirdPartyPromptImport;
     }
 
     @Override

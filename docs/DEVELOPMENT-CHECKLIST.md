@@ -1991,3 +1991,15 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 使用 CI 相同的 Failsafe profile 定向运行：`./mvnw -q -Pci-integration -Dit.test=AgentRevisionPostgresIT,ReadToolsPostgresIT,PromptInjectionPostgresIT,MediaStylesPostgresIT,SkillRunPostgresIT,AgentFailureRecoveryPostgresIT verify`。六个类共 27 项真实 PostgreSQL＋合成模型/Mock 媒体测试通过，零失败、错误或跳过，编译与打包通过；包含排队/UNKNOWN 媒体继续阻断的回归。差异空白检查通过。
 
 仅修改测试和验收记录，无生产代码、CI 工作流、API、迁移或依赖变更。全量、完整四分片、前端、真实 Provider 和远端 CI 复跑未运行；未改变测试发现规则或跳过失败检查。
+
+## 2026-10-08 第三方图片与视频提示词库
+
+- [x] 新增第三方来源和独立缓存，图片按用户指定结构规范化，视频独立保存文生视频、图生视频、视频参考、全能参考和前置文生图阶段。图生视频包含真实输入图片，效果封面不作为输入；按用户决定统一采用“全能参考”名称，原生视频模式为 `omni_reference`。
+- [x] 适配参考文档中的五个 GitHub 图片来源，以及图片/视频标准 JSON feed。来源每 24 小时同步；旧记录更新、新记录添加、不删除缺失记录，停用和失败保留历史；相同内容不递增版本。支持分页搜索、启停、自定义 JSON 来源和管理员手动同步。README 无稳定 ID 时按来源地址与标题区分，同一原帖中的不同提示词不会被误合并。
+- [x] Flyway V15、jOOQ 生成源码、OpenAPI 与生成 TypeScript 同步。来源 CAS、租约与 fencing 校验，网络不持事务；同步使用独立有界 worker，不占用媒体任务调度线程。源管理受管理员/CSRF 限制，项目导入受项目授权限制，恢复模式禁止写入。
+- [x] 应用冻结模板版本与全部引用，在事务外归档，原子创建项目不可变素材版本。同键重放与事务失败恢复复用既有字节，上游随后不可用仍可完成；图片、视频、音频引用角色保留，整体替换旧引用。模型/参数/时长保留，不创建生成任务或画布节点。动态工作流的第三方视频/音频槽位和自动两阶段生成暂未支持，明确阻止应用并保留草稿。
+- [x] 八项适配器/验证单元测试通过；真实下载的上游快照实际解析并验证 892 条：ZeroLu 72、ImgEdify 71、YouMind GPT Image 2 126、YouMind Nano Banana Pro 129、David 494。排除 README 格式演示，保留各源正式条目；YouMind README 仅公开部分内容，未声称缓存全部网页数据。
+- [x] 37 项真实 PostgreSQL 专项测试通过，零失败、错误、跳过：FlywayBaseline 14、MediaTemplate 6、ThirdPartyPrompt 6、Library 1、LibraryCleanup 1、LibraryRecovery 9。覆盖新迁移/数据库注释、增量缓存、并发认领、停用源 fencing、失败保留、授权/CSRF、幂等导入与回滚恢复，以及合成 PNG/MP4/WAV 的首帧与全能参考导入。最后迁移约束调整后复跑 FlywayBaseline/ThirdPartyPrompt；素材延迟读取调整后复跑 LibraryRecovery/LibraryCleanup。
+- [x] 五个前端测试文件共 29 项通过；TypeScript、ESLint、多语言/主题检查、Vite 生产构建及差异空白检查通过。覆盖来源预览、显式应用、失败保留及同键重试、视频输入模式/各类容量与引用角色、个人/系统模板回归。生产构建保留既有大 chunk 提示。
+
+实际执行 Maven 的定向 test/verify（集成复跑使用 ci-integration），前端直接运行仓库已安装的 openapi-typescript、tsc、Vitest、ESLint 与 Vite；未升级依赖。未运行全量测试、浏览器端到端、生产部署或真实模型调用。真实第三方内容经下载快照验证，服务端 HTTP 同步与远程素材下载使用合成响应；这不代表线上服务、CDN 可用性或生产网络验证。

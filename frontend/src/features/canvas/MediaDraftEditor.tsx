@@ -1072,11 +1072,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     const changes = templateDraftChanges(artifact.kind, latest, chosenCapability, imported, options, INPUT_COLORS);
     const freshResources = await queryClient.fetchQuery({ queryKey: ["artifacts", artifact.projectId],
       queryFn: () => listArtifacts(artifact.projectId), staleTime: 0 });
-    await Promise.all(freshResources.items.filter((item) => item.kind === "IMAGE").map((item) =>
+    await Promise.all(freshResources.items.filter((item) => item.kind !== "TEXT").map((item) =>
       queryClient.fetchQuery({ queryKey: ["artifact-versions", artifact.projectId, item.id],
         queryFn: () => listArtifactVersions(artifact.projectId, item.id), staleTime: 0 })));
     if (editorReadOnlyRef.current) throw new Error(t("media.editor.editingLocked"));
-    if (imported.images.length > 0) {
+    if (imported.images.length > 0 || (imported.references?.length ?? 0) > 0) {
       // Reference replacement and connected-line removal either commit together or leave the old draft intact.
       const acknowledged = await replaceMediaDraftInputs(artifact.projectId, canvasItemId,
         { ...latest, ...changes, expectedVersion: acknowledgedVersion });

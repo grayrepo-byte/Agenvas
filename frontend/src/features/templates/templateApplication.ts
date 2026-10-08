@@ -82,6 +82,13 @@ export function templateDraftChanges(kind: MediaTemplateKind, fields: MediaDraft
   if (invalid) throw new Error(invalid);
   const promptEnabled = templatePromptEnabled(capability, fields);
   const changes: Partial<MediaDraftFields> = promptEnabled ? { prompt: imported.prompt, mentions: [] } : {};
+  if (imported.videoInputMode) changes.videoInputMode = imported.videoInputMode;
+  if (imported.references?.length && !workflowDefinition(capability)) {
+    changes.mediaInputs = imported.references.map((reference, index) => ({ versionId: reference.versionId,
+      role: reference.role, color: colors[index % colors.length]! }));
+    if (!promptEnabled) Object.assign(changes, promptForMediaInputs(fields, changes.mediaInputs));
+    return changes;
+  }
   if (imported.images.length === 0) return changes;
   const definition = workflowDefinition(capability);
   changes.mediaInputs = imported.images.map((image, index) => ({ versionId: image.versionId,
