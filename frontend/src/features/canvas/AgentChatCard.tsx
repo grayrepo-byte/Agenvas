@@ -27,8 +27,8 @@ import { BlockedRunNotice } from "./BlockedRunNotice";
 import { useCanvasStore } from "./canvasStore";
 import { AgentRunSkillControls,AgentSkillSettings,useAgentSkillSelection } from "../skills/AgentSkillControls";
 
-export const AGENT_CHAT_WIDTH = 460;
-export const AGENT_CHAT_HEIGHT = 600;
+export const AGENT_CHAT_WIDTH = 560;
+export const AGENT_CHAT_HEIGHT = 720;
 export const AGENT_CHAT_MIN_WIDTH = 360;
 export const AGENT_CHAT_MIN_HEIGHT = 420;
 const MAX_AGENT_NAME = 120;

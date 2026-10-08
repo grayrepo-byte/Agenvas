@@ -1,8 +1,11 @@
 import { t } from "../../shared/i18n";
 import { applyCanvasCommands, createArtifact, getMediaDraft, listCanvasItems, saveMediaDraft,
   type Artifact, type SaveMediaDraftRequest } from "../../shared/api/client";
-export const AUDIO_CARD_WIDTH = 430;
-export const AUDIO_CARD_HEIGHT = 240;
+export const AUDIO_CARD_WIDTH = 560;
+export const AUDIO_CARD_HEIGHT = 300;
+/** Blank visual media share a landscape frame; actual pixels or an explicit image draft ratio take over later. */
+export const VISUAL_MEDIA_CARD_WIDTH = 640;
+export const VISUAL_MEDIA_CARD_HEIGHT = 360;
 const NODE_GAP = 64;
 export type PreparedMediaNode = { createKey: string; itemId: string; artifactId?: string; draftVersion?: number; placed?: boolean };
 
@@ -16,7 +19,9 @@ export async function prepareMediaNode(projectId: string, sourceItemId: string,
     const source = canvas.items.find((item) => item.id === sourceItemId);
     await applyCanvasCommands(projectId, [{ type: "PLACE_ARTIFACT", artifactId: progress.artifactId,
       itemId: progress.itemId, x: (source?.x ?? 0) + (source?.width ?? AUDIO_CARD_WIDTH) + NODE_GAP,
-      y: source?.y ?? 0, width: AUDIO_CARD_WIDTH, height: AUDIO_CARD_HEIGHT,
+      y: source?.y ?? 0,
+      width: kind === "AUDIO" ? AUDIO_CARD_WIDTH : VISUAL_MEDIA_CARD_WIDTH,
+      height: kind === "AUDIO" ? AUDIO_CARD_HEIGHT : VISUAL_MEDIA_CARD_HEIGHT,
       zIndex: canvas.items.length, locked: false }]);
     progress.placed = true;
   }

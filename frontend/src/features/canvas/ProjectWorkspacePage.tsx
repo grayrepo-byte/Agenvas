@@ -80,7 +80,7 @@ type CanvasRelationRemoval
 } from "./canvasRelations";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 import { CANVAS_MAX_SIZE,imageNodeResizeBounds,persistableNodeSize,projectImageNodeSize } from "./imageNodeLayout";
-import { AUDIO_CARD_HEIGHT,AUDIO_CARD_WIDTH,prepareMediaNode,type PreparedMediaNode } from "./mediaNodeActions";
+import { AUDIO_CARD_HEIGHT,AUDIO_CARD_WIDTH,prepareMediaNode,VISUAL_MEDIA_CARD_HEIGHT,VISUAL_MEDIA_CARD_WIDTH,type PreparedMediaNode } from "./mediaNodeActions";
 import { subscribeProjectEvents,type EventSyncStatus } from "./projectEvents";
 import { projectCacheCallbacks } from "./projectCache";
 import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
@@ -95,7 +95,8 @@ type AgentCreationIntent = { point: CreationPoint; promptKey?: string; bindings:
 type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
   zIndex: number; assetId?: string; artifactId?: string };
 type CreationMenu = { x: number; y: number; point: CreationPoint };
-type RestorableResource = { subjectType: "ARTIFACT" | "AGENT"; subjectId: string };
+type RestorableResource = { subjectType: "ARTIFACT"; subjectId: string; kind: Artifact["kind"] }
+  | { subjectType: "AGENT"; subjectId: string };
 /** Card under the pointer during a connection gesture; the drop lands on the card, not on an exact port. */
 type ConnectionTarget = { itemId: string; targetHandle: "agent-input" | "artifact-input"; valid: boolean };
 const EDITOR_NODE_GAP = 32;
@@ -109,14 +110,17 @@ const CREATION_MENU_WIDTH = 208;
 /** Match the menu's title, rows, gaps and padding in styles.css so edge clamping stays accurate. */
 const CREATION_MENU_HEIGHT = 218;
 const CREATION_MENU_MARGIN = 12;
-const DEFAULT_CARD_WIDTH = 280;
-const DEFAULT_TEXT_CARD_HEIGHT = 180;
+const DEFAULT_ARTIFACT_CARD_SIZES: Record<Artifact["kind"], { width: number; height: number }> = {
+  TEXT: { width: 420, height: 270 },
+  IMAGE: { width: VISUAL_MEDIA_CARD_WIDTH, height: VISUAL_MEDIA_CARD_HEIGHT },
+  VIDEO: { width: VISUAL_MEDIA_CARD_WIDTH, height: VISUAL_MEDIA_CARD_HEIGHT },
+  AUDIO: { width: AUDIO_CARD_WIDTH, height: AUDIO_CARD_HEIGHT },
+};
 const DEFAULT_TEXT_CARD_TITLE = "canvas.text.defaultTitle";
 const DEFAULT_CANVAS_ORIGIN = 80;
-const DEFAULT_MEDIA_CARD_HEIGHT = 300;
 const AUDIO_RESULT_CARD_HEIGHT = 160;
-const DEFAULT_IMAGE_CARD_WIDTH = 225;
-const DEFAULT_VIDEO_CARD_WIDTH = 534;
+// Existing 240px audio placeholders and the current default both become a compact player after selection.
+const AUDIO_PLACEHOLDER_HEIGHTS = new Set([240, AUDIO_CARD_HEIGHT]);
 const MIN_ARTIFACT_CARD_SIZE = 120;
 /** Drop tolerance around a hidden target handle, in flow units: it keeps the same feel on screen at any zoom. */
 const CANVAS_CONNECTION_RADIUS = 80;
@@ -254,7 +258,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     // A result has a compact player; preserve explicit user sizes and pending resize drafts.
     const compactAudio = item.artifact?.kind === "AUDIO" && item.selectedVersion
       && patch?.height === undefined && draft?.height === undefined
-      && (item.height === AUDIO_CARD_HEIGHT || item.height === DEFAULT_MEDIA_CARD_HEIGHT);
+      && AUDIO_PLACEHOLDER_HEIGHTS.has(item.height);
     return projectImageNodeSize({
       width: Math.max(patch?.width ?? draft?.width ?? item.width, item.agent ? AGENT_CHAT_MIN_WIDTH : 0),
       height: Math.max(compactAudio ? AUDIO_RESULT_CARD_HEIGHT : storedHeight, item.agent ? AGENT_CHAT_MIN_HEIGHT : 0),
@@ -373,8 +377,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           artifactId: pending.artifactId,
           x: point.x,
           y: point.y,
-          width: DEFAULT_CARD_WIDTH,
-          height: DEFAULT_TEXT_CARD_HEIGHT,
+          ...DEFAULT_ARTIFACT_CARD_SIZES.TEXT,
           zIndex: pending.zIndex,
           locked: false,
         },
@@ -396,21 +399,21 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     mutationFn: async (intent: UploadIntent) => {
       const audio = isAudioFile(intent.file);
       const video = isVideoFile(intent.file);
+      const kind = audio ? "AUDIO" : video ? "VIDEO" : "IMAGE";
       if (!intent.assetId) {
         const asset = await (audio ? uploadAudioAsset : video ? uploadVideoAsset : uploadImageAsset)(projectId, intent.file);
         intent.assetId = asset.id;
       }
       if (!intent.artifactId) {
         const artifact = await createArtifact(projectId, {
-          kind: audio ? "AUDIO" : video ? "VIDEO" : "IMAGE", title: intent.title,
+          kind, title: intent.title,
           content: { sourceType: "UPLOAD", assetId: intent.assetId },
         }, intent.createKey);
         intent.artifactId = artifact.id;
       }
       return applyCanvasCommands(projectId, [{
         type: "PLACE_ARTIFACT", itemId: intent.itemId, artifactId: intent.artifactId,
-        ...intent.point, width: audio ? AUDIO_CARD_WIDTH : DEFAULT_CARD_WIDTH,
-        height: AUDIO_CARD_HEIGHT, zIndex: intent.zIndex, locked: false,
+        ...intent.point, ...DEFAULT_ARTIFACT_CARD_SIZES[kind], zIndex: intent.zIndex, locked: false,
       }]);
     },
     ...canvasMutationFeedback,
@@ -437,8 +440,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const index = canvas.data?.items.length ?? 0;
       const saved = await applyCanvasCommands(projectId, [{
         type: "PLACE_ARTIFACT", itemId: pending.itemId, artifactId: pending.artifactId,
-        x: point.x, y: point.y, width: kind === "IMAGE" ? DEFAULT_IMAGE_CARD_WIDTH : kind === "AUDIO" ? AUDIO_CARD_WIDTH : DEFAULT_VIDEO_CARD_WIDTH,
-        height: kind === "AUDIO" ? AUDIO_CARD_HEIGHT : DEFAULT_MEDIA_CARD_HEIGHT, zIndex: index, locked: false,
+        x: point.x, y: point.y, ...DEFAULT_ARTIFACT_CARD_SIZES[kind], zIndex: index, locked: false,
       }]);
       return { saved, itemId: pending.itemId };
     },
@@ -704,7 +706,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         ? { ...placement, type: "PLACE_AGENT", agentId: resource.subjectId,
           width: AGENT_CHAT_WIDTH, height: AGENT_CHAT_HEIGHT }
         : { ...placement, type: "PLACE_ARTIFACT", artifactId: resource.subjectId,
-          width: DEFAULT_CARD_WIDTH, height: DEFAULT_MEDIA_CARD_HEIGHT };
+          ...DEFAULT_ARTIFACT_CARD_SIZES[resource.kind] };
       const saved = await applyCanvasCommands(projectId, [command]);
       return { saved, itemId };
     },
@@ -1093,7 +1095,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }, [tryLocation.search,canvas.data?.items,setSelectedIds]);
   const projectResources = [
     ...(resources.data?.items ?? []).map((artifact) => ({
-      subjectType: "ARTIFACT" as const, subjectId: artifact.id,
+      subjectType: "ARTIFACT" as const, subjectId: artifact.id, kind: artifact.kind,
       label: `${artifact.title} · ${KIND_LABELS[artifact.kind]} · ${artifact.resourceDefaultVersionId ? t("canvas.workspace.defaultSelected") : t("canvas.workspace.noDefault")}`,
     })),
     ...(snapshot.data?.agents ?? []).map((agent) => ({

@@ -280,11 +280,13 @@ describe("ProjectWorkspacePage", () => {
       }),
       http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
         placements++; const input = await request.json() as { commands: CanvasCommand[] }; const command = input.commands[0]!;
-        commands.push(command); expect(command).toMatchObject({ type: "PLACE_AGENT", agentId: agent.id, x: 235, y: 165 });
+        commands.push(command); expect(command).toMatchObject({ type: "PLACE_AGENT", agentId: agent.id,
+          x: 235, y: 165, width: 560, height: 720 });
         if (failure === "place" && placements === 1) return HttpResponse.error();
         if (command.type !== "PLACE_AGENT") throw new Error("Missing Agent placement");
         items = [{ ...imageCard(), id: command.itemId, subjectType: "AGENT", subjectId: agent.id, title: agent.name,
-          artifact: null, agent, selectedVersion: null, selectedVersionId: null, x: command.x, y: command.y }];
+          artifact: null, agent, selectedVersion: null, selectedVersionId: null,
+          x: command.x, y: command.y, width: command.width, height: command.height }];
         return HttpResponse.json({ items });
       }),
       http.post("/api/v1/projects/:projectId/runs", () => { runs(); return HttpResponse.json({}); }),
@@ -330,9 +332,10 @@ describe("ProjectWorkspacePage", () => {
         const body = await request.json() as { commands: CanvasCommand[] };
         const command = body.commands[0];
         expect(command).toMatchObject({ type: "PLACE_ARTIFACT", artifactId: "text-id",
-          x: 235, y: 165, width: 280, height: 180 });
+          x: 235, y: 165, width: 420, height: 270 });
         if (!command || command.type !== "PLACE_ARTIFACT") throw new Error("Missing placement");
-        items = [{ ...blank, id: command.itemId, x: command.x, y: command.y }];
+        items = [{ ...blank, id: command.itemId, x: command.x, y: command.y,
+          width: command.width, height: command.height }];
         return HttpResponse.json({ items });
       }),
     );
@@ -407,12 +410,15 @@ describe("ProjectWorkspacePage", () => {
         return HttpResponse.json({ id: artifactId }, { status: 201 });
       }),
       http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-        const body = await request.json() as { commands: Array<{ itemId: string }> };
+        const body = await request.json() as { commands: CanvasCommand[] };
+        const command = body.commands[0];
+        expect(command).toMatchObject({ type: "PLACE_ARTIFACT", width: 640, height: 360 });
+        if (!command || command.type !== "PLACE_ARTIFACT") throw new Error("Missing image placement");
         expect(body.commands[0]?.itemId).toBeTruthy();
         return HttpResponse.json({ items: [{
           id: itemId, subjectType: "ARTIFACT", subjectId: artifactId,
           title: "新图片",
-          x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
+          x: command.x, y: command.y, width: command.width, height: command.height, zIndex: 0, groupId: null,
           locked: false, selectedVersionId: null, selectedVersion: null, version: 0, agent: null,
           artifact: { id: artifactId, projectId: "project-1", kind: "IMAGE",
             title: "新图片", resourceDefaultVersionId: null, resourceDefaultVersion: null,
@@ -1319,10 +1325,10 @@ describe("ProjectWorkspacePage", () => {
         const body = await request.json() as { commands: CanvasCommand[] };
         placedCommand = body.commands[0];
         expect(placedCommand).toMatchObject({ type: "PLACE_AGENT", agentId: agent.id,
-          width: 460, height: 600 });
+          width: 560, height: 720 });
         items = [{ id: placedCommand!.itemId, subjectType: "AGENT", subjectId: agent.id,
           title: agent.name,
-          x: 80, y: 80, width: 460, height: 600, zIndex: 0, groupId: null,
+          x: 80, y: 80, width: 560, height: 720, zIndex: 0, groupId: null,
           locked: false, selectedVersionId: null, selectedVersion: null, version: 0, artifact: null, agent }];
         return HttpResponse.json({ items });
       }),
