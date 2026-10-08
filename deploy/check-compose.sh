@@ -18,19 +18,21 @@ compose_config() {
 }
 
 for compose_file in "${compose_files[@]}"; do
-  if rg -q '^[[:space:]]*(extends|include):' "$compose_file"; then
+  if grep -Eq '^[[:space:]]*(extends|include):' "$compose_file"; then
     printf '%s must contain its complete runtime configuration\n' "$compose_file" >&2
     exit 1
   fi
-  if rg -q '\$\{AGENVAS_' "$compose_file"; then
+  if grep -Eq '\$\{AGENVAS_' "$compose_file"; then
     printf '%s must declare settings directly rather than require an env file\n' "$compose_file" >&2
     exit 1
   fi
 
   compose_bind_host=127.0.0.1
   compose_web_only=false
-  if [[ $compose_file == docker-compose.yml ]]; then
+  if [[ $compose_file == docker-compose.yml || $compose_file == docker-compose.local.yml ]]; then
     compose_bind_host=0.0.0.0
+  fi
+  if [[ $compose_file == docker-compose.yml ]]; then
     compose_web_only=true
   fi
   compose_config "$compose_file" | jq -e --arg bind_host "$compose_bind_host" --argjson web_only "$compose_web_only" '

@@ -2013,3 +2013,12 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 实际执行 Maven 的定向 test/verify（集成复跑使用 ci-integration），前端直接运行仓库已安装的 openapi-typescript、tsc、Vitest、ESLint 与 Vite；未升级依赖。未运行全量测试、浏览器端到端、生产部署或真实模型调用。真实第三方内容经下载快照验证，服务端 HTTP 同步与远程素材下载使用合成响应；这不代表线上服务、CDN 可用性或生产网络验证。
 
 合并 develop 复验：保留媒体设置页分区、Compose 端口绑定和数据库结构文档的既有更新，开发清单冲突保留两侧记录。数据库结构文档补入 V15 的三张表及引用，覆盖 73 张表、623 列、105 条外键，与生成 jOOQ 核对一致。六个前端测试文件共 72 项合成 HTTP/纯函数测试通过；TypeScript、完整 ESLint、多语言/主题检查、Vite 生产构建与差异空白检查通过，保留既有大 chunk 提示。后端与 API 合约未因合并变化，未重复运行后端测试；全量测试、浏览器端到端、真实模型和部署未运行。
+
+## 2026-10-08 PR #34 CI 修复
+
+- [x] 复现 MessageCatalogTest 的两项失败；默认消息目录的第三方文案同步为中文目录，错误构造器接收 ApiMessage，各调用处使用可静态核对的字面量消息键。保留消息目录完整性、参数数量与生产引用检查，不放宽断言。
+- [x] Compose 检查对齐当前本地配置的 0.0.0.0 端口绑定；镜像入口仍只发布 Web 端口，两个 deploy 入口仍按 127.0.0.1 校验，完整端口、运行时与自动密钥约束保留。静态检查使用标准 grep，消除 CI runner 未安装 rg 时的检查缺失。
+- [x] MessageCatalogTest、ApiI18nTest、LocalizedResponseTest 和 ThirdPartyPromptAdapterTest 共 19 项定向单元测试通过；ThirdPartyPromptPostgresIT 六项真实 PostgreSQL 专项测试通过，零失败、错误或跳过。
+- [x] 四份 Compose 配置检查通过，在不含 rg 的 PATH 中复跑也通过；八项隔离 PostgreSQL 安装密钥测试、31 项 CI 规划/分片/gate 测试、Shell 语法与差异空白检查通过。安装密钥验证首次因工作区脚本为 0700 而无法被非 root 容器读取，恢复 Git 可执行脚本的正常 0755 权限后八项复跑通过，无脚本内容或 Git 文件模式变更。
+
+本地只运行上述定向验证，未本地运行全量测试、整套镜像构建、浏览器端到端、真实模型或生产部署；远端结果以 PR 最新 CI 运行记录为准。此次未改 API、迁移、依赖、CI 工作流或测试发现规则。

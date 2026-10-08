@@ -14,6 +14,7 @@ import dev.agenvas.mediatemplate.infrastructure.ThirdPartyPromptRepository;
 import dev.agenvas.mediatemplate.infrastructure.ThirdPartyPromptRepository.ImportCommand;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.crypto.Sha256;
+import dev.agenvas.shared.i18n.ApiMessage;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -56,9 +57,9 @@ public class ThirdPartyPromptImportService {
             var replay = repository.command(owner, project, commandKey, false);
             if (replay.isPresent()) { checkHash(replay.get(), hash); return ProjectEventService.Change.unchanged(replay.get()); }
             var entry = prompts.get(promptId);
-            if (entry.version() != expected) throw problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", "api.third-party.conflict");
+            if (entry.version() != expected) throw problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.third-party.conflict"));
             if (entry.video() != null && entry.video().videoMode() == VideoMode.text_to_image_to_video)
-                throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_IMAGE_STAGE_REQUIRED", "api.third-party.imageStage");
+                throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_IMAGE_STAGE_REQUIRED", ApiMessage.of("api.third-party.imageStage"));
             var accepted = new ImportCommand(UUID.randomUUID(), owner, hash, entry, null);
             repository.insertCommand(accepted, project, commandKey, clock.instant());
             return ProjectEventService.Change.unchanged(accepted);
@@ -101,6 +102,6 @@ public class ThirdPartyPromptImportService {
         }).value());
     }
     private void checkHash(ImportCommand command, String hash) {
-        if (!hash.equals(command.payloadHash())) throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", "api.media-template.idempotencyConflict");
+        if (!hash.equals(command.payloadHash())) throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", ApiMessage.of("api.media-template.idempotencyConflict"));
     }
 }

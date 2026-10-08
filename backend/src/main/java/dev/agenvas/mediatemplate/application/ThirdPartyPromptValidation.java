@@ -82,9 +82,9 @@ public final class ThirdPartyPromptValidation {
             return uri;
         } catch (IllegalArgumentException | NullPointerException e) { throw invalid(); }
     }
-    public static ApiProblemException invalid() { return problem(HttpStatus.BAD_REQUEST, "THIRD_PARTY_PROMPT_INVALID", "api.third-party.invalid"); }
-    public static ApiProblemException problem(HttpStatus status, String code, String key) {
-        var message = ApiMessage.of(key);
+    public static ApiProblemException invalid() { return problem(HttpStatus.BAD_REQUEST, "THIRD_PARTY_PROMPT_INVALID", ApiMessage.of("api.third-party.invalid")); }
+    /** Callers use literal message keys so catalog coverage can be verified statically. */
+    public static ApiProblemException problem(HttpStatus status, String code, ApiMessage message) {
         return new ApiProblemException(status, code, message, message, false);
     }
 }

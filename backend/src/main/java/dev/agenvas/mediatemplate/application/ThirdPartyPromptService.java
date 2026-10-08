@@ -6,6 +6,7 @@ import dev.agenvas.mediatemplate.domain.MediaTemplate.TargetKind;
 import dev.agenvas.mediatemplate.domain.ThirdPartyPrompt.Format;
 import dev.agenvas.mediatemplate.infrastructure.ThirdPartyPromptHttpClient;
 import dev.agenvas.mediatemplate.infrastructure.ThirdPartyPromptRepository;
+import dev.agenvas.shared.i18n.ApiMessage;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
@@ -52,7 +53,7 @@ public class ThirdPartyPromptService {
     public record SyncResult(String sourceId, SyncState state, int inserted, int updated, int received) {}
     public List<ThirdPartyPromptSource> sources() { return repository.sources(clock.instant()); }
     public ThirdPartyPromptSource source(String id) {
-        return repository.source(id, clock.instant()).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "THIRD_PARTY_SOURCE_NOT_FOUND", "api.third-party.notFound"));
+        return repository.source(id, clock.instant()).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "THIRD_PARTY_SOURCE_NOT_FOUND", ApiMessage.of("api.third-party.notFound")));
     }
     public ThirdPartyPromptSource create(String id, String name, TargetKind kind, String url) {
         writable();
@@ -73,7 +74,7 @@ public class ThirdPartyPromptService {
         return repository.list(kind, source, query.trim(), offset, limit);
     }
     public ThirdPartyPromptRepository.Entry get(String id) {
-        return repository.entry(id).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "THIRD_PARTY_PROMPT_NOT_FOUND", "api.third-party.notFound"));
+        return repository.entry(id).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "THIRD_PARTY_PROMPT_NOT_FOUND", ApiMessage.of("api.third-party.notFound")));
     }
     /** The short lease transaction ends before fetching; publication is fenced by the lease token. */
     public SyncResult sync(String id) {
@@ -109,6 +110,6 @@ public class ThirdPartyPromptService {
         } catch (java.util.concurrent.RejectedExecutionException rejected) { scanning.set(false); }
     }
     @PreDestroy public void close() { worker.shutdownNow(); }
-    private void writable() { if (recovery) throw problem(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY", "api.third-party.readOnly"); }
-    private RuntimeException conflict() { return problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", "api.third-party.conflict"); }
+    private void writable() { if (recovery) throw problem(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY", ApiMessage.of("api.third-party.readOnly")); }
+    private RuntimeException conflict() { return problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.third-party.conflict")); }
 }
