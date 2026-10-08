@@ -311,4 +311,3 @@ erDiagram
 | `call_log_debug.schema_version` | 死列 | `DEFAULT 1` + `CHECK (=1)`,从不读写 |
 | `canvas_item.artifact_id`/`agent_instance_id` | 冗余列 | 被 `subject_type`+`subject_id` 取代,`artifact_id` 兼作 selected_version FK 锚 |
 | `skill_binding_command.agent_id` | 冗余列 | 写入后从不读取 |
-
