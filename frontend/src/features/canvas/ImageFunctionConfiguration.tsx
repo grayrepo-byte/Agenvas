@@ -1,4 +1,4 @@
-import { X } from "@phosphor-icons/react";
+import { X } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { getMediaFunctions, getMediaSettings, type ImageOperation, type MediaCapability, type RunImageOperationRequest } from "../../shared/api/client";

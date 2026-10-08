@@ -1,4 +1,4 @@
-import { BookmarkSimple,FileText,MusicNotes,Video } from "@phosphor-icons/react";
+import { BookmarkSimple,FileText,MusicNotes,Video } from "@/shared/ui/icons";
 import { useInfiniteQuery,useMutation,useQueryClient } from "@tanstack/react-query";
 import { useId,useState } from "react";
 import { libraryThumbnailUrl,listLibraryEntries,updateLibraryEntry,type Artifact,type LibraryCategory,type LibraryEntry,type LibrarySort } from "../../shared/api/client";

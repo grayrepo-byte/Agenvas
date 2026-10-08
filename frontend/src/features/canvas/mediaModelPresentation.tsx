@@ -1,4 +1,4 @@
-import { ImageSquare, MusicNotes, VideoCamera } from "@phosphor-icons/react";
+import { ImageSquare, MusicNotes, VideoCamera } from "@/shared/ui/icons";
 import type { MediaCapability } from "../../shared/api/client";
 import { adapterModel } from "../settings/mediaAdapterCatalog";
 

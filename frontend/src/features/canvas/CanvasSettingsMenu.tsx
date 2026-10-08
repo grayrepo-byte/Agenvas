@@ -1,4 +1,4 @@
-import { Check,GearSix } from "@phosphor-icons/react";
+import { Check,GearSix } from "@/shared/ui/icons";
 import { useRef,useState } from "react";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";

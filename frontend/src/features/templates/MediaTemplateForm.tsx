@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, Plus, X } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, Plus, X } from "@/shared/ui/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState, type FormEvent } from "react";
 import { ApiError, HTTP_STATUS, copyMediaTemplateImage, listMediaTemplates, saveMediaTemplate,

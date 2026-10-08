@@ -1,4 +1,4 @@
-import { Check,Crop,X } from "@phosphor-icons/react";
+import { Check,Crop,X } from "@/shared/ui/icons";
 import {
 useEffect,useRef,useState,type CSSProperties,
 type KeyboardEvent,type PointerEvent as ReactPointerEvent

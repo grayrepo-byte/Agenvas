@@ -15,7 +15,7 @@ Stack,
 Sun,UploadSimple,
 VideoCamera,
 X
-} from "@phosphor-icons/react";
+} from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState,type ReactNode } from "react";
 import {

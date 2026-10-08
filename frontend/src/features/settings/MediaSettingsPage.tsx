@@ -1,5 +1,5 @@
 import { Field, FieldLabel, FieldGroup, FieldSet } from "../../shared/ui/primitives/field";
-import { ImageSquare,MusicNotes,PlugsConnected,Plus,VideoCamera } from "@phosphor-icons/react";
+import { ImageSquare,MusicNotes,PlugsConnected,Plus,VideoCamera } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
 import { useId,useRef,useState,type FormEvent } from "react";

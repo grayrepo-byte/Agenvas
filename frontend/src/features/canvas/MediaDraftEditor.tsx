@@ -8,7 +8,7 @@ ImageSquare,
 MusicNotes,
 PaintBrush,SlidersHorizontal,VideoCamera,
 X
-} from "@phosphor-icons/react";
+} from "@/shared/ui/icons";
 import { useMutation,useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties,FormEvent } from "react";
 import { useCallback, useEffect,useId,useLayoutEffect,useRef,useState } from "react";

@@ -1,4 +1,4 @@
-import { WarningCircle } from "@phosphor-icons/react";
+import { WarningCircle } from "@/shared/ui/icons";
 import { useMutation,useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import { createManualUnknownAttempt,type Task } from "../../shared/api/client";

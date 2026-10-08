@@ -1,5 +1,5 @@
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
-import { Key } from "@phosphor-icons/react";
+import { Key } from "@/shared/ui/icons";
 import { type FormEvent,useState } from "react";
 import { ApiError,changePassword } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";

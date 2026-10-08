@@ -8,6 +8,7 @@
 | --- | --- |
 | 配色、间距、字号、圆角、控件高度、阴影与动效时长 | `frontend/src/shared/ui/design-tokens.css` |
 | shadcn 基础组件 | `frontend/components.json`、`frontend/src/shared/ui/primitives/` |
+| Phosphor 图标与图标类型 | `frontend/src/shared/ui/icons.ts`，按实际使用的 CSR 图标逐个导出 |
 | 多行编辑的字体、行高与滚动条 | `styles.css` 的 `ui-multiline`，消费 `design-tokens.css` 的编辑器与滚动条变量 |
 | 日期与时间选择 | `frontend/src/shared/ui/DateTimePicker.tsx`，组合 `primitives/calendar.tsx`、`popover.tsx`、`input.tsx` |
 | 单选表单兼容层 | `frontend/src/shared/ui/Select.tsx`、`Dropdown.css` |
@@ -17,6 +18,8 @@
 | 语言入口与四语言选择窗口 | `shared/i18n/LanguageSelect.tsx`，复用 `Dialog.tsx` 与 `PageTheme.css` |
 
 公共视觉只在以上入口修改。业务 CSS 保留锚点、宽度、排列、缩略图尺寸等布局规则，消费 `--ui-*` 变量；禁止在页面重新定义下拉框颜色、边框、字号、内边距、悬停和选中样式，禁止复制一份公共组件再修改。画布图片、画笔及引用色等业务内容颜色不属于控件主题。
+
+图标从 `@/shared/ui/icons` 引入；新增图标时在该文件使用 `@phosphor-icons/react/dist/csr/<Name>` 逐个导出，类型使用包的 `/lib` 入口。ESLint 禁止从 `@phosphor-icons/react` 总入口导入，避免 TypeScript 与 Vite 加载整个 CSR/SSR 图标目录；shadcn CLI 生成的图标导入也需调整到公共入口。
 
 ## 系统主色（2026-09-30）
 

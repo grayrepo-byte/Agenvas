@@ -1,4 +1,4 @@
-import { X as XIcon } from "@phosphor-icons/react"
+import { X as XIcon } from "@/shared/ui/icons"
 import { cn } from "cn"
 import { Dialog as DialogPrimitive } from "radix-ui"
 import * as React from "react"

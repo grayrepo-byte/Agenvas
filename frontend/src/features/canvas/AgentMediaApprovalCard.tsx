@@ -1,4 +1,4 @@
-import { CheckCircle, Clock, WarningCircle } from "@phosphor-icons/react";
+import { CheckCircle, Clock, WarningCircle } from "@/shared/ui/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import { ApiError, decideRunMediaApproval, type AgentMediaApproval, type AgentMediaApprovalDecision } from "../../shared/api/client";

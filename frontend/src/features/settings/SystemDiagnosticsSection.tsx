@@ -1,4 +1,4 @@
-import { ArrowsClockwise,CheckCircle,Cpu,Database,HardDrives,Plugs } from "@phosphor-icons/react";
+import { ArrowsClockwise,CheckCircle,Cpu,Database,HardDrives,Plugs } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Link,Navigate } from "react-router";

@@ -1,4 +1,4 @@
-import { WarningCircle } from "@phosphor-icons/react";
+import { WarningCircle } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { listRunTasks } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";

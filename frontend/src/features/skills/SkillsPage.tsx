@@ -1,5 +1,5 @@
 import { useInfiniteQuery,useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
-import { Plus,Sparkle } from "@phosphor-icons/react";
+import { Plus,Sparkle } from "@/shared/ui/icons";
 import { useEffect,useRef,useState,type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { ApiError,HTTP_STATUS,copySkill,copySkillVersion,createSkill,getSkill,getSkillDraft,getSkillOperation,getSkillVersion,

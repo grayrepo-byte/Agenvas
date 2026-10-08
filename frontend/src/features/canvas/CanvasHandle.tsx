@@ -1,6 +1,6 @@
 import { t, useLocale } from "../../shared/i18n";
 import { Handle, Position } from "@xyflow/react";
-import { PlusCircle, type Icon } from "@phosphor-icons/react";
+import { PlusCircle, type Icon } from "@/shared/ui/icons";
 import { useRef, type PointerEvent } from "react";
 
 /** 图标静止尺寸；悬停与连接态只做 CSS 缩放，不再改这个值。 */

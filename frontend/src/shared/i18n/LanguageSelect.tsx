@@ -1,4 +1,4 @@
-import { Check,GlobeSimple } from "@phosphor-icons/react";
+import { Check,GlobeSimple } from "@/shared/ui/icons";
 import { useState } from "react";
 import { LOCALE_NAMES,SUPPORTED_LOCALES,setLocale,t,useLocale } from ".";
 import { Dialog } from "../ui/Dialog";

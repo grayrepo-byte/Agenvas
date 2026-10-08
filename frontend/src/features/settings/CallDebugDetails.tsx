@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CaretRight } from "@phosphor-icons/react";
+import { CaretRight } from "@/shared/ui/icons";
 import { useState } from "react";
 import { Link,Navigate } from "react-router";
 import { HTTP_STATUS,ApiError,getCallDebug,type CallLog } from "../../shared/api/client";

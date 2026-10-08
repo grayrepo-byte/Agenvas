@@ -1,5 +1,5 @@
 import type { CallDebug, DebugBody } from "../../shared/api/client";
-import { CaretRight } from "@phosphor-icons/react";
+import { CaretRight } from "@/shared/ui/icons";
 import { formatNumber, t, useLocale } from "../../shared/i18n";
 import { FormattedModelResponse, type CallLogViewMode } from "./FormattedCallExchange";
 

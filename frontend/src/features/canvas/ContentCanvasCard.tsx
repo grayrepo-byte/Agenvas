@@ -1,7 +1,7 @@
 import {
 LinkSimple,LockSimple,PencilSimple,
 Stack,TextT,X
-} from "@phosphor-icons/react";
+} from "@/shared/ui/icons";
 import type { MouseEvent,ReactNode } from "react";
 import { useEffect,useRef,useState } from "react";
 import type { Artifact,CanvasItem } from "../../shared/api/client";

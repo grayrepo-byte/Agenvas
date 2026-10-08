@@ -1,4 +1,4 @@
-import { Images,MusicNotes,Video } from "@phosphor-icons/react";
+import { Images,MusicNotes,Video } from "@/shared/ui/icons";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useId,useState } from "react";
 import { Link } from "react-router";

@@ -1,4 +1,4 @@
-import { ArrowClockwise,ArrowsOutSimple,SpeakerHigh,SpeakerSlash,VideoCamera } from "@phosphor-icons/react";
+import { ArrowClockwise,ArrowsOutSimple,SpeakerHigh,SpeakerSlash,VideoCamera } from "@/shared/ui/icons";
 import { useEffect,useRef,useState,type SyntheticEvent } from "react";
 import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";

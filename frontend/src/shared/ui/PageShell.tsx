@@ -1,4 +1,4 @@
-import { Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,PlugsConnected,SidebarSimple,SignOut,Sparkle,TerminalWindow,UserCircle } from "@phosphor-icons/react";
+import { Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,PlugsConnected,SidebarSimple,SignOut,Sparkle,TerminalWindow,UserCircle } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { Link,Navigate,useLocation,useNavigate } from "react-router";

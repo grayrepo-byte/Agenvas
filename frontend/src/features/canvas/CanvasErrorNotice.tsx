@@ -1,4 +1,4 @@
-import { X } from "@phosphor-icons/react";
+import { X } from "@/shared/ui/icons";
 import { useState,type ReactNode } from "react";
 import { t,useLocale } from "../../shared/i18n";
 import { Notice } from "../../shared/ui/PagePrimitives";

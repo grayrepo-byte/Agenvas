@@ -1,4 +1,4 @@
-import { Check as CheckIcon,CaretDown as ChevronDownIcon,CaretUp as ChevronUpIcon } from "@phosphor-icons/react"
+import { Check as CheckIcon,CaretDown as ChevronDownIcon,CaretUp as ChevronUpIcon } from "@/shared/ui/icons"
 import { cn } from "cn"
 import { Select as SelectPrimitive } from "radix-ui"
 import * as React from "react"

@@ -1,4 +1,4 @@
-import { ArrowSquareOut,ArrowUp,ClockCounterClockwise,GearSix,Plus,Sparkle,Square } from "@phosphor-icons/react";
+import { ArrowSquareOut,ArrowUp,ClockCounterClockwise,GearSix,Plus,Sparkle,Square } from "@/shared/ui/icons";
 import { useInfiniteQuery,useMutation,useQuery,useQueryClient,type InfiniteData } from "@tanstack/react-query";
 import { NodeResizer,type ResizeParams } from "@xyflow/react";
 import { useEffect,useRef,useState,type FormEvent,type ReactNode } from "react";

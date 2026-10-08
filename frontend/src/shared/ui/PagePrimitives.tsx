@@ -1,4 +1,4 @@
-import { CheckCircle,Info,WarningCircle } from "@phosphor-icons/react";
+import { CheckCircle,Info,WarningCircle } from "@/shared/ui/icons";
 import { useId,type ReactNode } from "react";
 import "./design-tokens.css";
 import "./PageTheme.css";

@@ -1,4 +1,4 @@
-import { DotsNine,ImageSquare,MusicNotes,Plus,Sparkle,TextT,UploadSimple,VideoCamera } from "@phosphor-icons/react";
+import { DotsNine,ImageSquare,MusicNotes,Plus,Sparkle,TextT,UploadSimple,VideoCamera } from "@/shared/ui/icons";
 import type { AgentPreset } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import {

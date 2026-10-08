@@ -1,4 +1,4 @@
-import { ImageSquare, Plus, Trash } from "@phosphor-icons/react";
+import { ImageSquare, Plus, Trash } from "@/shared/ui/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
 import { deleteMediaTemplate, importMediaTemplate, listMediaTemplates, type MediaCapability,

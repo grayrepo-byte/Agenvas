@@ -1,4 +1,4 @@
-import { Check, PaintBrush } from "@phosphor-icons/react";
+import { Check, PaintBrush } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { t, useLocale } from "../../shared/i18n";
