@@ -42,6 +42,13 @@ describe("media templates", () => {
     await user.click(screen.getByRole("tab", { name: "我的模板" })); expect(screen.queryByRole("button", { name: /Studio/ })).not.toBeInTheDocument();
     await user.type(screen.getByRole("searchbox"), "color");
     await user.click(screen.getByRole("button", { name: /Watercolor/ })); expect(importing).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Watercolor" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭窗口" }));
+    expect(screen.getByRole("dialog", { name: "图片模板" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox")).toHaveValue("color");
+    expect(screen.getByRole("tab", { name: "我的模板" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("button", { name: "使用模板" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Watercolor/ }));
     expect(screen.getByText(/只替换提示词/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "使用模板" }));
     await waitFor(() => expect(apply).toHaveBeenCalledWith(imported, { videoInputMode: null, imageSlots: [] })); expect(close).toHaveBeenCalledTimes(1);

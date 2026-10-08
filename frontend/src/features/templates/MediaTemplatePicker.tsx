@@ -101,16 +101,27 @@ function MediaTemplateCatalog({ context, system = false, enabled = true }: {
     {query.error ? <Notice tone="danger">{query.error.message}<Button type="button" variant="outline" disabled={query.isFetching || busy} onClick={() => void query.refetch()}>{t("templates.refresh")}</Button></Notice> : null}
     {!query.isPending && !items.length ? <EmptyState icon={<ImageSquare />} title={t("templates.empty")} description={t("templates.emptyHint")} /> : null}
     <div className="media-template-grid">
-      {items.map((template) => <Button key={template.id} type="button" variant="outline" className="media-template-card" aria-pressed={selected?.id === template.id}
+      {items.map((template) => <Button key={template.id} type="button" variant="outline" className="media-template-card" aria-haspopup="dialog"
         aria-label={template.name}
         disabled={busy} onClick={() => select(template)}>
         {template.images[0] ? <img src={template.images[0].thumbnailUrl} alt="" loading="lazy" /> : <span className="media-template-card-prompt">{template.prompt}</span>}
         <span className="media-template-card-label"><strong>{template.name}</strong><small>{template.scope === "SYSTEM" ? t("templates.system") : t("templates.personal")} · {t("templates.imageCount", { "0": template.images.length })}</small></span>
       </Button>)}
     </div>
-    {selected ? <Panel title={selected.name} className="media-template-preview" description={t("templates.previewHint")}>
+    {selected ? <Dialog title={selected.name} className="media-template-detail" description={t("templates.previewHint")}
+      busy={busy} onClose={() => { setSelected(null); setError(null); }} onSubmit={(event) => event.preventDefault()}
+      footer={<div className="media-template-detail-actions">
+        {applyError ? <Notice tone="warning">{applyError}</Notice> : null}
+        {error && !deleting ? <Notice tone="danger">{error.message}<Button type="button" variant="outline" disabled={busy || query.isFetching} onClick={() => { setSelected(null); setError(null); void query.refetch(); }}>{t("templates.refresh")}</Button></Notice> : null}
+        <div className="ui-form-actions">
+        {(system || selected.scope === "PERSONAL") ? <><Button variant="outline" type="button" disabled={busy} onClick={() => { setEditing(selected); setError(null); }}>{t("templates.edit")}</Button>
+          <Button variant="outline" type="button" disabled={busy} onClick={() => { setDeleting(selected); setError(null); }}><Trash data-icon="inline-start" />{t("templates.delete")}</Button></> : null}
+        {context ? <Button type="button" disabled={busy || Boolean(applyError)} onClick={() => void apply()}>{busy ? t("templates.applying") : t("templates.use")}</Button> : null}
+        </div>
+      </div>}>
+      <div className="media-template-preview">
+      <div className="media-template-preview-images">{selected.images.map((image, index) => <img key={image.id} src={image.contentUrl} alt={t("templates.numberedImage", { "0": index + 1 })} />)}</div>
       <p className="media-template-preview-prompt" aria-disabled={!promptEnabled}>{selected.prompt}</p>
-      <div className="media-template-preview-images">{selected.images.map((image, index) => <img key={image.id} src={image.thumbnailUrl} alt={t("templates.numberedImage", { "0": index + 1 })} />)}</div>
       {context ? <>
         {!promptEnabled && selected.images.length > 0 ? <Notice tone="info">{t("media.workflow.noPrompt")}</Notice> : null}
         {promptEnabled || selected.images.length > 0 ? <Notice tone={selected.images.length ? "warning" : "info"}>{selected.images.length
@@ -124,15 +135,9 @@ function MediaTemplateCatalog({ context, system = false, enabled = true }: {
           <p>{t("templates.slotHint")}</p>{selected.images.map((image, index) => <Field key={image.id}><FieldLabel htmlFor={`${id}-slot-${index}`}>{t("templates.numberedImage", { "0": index + 1 })}</FieldLabel>
             <Select id={`${id}-slot-${index}`} value={imageSlots[index] ?? ""} disabled={busy} onChange={(event) => setImageSlots((current) => { const next = [...current]; next[index] = event.target.value; return next; })}>
               <option value="">{t("templates.chooseSlot")}</option>{slots.map((slot) => <option key={slot.key} value={slot.key} disabled={imageSlots.some((key, position) => key === slot.key && position !== index)}>{workflowFieldLabel(slot)}</option>)}</Select></Field>)}</FieldGroup> : null}
-        {applyError ? <Notice tone="warning">{applyError}</Notice> : null}
       </> : null}
-      <div className="ui-form-actions">
-        {(system || selected.scope === "PERSONAL") ? <><Button variant="outline" type="button" disabled={busy} onClick={() => { setEditing(selected); setError(null); }}>{t("templates.edit")}</Button>
-          <Button variant="outline" type="button" disabled={busy} onClick={() => { setDeleting(selected); setError(null); }}><Trash data-icon="inline-start" />{t("templates.delete")}</Button></> : null}
-        {context ? <Button type="button" disabled={busy || Boolean(applyError)} onClick={() => void apply()}>{busy ? t("templates.applying") : t("templates.use")}</Button> : null}
       </div>
-    </Panel> : null}
-    {error && !deleting ? <Notice tone="danger">{error.message}<Button type="button" variant="outline" disabled={busy || query.isFetching} onClick={() => { setSelected(null); void query.refetch(); }}>{t("templates.refresh")}</Button></Notice> : null}
+    </Dialog> : null}
     </>}
     {editing ? <MediaTemplateForm template={editing === "NEW" ? undefined : editing} scope={system ? "SYSTEM" : "PERSONAL"} targetKind={kind}
       lockTargetKind={Boolean(context)} seedPrompt={context ? templateSeedPrompt(context.fields) : undefined} seedImages={context?.seedImages} projectId={context?.projectId}

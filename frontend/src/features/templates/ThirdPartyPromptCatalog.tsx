@@ -70,7 +70,7 @@ export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
     <div className="media-template-grid">{query.data?.items.map((entry) => {
       const value = entry.image ?? entry.video;
       return value ? <Button type="button" variant="outline" className="media-template-card" key={entry.id} disabled={busy}
-        aria-label={value.title} aria-pressed={selected?.id === entry.id} onClick={() => { setSelected(entry); setImageSlots([]); setError(null); }}>
+        aria-label={value.title} aria-haspopup="dialog" onClick={() => { setSelected(entry); setImageSlots([]); setError(null); }}>
         {value.coverUrl ? <img src={value.coverUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : <span className="media-template-card-prompt">{value.prompt}</span>}
         <span className="media-template-card-label"><strong>{value.title}</strong><small>{sources.data?.items.find((source) => source.id === entry.sourceId)?.name ?? entry.sourceId}</small></span>
       </Button> : null;
@@ -80,14 +80,22 @@ export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
       <span>{t("thirdParty.page", { "0": Math.floor(offset / 50) + 1, "1": Math.ceil(query.data.total / 50) })}</span>
       <Button type="button" variant="outline" disabled={busy || offset + 50 >= query.data.total} onClick={() => { setOffset(offset + 50); setSelected(null); }}>{t("thirdParty.next")}</Button>
     </div> : null}
-    {selected && data ? <Panel title={data.title} description={data.description} className="media-template-preview">
+    {selected && data ? <Dialog title={data.title} description={data.description || t("templates.previewHint")} className="media-template-detail"
+      busy={busy} onClose={() => { setSelected(null); setError(null); }} onSubmit={(event) => event.preventDefault()}
+      footer={context ? <div className="media-template-detail-actions">
+        {invalid ? <Notice tone="warning">{invalid}</Notice> : null}
+        {error ? <Notice tone="danger">{error.message}</Notice> : null}
+        <div className="ui-form-actions"><Button type="button" disabled={busy || Boolean(invalid)} onClick={() => void apply()}>{busy ? t("templates.applying") : t("templates.use")}</Button></div>
+      </div> : undefined}>
+      <div className="media-template-preview">
       <p>{data.author}{data.tags.length ? ` · ${data.tags.join(" · ")}` : ""}</p>
       {data.sourceUrl ? <a href={data.sourceUrl} target="_blank" rel="noopener noreferrer">{t("thirdParty.original")}</a> : null}
-      {selected.video?.previewVideoUrl ? <video controls preload="none" playsInline poster={data.coverUrl || undefined}
-        src={selected.video.previewVideoUrl} aria-label={t("thirdParty.videoPreview")} className="third-party-video-preview" /> : null}
-      <p className="media-template-preview-prompt">{data.prompt}</p>
       {selected.image ? <p>{t("thirdParty.imageMetadata", { "0": selected.image.imageModel, "1": selected.image.imageMode === "edit" ? t("thirdParty.editImage") : t("thirdParty.generateImage") })}</p> : null}
       {selected.video ? <p>{t("thirdParty.videoMetadata", { "0": selected.video.videoModel, "1": videoModeNames[selected.video.videoMode] })}</p> : null}
+      {selected.video?.previewVideoUrl ? <video controls preload="none" playsInline poster={data.coverUrl || undefined}
+        src={selected.video.previewVideoUrl} aria-label={t("thirdParty.videoPreview")} className="third-party-video-preview" />
+        : data.coverUrl ? <img src={data.coverUrl} alt={t("thirdParty.imagePreview")} referrerPolicy="no-referrer" className="media-template-preview-cover" /> : null}
+      <p className="media-template-preview-prompt">{data.prompt}</p>
       {selected.video?.missingReferences?.length ? <Notice tone="warning">{t("thirdParty.referencesRequired")}
         {` ${selected.video.missingReferences.map((ref) => ref.label).join(" · ")}`}</Notice> : null}
       {selected.video?.imageGeneration ? <><p>{t("thirdParty.imageStage")}</p><p className="media-template-preview-prompt">{selected.video.imageGeneration.prompt}</p></> : null}
@@ -98,10 +106,8 @@ export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
       {context && slots.length > 0 ? images.map((ref, index) => <Field key={ref.url}><FieldLabel htmlFor={`${id}-slot-${index}`}>{t("templates.numberedImage", { "0": index + 1 })}</FieldLabel>
         <Select id={`${id}-slot-${index}`} value={imageSlots[index] ?? ""} disabled={busy} onChange={(event) => setImageSlots((current) => { const next = [...current]; next[index] = event.target.value; return next; })}>
           <option value="">{t("templates.chooseSlot")}</option>{slots.map((slot) => <option key={slot.key} value={slot.key} disabled={imageSlots.some((key, pos) => key === slot.key && pos !== index)}>{workflowFieldLabel(slot)}</option>)}</Select></Field>) : null}
-      {invalid && !selected.video?.missingReferences?.length ? <Notice tone="warning">{invalid}</Notice> : null}
-      {context ? <div className="ui-form-actions"><Button type="button" disabled={busy || Boolean(invalid)} onClick={() => void apply()}>{busy ? t("templates.applying") : t("templates.use")}</Button></div> : null}
-    </Panel> : null}
-    {error ? <Notice tone="danger">{error.message}</Notice> : null}
+      </div>
+    </Dialog> : null}
     {query.error ? <Button type="button" variant="outline" disabled={busy || query.isFetching} onClick={() => void client.invalidateQueries({ queryKey: ["third-party-prompts"] })}>{t("templates.refresh")}</Button> : null}
   </div>;
 }

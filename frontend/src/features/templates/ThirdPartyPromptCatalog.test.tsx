@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
@@ -25,6 +25,37 @@ function catalogue() {
     http.get("/api/v1/media-templates/third-party", () => HttpResponse.json({ items: [entry], total: 1, offset: 0, limit: 50 })));
 }
 describe("third-party prompt catalogue", () => {
+  it("opens details separately and returns to the same filtered page and scroll position", async () => {
+    catalogue(); const close = vi.fn(); const apply = vi.fn(); const offsets: string[] = [];
+    server.use(http.get("/api/v1/media-templates/third-party", ({ request }) => {
+      const offset = new URL(request.url).searchParams.get("offset") ?? "0"; offsets.push(offset);
+      return HttpResponse.json({ items: [entry], total: 101, offset: Number(offset), limit: 50 });
+    }));
+    mount({ ...context, onApply: apply, onClose: close }); const user = userEvent.setup();
+    await user.click(screen.getByRole("tab", { name: "第三方模板" }));
+    await screen.findByRole("button", { name: "Cached portrait" });
+    const catalogueDialog = screen.getByRole("dialog", { name: "图片模板" });
+    await user.type(within(catalogueDialog).getAllByRole("searchbox")[1]!, "portrait");
+    await user.click(await screen.findByRole("button", { name: "下一页" }));
+    await screen.findByText("第 2 / 3 页");
+    const body = catalogueDialog.querySelector(".ui-dialog-body")!; body.scrollTop = 417;
+    const card = await screen.findByRole("button", { name: "Cached portrait" });
+    await user.click(card);
+    const detail = screen.getByRole("dialog", { name: "Cached portrait" });
+    expect(catalogueDialog).not.toContainElement(detail);
+    expect(within(detail).getByRole("img", { name: "生成效果预览图" })).toHaveAttribute("src", entry.image!.coverUrl);
+    expect(within(detail).getByText(entry.image!.prompt)).toBeInTheDocument();
+    expect(within(detail).getByText(/来源模型：source-model/)).toBeInTheDocument();
+    expect(apply).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Cached portrait" })).not.toBeInTheDocument());
+    expect(screen.getByRole("dialog", { name: "图片模板" })).toBe(catalogueDialog);
+    expect(screen.getByText("第 2 / 3 页")).toBeInTheDocument();
+    expect(within(catalogueDialog).getAllByRole("searchbox")[1]).toHaveValue("portrait");
+    expect(body.scrollTop).toBe(417); expect(card).toHaveFocus();
+    expect(close).not.toHaveBeenCalled(); expect(offsets.at(-1)).toBe("50");
+    expect(screen.queryByRole("button", { name: "使用模板" })).not.toBeInTheDocument();
+  });
   it("shows a generated video with manual playback and blocks importing unpublished references", async () => {
     catalogue();
     const video: ThirdPartyPromptEntry = { ...entry, targetKind: "VIDEO", image: null, video: {
@@ -41,7 +72,7 @@ describe("third-party prompt catalogue", () => {
     const preview = screen.getByLabelText("生成效果视频");
     expect(preview).toHaveAttribute("src", "https://example.com/output.mp4");
     expect(preview).toHaveAttribute("controls"); expect(preview).toHaveAttribute("preload", "none"); expect(preview).not.toHaveAttribute("autoplay");
-    expect(screen.getByText(/来源未提供所需参考素材/)).toBeInTheDocument();
+    expect(screen.getAllByText(/来源未提供所需参考素材/).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "使用模板" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "使用模板" })); expect(imported).not.toHaveBeenCalled(); expect(apply).not.toHaveBeenCalled();
   });
@@ -52,7 +83,9 @@ describe("third-party prompt catalogue", () => {
     mount({ ...context, onApply: apply, onClose: close }); const user = userEvent.setup();
     await user.click(screen.getByRole("tab", { name: "第三方模板" }));
     await user.click(await screen.findByRole("button", { name: "Cached portrait" }));
+    const detail = screen.getByRole("dialog", { name: "Cached portrait" });
     expect(screen.getByRole("link", { name: "查看原始来源" })).toHaveAttribute("href", "https://example.com/original");
+    expect(within(detail).getByRole("img", { name: "生成效果预览图" })).toHaveAttribute("src", entry.image!.coverUrl);
     expect(apply).not.toHaveBeenCalled(); await user.click(screen.getByRole("button", { name: "使用模板" }));
     await waitFor(() => expect(apply).toHaveBeenCalledWith(imported, { videoInputMode: null, imageSlots: [] })); expect(close).toHaveBeenCalled();
   });
