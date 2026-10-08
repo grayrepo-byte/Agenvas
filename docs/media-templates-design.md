@@ -36,6 +36,45 @@
 
 模板编辑与删除使用 expectedVersion；导入通过项目与 commandKey 保存完整结果，同键同参返回相同版本引用，同键异参返回冲突。模板后续修改或删除不改写已导入的项目资源。系统升级同步部署 Java、OpenAPI、生成 TypeScript、前端与新增迁移；已有项目、草稿和生成结果保留。
 
+## 第三方提示词库
+
+图片与视频模板新增“第三方模板”目录，从 PostgreSQL 缓存分页读取，支持来源和文本筛选。管理员在同一设置页管理来源、手动同步，或添加公开 HTTPS 标准 JSON 数据地址。同步不修改个人模板或已经导入的项目内容。
+
+图片原生格式使用 `id/sourceId/title/prompt/description/coverUrl/referenceImageUrls/tags/author/sourceUrl/createdAt/imageMode/imageModel`，与用户指定格式一致。`imageMode` 为 `generate` 或 `edit`。效果图只作封面，只有明确标注的输入素材进入 `referenceImageUrls`。需要图片但上游未公开输入图的编辑模板，在应用前要求草稿已有图片。
+
+视频有独立结构，共享身份和展示字段，输入使用 `videoMode/videoModel/references/imageGeneration`。`videoMode` 为 `text_to_video`、`image_to_video`、`video_reference`、`omni_reference`（全能参考）或 `text_to_image_to_video`。每个 reference 保存 `kind`（IMAGE/VIDEO/AUDIO）、`role`（REFERENCE/START_FRAME/END_FRAME/VIDEO_REFERENCE/AUDIO_REFERENCE）和 `url`。图生视频必须有明确图片引用；首尾帧与全能参考按各自角色保存，不能用封面替代输入。可选 imageGeneration 保存前置图片提示词、图片模型及图片引用；浏览时展示完整阶段，应用前要求先准备图片，不自动执行生成流水线。
+
+原生视频示例：
+
+```json
+{
+  "id": "example-video:001",
+  "sourceId": "example-video",
+  "title": "Product orbit",
+  "prompt": "Slowly orbit around the product while keeping its shape consistent.",
+  "description": "",
+  "coverUrl": "https://example.com/preview.jpg",
+  "tags": ["product"],
+  "author": "Example Author",
+  "sourceUrl": "https://example.com/original",
+  "createdAt": "2026-10-08",
+  "videoMode": "image_to_video",
+  "videoModel": "example-video-model",
+  "references": [{"kind": "IMAGE", "role": "START_FRAME", "url": "https://example.com/input.jpg"}],
+  "imageGeneration": null
+}
+```
+
+原生来源返回相应媒体结构的 JSON 数组或 `{ "items": [...] }`，id 必须包含当前 sourceId 前缀。非标准上游通过 `ThirdPartyPromptAdapter` 转换后统一验证。首批来源参考 [Infinite Canvas 的第三方列表](https://docs.canvas.best/docs/overview/third-party-prompt-repositories)：ZeroLu、ImgEdify、YouMind GPT Image 2、YouMind Nano Banana Pro 的 README 和 David 的 prompts.json。YouMind 的 README 只公开部分提示词，缓存范围是实际公开的数据，不把网页总量当作已导入量。
+
+Flyway V15 增加独立来源、缓存及导入命令表，jOOQ 从隔离 PostgreSQL 重新生成。原生源使用上游 ID；Markdown 无原生 ID 时使用发布地址与条目标题的组合，避免同一原帖中的不同提示词被合并。正文或顺序变化不会产生新身份；无上游 ID 的条目改名会新增并保留旧记录。同步仅 upsert，相同内容不增加版本，上游缺失、停用和失败均不删除历史记录。成功后 24 小时再次同步，失败保留上次成功时间并一小时后重试；扫描默认每分钟，首次启动约一分钟后开始。`AGENVAS_PROMPT_SYNC_ENABLED=false` 关闭自动扫描，管理员手动同步仍可用。恢复模式禁止手动同步和后台写入。
+
+同步使用独立有界 worker，避免占用媒体任务恢复的共享调度线程。短事务认领十分钟租约，网络读取在事务外进行；发布前锁定并核对 fencing token，停用源使在途结果失效。异常只保存稳定错误码。HTTPS GET 校验公开 DNS，拒绝地址凭证、私有/本地地址、重定向、隐式重试及超限响应。
+
+导入以项目命令键冻结缓存版本及引用顺序，在事务外归档为项目私有素材，然后原子发布全部不可变版本和事件。同键重放复用原快照与已归档字节，上游改变或下线不影响已导入内容。全能参考中的图片、视频与音频整体替换引用；能力模式、各类数量限制和具名图片槽位在导入前校验。暂不在动态工作流中映射第三方视频/音频槽位，明确阻止应用并保留原草稿。三方模型只作来源信息，不改写当前能力、参数和时长，也不触发生成。
+
+新增接口：`GET /api/v1/media-templates/third-party` 与 `.../sources`；管理员 `POST /api/v1/settings/media-template-sources`、`PATCH .../{sourceId}`、`POST .../{sourceId}/sync`；项目 `POST /api/v1/projects/{projectId}/media-templates/third-party/import`。写操作继续受认证、管理员边界、CSRF 和恢复模式约束。合约和生成 TypeScript 同步更新。
+
 ## 验收边界
 
 需定向验证个人隔离、系统写权限与 CSRF、图片上传/固定版本复制、模板 CRUD 的 CAS、导入命令重放与异参冲突、来源删除后独立复用，以及前端提示词/引用整体填充、容量和模式限制、失败保留草稿、不触发生成。实际运行结果记录在开发清单；Mock 与合成图片不证明真实 Provider 接通。全量测试、真实 Provider 与部署验证分别据实记录。

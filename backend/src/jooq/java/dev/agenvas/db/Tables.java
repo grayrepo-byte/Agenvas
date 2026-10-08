@@ -72,6 +72,9 @@ import dev.agenvas.db.tables.TaskArtifactTarget;
 import dev.agenvas.db.tables.TaskLateResult;
 import dev.agenvas.db.tables.TaskManualReplacement;
 import dev.agenvas.db.tables.TaskProviderPollRetry;
+import dev.agenvas.db.tables.ThirdPartyPrompt;
+import dev.agenvas.db.tables.ThirdPartyPromptImport;
+import dev.agenvas.db.tables.ThirdPartyPromptSource;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
 
@@ -424,6 +427,21 @@ public class Tables {
      * 外部状态查询的重试计数；查询重试不代表重新提交生成
      */
     public static final TaskProviderPollRetry TASK_PROVIDER_POLL_RETRY = TaskProviderPollRetry.TASK_PROVIDER_POLL_RETRY;
+
+    /**
+     * 规范化图片或视频提示词缓存；只新增或更新，不按上游缺失删除
+     */
+    public static final ThirdPartyPrompt THIRD_PARTY_PROMPT = ThirdPartyPrompt.THIRD_PARTY_PROMPT;
+
+    /**
+     * 冻结第三方模板与素材引用的幂等项目导入命令
+     */
+    public static final ThirdPartyPromptImport THIRD_PARTY_PROMPT_IMPORT = ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT;
+
+    /**
+     * 第三方提示词源；每日同步租约与失败状态独立持久化
+     */
+    public static final ThirdPartyPromptSource THIRD_PARTY_PROMPT_SOURCE = ThirdPartyPromptSource.THIRD_PARTY_PROMPT_SOURCE;
 
     /**
      * 按 Run、回合及 tool_call_id 去重的工具执行账本

@@ -4,6 +4,102 @@
  */
 
 export interface paths {
+    "/api/v1/media-templates/third-party/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listThirdPartyPromptSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/media-templates/third-party": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listThirdPartyPrompts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-template-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createThirdPartyPromptSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-template-sources/{sourceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateThirdPartyPromptSource"];
+        trace?: never;
+    };
+    "/api/v1/settings/media-template-sources/{sourceId}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["syncThirdPartyPromptSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/media-templates/third-party/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["importThirdPartyPrompt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/media-styles": {
         parameters: {
             query?: never;
@@ -3284,6 +3380,9 @@ export interface components {
             thumbnailUrl: string;
         };
         MediaTemplateImport: {
+            references?: components["schemas"]["ImportedThirdPartyReference"][];
+            /** @enum {string|null} */
+            videoInputMode?: "TEXT" | "START_END" | "GENERAL_REFERENCE" | null;
             /** Format: uuid */
             templateId: string;
             /** Format: int64 */
@@ -5519,6 +5618,130 @@ export interface components {
             resources: components["schemas"]["SkillVersionResource"][];
             assets: components["schemas"]["SkillPublishedAsset"][];
         };
+        ThirdPartyImagePrompt: {
+            id: string;
+            sourceId: string;
+            title: string;
+            prompt: string;
+            description: string;
+            coverUrl: string;
+            tags: string[];
+            author: string;
+            sourceUrl: string;
+            createdAt: string;
+            referenceImageUrls: string[];
+            /** @enum {string} */
+            imageMode: "generate" | "edit";
+            imageModel: string;
+        };
+        ThirdPartyPromptReference: {
+            /** @enum {string} */
+            kind: "IMAGE" | "VIDEO" | "AUDIO";
+            /** @enum {string} */
+            role: "REFERENCE" | "START_FRAME" | "END_FRAME" | "VIDEO_REFERENCE" | "AUDIO_REFERENCE";
+            /** Format: uri */
+            url: string;
+        };
+        ThirdPartyImageGeneration: {
+            prompt: string;
+            imageModel: string;
+            referenceImageUrls: string[];
+        };
+        ThirdPartyVideoPrompt: {
+            id: string;
+            sourceId: string;
+            title: string;
+            prompt: string;
+            description: string;
+            coverUrl: string;
+            tags: string[];
+            author: string;
+            sourceUrl: string;
+            createdAt: string;
+            /** @enum {string} */
+            videoMode: "text_to_video" | "image_to_video" | "video_reference" | "omni_reference" | "text_to_image_to_video";
+            videoModel: string;
+            references: components["schemas"]["ThirdPartyPromptReference"][];
+            imageGeneration: components["schemas"]["ThirdPartyImageGeneration"] | null;
+        };
+        ThirdPartyPromptEntry: {
+            id: string;
+            sourceId: string;
+            /** @enum {string} */
+            targetKind: "IMAGE" | "VIDEO";
+            image: components["schemas"]["ThirdPartyImagePrompt"] | null;
+            video: components["schemas"]["ThirdPartyVideoPrompt"] | null;
+            version: number;
+            /** Format: date-time */
+            cachedAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ThirdPartyPromptPage: {
+            items: components["schemas"]["ThirdPartyPromptEntry"][];
+            total: number;
+            offset: number;
+            limit: number;
+        };
+        ThirdPartyPromptSource: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            targetKind: "IMAGE" | "VIDEO";
+            /** @enum {string} */
+            format: "NATIVE_JSON" | "GITHUB_MARKDOWN" | "DAVID_JSON";
+            url: string;
+            model: string;
+            enabled: boolean;
+            version: number;
+            /** Format: date-time */
+            nextSyncAt: string;
+            /** Format: date-time */
+            lastSyncedAt: string | null;
+            lastError: string | null;
+            promptCount: number;
+            syncing: boolean;
+        };
+        ThirdPartyPromptSources: {
+            items: components["schemas"]["ThirdPartyPromptSource"][];
+        };
+        CreateThirdPartyPromptSource: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            targetKind: "IMAGE" | "VIDEO";
+            /** Format: uri */
+            url: string;
+        };
+        UpdateThirdPartyPromptSource: {
+            enabled: boolean;
+            expectedVersion: number;
+        };
+        ThirdPartyPromptSync: {
+            sourceId: string;
+            /** @enum {string} */
+            state: "SUCCESS" | "FAILED" | "RUNNING" | "DISABLED" | "SUPERSEDED";
+            inserted: number;
+            updated: number;
+            received: number;
+        };
+        ImportThirdPartyPrompt: {
+            promptId: string;
+            expectedVersion: number;
+            commandKey: string;
+        };
+        ImportedThirdPartyReference: {
+            /** Format: uuid */
+            versionId: string;
+            /** Format: uuid */
+            assetId: string;
+            title: string;
+            /** @enum {string} */
+            kind: "IMAGE" | "VIDEO" | "AUDIO";
+            /** @enum {string} */
+            role: "REFERENCE" | "START_FRAME" | "END_FRAME" | "VIDEO_REFERENCE" | "AUDIO_REFERENCE";
+            thumbnailUrl: string;
+        };
         /** TEXT Artifact content v1 */
         "text-v1.schema": {
             /** @enum {string} */
@@ -5697,6 +5920,366 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listThirdPartyPromptSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSources"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listThirdPartyPrompts: {
+        parameters: {
+            query: {
+                targetKind: "IMAGE" | "VIDEO";
+                sourceId?: string;
+                query?: string;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptPage"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createThirdPartyPromptSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateThirdPartyPromptSource"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSource"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateThirdPartyPromptSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateThirdPartyPromptSource"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSource"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    syncThirdPartyPromptSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSync"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    importThirdPartyPrompt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportThirdPartyPrompt"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaTemplateImport"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listMediaStyles: {
         parameters: {
             query?: never;

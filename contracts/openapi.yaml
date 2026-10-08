@@ -10,6 +10,294 @@ info:
 servers:
   - url: /
 paths:
+  /api/v1/media-templates/third-party/sources:
+    get:
+      operationId: listThirdPartyPromptSources
+      tags:
+      - MediaTemplates
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThirdPartyPromptSources'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /api/v1/media-templates/third-party:
+    get:
+      operationId: listThirdPartyPrompts
+      tags:
+      - MediaTemplates
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThirdPartyPromptPage'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - name: targetKind
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - IMAGE
+          - VIDEO
+      - name: sourceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: query
+        in: query
+        required: false
+        schema:
+          type: string
+          maxLength: 160
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+  /api/v1/settings/media-template-sources:
+    post:
+      operationId: createThirdPartyPromptSource
+      tags:
+      - MediaTemplates
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThirdPartyPromptSource'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateThirdPartyPromptSource'
+  /api/v1/settings/media-template-sources/{sourceId}:
+    patch:
+      operationId: updateThirdPartyPromptSource
+      tags:
+      - MediaTemplates
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThirdPartyPromptSource'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - name: sourceId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateThirdPartyPromptSource'
+  /api/v1/settings/media-template-sources/{sourceId}/sync:
+    post:
+      operationId: syncThirdPartyPromptSource
+      tags:
+      - MediaTemplates
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThirdPartyPromptSync'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - name: sourceId
+        in: path
+        required: true
+        schema:
+          type: string
+  /api/v1/projects/{projectId}/media-templates/third-party/import:
+    post:
+      operationId: importThirdPartyPrompt
+      tags:
+      - MediaTemplates
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MediaTemplateImport'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportThirdPartyPrompt'
   /api/v1/media-styles:
     get:
       operationId: listMediaStyles
@@ -4236,6 +4524,19 @@ components:
         - "prompt"
         - "images"
       "properties":
+        references:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImportedThirdPartyReference'
+        videoInputMode:
+          type:
+          - string
+          - 'null'
+          enum:
+          - TEXT
+          - START_END
+          - GENERAL_REFERENCE
+          - null
         "templateId":
           "type": "string"
           "format": "uuid"
@@ -6930,6 +7231,353 @@ components:
         inputSlots: {type: array, items: {$ref: "#/components/schemas/SkillInputSlot"}}
         resources: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/SkillVersionResource"}}
         assets: {type: array, items: {$ref: "#/components/schemas/SkillPublishedAsset"}}
+    ThirdPartyImagePrompt:
+      type: object
+      required:
+      - id
+      - sourceId
+      - title
+      - prompt
+      - description
+      - coverUrl
+      - tags
+      - author
+      - sourceUrl
+      - createdAt
+      - referenceImageUrls
+      - imageMode
+      - imageModel
+      properties:
+        id: &id001
+          type: string
+        sourceId: &id002
+          type: string
+        title: &id003
+          type: string
+          maxLength: 500
+        prompt: &id004
+          type: string
+          maxLength: 20000
+        description: &id005
+          type: string
+        coverUrl: &id006
+          type: string
+        tags: &id007
+          type: array
+          items:
+            type: string
+        author: &id008
+          type: string
+        sourceUrl: &id009
+          type: string
+        createdAt: &id010
+          type: string
+        referenceImageUrls:
+          type: array
+          items:
+            type: string
+          maxItems: 8
+        imageMode:
+          type: string
+          enum:
+          - generate
+          - edit
+        imageModel:
+          type: string
+    ThirdPartyPromptReference:
+      type: object
+      required:
+      - kind
+      - role
+      - url
+      properties:
+        kind: &id013
+          type: string
+          enum:
+          - IMAGE
+          - VIDEO
+          - AUDIO
+        role: &id014
+          type: string
+          enum:
+          - REFERENCE
+          - START_FRAME
+          - END_FRAME
+          - VIDEO_REFERENCE
+          - AUDIO_REFERENCE
+        url:
+          type: string
+          format: uri
+    ThirdPartyImageGeneration:
+      type: object
+      required:
+      - prompt
+      - imageModel
+      - referenceImageUrls
+      properties:
+        prompt:
+          type: string
+        imageModel:
+          type: string
+        referenceImageUrls:
+          type: array
+          items:
+            type: string
+    ThirdPartyVideoPrompt:
+      type: object
+      required:
+      - id
+      - sourceId
+      - title
+      - prompt
+      - description
+      - coverUrl
+      - tags
+      - author
+      - sourceUrl
+      - createdAt
+      - videoMode
+      - videoModel
+      - references
+      - imageGeneration
+      properties:
+        id: *id001
+        sourceId: *id002
+        title: *id003
+        prompt: *id004
+        description: *id005
+        coverUrl: *id006
+        tags: *id007
+        author: *id008
+        sourceUrl: *id009
+        createdAt: *id010
+        videoMode:
+          type: string
+          enum:
+          - text_to_video
+          - image_to_video
+          - video_reference
+          - omni_reference
+          - text_to_image_to_video
+        videoModel:
+          type: string
+        references:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThirdPartyPromptReference'
+          maxItems: 16
+        imageGeneration:
+          oneOf:
+          - $ref: '#/components/schemas/ThirdPartyImageGeneration'
+          - type: 'null'
+    ThirdPartyPromptEntry:
+      type: object
+      required:
+      - id
+      - sourceId
+      - targetKind
+      - image
+      - video
+      - version
+      - cachedAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+        sourceId:
+          type: string
+        targetKind: &id011
+          type: string
+          enum:
+          - IMAGE
+          - VIDEO
+        image:
+          oneOf:
+          - $ref: '#/components/schemas/ThirdPartyImagePrompt'
+          - type: 'null'
+        video:
+          oneOf:
+          - $ref: '#/components/schemas/ThirdPartyVideoPrompt'
+          - type: 'null'
+        version:
+          type: integer
+          minimum: 0
+        cachedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ThirdPartyPromptPage:
+      type: object
+      required:
+      - items
+      - total
+      - offset
+      - limit
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThirdPartyPromptEntry'
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+    ThirdPartyPromptSource:
+      type: object
+      required:
+      - id
+      - name
+      - targetKind
+      - format
+      - url
+      - model
+      - enabled
+      - version
+      - nextSyncAt
+      - lastSyncedAt
+      - lastError
+      - promptCount
+      - syncing
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        targetKind: *id011
+        format:
+          type: string
+          enum:
+          - NATIVE_JSON
+          - GITHUB_MARKDOWN
+          - DAVID_JSON
+        url:
+          type: string
+        model:
+          type: string
+        enabled: &id012
+          type: boolean
+        version:
+          type: integer
+        nextSyncAt:
+          type: string
+          format: date-time
+        lastSyncedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        lastError:
+          type:
+          - string
+          - 'null'
+        promptCount:
+          type: integer
+        syncing: *id012
+    ThirdPartyPromptSources:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ThirdPartyPromptSource'
+    CreateThirdPartyPromptSource:
+      type: object
+      required:
+      - id
+      - name
+      - targetKind
+      - url
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,79}$
+        name:
+          type: string
+          maxLength: 160
+        targetKind: *id011
+        url:
+          type: string
+          format: uri
+          maxLength: 4096
+    UpdateThirdPartyPromptSource:
+      type: object
+      required:
+      - enabled
+      - expectedVersion
+      properties:
+        enabled: *id012
+        expectedVersion:
+          type: integer
+          minimum: 0
+    ThirdPartyPromptSync:
+      type: object
+      required:
+      - sourceId
+      - state
+      - inserted
+      - updated
+      - received
+      properties:
+        sourceId:
+          type: string
+        state:
+          type: string
+          enum:
+          - SUCCESS
+          - FAILED
+          - RUNNING
+          - DISABLED
+          - SUPERSEDED
+        inserted:
+          type: integer
+        updated:
+          type: integer
+        received:
+          type: integer
+    ImportThirdPartyPrompt:
+      type: object
+      required:
+      - promptId
+      - expectedVersion
+      - commandKey
+      properties:
+        promptId:
+          type: string
+          maxLength: 512
+        expectedVersion:
+          type: integer
+          minimum: 0
+        commandKey:
+          type: string
+          maxLength: 200
+    ImportedThirdPartyReference:
+      type: object
+      required:
+      - versionId
+      - assetId
+      - title
+      - kind
+      - role
+      - thumbnailUrl
+      properties:
+        versionId:
+          type: string
+          format: uuid
+        assetId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        kind: *id013
+        role: *id014
+        thumbnailUrl:
+          type: string
   responses:
     ValidationError:
       description: 请求参数无效

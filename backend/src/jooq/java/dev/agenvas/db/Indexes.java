@@ -36,6 +36,7 @@ import dev.agenvas.db.tables.SkillPublishOperation;
 import dev.agenvas.db.tables.SpringSession;
 import dev.agenvas.db.tables.Task;
 import dev.agenvas.db.tables.TaskArtifactTarget;
+import dev.agenvas.db.tables.ThirdPartyPrompt;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
 
@@ -98,6 +99,7 @@ public class Indexes {
     public static final Index SPRING_SESSION_IX1 = Internal.createIndex(DSL.name("spring_session_ix1"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.SESSION_ID }, true);
     public static final Index SPRING_SESSION_IX2 = Internal.createIndex(DSL.name("spring_session_ix2"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.EXPIRY_TIME }, false);
     public static final Index SPRING_SESSION_IX3 = Internal.createIndex(DSL.name("spring_session_ix3"), SpringSession.SPRING_SESSION, new OrderField[] { SpringSession.SPRING_SESSION.PRINCIPAL_NAME }, false);
+    public static final Index THIRD_PARTY_PROMPT_CATALOG_IDX = Internal.createIndex(DSL.name("third_party_prompt_catalog_idx"), ThirdPartyPrompt.THIRD_PARTY_PROMPT, new OrderField[] { ThirdPartyPrompt.THIRD_PARTY_PROMPT.TARGET_KIND, ThirdPartyPrompt.THIRD_PARTY_PROMPT.SOURCE_ID, ThirdPartyPrompt.THIRD_PARTY_PROMPT.ID }, false);
     public static final Index UQ_APP_USER_SINGLE_ACTIVE_ADMIN = Internal.createIndex(DSL.name("uq_app_user_single_active_admin"), AppUser.APP_USER, new OrderField[] { AppUser.APP_USER.STATUS }, true);
     public static final Index UQ_CANVAS_ITEM_MEDIA_INPUT_CONNECTION_SOURCE = Internal.createIndex(DSL.name("uq_canvas_item_media_input_connection_source"), CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE, new OrderField[] { CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE.CONNECTION_ID }, true);
     public static final Index UQ_CANVAS_ITEM_MEDIA_INPUT_END_FRAME = Internal.createIndex(DSL.name("uq_canvas_item_media_input_end_frame"), CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT, new OrderField[] { CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT.PROJECT_ID, CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT.CANVAS_ITEM_ID, CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT.INPUT_ROLE }, true);

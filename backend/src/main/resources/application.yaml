@@ -71,6 +71,9 @@ springdoc:
 
 agenvas:
   recovery-mode: ${AGENVAS_RECOVERY_MODE:false}
+  media-templates:
+    sync-enabled: ${AGENVAS_PROMPT_SYNC_ENABLED:true}
+    scan-delay-ms: 60000
   credentials:
     master-key-base64: ${AGENVAS_CREDENTIAL_MASTER_KEY:}
     key-version: ${AGENVAS_CREDENTIAL_KEY_VERSION:1}

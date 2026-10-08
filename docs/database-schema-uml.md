@@ -1,7 +1,7 @@
 # 数据库 Schema UML 文档
 
 > 本文由 `backend/src/main/resources/db/migration` 的 DDL 生成,与 jOOQ 生成代码 `backend/src/jooq/java/dev/agenvas/db/tables/` 一一对应。
-> 覆盖 **70 张表、593 列、102 条外键**;测得的「废弃」结论见每张表备注与第 12 节。
+> 覆盖 **73 张表、623 列、105 条外键**;测得的「废弃」结论见每张表备注与第 12 节。
 
 阅读约定:
 
@@ -188,6 +188,9 @@ erDiagram
 | `media_template_import_command` | 模板导入命令的固定输入、幂等摘要和结果 | id |
 | `media_template_import_image` | 模板图片导入到项目的不可变版本及模板来源审计 — ⚠ 整表只写不读 | project_id, version_id |
 | `media_template_import_source` | 模板导入命令固定的参考图片来源 | command_id, image_id |
+| `third_party_prompt_source` | 第三方图片或视频提示词来源配置、同步租约与失败状态 | id |
+| `third_party_prompt` | 规范化提示词缓存，只新增或更新，保留历史条目 | id |
+| `third_party_prompt_import` | 冻结模板快照与素材引用的幂等项目导入命令 | id |
 
 ```mermaid
 erDiagram
@@ -195,6 +198,7 @@ erDiagram
     media_template_attachment }o--|| media_template : "template_id→id"
     media_template_import_source }o--|| media_template_import_command : "command_id→id"
     media_template_import_source }o--|| media_template_image : "image_id→id"
+    third_party_prompt }o--|| third_party_prompt_source : "source_id→id"
 ```
 
 ## I. 个人素材库
@@ -218,7 +222,7 @@ erDiagram
 
 | 表 | 作用 | 引用(出向) | 被引用(入向) |
 | --- | --- | --- | --- |
-| `app_user` | 本地用户、密码摘要及账户状态 | — | creative_skill(owner_id); idempotency_record(principal_id); library_cleanup(owner_id); library_command(owner_id); library_file(owner_id); media_template(owner_id); media_template_image(owner_id); project(owner_id); library_entry(owner_id); media_template_import_command(owner_id); skill_binding_command(owner_id); skill_install_operation(owner_id); skill_publish_operation(owner_id); agent_run(user_id); skill_install_command(owner_id); agent_media_approval(owner_id); task_manual_replacement(approved_by_user_id) |
+| `app_user` | 本地用户、密码摘要及账户状态 | — | creative_skill(owner_id); idempotency_record(principal_id); library_cleanup(owner_id); library_command(owner_id); library_file(owner_id); media_template(owner_id); media_template_image(owner_id); project(owner_id); library_entry(owner_id); media_template_import_command(owner_id); skill_binding_command(owner_id); skill_install_operation(owner_id); skill_publish_operation(owner_id); agent_run(user_id); skill_install_command(owner_id); agent_media_approval(owner_id); task_manual_replacement(approved_by_user_id); third_party_prompt_import(owner_id) |
 | `audit_debug_settings` | 全局调用调试开关，默认不保存调用正文 | — | — |
 | `audit_log_retention_settings` | 全局调用日志保留期限及配置版本 | — | — |
 | `installation_lock` | 管理员初始化的单例事务锁行 | — | — |
@@ -238,7 +242,7 @@ erDiagram
 | `media_provider_connection_version` | 不可变媒体连接地址、精确来源摘要与加密凭据 | media_provider_connection(connection_id) | task(connection_id, connection_version); provider_attempt(connection_id, connection_version) |
 | `media_template` | 用户或系统媒体模板及提示词 | app_user(owner_id) | media_template_attachment(template_id) |
 | `media_template_image` | 模板参考图片的归档存储元数据 | app_user(owner_id) | media_template_attachment(image_id); media_template_import_source(image_id) |
-| `project` | 项目权限边界、当前活动 Run、事件序号与并发控制版本 | app_user(owner_id) | agent_instance(project_id); artifact(project_id); asset(project_id); asset_storage_route(project_id); media_template_import_command(project_id); project_event(project_id); skill_binding_command(project_id); skill_install_operation(project_id); agent_run(project_id); canvas_item(project_id); skill_install_command(project_id); task(project_id) |
+| `project` | 项目权限边界、当前活动 Run、事件序号与并发控制版本 | app_user(owner_id) | agent_instance(project_id); artifact(project_id); asset(project_id); asset_storage_route(project_id); media_template_import_command(project_id); project_event(project_id); skill_binding_command(project_id); skill_install_operation(project_id); agent_run(project_id); canvas_item(project_id); skill_install_command(project_id); task(project_id); third_party_prompt_import(project_id) |
 | `spring_session_attributes` | Spring Session JDBC 序列化会话属性 | spring_session(session_primary_id) | — |
 | `storage_settings` | 当前存储配置选择及并发控制版本；已有资产保留原路由 | storage_profile(active_profile_id); storage_profile(relay_profile_id) | — |
 | `agent_instance` | Agent 卡片配置；请求身份和运行上下文保存在 Run 中 | project(project_id) | agent_conversation(project_id, agent_instance_id); agent_skill_binding(project_id, agent_id); skill_binding_command(project_id, agent_id); agent_binding(project_id, agent_instance_id); agent_run(project_id, agent_instance_id); canvas_item(project_id, agent_instance_id) |
@@ -288,10 +292,13 @@ erDiagram
 | `media_relay_object` | Temporary provider input copies registered before upload, retained for durable cleanup | storage_profile(profile_id) | — |
 | `prompt_definition` | 统一管理 Agent 与功能的创作提示词；消费者按稳定用途标识取用并冻结正文 | — | — |
 | `media_function_setting` | Administrator-selected image/video processing capabilities, independent of generation defaults | media_capability(capability_id) | — |
+| `third_party_prompt_source` | 第三方提示词来源配置、同步租约与失败状态 | — | third_party_prompt(source_id) |
+| `third_party_prompt` | 规范化提示词缓存，保留历史条目 | third_party_prompt_source(source_id) | — |
+| `third_party_prompt_import` | 冻结模板快照与素材引用的幂等项目导入命令 | app_user(owner_id); project(project_id) | — |
 
 ## 11. 无出向外键的表
 
-以下表没有出向外键(仅作为被引用方,或以所有者/项目为作用域但不建外键的配置表): `app_user`、`audit_debug_settings`、`audit_log_retention_settings`、`installation_lock`、`llm_provider_config`、`llm_provider_config_counter`、`media_provider_connection`、`media_style`、`spring_session`、`storage_profile`、`call_log`、`usage_ledger`、`prompt_definition`
+以下表没有出向外键(仅作为被引用方,或以所有者/项目为作用域但不建外键的配置表): `app_user`、`audit_debug_settings`、`audit_log_retention_settings`、`installation_lock`、`llm_provider_config`、`llm_provider_config_counter`、`media_provider_connection`、`media_style`、`spring_session`、`storage_profile`、`call_log`、`usage_ledger`、`prompt_definition`、`third_party_prompt_source`
 
 ## 12. 废弃标记汇总
 

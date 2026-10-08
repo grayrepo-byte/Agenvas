@@ -271,6 +271,7 @@ dist
 
 # Agenvas build outputs
 backend/target/
+/work/
 frontend/dist/
 frontend/coverage/
 .pnpm-store/

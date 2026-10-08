@@ -20,6 +20,7 @@ import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
 import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
 import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
 import dev.agenvas.db.tables.Task.TaskPath;
+import dev.agenvas.db.tables.ThirdPartyPromptImport.ThirdPartyPromptImportPath;
 import dev.agenvas.db.tables.records.ProjectRecord;
 
 import java.time.OffsetDateTime;
@@ -376,6 +377,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _skillInstallOperation = new SkillInstallOperationPath(this, null, Keys.SKILL_INSTALL_OPERATION__SKILL_INSTALL_OPERATION_PROJECT_ID_FKEY.getInverseKey());
 
         return _skillInstallOperation;
+    }
+
+    private transient ThirdPartyPromptImportPath _thirdPartyPromptImport;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.third_party_prompt_import</code> table
+     */
+    public ThirdPartyPromptImportPath thirdPartyPromptImport() {
+        if (_thirdPartyPromptImport == null)
+            _thirdPartyPromptImport = new ThirdPartyPromptImportPath(this, null, Keys.THIRD_PARTY_PROMPT_IMPORT__THIRD_PARTY_PROMPT_IMPORT_PROJECT_ID_FKEY.getInverseKey());
+
+        return _thirdPartyPromptImport;
     }
 
     @Override
