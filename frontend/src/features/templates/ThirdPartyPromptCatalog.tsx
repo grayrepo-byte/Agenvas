@@ -9,7 +9,7 @@ import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState, Notice, Panel } from "../../shared/ui/PagePrimitives";
 import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
-import { Field, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { workflowFieldLabel } from "../canvas/workflowFieldPresentation";
 import type { TemplatePickerContext } from "./MediaTemplatePicker";
@@ -107,6 +107,7 @@ export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
 }
 
 function ThirdPartyPromptSources({ kind }: { kind: MediaTemplateKind }) {
+  const id = useId();
   const client = useQueryClient();
   const query = useQuery({ queryKey: ["third-party-sources"], queryFn: listThirdPartyPromptSources });
   const [busy, setBusy] = useState(false);
@@ -138,9 +139,11 @@ function ThirdPartyPromptSources({ kind }: { kind: MediaTemplateKind }) {
     {error && !creating ? <Notice tone="danger">{error.message}</Notice> : null}
     {creating ? <Dialog title={t("thirdParty.addSource")} description={t("thirdParty.nativeHint")} busy={busy} compact onClose={() => setCreating(false)} onSubmit={(event) => { event.preventDefault(); void create(); }}
       footer={<><Button type="button" variant="outline" disabled={busy} onClick={() => setCreating(false)}>{t("common.cancel")}</Button><Button type="submit" disabled={busy}>{t("thirdParty.addSource")}</Button></>}>
-      <Field><FieldLabel>{t("thirdParty.sourceId")}<Input value={sourceId} required pattern="[a-z][a-z0-9_-]{0,79}" maxLength={80} onChange={(event) => setSourceId(event.target.value)} /></FieldLabel></Field>
-      <Field><FieldLabel>{t("thirdParty.sourceName")}<Input value={name} required maxLength={160} onChange={(event) => setName(event.target.value)} /></FieldLabel></Field>
-      <Field><FieldLabel>{t("thirdParty.feedUrl")}<Input type="url" value={url} required maxLength={4096} onChange={(event) => setUrl(event.target.value)} /></FieldLabel></Field>
+      <FieldGroup>
+        <Field><FieldLabel htmlFor={`${id}-source-id`}>{t("thirdParty.sourceId")}</FieldLabel><Input id={`${id}-source-id`} value={sourceId} required pattern="[a-z][a-z0-9_-]{0,79}" maxLength={80} onChange={(event) => setSourceId(event.target.value)} /></Field>
+        <Field><FieldLabel htmlFor={`${id}-source-name`}>{t("thirdParty.sourceName")}</FieldLabel><Input id={`${id}-source-name`} value={name} required maxLength={160} onChange={(event) => setName(event.target.value)} /></Field>
+        <Field><FieldLabel htmlFor={`${id}-feed-url`}>{t("thirdParty.feedUrl")}</FieldLabel><Input id={`${id}-feed-url`} type="url" value={url} required maxLength={4096} onChange={(event) => setUrl(event.target.value)} /></Field>
+      </FieldGroup>
       {error ? <Notice tone="danger">{error.message}</Notice> : null}
     </Dialog> : null}
   </Panel>;
