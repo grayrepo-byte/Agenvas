@@ -21,8 +21,9 @@ class MediaRelayServiceTest {
     private final StorageSettingsService settings = mock(StorageSettingsService.class);
     private final ObjectStorageClient cloud = mock(ObjectStorageClient.class);
     private final MediaRelayRepository copies = mock(MediaRelayRepository.class);
+    private final MediaRelayReservationService reservations = mock(MediaRelayReservationService.class);
     private static final Instant NOW = Instant.parse("2026-10-03T00:00:00Z");
-    private final MediaRelayService relay = new MediaRelayService(assets, storage, settings, cloud, copies, Clock.fixed(NOW, ZoneOffset.UTC));
+    private final MediaRelayService relay = new MediaRelayService(assets, storage, settings, cloud, copies, Clock.fixed(NOW, ZoneOffset.UTC), reservations);
     private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), assetId = UUID.randomUUID();
     private final StorageProfile profile = new StorageProfile(UUID.randomUUID(), "test relay", StorageProfile.Provider.S3,
             "https://s3.example.com", "us-east-1", "test-bucket", "test", true, 1, null, "masked", NOW);
@@ -71,6 +72,35 @@ class MediaRelayServiceTest {
         order.verify(cloud).signedGet(profile, copy.key(), MediaRelayService.URL_LIFETIME);
         verify(settings, never()).relayProfileId();
     }
+    @Test void imageUploadRegistersBeforeNetworkAndDeletesPreparedLocalFile() throws Exception {
+        byte[] image = new byte[] { (byte) 0x89, 'P', 'N', 'G', 1, 2, 3, 4 };
+        var copy = new MediaRelayRepository.Copy(UUID.randomUUID(), profile.id(), "test/media-relay/reference.png", NOW.plus(MediaRelayService.COPY_RETENTION));
+        when(reservations.reserve(profile.id(), ".png")).thenReturn(new MediaRelayReservationService.Reservation(profile, copy));
+        when(cloud.signedGet(profile, copy.key(), MediaRelayService.URL_LIFETIME)).thenReturn("https://example.com/image?X-Amz-Signature=synthetic");
+        doAnswer(call -> {
+            Path file = call.getArgument(2);
+            assertThat(java.nio.file.Files.readAllBytes(file)).isEqualTo(image);
+            return null;
+        }).when(cloud).put(eq(profile), eq(copy.key()), any(Path.class), eq("image/png"), eq(8L), anyString());
+        assertThat(relay.signedImage(profile.id(), image, "image/png")).startsWith("https://example.com/image");
+        var file = ArgumentCaptor.forClass(Path.class);
+        var order = inOrder(reservations, cloud);
+        order.verify(reservations).reserve(profile.id(), ".png");
+        order.verify(cloud).requirePublic(profile);
+        order.verify(cloud).put(eq(profile), eq(copy.key()), file.capture(), eq("image/png"), eq(8L), anyString());
+        order.verify(cloud).signedGet(profile, copy.key(), MediaRelayService.URL_LIFETIME);
+        assertThat(java.nio.file.Files.exists(file.getValue())).isFalse();
+    }
+
+    @Test void failedImageUploadLeavesCleanupIdentityAndDoesNotSign() {
+        var copy = new MediaRelayRepository.Copy(UUID.randomUUID(), profile.id(), "test/media-relay/failure.png", NOW.plus(MediaRelayService.COPY_RETENTION));
+        when(reservations.reserve(profile.id(), ".png")).thenReturn(new MediaRelayReservationService.Reservation(profile, copy));
+        doThrow(new IllegalStateException("synthetic upload failure")).when(cloud).put(any(), any(), any(), any(), anyLong(), any());
+        assertThatThrownBy(() -> relay.signedImage(profile.id(), new byte[] { 1 }, "image/png")).isInstanceOf(IllegalStateException.class);
+        verify(cloud, never()).signedGet(any(), any(), any());
+        verify(copies, never()).removed(any());
+    }
+
     @Test void failedDeleteRetainsItsDurableCleanupRowAndNeverTouchesArchiveObjects() {
         var copy = new MediaRelayRepository.Copy(UUID.randomUUID(), profile.id(), "test/media-relay/copy.mp4", NOW.minusSeconds(1));
         when(copies.expired(NOW)).thenReturn(List.of(copy));

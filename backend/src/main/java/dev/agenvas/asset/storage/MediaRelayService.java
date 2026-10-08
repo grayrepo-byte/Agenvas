@@ -19,6 +19,7 @@ public class MediaRelayService {
     public static final Duration URL_LIFETIME = Duration.ofHours(72);
     public static final Duration COPY_RETENTION = Duration.ofDays(7);
     private static final String RELAY_DIRECTORY = "media-relay/";
+    private static final int MAX_IMAGE_BYTES = 20 * 1024 * 1024;
     private static final Logger LOGGER = LoggerFactory.getLogger(MediaRelayService.class);
     private final AssetService assets;
     private final ConfiguredAssetStorage storage;
@@ -26,10 +27,11 @@ public class MediaRelayService {
     private final ObjectStorageClient cloud;
     private final MediaRelayRepository copies;
     private final Clock clock;
+    private final MediaRelayReservationService reservations;
     public MediaRelayService(AssetService assets, ConfiguredAssetStorage storage, StorageSettingsService settings,
-            ObjectStorageClient cloud, MediaRelayRepository copies, Clock clock) {
+            ObjectStorageClient cloud, MediaRelayRepository copies, Clock clock, MediaRelayReservationService reservations) {
         this.assets = assets; this.storage = storage; this.settings = settings;
-        this.cloud = cloud; this.copies = copies; this.clock = clock;
+        this.cloud = cloud; this.copies = copies; this.clock = clock; this.reservations = reservations;
     }
 
     /** No network I/O: freeze the relay connection at acceptance, independent of archive settings. */
@@ -69,6 +71,48 @@ public class MediaRelayService {
         var file = assets.get(owner, project, assetId);
         cloud.put(profile, key, file.path(), asset.contentType(), asset.byteSize(), asset.sha256());
         return cloud.signedGet(profile, key, URL_LIFETIME);
+    }
+
+    /** Optional image transport; a null selection means the caller keeps its existing inline protocol. */
+    public UUID pinImageProfile() { return settings.imageRelayProfileId(); }
+    public UUID llmProfile() { return settings.llmRelayProfileId(); }
+
+    public void preflightImage(UUID profileId) {
+        StorageProfile profile = settings.requireProfile(profileId);
+        cloud.requirePublic(profile);
+        settings.credentials(profile);
+    }
+
+    /** Upload the exact prepared image bytes, including resized references, previews and alpha masks. */
+    public String signedImage(UUID profileId, byte[] bytes, String contentType) {
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Image relay upload cannot hold a database transaction");
+        if (bytes == null || bytes.length == 0 || bytes.length > MAX_IMAGE_BYTES)
+            throw new IllegalArgumentException("Relay image exceeds bound");
+        String extension = switch (contentType) {
+            case "image/png" -> ".png";
+            case "image/jpeg" -> ".jpg";
+            case "image/webp" -> ".webp";
+            default -> throw new IllegalArgumentException("Relay image type is unsupported");
+        };
+        var reserved = reservations.reserve(profileId, extension);
+        StorageProfile profile = reserved.profile();
+        cloud.requirePublic(profile);
+        java.nio.file.Path file = null;
+        try {
+            file = java.nio.file.Files.createTempFile("agenvas-relay-", extension);
+            java.nio.file.Files.write(file, bytes);
+            String hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+            cloud.put(profile, reserved.copy().key(), file, contentType, bytes.length, hash);
+            String url = cloud.signedGet(profile, reserved.copy().key(), URL_LIFETIME);
+            dev.agenvas.shared.http.DebugHttpCapture.registerMediaRelayUrl(url);
+            return url;
+        } catch (java.io.IOException | java.security.NoSuchAlgorithmException failure) {
+            throw new IllegalStateException("Relay image preparation failed");
+        } finally {
+            if (file != null) try { java.nio.file.Files.deleteIfExists(file); }
+            catch (java.io.IOException failure) { LOGGER.warn("Relay temporary image cleanup failed"); }
+        }
     }
 
     private StorageProfile requirePinned(UUID profile) {

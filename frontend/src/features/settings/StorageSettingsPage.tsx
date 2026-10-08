@@ -1,10 +1,10 @@
-import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldGroup, FieldLabel, FieldSet, FieldLegend } from "../../shared/ui/primitives/field";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState,type FormEvent } from "react";
 import { Navigate } from "react-router";
 import {
 HTTP_STATUS,ApiError,activateMediaRelayProfile,activateStorageProfile,createStorageProfile,deleteStorageProfile,getCurrentUser,getStorageSettings,rotateStorageCredentials,updateStorageProfile,
-type CreateStorageProfileRequest,type StorageProfile,type StorageProvider,type StorageSettings
+type MediaRelaySettingsRequest,type CreateStorageProfileRequest,type StorageProfile,type StorageProvider,type StorageSettings
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
@@ -37,6 +37,7 @@ export function StorageSettingsPage() {
   const session = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const query = useQuery({ queryKey: ["settings", "storage"], queryFn: getStorageSettings, enabled: session.isSuccess, retry: false });
   const [draft, setDraft] = useState<CreateStorageProfileRequest | null>(null);
+  const [relayDraft, setRelayDraft] = useState<MediaRelaySettingsRequest | null>(null);
   const [rotation, setRotation] = useState<{ id: string; version: number; accessKeyId: string; secret: string } | null>(null);
   const [editing, setEditing] = useState<StorageProfile | null>(null);
   const [deleting, setDeleting] = useState<{ profile: StorageProfile; version: number } | null>(null);
@@ -44,6 +45,9 @@ export function StorageSettingsPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const snapshot = query.data;
+  const relayCurrent = relayDraft ?? (snapshot ? { expectedVersion: snapshot.version, profileId: snapshot.relayProfileId,
+    llmRelayEnabled: snapshot.llmRelayEnabled, imageRelayEnabled: snapshot.imageRelayEnabled } : null);
+  const relayStale = !!relayDraft && relayDraft.expectedVersion !== snapshot?.version;
   const current = draft ?? empty(snapshot?.version ?? 0);
   const remoteUpdate = !!snapshot && (draft?.expectedVersion ?? rotation?.version ?? snapshot.version) !== snapshot.version;
   const deleteStale = !!deleting && deleting.version !== snapshot?.version;
@@ -81,6 +85,20 @@ export function StorageSettingsPage() {
       setDraft((value) => value ? { ...value, accessKeyId: "", secretAccessKey: "" } : null);
       setRotation((value) => value ? { ...value, accessKeyId: "", secret: "" } : null);
     }
+  }
+  async function saveRelay(changes: Partial<MediaRelaySettingsRequest> = {}) {
+    if (!relayCurrent || busy || relayStale) return;
+    const requested = { ...relayCurrent, ...changes };
+    setRelayDraft(requested);
+    if (await write(() => activateMediaRelayProfile(requested), t("settings.storage.relaySaved"))) setRelayDraft(null);
+  }
+  async function refreshRelay() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await query.refetch();
+      if (result.isSuccess) { setRelayDraft(null); setError(""); }
+    } finally { setBusy(false); }
   }
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -127,13 +145,33 @@ export function StorageSettingsPage() {
         </Panel>
         <Panel title={t("settings.storage.relayTitle")} description={t("settings.storage.relayDescription")}>
           <Field><FieldLabel>{t("settings.storage.relayConnection")}</FieldLabel>
-            <Select aria-label={t("settings.storage.relayConnection")} disabled={busy} value={snapshot.relayProfileId ?? ""}
-              onChange={(event) => void write(() => activateMediaRelayProfile({ expectedVersion: snapshot.version,
-                profileId: event.target.value || null }), t("settings.storage.relaySaved"))}>
+            <Select aria-label={t("settings.storage.relayConnection")} disabled={busy || relayStale} value={relayCurrent?.profileId ?? ""}
+              onChange={(event) => void saveRelay({ profileId: event.target.value || null })}>
               <option value="">{t("settings.storage.relayDisabled")}</option>
               {snapshot.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
             </Select>
           </Field>
+          <FieldSet disabled={busy || relayStale || relayCurrent?.profileId === null}>
+            <FieldLegend>{t("settings.storage.relayFunctions")}</FieldLegend>
+            <FieldGroup>
+              <Field orientation="horizontal">
+                <Checkbox id="llm-relay" disabled={busy || relayStale || relayCurrent?.profileId === null} checked={relayCurrent?.llmRelayEnabled ?? false}
+                  onCheckedChange={(checked) => void saveRelay({ llmRelayEnabled: checked === true })} />
+                <FieldLabel htmlFor="llm-relay">{t("settings.storage.relayLlm")}</FieldLabel>
+              </Field>
+              <Field orientation="horizontal">
+                <Checkbox id="image-relay" disabled={busy || relayStale || relayCurrent?.profileId === null} checked={relayCurrent?.imageRelayEnabled ?? false}
+                  onCheckedChange={(checked) => void saveRelay({ imageRelayEnabled: checked === true })} />
+                <FieldLabel htmlFor="image-relay">{t("settings.storage.relayImages")}</FieldLabel>
+              </Field>
+            </FieldGroup>
+          </FieldSet>
+          {relayDraft && !busy ? <div className="ui-form-actions">
+            {relayStale ? <Notice tone="warning">{t("settings.storage.versionChanged")}</Notice> : null}
+            <Button variant="outline" disabled={relayStale} onClick={() => void saveRelay()}>{t("settings.storage.relayRetry")}</Button>
+            <Button variant="outline" disabled={busy || query.isFetching} onClick={() => void refreshRelay()}>{t("settings.shared.refreshConfig")}</Button>
+          </div> : null}
+          <p className="ui-muted">{t("settings.storage.relayFunctionHint")}</p>
           <p className="ui-muted">{t("settings.storage.relayPolicy")}</p>
         </Panel>
         {rotation ? <Panel title={t("settings.storage.updateCredentials")} description={t("settings.storage.credentialUpdateHint")}>

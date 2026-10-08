@@ -32,7 +32,7 @@ public class StorageSettingsService {
     @Transactional(readOnly = true)
     public Status status() {
         var state = repository.state();
-        return new Status(state.version(), state.activeProfileId(), state.relayProfileId(), repository.profiles().stream()
+        return new Status(state.version(), state.activeProfileId(), state.relayProfileId(), state.llmRelayEnabled(), state.imageRelayEnabled(), repository.profiles().stream()
                 .map(p -> new ProfileStatus(p.id(), p.name(), p.provider(), p.endpoint(), p.region(),
                         p.bucket(), p.keyPrefix(), p.pathStyle(), p.accessKeyMask(), p.createdAt(), inUse(p.id()))).toList());
     }
@@ -134,16 +134,31 @@ public class StorageSettingsService {
 
     /** Selecting a relay never changes where new or existing assets are archived. */
     @Transactional
-    public Status activateRelay(int expectedVersion, UUID profileId) {
+    public Status activateRelay(int expectedVersion, UUID profileId, boolean llmEnabled, boolean imageEnabled) {
         lock(expectedVersion);
         if (profileId != null) requireProfile(profileId);
-        repository.advanceRelay(expectedVersion, profileId);
+        repository.advanceRelay(expectedVersion, profileId, llmEnabled, imageEnabled);
         return status();
     }
 
     /** Join task acceptance's transaction: edits/deletion wait until its frozen relay reference is durable. */
     @Transactional
     public UUID relayProfileId() { repository.lockVersion(); return repository.state().relayProfileId(); }
+
+    /** Join image task acceptance: the function switch and selected connection are frozen together. */
+    @Transactional
+    public UUID imageRelayProfileId() {
+        repository.lockVersion();
+        var state = repository.state();
+        return state.imageRelayEnabled() ? state.relayProfileId() : null;
+    }
+
+    /** Read for each model call so a cached chat client never caches the relay switches. */
+    @Transactional(readOnly = true)
+    public UUID llmRelayProfileId() {
+        var state = repository.state();
+        return state.llmRelayEnabled() ? state.relayProfileId() : null;
+    }
 
     @Transactional
     public Status rotate(int expectedVersion, UUID profileId, String accessKeyId, String secretAccessKey) {
@@ -190,7 +205,7 @@ public class StorageSettingsService {
     static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "STORAGE_CONFIG_INVALID", ApiMessage.of("api.storage-settings-service.invalid-storage-configuration"), detail, false);
     }
-    public record Status(int version, UUID activeProfileId, UUID relayProfileId, List<ProfileStatus> profiles) {}
+    public record Status(int version, UUID activeProfileId, UUID relayProfileId, boolean llmRelayEnabled, boolean imageRelayEnabled, List<ProfileStatus> profiles) {}
     public record ProfileStatus(UUID id, String name, StorageProfile.Provider provider, String endpoint,
             String region, String bucket, String keyPrefix, boolean pathStyle, String accessKeyMask, Instant createdAt, boolean inUse) {}
 }

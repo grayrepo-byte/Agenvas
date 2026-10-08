@@ -82,6 +82,42 @@ public class StorageSettingsRecord extends UpdatableRecordImpl<StorageSettingsRe
         return (UUID) get(3);
     }
 
+    /**
+     * Setter for <code>public.storage_settings.llm_relay_enabled</code>. Use
+     * configured relay for OpenAI-compatible LLM image inputs; no relay profile
+     * keeps inline inputs
+     */
+    public void setLlmRelayEnabled(Boolean value) {
+        set(4, value);
+    }
+
+    /**
+     * Getter for <code>public.storage_settings.llm_relay_enabled</code>. Use
+     * configured relay for OpenAI-compatible LLM image inputs; no relay profile
+     * keeps inline inputs
+     */
+    public Boolean getLlmRelayEnabled() {
+        return (Boolean) get(4);
+    }
+
+    /**
+     * Setter for <code>public.storage_settings.image_relay_enabled</code>. Use
+     * configured relay for URL-capable image generation inputs; frozen at task
+     * acceptance
+     */
+    public void setImageRelayEnabled(Boolean value) {
+        set(5, value);
+    }
+
+    /**
+     * Getter for <code>public.storage_settings.image_relay_enabled</code>. Use
+     * configured relay for URL-capable image generation inputs; frozen at task
+     * acceptance
+     */
+    public Boolean getImageRelayEnabled() {
+        return (Boolean) get(5);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -105,13 +141,15 @@ public class StorageSettingsRecord extends UpdatableRecordImpl<StorageSettingsRe
     /**
      * Create a detached, initialised StorageSettingsRecord
      */
-    public StorageSettingsRecord(Boolean singleton, Integer version, UUID activeProfileId, UUID relayProfileId) {
+    public StorageSettingsRecord(Boolean singleton, Integer version, UUID activeProfileId, UUID relayProfileId, Boolean llmRelayEnabled, Boolean imageRelayEnabled) {
         super(StorageSettings.STORAGE_SETTINGS);
 
         setSingleton(singleton);
         setVersion(version);
         setActiveProfileId(activeProfileId);
         setRelayProfileId(relayProfileId);
+        setLlmRelayEnabled(llmRelayEnabled);
+        setImageRelayEnabled(imageRelayEnabled);
         resetChangedOnNotNull();
     }
 }

@@ -2063,3 +2063,15 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 图片与视频新建空框统一为横向 640×360（16:9），文字为 420×270，音频为 560×300，Agent 为 560×720；添加、右键上传、资源重新放置及音频创建 MV 使用对应类型尺寸。既有布局与普通复制保留，图片草稿/实际媒体比例联动及音频结果紧凑播放器继续适用。
 - [x] 更新既有创建及资源重新放置测试中的尺寸断言与 HTTP 夹具，相关五文件 203 项测试通过；TypeScript、修改文件 ESLint 与差异空白检查通过。规格 §6.2 与 ADR 0005 同步，无 API、数据库迁移或依赖变化。
 - [ ] 浏览器视觉实测、生产构建、全量测试和真实模型调用未运行。
+
+## 2026-10-09 按功能控制 OpenAI 图片资源中继
+
+- [x] 存储设置持久保存 `llmRelayEnabled` / `imageRelayEnabled`，与中继连接一起执行 CAS；支持 LLM 开启、图片关闭，保存失败保留选择并可重试，冲突需载入最新配置。选择为空继续原图片传输，视频规则保留。
+- [x] OpenAI 兼容 LLM 的普通与流式请求把已授权图片预览转换为 HTTPS URL；不改变精确引用、预览字节、工具定义或持久检查点。OpenAI Images 参考图与蒙版使用 JSON URL 协议，关闭时恢复 multipart；其他适配器不改输入协议。
+- [x] 普通图片、批准的 Agent 媒体生成及图片派生处理受理固定中继选择，旧任务无该字段时保持原方式；并发删除等待冻结提交并受引用保护。上传前短事务登记清理对象，网络不持事务，保留 72 小时签名和 7 天副本清理。准备失败不发生成请求、不进入 UNKNOWN、不自动换协议重提。
+- [x] LLM debug 仅新增本次登记中继 URL 的查询签名保护，包含正文回显；其他远程 URL 和正文保持原规则，实际发送正文不变。
+- [x] 新增 V17、生成 jOOQ、OpenAPI / 生成 TypeScript 同步。真实 PostgreSQL 验证 V16→V17 保留连接、默认归档与版本，空库初始化、所有数据库对象注释和 CAS/API 必填字段检查通过。
+- [x] 后端 8 类 99 项定向单元/模拟 HTTP 测试通过：StorageSettingsServiceTest、MediaRelayServiceTest、OpenAiImage2ClientTest、OpenAiImage2AdapterTest、DebugHttpCaptureTest、ApprovedMediaAcceptanceTest、SpringAiStreamingHttpTest、ImageOperationValidationTest。另 4 类 6 项 PostgreSQL 定向测试通过：OpenAiImage2PostgresIT、StorageProfileManagementPostgresIT、SeedanceVideoReferencePostgresIT，以及 FlywayBaselinePostgresIT 的图片中继升级、空库初始化和注释检查三项。没有失败、错误或跳过。
+- [x] 前端 StorageSettingsPage 16 项定向测试通过，TypeScript、Vite 生产构建、修改文件 ESLint、四语言/主题检查与差异空白检查通过；构建保留现有大分块提示。模拟 HTTP 验证开关独立性、保存失败重试和 CAS 冲突保留选择。
+
+同步规格存储/debug/错误码、CONTEXT、README、媒体中继说明与 ADR 0041（关联 ADR 0020/0023）。前后端及 V17 需一起发布；已配置中继的安装升级后两个图片开关默认开启，可以独立关闭。没有迁移或修改现有素材、运行中应用或用户数据库。真实 OpenAI/第三方中转接口、真实 OSS/COS/S3 桶、全量测试、浏览器视觉验收和部署未运行；本轮供应商请求均为回环模拟 HTTP，不能证明真实服务或桶已接通。

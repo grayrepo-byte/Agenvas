@@ -41,17 +41,17 @@ class StorageSettingsServiceTest {
         UUID archive = UUID.randomUUID(), relay = UUID.randomUUID();
         when(repository.lockVersion()).thenReturn(4);
         when(repository.profile(relay)).thenReturn(java.util.Optional.of(mock(StorageProfile.class)));
-        when(repository.state()).thenReturn(new StorageRepository.State(5, archive, relay));
+        when(repository.state()).thenReturn(new StorageRepository.State(5, archive, relay, true, true));
         when(repository.profiles()).thenReturn(java.util.List.of());
         var service = new StorageSettingsService(repository, mock(CredentialCipher.class), Clock.systemUTC(), mock(TaskStorageReferences.class));
-        var result = service.activateRelay(4, relay);
+        var result = service.activateRelay(4, relay, true, true);
         assertThat(result.activeProfileId()).isEqualTo(archive);
         assertThat(result.relayProfileId()).isEqualTo(relay);
-        verify(repository).advanceRelay(4, relay);
+        verify(repository).advanceRelay(4, relay, true, true);
         verify(repository, never()).advance(anyInt(), any());
-        assertThatThrownBy(() -> service.activateRelay(3, null)).isInstanceOf(ApiProblemException.class)
+        assertThatThrownBy(() -> service.activateRelay(3, null, true, true)).isInstanceOf(ApiProblemException.class)
                 .satisfies(f -> assertThat(((ApiProblemException) f).code()).isEqualTo("STORAGE_VERSION_CONFLICT"));
-        verify(repository, never()).advanceRelay(3, null);
+        verify(repository, never()).advanceRelay(3, null, true, true);
     }
 
     @Test void editsKeepCredentialsWhenOmittedAndRetainTheConnectionIdentity() {
@@ -60,7 +60,7 @@ class StorageSettingsServiceTest {
         var old = profile(cipher, "oss-cn-chengdu"); var usage = mock(TaskStorageReferences.class);
         when(repository.lockVersion()).thenReturn(3);
         when(repository.lockProfile(old.id())).thenReturn(java.util.Optional.of(old));
-        when(repository.state()).thenReturn(new StorageRepository.State(4, old.id(), old.id()));
+        when(repository.state()).thenReturn(new StorageRepository.State(4, old.id(), old.id(), true, true));
         when(repository.profiles()).thenReturn(java.util.List.of());
         clearInvocations(cipher);
         var service = new StorageSettingsService(repository,cipher,Clock.systemUTC(),usage);
@@ -79,7 +79,7 @@ class StorageSettingsServiceTest {
         var old = profile(cipher); var usage = mock(TaskStorageReferences.class);
         when(repository.lockVersion()).thenReturn(3);
         when(repository.lockProfile(old.id())).thenReturn(java.util.Optional.of(old));
-        when(repository.state()).thenReturn(new StorageRepository.State(4,null,null));
+        when(repository.state()).thenReturn(new StorageRepository.State(4,null,null, true, true));
         when(repository.profiles()).thenReturn(java.util.List.of(old));
         when(usage.referencesStorageProfile(old.id())).thenReturn(true);
         var service = new StorageSettingsService(repository,cipher,Clock.systemUTC(),usage);

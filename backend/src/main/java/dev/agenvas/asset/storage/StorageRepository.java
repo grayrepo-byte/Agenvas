@@ -19,11 +19,11 @@ import org.springframework.stereotype.Repository;
 public class StorageRepository {
     private final DSLContext dsl;
     public StorageRepository(DSLContext dsl) { this.dsl = dsl; }
-    public record State(int version, UUID activeProfileId, UUID relayProfileId) {}
+    public record State(int version, UUID activeProfileId, UUID relayProfileId, boolean llmRelayEnabled, boolean imageRelayEnabled) {}
     public record Route(UUID profileId, String mediaKind, String metadata, boolean ready) {}
     public State state() {
         var r = dsl.selectFrom(STORAGE_SETTINGS).where(STORAGE_SETTINGS.SINGLETON.isTrue()).fetchSingle();
-        return new State(r.getVersion(), r.getActiveProfileId(), r.getRelayProfileId());
+        return new State(r.getVersion(), r.getActiveProfileId(), r.getRelayProfileId(), r.getLlmRelayEnabled(), r.getImageRelayEnabled());
     }
     public int lockVersion() {
         return dsl.select(STORAGE_SETTINGS.VERSION).from(STORAGE_SETTINGS)
@@ -35,9 +35,11 @@ public class StorageRepository {
                 .and(STORAGE_SETTINGS.VERSION.eq(expected)).execute() != 1)
             throw new IllegalStateException("Storage configuration CAS failed");
     }
-    public void advanceRelay(int expected, UUID relay) {
+    public void advanceRelay(int expected, UUID relay, boolean llmEnabled, boolean imageEnabled) {
         if (dsl.update(STORAGE_SETTINGS).set(STORAGE_SETTINGS.VERSION, Math.addExact(expected, 1))
-                .set(STORAGE_SETTINGS.RELAY_PROFILE_ID, relay).where(STORAGE_SETTINGS.SINGLETON.isTrue())
+                .set(STORAGE_SETTINGS.RELAY_PROFILE_ID, relay)
+                .set(STORAGE_SETTINGS.LLM_RELAY_ENABLED, llmEnabled)
+                .set(STORAGE_SETTINGS.IMAGE_RELAY_ENABLED, imageEnabled).where(STORAGE_SETTINGS.SINGLETON.isTrue())
                 .and(STORAGE_SETTINGS.VERSION.eq(expected)).execute() != 1)
             throw new IllegalStateException("Media relay configuration CAS failed");
     }

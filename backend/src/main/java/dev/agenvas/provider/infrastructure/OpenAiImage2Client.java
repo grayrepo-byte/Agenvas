@@ -147,6 +147,29 @@ public class OpenAiImage2Client {
         return edit(key, model, prompt, quality, size, referencePngs, false, baseUrl);
     }
 
+    /** URL input is explicit; a rejected/uncertain request must never be retried as a file submission. */
+    public MediaPayload editUrls(String key, String model, String prompt, String quality, String size,
+            List<String> images, String mask, boolean transparentBackground, String baseUrl) {
+        if (images == null || images.isEmpty() || images.size() > MediaAdapterRegistry.OPENAI_MAX_REFERENCE_IMAGES)
+            throw new IllegalArgumentException("Pinned reference URL count is invalid");
+        ObjectNode body = mapper.createObjectNode();
+        body.put("model", model).put("prompt", prompt).put("quality", quality).put("size", size)
+                .put("background", transparentBackground ? "transparent" : "opaque")
+                .put("n", 1).put("output_format", "png");
+        var references = body.putArray("images");
+        for (String image : images) references.addObject().put("image_url", requireImageUrl(image));
+        if (mask != null) body.putObject("mask").put("image_url", requireImageUrl(mask));
+        return send(key, baseUrl, "images/edits", RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8),
+                MediaType.parse("application/json")));
+    }
+
+    private static String requireImageUrl(String value) {
+        URI uri = URI.create(value);
+        if (!"https".equals(uri.getScheme()) || uri.getHost() == null || uri.getRawUserInfo() != null || uri.getFragment() != null)
+            throw new IllegalArgumentException("Pinned reference URL must use public HTTPS");
+        return value;
+    }
+
     private static void validateReferences(List<byte[]> references) {
         if (references == null || references.isEmpty()
                 || references.size() > MediaAdapterRegistry.OPENAI_MAX_REFERENCE_IMAGES) {

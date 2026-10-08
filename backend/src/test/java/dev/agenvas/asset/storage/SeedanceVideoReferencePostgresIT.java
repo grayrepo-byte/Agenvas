@@ -166,7 +166,7 @@ class SeedanceVideoReferencePostgresIT {
         var visitor = org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(owner, null,
                 List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_USER")));
         String relayPath = "/api/v1/settings/storage/relay";
-        String body = mapper.writeValueAsString(Map.of("expectedVersion", settings.status().version(), "profileId", first));
+        String body = mapper.writeValueAsString(Map.of("expectedVersion", settings.status().version(), "profileId", first, "llmRelayEnabled", true, "imageRelayEnabled", true));
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put(relayPath).contentType("application/json")
                 .content(body).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
@@ -191,7 +191,7 @@ class SeedanceVideoReferencePostgresIT {
         assertThat(settings.status().activeProfileId()).isNull();
         Task localTask = run(owner.userId(), project, local);
         assertThat(localTask.input().path("mediaInput").path("videos").path(0).path("relayProfileId").asText()).isEqualTo(first.toString());
-        settings.activateRelay(settings.status().version(), second);
+        settings.activateRelay(settings.status().version(), second, true, true);
         worker.submitOnce("local-relay-worker");
         assertThat(tasks.get(owner.userId(), project, localTask.id()).status()).isEqualTo(Task.Status.WAITING_PROVIDER);
         assertThat(PUTS).hasValue(1);
@@ -210,7 +210,7 @@ class SeedanceVideoReferencePostgresIT {
         var cloudAsset = archive(owner.userId(), project, video);
         assertThat(cloudAsset.objectKey()).startsWith("objects/");
         settings.activate(settings.status().version(), null);
-        settings.activateRelay(settings.status().version(), null);
+        settings.activateRelay(settings.status().version(), null, true, true);
         var cloudDraft = draft(owner.userId(), project, cloudAsset.id());
         Task cloudTask = run(owner.userId(), project, cloudDraft);
         int before = PUTS.get();
@@ -222,7 +222,7 @@ class SeedanceVideoReferencePostgresIT {
         assertThat(signed.encodedPath()).contains("archive-second/" + second + "/").doesNotContain("media-relay");
         assertThat(signed.queryParameter("X-Amz-Signature")).hasSize(64);
         assertThat(jdbc.sql("select count(*) from media_relay_object").query(Integer.class).single()).isEqualTo(1);
-        settings.activateRelay(settings.status().version(), first);
+        settings.activateRelay(settings.status().version(), first, true, true);
         var failedDraft = draft(owner.userId(), project, localAsset.id());
         Task failedTask = run(owner.userId(), project, failedDraft);
         failNextRelayPut = true;

@@ -1031,6 +1031,7 @@ export async function uploadLibraryEntry(request: { file: File; kind: "IMAGE" | 
   return writeJson<LibraryCommand>("/api/v1/library/uploads", { method: "POST", body }, t("api.errors.libraryUploadFailed"));
 }
 
+export type MediaRelaySettingsRequest = components["schemas"]["MediaRelaySettingsRequest"];
 export type StorageSettings = components["schemas"]["StorageSettings"];
 export type StorageProvider = components["schemas"]["StorageProvider"];
 export type CreateStorageProfileRequest = components["schemas"]["CreateStorageProfileRequest"];
@@ -1060,7 +1061,7 @@ export async function activateStorageProfile(input: components["schemas"]["Activ
     method: "PUT", body: JSON.stringify(input),
   });
 }
-export async function activateMediaRelayProfile(input: components["schemas"]["ActivateStorageProfileRequest"]): Promise<StorageSettings> {
+export async function activateMediaRelayProfile(input: components["schemas"]["MediaRelaySettingsRequest"]): Promise<StorageSettings> {
   return writeJson<StorageSettings>("/api/v1/settings/storage/relay", {
     method: "PUT", body: JSON.stringify(input),
   });

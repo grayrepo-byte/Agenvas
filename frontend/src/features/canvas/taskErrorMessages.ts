@@ -51,6 +51,7 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get AUTODL_RESULT_REJECTED() { return t("tasks.errors.autoDlResultRejected"); },
   get AUTODL_RESULT_EXPIRED() { return t("tasks.errors.autoDlResultExpired"); },
   get AUTODL_RESULT_MISSING_VIDEO() { return t("tasks.errors.autoDlVideoMissing"); },
+  get MEDIA_RELAY_PREPARATION_FAILED() { return t("tasks.errors.imageRelayFailed"); },
   get MEDIA_REFERENCE_PREPARATION_FAILED() { return t("tasks.errors.videoPreparationFailed"); },
   get MEDIA_RELAY_REQUIRED() { return t("media.editor.videoRelayHint"); },
   get MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED() { return t("tasks.errors.videoPublicEndpointRequired"); },

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -30,7 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Invocation-local capture, installed once in transports; disabled calls never copy bodies.
- * Only allowlisted response correlation IDs are stored separately; other headers are omitted. LLM bodies retain content except structured image bytes;
+ * Only allowlisted response correlation IDs are stored separately; other headers are omitted. LLM bodies retain content except structured image bytes and invocation-registered relay signatures;
  * media bodies retain their credential/reasoning filtering policy.
  */
 public final class DebugHttpCapture implements AutoCloseable {
@@ -61,6 +62,7 @@ public final class DebugHttpCapture implements AutoCloseable {
     private final Consumer<List<Exchange>> checkpoint;
     private final List<Exchange> exchanges = new ArrayList<>();
     private final Set<String> secrets = new HashSet<>();
+    private final Map<String, String> relayUrls = new LinkedHashMap<>();
     private String requestToken;
     private boolean closed;
     private final boolean preserveModelContent;
@@ -92,6 +94,12 @@ public final class DebugHttpCapture implements AutoCloseable {
     }
     public static boolean enabled() { return ACTIVE.get() != null; }
     /** Transports with path-based authentication register secrets before any checkpoint is published. */
+    /** Relay GET signatures authorize private media and are never persisted, even in LLM debug bodies. */
+    public static void registerMediaRelayUrl(String url) {
+        DebugHttpCapture capture = ACTIVE.get();
+        if (capture != null) synchronized (capture) { capture.relayUrls.put(url, url.split("\\?", 2)[0] + "?[REDACTED]"); }
+    }
+
     public static void registerSecret(String secret) {
         DebugHttpCapture capture = ACTIVE.get();
         if (capture != null) synchronized (capture) { capture.remember(secret); }
@@ -177,7 +185,7 @@ public final class DebugHttpCapture implements AutoCloseable {
         return node;
     }
 
-    /** Only structured image URL values are omitted; text, tool schemas and scalar types stay intact. */
+    /** Structured image bytes and registered relay signatures are omitted; other text, tool schemas and scalar types stay intact. */
     private JsonNode omitLlmImages(JsonNode node) {
         if (node.isObject()) {
             ObjectNode object = (ObjectNode) node;
@@ -192,6 +200,11 @@ public final class DebugHttpCapture implements AutoCloseable {
         } else if (node.isArray()) {
             var array = (tools.jackson.databind.node.ArrayNode) node;
             for (int index = 0; index < array.size(); index++) array.set(index, omitLlmImages(array.get(index)));
+        }
+        if (node.isTextual()) {
+            String text = node.asText();
+            for (var entry : relayUrls.entrySet()) text = text.replace(entry.getKey(), entry.getValue());
+            return MAPPER.getNodeFactory().textNode(text);
         }
         return node;
     }

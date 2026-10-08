@@ -49,7 +49,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     public boolean referencesStorageProfile(UUID profileId) {
         var reference = JSONB.valueOf("{\"videos\":[{\"relayProfileId\":\"" + profileId + "\"}]}");
         return dsl.fetchExists(dsl.selectOne().from(TASK)
-                .where(DSL.condition("{0} @> {1}", TASK.INPUT_JSON, DSL.val(reference))));
+                .where(DSL.condition("{0} @> {1}", TASK.INPUT_JSON, DSL.val(reference))
+                        .or(DSL.condition("{0} ->> 'imageRelayProfileId' = {1}", TASK.INPUT_JSON, DSL.val(profileId.toString())))));
     }
 
     @Override

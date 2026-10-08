@@ -32,8 +32,8 @@ public class StorageSettingsController {
     @PutMapping("/active") public ResponseEntity<StorageSettingsService.Status> activate(@Valid @RequestBody Activate request) {
         return response(settings.activate(request.expectedVersion(), request.profileId()));
     }
-    @PutMapping("/relay") public ResponseEntity<StorageSettingsService.Status> relay(@Valid @RequestBody Activate request) {
-        return response(settings.activateRelay(request.expectedVersion(), request.profileId()));
+    @PutMapping("/relay") public ResponseEntity<StorageSettingsService.Status> relay(@Valid @RequestBody Relay request) {
+        return response(settings.activateRelay(request.expectedVersion(), request.profileId(), request.llmRelayEnabled(), request.imageRelayEnabled()));
     }
     @PutMapping("/profiles/{id}/credentials") public ResponseEntity<StorageSettingsService.Status> rotate(
             @PathVariable UUID id, @Valid @RequestBody Rotate request) {
@@ -45,6 +45,8 @@ public class StorageSettingsController {
     public record Create(@NotNull @Min(0) Integer expectedVersion, @NotBlank String name, @NotNull StorageProfile.Provider provider,
             @NotBlank String endpoint, @NotBlank String region, @NotBlank String bucket, String keyPrefix,
             boolean pathStyle, @NotBlank String accessKeyId, @NotBlank String secretAccessKey) {}
+    public record Relay(@NotNull @Min(0) Integer expectedVersion, UUID profileId,
+            @NotNull Boolean llmRelayEnabled, @NotNull Boolean imageRelayEnabled) {}
     public record Activate(@NotNull @Min(0) Integer expectedVersion, UUID profileId) {}
     public record Update(@NotNull @Min(0) Integer expectedVersion, @NotBlank String name, @NotNull StorageProfile.Provider provider,
             @NotBlank String endpoint, @NotBlank String region, @NotBlank String bucket, String keyPrefix,

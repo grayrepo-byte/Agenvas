@@ -16,6 +16,7 @@ import dev.agenvas.task.domain.Task;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.Test;
@@ -69,7 +70,7 @@ class StorageProfileManagementPostgresIT {
         mvc.perform(post("/api/v1/settings/storage/profiles").contentType(MediaType.APPLICATION_JSON).content(request)
                 .with(authentication(auth)).with(csrf())).andExpect(status().isOk()).andExpect(jsonPath("$.profiles[0].inUse").value(false));
         UUID id = settings.status().profiles().getFirst().id();
-        settings.activate(1,id); settings.activateRelay(2,id);
+        settings.activate(1,id); settings.activateRelay(2, id, true, true);
         String update = updateBody(3,"edited","cn-beijing");
         mvc.perform(put("/api/v1/settings/storage/profiles/{id}",id).contentType(MediaType.APPLICATION_JSON).content(update).with(csrf()))
                 .andExpect(status().isUnauthorized());
@@ -107,7 +108,7 @@ class StorageProfileManagementPostgresIT {
         assertThat(settings.requireProfile(archive).name()).isEqualTo("renamed");
         assertThat(settings.status().profiles().stream().filter(p -> p.id().equals(archive)).findFirst().orElseThrow().inUse()).isTrue();
 
-        UUID relay = createProfile("relay"); settings.activateRelay(settings.status().version(),relay);
+        UUID relay = createProfile("relay"); settings.activateRelay(settings.status().version(), relay, true, true);
         race(() -> {
             UUID pinned = settings.relayProfileId();
             var input = mapper.createObjectNode(); input.putArray("videos").addObject().put("relayProfileId",pinned.toString());
@@ -127,6 +128,32 @@ class StorageProfileManagementPostgresIT {
         assertThat(settings.status().activeProfileId()).isEqualTo(activeBefore);
         assertThat(settings.status().relayProfileId()).isEqualTo(relayBefore);
         assertThat(settings.status().version()).isGreaterThan(5);
+
+        int relayVersion = settings.status().version();
+        String relayBody = mapper.writeValueAsString(Map.of("expectedVersion", relayVersion, "profileId", relay,
+                "llmRelayEnabled", true, "imageRelayEnabled", false));
+        mvc.perform(put("/api/v1/settings/storage/relay").contentType(MediaType.APPLICATION_JSON).content(relayBody)
+                .with(authentication(auth)).with(csrf())).andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.llmRelayEnabled").value(true)).andExpect(jsonPath("$.imageRelayEnabled").value(false));
+        assertThat(settings.llmRelayProfileId()).isEqualTo(relay);
+        assertThat(settings.imageRelayProfileId()).isNull();
+        mvc.perform(put("/api/v1/settings/storage/relay").contentType(MediaType.APPLICATION_JSON).content(relayBody)
+                .with(authentication(auth)).with(csrf())).andExpect(status().isConflict());
+        assertThat(settings.status().imageRelayEnabled()).isFalse();
+        mvc.perform(put("/api/v1/settings/storage/relay").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"expectedVersion\":" + settings.status().version() + ",\"profileId\":null}")
+                .with(authentication(auth)).with(csrf())).andExpect(status().isBadRequest());
+        UUID imageRelay = createProfile("image-relay");
+        settings.activateRelay(settings.status().version(), imageRelay, false, true);
+        race(() -> {
+            UUID pinned = settings.imageRelayProfileId();
+            var input = mapper.createObjectNode().put("imageRelayProfileId", pinned.toString());
+            Instant now = Instant.now();
+            tasks.create(new Task(UUID.randomUUID(),project,null,"image-relay-reference",Task.Kind.IMAGE_GENERATION,Task.Status.READY,false,input,
+                    "b".repeat(64),null,null,1,now,null,null,0,0,null,now,now,null));
+            return pinned;
+        }, () -> { settings.delete(settings.status().version(), imageRelay); return null; });
+        assertReferenced(imageRelay);
     }
 
     /** Hold acceptance's transaction open while a management write attempts to acquire the same settings lock. */

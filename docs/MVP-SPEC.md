@@ -1347,7 +1347,7 @@ TanStack Query 缓存保存服务器实体；Zustand 保存视口、选择、交
 }
 ```
 
-主要错误码：VALIDATION_ERROR、UNAUTHENTICATED、RESOURCE_NOT_FOUND、VERSION_CONFLICT、ACTIVE_RUN_EXISTS、CONVERSATION_VERSION_CONFLICT、PROVIDER_AUTH_FAILED、PROVIDER_UNSUPPORTED_CAPABILITY、PROVIDER_CALL_TIMEOUT、PROVIDER_RESPONSE_LOST、PROVIDER_DOWNLOAD_FAILED、PROVIDER_PROTOCOL_INVALID、PROVIDER_RESULT_URL_INVALID、PROVIDER_RESPONSE_TOO_LARGE、PROVIDER_RESULT_TOO_LARGE、PROVIDER_SUBMISSION_UNKNOWN、ASSET_INVALID、TASK_CANCELED、EVENT_CURSOR_EXPIRED。媒体调用的原因码由 `dev.agenvas.shared.error.ProviderFailureCodes` 定义，前端 `taskErrorMessages.ts` 必须与之同步，因为卡片与调用日志只展示码本身。
+主要错误码：VALIDATION_ERROR、UNAUTHENTICATED、RESOURCE_NOT_FOUND、VERSION_CONFLICT、ACTIVE_RUN_EXISTS、CONVERSATION_VERSION_CONFLICT、PROVIDER_AUTH_FAILED、PROVIDER_UNSUPPORTED_CAPABILITY、PROVIDER_CALL_TIMEOUT、PROVIDER_RESPONSE_LOST、PROVIDER_DOWNLOAD_FAILED、PROVIDER_PROTOCOL_INVALID、PROVIDER_RESULT_URL_INVALID、PROVIDER_RESPONSE_TOO_LARGE、PROVIDER_RESULT_TOO_LARGE、PROVIDER_SUBMISSION_UNKNOWN、MEDIA_RELAY_PREPARATION_FAILED、ASSET_INVALID、TASK_CANCELED、EVENT_CURSOR_EXPIRED。媒体调用的原因码由 `dev.agenvas.shared.error.ProviderFailureCodes` 定义，前端 `taskErrorMessages.ts` 必须与之同步，因为卡片与调用日志只展示码本身。
 
 ### 15.5 OpenAPI 的单一来源
 
@@ -1384,6 +1384,8 @@ springdoc 作为后端实现说明与比对工具，不允许它与手写合约�
 原文件默认私有。应用先鉴权再提供内容；支持 GET、HEAD、Range 与正确 Content-Type。大视频流式传输，不整段读入 JVM 内存。
 
 媒体中继与永久存储分开配置，复用管理员加密连接目录但各自有独立选择项。`PUT /api/v1/settings/storage/relay` 使用 `expectedVersion`/CAS；选择或关闭中继不改变默认存储，不移动历史资源。参考任务在受理时固定本地视频所需的中继连接。桶可保持私有，但最终对象端点必须为公网 HTTPS；私网桶不能直接提供给外部生成服务。连接需要上传、签名读取与删除临时副本的权限。
+
+2026-10-09 图片中继扩展：存储设置增加 `llmRelayEnabled`、`imageRelayEnabled`，与中继连接一起通过 CAS 保存，可设置 LLM 开启、图片生成关闭。已选择中继且相应开关开启时，OpenAI 兼容 LLM 的已授权图片预览使用 HTTPS `image_url`；普通与流式共用，输入范围与缩略图约束保持。OpenAI Images 编辑使用 JSON `images[].image_url` 与 `mask.image_url`，上传与文件模式相同的缩放参考 PNG/alpha 蒙版；其他未支持 URL 协议的适配器继续原方式。图片任务受理时固定连接与传输选择，旧任务无该字段时保持文件上传；LLM 每次调用读取开关。V17 两个开关默认开启，已有中继安装升级后启用图片中继，没有中继连接仍用原方式。永久归档与视频中继规则保留。上传前短事务登记临时副本，网络不持事务；准备失败不提交生成，不进入 UNKNOWN、不自动换协议重提。签名继续 72 小时、副本 7 天清理。见 [ADR 0041](adr/0041-image-relay-by-function.md)。
 
 本地视频只上传到中继的 `media-relay/` 临时对象键，上传前持久登记清理记录；副本保留 7 天，默认每小时按有界批次清理，删除失败保留记录以后重试。清理不删除原 Asset，也不再次提交生成。上传或签名失败且未调用 Ark create 时为明确失败，只有 Ark 提交是否被受理不明才进入 UNKNOWN。追加 V4 与生成 jOOQ；未配置中继的安装默认关闭，永久存储及历史资源保留。
 
@@ -1714,7 +1716,7 @@ Agent 产出结构可校验率初始发布目标 90% 以上，按固定样本集
 
 以上高基数字段用于日志与 Trace，不作为 Prometheus 指标 label。普通服务端日志禁止记录 Authorization、Cookie、Key、签名 URL 查询参数与原始媒体内容。调用正文仅在下述显式 debug 模式下单独保存；LLM debug 正文按 2026-10-04 澄清保留，仅省略结构化图片字段字节，HTTP header 除下述响应关联 ID 外不保存，Cookie 不保存。非 LLM 正文沿用凭据过滤。
 
-2026-09-26 调用审计界面：后台 `/settings/calls` 复用黑色页面框架，展示所属项目、调用类别与操作、响应状态、业务任务状态、调用时间、响应时间、耗时、Trace ID、Provider 请求 ID 和稳定错误码。支持服务端项目、类型、状态、Trace ID、时间区间筛选与分页。管理员只能查询自己项目范围内的记录；列表仍只返回元数据。默认关闭的系统 debug 模式开启后，新调用的详情可按需查看真实 HTTP 请求地址、方法、请求正文、响应状态及响应正文。HTTP header 除下述固定白名单响应关联 ID 外均不保存（Authorization、Cookie、Set-Cookie 始终不保存）；LLM debug 请求、响应、SSE data 和语义汇总正文保留实际内容，仅按 JSON 的 image_url 字段省略图片 data URI 字节，替换为 `[image bytes omitted]` 占位符，不对普通文本、工具 Schema、参数、数值、布尔值或字段名做凭据匹配和正则替换；独立请求地址隐藏认证信息，媒体调用继续过滤凭据与私有推理。它会持久化完整提示词、素材和可能的个人/业务数据，增加数据库与备份体积，系统设置必须说明风险。见 [ADR 0020](adr/0020-opt-in-debug-call-bodies.md)。
+2026-09-26 调用审计界面：后台 `/settings/calls` 复用黑色页面框架，展示所属项目、调用类别与操作、响应状态、业务任务状态、调用时间、响应时间、耗时、Trace ID、Provider 请求 ID 和稳定错误码。支持服务端项目、类型、状态、Trace ID、时间区间筛选与分页。管理员只能查询自己项目范围内的记录；列表仍只返回元数据。默认关闭的系统 debug 模式开启后，新调用的详情可按需查看真实 HTTP 请求地址、方法、请求正文、响应状态及响应正文。HTTP header 除下述固定白名单响应关联 ID 外均不保存（Authorization、Cookie、Set-Cookie 始终不保存）；LLM debug 请求、响应、SSE data 和语义汇总正文保留实际内容，仅按 JSON 的 image_url 字段省略图片 data URI 字节，替换为 `[image bytes omitted]` 占位符；本次服务端登记的中继 URL 查询签名及其正文回显也隐藏。不对普通文本、工具 Schema、参数、数值、布尔值或字段名做凭据匹配和正则替换；独立请求地址隐藏认证信息，媒体调用继续过滤凭据与私有推理。它会持久化完整提示词、素材和可能的个人/业务数据，增加数据库与备份体积，系统设置必须说明风险。见 [ADR 0020](adr/0020-opt-in-debug-call-bodies.md)。
 
 2026-10-04 调用关联标识：详情将本系统生成的追踪字段明确标为“本地 Trace ID”；LLM 的 providerRequestId 仍保存响应正文 id，但界面标为“生成 ID”，与流式指标、模型摘要中的相同 ID 合并，仅展示一次，原始正文保持原值。开启 debug 的新调用从真实 HTTP 响应提取固定字段 x-request-id、request-id、x-trace-id、trace-id、traceparent、x-amzn-requestid、x-amzn-trace-id、x-b3-traceid、x-log-id、x-tt-logid，作为 DebugExchange.responseIdentifiers 保存。字段名转小写，值不超过 512 字符，仅允许标识符字符并拒绝已知认证值；不保存其余 header，也不改写 LLM 正文。详情按来源显示第三方关联 ID 并可复制；流式正文合并时保留关联字段。旧 JSON 缺失字段读取为空对象，无数据库迁移；未返回或未采集时明确显示未记录，旧调用无法补录，不推断供应商平台路由或内部追踪。升级需同步后端与重新生成的前端 API 类型，媒体 Provider 任务 ID 语义不变。
 

@@ -57,8 +57,8 @@ import tools.jackson.databind.node.ObjectNode;
 public class DirectMediaTaskService {
     private static final int MAX_COMMAND_KEY_LENGTH = 160;
     private static final int MAX_IMAGE_OPERATION_INSTRUCTION_LENGTH = 4000;
-    private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 5;
-    private static final int IMAGE_OPERATION_INPUT_SCHEMA_VERSION = 8;
+    private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 6;
+    private static final int IMAGE_OPERATION_INPUT_SCHEMA_VERSION = 9;
     private static final int TASK_EVENT_SCHEMA_VERSION = 1;
     private static final int BATCH_KEY_DIGEST_LENGTH = 32;
     private static final String LOCAL_COST_SOURCE = "LOCAL_NO_COST";
@@ -267,6 +267,7 @@ public class DirectMediaTaskService {
                         else imageNode.put("relayProfileId", relayProfile.toString());
                     }
                 }
+                pinImageRelay(input, binding);
                 frozen.set("mentions", mapper.valueToTree(draft.mentions()));
                 if (creativeSkill != null) frozen.set("creativeSkill", creativeSkill.deepCopy());
                 String stepKey = outputIndex == 0 ? commandKey
@@ -819,6 +820,7 @@ public class DirectMediaTaskService {
                 referenceImage.put("role", MediaDraft.InputRole.REFERENCE.name());
                 referenceImage.put("order", referenceOrder++);
             }
+            pinImageRelay(input, binding);
             frozen.putArray("mentions");
             if (definition != null) {
                 input.put("providerProtocol", "RUNNINGHUB_V2");
@@ -847,6 +849,15 @@ public class DirectMediaTaskService {
                     "task.status.changed", TASK_EVENT_SCHEMA_VERSION, task.id(), task.version(), payload));
             return ProjectEventService.Change.unchanged(task);
         }).value();
+    }
+
+    /** Only the fixed OpenAI Images protocol currently declares URL reference support. */
+    private void pinImageRelay(ObjectNode input, MediaCapabilityBinding binding) {
+        if (!MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
+                || input.path("mediaInput").path("images").isEmpty()) return;
+        UUID profile = relay.pinImageProfile();
+        if (profile == null) input.putNull("imageRelayProfileId");
+        else input.put("imageRelayProfileId", profile.toString());
     }
 
     /** A provider mask is an immutable, project-scoped PNG with a real alpha channel. */

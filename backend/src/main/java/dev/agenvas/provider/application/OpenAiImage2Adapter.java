@@ -5,6 +5,8 @@ import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.asset.storage.MediaRelayService;
+import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
@@ -39,10 +41,11 @@ public class OpenAiImage2Adapter implements MediaAdapter {
     private final ProjectService projects;
     private final OpenAiImage2Client client;
     private final ObjectMapper mapper;
+    private final MediaRelayService relay;
 
     public OpenAiImage2Adapter(JooqMediaCapabilityRepository catalog, CredentialCipher cipher,
             ArtifactService artifacts, AssetService assets, ProjectService projects,
-            OpenAiImage2Client client, ObjectMapper mapper) {
+            OpenAiImage2Client client, ObjectMapper mapper, MediaRelayService relay) {
         this.catalog = catalog;
         this.cipher = cipher;
         this.artifacts = artifacts;
@@ -50,6 +53,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         this.projects = projects;
         this.client = client;
         this.mapper = mapper;
+        this.relay = relay;
     }
 
     @Override public String adapterId() { return "OPENAI_GPT_IMAGE_2"; }
@@ -70,9 +74,15 @@ public class OpenAiImage2Adapter implements MediaAdapter {
                 referencePngs(context);
                 maskPng(context);
             }
-            return null;
         } catch (RuntimeException invalid) {
             return "PROVIDER_UNSUPPORTED_INPUT";
+        }
+        try {
+            if (!FrozenMediaInputs.images(context.lease()).isEmpty() && relayProfile(context) != null)
+                relay.preflightImage(relayProfile(context));
+            return null;
+        } catch (RuntimeException unavailable) {
+            return ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED;
         }
     }
 
@@ -89,12 +99,26 @@ public class OpenAiImage2Adapter implements MediaAdapter {
         String negative = context.lease().input().path("negativePrompt").asText("");
         if (!negative.isBlank()) prompt += "\nAvoid: " + negative;
         try {
-            return new Submission.Completed(!FrozenMediaInputs.images(context.lease()).isEmpty()
-                    ? client.edit(key, model, prompt, quality, size(context), referencePngs(context),
-                            maskPng(context), parameters.transparentBackground(),
-                            snapshot.connectionVersion().origin())
-                    : client.generate(key, model, prompt, quality, size(context),
-                            parameters.transparentBackground(), snapshot.connectionVersion().origin()));
+            String origin = snapshot.connectionVersion().origin();
+            if (FrozenMediaInputs.images(context.lease()).isEmpty())
+                return new Submission.Completed(client.generate(key, model, prompt, quality, size(context),
+                        parameters.transparentBackground(), origin));
+            List<byte[]> references = referencePngs(context);
+            byte[] mask = maskPng(context);
+            UUID profile = relayProfile(context);
+            if (profile == null) return new Submission.Completed(client.edit(key, model, prompt, quality,
+                    size(context), references, mask, parameters.transparentBackground(), origin));
+            List<String> urls;
+            String maskUrl;
+            try {
+                urls = references.stream().map(png -> relay.signedImage(profile, png, "image/png")).toList();
+                maskUrl = mask == null ? null : relay.signedImage(profile, mask, "image/png");
+            } catch (RuntimeException preparationFailed) {
+                // No paid generation request was sent, so preparation failure is never UNKNOWN.
+                return new Submission.Rejected(ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED);
+            }
+            return new Submission.Completed(client.editUrls(key, model, prompt, quality, size(context),
+                    urls, maskUrl, parameters.transparentBackground(), origin));
         } catch (OpenAiImage2Client.Rejected rejected) {
             return new Submission.Rejected("OPENAI_IMAGE_REJECTED");
         } catch (OpenAiImage2Client.Uncertain uncertain) {
@@ -106,6 +130,11 @@ public class OpenAiImage2Adapter implements MediaAdapter {
 
     @Override public Submission reconcile(AttemptContext context) {
         return new Submission.Blocked("OPENAI_IMAGE_HAS_NO_STATUS_ENDPOINT");
+    }
+
+    private UUID relayProfile(AttemptContext context) {
+        String id = context.lease().input().path("imageRelayProfileId").asText("");
+        return id.isBlank() ? null : UUID.fromString(id);
     }
 
     private Snapshot snapshot(AttemptContext context) {

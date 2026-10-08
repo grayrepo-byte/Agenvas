@@ -12,7 +12,7 @@ import { StorageSettingsPage } from "./StorageSettingsPage";
 
 const profile = { id: "cloud-one", name: "云端一", provider: "S3" as const, endpoint: "https://s3.example.com",
   region: "us-east-1", bucket: "test-bucket", keyPrefix: "agenvas", pathStyle: true, accessKeyMask: "••••1234", createdAt: "2026-10-01T00:00:00Z", inUse: false };
-function setup(value: StorageSettings = { version: 0, relayProfileId: null, activeProfileId: null, profiles: [] }) {
+function setup(value: StorageSettings = { llmRelayEnabled: true, imageRelayEnabled: true, version: 0, relayProfileId: null, activeProfileId: null, profiles: [] }) {
   const client = createQueryClient();
   server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json(value)));
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/settings/storage"]}><Routes>
@@ -39,7 +39,7 @@ describe("StorageSettingsPage", () => {
   it("defaults to local and saves cloud settings without switching or retaining credentials", async () => {
     const writes: unknown[] = [];
     server.use(http.post("/api/v1/settings/storage/profiles", async ({ request }) => {
-      writes.push(await request.json()); return HttpResponse.json({ version: 1, relayProfileId: null, activeProfileId: null, profiles: [profile] });
+      writes.push(await request.json()); return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: 1, relayProfileId: null, activeProfileId: null, profiles: [profile] });
     }));
     const client = setup();
     const user = await fill();
@@ -57,9 +57,9 @@ describe("StorageSettingsPage", () => {
     const writes: unknown[] = [];
     server.use(http.put("/api/v1/settings/storage/active", async ({ request }) => {
       const input = await request.json() as { expectedVersion: number; profileId: string | null }; writes.push(input);
-      return HttpResponse.json({ version: input.expectedVersion + 1, relayProfileId: null, activeProfileId: input.profileId, profiles: [profile] });
+      return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: input.expectedVersion + 1, relayProfileId: null, activeProfileId: input.profileId, profiles: [profile] });
     }));
-    setup({ version: 3, relayProfileId: null, activeProfileId: null, profiles: [profile] });
+    setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 3, relayProfileId: null, activeProfileId: null, profiles: [profile] });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "设为默认：云端一" }));
     await user.click(await screen.findByRole("button", { name: "切换到本地" }));
@@ -73,8 +73,8 @@ describe("StorageSettingsPage", () => {
       writes.push(await request.json()); version = 4;
       return HttpResponse.json({ status: 409, detail: "配置已变化", code: "STORAGE_VERSION_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
     }));
-    setup({ version: 3, relayProfileId: null, activeProfileId: null, profiles: [profile] });
-    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ version, relayProfileId: null, activeProfileId: null, profiles: [profile] })));
+    setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 3, relayProfileId: null, activeProfileId: null, profiles: [profile] });
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version, relayProfileId: null, activeProfileId: null, profiles: [profile] })));
     const user = await fill(); await user.click(screen.getByRole("button", { name: "保存连接" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("配置已变化");
     expect(screen.getByLabelText("连接名称")).toHaveValue("新连接");
@@ -87,9 +87,9 @@ describe("StorageSettingsPage", () => {
   it("rotates credentials without exposing them in cache or changing the destination", async () => {
     const writes: unknown[] = [];
     server.use(http.put("/api/v1/settings/storage/profiles/cloud-one/credentials", async ({ request }) => {
-      writes.push(await request.json()); return HttpResponse.json({ version: 2, relayProfileId: null, activeProfileId: "cloud-one", profiles: [{ ...profile, accessKeyMask: "••••5678" }] });
+      writes.push(await request.json()); return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: 2, relayProfileId: null, activeProfileId: "cloud-one", profiles: [{ ...profile, accessKeyMask: "••••5678" }] });
     }));
-    const client = setup({ version: 1, relayProfileId: null, activeProfileId: "cloud-one", profiles: [profile] });
+    const client = setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 1, relayProfileId: null, activeProfileId: "cloud-one", profiles: [profile] });
     const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "更新凭证：云端一" }));
     await user.type(screen.getByLabelText("新的 AccessKey ID"), "new-id-5678");
     await user.type(screen.getByLabelText("新的 AccessKey Secret"), "new-secret-5678");
@@ -109,17 +109,64 @@ describe("StorageSettingsPage", () => {
     server.use(http.put("/api/v1/settings/storage/relay", async ({ request }) => {
       const input = await request.json() as { expectedVersion: number; profileId: string | null };
       writes.push(input);
-      return HttpResponse.json({ version: input.expectedVersion + 1, relayProfileId: input.profileId, activeProfileId: null, profiles: [profile] });
+      return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: input.expectedVersion + 1, relayProfileId: input.profileId, activeProfileId: null, profiles: [profile] });
     }));
-    setup({ version: 3, relayProfileId: null, activeProfileId: null, profiles: [profile] });
+    setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 3, relayProfileId: null, activeProfileId: null, profiles: [profile] });
     await changeControl(await screen.findByLabelText("中继连接"), { target: { value: profile.id } });
     expect(await screen.findByRole("status")).toHaveTextContent("中继配置已保存，默认存储未切换");
-    expect(writes).toEqual([{ expectedVersion: 3, profileId: profile.id }]);
+    expect(writes).toEqual([{ expectedVersion: 3, profileId: profile.id, llmRelayEnabled: true, imageRelayEnabled: true }]);
     expect(screen.getByText("当前默认").closest(".storage-destination")).toHaveTextContent("本地存储");
     await changeControl(screen.getByLabelText("中继连接"), { target: { value: "" } });
     await screen.findByRole("status");
     await waitFor(() => expect(writes).toHaveLength(2));
-    expect(writes[1]).toEqual({ expectedVersion: 4, profileId: null });
+    expect(writes[1]).toEqual({ expectedVersion: 4, profileId: null, llmRelayEnabled: true, imageRelayEnabled: true });
+  });
+
+  it("independently switches LLM and image relay functions with CAS", async () => {
+    const writes: unknown[] = [];
+    server.use(http.put("/api/v1/settings/storage/relay", async ({ request }) => {
+      const input = await request.json() as { expectedVersion: number; profileId: string | null; llmRelayEnabled: boolean; imageRelayEnabled: boolean };
+      writes.push(input);
+      return HttpResponse.json({ ...input, version: input.expectedVersion + 1, relayProfileId: input.profileId, activeProfileId: null, profiles: [profile] });
+    }));
+    setup({ version: 3, relayProfileId: profile.id, activeProfileId: null, llmRelayEnabled: true, imageRelayEnabled: true, profiles: [profile] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: "图片生成参考图与蒙版" }));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "图片生成参考图与蒙版" })).not.toBeChecked());
+    expect(screen.getByRole("checkbox", { name: "LLM 图片输入" })).toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "LLM 图片输入" }));
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes).toEqual([
+      { expectedVersion: 3, profileId: profile.id, llmRelayEnabled: true, imageRelayEnabled: false },
+      { expectedVersion: 4, profileId: profile.id, llmRelayEnabled: false, imageRelayEnabled: false },
+    ]);
+  });
+
+  it("preserves failed relay changes for an explicit retry", async () => {
+    setup({ version: 3, relayProfileId: profile.id, activeProfileId: null, llmRelayEnabled: true, imageRelayEnabled: false, profiles: [profile] });
+    server.use(http.put("/api/v1/settings/storage/relay", () => HttpResponse.json({ detail: "保存失败" }, { status: 500 })));
+    await userEvent.setup().click(await screen.findByRole("checkbox", { name: "LLM 图片输入" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("checkbox", { name: "LLM 图片输入" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "图片生成参考图与蒙版" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "重试保存中继" })).toBeEnabled();
+  });
+
+  it("preserves relay choices on a CAS conflict until the latest settings are loaded", async () => {
+    let latest = { version: 3, relayProfileId: profile.id, activeProfileId: null, llmRelayEnabled: true, imageRelayEnabled: true, profiles: [profile] };
+    setup(latest);
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json(latest)),
+      http.put("/api/v1/settings/storage/relay", () => {
+        latest = { ...latest, version: 4, llmRelayEnabled: false };
+        return HttpResponse.json({ detail: "配置已变化", code: "STORAGE_VERSION_CONFLICT" }, { status: 409 });
+      }));
+    await userEvent.setup().click(await screen.findByRole("checkbox", { name: "图片生成参考图与蒙版" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "重试保存中继" })).toBeDisabled());
+    expect(screen.getByRole("checkbox", { name: "图片生成参考图与蒙版" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "LLM 图片输入" })).toBeChecked();
+    await userEvent.setup().click(screen.getByRole("button", { name: "载入最新配置" }));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "图片生成参考图与蒙版" })).toBeChecked());
+    expect(screen.getByRole("checkbox", { name: "LLM 图片输入" })).not.toBeChecked();
   });
 
   it("edits a saved OSS region while retaining credentials and default selections", async () => {
@@ -128,9 +175,9 @@ describe("StorageSettingsPage", () => {
     const writes: unknown[] = [];
     server.use(http.put("/api/v1/settings/storage/profiles/cloud-one", async ({ request }) => {
       writes.push(await request.json());
-      return HttpResponse.json({ version: 4, activeProfileId: oss.id, relayProfileId: oss.id, profiles: [{ ...oss, region: "cn-chengdu" }] });
+      return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: 4, activeProfileId: oss.id, relayProfileId: oss.id, profiles: [{ ...oss, region: "cn-chengdu" }] });
     }));
-    const client = setup({ version: 3, activeProfileId: oss.id, relayProfileId: oss.id, profiles: [oss] });
+    const client = setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 3, activeProfileId: oss.id, relayProfileId: oss.id, profiles: [oss] });
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "编辑：云端一" }));
     expect(screen.getByLabelText("连接名称")).toHaveValue(oss.name);
@@ -152,8 +199,8 @@ describe("StorageSettingsPage", () => {
       writes.push(await request.json()); version = 3;
       return HttpResponse.json({ status: 409, detail: "配置已变化", code: "STORAGE_VERSION_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
     }));
-    const client = setup({ version, activeProfileId: null, relayProfileId: null, profiles: [profile] });
-    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ version, activeProfileId: null, relayProfileId: null, profiles: [profile] })));
+    const client = setup({ llmRelayEnabled: true, imageRelayEnabled: true, version, activeProfileId: null, relayProfileId: null, profiles: [profile] });
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version, activeProfileId: null, relayProfileId: null, profiles: [profile] })));
     const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "编辑：云端一" }));
     await user.clear(screen.getByLabelText("连接名称")); await user.type(screen.getByLabelText("连接名称"), "保留草稿");
     await user.type(screen.getByLabelText("AccessKey ID"), "replacement-id");
@@ -173,9 +220,9 @@ describe("StorageSettingsPage", () => {
     const writes: string[] = [];
     server.use(http.delete("/api/v1/settings/storage/profiles/cloud-one", ({ request }) => {
       writes.push(new URL(request.url).searchParams.get("expectedVersion") ?? "");
-      return HttpResponse.json({ version: 6, activeProfileId: null, relayProfileId: null, profiles: [] });
+      return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: 6, activeProfileId: null, relayProfileId: null, profiles: [] });
     }));
-    setup({ version: 5, activeProfileId: profile.id, relayProfileId: profile.id, profiles: [profile] });
+    setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 5, activeProfileId: profile.id, relayProfileId: profile.id, profiles: [profile] });
     const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "删除：云端一" }));
     expect(writes).toHaveLength(0);
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" }));
@@ -196,10 +243,10 @@ describe("StorageSettingsPage", () => {
         version = 6;
         return HttpResponse.json({ status: 409, title: "配置已变化", code: "STORAGE_VERSION_CONFLICT", detail: "配置已变化" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
       }
-      return HttpResponse.json({ version: 7, activeProfileId: null, relayProfileId: null, profiles: [] });
+      return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: 7, activeProfileId: null, relayProfileId: null, profiles: [] });
     }));
-    setup({ version, activeProfileId: null, relayProfileId: null, profiles: [profile] });
-    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ version, activeProfileId: null, relayProfileId: null, profiles: [profile] })));
+    setup({ llmRelayEnabled: true, imageRelayEnabled: true, version, activeProfileId: null, relayProfileId: null, profiles: [profile] });
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version, activeProfileId: null, relayProfileId: null, profiles: [profile] })));
     const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "删除：云端一" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" }));
     await within(screen.getByRole("dialog")).findByRole("button", { name: "载入最新配置" });
@@ -210,7 +257,7 @@ describe("StorageSettingsPage", () => {
     await screen.findByRole("status"); expect(writes).toEqual(["5", "6"]);
   });
   it("locks referenced locations while keeping the name editable and explaining why deletion is unavailable", async () => {
-    setup({ version: 5, activeProfileId: profile.id, relayProfileId: null, profiles: [{ ...profile, inUse: true }] });
+    setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 5, activeProfileId: profile.id, relayProfileId: null, profiles: [{ ...profile, inUse: true }] });
     const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "编辑：云端一" }));
     expect(screen.getByLabelText("连接名称")).toBeEnabled();
     expect(screen.getByLabelText("Endpoint")).toBeDisabled(); expect(screen.getByLabelText("Region")).toBeDisabled();
@@ -226,8 +273,8 @@ describe("StorageSettingsPage", () => {
       return HttpResponse.json({ code: "STORAGE_PROFILE_IN_USE", detail: "连接正在使用" },
         { status: 409, headers: { "Content-Type": "application/problem+json" } });
     }));
-    setup({ version: 5, activeProfileId: profile.id, relayProfileId: null, profiles: [profile] });
-    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ version: 5, activeProfileId: profile.id,
+    setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 5, activeProfileId: profile.id, relayProfileId: null, profiles: [profile] });
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: 5, activeProfileId: profile.id,
       relayProfileId: null, profiles: [{ ...profile, inUse }] })));
     const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "编辑：云端一" }));
     await user.clear(screen.getByLabelText("Region")); await user.type(screen.getByLabelText("Region"), "us-west-1");
@@ -247,8 +294,8 @@ describe("StorageSettingsPage", () => {
       return HttpResponse.json({ code: "STORAGE_PROFILE_IN_USE", detail: "连接正在使用" },
         { status: 409, headers: { "Content-Type": "application/problem+json" } });
     }));
-    setup({ version: 5, activeProfileId: profile.id, relayProfileId: null, profiles: [profile] });
-    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ version: 5, activeProfileId: profile.id,
+    setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 5, activeProfileId: profile.id, relayProfileId: null, profiles: [profile] });
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: 5, activeProfileId: profile.id,
       relayProfileId: null, profiles: [{ ...profile, inUse }] })));
     const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "删除：云端一" }));
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" }));
