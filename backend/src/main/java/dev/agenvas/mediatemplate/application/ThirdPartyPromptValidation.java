@@ -13,6 +13,7 @@ import org.springframework.http.HttpStatus;
 /** Reject malformed feeds atomically, before any cached entry or last-success state changes. */
 public final class ThirdPartyPromptValidation {
     public static final int MAX_ENTRIES = 30_000;
+    public static final int MAX_VIDEO_PROMPT_LENGTH = 64_000;
     private ThirdPartyPromptValidation() {}
     public static List<ThirdPartyPrompt> validate(ThirdPartyPromptSource source, List<ThirdPartyPrompt> prompts) {
         if (prompts.isEmpty() || prompts.size() > MAX_ENTRIES) throw invalid();
@@ -20,7 +21,7 @@ public final class ThirdPartyPromptValidation {
         for (ThirdPartyPrompt p : prompts) {
             if (p == null || !source.id().equals(p.sourceId()) || p.id() == null
                     || !p.id().startsWith(source.id() + ":") || p.id().length() > 512 || p.id().length() <= source.id().length() + 1
-                    || !ids.add(p.id()) || blank(p.title(), 500) || blank(p.prompt(), 20_000)
+                    || !ids.add(p.id()) || blank(p.title(), 500) || blank(p.prompt(), p instanceof Video ? MAX_VIDEO_PROMPT_LENGTH : MediaTemplateService.MAX_PROMPT_LENGTH)
                     || p.description() == null || p.description().length() > 20_000
                     || p.tags() == null || p.tags().size() > 40
                     || p.tags().stream().anyMatch(tag -> blank(tag, 160))
@@ -33,6 +34,10 @@ public final class ThirdPartyPromptValidation {
             } else if (p instanceof Video video) {
                 if (source.targetKind() != TargetKind.VIDEO || video.videoMode() == null || video.videoModel() == null || video.videoModel().length() > 160
                         || video.references() == null || video.references().size() > 16) throw invalid();
+                optionalUrl(video.previewVideoUrl());
+                if (video.missingReferences().size() > 16 || video.missingReferences().stream()
+                        .anyMatch(r -> r == null || r.kind() == null || blank(r.label(), 160))
+                        || new HashSet<>(video.missingReferences()).size() != video.missingReferences().size()) throw invalid();
                 var refs = new HashSet<String>();
                 for (Reference ref : video.references()) {
                     if (ref == null || ref.kind() == null || ref.role() == null || !refs.add(ref.url())) throw invalid();
@@ -48,13 +53,16 @@ public final class ThirdPartyPromptValidation {
                 long ends = video.references().stream().filter(r -> r.role() == Role.END_FRAME).count();
                 if (starts > 1 || ends > 1 || ends > starts) throw invalid();
                 switch (video.videoMode()) {
-                    case text_to_video -> { if (!video.references().isEmpty()) throw invalid(); }
+                    case text_to_video -> { if (!video.references().isEmpty() || !video.missingReferences().isEmpty()) throw invalid(); }
                     case image_to_video -> {
-                        if (video.references().isEmpty() || video.references().stream().anyMatch(r -> r.kind() != MediaKind.IMAGE)) throw invalid();
+                        if (video.references().isEmpty() && video.missingReferences().isEmpty()
+                                || video.references().stream().anyMatch(r -> r.kind() != MediaKind.IMAGE)
+                                || video.missingReferences().stream().anyMatch(r -> r.kind() != MediaKind.IMAGE)) throw invalid();
                         if (starts == 1 && video.references().stream().anyMatch(r -> r.role() == Role.REFERENCE)) throw invalid();
                     }
-                    case video_reference -> { if (video.references().stream().noneMatch(r -> r.kind() == MediaKind.VIDEO)) throw invalid(); }
-                    case omni_reference -> { if (video.references().isEmpty()) throw invalid(); }
+                    case video_reference -> { if (video.references().stream().noneMatch(r -> r.kind() == MediaKind.VIDEO)
+                            && video.missingReferences().stream().noneMatch(r -> r.kind() == MediaKind.VIDEO)) throw invalid(); }
+                    case omni_reference -> { if (video.references().isEmpty() && video.missingReferences().isEmpty()) throw invalid(); }
                     case text_to_image_to_video -> { if (video.imageGeneration() == null) throw invalid(); }
                 }
                 if ((video.videoMode() == VideoMode.video_reference || video.videoMode() == VideoMode.omni_reference)

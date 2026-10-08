@@ -58,6 +58,10 @@ public class ThirdPartyPromptImportService {
             if (replay.isPresent()) { checkHash(replay.get(), hash); return ProjectEventService.Change.unchanged(replay.get()); }
             var entry = prompts.get(promptId);
             if (entry.version() != expected) throw problem(HttpStatus.CONFLICT, "VERSION_CONFLICT", ApiMessage.of("api.third-party.conflict"));
+            if (entry.data().prompt().length() > MediaTemplateService.MAX_PROMPT_LENGTH)
+                throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_PROMPT_TOO_LONG", ApiMessage.of("api.third-party.promptTooLong"));
+            if (entry.video() != null && !entry.video().missingReferences().isEmpty())
+                throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_REFERENCES_REQUIRED", ApiMessage.of("api.third-party.referencesRequired"));
             if (entry.video() != null && entry.video().videoMode() == VideoMode.text_to_image_to_video)
                 throw problem(HttpStatus.CONFLICT, "THIRD_PARTY_IMAGE_STAGE_REQUIRED", ApiMessage.of("api.third-party.imageStage"));
             var accepted = new ImportCommand(UUID.randomUUID(), owner, hash, entry, null);

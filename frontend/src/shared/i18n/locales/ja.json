@@ -2326,6 +2326,8 @@
   "thirdParty.original": "元のソースを見る",
   "thirdParty.imageMetadata": "元のモデル：{0} · モード：{1}",
   "thirdParty.videoMetadata": "元の動画モデル：{0} · モード：{1}",
+  "thirdParty.videoPreview": "生成動画プレビュー",
+  "thirdParty.referencesRequired": "必要な参照素材が公開されていません。先に素材を用意してください。この項目は閲覧とプロンプトのコピーのみ可能です。",
   "thirdParty.imageStage": "このテンプレートは画像生成後に動画を作成します。先に画像を用意してください。",
   "thirdParty.replacementHint": "適用時に {0} 個の素材を読み込み、現在の参照を置き換えます。",
   "thirdParty.manageSources": "ソース管理",

@@ -16,6 +16,7 @@ export function thirdPartyApplicationError(entry: ThirdPartyPromptEntry, fields:
   capability: MediaCapability | undefined, imageSlots: string[]): string | null {
   const data = entry.image ?? entry.video;
   if (!data) return t("thirdParty.invalid");
+  if (entry.video?.missingReferences?.length) return t("thirdParty.referencesRequired");
   if (entry.video?.videoMode === "text_to_image_to_video") return t("thirdParty.imageStage");
   const refs = thirdPartyReferences(entry);
   const images = refs.filter((ref) => ref.kind === "IMAGE");

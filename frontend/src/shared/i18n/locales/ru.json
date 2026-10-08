@@ -2326,6 +2326,8 @@
   "thirdParty.original": "Открыть оригинал",
   "thirdParty.imageMetadata": "Модель источника: {0} · Режим: {1}",
   "thirdParty.videoMetadata": "Модель видео: {0} · Режим: {1}",
+  "thirdParty.videoPreview": "Пример сгенерированного видео",
+  "thirdParty.referencesRequired": "Необходимые материалы не опубликованы. Подготовьте их; пока доступны просмотр и копирование промпта.",
   "thirdParty.imageStage": "Этот шаблон сначала создаёт изображение, затем видео. Сначала подготовьте изображение.",
   "thirdParty.replacementHint": "Будут импортированы ссылки ({0}) и заменены текущие ссылки.",
   "thirdParty.manageSources": "Управление источниками",

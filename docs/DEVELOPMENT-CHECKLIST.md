@@ -2012,6 +2012,16 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 
 实际执行 Maven 的定向 test/verify（集成复跑使用 ci-integration），前端直接运行仓库已安装的 openapi-typescript、tsc、Vitest、ESLint 与 Vite；未升级依赖。未运行全量测试、浏览器端到端、生产部署或真实模型调用。真实第三方内容经下载快照验证，服务端 HTTP 同步与远程素材下载使用合成响应；这不代表线上服务、CDN 可用性或生产网络验证。
 
+### 视频来源扩展：YouMind、BeatAPI 与 Image Prompt Gallery
+
+- [x] 新增五个默认启用的视频源：YouMind Seedance 2.0、BeatAPI MiniMax H3，以及 Image Prompt Gallery Seedance 2.0、Seedance 2.5、MiniMax H3。独立适配 README/视频索引、完整 JSON catalog 和公开 JSON API/导出，复用每日 upsert、管理员同步、停用与失败保留缓存。
+- [x] 视频增加效果预览及缺失输入说明；根据上游模式和正文图片/视频/音频标记辨认素材需求，不把生成结果当成输入。缺失素材可缓存浏览，前后端阻止整体应用；显式输入 URL 继续按原角色归档。视频全文允许缓存至 64,000 字符，编辑器保持 20,000 字符，长条目不截断且导入在命令创建前阻止。
+- [x] 合并视频目录按提示词、模型、模式和完整输入需求去重；来源记录、署名、历史条目及来源筛选保留。Image Prompt Gallery 显式分页保留模型过滤，拒绝循环、跨 endpoint 与不完整分页，聚合响应和条目数有界。
+- [x] Flyway V16、jOOQ、OpenAPI 和生成 TypeScript 同步。20 项后端定向单元测试、25 项真实 PostgreSQL 专项测试（FlywayBaseline 15、ThirdPartyPrompt 10）及 24 项前端定向测试去重通过。覆盖 V15→V16 旧来源/缓存保留、五个源的同步、目录去重与分页、缺失输入/长正文导入阻止、旧 JSON 读取、生成结果不进入引用、手动视频预览及草稿预检。
+- [x] 真实公开下载快照完整解析并验证 793 条：YouMind 106、BeatAPI 550、Image Prompt Gallery Seedance 2.0 113、Seedance 2.5 24。YouMind 同时验证独立视频索引；README 和导出范围不等于网站全量。合成夹具验证 Image Prompt Gallery 三种模型的转换及同步，未调用生成 Provider。
+- [x] TypeScript、相关 ESLint、四语言/主题检查、前端生产构建及差异空白检查通过；保留既有大 chunk 提示。没有升级依赖或新增表列。
+- [ ] 当前环境对 Image Prompt Gallery 域名的出站访问受限，三个实时 API 的完整响应、MiniMax H3 真实数据、在线同步及 CDN 播放未实测。全量测试、浏览器端到端、生产部署和真实模型调用未运行。
+
 合并 develop 复验：保留媒体设置页分区、Compose 端口绑定和数据库结构文档的既有更新，开发清单冲突保留两侧记录。数据库结构文档补入 V15 的三张表及引用，覆盖 73 张表、623 列、105 条外键，与生成 jOOQ 核对一致。六个前端测试文件共 72 项合成 HTTP/纯函数测试通过；TypeScript、完整 ESLint、多语言/主题检查、Vite 生产构建与差异空白检查通过，保留既有大 chunk 提示。后端与 API 合约未因合并变化，未重复运行后端测试；全量测试、浏览器端到端、真实模型和部署未运行。
 
 ## 2026-10-08 PR #34 CI 修复

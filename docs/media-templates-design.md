@@ -75,6 +75,28 @@ Flyway V15 增加独立来源、缓存及导入命令表，jOOQ 从隔离 Postgr
 
 新增接口：`GET /api/v1/media-templates/third-party` 与 `.../sources`；管理员 `POST /api/v1/settings/media-template-sources`、`PATCH .../{sourceId}`、`POST .../{sourceId}/sync`；项目 `POST /api/v1/projects/{projectId}/media-templates/third-party/import`。写操作继续受认证、管理员边界、CSRF 和恢复模式约束。合约和生成 TypeScript 同步更新。
 
+### 默认视频来源与缺失素材
+
+Flyway V16 在保留五个图片来源的基础上，新增以下五个启用的视频来源；首次扫描及每日增量同步沿用既有调度与缓存规则：
+
+| 来源 | 模型 | 公开数据格式 |
+| --- | --- | --- |
+| YouMind | Seedance 2.0 | README 与 `video-urls.json`，稳定身份使用画廊条目 ID，提取完整提示词、作者、原帖、日期及效果视频链接。 |
+| BeatAPI | MiniMax H3 | `prompts/catalog.json`，按稳定 slug 识别条目，保留中文/英文标题、正文、作者、类别与效果视频。 |
+| Image Prompt Gallery | Seedance 2.0、Seedance 2.5、MiniMax H3 | 三个独立的公开 API 来源，按 domain、model、mediaType 筛选；API 与公开导出的数组、prompts 或 items envelope 使用同一适配器。 |
+
+视频结构增加可选 `previewVideoUrl` 与 `missingReferences`，后者每项为 `{kind, label}`，记录没有公开实际文件的必要输入。旧缓存和原生 feed 缺少新字段时，读取为 `""` 与 `[]`；不重写既有缓存或导入快照，不改变 schemaVersion。结果视频和封面只用于预览。原始提示词中的编号图片/视频/音频标记以及来源声明的输入模式用于辨认需求；即便来源标作文生视频，也不能把明确需要输入素材的条目当作文生视频。
+
+缺少素材的图生视频、视频参考或全能参考提示词仍可入库和浏览，但前端阻止整体应用，服务端导入在创建命令或归档文件之前返回 `THIRD_PARTY_REFERENCES_REQUIRED`。现有草稿中的其他图片不能默认为作者使用的输入素材；用户可复制提示词并在编辑器自行准备对应素材。实际公开的输入 URL 继续进入 references，按已有固定版本归档流程应用。效果视频使用手动播放控件，不自动播放或导入项目。
+
+Image Prompt Gallery 分页仅跟随同一 HTTPS endpoint 的显式 next/nextUrl、nextCursor、nextOffset 或 nextPage；保留初始筛选参数，合计响应最多 32 MiB、30,000 条、300 页。循环、跨 endpoint 链接、分页缺失或未收齐声明数量均使本次同步失败，保留旧缓存，不发布第一页作为完整目录。
+
+不同来源可能转载相同提示词。缓存继续保留各来源的身份与署名，来源筛选返回该来源全部记录；合并视频目录按提示词、模型、模式、实际输入、前置图片阶段与缺失素材需求去重，分页数量使用同一规则。输入或模型不同的条目保留，不删除缓存。
+
+V16 扩展来源格式约束为 `BEATAPI_JSON` 和 `IMAGE_PROMPT_GALLERY_JSON`，不增加业务表或列；OpenAPI、生成 TypeScript 与 jOOQ 同步。来源模型只是目录信息，不新增生成 Provider 或切换当前草稿能力。
+
+视频上游完整正文可缓存至 64,000 字符，避免单条长提示词令整个来源同步失败；图片与编辑器仍保持 20,000 字符限制。长视频提示词可完整浏览与复制，应用前使用现有长度预检，服务端也在创建导入命令之前返回 `THIRD_PARTY_PROMPT_TOO_LONG`；不截断正文或扩大生成限制。
+
 ## 验收边界
 
 需定向验证个人隔离、系统写权限与 CSRF、图片上传/固定版本复制、模板 CRUD 的 CAS、导入命令重放与异参冲突、来源删除后独立复用，以及前端提示词/引用整体填充、容量和模式限制、失败保留草稿、不触发生成。实际运行结果记录在开发清单；Mock 与合成图片不证明真实 Provider 接通。全量测试、真实 Provider 与部署验证分别据实记录。

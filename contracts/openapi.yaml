@@ -7344,7 +7344,7 @@ components:
         id: *id001
         sourceId: *id002
         title: *id003
-        prompt: *id004
+        prompt: {type: string, maxLength: 64000}
         description: *id005
         coverUrl: *id006
         tags: *id007
@@ -7370,6 +7370,19 @@ components:
           oneOf:
           - $ref: '#/components/schemas/ThirdPartyImageGeneration'
           - type: 'null'
+        previewVideoUrl:
+          type: string
+          description: Generated example video for preview only; never a generation input.
+        missingReferences:
+          type: array
+          maxItems: 16
+          description: Required upstream inputs whose files were not published. Such entries can be browsed but cannot be imported.
+          items:
+            type: object
+            required: [kind, label]
+            properties:
+              kind: *id013
+              label: {type: string, maxLength: 160}
     ThirdPartyPromptEntry:
       type: object
       required:
@@ -7454,6 +7467,8 @@ components:
           - NATIVE_JSON
           - GITHUB_MARKDOWN
           - DAVID_JSON
+          - BEATAPI_JSON
+          - IMAGE_PROMPT_GALLERY_JSON
         url:
           type: string
         model:

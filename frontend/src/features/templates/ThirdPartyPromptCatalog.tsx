@@ -83,9 +83,13 @@ export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
     {selected && data ? <Panel title={data.title} description={data.description} className="media-template-preview">
       <p>{data.author}{data.tags.length ? ` · ${data.tags.join(" · ")}` : ""}</p>
       {data.sourceUrl ? <a href={data.sourceUrl} target="_blank" rel="noopener noreferrer">{t("thirdParty.original")}</a> : null}
+      {selected.video?.previewVideoUrl ? <video controls preload="none" playsInline poster={data.coverUrl || undefined}
+        src={selected.video.previewVideoUrl} aria-label={t("thirdParty.videoPreview")} className="third-party-video-preview" /> : null}
       <p className="media-template-preview-prompt">{data.prompt}</p>
       {selected.image ? <p>{t("thirdParty.imageMetadata", { "0": selected.image.imageModel, "1": selected.image.imageMode === "edit" ? t("thirdParty.editImage") : t("thirdParty.generateImage") })}</p> : null}
       {selected.video ? <p>{t("thirdParty.videoMetadata", { "0": selected.video.videoModel, "1": videoModeNames[selected.video.videoMode] })}</p> : null}
+      {selected.video?.missingReferences?.length ? <Notice tone="warning">{t("thirdParty.referencesRequired")}
+        {` ${selected.video.missingReferences.map((ref) => ref.label).join(" · ")}`}</Notice> : null}
       {selected.video?.imageGeneration ? <><p>{t("thirdParty.imageStage")}</p><p className="media-template-preview-prompt">{selected.video.imageGeneration.prompt}</p></> : null}
       <div className="media-template-preview-images">{refs.map((ref, index) => ref.kind === "IMAGE"
         ? <img key={ref.url} src={ref.url} referrerPolicy="no-referrer" alt={t("templates.numberedImage", { "0": index + 1 })} />
@@ -94,7 +98,7 @@ export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
       {context && slots.length > 0 ? images.map((ref, index) => <Field key={ref.url}><FieldLabel htmlFor={`${id}-slot-${index}`}>{t("templates.numberedImage", { "0": index + 1 })}</FieldLabel>
         <Select id={`${id}-slot-${index}`} value={imageSlots[index] ?? ""} disabled={busy} onChange={(event) => setImageSlots((current) => { const next = [...current]; next[index] = event.target.value; return next; })}>
           <option value="">{t("templates.chooseSlot")}</option>{slots.map((slot) => <option key={slot.key} value={slot.key} disabled={imageSlots.some((key, pos) => key === slot.key && pos !== index)}>{workflowFieldLabel(slot)}</option>)}</Select></Field>) : null}
-      {invalid ? <Notice tone="warning">{invalid}</Notice> : null}
+      {invalid && !selected.video?.missingReferences?.length ? <Notice tone="warning">{invalid}</Notice> : null}
       {context ? <div className="ui-form-actions"><Button type="button" disabled={busy || Boolean(invalid)} onClick={() => void apply()}>{busy ? t("templates.applying") : t("templates.use")}</Button></div> : null}
     </Panel> : null}
     {error ? <Notice tone="danger">{error.message}</Notice> : null}

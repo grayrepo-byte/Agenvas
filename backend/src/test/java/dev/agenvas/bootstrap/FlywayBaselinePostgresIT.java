@@ -75,6 +75,32 @@ class FlywayBaselinePostgresIT {
             assertThatThrownBy(() -> execute(connection, "update agent_skill_binding set position=0 where agent_id=? and skill_id=?", agent, second)).isInstanceOf(SQLException.class);
         }
     }
+    @Test void videoPromptSourceUpgradePreservesExistingSourcesAndCachedVideoJson() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("15").load().migrate();
+        try (Connection connection = connection()) {
+            execute(connection, "update third_party_prompt_source set enabled=false,version=3 where id='zerolu-gpt-image'");
+            execute(connection, "insert into third_party_prompt_source(id,name,target_kind,format,url) values ('fixture-upgrade','Synthetic','VIDEO','NATIVE_JSON','https://example.com/feed')");
+            execute(connection, """
+                    insert into third_party_prompt(id,source_id,target_kind,title,prompt,data_json,version)
+                    values ('fixture-upgrade:old','fixture-upgrade','VIDEO','Synthetic','Camera pans',
+                    '{"schemaVersion":1,"image":null,"video":{"id":"fixture-upgrade:old","sourceId":"fixture-upgrade",
+                    "title":"Synthetic","prompt":"Camera pans","description":"","coverUrl":"","tags":[],"author":"",
+                    "sourceUrl":"","createdAt":"","videoMode":"text_to_video","videoModel":"fixture","references":[],"imageGeneration":null}}',7)
+                    """);
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+        try (Connection connection = connection()) {
+            assertThat(text(connection, "select enabled::text from third_party_prompt_source where id='zerolu-gpt-image'")).isEqualTo("false");
+            assertThat(count(connection, "select version from third_party_prompt_source where id='zerolu-gpt-image'")).isEqualTo(3);
+            assertThat(count(connection, "select count(*) from third_party_prompt_source where target_kind='IMAGE'")).isEqualTo(5);
+            assertThat(count(connection, "select count(*) from third_party_prompt_source where target_kind='VIDEO'")).isEqualTo(6);
+            assertThat(count(connection, "select version from third_party_prompt where id='fixture-upgrade:old'")).isEqualTo(7);
+            var repository = new dev.agenvas.mediatemplate.infrastructure.ThirdPartyPromptRepository(DSL.using(connection, SQLDialect.POSTGRES), new ObjectMapper());
+            var old = repository.entry("fixture-upgrade:old").orElseThrow().video();
+            assertThat(old.previewVideoUrl()).isEmpty(); assertThat(old.missingReferences()).isEmpty();
+        }
+    }
 
     @Test void hundredSkillUpgradePreservesExistingBindingsAndAddsUniqueBuiltinIdentity() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())

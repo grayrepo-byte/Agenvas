@@ -2326,6 +2326,8 @@
   "thirdParty.original": "查看原始来源",
   "thirdParty.imageMetadata": "来源模型：{0} · 模式：{1}",
   "thirdParty.videoMetadata": "来源视频模型：{0} · 模式：{1}",
+  "thirdParty.videoPreview": "生成效果视频",
+  "thirdParty.referencesRequired": "来源未提供所需参考素材。请先准备对应素材；当前条目仅供浏览和复制提示词。",
   "thirdParty.imageStage": "此模板包含先生成图片、再生成视频的两个阶段。请先准备图片，再使用视频阶段提示词。",
   "thirdParty.replacementHint": "应用时会导入 {0} 个参考素材并整体替换当前引用。",
   "thirdParty.manageSources": "第三方来源管理",

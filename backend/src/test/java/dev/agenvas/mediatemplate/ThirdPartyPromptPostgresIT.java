@@ -149,6 +149,73 @@ class ThirdPartyPromptPostgresIT {
         assertThat(prompts.get(video.id()).video()).isEqualTo(video);
         assertThat(prompts.list(TargetKind.IMAGE, source, "", 0, 10).items()).isEmpty();
     }
+    @Test void combinedVideoCatalogueDeduplicatesEqualInputsButKeepsSourceCachesAndDifferentReferences() {
+        String first = source(TargetKind.VIDEO), second = source(TargetKind.VIDEO);
+        String text = "Synthetic unique video " + UUID.randomUUID();
+        var a = new Video(first + ":same", first, "First source", text, "", "", List.of(), "Author A", "", "",
+                VideoMode.text_to_video, "model", List.of(), null);
+        var b = new Video(second + ":same", second, "Second source", text, "", "", List.of(), "Author B", "", "",
+                VideoMode.text_to_video, "model", List.of(), null, "https://example.com/preview.mp4", List.of());
+        var different = new Video(second + ":different", second, "Different input", text, "", "", List.of(), "", "", "",
+                VideoMode.image_to_video, "model", List.of(new Reference(MediaKind.IMAGE, Role.START_FRAME, "https://example.com/input.png")), null);
+        feed(first, a); feed(second, b, different);
+        assertThat(prompts.sync(first).state()).isEqualTo(SyncState.SUCCESS);
+        assertThat(prompts.sync(second).state()).isEqualTo(SyncState.SUCCESS);
+        assertThat(prompts.list(TargetKind.VIDEO, null, text, 0, 10).total()).isEqualTo(2);
+        assertThat(prompts.list(TargetKind.VIDEO, null, text, 0, 1).items()).hasSize(1);
+        assertThat(prompts.list(TargetKind.VIDEO, first, text, 0, 10).total()).isEqualTo(1);
+        assertThat(prompts.list(TargetKind.VIDEO, second, text, 0, 10).total()).isEqualTo(2);
+        assertThat(prompts.get(b.id()).video().author()).isEqualTo("Author B");
+    }
+    @Test void missingInputFilesAreCachedButImportIsRejectedBeforeAnyCommandOrMediaWrites() throws Exception {
+        String source = source(TargetKind.VIDEO);
+        var video = new Video(source + ":missing", source, "Synthetic missing input", "Animate @Image1", "", "", List.of(), "", "", "",
+                VideoMode.image_to_video, "model", List.of(), null, "https://example.com/output.mp4",
+                List.of(new MissingReference(MediaKind.IMAGE, "IMAGE 1")));
+        feed(source, video); assertThat(prompts.sync(source).state()).isEqualTo(SyncState.SUCCESS);
+        var project = projects.create(owner.userId(), "Synthetic incomplete prompt", Project.AspectRatio.LANDSCAPE_16_9);
+        mvc.perform(post("/api/v1/projects/" + project.id() + "/media-templates/third-party/import").with(auth(true)).with(csrf())
+                .contentType("application/json").content(mapper.writeValueAsString(Map.of("promptId", video.id(), "expectedVersion", 0, "commandKey", "missing-input"))))
+                .andExpect(status().isConflict()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code").value("THIRD_PARTY_REFERENCES_REQUIRED"));
+        assertThat(count("asset", project.id())).isZero(); assertThat(count("task", project.id())).isZero();
+        assertThat(count("third_party_prompt_import", project.id())).isZero();
+        verify(http, never()).download(anyString(), anyInt());
+    }
+    @Test void fiveBuiltinVideoSourcesUseTheirSpecificAdaptersAndCacheThroughTheDailySyncService() {
+        var sources = prompts.sources().stream().filter(s -> s.targetKind() == TargetKind.VIDEO && !s.id().startsWith("fixture-")).toList();
+        assertThat(sources).extracting(dev.agenvas.mediatemplate.application.ThirdPartyPromptSource::id)
+                .containsExactlyInAnyOrder("youmind-seedance-2-0", "beatapi-minimax-h3", "ipg-seedance-2-0", "ipg-seedance-2-5", "ipg-minimax-h3");
+        for (var configured : sources) {
+            if (configured.format() == Format.GITHUB_MARKDOWN)
+                when(http.feed(java.net.URI.create(configured.url()).resolve("video-urls.json").toString()))
+                        .thenReturn("{\"prompts\":{\"999999\":\"https://example.com/output.mp4\"}}");
+            String body = switch (configured.format()) {
+                case GITHUB_MARKDOWN -> "### Synthetic clip\n#### Prompt\n```\nCamera pans slowly.\n```\n[Watch Video](https://youmind.com/seedance-2-0-prompts?id=999999)\n";
+                case BEATAPI_JSON -> "{\"prompts\":[{\"slug\":\"synthetic-clip\",\"title\":{\"en\":\"Synthetic clip\"},\"mode\":\"text-to-video\",\"prompt\":\"Camera pans slowly.\"}]}";
+                case IMAGE_PROMPT_GALLERY_JSON -> "{\"prompts\":[{\"id\":\"synthetic-clip\",\"domain\":\"video\",\"model\":\"" + configured.model() + "\",\"title\":\"Synthetic clip\",\"prompt\":\"Camera pans slowly.\",\"generationMode\":\"text-to-video\"}]}";
+                default -> throw new AssertionError("Unexpected video source format");
+            };
+            when(http.feed(configured.url())).thenAnswer(ignored -> {
+                assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse(); return body;
+            });
+            assertThat(prompts.sync(configured.id()).state()).isEqualTo(SyncState.SUCCESS);
+            assertThat(prompts.list(TargetKind.VIDEO, configured.id(), "", 0, 10).total()).isEqualTo(1);
+            assertThat(java.time.Duration.between(prompts.source(configured.id()).lastSyncedAt(), prompts.source(configured.id()).nextSyncAt()).toHours()).isEqualTo(24);
+        }
+    }
+    @Test void longVideoPromptIsCachedInFullButCannotBeImportedIntoTheEditor() throws Exception {
+        String source = source(TargetKind.VIDEO);
+        String fullPrompt = "Synthetic ".repeat(2500);
+        var video = new Video(source + ":long", source, "Synthetic long video", fullPrompt, "", "", List.of(), "", "", "",
+                VideoMode.text_to_video, "model", List.of(), null);
+        feed(source, video); assertThat(prompts.sync(source).state()).isEqualTo(SyncState.SUCCESS);
+        assertThat(prompts.get(video.id()).video().prompt()).isEqualTo(fullPrompt);
+        var project = projects.create(owner.userId(), "Synthetic long prompt", Project.AspectRatio.LANDSCAPE_16_9);
+        mvc.perform(post("/api/v1/projects/" + project.id() + "/media-templates/third-party/import").with(auth(true)).with(csrf())
+                .contentType("application/json").content(mapper.writeValueAsString(Map.of("promptId", video.id(), "expectedVersion", 0, "commandKey", "long-prompt"))))
+                .andExpect(status().isConflict()).andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code").value("THIRD_PARTY_PROMPT_TOO_LONG"));
+        assertThat(count("third_party_prompt_import", project.id())).isZero(); assertThat(count("task", project.id())).isZero();
+    }
     @Test void importsAllImagesOnceRetainsSnapshotAcrossSyncAndPublishesAtomically() throws Exception {
         String source = source(TargetKind.IMAGE);
         var prompt = image(source, "a", "Frozen", List.of("https://example.com/input.png")); feed(source, prompt); prompts.sync(source);

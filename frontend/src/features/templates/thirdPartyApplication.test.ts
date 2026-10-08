@@ -17,6 +17,13 @@ const entry: ThirdPartyPromptEntry = { id: "native:v", sourceId: "native", targe
     videoMode: "image_to_video", videoModel: "source-model", imageGeneration: null,
     references: [{ kind: "IMAGE", role: "START_FRAME", url: "https://example.com/start.png" }] } };
 describe("third-party template application", () => {
+  it("blocks missing upstream reference files even when the draft already has another image", () => {
+    const missing = { ...entry, video: { ...entry.video!, references: [],
+      missingReferences: [{ kind: "IMAGE" as const, label: "IMAGE 1" }], previewVideoUrl: "https://example.com/output.mp4" } };
+    expect(thirdPartyApplicationError(missing, fields, capability, [])).toContain("参考素材");
+    expect(thirdPartyApplicationError(missing, { ...fields, mediaInputs: [{ versionId: "other", role: "REFERENCE", color: "#fff" }] }, capability, [])).toContain("参考素材");
+    expect(thirdPartyReferences(missing)).toEqual([]);
+  });
   it("uses only explicit inputs and restores the required start-frame mode", () => {
     expect(thirdPartyReferences(entry)).toEqual(entry.video?.references);
     expect(thirdPartyReferences(entry)).not.toContainEqual(expect.objectContaining({ url: entry.video?.coverUrl }));

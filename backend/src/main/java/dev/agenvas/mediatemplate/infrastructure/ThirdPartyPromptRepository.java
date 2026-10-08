@@ -17,6 +17,7 @@ import java.util.UUID;
 import org.jooq.DSLContext;
 import org.jooq.JSONB;
 import org.jooq.Record;
+import org.jooq.impl.DSL;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.JsonNode;
@@ -124,6 +125,20 @@ public class ThirdPartyPromptRepository {
         if (source != null && !source.isBlank()) where = where.and(THIRD_PARTY_PROMPT.SOURCE_ID.eq(source));
         if (!query.isBlank()) where = where.and(THIRD_PARTY_PROMPT.TITLE.containsIgnoreCase(query)
                 .or(THIRD_PARTY_PROMPT.PROMPT.containsIgnoreCase(query)).or(THIRD_PARTY_PROMPT.DATA_JSON.cast(String.class).containsIgnoreCase(query)));
+        if (kind == TargetKind.VIDEO && (source == null || source.isBlank())) {
+            // Keep every source's attribution in the cache, but show identical generation inputs once in the combined catalogue.
+            var fingerprint = DSL.field("jsonb_build_array({0}->'video'->'prompt', {0}->'video'->'videoModel', "
+                    + "{0}->'video'->'videoMode', {0}->'video'->'references', {0}->'video'->'imageGeneration', "
+                    + "coalesce({0}->'video'->'missingReferences', '[]'::jsonb))", JSONB.class, THIRD_PARTY_PROMPT.DATA_JSON);
+            var ranked = db.select(THIRD_PARTY_PROMPT.fields()).select(DSL.rowNumber().over()
+                    .partitionBy(fingerprint).orderBy(THIRD_PARTY_PROMPT.ID).as("prompt_rank"))
+                    .from(THIRD_PARTY_PROMPT).where(where).asTable("visible_prompts");
+            var visible = ranked.field("prompt_rank", Integer.class).eq(1);
+            long total = db.fetchCount(db.selectOne().from(ranked).where(visible));
+            var entries = db.select(ranked.fields()).from(ranked).where(visible)
+                    .orderBy(ranked.field(THIRD_PARTY_PROMPT.ID)).offset(offset).limit(limit).fetch(this::entry);
+            return new Page(entries, total, offset, limit);
+        }
         long total = db.fetchCount(db.selectOne().from(THIRD_PARTY_PROMPT).where(where));
         var entries = db.selectFrom(THIRD_PARTY_PROMPT).where(where).orderBy(THIRD_PARTY_PROMPT.ID).offset(offset).limit(limit).fetch(this::entry);
         return new Page(entries, total, offset, limit);

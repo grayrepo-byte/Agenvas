@@ -84,7 +84,7 @@ public class ThirdPartyPromptService {
         if (claimed.isEmpty()) return new SyncResult(id, source(id).enabled() ? SyncState.RUNNING : SyncState.DISABLED, 0, 0, 0);
         ThirdPartyPromptSource source = claimed.get();
         try {
-            var prompts = validate(source, adapters.get(source.format()).parse(source, http.feed(source.url())));
+            var prompts = validate(source, adapters.get(source.format()).fetch(source, http));
             return tx.execute(ignored -> {
                 if (!repository.ownsLease(id, token, clock.instant())) return new SyncResult(id, SyncState.SUPERSEDED, 0, 0, prompts.size());
                 var counts = repository.upsert(source, prompts, clock.instant());

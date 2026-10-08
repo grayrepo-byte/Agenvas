@@ -5663,6 +5663,14 @@ export interface components {
             videoModel: string;
             references: components["schemas"]["ThirdPartyPromptReference"][];
             imageGeneration: components["schemas"]["ThirdPartyImageGeneration"] | null;
+            /** @description Generated example video for preview only; never a generation input. */
+            previewVideoUrl?: string;
+            /** @description Required upstream inputs whose files were not published. Such entries can be browsed but cannot be imported. */
+            missingReferences?: {
+                /** @enum {string} */
+                kind: "IMAGE" | "VIDEO" | "AUDIO";
+                label: string;
+            }[];
         };
         ThirdPartyPromptEntry: {
             id: string;
@@ -5689,7 +5697,7 @@ export interface components {
             /** @enum {string} */
             targetKind: "IMAGE" | "VIDEO";
             /** @enum {string} */
-            format: "NATIVE_JSON" | "GITHUB_MARKDOWN" | "DAVID_JSON";
+            format: "NATIVE_JSON" | "GITHUB_MARKDOWN" | "DAVID_JSON" | "BEATAPI_JSON" | "IMAGE_PROMPT_GALLERY_JSON";
             url: string;
             model: string;
             enabled: boolean;

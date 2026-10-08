@@ -2326,6 +2326,8 @@
   "thirdParty.original": "View original source",
   "thirdParty.imageMetadata": "Source model: {0} · Mode: {1}",
   "thirdParty.videoMetadata": "Source video model: {0} · Mode: {1}",
+  "thirdParty.videoPreview": "Generated video preview",
+  "thirdParty.referencesRequired": "Required reference files were not published. Prepare the matching inputs; this entry is available for browsing and copying the prompt.",
   "thirdParty.imageStage": "This template generates an image before creating a video. Prepare the image before applying the video stage.",
   "thirdParty.replacementHint": "Applying imports {0} references and replaces all current references.",
   "thirdParty.manageSources": "Manage sources",

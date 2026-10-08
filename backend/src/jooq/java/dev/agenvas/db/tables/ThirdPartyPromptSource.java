@@ -227,7 +227,7 @@ public class ThirdPartyPromptSource extends TableImpl<ThirdPartyPromptSourceReco
     public List<Check<ThirdPartyPromptSourceRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("third_party_prompt_source_check"), "(((lease_token IS NULL) = (lease_until IS NULL)))", true),
-            Internal.createCheck(this, DSL.name("third_party_prompt_source_format_check"), "(((format)::text = ANY ((ARRAY['NATIVE_JSON'::character varying, 'GITHUB_MARKDOWN'::character varying, 'DAVID_JSON'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("third_party_prompt_source_format_check"), "(((format)::text = ANY ((ARRAY['NATIVE_JSON'::character varying, 'GITHUB_MARKDOWN'::character varying, 'DAVID_JSON'::character varying, 'BEATAPI_JSON'::character varying, 'IMAGE_PROMPT_GALLERY_JSON'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("third_party_prompt_source_id_check"), "(((id)::text ~ '^[a-z][a-z0-9_-]{0,79}$'::text))", true),
             Internal.createCheck(this, DSL.name("third_party_prompt_source_target_kind_check"), "(((target_kind)::text = ANY ((ARRAY['IMAGE'::character varying, 'VIDEO'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("third_party_prompt_source_version_check"), "((version >= 0))", true)
