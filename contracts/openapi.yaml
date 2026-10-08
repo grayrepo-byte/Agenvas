@@ -1336,7 +1336,7 @@ paths:
       - {$ref: "#/components/parameters/AcceptLanguage"}
     post:
       operationId: createStorageProfile
-      summary: Save an encrypted immutable destination without activating it
+      summary: Save an encrypted destination without activating it
       requestBody:
         required: true
         content:
@@ -1353,6 +1353,58 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/Unavailable' }
+  /api/v1/settings/storage/profiles/{profileId}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - in: path
+        name: profileId
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: updateStorageProfile
+      summary: Update a connection; referenced locations remain fixed, omitted credentials are retained
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateStorageProfileRequest' }
+      responses:
+        '200':
+          description: Updated connection; defaults and historical objects retain their identities
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageSettings' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      operationId: deleteStorageProfile
+      summary: Delete an unreferenced connection and clear its default archive and relay selections
+      parameters:
+        - in: query
+          name: expectedVersion
+          required: true
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Updated configuration; referenced connections return STORAGE_PROFILE_IN_USE without changes
+          headers:
+            Cache-Control:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageSettings' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/settings/storage/active:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -5427,7 +5479,7 @@ components:
       enum: [ALIYUN_OSS, TENCENT_COS, S3]
     StorageProfile:
       type: object
-      required: [id, name, provider, endpoint, region, bucket, keyPrefix, pathStyle, accessKeyMask, createdAt]
+      required: [id, name, provider, endpoint, region, bucket, keyPrefix, pathStyle, accessKeyMask, createdAt, inUse]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
@@ -5439,6 +5491,7 @@ components:
         pathStyle: { type: boolean }
         accessKeyMask: { type: string }
         createdAt: { type: string, format: date-time }
+        inUse: { type: boolean, description: Referenced by an archive, relay copy or frozen task; prevents relocation and deletion }
     StorageSettings:
       type: object
       required: [version, activeProfileId, relayProfileId, profiles]
@@ -5468,6 +5521,21 @@ components:
         keyPrefix: { type: string, maxLength: 120 }
         pathStyle: { type: boolean, description: Available only for S3 compatible services }
         accessKeyId: { type: string, writeOnly: true }
+        secretAccessKey: { type: string, writeOnly: true }
+    UpdateStorageProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, name, provider, endpoint, region, bucket, keyPrefix, pathStyle]
+      properties:
+        expectedVersion: { type: integer, minimum: 0 }
+        name: { type: string, minLength: 1, maxLength: 120 }
+        provider: { $ref: '#/components/schemas/StorageProvider' }
+        endpoint: { type: string, format: uri, description: HTTPS service endpoint without bucket or path }
+        region: { type: string, maxLength: 80, description: OSS region ID such as cn-chengdu, without the oss- prefix }
+        bucket: { type: string, maxLength: 63 }
+        keyPrefix: { type: string, maxLength: 120 }
+        pathStyle: { type: boolean }
+        accessKeyId: { type: string, writeOnly: true, description: Omit both credentials to keep the existing key; supply both to rotate }
         secretAccessKey: { type: string, writeOnly: true }
     ActivateStorageProfileRequest:
       type: object

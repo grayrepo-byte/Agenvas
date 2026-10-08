@@ -1780,7 +1780,7 @@
   "settings.storage.defaultStorage": "Default storage",
   "settings.storage.description": "Local storage is used by default. Cloud storage is suitable for needs such as insufficient disk capacity; switching only affects resources archived later, and historical files continue to be read from the original location.",
   "settings.storage.endpointHint": "Fill in the HTTPS service endpoint without bucket, directory, or query parameters. Self-hosted S3 can use HTTPS private domain names.",
-  "settings.storage.immutableLocationHint": "The location configuration is fixed after saving. Add a new connection when changing the region, Bucket or Endpoint, and retain the original connection for reading historical files.",
+  "settings.storage.immutableLocationHint": "Unreferenced connections can be edited or deleted. Referenced connections retain their location; their name and credentials can be updated.",
   "settings.storage.loading": "Reading storage configuration",
   "settings.storage.local": "local storage",
   "settings.storage.localDefaultHint": "Subsequent resources use local storage. The history file location remains unchanged.",
@@ -2355,5 +2355,17 @@
   "thirdParty.videoReference": "Video reference",
   "thirdParty.textToImageToVideo": "Text to image to video",
   "thirdParty.generateImage": "Text to image",
-  "thirdParty.editImage": "Image editing"
+  "thirdParty.editImage": "Image editing",
+  "settings.storage.editNamed": "Edit: {0}",
+  "settings.storage.deleteNamed": "Delete: {0}",
+  "settings.storage.editConnection": "Edit connection",
+  "settings.storage.saveChanges": "Save changes",
+  "settings.storage.connectionUpdated": "Connection updated. Default selections are unchanged.",
+  "settings.storage.connectionDeleted": "Connection deleted. Any associated archive default is now local and relay is disabled.",
+  "settings.storage.deleting": "Deleting…",
+  "settings.storage.confirmDelete": "Confirm deletion",
+  "settings.storage.deleteHint": "This deletes the connection settings only, keeping bucket files. If selected as the archive default or relay, deletion switches archives to local storage and disables that relay.",
+  "settings.storage.locationLocked": "This connection is referenced by assets, archives, relay copies or tasks. You can update its name and credentials; its location must be retained and it cannot be deleted. Add a new connection to change location.",
+  "settings.storage.keepCredentialsHint": "Leave both credentials blank to keep the current key. To replace it, provide both ID and Secret.",
+  "settings.storage.ossRegionHint": "For OSS Region, use a region ID such as cn-chengdu without the oss- prefix."
 }

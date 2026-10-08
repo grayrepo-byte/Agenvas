@@ -906,9 +906,35 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Save an encrypted immutable destination without activating it */
+        /** Save an encrypted destination without activating it */
         post: operations["createStorageProfile"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/storage/profiles/{profileId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a connection; referenced locations remain fixed, omitted credentials are retained */
+        put: operations["updateStorageProfile"];
+        post?: never;
+        /** Delete an unreferenced connection and clear its default archive and relay selections */
+        delete: operations["deleteStorageProfile"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4022,6 +4048,8 @@ export interface components {
             accessKeyMask: string;
             /** Format: date-time */
             createdAt: string;
+            /** @description Referenced by an archive */
+            inUse: boolean;
         };
         StorageSettings: {
             version: number;
@@ -4053,6 +4081,24 @@ export interface components {
             pathStyle: boolean;
             accessKeyId: string;
             secretAccessKey: string;
+        };
+        UpdateStorageProfileRequest: {
+            expectedVersion: number;
+            name: string;
+            provider: components["schemas"]["StorageProvider"];
+            /**
+             * Format: uri
+             * @description HTTPS service endpoint without bucket or path
+             */
+            endpoint: string;
+            /** @description OSS region ID such as cn-chengdu */
+            region: string;
+            bucket: string;
+            keyPrefix: string;
+            pathStyle: boolean;
+            /** @description Omit both credentials to keep the existing key; supply both to rotate */
+            accessKeyId?: string;
+            secretAccessKey?: string;
         };
         ActivateStorageProfileRequest: {
             expectedVersion: number;
@@ -7742,6 +7788,81 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             503: components["responses"]["Unavailable"];
+        };
+    };
+    updateStorageProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStorageProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated connection; defaults and historical objects retain their identities */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    deleteStorageProfile: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated configuration; referenced connections return STORAGE_PROFILE_IN_USE without changes */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     activateStorageProfile: {

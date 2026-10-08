@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render,screen,waitFor } from "@testing-library/react";
+import { render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes } from "react-router";
@@ -11,7 +11,7 @@ import { server } from "../../test/server";
 import { StorageSettingsPage } from "./StorageSettingsPage";
 
 const profile = { id: "cloud-one", name: "云端一", provider: "S3" as const, endpoint: "https://s3.example.com",
-  region: "us-east-1", bucket: "test-bucket", keyPrefix: "agenvas", pathStyle: true, accessKeyMask: "••••1234", createdAt: "2026-10-01T00:00:00Z" };
+  region: "us-east-1", bucket: "test-bucket", keyPrefix: "agenvas", pathStyle: true, accessKeyMask: "••••1234", createdAt: "2026-10-01T00:00:00Z", inUse: false };
 function setup(value: StorageSettings = { version: 0, relayProfileId: null, activeProfileId: null, profiles: [] }) {
   const client = createQueryClient();
   server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json(value)));
@@ -120,6 +120,140 @@ describe("StorageSettingsPage", () => {
     await screen.findByRole("status");
     await waitFor(() => expect(writes).toHaveLength(2));
     expect(writes[1]).toEqual({ expectedVersion: 4, profileId: null });
+  });
+
+  it("edits a saved OSS region while retaining credentials and default selections", async () => {
+    const oss = { ...profile, provider: "ALIYUN_OSS" as const, region: "oss-cn-chengdu", pathStyle: false,
+      endpoint: "https://oss-cn-chengdu.aliyuncs.com" };
+    const writes: unknown[] = [];
+    server.use(http.put("/api/v1/settings/storage/profiles/cloud-one", async ({ request }) => {
+      writes.push(await request.json());
+      return HttpResponse.json({ version: 4, activeProfileId: oss.id, relayProfileId: oss.id, profiles: [{ ...oss, region: "cn-chengdu" }] });
+    }));
+    const client = setup({ version: 3, activeProfileId: oss.id, relayProfileId: oss.id, profiles: [oss] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑：云端一" }));
+    expect(screen.getByLabelText("连接名称")).toHaveValue(oss.name);
+    expect(screen.getByLabelText("AccessKey ID")).toHaveValue("");
+    expect(screen.getByLabelText("AccessKey Secret")).toHaveValue("");
+    await user.clear(screen.getByLabelText("Region")); await user.type(screen.getByLabelText("Region"), "cn-chengdu");
+    await user.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("连接已更新");
+    expect(writes).toEqual([{ expectedVersion: 3, name: oss.name, provider: oss.provider, endpoint: oss.endpoint,
+      region: "cn-chengdu", bucket: oss.bucket, keyPrefix: oss.keyPrefix, pathStyle: false }]);
+    expect(client.getQueryData<StorageSettings>(["settings", "storage"])?.activeProfileId).toBe(oss.id);
+    expect(client.getQueryData<StorageSettings>(["settings", "storage"])?.relayProfileId).toBe(oss.id);
+    expect(screen.queryByRole("button", { name: "保存修改" })).not.toBeInTheDocument();
+  });
+  it("keeps failed edit fields while clearing replacement keys and requiring an explicit conflict reload", async () => {
+    let version = 2;
+    const writes: unknown[] = [];
+    server.use(http.put("/api/v1/settings/storage/profiles/cloud-one", async ({ request }) => {
+      writes.push(await request.json()); version = 3;
+      return HttpResponse.json({ status: 409, detail: "配置已变化", code: "STORAGE_VERSION_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+    }));
+    const client = setup({ version, activeProfileId: null, relayProfileId: null, profiles: [profile] });
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ version, activeProfileId: null, relayProfileId: null, profiles: [profile] })));
+    const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "编辑：云端一" }));
+    await user.clear(screen.getByLabelText("连接名称")); await user.type(screen.getByLabelText("连接名称"), "保留草稿");
+    await user.type(screen.getByLabelText("AccessKey ID"), "replacement-id");
+    await user.type(screen.getByLabelText("AccessKey Secret"), "replacement-secret");
+    await user.click(screen.getByRole("button", { name: "保存修改" }));
+    await screen.findByRole("button", { name: "载入最新配置" });
+    expect(screen.getByLabelText("连接名称")).toHaveValue("保留草稿");
+    expect(screen.getByLabelText("AccessKey Secret")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "保存修改" })).toBeDisabled();
+    expect(JSON.stringify(client.getQueryData(["settings", "storage"]))).not.toContain("replacement-secret");
+    expect(writes).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "载入最新配置" }));
+    expect(screen.getByLabelText("连接名称")).toHaveValue(profile.name);
+    expect(screen.getByRole("button", { name: "保存修改" })).toBeEnabled();
+  });
+  it("requires confirmation to delete and uses the version pinned when the dialog opened", async () => {
+    const writes: string[] = [];
+    server.use(http.delete("/api/v1/settings/storage/profiles/cloud-one", ({ request }) => {
+      writes.push(new URL(request.url).searchParams.get("expectedVersion") ?? "");
+      return HttpResponse.json({ version: 6, activeProfileId: null, relayProfileId: null, profiles: [] });
+    }));
+    setup({ version: 5, activeProfileId: profile.id, relayProfileId: profile.id, profiles: [profile] });
+    const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "删除：云端一" }));
+    expect(writes).toHaveLength(0);
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" }));
+    expect(writes).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "删除：云端一" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("连接已删除");
+    expect(writes).toEqual(["5"]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByText("当前默认").closest(".storage-destination")).toHaveTextContent("本地存储");
+    expect(screen.queryByRole("button", { name: "编辑：云端一" })).not.toBeInTheDocument();
+  });
+  it("preserves a failed delete dialog and reloads a stale version only on explicit action", async () => {
+    let version = 5; const writes: string[] = [];
+    server.use(http.delete("/api/v1/settings/storage/profiles/cloud-one", ({ request }) => {
+      writes.push(new URL(request.url).searchParams.get("expectedVersion") ?? "");
+      if (writes.length === 1) {
+        version = 6;
+        return HttpResponse.json({ status: 409, title: "配置已变化", code: "STORAGE_VERSION_CONFLICT", detail: "配置已变化" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+      }
+      return HttpResponse.json({ version: 7, activeProfileId: null, relayProfileId: null, profiles: [] });
+    }));
+    setup({ version, activeProfileId: null, relayProfileId: null, profiles: [profile] });
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ version, activeProfileId: null, relayProfileId: null, profiles: [profile] })));
+    const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "删除：云端一" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" }));
+    await within(screen.getByRole("dialog")).findByRole("button", { name: "载入最新配置" });
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" })).toBeDisabled();
+    expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("配置已变化");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "载入最新配置" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" }));
+    await screen.findByRole("status"); expect(writes).toEqual(["5", "6"]);
+  });
+  it("locks referenced locations while keeping the name editable and explaining why deletion is unavailable", async () => {
+    setup({ version: 5, activeProfileId: profile.id, relayProfileId: null, profiles: [{ ...profile, inUse: true }] });
+    const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "编辑：云端一" }));
+    expect(screen.getByLabelText("连接名称")).toBeEnabled();
+    expect(screen.getByLabelText("Endpoint")).toBeDisabled(); expect(screen.getByLabelText("Region")).toBeDisabled();
+    expect(screen.getByLabelText("Bucket")).toBeDisabled(); expect(screen.getByLabelText("AccessKey ID")).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "删除：云端一" }));
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" })).toBeDisabled();
+    expect(screen.getByRole("dialog")).toHaveTextContent("无法删除");
+  });
+  it("reloads the fixed location when a new archive reference arrives during editing without changing the settings version", async () => {
+    let inUse = false;
+    server.use(http.put("/api/v1/settings/storage/profiles/cloud-one", () => {
+      inUse = true;
+      return HttpResponse.json({ code: "STORAGE_PROFILE_IN_USE", detail: "连接正在使用" },
+        { status: 409, headers: { "Content-Type": "application/problem+json" } });
+    }));
+    setup({ version: 5, activeProfileId: profile.id, relayProfileId: null, profiles: [profile] });
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ version: 5, activeProfileId: profile.id,
+      relayProfileId: null, profiles: [{ ...profile, inUse }] })));
+    const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "编辑：云端一" }));
+    await user.clear(screen.getByLabelText("Region")); await user.type(screen.getByLabelText("Region"), "us-west-1");
+    await user.click(screen.getByRole("button", { name: "保存修改" }));
+    await screen.findByRole("button", { name: "载入最新配置" });
+    expect(screen.getByLabelText("Region")).toHaveValue("us-west-1");
+    expect(screen.getByRole("button", { name: "保存修改" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "载入最新配置" }));
+    expect(screen.getByLabelText("Region")).toHaveValue(profile.region);
+    expect(screen.getByLabelText("Region")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "保存修改" })).toBeEnabled();
+  });
+  it("blocks a retry when deletion discovers a new reference without a settings version change", async () => {
+    let inUse = false;
+    server.use(http.delete("/api/v1/settings/storage/profiles/cloud-one", () => {
+      inUse = true;
+      return HttpResponse.json({ code: "STORAGE_PROFILE_IN_USE", detail: "连接正在使用" },
+        { status: 409, headers: { "Content-Type": "application/problem+json" } });
+    }));
+    setup({ version: 5, activeProfileId: profile.id, relayProfileId: null, profiles: [profile] });
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ version: 5, activeProfileId: profile.id,
+      relayProfileId: null, profiles: [{ ...profile, inUse }] })));
+    const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "删除：云端一" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" }));
+    await within(screen.getByRole("dialog")).findByText(/此连接已被素材/);
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" })).toBeDisabled();
   });
 
 });

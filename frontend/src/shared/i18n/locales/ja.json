@@ -1780,7 +1780,7 @@
   "settings.storage.defaultStorage": "デフォルトのストレージ",
   "settings.storage.description": "デフォルトではローカル ストレージが使用されます。クラウドストレージは、ディスク容量が足りないなどのニーズに適しています。切り替えは後でアーカイブされたリソースにのみ影響し、履歴ファイルは引き続き元の場所から読み取られます。",
   "settings.storage.endpointHint": "バケット、ディレクトリ、またはクエリ パラメーターを指定せずに、HTTPS サービス エンドポイントを入力します。セルフホスト型 S3 は、HTTPS プライベート ドメイン名を使用できます。",
-  "settings.storage.immutableLocationHint": "保存後に場所の構成が固定されます。リージョン、バケット、またはエンドポイントを変更するときに新しい接続を追加し、履歴ファイルを読み取るために元の接続を保持します。",
+  "settings.storage.immutableLocationHint": "参照されていない接続は場所の編集や削除が可能です。参照されている接続は場所を保持し、名前と認証情報のみ更新できます。",
   "settings.storage.loading": "ストレージ構成の読み取り",
   "settings.storage.local": "ローカルストレージ",
   "settings.storage.localDefaultHint": "後続のリソースはローカル ストレージを使用します。履歴ファイルの場所は変更されません。",
@@ -2355,5 +2355,17 @@
   "thirdParty.videoReference": "動画参照",
   "thirdParty.textToImageToVideo": "画像生成後に動画生成",
   "thirdParty.generateImage": "画像生成",
-  "thirdParty.editImage": "画像編集"
+  "thirdParty.editImage": "画像編集",
+  "settings.storage.editNamed": "編集：{0}",
+  "settings.storage.deleteNamed": "削除：{0}",
+  "settings.storage.editConnection": "接続を編集",
+  "settings.storage.saveChanges": "変更を保存",
+  "settings.storage.connectionUpdated": "接続を更新しました。既定の選択は変わりません。",
+  "settings.storage.connectionDeleted": "接続を削除しました。関連する既定の保存先はローカルに戻り、中継は無効になります。",
+  "settings.storage.deleting": "削除中…",
+  "settings.storage.confirmDelete": "削除を確認",
+  "settings.storage.deleteHint": "接続設定のみを削除し、Bucket のファイルは保持します。既定の保存先または中継に選択されている場合、ローカル保存に戻り、関連する中継が無効になります。",
+  "settings.storage.locationLocked": "この接続は素材、アーカイブ、中継コピーまたはタスクから参照されています。名前と認証情報は更新できますが、保存場所の変更や削除はできません。場所を変えるには新しい接続を追加してください。",
+  "settings.storage.keepCredentialsHint": "両方を空欄にすると現在のキーを保持します。変更する場合は ID と Secret の両方を入力してください。",
+  "settings.storage.ossRegionHint": "OSS Region には cn-chengdu などの地域 ID を入力します。oss- 接頭辞は不要です。"
 }

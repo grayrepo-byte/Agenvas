@@ -1034,6 +1034,8 @@ export async function uploadLibraryEntry(request: { file: File; kind: "IMAGE" | 
 export type StorageSettings = components["schemas"]["StorageSettings"];
 export type StorageProvider = components["schemas"]["StorageProvider"];
 export type CreateStorageProfileRequest = components["schemas"]["CreateStorageProfileRequest"];
+export type UpdateStorageProfileRequest = components["schemas"]["UpdateStorageProfileRequest"];
+export type StorageProfile = components["schemas"]["StorageProfile"];
 export type RotateStorageCredentialsRequest = components["schemas"]["RotateStorageCredentialsRequest"];
 export async function getStorageSettings(): Promise<StorageSettings> {
   return readJson<StorageSettings>("/api/v1/settings/storage", t("api.errors.storageSettingsUnavailable"));
@@ -1041,6 +1043,16 @@ export async function getStorageSettings(): Promise<StorageSettings> {
 export async function createStorageProfile(input: CreateStorageProfileRequest): Promise<StorageSettings> {
   return writeJson<StorageSettings>("/api/v1/settings/storage/profiles", {
     method: "POST", body: JSON.stringify(input),
+  });
+}
+export async function updateStorageProfile(id: string, input: UpdateStorageProfileRequest): Promise<StorageSettings> {
+  return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}`, {
+    method: "PUT", body: JSON.stringify(input),
+  });
+}
+export async function deleteStorageProfile(id: string, expectedVersion: number): Promise<StorageSettings> {
+  return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}?expectedVersion=${expectedVersion}`, {
+    method: "DELETE",
   });
 }
 export async function activateStorageProfile(input: components["schemas"]["ActivateStorageProfileRequest"]): Promise<StorageSettings> {
