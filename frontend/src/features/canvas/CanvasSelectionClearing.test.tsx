@@ -22,7 +22,9 @@ let renderRealFlow = false;
 let flowProps: FlowProps = {};
 const focusProbe = vi.hoisted(() => ({
   center: vi.fn<ReactFlowInstance["setCenter"]>().mockResolvedValue(true),
-  viewport: vi.fn<ReactFlowInstance["setViewport"]>().mockResolvedValue(true), zoom: 1,
+  viewport: vi.fn<ReactFlowInstance["setViewport"]>().mockResolvedValue(true),
+  fit: vi.fn<ReactFlowInstance["fitView"]>().mockResolvedValue(true), zoom: 1,
+  instance: null as ReactFlowInstance | null,
 }));
 
 // 选中态的同步依赖 React Flow 的变更通知，这里直接驱动页面对应的回调。
@@ -48,8 +50,11 @@ vi.mock("@xyflow/react", async (importOriginal) => {
       // jsdom has no viewport bounds; disable edge auto-pan so gesture coordinates remain deterministic.
       return renderRealFlow ? <real.ReactFlow {...props} fitView={false} autoPanOnNodeDrag={false}
         autoPanOnSelection={false} {...TEST_VIEWPORT}
-        onInit={(instance) => props.onInit?.({ ...instance, setCenter: focusProbe.center, setViewport: focusProbe.viewport,
-          getZoom: () => focusProbe.zoom })}>
+        defaultViewport={{ x: 0, y: 0, zoom: focusProbe.zoom }}
+        onInit={(instance) => {
+          focusProbe.instance = instance;
+          props.onInit?.({ ...instance, setCenter: focusProbe.center, setViewport: focusProbe.viewport, fitView: focusProbe.fit });
+        }}>
         <TestHandleMeasurements />{props.children}
       </real.ReactFlow> : <div data-testid="flow" />;
     },
@@ -100,7 +105,9 @@ beforeEach(() => {
   renderRealFlow = false;
   focusProbe.center.mockClear();
   focusProbe.viewport.mockClear();
+  focusProbe.fit.mockClear();
   focusProbe.zoom = 1;
+  focusProbe.instance = null;
   useCanvasStore.setState({ selectedIds: [], selectionMode: CANVAS_SELECTION_MODE.SINGLE,
     drafts: {}, mediaDraftRecoveries: {}, saveState: "saved" });
   server.use(
@@ -360,8 +367,9 @@ describe("connection gesture overlays", () => {
   });
 });
 
-describe("media selection focus", () => {
-  async function openMedia() {
+describe("node selection preserves the canvas view", () => {
+  it.each([0.6, 1.8])("opens and switches editors at zoom %s without moving or resizing the canvas", async (zoom) => {
+    focusProbe.zoom = zoom;
     const originalBounds = HTMLElement.prototype.getBoundingClientRect;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
       return this.classList.contains("workspace-canvas")
@@ -369,41 +377,39 @@ describe("media selection focus", () => {
         : originalBounds.call(this);
     });
     await renderInteractiveFlow();
-    fireEvent.click(nodeElement("image-card"));
-    await waitFor(() => expect(focusProbe.center).toHaveBeenCalledTimes(1));
-  }
-
-  it("animates the card and editor focus instead of jumping the viewport", async () => {
-    await openMedia();
-    const options = focusProbe.center.mock.calls[0]?.[2];
-    expect(options?.duration).toBeGreaterThan(0);
-    expect(options?.interpolate).toBe("linear");
-    expect(options?.ease?.(0)).toBe(0);
-    expect(options?.ease?.(1)).toBe(1);
-    expect(selectedIds()).toEqual(["image-card"]);
-    fireEvent.click(nodeElement("image-card"));
-    expect(focusProbe.center).toHaveBeenCalledTimes(1);
-  });
-
-  it("preserves a zoomed-out view when the card and editor already fit", async () => {
-    focusProbe.zoom = 0.6;
-    await openMedia();
-    expect(focusProbe.center.mock.calls[0]?.[2]?.zoom).toBe(0.6);
-  });
-
-  it("honors reduced motion when positioning the card and editor", async () => {
-    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
-    await openMedia();
-    expect(focusProbe.center.mock.calls[0]?.[2]?.duration).toBe(0);
-  });
-
-  it.each(["close", "pan"])("interrupts the current animation when the user chooses to %s", async (action) => {
-    focusProbe.center.mockImplementationOnce(() => new Promise(() => undefined));
-    await openMedia();
-    if (action === "close") fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
-    else act(() => flowProps.onMoveStart?.(new MouseEvent("mousedown"), { x: 0, y: 0, zoom: 1 }));
-    await waitFor(() => expect(focusProbe.viewport).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(focusProbe.instance).not.toBeNull());
+    const viewport = focusProbe.instance!.getViewport();
+    expect(viewport.zoom).toBe(zoom);
+    const viewportStyle = document.querySelector(".react-flow__viewport")?.getAttribute("style");
+    const layouts = new Map(["image-card", "text-card"].map((id) => {
+      const { width, height, transform } = nodeElement(id).style;
+      return [id, { width, height, transform }];
+    }));
+    for (const id of ["image-card", "image-card", "text-card"]) {
+      fireEvent.click(nodeElement(id));
+      expect(selectedIds()).toEqual([id]);
+      expect(await screen.findByLabelText(id === "text-card" ? "文字卡片操作" : "媒体卡片操作")).toBeVisible();
+      const editor = await screen.findByLabelText("所选卡片编辑区");
+      expect(editor).toBeVisible();
+      const editorToolbar = editor.closest(".react-flow__node-toolbar");
+      expect(editorToolbar).toHaveAttribute("data-id", id);
+      // The portal translates to the node but must never inherit the canvas zoom.
+      expect((editorToolbar as HTMLElement).style.transform).not.toContain("scale");
+      await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+      expect(nodeElement(id)).toHaveStyle(layouts.get(id)!);
+      expect(focusProbe.instance!.getViewport()).toEqual(viewport);
+      expect(document.querySelector(".react-flow__viewport")).toHaveAttribute("style", viewportStyle!);
+      expect(focusProbe.center).not.toHaveBeenCalled();
+      expect(focusProbe.viewport).not.toHaveBeenCalled();
+      expect(focusProbe.fit).not.toHaveBeenCalled();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
     expect(selectedIds()).toEqual([]);
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(focusProbe.instance!.getViewport()).toEqual(viewport);
+    expect(focusProbe.center).not.toHaveBeenCalled();
+    expect(focusProbe.viewport).not.toHaveBeenCalled();
+    expect(focusProbe.fit).not.toHaveBeenCalled();
   });
 });
 

@@ -101,15 +101,7 @@ type ConnectionTarget = { itemId: string; targetHandle: "agent-input" | "artifac
 const EDITOR_NODE_GAP = 32;
 const DUPLICATE_ITEM_OFFSET = 32;
 const MAX_CANVAS_Z_INDEX = 1000;
-const MEDIA_EDITOR_VIEW_HEIGHT = 320;
-const MEDIA_TOOLBAR_VIEW_HEIGHT = 70;
-const MEDIA_VIEW_MARGIN = 24;
-const MEDIA_EDITOR_VIEW_WIDTH = 680;
-const MEDIA_MAX_INITIAL_ZOOM = 1;
 const MEDIA_FOCUS_DELAY_MS = 150;
-const MEDIA_FOCUS_DURATION_MS = 360;
-/** Smooth pan/zoom on one path; unlike a zoom flight, it never pulls away from the card first. */
-const mediaFocusEase = (progress: number) => progress * progress * (3 - 2 * progress);
 const MAX_AGENT_TITLE_LENGTH = 120;
 const MAX_ARTIFACT_TITLE_LENGTH = 160;
 const AUDIO_AGENT_INSTRUCTION = "协助用户创作音频提示词、对白与 MV 方案。绑定的音频只提供归档元数据和生成描述，不代表你已听到或分析了声音。不能调用媒体生成；需要生成音频或视频时，请引导用户在对应卡片中运行。";
@@ -1088,44 +1080,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
 
   const selectedItems = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
-  const selectedMedia = !multiSelecting && draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact
-    ? selectedItems[0] : undefined;
-  const mediaFocus = useRef<string | null>(null);
-  const selectedMediaId = selectedMedia?.id;
-  const mediaFocusTarget = useRef<(CreationPoint & { id: string; width: number; height: number }) | null>(null);
-  mediaFocusTarget.current = selectedMedia
-    ? { id: selectedMedia.id, x: selectedMedia.x, y: selectedMedia.y, ...effectiveNodeSize(selectedMedia) } : null;
-  useEffect(() => {
-    if (!selectedMediaId) { mediaFocus.current = null; return; }
-    if (mediaFocus.current === selectedMediaId) return;
-    let animating = false;
-    // Wait for the editor's first layout, not a fixed delay. Read the latest projected size;
-    // background snapshots and draft saves must not restart an in-progress focus animation.
-    const frame = window.requestAnimationFrame(() => {
-      const target = mediaFocusTarget.current;
-      const instance = flow.current;
-      if (target?.id !== selectedMediaId || !instance || !canvasElement.current) return;
-      const bounds = canvasElement.current.getBoundingClientRect();
-      const zoom = Math.min(instance.getZoom(), MEDIA_MAX_INITIAL_ZOOM,
-        (bounds.width - MEDIA_VIEW_MARGIN * 2) / Math.max(MEDIA_EDITOR_VIEW_WIDTH, target.width),
-        (bounds.height - MEDIA_EDITOR_VIEW_HEIGHT - MEDIA_TOOLBAR_VIEW_HEIGHT - MEDIA_VIEW_MARGIN * 2) / target.height);
-      if (zoom <= 0) return;
-      mediaFocus.current = target.id;
-      const duration = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : MEDIA_FOCUS_DURATION_MS;
-      animating = duration > 0;
-      // NodeToolbars stay in CSS pixels while the card zooms. Reserve the editor's space.
-      void instance.setCenter(target.x + target.width / 2,
-        target.y + target.height / 2 + (MEDIA_EDITOR_VIEW_HEIGHT - MEDIA_TOOLBAR_VIEW_HEIGHT) / (2 * zoom),
-        { zoom, duration, ease: mediaFocusEase, interpolate: "linear" }).then(() => { animating = false; });
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-      // A new selection, closing the editor or starting a drag interrupts at the current view.
-      // React Flow's immediate viewport update interrupts its existing d3 transition.
-      if (animating && flow.current) void flow.current.setViewport(flow.current.getViewport());
-    };
-  }, [selectedMediaId]);
-
   const canClearBindings = selectedItems.filter((item) => item.agent !== null).length === 1;
   const canBindSelection = canClearBindings && selectedItems.some((item) => item.artifact !== null);
   useEffect(() => {
@@ -1375,6 +1329,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           zoomOnDoubleClick={false}
         >
           {!multiSelecting && draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact ?
+            // NodeToolbar keeps the editor in screen pixels; selection preserves the current canvas view and node size.
             <NodeToolbar nodeId={selectedItems[0].id} isVisible position={Position.Bottom} offset={EDITOR_NODE_GAP}
               style={{
                 // Keep the editor mounted while connecting so unsaved prompts survive the gesture.
