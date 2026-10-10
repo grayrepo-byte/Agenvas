@@ -201,15 +201,15 @@ class MediaCapabilityPostgresIT {
         try (var executor = Executors.newSingleThreadExecutor()) {
             new TransactionTemplate(transactions).executeWithoutResult(status -> {
                 repository.lockCapability(capability.id());
+                // Prime statistics before the other thread starts, covering an initially empty observation.
+                assertThat(capabilitySelectionBlocked()).isFalse();
                 selection.set(executor.submit(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION, defaultVersion, capability.id())));
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(LOCK_WAIT_SECONDS);
                 boolean blocked = false;
                 while (!blocked && System.nanoTime() < deadline) {
-                    blocked = jdbc.sql("""
-                        select exists(select 1 from pg_stat_activity
-                          where pid <> pg_backend_pid() and wait_event_type = 'Lock'
-                            and query like '%media_capability%' and query like '%for update%')
-                        """).query(Boolean.class).single();
+                    // Statistics are cached per transaction; refresh them without releasing the capability lock.
+                    jdbc.sql("select pg_stat_clear_snapshot()").query().listOfRows();
+                    blocked = capabilitySelectionBlocked();
                     if (!blocked) {
                         try { Thread.sleep(LOCK_POLL_MILLIS); }
                         catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }
@@ -233,6 +233,14 @@ class MediaCapabilityPostgresIT {
         assertThatThrownBy(() -> catalog.updateCapability(connection.id(), capability.id(), capability.version(),
                 "Video", true, "COMFY_VIDEO_V1", videoSettings())).isInstanceOf(ApiProblemException.class);
         assertThat(catalog.capabilitySnapshot(capability.id()).adapterId()).isEqualTo("COMFY_IMAGE_V1");
+    }
+
+    private boolean capabilitySelectionBlocked() {
+        return jdbc.sql("""
+            select exists(select 1 from pg_stat_activity
+              where pid <> pg_backend_pid() and wait_event_type = 'Lock'
+                and query like '%media_capability%' and query like '%for update%')
+            """).query(Boolean.class).single();
     }
 
     private tools.jackson.databind.JsonNode imageSettings() {

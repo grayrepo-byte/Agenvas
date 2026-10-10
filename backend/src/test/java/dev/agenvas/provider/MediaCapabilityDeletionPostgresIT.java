@@ -160,6 +160,8 @@ class MediaCapabilityDeletionPostgresIT {
             var pending = new java.util.ArrayList<java.util.concurrent.Future<?>>();
             new TransactionTemplate(transactions).executeWithoutResult(tx -> {
                 catalog.deleteCapability(capability.connectionId(), capability.id(), 0);
+                // Prime statistics before either selector starts, covering an initially empty observation.
+                assertThat(capabilitySelectionWaiters()).isZero();
                 pending.add(executor.submit(() -> {
                     started.countDown();
                     catalog.setDefault(Task.Kind.IMAGE_GENERATION, defaultVersion, capability.id());
@@ -177,11 +179,9 @@ class MediaCapabilityDeletionPostgresIT {
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
                 int blocked = 0;
                 while (blocked < 2 && System.nanoTime() < deadline) {
-                    blocked = jdbc.sql("""
-                        select count(*) from pg_stat_activity
-                        where pid <> pg_backend_pid() and wait_event_type = 'Lock'
-                          and query like '%media_capability%' and query like '%for update%'
-                        """).query(Integer.class).single();
+                    // Statistics are cached per transaction; refresh them without releasing the deletion lock.
+                    jdbc.sql("select pg_stat_clear_snapshot()").query().listOfRows();
+                    blocked = capabilitySelectionWaiters();
                     if (blocked < 2) {
                         try { Thread.sleep(20); }
                         catch (InterruptedException interrupted) {
@@ -199,6 +199,14 @@ class MediaCapabilityDeletionPostgresIT {
         }
         assertThat(catalog.defaultCapabilityId(Task.Kind.IMAGE_GENERATION)).isNotEqualTo(capability.id());
         assertThat(functions.list()).noneMatch(item -> capability.id().equals(item.capabilityId()));
+    }
+
+    private int capabilitySelectionWaiters() {
+        return jdbc.sql("""
+            select count(*) from pg_stat_activity
+            where pid <> pg_backend_pid() and wait_event_type = 'Lock'
+              and query like '%media_capability%' and query like '%for update%'
+            """).query(Integer.class).single();
     }
 
     private boolean attemptDelete(JooqMediaCapabilityRepository.Capability capability) {
