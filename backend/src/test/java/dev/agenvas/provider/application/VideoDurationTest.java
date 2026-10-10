@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 
 class VideoDurationTest {
@@ -44,10 +46,30 @@ class VideoDurationTest {
                 "{\"schemaVersion\":4,\"durationSeconds\":1.25}",
                 "{\"schemaVersion\":4,\"durationSeconds\":0}",
                 "{\"schemaVersion\":4,\"durationSeconds\":31}",
-                "{\"schemaVersion\":4,\"durationMs\":5000}",
-                "{\"schemaVersion\":6,\"durationSeconds\":5}"}) {
+                "{\"schemaVersion\":4,\"durationMs\":5000}"}) {
             assertThatThrownBy(() -> VideoDuration.fromFrozenTask(mapper.readTree(invalid)))
                     .isInstanceOf(IllegalArgumentException.class);
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 5, 30})
+    void readsPinnedWholeSecondsFromImageRelaySchema(int seconds) {
+        var input = mapper.createObjectNode().put("schemaVersion", 6)
+                .put("durationSeconds", seconds).put("durationMs", 999);
+        input.putObject("mediaInput").putArray("images");
+        assertThat(VideoDuration.fromFrozenTask(input)).isEqualTo(Duration.ofSeconds(seconds));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"schemaVersion\":6,\"durationSeconds\":1.25}",
+            "{\"schemaVersion\":6,\"durationSeconds\":0}",
+            "{\"schemaVersion\":6,\"durationSeconds\":31}",
+            "{\"schemaVersion\":6,\"durationMs\":5000}",
+            "{\"schemaVersion\":7,\"durationSeconds\":5}"})
+    void rejectsInvalidRelayDurationsAndUnsupportedSchemas(String invalid) {
+        assertThatThrownBy(() -> VideoDuration.fromFrozenTask(mapper.readTree(invalid)))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 }

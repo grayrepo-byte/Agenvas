@@ -2073,5 +2073,6 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 新增 V17、生成 jOOQ、OpenAPI / 生成 TypeScript 同步。真实 PostgreSQL 验证 V16→V17 保留连接、默认归档与版本，空库初始化、所有数据库对象注释和 CAS/API 必填字段检查通过。
 - [x] 后端 8 类 99 项定向单元/模拟 HTTP 测试通过：StorageSettingsServiceTest、MediaRelayServiceTest、OpenAiImage2ClientTest、OpenAiImage2AdapterTest、DebugHttpCaptureTest、ApprovedMediaAcceptanceTest、SpringAiStreamingHttpTest、ImageOperationValidationTest。另 4 类 6 项 PostgreSQL 定向测试通过：OpenAiImage2PostgresIT、StorageProfileManagementPostgresIT、SeedanceVideoReferencePostgresIT，以及 FlywayBaselinePostgresIT 的图片中继升级、空库初始化和注释检查三项。没有失败、错误或跳过。
 - [x] 前端 StorageSettingsPage 16 项定向测试通过，TypeScript、Vite 生产构建、修改文件 ESLint、四语言/主题检查与差异空白检查通过；构建保留现有大分块提示。模拟 HTTP 验证开关独立性、保存失败重试和 CAS 冲突保留选择。
+- [x] PR #34 CI 回归修复：Mock 视频时长解码接受图片中继引入的普通媒体 Task schema 6，仍严格校验 1–30 整秒且不回退读取毫秒；ComfyUI 视频与三视图测试分别同步 schema 6 / 9 断言。VideoDurationTest 10 项单元测试及六类原失败 PostgreSQL 集成测试共 37 项通过，无失败、错误或跳过；覆盖媒体审批续接、音频混合引用、ComfyUI 视频、画布版本、三视图提示词与有序首尾帧。本次未运行本地全量测试或真实 Provider。
 
 同步规格存储/debug/错误码、CONTEXT、README、媒体中继说明与 ADR 0041（关联 ADR 0020/0023）。前后端及 V17 需一起发布；已配置中继的安装升级后两个图片开关默认开启，可以独立关闭。没有迁移或修改现有素材、运行中应用或用户数据库。真实 OpenAI/第三方中转接口、真实 OSS/COS/S3 桶、全量测试、浏览器视觉验收和部署未运行；本轮供应商请求均为回环模拟 HTTP，不能证明真实服务或桶已接通。
