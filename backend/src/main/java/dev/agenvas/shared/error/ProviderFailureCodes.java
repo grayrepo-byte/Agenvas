@@ -38,5 +38,11 @@ public final class ProviderFailureCodes {
     /** 图片中继上传或签名准备失败；付费生成请求尚未发送。 */
     public static final String MEDIA_RELAY_PREPARATION_FAILED = "MEDIA_RELAY_PREPARATION_FAILED";
 
+    public static final String MINIMAX_CREATE_REJECTED = "MINIMAX_CREATE_REJECTED";
+    public static final String MINIMAX_CREATE_UNCERTAIN = "MINIMAX_CREATE_UNCERTAIN";
+    public static final String MINIMAX_TASK_FAILED = "MINIMAX_TASK_FAILED";
+    public static final String MINIMAX_TASK_EXPIRED = "MINIMAX_TASK_EXPIRED";
+    public static final String MINIMAX_RESULT_EXPIRED = "MINIMAX_RESULT_EXPIRED";
+
     private ProviderFailureCodes() {}
 }

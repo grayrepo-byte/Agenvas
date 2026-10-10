@@ -2,6 +2,11 @@ package dev.agenvas.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.provider.application.MediaCapabilityService;
@@ -40,6 +45,50 @@ class MediaCloudCapabilityPostgresIT {
     @Autowired private MediaCapabilityService catalog;
     @Autowired private CredentialCipher cipher;
     @Autowired private ObjectMapper mapper;
+    @Autowired private dev.agenvas.identity.application.IdentityService identities;
+    @Autowired private org.springframework.web.context.WebApplicationContext webContext;
+
+    @Test
+    void minimaxOfficialConnectionsPublishPinnedH3CapabilitiesAndRejectProtocolOverrides() throws Exception {
+        assertThatThrownBy(() -> catalog.createConnection("h3-no-key", "MiniMax", "MINIMAX", null, null))
+                .isInstanceOf(ApiProblemException.class);
+        var connection = catalog.createConnection("h3-cloud", "MiniMax", "MINIMAX", null, "synthetic-h3-key");
+        assertThat(catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow().origin()).isEqualTo("https://api.minimax.cn");
+        var capability = catalog.publishCapability(connection.id(), "H3", "MINIMAX_H3", mapper.readTree("""
+                {"defaultParameters":{"aspectRatio":"AUTO","videoResolution":"1440p"},
+                 "defaultDurationSeconds":6,"pricingByResolution":{"1440p":{"amount":"0.3","currency":"CNY","unit":"SECOND"}}}
+                """));
+        var snapshot = catalog.capabilitySnapshot(capability.id());
+        var spec = mapper.readTree(snapshot.specJson());
+        assertThat(spec.path("modelId").asText()).isEqualTo("MiniMax-H3");
+        assertThat(spec.path("generateAudio").asBoolean()).isTrue();
+        assertThat(spec.path("maxReferenceImages").asInt()).isEqualTo(9);
+        assertThat(spec.path("maxReferenceVideos").asInt()).isEqualTo(3);
+        assertThat(spec.path("settings").path("defaultParameters").path("videoResolution").asText()).isEqualTo("1440p");
+        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 3)).noneMatch(candidate -> candidate.binding().capabilityId().equals(capability.id()));
+        assertThat(catalog.candidates(Task.Kind.VIDEO_GENERATION, 4)).anyMatch(candidate -> candidate.binding().capabilityId().equals(capability.id()));
+        assertThatThrownBy(() -> catalog.publishCapability(connection.id(), "Unsupported", "MINIMAX_H3", mapper.readTree("{\"model\":\"MiniMax-H3-Max\"}")))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.createConnection("h3-proxy", "Proxy", "MINIMAX", "https://proxy.example.com", "synthetic-key"))
+                .isInstanceOf(ApiProblemException.class);
+        var updated = catalog.updateConnection(connection.id(), connection.version(), "International", true, "https://api.minimax.io", null);
+        assertThat(updated.currentVersion()).isEqualTo(connection.currentVersion() + 1);
+        assertThat(catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow().origin()).isEqualTo("https://api.minimax.cn");
+        assertThat(catalog.getConnectionVersion(connection.id(), updated.currentVersion()).orElseThrow().origin()).isEqualTo("https://api.minimax.io");
+        assertThat(catalog.capabilitySnapshot(capability.id()).mappingSha256()).isEqualTo(snapshot.mappingSha256());
+        var owner = identities.setup("h3-settings-admin", "synthetic-password-123");
+        var auth = authentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, null, java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+        String body = webAppContextSetup(webContext).apply(springSecurity()).build()
+                .perform(get("/api/v1/settings/media-connections").with(auth)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(body).doesNotContain("synthetic-h3-key", "credentialCiphertext", "credentialNonce");
+        var publicConnections = mapper.readTree(body).path("connections");
+        assertThat(publicConnections).anySatisfy(publicConnection -> {
+            assertThat(publicConnection.path("platform").asText()).isEqualTo("MINIMAX");
+            assertThat(publicConnection.path("origin").asText()).isEqualTo("https://api.minimax.io");
+            assertThat(publicConnection.path("capabilities").get(0).path("adapterId").asText()).isEqualTo("MINIMAX_H3");
+        });
+    }
 
     @Test
     void fixedMappingsRejectModelOverridesAndUnsafeEndpointsAndFilterSeedanceSteps() {

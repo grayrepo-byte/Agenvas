@@ -75,6 +75,80 @@ class MediaDraftReplacementPostgresIT {
     @Autowired javax.sql.DataSource dataSource;
     private static AdminPrincipal sharedOwner;
 
+    @Test void seedanceAndOfficialH3SwitchBothWaysWithLinkedMixedInputsAndCas() throws Exception {
+        var owner = owner();
+        var project = projects.create(owner.userId(), "Official H3 switch", Project.AspectRatio.SQUARE_1_1);
+        var ark = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic Ark", "ARK", null, "synthetic-ark-key");
+        var minimax = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic H3", "MINIMAX", null, "synthetic-h3-key");
+        var seedance = capabilities.publishCapability(ark.id(), "Seedance switch", "ARK_SEEDANCE_2_I2V");
+        var h3 = capabilities.publishCapability(minimax.id(), "H3 switch", "MINIMAX_H3");
+        var target = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO, "Target", null);
+        UUID targetItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), target.artifact().id());
+        var draft = drafts.save(owner.userId(), project.id(), targetItem, 0, "Before", mapper.createObjectNode(), 3,
+                seedance.id(), dev.agenvas.artifact.domain.MediaDraft.VideoInputMode.TEXT, List.of(), List.of(), null);
+        var versions = new java.util.ArrayList<UUID>();
+        for (var kind : List.of(Artifact.Kind.IMAGE, Artifact.Kind.AUDIO, Artifact.Kind.VIDEO)) {
+            UUID asset = switch (kind) {
+                case IMAGE -> ImageAssetFixture.archive(assets, owner.userId(), project.id());
+                case AUDIO -> dev.agenvas.testing.AudioAssetFixture.archive(assets, mediaTools, owner.userId(), project.id());
+                case VIDEO -> syntheticVideoAsset(owner.userId(), project.id());
+                default -> throw new IllegalStateException();
+            };
+            var source = artifacts.create(owner.userId(), project.id(), kind, "Synthetic " + kind,
+                    mapper.valueToTree(Map.of("sourceType", "UPLOAD", "assetId", asset)));
+            UUID sourceItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), source.artifact().id());
+            versions.add(source.resourceDefaultVersion().id());
+            draft = connections.connect(owner.userId(), project.id(), sourceItem, targetItem, versions.getLast(),
+                    CanvasConnection.RelationType.MEDIA_INPUT, draft.version()).draft();
+        }
+        var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
+        var mvc = webAppContextSetup(context).apply(springSecurity()).build();
+        String path = "/api/v1/projects/" + project.id() + "/canvas-items/" + targetItem + "/media-draft";
+        var body = mapper.createObjectNode().put("expectedVersion", draft.version()).put("prompt", "Use ￼/￼/￼")
+                .put("capabilityId", h3.id().toString()).put("durationSeconds", 3).put("videoInputMode", "GENERAL_REFERENCE");
+        body.putObject("parameters").put("aspectRatio", "9:16").put("videoResolution", "1440p");
+        var inputs = body.putArray("mediaInputs");
+        var mentions = body.putArray("mentions");
+        var roles = List.of("REFERENCE", "AUDIO_REFERENCE", "VIDEO_REFERENCE");
+        for (int index = 0; index < versions.size(); index++) {
+            inputs.addObject().put("versionId", versions.get(index).toString()).put("role", roles.get(index)).put("color", "#7C3AED");
+            mentions.addObject().put("versionId", versions.get(index).toString()).put("role", roles.get(index));
+        }
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body)))
+                .andExpect(status().isOk());
+        var h3Draft = drafts.get(owner.userId(), project.id(), targetItem);
+        assertThat(h3Draft.capabilityId()).isEqualTo(h3.id());
+        assertThat(h3Draft.parameters().path("videoResolution").asText()).isEqualTo("1440p");
+        assertThat(h3Draft.durationSeconds()).isEqualTo(3); // Incomplete/out-of-range drafts remain editable.
+        assertThat(h3Draft.mediaInputs()).extracting(input -> input.versionId()).containsExactlyElementsOf(versions);
+        assertThat(h3Draft.mediaInputs()).allSatisfy(input -> {
+            assertThat(input.color()).isEqualTo("#7C3AED");
+            assertThat(input.sources()).singleElement().satisfies(source ->
+                    assertThat(source.type()).isEqualTo(dev.agenvas.artifact.domain.MediaDraft.SourceType.CONNECTION));
+        });
+        assertThat(lineCount(project.id())).isEqualTo(3);
+        int beforeEvents = events(project.id());
+        // The stale reverse switch cannot change topology or the H3 draft.
+        body.put("capabilityId", seedance.id().toString());
+        ((tools.jackson.databind.node.ObjectNode) body.path("parameters")).remove("videoResolution");
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body)))
+                .andExpect(status().isConflict());
+        assertThat(drafts.get(owner.userId(), project.id(), targetItem)).isEqualTo(h3Draft);
+        assertThat(events(project.id())).isEqualTo(beforeEvents);
+        body.put("expectedVersion", h3Draft.version());
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body)))
+                .andExpect(status().isOk());
+        var back = drafts.get(owner.userId(), project.id(), targetItem);
+        assertThat(back.capabilityId()).isEqualTo(seedance.id());
+        assertThat(back.parameters().has("videoResolution")).isFalse();
+        assertThat(back.parameters().path("aspectRatio").asText()).isEqualTo("9:16");
+        assertThat(back.mediaInputs()).isEqualTo(h3Draft.mediaInputs());
+        assertThat(back.mentions()).isEqualTo(h3Draft.mentions());
+        assertThat(lineCount(project.id())).isEqualTo(3);
+        assertThat(jdbc.sql("select count(*) from task where project_id=:project")
+                .param("project", project.id()).query(Integer.class).single()).isZero();
+    }
+
     @org.junit.jupiter.params.ParameterizedTest
     @org.junit.jupiter.params.provider.EnumSource(value = Artifact.Kind.class, names = {"AUDIO", "VIDEO"})
     void mixedWorkflowSwitchRetainsTheMatchingMediaLineAndDisconnectClearsItsSlot(Artifact.Kind kind) throws Exception {

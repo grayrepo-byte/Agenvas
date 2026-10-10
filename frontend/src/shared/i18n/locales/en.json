@@ -2374,5 +2374,10 @@
   "settings.storage.deleteHint": "This deletes the connection settings only, keeping bucket files. If selected as the archive default or relay, deletion switches archives to local storage and disables that relay.",
   "settings.storage.locationLocked": "This connection is referenced by assets, archives, relay copies or tasks. You can update its name and credentials; its location must be retained and it cannot be deleted. Add a new connection to change location.",
   "settings.storage.keepCredentialsHint": "Leave both credentials blank to keep the current key. To replace it, provide both ID and Secret.",
-  "settings.storage.ossRegionHint": "For OSS Region, use a region ID such as cn-chengdu without the oss- prefix."
+  "settings.storage.ossRegionHint": "For OSS Region, use a region ID such as cn-chengdu without the oss- prefix.",
+  "settings.mediaSettings.minimaxAddressHint": "Select the official MiniMax China or international endpoint. The API key must belong to that site. The application fixes the H3 V2 paths.",
+  "tasks.errors.minimaxExpired": "The original MiniMax task or result has expired and cannot be retrieved.",
+  "tasks.errors.minimaxFailed": "MiniMax video generation failed.",
+  "tasks.errors.minimaxRejected": "MiniMax rejected this generation. Check the API key, balance and inputs.",
+  "settings.mediaSettings.minimaxAddressLabel": "MiniMax API address"
 }

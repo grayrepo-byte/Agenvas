@@ -10,6 +10,7 @@ getMediaSettings,setMediaDefault,updateMediaCapability,
 updateMediaConnection,
 type MediaCapability,type MediaConnection,type MediaSettings,
 } from "../../shared/api/client";
+import { MINIMAX_H3_ADAPTER } from "../../shared/minimaxH3";
 import { AUTODL_ADAPTER,AUTODL_DEFAULT_WORKFLOW,autoDlResolutionTiers,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { MEDIA_FUNCTIONS_QUERY_KEY } from "../../shared/mediaFunctions";
 import { t,useLocale } from "../../shared/i18n";
@@ -67,6 +68,7 @@ function fixedModelSettings(adapterId: string, values: AdapterSettings) {
     ...(values.pricingByResolution ? { pricingByResolution: Object.fromEntries(Object.entries(values.pricingByResolution).filter(([, price]) => price?.amount.trim())) } : {}),
     ...(values.seed !== undefined ? { seed: values.seed } : {}),
   } : {}), ...(adapterId === "OPENAI_GPT_IMAGE_2" ? { quality: values.quality ?? "medium" } : {}),
+    ...(adapterId === MINIMAX_H3_ADAPTER && values.pricingByResolution ? { pricingByResolution: Object.fromEntries(Object.entries(values.pricingByResolution).filter(([, price]) => price?.amount.trim())) } : {}),
     ...(defaultParameters ? { defaultParameters } : {}),
     ...(defaultDurationSeconds !== undefined ? { defaultDurationSeconds } : {}),
     ...(minimumSeconds !== undefined ? { minimumSeconds } : {}),
@@ -95,13 +97,13 @@ function FixedModelFields({ adapterId, values, onChange }: {
   useLocale();
   return <>
     {adapterId === AUTODL_ADAPTER ? <AutoDlWorkflowFields values={values} onChange={onChange} /> : null}
-    {adapterModel(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1"].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelOptions")}<Select value={values.model ? "custom" : "builtin"} onChange={(event) => onChange({ ...values,
+    {adapterModel(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelOptions")}<Select value={values.model ? "custom" : "builtin"} onChange={(event) => onChange({ ...values,
         model: event.target.value === "builtin" ? "" : adapterModel(adapterId) })}>
         <option value="builtin">{t("settings.mediaSettings.builtinModel", { "0": adapterModel(adapterId) })}</option>
         <option value="custom">{t("settings.mediaSettings.customModel")}</option>
       </Select>
     </FieldLabel></Field> : null}
-    {["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1"].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.fixedModel")}<Input value={adapterModel(adapterId)} readOnly />
+    {["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.fixedModel")}<Input value={adapterModel(adapterId)} readOnly />
     </FieldLabel></Field> : null}
     {fixedModelFields(adapterId).map(({ key, label }) => <Field key={key}><FieldLabel className="ui-field block">{label}
       <Input value={String(values[key as keyof AdapterSettings] ?? "")} onChange={(event) => onChange({ ...values, [key]: event.target.value })}
@@ -218,7 +220,7 @@ function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApi
       describedBy={platform === "GOOGLE" ? helpId : undefined} />
     {platform === "GOOGLE" ? <GoogleImageConnectionHelp id={helpId} origin={origin} /> : null}
     {platform === "AUTODL" ? <p className="ui-muted">{t("settings.mediaSettings.comfyTokenHint")}</p> : null}
-    {platform === "RUNNINGHUB" || platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" || platform === "VOLCENGINE" || platform === "AUTODL" ? <Field><FieldLabel className="ui-field block">
+    {platform === "RUNNINGHUB" || platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" || platform === "VOLCENGINE" || platform === "AUTODL" || platform === "MINIMAX" ? <Field><FieldLabel className="ui-field block">
       {creating ? "API Key" : t("settings.mediaSettings.replaceApiKey")}
       <Input type="password" autoComplete="new-password" value={apiKey}
         onChange={(event) => onApiKeyChange(event.target.value)} required={creating} />
@@ -462,7 +464,7 @@ function ConnectionRow({ connection, settings, apply }: {
   const save = useMutation({
     mutationFn: () => updateMediaConnection(connection.id, {
       expectedVersion: baseline.version, name: name.trim(), enabled: baseline.enabled,
-      origin: connection.platform === "RUNNINGHUB" || connection.platform === "COMFYUI" || connection.platform === "OPENAI" || connection.platform === "GOOGLE"
+      origin: connection.platform === "RUNNINGHUB" || connection.platform === "COMFYUI" || connection.platform === "OPENAI" || connection.platform === "GOOGLE" || connection.platform === "MINIMAX"
         ? origin.trim() || null : null,
       apiKey: apiKey || null,
     }),
@@ -590,7 +592,7 @@ export function MediaSettingsPage() {
   const settings = useQuery({ queryKey: settingsKey, queryFn: getMediaSettings,
     enabled: currentUser.isSuccess, retry: false });
   const [name, setName] = useState("");
-  const [platform, setPlatform] = useState<"RUNNINGHUB" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL">("COMFYUI");
+  const [platform, setPlatform] = useState<"RUNNINGHUB" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "MINIMAX">("COMFYUI");
   const [origin, setOrigin] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
@@ -599,7 +601,7 @@ export function MediaSettingsPage() {
   const create = useMutation({
     mutationFn: () => {
       const payload = { name: name.trim(), platform,
-        origin: platform === "RUNNINGHUB" || platform === "COMFYUI" || platform === "OPENAI" || platform === "GOOGLE"
+        origin: platform === "RUNNINGHUB" || platform === "COMFYUI" || platform === "OPENAI" || platform === "GOOGLE" || platform === "MINIMAX"
           ? origin.trim() || null : null,
         apiKey: platform === "COMFYUI" ? null : apiKey };
       connectionCreateKey.current = stableCreateKey(connectionCreateKey.current, JSON.stringify(payload));
@@ -684,7 +686,7 @@ export function MediaSettingsPage() {
               </FieldLabel></Field>
               <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.platform")}<Select value={platform} onChange={(event) => { setPlatform(event.target.value as typeof platform); setOrigin(""); setApiKey(""); }}>
                   <option value="RUNNINGHUB">RunningHub</option><option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option>
-                  <option value="AUTODL">{t("settings.mediaSettings.autoDlWorkflow")}</option><option value="GOOGLE">Google Gemini · Nano Banana 2</option><option value="ARK">{t("settings.mediaSettings.arkPlatform")}</option><option value="VOLCENGINE">{t("settings.mediaSettings.seedAudioPlatform")}</option>
+                  <option value="MINIMAX">MiniMax H3</option><option value="AUTODL">{t("settings.mediaSettings.autoDlWorkflow")}</option><option value="GOOGLE">Google Gemini · Nano Banana 2</option><option value="ARK">{t("settings.mediaSettings.arkPlatform")}</option><option value="VOLCENGINE">{t("settings.mediaSettings.seedAudioPlatform")}</option>
                 </Select>
               </FieldLabel></Field>
               <ConnectionCredentials platform={platform} origin={origin} apiKey={apiKey}

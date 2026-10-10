@@ -31,6 +31,8 @@ class FlywayBaselinePostgresIT {
     private static final String BEFORE_PERMANENT_SETUP_VERSION = "8";
     private static final String BEFORE_CAPABILITY_DELETION_VERSION = "10";
     private static final String CAPABILITY_DELETION_VERSION = "11";
+    private static final String BEFORE_IMAGE_RELAY_VERSION = "16";
+    private static final String IMAGE_RELAY_VERSION = "17";
     private static final String INITIAL_BASELINE_SCRIPT = "V1__initial_schema.sql";
     private static final String FOREIGN_KEY_VIOLATION = "23503";
     private static final String CHECK_VIOLATION = "23514";
@@ -204,7 +206,7 @@ class FlywayBaselinePostgresIT {
 
     @Test void imageRelayUpgradePreservesSelectionsAndStartsFunctionsEnabled() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration").target("16").load().migrate();
+                .locations("classpath:db/migration").target(BEFORE_IMAGE_RELAY_VERSION).load().migrate();
         UUID profile = UUID.randomUUID();
         try (Connection connection = connection()) {
             execute(connection, """
@@ -215,7 +217,12 @@ class FlywayBaselinePostgresIT {
                     """, profile);
             execute(connection, "update storage_settings set active_profile_id=?,relay_profile_id=?,version=9 where singleton", profile, profile);
         }
-        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+        // Isolate V17 so subsequent migrations cannot change this upgrade's execution count.
+        Flyway imageRelayUpgrade = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target(IMAGE_RELAY_VERSION).load();
+        assertThat(imageRelayUpgrade.migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(imageRelayUpgrade.info().current().getVersion().getVersion()).isEqualTo(IMAGE_RELAY_VERSION);
         try (Connection connection = connection()) {
             assertThat(text(connection, "select active_profile_id::text from storage_settings")).isEqualTo(profile.toString());
             assertThat(text(connection, "select relay_profile_id::text from storage_settings")).isEqualTo(profile.toString());

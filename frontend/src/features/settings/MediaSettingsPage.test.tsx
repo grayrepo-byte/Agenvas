@@ -52,6 +52,62 @@ function settingsFixture(connectionChanges: Partial<MediaConnection> = {}, capab
 }
 
 describe("MediaSettingsPage", () => {
+  it("publishes H3 with a fixed model, 2K default and per-type reference limits", async () => {
+    const fixture = settingsFixture({ platform: "MINIMAX", origin: "https://api.minimax.cn" });
+    fixture.connections[0]!.capabilities = [];
+    const posted: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        posted.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("textbox", { name: "固定模型" })).toHaveValue("MiniMax-H3");
+    await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "MiniMax H3 2K");
+    await user.click(within(dialog).getByRole("tab", { name: "默认参数" }));
+    await selectValue(within(dialog).getByRole("combobox", { name: "默认分辨率" }), "1440p");
+    await user.type(within(dialog).getByRole("spinbutton", { name: "默认视频时长（秒）" }), "6");
+    await user.click(within(dialog).getByRole("tab", { name: "输入限制" }));
+    await user.type(within(dialog).getByRole("spinbutton", { name: "最多参考视频数" }), "2");
+    await user.type(within(dialog).getByRole("spinbutton", { name: "最多参考音频数量" }), "1");
+    await user.click(within(dialog).getByRole("tab", { name: "估算价格" }));
+    await user.type(within(dialog).getByRole("spinbutton", { name: "2K 单位价格" }), "0.3");
+    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(posted).toEqual([{ name: "MiniMax H3 2K", adapterId: "MINIMAX_H3", settings: {
+      defaultParameters: { aspectRatio: "AUTO", videoResolution: "1440p" }, defaultDurationSeconds: 6,
+      maxReferenceVideos: 2, maxReferenceAudios: 1,
+      pricingByResolution: { "1440p": { amount: "0.3", currency: "CNY", unit: "SECOND" } },
+    } }]));
+  });
+
+  it("creates an official MiniMax connection with the selected regional endpoint", async () => {
+    const posted: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: mockDefault })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections", async ({ request }) => {
+        posted.push(await request.json()); return HttpResponse.json(settingsFixture({ platform: "MINIMAX", capabilities: [] }));
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "添加连接" }));
+    const dialog = screen.getByRole("dialog");
+    await selectValue(within(dialog).getByRole("combobox", { name: "平台" }), "MINIMAX");
+    const address = within(dialog).getByRole("combobox", { name: "MiniMax API 地址" });
+    expect(address).toHaveValue("https://api.minimax.cn");
+    await selectValue(address, "https://api.minimax.io");
+    await user.type(within(dialog).getByRole("textbox", { name: "连接名称" }), "MiniMax");
+    await user.type(within(dialog).getByLabelText("API Key"), "synthetic-h3-key");
+    await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
+    await waitFor(() => expect(posted).toEqual([{ name: "MiniMax", platform: "MINIMAX", origin: "https://api.minimax.io", apiKey: "synthetic-h3-key" }]));
+  });
+
   it("shows platform-specific address guidance without submitting the connection", async () => {
     const requests: string[] = [];
     server.use(

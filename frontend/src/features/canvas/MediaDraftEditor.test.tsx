@@ -845,6 +845,23 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
 
+  it("saves official H3 2K resolution and estimates its selected tier", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "minimax", adapterId: "MINIMAX_H3", name: "MiniMax H3",
+      minimumSeconds: 4, maximumSeconds: 15, supportedVideoInputModes: ["TEXT", "START_END", "GENERAL_REFERENCE"],
+      settings: { defaultParameters: { videoResolution: "768p" }, pricingByResolution: {
+        "768p": { amount: "0.1", currency: "CNY", unit: "SECOND" }, "1440p": { amount: "0.3", currency: "CNY", unit: "SECOND" } } } };
+    const { saves } = setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, platform: "MINIMAX", capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
+      draft: { ...initialDraft, capabilityId: capability.id, videoInputMode: "TEXT", durationSeconds: 5, parameters: { aspectRatio: "16:9" } } });
+    expect(await screen.findByText("预计 CNY 0.5")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    await user.click(within(screen.getByRole("dialog", { name: "尺寸与画质设置" })).getByRole("radio", { name: "2K" }));
+    expect(screen.getByText("预计 CNY 1.5")).toBeInTheDocument();
+    await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({ aspectRatio: "16:9", videoResolution: "1440p" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+  });
+
   it("saves a selected AutoDL tier and updates its exact estimate", async () => {
     const capability: MediaCapability = { ...videoCapability, id: "autodl", adapterId: "AUTODL_COMFY_VIDEO",
       name: "H3 text", minimumSeconds: 1, maximumSeconds: 15, maxReferenceImages: 0,

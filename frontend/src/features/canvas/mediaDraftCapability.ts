@@ -1,4 +1,5 @@
 import type { Artifact, ImageGenerationParameters, MediaCapability, SaveMediaDraftRequest } from "../../shared/api/client";
+import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, MINIMAX_H3_DEFAULT_RESOLUTION } from "../../shared/minimaxH3";
 import { AUTODL_ADAPTER, publishedAutoDlResolutions, resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import type { RunningHubValue } from "./RunningHubForm";
 import { promptForMediaInputs } from "./mediaPrompt";
@@ -44,6 +45,7 @@ export function normalizedImageParameters(raw: ImageGenerationParameters | undef
 export function normalizedVideoParameters(raw: ImageGenerationParameters | undefined, capability?: MediaCapability): VideoParameters {
   raw = { ...capability?.settings.defaultParameters, ...raw };
   const aspectRatio = VIDEO_ASPECT_RATIO_OPTIONS.find((candidate) => candidate === raw.aspectRatio) ?? "AUTO";
+  if (capability?.adapterId === MINIMAX_H3_ADAPTER) return { aspectRatio, videoResolution: raw.videoResolution ?? MINIMAX_H3_DEFAULT_RESOLUTION };
   if (capability?.adapterId === AUTODL_ADAPTER) {
     const defaultResolution = capability.settings.videoResolution
       ?? resolveAutoDlWorkflow(capability.settings)?.defaultResolution as VideoParameters["videoResolution"];
@@ -184,9 +186,11 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
   const parameters = normalizedVideoParameters(fields.parameters, next);
   const previousResolution = fields.parameters.videoResolution;
   const resolutionIncompatible = previousResolution !== undefined
-    && (next?.adapterId !== AUTODL_ADAPTER || !publishedAutoDlResolutions(next.settings).includes(previousResolution));
+    && (next?.adapterId === MINIMAX_H3_ADAPTER ? !MINIMAX_H3_RESOLUTIONS.some((tier) => tier === previousResolution)
+      : next?.adapterId !== AUTODL_ADAPTER || !publishedAutoDlResolutions(next.settings).includes(previousResolution));
   if (resolutionIncompatible) {
     if (next?.adapterId === AUTODL_ADAPTER) parameters.videoResolution = next.settings.videoResolution;
+    else if (next?.adapterId === MINIMAX_H3_ADAPTER) parameters.videoResolution = next.settings.defaultParameters?.videoResolution ?? MINIMAX_H3_DEFAULT_RESOLUTION;
     else delete parameters.videoResolution;
   }
   return { fields: { capabilityId, parameters, videoInputMode, mediaInputs,

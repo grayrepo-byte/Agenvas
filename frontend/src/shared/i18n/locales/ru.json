@@ -2374,5 +2374,10 @@
   "settings.storage.deleteHint": "Удаляются только настройки соединения, файлы в Bucket сохраняются. Если соединение выбрано для архива или ретрансляции, архив переключится на локальное хранилище, а связанная ретрансляция отключится.",
   "settings.storage.locationLocked": "На это соединение ссылаются ресурсы, архивы, временные копии или задачи. Можно изменить имя и ключи, но нельзя менять расположение или удалять соединение. Для нового расположения добавьте соединение.",
   "settings.storage.keepCredentialsHint": "Оставьте оба поля пустыми, чтобы сохранить ключ. Для замены укажите и ID, и Secret.",
-  "settings.storage.ossRegionHint": "Для OSS Region укажите ID региона, например cn-chengdu, без префикса oss-."
+  "settings.storage.ossRegionHint": "Для OSS Region укажите ID региона, например cn-chengdu, без префикса oss-.",
+  "settings.mediaSettings.minimaxAddressHint": "Выберите официальный китайский или международный адрес MiniMax. API-ключ должен относиться к выбранному сайту. Пути H3 V2 заданы приложением.",
+  "tasks.errors.minimaxExpired": "Срок хранения исходной задачи или результата MiniMax истёк. Получение невозможно.",
+  "tasks.errors.minimaxFailed": "Генерация видео MiniMax завершилась ошибкой.",
+  "tasks.errors.minimaxRejected": "MiniMax отклонил генерацию. Проверьте API-ключ, баланс и входные данные.",
+  "settings.mediaSettings.minimaxAddressLabel": "Адрес API MiniMax"
 }

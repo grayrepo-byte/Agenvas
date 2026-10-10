@@ -485,6 +485,8 @@ public class MediaCapabilityService {
             case "GOOGLE_NANO_BANANA_2" -> target.put("modelId", GoogleNanoBananaClient.DEFAULT_MODEL)
                     .put("outputFormat", "image").put("imageSize", ImageGenerationParameters.DEFAULT_RESOLUTION);
             case "VOLC_SEED_AUDIO_1" -> target.put("modelId", SeedAudioClient.MODEL_ID).put("outputFormat", "mp3");
+            case "MINIMAX_H3" -> target.put("modelId", dev.agenvas.provider.domain.MiniMaxH3Protocol.MODEL_ID)
+                    .put("outputFormat", "mp4").put("generateAudio", true);
             case "ARK_SEEDANCE_2_I2V" -> target.put("modelId", ArkSeedanceClient.MODEL_ID)
                     .put("outputFormat", "mp4").put("generateAudio", false);
             default -> { }
@@ -752,6 +754,7 @@ public class MediaCapabilityService {
     }
 
     private static String validatedOrigin(MediaPlatform platform, String origin) {
+        if (platform == MediaPlatform.MINIMAX) return dev.agenvas.provider.infrastructure.MiniMaxH3Client.validatedOrigin(origin);
         if (platform == MediaPlatform.RUNNINGHUB) {
             return dev.agenvas.provider.infrastructure.RunningHubClient.validatedOrigin(origin);
         }
@@ -806,7 +809,7 @@ public class MediaCapabilityService {
     private static void validateCredential(MediaPlatform platform, String apiKey, boolean creating) {
         boolean cloud = platform == MediaPlatform.OPENAI || platform == MediaPlatform.ARK
                 || platform == MediaPlatform.GOOGLE || platform == MediaPlatform.VOLCENGINE
-                || platform == MediaPlatform.RUNNINGHUB || platform == MediaPlatform.AUTODL;
+                || platform == MediaPlatform.RUNNINGHUB || platform == MediaPlatform.AUTODL || platform == MediaPlatform.MINIMAX;
         if (cloud && creating && (apiKey == null || apiKey.isBlank())) {
             throw invalid(ApiMessage.of("api.media-capability-service.cloud-platform-connection-must-fill-in-the-api-key"));
         }

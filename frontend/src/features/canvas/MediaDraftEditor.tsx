@@ -29,6 +29,7 @@ type RunningHubField,
 type SaveMediaDraftRequest
 } from "../../shared/api/client";
 import type { MediaTemplateImport } from "../../shared/api/client";
+import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, minimaxResolutionLabel } from "../../shared/minimaxH3";
 import { AUTODL_ADAPTER,publishedAutoDlResolutions,autoDlRatioSupported,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { t,useLocale } from "../../shared/i18n";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
@@ -700,8 +701,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const autodlWorkflow = chosenCapability?.adapterId === AUTODL_ADAPTER
     ? resolveAutoDlWorkflow(chosenCapability.settings) : undefined;
   const autodlTier = videoParameters.videoResolution ?? chosenCapability?.settings.videoResolution ?? autodlWorkflow?.defaultResolution ?? "";
-  const autodlTiers = chosenCapability?.adapterId === AUTODL_ADAPTER ? publishedAutoDlResolutions(chosenCapability.settings) : [];
-  const autodlTierValid = !videoParameters.videoResolution || Boolean(autodlWorkflow) && autodlTiers.some((tier) => tier === autodlTier);
+  const minimax = chosenCapability?.adapterId === MINIMAX_H3_ADAPTER;
+  const autodlTiers: readonly string[] = minimax ? MINIMAX_H3_RESOLUTIONS : chosenCapability?.adapterId === AUTODL_ADAPTER ? publishedAutoDlResolutions(chosenCapability.settings) : [];
+  const autodlTierValid = !videoParameters.videoResolution || (Boolean(autodlWorkflow) || minimax) && autodlTiers.some((tier) => tier === autodlTier);
   const autodlInputsValid = !autodlWorkflow || imageCount >= autodlWorkflow.minimumImages
     && audioCount >= autodlWorkflow.minimumAudios
     && (autodlWorkflow.mode !== "START_END" || Boolean(endFrame))
@@ -748,7 +750,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     && !occupied && styleAvailable && !historyPending;
   const dimensionLabel = artifact.kind === "IMAGE"
     ? `${ASPECT_RATIO_LABELS[imageParameters.aspectRatio]} · ${imageParameters.resolution}`
-    : `${ASPECT_RATIO_LABELS[videoParameters.aspectRatio]}${autodlWorkflow ? ` · ${autodlTier}` : ""}`;
+    : `${ASPECT_RATIO_LABELS[videoParameters.aspectRatio]}${autodlWorkflow || minimax ? ` · ${minimax ? minimaxResolutionLabel(autodlTier) : autodlTier}` : ""}`;
   const qualityLabel = artifact.kind === "IMAGE"
     ? supportedImageQualities.length
       ? QUALITY_LABELS[imageParameters.quality] : t("media.editor.modelDefault")
@@ -1405,11 +1407,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
                 <small>{ASPECT_RATIO_LABELS[value]}</small>
               </ToggleGroupItem>)}
             </ToggleGroup></FieldSet>
-            {autodlWorkflow ? <FieldSet><FieldLegend>{t("media.editor.resolution")}</FieldLegend>
+            {autodlWorkflow || minimax ? <FieldSet><FieldLegend>{t("media.editor.resolution")}</FieldLegend>
               <ToggleGroup type="single" value={autodlTier} className="media-draft-segmented" onValueChange={(selected) => {
                 const next = autodlTiers.find((tier) => tier === selected);
                 if (next) edit({ parameters: { ...fields.parameters, ...videoParameters, videoResolution: next } });
-              }}>{autodlTiers.map((tier) => <ToggleGroupItem key={tier} value={tier}>{tier}</ToggleGroupItem>)}</ToggleGroup>
+              }}>{autodlTiers.map((tier) => <ToggleGroupItem key={tier} value={tier}>{minimax ? minimaxResolutionLabel(tier) : tier}</ToggleGroupItem>)}</ToggleGroup>
             </FieldSet> : null}
             <p className="media-draft-fixed-parameter">{t("media.editor.fixedVideoQuality")}</p>
           </div>}
@@ -1474,7 +1476,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {settings.isSuccess && fields.capabilityId && !chosenCapability ? <EditorFeedbackRow tone="warning">{t("media.editor.modelUnavailableHint")}</EditorFeedbackRow> : null}
       {settings.isSuccess && !fields.capabilityId && !chosenCapability ? <EditorFeedbackRow tone="warning">{t("media.editor.defaultModelMissingHint")}</EditorFeedbackRow> : null}
       {settings.error ? <EditorFeedbackRow tone="danger" action={<Button variant="ghost" size="xs" onClick={() => void settings.refetch()} type="button">{t("media.editor.retryModels")}</Button>}>{t("media.editor.modelSettingsFailed")}</EditorFeedbackRow> : null}
-      {chosenCapability?.adapterId === "ARK_SEEDANCE_2_I2V" && videoCount > 0 ? <EditorFeedbackRow>{t("media.editor.videoRelayHint")}</EditorFeedbackRow> : null}
+      {(chosenCapability?.adapterId === "ARK_SEEDANCE_2_I2V" || minimax) && videoCount > 0 ? <EditorFeedbackRow>{t("media.editor.videoRelayHint")}</EditorFeedbackRow> : null}
       {latestTask && (latestTask.status === "FAILED" || latestTask.status === "BLOCKED")
         ? <EditorFeedbackRow tone="danger">{t("media.editor.generationIncomplete", { "0": taskErrorDetail(latestTask.errorCode) })}</EditorFeedbackRow> : null}
       {latestTask?.status === "READY" && latestTask.runId === null ? <EditorFeedbackRow tone={queue.error ? "warning" : "neutral"} action={

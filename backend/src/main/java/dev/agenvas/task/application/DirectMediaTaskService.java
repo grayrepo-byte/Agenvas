@@ -18,6 +18,7 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.MiniMaxH3Protocol;
 import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.infrastructure.OpenAiImage2Client;
@@ -223,6 +224,19 @@ public class DirectMediaTaskService {
                 ObjectNode frozen = input.putObject("mediaInput");
                 var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
                 if (comfyDimensions != null) frozen.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
+                if (MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId())) {
+                    String ratio = prepared.videoParameters().aspectRatio();
+                    if (draft.videoInputMode() == MediaDraft.VideoInputMode.START_END) ratio = "adaptive";
+                    else if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) {
+                        ratio = draft.videoInputMode() == MediaDraft.VideoInputMode.GENERAL_REFERENCE ? "adaptive"
+                                : switch (projects.get(ownerId, projectId).aspectRatio()) {
+                                    case LANDSCAPE_16_9 -> "16:9";
+                                    case PORTRAIT_9_16 -> "9:16";
+                                    case SQUARE_1_1 -> "1:1";
+                                };
+                    }
+                    frozen.putObject("providerParameters").put("ratio", ratio);
+                }
                 if (autodlResolution != null) {
                     ObjectNode providerParameters = frozen.putObject("providerParameters");
                     providerParameters.put("workflowId", configuredSettings.path("workflowId").asText());
@@ -258,7 +272,8 @@ public class DirectMediaTaskService {
                     imageNode.put("versionId", image.id().toString());
                     imageNode.put("role", imageInput.role().name());
                     imageNode.put("order", group.size() - 1);
-                    if (MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId())
+                    if ((MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId())
+                            || MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId()))
                             && imageInput.role() == MediaDraft.InputRole.VIDEO_REFERENCE) {
                         Asset asset = assets.requireReadyMedia(ownerId, projectId,
                                 UUID.fromString(image.content().path("assetId").asText()), Asset.MediaKind.VIDEO);
@@ -420,8 +435,13 @@ public class DirectMediaTaskService {
         String autodlResolution = null;
         String resolutionTier = null;
         if (videoParameters != null && videoParameters.videoResolution() != null
-                && !AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId()))
+                && !AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId())
+                && !MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId()))
             throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
+        if (MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId())) {
+            resolutionTier = MiniMaxH3Protocol.resolution(videoParameters.videoResolution());
+            videoParameters = new VideoGenerationParameters(videoParameters.aspectRatio(), resolutionTier);
+        }
         if (AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId())) {
             var workflow = AutoDlWorkflows.require(configuredSettings);
             int audios = (int) draft.mediaInputs().stream().filter(reference ->
@@ -1060,7 +1080,10 @@ public class DirectMediaTaskService {
             return;
         }
         boolean autodl = AutoDlWorkflows.ADAPTER_ID.equals(binding.adapterId());
-        if (!seed && !ark && !autodl) return;
+        boolean minimax = MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId());
+        if (!seed && !ark && !autodl && !minimax) return;
+        // Reserve JSON/prompt/negative-prompt and three signed-video URL overheads before loading bytes.
+        long minimaxInlineBytes = 6L * (draft.prompt().length() + 8_000) + 32_768;
         long autodlTotalBytes = 0;
         long audioDuration = 0;
         long videoDuration = 0;
@@ -1075,6 +1098,12 @@ public class DirectMediaTaskService {
             Asset asset = assets.requireReadyMedia(ownerId, projectId,
                     UUID.fromString(version.content().path("assetId").asText()),
                     video ? Asset.MediaKind.VIDEO : audio ? Asset.MediaKind.AUDIO : Asset.MediaKind.IMAGE);
+            if (minimax) {
+                MiniMaxH3Protocol.validateMetadata(asset);
+                if (!video) minimaxInlineBytes += 4 * ((asset.byteSize() + 2) / 3);
+                if (minimaxInlineBytes > MiniMaxH3Protocol.MAX_REQUEST_BYTES)
+                    throw MiniMaxH3Protocol.invalid();
+            }
             if (autodl) {
                 autodlTotalBytes += asset.byteSize();
                 if (asset.byteSize() > AutoDlWorkflows.MAX_REFERENCE_BYTES
@@ -1085,7 +1114,7 @@ public class DirectMediaTaskService {
             if (video) {
                 videoCount++;
                 videoDuration += asset.durationMs();
-                dev.agenvas.provider.domain.SeedanceVideoReferences.validateMetadata(asset);
+                if (ark) dev.agenvas.provider.domain.SeedanceVideoReferences.validateMetadata(asset);
                 continue;
             }
             if (!audio) {
@@ -1105,6 +1134,9 @@ public class DirectMediaTaskService {
                     || !Set.of("audio/mpeg", "audio/wav").contains(asset.contentType())))
                 throw invalid(ApiMessage.of("api.direct-media-task-service.seedance-audio-reference-supports-mp3-wav-only-2-15-seconds"));
         }
+        if (minimax && (videoDuration > MiniMaxH3Protocol.MAX_REFERENCE_DURATION_MS
+                || audioDuration > MiniMaxH3Protocol.MAX_REFERENCE_DURATION_MS))
+            throw MiniMaxH3Protocol.invalid();
         if (ark && videoDuration > MediaAdapterRegistry.SEEDANCE_MAX_VIDEO_DURATION_MS)
             throw invalid(ApiMessage.of("api.media-relay.video-duration-limit"));
         if (ark && audioCount > 0 && (imageCount + videoCount == 0

@@ -2374,5 +2374,10 @@
   "settings.storage.deleteHint": "接続設定のみを削除し、Bucket のファイルは保持します。既定の保存先または中継に選択されている場合、ローカル保存に戻り、関連する中継が無効になります。",
   "settings.storage.locationLocked": "この接続は素材、アーカイブ、中継コピーまたはタスクから参照されています。名前と認証情報は更新できますが、保存場所の変更や削除はできません。場所を変えるには新しい接続を追加してください。",
   "settings.storage.keepCredentialsHint": "両方を空欄にすると現在のキーを保持します。変更する場合は ID と Secret の両方を入力してください。",
-  "settings.storage.ossRegionHint": "OSS Region には cn-chengdu などの地域 ID を入力します。oss- 接頭辞は不要です。"
+  "settings.storage.ossRegionHint": "OSS Region には cn-chengdu などの地域 ID を入力します。oss- 接頭辞は不要です。",
+  "settings.mediaSettings.minimaxAddressHint": "MiniMax 公式の中国または国際エンドポイントを選択してください。API キーは選択したサイトのものが必要です。H3 V2 のパスはアプリが固定します。",
+  "tasks.errors.minimaxExpired": "元の MiniMax タスクまたは結果の有効期限が切れ、取得できません。",
+  "tasks.errors.minimaxFailed": "MiniMax の動画生成に失敗しました。",
+  "tasks.errors.minimaxRejected": "MiniMax が生成を拒否しました。API キー、残高、入力を確認してください。",
+  "settings.mediaSettings.minimaxAddressLabel": "MiniMax API アドレス"
 }

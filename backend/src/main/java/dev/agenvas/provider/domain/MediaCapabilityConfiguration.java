@@ -51,7 +51,9 @@ public final class MediaCapabilityConfiguration {
                 target.set("defaultParameters", dev.agenvas.artifact.domain.AudioGenerationParameters.parse(parameters).toJson(mapper));
             } else {
                 var parsed = VideoGenerationParameters.parse(parameters);
-                if (parsed.videoResolution() != null)
+                if (adapter.platform() == MediaPlatform.MINIMAX) {
+                    parsed = new VideoGenerationParameters(parsed.aspectRatio(), MiniMaxH3Protocol.resolution(parsed.videoResolution()));
+                } else if (parsed.videoResolution() != null)
                     throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
                 target.set("defaultParameters", parsed.toJson(mapper));
             }
@@ -59,12 +61,13 @@ public final class MediaCapabilityConfiguration {
         if (source.has("pricing")) target.set("pricing", normalizePrice(mapper, adapter, source.get("pricing")));
         if (source.has("pricingByResolution")) {
             JsonNode prices = source.get("pricingByResolution");
-            // Only AutoDL currently declares selectable video resolution tiers.
-            if (adapter.platform() != MediaPlatform.AUTODL || adapter.kind() != Task.Kind.VIDEO_GENERATION || !prices.isObject())
+            // Resolution prices are limited to protocols declaring selectable tiers.
+            if (adapter.platform() != MediaPlatform.AUTODL && adapter.platform() != MediaPlatform.MINIMAX || adapter.kind() != Task.Kind.VIDEO_GENERATION || !prices.isObject())
                 throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
             ObjectNode normalized = target.putObject("pricingByResolution");
             for (String tier : prices.propertyNames()) {
-                AutoDlWorkflows.selectedResolution(target, tier);
+                if (adapter.platform() == MediaPlatform.MINIMAX) MiniMaxH3Protocol.resolution(tier);
+                else AutoDlWorkflows.selectedResolution(target, tier);
                 normalized.set(tier, normalizePrice(mapper, adapter, prices.get(tier)));
             }
         }
