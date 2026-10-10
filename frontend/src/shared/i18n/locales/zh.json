@@ -2095,7 +2095,6 @@
   "skills.bindingHint": "可配置多个默认 Skill；更改绑定不影响活动 Run。",
   "skills.missingInput": "请选择必需的主体图片",
   "skills.inputVersion": "精确输入版本",
-  "skills.preflight": "固定 Skill 与资料",
   "skills.fees": "Agent 模型费用按调用产生；媒体批次需另行批准，拒绝媒体不会退还模型费用。",
   "skills.modelOnly": "Skill 参考图由 Agent 按需读取并提供给模型，不需要准备项目文件。",
   "skills.readAsset": "读取 Skill 参考图",

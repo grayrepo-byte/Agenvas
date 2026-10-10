@@ -3,7 +3,7 @@ import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { RunningHubDefinition } from "../../shared/api/client";
 import { changeControl, clickControl } from "../../test/controls";
-import type { RunningHubValue } from "./RunningHubForm";
+import type { WorkflowValue } from "./workflowFields";
 import { WorkflowMediaInputs, WorkflowParametersDialog, type WorkflowMediaChoice } from "./WorkflowDraftControls";
 
 const definition: RunningHubDefinition = {
@@ -34,9 +34,9 @@ const canvasChoices: WorkflowMediaChoice[] = [
   { id: "image-canvas", label: "画布图片 · v3", title: "画布图片", kind: "IMAGE", available: true },
 ];
 
-function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolean; initialValues?: Record<string, RunningHubValue> }) {
+function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolean; initialValues?: Record<string, WorkflowValue> }) {
   const [values, setValues] = useState(initialValues);
-  function change(key: string, value: RunningHubValue | undefined) {
+  function change(key: string, value: WorkflowValue | undefined) {
     setValues((previous) => { const next = { ...previous }; if (value === undefined) delete next[key]; else next[key] = value; return next; });
   }
   return <>{dialog ? <WorkflowParametersDialog open onOpenChange={() => {}} definition={definition} values={values} prompt="画面提示词" durationSeconds={45} onChange={change} />

@@ -460,17 +460,6 @@ public class AssetService {
         return asset;
     }
 
-    /** 使用与原素材相同的项目权限返回预先生成的小型 PNG 缩略图。 */
-    public ThumbnailFile getThumbnail(UUID ownerId, UUID projectId, UUID assetId) {
-        Asset asset = metadata(ownerId, projectId, assetId);
-        if (asset.thumbnailKey() == null || asset.thumbnailByteSize() == null) {
-            throw new ApiProblemException(HttpStatus.NOT_FOUND, "ASSET_THUMBNAIL_NOT_FOUND",
-                    ApiMessage.of("api.asset-service.preview-does-not-exist"), ApiMessage.of("api.asset-service.there-is-no-thumbnail-available-for-this-footage"), false);
-        }
-        return new ThumbnailFile(asset,
-                checkedReadyFile(asset.thumbnailKey(), asset.thumbnailByteSize()));
-    }
-
     /** 通过存储层路径白名单解析文件，并拒绝符号链接、非普通文件或大小不符。 */
     private Path checkedReadyFile(String objectKey, long expectedSize) {
         Path path = storage.checkedPath(objectKey);
@@ -493,9 +482,4 @@ public class AssetService {
      */
     public record AssetFile(Asset asset, Path path) {}
 
-    /** 已鉴权的缩略图元数据和受大小限制的 PNG 文件路径。
-     * @param asset 所属素材记录
-     * @param path 经项目授权及路径边界校验的缩略图文件
-     */
-    public record ThumbnailFile(Asset asset, Path path) {}
 }

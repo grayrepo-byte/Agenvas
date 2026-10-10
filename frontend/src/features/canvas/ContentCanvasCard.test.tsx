@@ -290,13 +290,16 @@ describe("ContentCanvasCard", () => {
   });
 
   it("opens version history from the toolbar and switches with artifact CAS", async () => {
+    let reads = 0;
     let selection: unknown;
     const value = artifact("TEXT", { format: "PLAIN_TEXT", text: "第二版" });
     server.use(
-      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () =>
-        HttpResponse.json({ items: [value.resourceDefaultVersion,
+      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () => {
+        reads++;
+        return HttpResponse.json({ items: [value.resourceDefaultVersion,
           { ...value.resourceDefaultVersion!, id: "version-1", versionNo: 1, content: {
-            format: "PLAIN_TEXT", text: "第一版" } }] })),
+            format: "PLAIN_TEXT", text: "第一版" } }] });
+      }),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({
         headerName: "X-XSRF-TOKEN", token: "test-token",
       })),
@@ -306,9 +309,11 @@ describe("ContentCanvasCard", () => {
       }),
     );
     showCard(value);
+    expect(reads).toBe(0);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /v2/ }));
     const menu = await screen.findByRole("menu", { name: "文字版本" });
+    await waitFor(() => expect(reads).toBe(1));
     expect(menu.closest(".content-card-sources")).toBeNull(); // Portal avoids clipping by the card.
     await user.click(within(menu).getByRole("menuitem", { name: /v1/ }));
     await waitFor(() => expect(selection).toEqual({ versionId: "version-1", expectedVersion: 3 }));

@@ -116,7 +116,15 @@ class MediaCapabilityDeletionPostgresIT {
         long defaultVersion = catalog.defaultVersion(Task.Kind.VIDEO_GENERATION);
         catalog.updateCapability(capability.connectionId(), capability.id(), 0, capability.name(), false, "OPENAI_GPT_IMAGE_2");
         var connection = catalog.getConnection(capability.connectionId());
-        catalog.setConnectionEnabled(connection.id(), connection.version(), false);
+        var connectionVersion = catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow();
+        assertThat(connectionVersion.credentialCiphertext()).isNotEmpty();
+        var disabled = catalog.updateConnection(connection.id(), connection.version(), connection.name(), false,
+                connectionVersion.origin(), null);
+        assertThat(disabled.enabled()).isFalse();
+        assertThat(disabled.currentVersion()).isEqualTo(connection.currentVersion());
+        assertThat(catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow())
+                .usingRecursiveComparison().isEqualTo(connectionVersion);
+        assertThat(catalog.getConnectionVersion(connection.id(), connection.currentVersion() + 1)).isEmpty();
         catalog.deleteCapability(connection.id(), capability.id(), 1);
         assertThat(catalog.capabilities(connection.id())).isEmpty();
         assertThat(catalog.defaultCapabilityId(Task.Kind.VIDEO_GENERATION)).isEqualTo(defaultId);

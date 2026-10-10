@@ -39,7 +39,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Real PostgreSQL/API/CAS validation with synthetic keys; no cloud or model requests. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {"agenvas.tasks.scheduler-enabled=false",
+@SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.library.worker-enabled=false", "agenvas.llm.scheduler-enabled=false"})
 class StorageProfileManagementPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");

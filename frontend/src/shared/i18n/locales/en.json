@@ -2095,7 +2095,6 @@
   "skills.bindingHint": "Configure multiple default Skills. Changes do not affect active Runs.",
   "skills.missingInput": "Choose the required subject image",
   "skills.inputVersion": "Exact input version",
-  "skills.preflight": "Pinned Skill and resources",
   "skills.fees": "Agent calls incur model costs. Media batches require separate approval; rejection does not refund model costs.",
   "skills.modelOnly": "The Agent reads Skill reference images on demand and provides them to the model. No project preparation is needed.",
   "skills.readAsset": "Read Skill reference image",

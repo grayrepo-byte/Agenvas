@@ -32,8 +32,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.llm.scheduler-enabled=false",
-        "agenvas.export.scheduler-enabled=false"})
+        "agenvas.llm.scheduler-enabled=false"})
 class ShutdownSignalPostgresIT {
 
     @Container
@@ -106,8 +105,7 @@ class ShutdownSignalPostgresIT {
         assertThat(Files.isRegularFile(jar)).isTrue();
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         ProcessBuilder builder = new ProcessBuilder(java.toString(), "-Xmx512m", "-jar",
-                jar.toString(), "--server.port=0", "--agenvas.llm.scheduler-enabled=false",
-                "--agenvas.export.scheduler-enabled=false")
+                jar.toString(), "--server.port=0", "--agenvas.llm.scheduler-enabled=false")
                 .redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));
         builder.environment().put("AGENVAS_DB_URL", POSTGRES.getJdbcUrl());

@@ -30,6 +30,24 @@ describe("canvas interaction store", () => {
     expect(useCanvasStore.getState().drafts["item-2"]).toEqual({ x: 99 });
   });
 
+  it("clears an unchanged submitted draft while preserving other items", () => {
+    useCanvasStore.getState().updateDraft("item-1", { x: 42 });
+    useCanvasStore.getState().updateDraft("item-2", { x: 99 });
+    const submitted = useCanvasStore.getState().drafts["item-1"];
+    useCanvasStore.getState().clearDraftIfUnchanged("item-1", submitted);
+    expect(useCanvasStore.getState().drafts).toEqual({ "item-2": { x: 99 } });
+  });
+
+  it("does not acknowledge a later edit even when it repeats the submitted values", () => {
+    useCanvasStore.getState().updateDraft("item-1", { x: 42 });
+    const submitted = useCanvasStore.getState().drafts["item-1"];
+    useCanvasStore.getState().updateDraft("item-1", { x: 42 });
+    const newer = useCanvasStore.getState();
+    useCanvasStore.getState().clearDraftIfUnchanged("item-1", submitted);
+    expect(useCanvasStore.getState()).toBe(newer);
+    expect(useCanvasStore.getState().drafts["item-1"]).toEqual({ x: 42 });
+  });
+
   it("automatically enters multi-select for multiple cards and supports explicit single-card focus", () => {
     useCanvasStore.getState().setSelectedIds(["item-1", "item-2"]);
     expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.MULTIPLE);

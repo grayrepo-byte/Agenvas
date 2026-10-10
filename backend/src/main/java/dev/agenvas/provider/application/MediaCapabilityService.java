@@ -493,19 +493,6 @@ public class MediaCapabilityService {
         }
     }
 
-    @Transactional
-    public Connection setConnectionEnabled(UUID connectionId, long expectedVersion,
-            boolean enabled) {
-        Connection connection = getConnection(connectionId);
-        requireAvailablePlatform(connection.platform());
-        rejectSystemManaged(connection);
-        if (!repository.updateConnectionEnabled(connectionId, expectedVersion, enabled,
-                clock.instant())) {
-            throw conflict(ApiMessage.of("api.media-capability-service.the-connection-has-been-modified-by-other-operations"));
-        }
-        return getConnection(connectionId);
-    }
-
     public long defaultVersion(Task.Kind kind) {
         return repository.defaultVersion(requireMediaKind(kind).name());
     }

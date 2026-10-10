@@ -72,20 +72,21 @@ import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
 import { displayCanvasRelations } from "./canvasEdgeDisplay";
 import { CANVAS_POINTER_THRESHOLD,useCanvasInteraction } from "./canvasInteraction";
-import { arrangeCanvas,CANVAS_ARRANGE_GAP,CANVAS_LAYOUT_BATCH_SIZE } from "./arrangeCanvas";
+import { arrangeCanvas,CANVAS_ARRANGE_GAP } from "./arrangeCanvas";
 import {
 agentImageConnection,canvasRelationRemoval,canvasTargetHandleId,inputConnectionUpdate,
 isCanvasConnectionValid,mediaInputConnection,projectCanvasRelations,
 type CanvasRelationRemoval
 } from "./canvasRelations";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
-import { CANVAS_MAX_SIZE,imageNodeResizeBounds,persistableNodeSize,projectImageNodeSize } from "./imageNodeLayout";
+import { CANVAS_MAX_SIZE,imageNodeResizeBounds,projectImageNodeSize } from "./imageNodeLayout";
 import { AUDIO_CARD_HEIGHT,AUDIO_CARD_WIDTH,prepareMediaNode,VISUAL_MEDIA_CARD_HEIGHT,VISUAL_MEDIA_CARD_WIDTH,type PreparedMediaNode } from "./mediaNodeActions";
 import { subscribeProjectEvents,type EventSyncStatus } from "./projectEvents";
 import { projectCacheCallbacks } from "./projectCache";
 import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
 import { KIND_LABELS } from "../library/libraryLabels";
 import { useMediaNodeRatios } from "./useMediaNodeRatios";
+import { useCanvasLayoutSave } from "./useCanvasLayoutSave";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO" | "AGENT";
@@ -278,32 +279,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     });
   }, [projectId, queryClient, snapshot.isSuccess]);
 
-  const saveLayout = useMutation({
-    mutationFn: (input: { item: CanvasItem; patch: Partial<LayoutPatch> } | { item: CanvasItem; patch: Partial<LayoutPatch> }[]) => {
-      const updates = Array.isArray(input) ? input : [input];
-      const commands = updates.map(({ item, patch }): CanvasCommand => {
-        const draft = useCanvasStore.getState().drafts[item.id];
-        const command: CanvasCommand = {
-          type: "UPDATE_LAYOUT",
-          itemId: item.id,
-          expectedVersion: item.version,
-          x: patch.x ?? draft?.x ?? item.x,
-          y: patch.y ?? draft?.y ?? item.y,
-          ...persistableNodeSize(effectiveNodeSize(item, patch)),
-          zIndex: item.zIndex,
-          groupId: item.groupId,
-        };
-        return command;
-      });
-      return applyCanvasCommands(projectId, commands);
-    },
-    ...canvasMutationFeedback,
-    onSuccess: (saved, variables) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      (Array.isArray(variables) ? variables : [variables]).forEach(({ item }) => clearDraft(item.id));
-      setSaveState("saved");
-    },
-  });
+  const saveLayout = useCanvasLayoutSave(projectId, effectiveNodeSize);
   const removeItem = useMutation({
     mutationFn: (item: CanvasItem) =>
       applyCanvasCommands(projectId, [
@@ -669,22 +645,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       } })).sort((a, b) => a.layout.y - b.layout.y || a.layout.x - b.layout.x || a.item.id.localeCompare(b.item.id));
       const targetX = Math.min(...layouts.map(({ layout }) => layout.x));
       let nextY = Math.min(...layouts.map(({ layout }) => layout.y));
-      const commands: CanvasCommand[] = layouts.map(({ item, layout: current }) => {
+      const updates = layouts.map(({ item, layout: current }) => {
         // Keep existing vertical space; push overlapping cards down in spatial order.
         // Use projected heights so portrait media and resized cards remain clear.
         const layout = { ...current, x: targetX, y: Math.max(current.y, nextY) };
         nextY = layout.y + layout.height + CANVAS_ARRANGE_GAP.y;
         updateDraft(item.id, layout);
-        return { type: "UPDATE_LAYOUT", itemId: item.id, expectedVersion: item.version,
-          ...layout, ...persistableNodeSize(layout), zIndex: item.zIndex, groupId: item.groupId };
+        return { item, patch: layout };
       });
-      return { saved: await applyCanvasCommands(projectId, commands), itemIds: selected.map((item) => item.id) };
-    },
-    ...canvasMutationFeedback,
-    onSuccess: ({ saved, itemIds }) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      itemIds.forEach(clearDraft);
-      setSaveState("saved");
+      return saveLayout.mutateAsync(updates);
     },
   });
   function canvasCenter(): CreationPoint {
@@ -937,11 +906,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         updateDraft(item.id, patch);
         return [{ item, patch }];
       });
-      // Preserve the API's bounded transaction size. Successful batches clear their own drafts;
-      // a later conflict leaves the remaining rows visible and reports the failed save normally.
-      for (let index = 0; index < updates.length; index += CANVAS_LAYOUT_BATCH_SIZE) {
-        await saveLayout.mutateAsync(updates.slice(index, index + CANVAS_LAYOUT_BATCH_SIZE));
-      }
+      await saveLayout.saveInBatches(updates);
       // Map insertion order is the arrangement order, independent of the API's item order.
       return positions.keys().next().value;
     },

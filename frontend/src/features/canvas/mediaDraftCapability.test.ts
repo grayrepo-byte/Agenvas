@@ -319,6 +319,41 @@ describe("media capability changes", () => {
     expect(change.fields.mediaInputs).toEqual([imageInput]);
   });
 
+  it("keeps explicit zero and false values when selecting a compatible workflow contract", () => {
+    const before = { ...fields, parameters: { dynamicValues: { strength: 0, sound: false } } };
+    const change = planMediaCapabilityChange({ kind: "VIDEO", fields: before,
+      capabilityId: dynamic.id, resolvedCapabilityId: dynamic.id, previous: dynamic, next: dynamic });
+    expect(change.fields.parameters?.dynamicValues).toEqual({ strength: 0, sound: false });
+    expect(before.parameters.dynamicValues).toEqual({ strength: 0, sound: false });
+  });
+
+  it("retains legacy positional Comfy inputs on their first explicit capability switch", () => {
+    const comfy: MediaCapability = { ...image, id: "comfy", adapterId: "COMFY_IMAGE_V1", settings: { comfyInputs: [
+      { ...definition.fields[0]!, key: "reference_0" }, { ...definition.fields[0]!, key: "reference_1" },
+    ] } };
+    const second = { ...imageInput, versionId: "second-image" };
+    const before = { ...fields, mediaInputs: [imageInput, second] };
+    const change = planMediaCapabilityChange({ kind: "IMAGE", fields: before,
+      capabilityId: comfy.id, resolvedCapabilityId: comfy.id, previous: comfy, next: comfy });
+    expect(change.fields.parameters?.dynamicValues).toEqual({ reference_0: imageInput.versionId, reference_1: second.versionId });
+    expect(change.fields.mediaInputs).toEqual(before.mediaInputs);
+    expect(before.parameters).toEqual({});
+  });
+
+  it("clears only workflow mappings and duration while keeping static settings when returning to audio", () => {
+    const audio: MediaCapability = { ...image, kind: "AUDIO_GENERATION", maxReferenceImages: 0, maxReferenceAudios: 2 };
+    const before = { ...fields, mediaInputs: [audioInput], parameters: {
+      speaker: "synthetic-voice", speechRate: 50, dynamicValues: { frame: imageInput.versionId },
+    } };
+    const snapshot = structuredClone(before);
+    const change = planMediaCapabilityChange({ kind: "AUDIO", fields: before,
+      capabilityId: null, resolvedCapabilityId: audio.id, previous: dynamic, next: audio });
+    expect(change.fields).toMatchObject({ capabilityId: null, durationSeconds: null, mediaInputs: [audioInput],
+      parameters: { speaker: "synthetic-voice", speechRate: 50 } });
+    expect(change.fields.parameters).not.toHaveProperty("dynamicValues");
+    expect(before).toEqual(snapshot);
+  });
+
   it("clears dynamic parameters and retains compatible exact inputs when leaving RunningHub", () => {
     const change = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...fields,
       parameters: { dynamicValues: { frame: imageInput.versionId } }, mediaInputs: [imageInput],

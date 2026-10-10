@@ -2095,7 +2095,6 @@
   "skills.bindingHint": "複数の既定 Skill を設定できます。変更は実行中の Run に影響しません。",
   "skills.missingInput": "必須の主体画像を選択してください",
   "skills.inputVersion": "固定入力バージョン",
-  "skills.preflight": "固定 Skill と資料",
   "skills.fees": "Agent のモデル呼び出しに料金が発生します。メディアは別途承認が必要で、拒否してもモデル料金は返金されません。",
   "skills.modelOnly": "Agent は Skill の参照画像を必要に応じて読み取り、モデルに渡します。プロジェクトの準備は不要です。",
   "skills.readAsset": "Skill 参照画像を読み取る",

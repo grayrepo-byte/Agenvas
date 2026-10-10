@@ -89,8 +89,7 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, SkillRunPostgresIT.FakeConfig.class}, properties = { "agenvas.llm.scheduler-enabled=false",
         "agenvas.library.worker-enabled=false", "agenvas.skill.worker-enabled=false",
-        "agenvas.provider.media.scheduler-enabled=false", "agenvas.tasks.scheduler-enabled=false",
-        "agenvas.provider.mock.scheduler-enabled=false", "agenvas.provider.mock.video-scheduler-enabled=false"})
+        "agenvas.provider.media.scheduler-enabled=false"})
 class SkillRunPostgresIT {
     private static final String WORKER = "skill-run-test-model";
     private static final Path STORAGE_ROOT = temporaryRoot();

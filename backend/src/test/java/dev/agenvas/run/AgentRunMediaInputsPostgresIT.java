@@ -35,7 +35,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = { "agenvas.llm.mode=mock",
-        "agenvas.llm.scheduler-enabled=false", "agenvas.tasks.scheduler-enabled=false"})
+        "agenvas.llm.scheduler-enabled=false"})
 class AgentRunMediaInputsPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @DynamicPropertySource static void database(DynamicPropertyRegistry properties) {

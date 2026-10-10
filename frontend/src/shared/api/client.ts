@@ -1143,10 +1143,6 @@ export function skillAssetThumbnailUrl(skillId: string, versionId: string, alias
   return `/api/v1/skills/${encodeURIComponent(skillId)}/versions/${encodeURIComponent(versionId)}/assets/${encodeURIComponent(alias)}/thumbnail`;
 }
 
-export function getRun(projectId: string, runId: string) {
-  return readJson<AgentRun>(`/api/v1/projects/${projectId}/runs/${runId}`, t("api.errors.requestFailed"));
-}
-
 export type PromptDefinition = components["schemas"]["PromptDefinition"];
 export type AgentPreset = components["schemas"]["AgentPreset"];
 export function listPrompts() {
