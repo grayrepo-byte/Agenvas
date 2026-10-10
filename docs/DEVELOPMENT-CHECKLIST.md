@@ -1749,6 +1749,8 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 合并 main 复验：功能设置图片/视频 Tab 与紧凑列表自动合入，无冲突；保留两边规格与验收记录以及用户更新的组件复用约束。六文件定向测试首轮 136 项通过、1 项上传夹具失败；修正 jsdom 文件的 multipart 拦截及菜单禁用语义断言后，编辑栏 103 项再次全部通过，与其余 34 项合计覆盖 137 项。TypeScript、完整前端 lint（含四语/主题）、Vite 生产构建及差异空白检查通过，保留既有大 chunk 提示；本次新增文本凭据/私人路径扫描无候选。后端代码未发生合并改动，沿用本轮 33 项单元及 3 项 PostgreSQL 专项结果，未重复运行；全量测试、浏览器复验、真实 Provider 调用与部署未运行。
 
 
+2026-10-10 CI 竞态修复：`WorkflowConnectionsPostgresIT` 原来的 `agenvas.library.scheduler-enabled=false` 未被后台工作器识别，`library-copy` 线程可抢先认领命令，导致手动处理后仍读到 `ARCHIVING`。本地临时控制复制时序复现相同失败后，更正为现有 `worker-enabled=false`，确认工作器未启动，并明确断言命令受理、手动完成以及 `VERSION_CONFLICT` 回滚；临时复现代码已移除。使用 CI 的 `ci-integration` Maven 配置运行 WorkflowConnections、LibraryRecovery、Library、LibraryCleanup 四类共 12 项真实 PostgreSQL 测试，全部通过，零失败、错误或跳过；差异空白及公开内容检查通过。全量测试、GitHub 整套 CI、前端测试与真实 Provider 调用本轮未运行；本次仅修改测试夹具与验收记录。
+
 ## 2026-10-04 工作流素材单入口
 
 - [x] RunningHub 与 ComfyUI 的素材栏只保留一个共享“添加参考素材”入口，已赋槽素材显示具名缩略图并保留替换、清空和声明顺序编号；十个空槽不再展示十个上传框。上传、资源库、画布及个人资产选择按类型填入第一个活动空槽，混合输入可直接添加音频或视频，满槽禁用入口；条件、必填、精确版本复用和运行锁定继续生效。

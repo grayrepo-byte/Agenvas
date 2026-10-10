@@ -18,6 +18,7 @@ import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.library.application.LibraryService;
+import dev.agenvas.library.application.LibraryWorker;
 import dev.agenvas.library.domain.LibraryEntry;
 import dev.agenvas.library.domain.LibraryCommand;
 import dev.agenvas.project.application.ProjectService;
@@ -55,7 +56,7 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false",
-        "agenvas.library.scheduler-enabled=false" })
+        "agenvas.library.worker-enabled=false" })
 class WorkflowConnectionsPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @TempDir static Path storage;
@@ -81,6 +82,8 @@ class WorkflowConnectionsPostgresIT {
 
     @Test
     void workflowConnectionsFillNamedSlotsInOrderAndRollbackRejectedRelationsAndImports() throws Exception {
+        // This fixture controls acceptance, draft edits, and transfer completion to exercise stale CAS.
+        assertThat(context.getBeansOfType(LibraryWorker.class)).isEmpty();
         AdminPrincipal owner = identities.setup("workflow-connection-admin", "synthetic-password-123");
         RequestPostProcessor auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
         MockMvc mvc = webAppContextSetup(context).apply(
@@ -221,12 +224,14 @@ class WorkflowConnectionsPostgresIT {
         long artifactCount = jdbc.sql("select count(*) from artifact where project_id=:project")
                 .param("project", project.id()).query(Long.class).single();
         UUID stale = libraryReference(mvc, auth, route, entry, "workflow-library-stale-replace", "image0", sharedReplaced);
+        assertThat(library.command(owner.userId(), stale).status()).isEqualTo(LibraryCommand.Status.ACCEPTED);
         drafts.save(owner.userId(), project.id(), target, sharedReplaced.version(), "New user edit",
                 sharedReplaced.parameters(), null, capability, sharedReplaced.videoInputMode(),
                 sharedReplaced.mediaInputs().stream().map(reference -> new MediaDraftService.SaveMediaInput(
                         reference.versionId(), reference.role(), reference.color())).toList(), List.of(), null);
-        for (int attempts = 0; attempts < 4 && library.command(owner.userId(), stale).status() != LibraryCommand.Status.FAILED; attempts++) library.processNext();
+        assertThat(library.processNext()).isTrue();
         assertThat(library.command(owner.userId(), stale).status()).isEqualTo(LibraryCommand.Status.FAILED);
+        assertThat(library.command(owner.userId(), stale).errorCode()).isEqualTo("VERSION_CONFLICT");
         assertThat(jdbc.sql("select count(*) from artifact where project_id=:project")
                 .param("project", project.id()).query(Long.class).single()).isEqualTo(artifactCount);
         assertThat(connections.list(owner.userId(), project.id())).hasSize(1);
@@ -250,8 +255,8 @@ class WorkflowConnectionsPostgresIT {
     }
 
     private void finish(AdminPrincipal owner, UUID command) {
-        for (int attempts = 0; attempts < 4 && library.command(owner.userId(), command).status() != LibraryCommand.Status.SUCCEEDED; attempts++)
-            library.processNext();
+        assertThat(library.command(owner.userId(), command).status()).isEqualTo(LibraryCommand.Status.ACCEPTED);
+        assertThat(library.processNext()).isTrue();
         assertThat(library.command(owner.userId(), command).status()).isEqualTo(LibraryCommand.Status.SUCCEEDED);
     }
 
