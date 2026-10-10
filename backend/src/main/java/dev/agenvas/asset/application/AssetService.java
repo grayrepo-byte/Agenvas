@@ -74,31 +74,45 @@ public class AssetService {
      */
     public Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
             Path source, BooleanSupplier stillActive) {
+        return prepareLibraryImport(owner, project, id, kind, () -> {
+            try { return Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS); }
+            catch (IOException failure) { throw new IllegalStateException("Cannot read library import", failure); }
+        }, stillActive);
+    }
+
+    /** Fetches remote inputs lazily under the fixed asset lock; recovery reuses archived bytes. */
+    public Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind, Supplier<InputStream> source) {
+        return prepareLibraryImport(owner, project, id, kind, source, () -> true);
+    }
+    private Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
+            Supplier<InputStream> source, BooleanSupplier stillActive) {
         projects.requireActiveProject(owner, project);
-        try (InputStream input = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS)) {
-            return switch (kind) {
+        return switch (kind) {
                 case IMAGE -> storage.withTaskImageLock(project, id, () -> {
                     requireActivePreparation(stillActive);
-                    var file = storage.recoverImage(project, id).orElseGet(() -> storage.storeImage(project, id, input));
+                    var file = storage.recoverImage(project, id).orElseGet(() -> readImport(source, input -> storage.storeImage(project, id, input)));
                     return new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
                             file.sha256(), file.width(), file.height(), null, file.thumbnailKey(),
                             file.thumbnailByteSize(), file.thumbnailSha256(), now());
                 });
                 case VIDEO -> storage.withTaskVideoLock(project, id, () -> {
                     requireActivePreparation(stillActive);
-                    var file = storage.recoverVideo(project, id).orElseGet(() -> storage.storeVideo(project, id, input));
+                    var file = storage.recoverVideo(project, id).orElseGet(() -> readImport(source, input -> storage.storeVideo(project, id, input)));
                     return new Asset(id, project, kind, file.objectKey(), "video/mp4", file.byteSize(),
                             file.sha256(), file.width(), file.height(), file.durationMs(), file.thumbnailKey(),
                             file.thumbnailByteSize(), file.thumbnailSha256(), now());
                 });
                 case AUDIO -> storage.withTaskAudioLock(project, id, () -> {
                     requireActivePreparation(stillActive);
-                    var file = storage.recoverAudio(project, id).orElseGet(() -> storage.storeAudio(project, id, input));
+                    var file = storage.recoverAudio(project, id).orElseGet(() -> readImport(source, input -> storage.storeAudio(project, id, input)));
                     return new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
                             file.sha256(), null, null, file.durationMs(), null, null, null, now());
                 });
-            };
-        } catch (IOException failure) { throw new IllegalStateException("Cannot read library import", failure); }
+        };
+    }
+    private <T> T readImport(Supplier<InputStream> source, java.util.function.Function<InputStream, T> store) {
+        try (InputStream input = source.get()) { return store.apply(input); }
+        catch (IOException failure) { throw new IllegalStateException("Cannot close library import", failure); }
     }
 
     private void requireActivePreparation(BooleanSupplier stillActive) {

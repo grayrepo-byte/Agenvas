@@ -1,10 +1,11 @@
 .media-draft-editor {
   --draft-text: #eeeeef;
   --draft-muted: #858589;
-  --draft-min-height: 275px;
-  --draft-max-height: 420px;
+  --draft-min-height: calc(var(--draft-prompt-height) + 162px);
+  --draft-max-height: 520px;
   --draft-viewport-gap: 32px;
-  --draft-prompt-height: 113px;
+  /* Eight text lines plus vertical padding; keep the header, references and toolbar space. */
+  --draft-prompt-height: calc(var(--ui-editor-text-size) * var(--ui-editor-line-height) * 8 + var(--ui-space-2) * 2);
   position: relative;
   display: flex;
   min-height: min(var(--draft-min-height), calc(100dvh - var(--draft-viewport-gap)));

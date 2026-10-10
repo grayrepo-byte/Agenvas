@@ -1,4 +1,4 @@
-import { ArrowUp,LockSimple,X } from "@phosphor-icons/react";
+import { ArrowUp,LockSimple,X } from "@/shared/ui/icons";
 import { useEffect, useImperativeHandle, useState, type FormEvent, type RefObject } from "react";
 import {
 ApiError,reviseArtifact,

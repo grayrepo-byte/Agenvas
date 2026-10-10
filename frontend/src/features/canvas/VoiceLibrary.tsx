@@ -1,4 +1,4 @@
-import { Check,Play,Star,Stop,X } from "@phosphor-icons/react";
+import { Check,Play,Star,Stop,X } from "@/shared/ui/icons";
 import { useEffect,useLayoutEffect,useRef,useState,type Ref } from "react";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";

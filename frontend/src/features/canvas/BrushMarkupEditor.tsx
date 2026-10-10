@@ -3,7 +3,7 @@ ArrowClockwise,
 ArrowCounterClockwise,
 ArrowUpRight,Eraser,PencilSimple,
 Rectangle,TextT,X
-} from "@phosphor-icons/react";
+} from "@/shared/ui/icons";
 import { useMutation,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState,type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";

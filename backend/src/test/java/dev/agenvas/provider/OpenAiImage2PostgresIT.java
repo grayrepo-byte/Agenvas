@@ -56,6 +56,7 @@ class OpenAiImage2PostgresIT {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final HttpServer SERVER = startServer();
     private static final AtomicInteger GENERATIONS = new AtomicInteger();
+    private static final java.util.concurrent.atomic.AtomicReference<String> LAST_EDIT = new java.util.concurrent.atomic.AtomicReference<>();
     private static final AtomicInteger EDITS = new AtomicInteger();
     private static final AtomicInteger DOWNLOADS = new AtomicInteger();
     private static final AtomicBoolean DROP_NEXT_GENERATION = new AtomicBoolean();
@@ -74,6 +75,9 @@ class OpenAiImage2PostgresIT {
     @AfterAll
     static void stopServer() { SERVER.stop(0); }
 
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private dev.agenvas.asset.storage.ObjectStorageClient objectStorage;
+    @Autowired private dev.agenvas.asset.storage.StorageSettingsService storageSettings;
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
     @Autowired private ArtifactService artifacts;
@@ -180,6 +184,57 @@ class OpenAiImage2PostgresIT {
         } finally {
             URL_RESULT.set(false);
         }
+
+        var storage = storageSettings.create(0, "Synthetic image relay", dev.agenvas.asset.storage.StorageProfile.Provider.S3,
+                "https://s3.example.com", "us-east-1", "synthetic-relay", "references", true, "synthetic-id", "synthetic-secret");
+        UUID relayProfile = storage.profiles().getFirst().id();
+        storageSettings.activateRelay(storage.version(), relayProfile, true, true);
+        org.mockito.Mockito.when(objectStorage.signedGet(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.eq(dev.agenvas.asset.storage.MediaRelayService.URL_LIFETIME)))
+                .thenAnswer(call -> "https://example.com/" + call.getArgument(1) + "?X-Amz-Signature=synthetic");
+        org.mockito.Mockito.doAnswer(call -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            assertThat(jdbc.sql("select count(*) from media_relay_object where object_key=:key")
+                    .param("key", call.getArgument(1)).query(Integer.class).single()).isEqualTo(1);
+            var image = ImageIO.read(((java.nio.file.Path) call.getArgument(2)).toFile());
+            assertThat(image.getWidth()).isEqualTo(1280);
+            assertThat(image.getHeight()).isEqualTo(720);
+            return null;
+        }).when(objectStorage).put(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("image/png"), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
+        Fixture relayed = fixture(owner.userId(), "Frozen relay references", 2);
+        Task relayedTask = approve(owner.userId(), relayed);
+        assertThat(relayedTask.input().path("imageRelayProfileId").asText()).isEqualTo(relayProfile.toString());
+        assertThat(relayedTask.input().toString()).doesNotContain("Signature", "https://");
+        // Disable image relay after acceptance: this queued task must retain its chosen route.
+        storageSettings.activateRelay(storageSettings.status().version(), relayProfile, true, false);
+        assertThat(worker.submitOnce("openai-relay-worker")).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), relayed.project().id(), relayedTask.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        var editJson = mapper.readTree(LAST_EDIT.get());
+        assertThat(editJson.at("/images/0/image_url").asText()).startsWith("https://example.com/references/media-relay/");
+        assertThat(editJson.path("images").size()).isEqualTo(2);
+        assertThat(editJson.toString()).doesNotContain("data:image");
+        assertThat(jdbc.sql("select count(*) from media_relay_object").query(Integer.class).single()).isEqualTo(2);
+        Fixture inline = fixture(owner.userId(), "LLM on image off", 2);
+        Task inlineTask = approve(owner.userId(), inline);
+        assertThat(inlineTask.input().path("imageRelayProfileId").isNull()).isTrue();
+        assertThat(storageSettings.llmRelayProfileId()).isEqualTo(relayProfile);
+        assertThat(storageSettings.imageRelayProfileId()).isNull();
+        assertThat(worker.submitOnce("openai-inline-worker")).isEqualTo(1);
+        assertThat(tasks.get(owner.userId(), inline.project().id(), inlineTask.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(LAST_EDIT.get()).contains("filename=\"reference-1.png\"");
+        storageSettings.activateRelay(storageSettings.status().version(), relayProfile, true, true);
+        org.mockito.Mockito.doThrow(new IllegalStateException("synthetic failed upload")).when(objectStorage)
+                .put(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyString());
+        Fixture failed = fixture(owner.userId(), "Relay fails before generation", 2);
+        Task failedTask = approve(owner.userId(), failed);
+        int editsBeforeFailure = EDITS.get();
+        assertThat(worker.submitOnce("openai-relay-failure-worker")).isEqualTo(1);
+        Task failedResult = tasks.get(owner.userId(), failed.project().id(), failedTask.id());
+        assertThat(failedResult.status()).isEqualTo(Task.Status.FAILED);
+        assertThat(failedResult.errorCode()).isEqualTo("MEDIA_RELAY_PREPARATION_FAILED");
+        assertThat(EDITS).hasValue(editsBeforeFailure);
     }
 
     /** 一张空图片卡片、其草稿和直连受理结果；参考图按传入顺序固定。 */
@@ -234,11 +289,14 @@ class OpenAiImage2PostgresIT {
                 EDITS.incrementAndGet();
                 byte[] body = exchange.getRequestBody().readAllBytes();
                 String multipart = new String(body, StandardCharsets.ISO_8859_1);
+                LAST_EDIT.set(multipart);
+                if (!exchange.getRequestHeaders().getFirst("Content-Type").startsWith("application/json")) {
                 assertThat(multipart).contains("name=\"image[]\"",
                         "filename=\"reference-1.png\"",
                         "filename=\"reference-2.png\"");
                 assertThat(multipart.indexOf("filename=\"reference-1.png\""))
                         .isLessThan(multipart.indexOf("filename=\"reference-2.png\""));
+                }
                 respond(exchange, body);
             });
             // 结果托管端点与 API 不同路径，且不接收凭证。

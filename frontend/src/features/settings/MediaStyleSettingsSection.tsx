@@ -1,4 +1,4 @@
-import { PaintBrush, PencilSimple, Plus } from "@phosphor-icons/react";
+import { PaintBrush, PencilSimple, Plus } from "@/shared/ui/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { Navigate } from "react-router";

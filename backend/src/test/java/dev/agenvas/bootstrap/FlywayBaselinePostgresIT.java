@@ -75,6 +75,32 @@ class FlywayBaselinePostgresIT {
             assertThatThrownBy(() -> execute(connection, "update agent_skill_binding set position=0 where agent_id=? and skill_id=?", agent, second)).isInstanceOf(SQLException.class);
         }
     }
+    @Test void videoPromptSourceUpgradePreservesExistingSourcesAndCachedVideoJson() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("15").load().migrate();
+        try (Connection connection = connection()) {
+            execute(connection, "update third_party_prompt_source set enabled=false,version=3 where id='zerolu-gpt-image'");
+            execute(connection, "insert into third_party_prompt_source(id,name,target_kind,format,url) values ('fixture-upgrade','Synthetic','VIDEO','NATIVE_JSON','https://example.com/feed')");
+            execute(connection, """
+                    insert into third_party_prompt(id,source_id,target_kind,title,prompt,data_json,version)
+                    values ('fixture-upgrade:old','fixture-upgrade','VIDEO','Synthetic','Camera pans',
+                    '{"schemaVersion":1,"image":null,"video":{"id":"fixture-upgrade:old","sourceId":"fixture-upgrade",
+                    "title":"Synthetic","prompt":"Camera pans","description":"","coverUrl":"","tags":[],"author":"",
+                    "sourceUrl":"","createdAt":"","videoMode":"text_to_video","videoModel":"fixture","references":[],"imageGeneration":null}}',7)
+                    """);
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 15);
+        try (Connection connection = connection()) {
+            assertThat(text(connection, "select enabled::text from third_party_prompt_source where id='zerolu-gpt-image'")).isEqualTo("false");
+            assertThat(count(connection, "select version from third_party_prompt_source where id='zerolu-gpt-image'")).isEqualTo(3);
+            assertThat(count(connection, "select count(*) from third_party_prompt_source where target_kind='IMAGE'")).isEqualTo(5);
+            assertThat(count(connection, "select count(*) from third_party_prompt_source where target_kind='VIDEO'")).isEqualTo(6);
+            assertThat(count(connection, "select version from third_party_prompt where id='fixture-upgrade:old'")).isEqualTo(7);
+            var repository = new dev.agenvas.mediatemplate.infrastructure.ThirdPartyPromptRepository(DSL.using(connection, SQLDialect.POSTGRES), new ObjectMapper());
+            var old = repository.entry("fixture-upgrade:old").orElseThrow().video();
+            assertThat(old.previewVideoUrl()).isEmpty(); assertThat(old.missingReferences()).isEmpty();
+        }
+    }
 
     @Test void hundredSkillUpgradePreservesExistingBindingsAndAddsUniqueBuiltinIdentity() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
@@ -174,6 +200,29 @@ class FlywayBaselinePostgresIT {
                     .isEqualTo(1);
         }
         assertThat(flyway.migrate().migrationsExecuted).isZero();
+    }
+
+    @Test void imageRelayUpgradePreservesSelectionsAndStartsFunctionsEnabled() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("16").load().migrate();
+        UUID profile = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            execute(connection, """
+                    insert into storage_profile(id,name,provider,endpoint,region,bucket,key_prefix,path_style,
+                        credential_version,credential_ciphertext,credential_nonce,credential_key_version,access_key_mask,created_at)
+                    values (?,'Synthetic relay','S3','https://s3.example.com','us-east-1','synthetic-relay','archive',true,
+                        1,decode('00','hex'),decode(repeat('00',12),'hex'),1,'masked',now())
+                    """, profile);
+            execute(connection, "update storage_settings set active_profile_id=?,relay_profile_id=?,version=9 where singleton", profile, profile);
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+        try (Connection connection = connection()) {
+            assertThat(text(connection, "select active_profile_id::text from storage_settings")).isEqualTo(profile.toString());
+            assertThat(text(connection, "select relay_profile_id::text from storage_settings")).isEqualTo(profile.toString());
+            assertThat(text(connection, "select llm_relay_enabled::text from storage_settings")).isEqualTo("true");
+            assertThat(text(connection, "select image_relay_enabled::text from storage_settings")).isEqualTo("true");
+            assertThat(count(connection, "select version from storage_settings")).isEqualTo(9);
+        }
     }
 
     @Test

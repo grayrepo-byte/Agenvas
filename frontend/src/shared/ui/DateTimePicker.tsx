@@ -1,4 +1,4 @@
-import { CalendarBlank } from "@phosphor-icons/react";
+import { CalendarBlank } from "@/shared/ui/icons";
 import { format } from "date-fns";
 import { useState } from "react";
 import { enUS, ja, ru, zhCN } from "react-day-picker/locale";

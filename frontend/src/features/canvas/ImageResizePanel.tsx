@@ -1,4 +1,4 @@
-import { X } from "@phosphor-icons/react";
+import { X } from "@/shared/ui/icons";
 import { useId, useState, type ReactNode } from "react";
 import type { RunImageOperationRequest } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";

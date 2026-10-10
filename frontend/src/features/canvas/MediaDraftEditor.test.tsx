@@ -2090,7 +2090,7 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "关闭窗口" })).toBeDisabled();
     expect(replacements).toHaveLength(0); finishImport?.();
     await screen.findByText("Synthetic CAS conflict");
-    expect(screen.getByRole("dialog", { name: "图片模板" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Synthetic style" })).toBeInTheDocument();
     expect(saves).toHaveLength(0); expect(generate).not.toHaveBeenCalled();
     conflict = false; await user.click(screen.getByRole("button", { name: "使用模板" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "图片模板" })).not.toBeInTheDocument());

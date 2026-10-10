@@ -1,4 +1,4 @@
-import { ArrowsInSimple,ArrowsOutSimple,ArrowClockwise,MagnifyingGlassMinus,MagnifyingGlassPlus,WarningCircle,X } from "@phosphor-icons/react";
+import { ArrowsInSimple,ArrowsOutSimple,ArrowClockwise,MagnifyingGlassMinus,MagnifyingGlassPlus,WarningCircle,X } from "@/shared/ui/icons";
 import { useCallback,useEffect,useRef,useState,type KeyboardEvent,type ReactNode,type SyntheticEvent } from "react";
 import Lightbox,{ IconButton,type ControllerRef,type Slide } from "yet-another-react-lightbox";
 import Fullscreen from "yet-another-react-lightbox/plugins/fullscreen";

@@ -1,5 +1,5 @@
 import { Field, FieldError, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
-import { ArrowSquareOut,ListMagnifyingGlass } from "@phosphor-icons/react";
+import { ArrowSquareOut,ListMagnifyingGlass } from "@/shared/ui/icons";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState,type FormEvent,type ReactNode } from "react";
 import { Link,Navigate,useSearchParams } from "react-router";

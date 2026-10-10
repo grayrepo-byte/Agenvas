@@ -35,5 +35,8 @@ public final class ProviderFailureCodes {
     /** 外部受理状态不确定：只用于恢复扫描兜底无法细分原因的过期提交。 */
     public static final String SUBMISSION_UNKNOWN = "PROVIDER_SUBMISSION_UNKNOWN";
 
+    /** 图片中继上传或签名准备失败；付费生成请求尚未发送。 */
+    public static final String MEDIA_RELAY_PREPARATION_FAILED = "MEDIA_RELAY_PREPARATION_FAILED";
+
     private ProviderFailureCodes() {}
 }

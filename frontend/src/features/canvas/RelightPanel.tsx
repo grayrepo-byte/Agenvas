@@ -1,4 +1,4 @@
-import { ArrowUp,Stack,X } from "@phosphor-icons/react";
+import { ArrowUp,Stack,X } from "@/shared/ui/icons";
 import { useState,type ReactNode,type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { ApiError,type MediaCapability,type RunImageOperationRequest } from "../../shared/api/client";

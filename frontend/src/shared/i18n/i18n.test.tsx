@@ -56,8 +56,14 @@ describe("shared locale configuration", () => {
   });
 
   it("accepts only registered keys and substitutes values once as literal content", () => {
-    expectTypeOf(t).parameter(0).toEqualTypeOf<MessageKey>();
-    expectTypeOf(translate).parameter(1).toEqualTypeOf<MessageKey>();
+    // Bidirectional assignability checks the key union without expensive generic identity comparisons.
+    // Reject any explicitly because it would otherwise pass both assignability checks.
+    expectTypeOf(t).parameter(0).not.toBeAny();
+    expectTypeOf(t).parameter(0).toExtend<MessageKey>();
+    expectTypeOf<MessageKey>().toExtend<Parameters<typeof t>[0]>();
+    expectTypeOf(translate).parameter(1).not.toBeAny();
+    expectTypeOf(translate).parameter(1).toExtend<MessageKey>();
+    expectTypeOf<MessageKey>().toExtend<Parameters<typeof translate>[1]>();
     expectTypeOf<string>().not.toExtend<MessageKey>();
     expectTypeOf<"auth.login.titel">().not.toExtend<MessageKey>();
     expectTypeOf<"登录 Agenvas">().not.toExtend<MessageKey>();

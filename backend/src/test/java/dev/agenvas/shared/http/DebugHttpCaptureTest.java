@@ -26,6 +26,18 @@ class DebugHttpCaptureTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TIMEOUT_SECONDS = 5;
 
+    @Test void llmDebugRedactsOnlyRegisteredRelaySignaturesAndPreservesOtherText() {
+        String url = "https://example.com/media-relay/image.png?X-Amz-Credential=synthetic-id&X-Amz-Signature=synthetic-signature";
+        try (var capture = DebugHttpCapture.openLlm(ignored -> {})) {
+            DebugHttpCapture.registerMediaRelayUrl(url);
+            var input = MAPPER.createObjectNode().put("text", "Preview " + url).put("unrelated", "https://example.com/?token=keep-this");
+            input.putObject("image_url").put("url", url);
+            String saved = capture.sanitizeJson(input.toString());
+            assertThat(saved).contains("media-relay/image.png?[REDACTED]", "token=keep-this").doesNotContain("synthetic-id", "synthetic-signature");
+            assertThat(input.path("image_url").path("url").asText()).isEqualTo(url);
+        }
+    }
+
     @Test void keepsProviderCorrelationIdsAcrossBodyCompletionWithoutOtherHeaders() throws Exception {
         HttpServer server = bindingServer();
         server.start();

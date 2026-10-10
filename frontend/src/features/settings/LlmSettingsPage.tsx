@@ -1,5 +1,5 @@
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
-import { ArrowUpRight,FloppyDisk,ShieldCheck } from "@phosphor-icons/react";
+import { ArrowUpRight,FloppyDisk,ShieldCheck } from "@/shared/ui/icons";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState,type FormEvent } from "react";
 import { Link,Navigate } from "react-router";

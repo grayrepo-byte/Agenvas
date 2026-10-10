@@ -51,18 +51,27 @@ public class SpringAiChatGateway implements ChatGateway {
     private final int configVersion;
     /** Enabled only when the model's transport removes the internal capture header. */
     private final boolean captureHttp;
+    private final LlmImageRelay imageRelay;
 
     /** 创建禁用自动工具循环的客户端，并拒绝无效配置版本。 */
     public SpringAiChatGateway(ChatModel model, int configVersion) {
-        this(model, configVersion, false);
+        this(model, configVersion, false, null);
     }
 
     /** The supplied OpenAI model must install DebugHttpCapture.interceptor() in its transport. */
     static SpringAiChatGateway withDebugCapture(OpenAiChatModel model, int configVersion) {
-        return new SpringAiChatGateway(model, configVersion, true);
+        return new SpringAiChatGateway(model, configVersion, true, null);
     }
 
-    private SpringAiChatGateway(ChatModel model, int configVersion, boolean captureHttp) {
+    static SpringAiChatGateway withDebugCapture(OpenAiChatModel model, int configVersion, LlmImageRelay relay) {
+        return new SpringAiChatGateway(model, configVersion, true, relay);
+    }
+
+    SpringAiChatGateway(ChatModel model, int configVersion, LlmImageRelay relay) {
+        this(model, configVersion, false, relay);
+    }
+
+    private SpringAiChatGateway(ChatModel model, int configVersion, boolean captureHttp, LlmImageRelay relay) {
         if (configVersion < 1) {
             throw new IllegalArgumentException("LLM configVersion must be positive");
         }
@@ -73,6 +82,7 @@ public class SpringAiChatGateway implements ChatGateway {
                 .build();
         this.configVersion = configVersion;
         this.captureHttp = captureHttp;
+        this.imageRelay = model instanceof OpenAiChatModel ? relay : null;
     }
 
     private ChatClient.ChatClientRequestSpec prompt() {
@@ -96,7 +106,7 @@ public class SpringAiChatGateway implements ChatGateway {
             throw new IllegalStateException("Configured ChatModel does not support tool calling");
         }
         ChatResponse response = prompt()
-                .messages(List.copyOf(messages))
+                .messages(imageRelay == null ? List.copyOf(messages) : imageRelay.prepare(messages))
                 .tools(tools.toArray(ToolCallback[]::new))
                 .toolContext(Map.copyOf(toolContext))
                 .call()
@@ -133,7 +143,7 @@ public class SpringAiChatGateway implements ChatGateway {
         AtomicReference<ChatResponse> result = new AtomicReference<>();
         Throwable failure = null;
         // Bind HTTP capture on the caller before defer/SDK scheduling, never inside a common-pool continuation.
-        var request = prompt().messages(List.copyOf(messages)).tools(tools.toArray(ToolCallback[]::new))
+        var request = prompt().messages(imageRelay == null ? List.copyOf(messages) : imageRelay.prepare(messages)).tools(tools.toArray(ToolCallback[]::new))
                 .toolContext(Map.copyOf(toolContext));
         try {
             Flux.defer(() -> {

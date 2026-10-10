@@ -1,5 +1,5 @@
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
-import { ArrowsClockwise,TerminalWindow } from "@phosphor-icons/react";
+import { ArrowsClockwise,TerminalWindow } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect,useRef,useState } from "react";
 import { Navigate } from "react-router";

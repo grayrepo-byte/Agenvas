@@ -1,4 +1,4 @@
-import { PaintBrush } from "@phosphor-icons/react";
+import { PaintBrush } from "@/shared/ui/icons";
 import { useState } from "react";
 import type { MediaStyleSummary } from "../api/client";
 import { t, useLocale } from "../i18n";

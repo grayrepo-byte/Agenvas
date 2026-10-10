@@ -1,4 +1,4 @@
-import { ArrowUp,Coins,Cube } from "@phosphor-icons/react";
+import { ArrowUp,Coins,Cube } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useId,useRef,useState } from "react";
 import {

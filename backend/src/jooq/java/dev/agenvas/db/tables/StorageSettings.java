@@ -82,6 +82,20 @@ public class StorageSettings extends TableImpl<StorageSettingsRecord> {
      */
     public final TableField<StorageSettingsRecord, UUID> RELAY_PROFILE_ID = createField(DSL.name("relay_profile_id"), SQLDataType.UUID, this, "Optional media relay destination; independent of the archive default");
 
+    /**
+     * The column <code>public.storage_settings.llm_relay_enabled</code>. Use
+     * configured relay for OpenAI-compatible LLM image inputs; no relay profile
+     * keeps inline inputs
+     */
+    public final TableField<StorageSettingsRecord, Boolean> LLM_RELAY_ENABLED = createField(DSL.name("llm_relay_enabled"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("true"), SQLDataType.BOOLEAN)), this, "Use configured relay for OpenAI-compatible LLM image inputs; no relay profile keeps inline inputs");
+
+    /**
+     * The column <code>public.storage_settings.image_relay_enabled</code>. Use
+     * configured relay for URL-capable image generation inputs; frozen at task
+     * acceptance
+     */
+    public final TableField<StorageSettingsRecord, Boolean> IMAGE_RELAY_ENABLED = createField(DSL.name("image_relay_enabled"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("true"), SQLDataType.BOOLEAN)), this, "Use configured relay for URL-capable image generation inputs; frozen at task acceptance");
+
     private StorageSettings(Name alias, Table<StorageSettingsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }

@@ -1,4 +1,4 @@
-import { Check,Cursor,DotsThree,Hand,Plus } from "@phosphor-icons/react";
+import { Check,Cursor,DotsThree,Hand,Plus } from "@/shared/ui/icons";
 import { useRef,useState,type ReactNode } from "react";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";

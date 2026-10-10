@@ -1,4 +1,4 @@
-import { BookOpen,CaretDown,Check } from "@phosphor-icons/react";
+import { BookOpen,CaretDown,Check } from "@/shared/ui/icons";
 import { useInfiniteQuery,useMutation,useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState } from "react";
 import { getAgentSkillBinding,getSkillVersion,listArtifacts,listSkills,listSkillVersions,saveAgentSkillBinding,

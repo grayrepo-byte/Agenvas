@@ -1,4 +1,4 @@
-import { ArrowClockwise,Pause,Play } from "@phosphor-icons/react";
+import { ArrowClockwise,Pause,Play } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect,useRef,useState } from "react";
 import { t,useLocale } from "../../shared/i18n";

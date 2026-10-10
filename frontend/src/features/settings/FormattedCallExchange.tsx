@@ -1,5 +1,5 @@
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
-import { ArrowsOut,CaretLeft,CaretRight,Copy } from "@phosphor-icons/react";
+import { ArrowsOut,CaretLeft,CaretRight,Copy } from "@/shared/ui/icons";
 import { useMemo,useState } from "react";
 import type { CallDebug,DebugBody } from "../../shared/api/client";
 import { formatNumber,t,useLocale } from "../../shared/i18n";

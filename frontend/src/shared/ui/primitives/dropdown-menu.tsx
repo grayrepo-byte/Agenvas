@@ -1,4 +1,4 @@
-import { Check as CheckIcon,CaretRight as ChevronRightIcon,Circle as CircleIcon } from "@phosphor-icons/react"
+import { Check as CheckIcon,CaretRight as ChevronRightIcon,Circle as CircleIcon } from "@/shared/ui/icons"
 import { cn } from "cn"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 import * as React from "react"

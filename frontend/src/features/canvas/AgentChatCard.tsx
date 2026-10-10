@@ -1,4 +1,4 @@
-import { ArrowSquareOut,ArrowUp,ClockCounterClockwise,GearSix,Plus,Sparkle,Square } from "@phosphor-icons/react";
+import { ArrowSquareOut,ArrowUp,ClockCounterClockwise,GearSix,Plus,Sparkle,Square } from "@/shared/ui/icons";
 import { useInfiniteQuery,useMutation,useQuery,useQueryClient,type InfiniteData } from "@tanstack/react-query";
 import { NodeResizer,type ResizeParams } from "@xyflow/react";
 import { useEffect,useRef,useState,type FormEvent,type ReactNode } from "react";
@@ -27,8 +27,8 @@ import { BlockedRunNotice } from "./BlockedRunNotice";
 import { useCanvasStore } from "./canvasStore";
 import { AgentRunSkillControls,AgentSkillSettings,useAgentSkillSelection } from "../skills/AgentSkillControls";
 
-export const AGENT_CHAT_WIDTH = 460;
-export const AGENT_CHAT_HEIGHT = 600;
+export const AGENT_CHAT_WIDTH = 560;
+export const AGENT_CHAT_HEIGHT = 720;
 export const AGENT_CHAT_MIN_WIDTH = 360;
 export const AGENT_CHAT_MIN_HEIGHT = 420;
 const MAX_AGENT_NAME = 120;

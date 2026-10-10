@@ -41,8 +41,17 @@ import tools.jackson.databind.ObjectMapper;
 
 /** PostgreSQL 任务队列实现；使用短事务 SKIP LOCKED 认领和 lease_epoch 隔离旧 Worker。 */
 @Repository
-public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, RunTaskCreation {
+public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, RunTaskCreation,
+        dev.agenvas.task.application.TaskStorageReferences {
     private static final int RECENT_TARGET_TASK_LIMIT = 50;
+
+    @Override
+    public boolean referencesStorageProfile(UUID profileId) {
+        var reference = JSONB.valueOf("{\"videos\":[{\"relayProfileId\":\"" + profileId + "\"}]}");
+        return dsl.fetchExists(dsl.selectOne().from(TASK)
+                .where(DSL.condition("{0} @> {1}", TASK.INPUT_JSON, DSL.val(reference))
+                        .or(DSL.condition("{0} ->> 'imageRelayProfileId' = {1}", TASK.INPUT_JSON, DSL.val(profileId.toString())))));
+    }
 
     @Override
     public boolean hasSettledAgentFailure(UUID projectId, UUID runId, int stepIndex) {

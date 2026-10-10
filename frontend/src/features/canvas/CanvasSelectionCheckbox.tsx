@@ -1,4 +1,4 @@
-import { Check } from "@phosphor-icons/react";
+import { Check } from "@/shared/ui/icons";
 import { t, useLocale } from "../../shared/i18n";
 import "./CanvasSelectionCheckbox.css";
 

@@ -1,5 +1,5 @@
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
-import { Archive,ArrowClockwise,ArrowRight,Folder,MagnifyingGlass,PencilSimple,Plus,X } from "@phosphor-icons/react";
+import { Archive,ArrowClockwise,ArrowRight,Folder,MagnifyingGlass,PencilSimple,Plus,X } from "@/shared/ui/icons";
 import { useInfiniteQuery,useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { type FormEvent,useRef,useState } from "react";
 import { Link } from "react-router";

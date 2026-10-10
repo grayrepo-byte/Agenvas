@@ -151,7 +151,8 @@ public class ConfiguredChatGateway implements ChatGateway {
         if (model == null) {
             throw new IllegalStateException("No LLM ChatModel is configured for this installation");
         }
-        return new SpringAiChatGateway(model, properties.configVersion());
+        return factory == null ? new SpringAiChatGateway(model, properties.configVersion())
+                : factory.environment(model, properties.configVersion());
     }
 
     /** 只解析 Run 固定的数据库版本或仍未被数据库配置取代的环境版本。 */

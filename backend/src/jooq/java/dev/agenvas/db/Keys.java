@@ -72,6 +72,9 @@ import dev.agenvas.db.tables.TaskArtifactTarget;
 import dev.agenvas.db.tables.TaskLateResult;
 import dev.agenvas.db.tables.TaskManualReplacement;
 import dev.agenvas.db.tables.TaskProviderPollRetry;
+import dev.agenvas.db.tables.ThirdPartyPrompt;
+import dev.agenvas.db.tables.ThirdPartyPromptImport;
+import dev.agenvas.db.tables.ThirdPartyPromptSource;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
 import dev.agenvas.db.tables.records.AgentBindingRecord;
@@ -142,6 +145,9 @@ import dev.agenvas.db.tables.records.TaskLateResultRecord;
 import dev.agenvas.db.tables.records.TaskManualReplacementRecord;
 import dev.agenvas.db.tables.records.TaskProviderPollRetryRecord;
 import dev.agenvas.db.tables.records.TaskRecord;
+import dev.agenvas.db.tables.records.ThirdPartyPromptImportRecord;
+import dev.agenvas.db.tables.records.ThirdPartyPromptRecord;
+import dev.agenvas.db.tables.records.ThirdPartyPromptSourceRecord;
 import dev.agenvas.db.tables.records.ToolExecutionRecord;
 import dev.agenvas.db.tables.records.UsageLedgerRecord;
 
@@ -277,6 +283,10 @@ public class Keys {
     public static final UniqueKey<TaskManualReplacementRecord> TASK_MANUAL_REPLACEMENT_REPLACEMENT_TASK_ID_KEY = Internal.createUniqueKey(TaskManualReplacement.TASK_MANUAL_REPLACEMENT, DSL.name("task_manual_replacement_replacement_task_id_key"), new TableField[] { TaskManualReplacement.TASK_MANUAL_REPLACEMENT.REPLACEMENT_TASK_ID }, true);
     public static final UniqueKey<TaskManualReplacementRecord> UQ_MANUAL_REPLACEMENT_COMMAND = Internal.createUniqueKey(TaskManualReplacement.TASK_MANUAL_REPLACEMENT, DSL.name("uq_manual_replacement_command"), new TableField[] { TaskManualReplacement.TASK_MANUAL_REPLACEMENT.PROJECT_ID, TaskManualReplacement.TASK_MANUAL_REPLACEMENT.APPROVED_BY_USER_ID, TaskManualReplacement.TASK_MANUAL_REPLACEMENT.IDEMPOTENCY_KEY }, true);
     public static final UniqueKey<TaskProviderPollRetryRecord> TASK_PROVIDER_POLL_RETRY_PKEY = Internal.createUniqueKey(TaskProviderPollRetry.TASK_PROVIDER_POLL_RETRY, DSL.name("task_provider_poll_retry_pkey"), new TableField[] { TaskProviderPollRetry.TASK_PROVIDER_POLL_RETRY.TASK_ID }, true);
+    public static final UniqueKey<ThirdPartyPromptRecord> THIRD_PARTY_PROMPT_PKEY = Internal.createUniqueKey(ThirdPartyPrompt.THIRD_PARTY_PROMPT, DSL.name("third_party_prompt_pkey"), new TableField[] { ThirdPartyPrompt.THIRD_PARTY_PROMPT.ID }, true);
+    public static final UniqueKey<ThirdPartyPromptImportRecord> THIRD_PARTY_PROMPT_IMPORT_PKEY = Internal.createUniqueKey(ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT, DSL.name("third_party_prompt_import_pkey"), new TableField[] { ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT.ID }, true);
+    public static final UniqueKey<ThirdPartyPromptImportRecord> THIRD_PARTY_PROMPT_IMPORT_PROJECT_ID_COMMAND_KEY_KEY = Internal.createUniqueKey(ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT, DSL.name("third_party_prompt_import_project_id_command_key_key"), new TableField[] { ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT.PROJECT_ID, ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT.COMMAND_KEY }, true);
+    public static final UniqueKey<ThirdPartyPromptSourceRecord> THIRD_PARTY_PROMPT_SOURCE_PKEY = Internal.createUniqueKey(ThirdPartyPromptSource.THIRD_PARTY_PROMPT_SOURCE, DSL.name("third_party_prompt_source_pkey"), new TableField[] { ThirdPartyPromptSource.THIRD_PARTY_PROMPT_SOURCE.ID }, true);
     public static final UniqueKey<ToolExecutionRecord> TOOL_EXECUTION_PKEY = Internal.createUniqueKey(ToolExecution.TOOL_EXECUTION, DSL.name("tool_execution_pkey"), new TableField[] { ToolExecution.TOOL_EXECUTION.ID }, true);
     public static final UniqueKey<ToolExecutionRecord> UQ_TOOL_EXECUTION_CALL = Internal.createUniqueKey(ToolExecution.TOOL_EXECUTION, DSL.name("uq_tool_execution_call"), new TableField[] { ToolExecution.TOOL_EXECUTION.RUN_ID, ToolExecution.TOOL_EXECUTION.STEP_INDEX, ToolExecution.TOOL_EXECUTION.TOOL_CALL_ID }, true);
     public static final UniqueKey<UsageLedgerRecord> USAGE_LEDGER_OPERATION_KEY_KEY = Internal.createUniqueKey(UsageLedger.USAGE_LEDGER, DSL.name("usage_ledger_operation_key_key"), new TableField[] { UsageLedger.USAGE_LEDGER.OPERATION_KEY }, true);
@@ -386,6 +396,9 @@ public class Keys {
     public static final ForeignKey<TaskManualReplacementRecord, TaskRecord> TASK_MANUAL_REPLACEMENT__FK_MANUAL_REPLACEMENT_ORIGINAL = Internal.createForeignKey(TaskManualReplacement.TASK_MANUAL_REPLACEMENT, DSL.name("fk_manual_replacement_original"), new TableField[] { TaskManualReplacement.TASK_MANUAL_REPLACEMENT.PROJECT_ID, TaskManualReplacement.TASK_MANUAL_REPLACEMENT.ORIGINAL_TASK_ID }, Keys.UQ_TASK_PROJECT_ID, new TableField[] { Task.TASK.PROJECT_ID, Task.TASK.ID }, true);
     public static final ForeignKey<TaskManualReplacementRecord, AppUserRecord> TASK_MANUAL_REPLACEMENT__TASK_MANUAL_REPLACEMENT_APPROVED_BY_USER_ID_FKEY = Internal.createForeignKey(TaskManualReplacement.TASK_MANUAL_REPLACEMENT, DSL.name("task_manual_replacement_approved_by_user_id_fkey"), new TableField[] { TaskManualReplacement.TASK_MANUAL_REPLACEMENT.APPROVED_BY_USER_ID }, Keys.APP_USER_PKEY, new TableField[] { AppUser.APP_USER.ID }, true);
     public static final ForeignKey<TaskProviderPollRetryRecord, TaskRecord> TASK_PROVIDER_POLL_RETRY__TASK_PROVIDER_POLL_RETRY_TASK_ID_FKEY = Internal.createForeignKey(TaskProviderPollRetry.TASK_PROVIDER_POLL_RETRY, DSL.name("task_provider_poll_retry_task_id_fkey"), new TableField[] { TaskProviderPollRetry.TASK_PROVIDER_POLL_RETRY.TASK_ID }, Keys.TASK_PKEY, new TableField[] { Task.TASK.ID }, true);
+    public static final ForeignKey<ThirdPartyPromptRecord, ThirdPartyPromptSourceRecord> THIRD_PARTY_PROMPT__THIRD_PARTY_PROMPT_SOURCE_ID_FKEY = Internal.createForeignKey(ThirdPartyPrompt.THIRD_PARTY_PROMPT, DSL.name("third_party_prompt_source_id_fkey"), new TableField[] { ThirdPartyPrompt.THIRD_PARTY_PROMPT.SOURCE_ID }, Keys.THIRD_PARTY_PROMPT_SOURCE_PKEY, new TableField[] { ThirdPartyPromptSource.THIRD_PARTY_PROMPT_SOURCE.ID }, true);
+    public static final ForeignKey<ThirdPartyPromptImportRecord, AppUserRecord> THIRD_PARTY_PROMPT_IMPORT__THIRD_PARTY_PROMPT_IMPORT_OWNER_ID_FKEY = Internal.createForeignKey(ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT, DSL.name("third_party_prompt_import_owner_id_fkey"), new TableField[] { ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT.OWNER_ID }, Keys.APP_USER_PKEY, new TableField[] { AppUser.APP_USER.ID }, true);
+    public static final ForeignKey<ThirdPartyPromptImportRecord, ProjectRecord> THIRD_PARTY_PROMPT_IMPORT__THIRD_PARTY_PROMPT_IMPORT_PROJECT_ID_FKEY = Internal.createForeignKey(ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT, DSL.name("third_party_prompt_import_project_id_fkey"), new TableField[] { ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT.PROJECT_ID }, Keys.PROJECT_PKEY, new TableField[] { Project.PROJECT.ID }, true);
     public static final ForeignKey<ToolExecutionRecord, AgentRunRecord> TOOL_EXECUTION__FK_TOOL_EXECUTION_RUN = Internal.createForeignKey(ToolExecution.TOOL_EXECUTION, DSL.name("fk_tool_execution_run"), new TableField[] { ToolExecution.TOOL_EXECUTION.PROJECT_ID, ToolExecution.TOOL_EXECUTION.RUN_ID }, Keys.UQ_AGENT_RUN_PROJECT_ID, new TableField[] { AgentRun.AGENT_RUN.PROJECT_ID, AgentRun.AGENT_RUN.ID }, true);
     public static final ForeignKey<ToolExecutionRecord, LlmTurnRecord> TOOL_EXECUTION__FK_TOOL_EXECUTION_TURN = Internal.createForeignKey(ToolExecution.TOOL_EXECUTION, DSL.name("fk_tool_execution_turn"), new TableField[] { ToolExecution.TOOL_EXECUTION.RUN_ID, ToolExecution.TOOL_EXECUTION.STEP_INDEX }, Keys.LLM_TURN_PKEY, new TableField[] { LlmTurn.LLM_TURN.RUN_ID, LlmTurn.LLM_TURN.STEP_INDEX }, true);
 }

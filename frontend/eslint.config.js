@@ -14,6 +14,14 @@ export default tseslint.config(
         ...globals.node,
       },
     },
+    rules: {
+      "no-restricted-imports": ["error", {
+        paths: [{
+          name: "@phosphor-icons/react",
+          message: "Import from @/shared/ui/icons; add icons there with individual CSR paths to avoid loading the full catalog.",
+        }],
+      }],
+    },
   },
   {
     files: ["src/**/*.tsx"],

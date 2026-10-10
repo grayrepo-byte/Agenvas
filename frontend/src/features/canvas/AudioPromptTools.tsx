@@ -1,4 +1,4 @@
-import { ArrowsOutSimple,MagicWand,Translate } from "@phosphor-icons/react";
+import { ArrowsOutSimple,MagicWand,Translate } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useRef,useState } from "react";
 import {

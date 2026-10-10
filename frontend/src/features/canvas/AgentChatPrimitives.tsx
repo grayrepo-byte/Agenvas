@@ -1,6 +1,6 @@
 import { t, useLocale } from "../../shared/i18n";
 import { CaretDown, Check, Clock, MinusCircle, Question, Robot, Sparkle, Wrench,
-  User, WarningCircle, type Icon } from "@phosphor-icons/react";
+  User, WarningCircle, type Icon } from "@/shared/ui/icons";
 import { useId, useState, type ReactNode } from "react";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import "./AgentChatPrimitives.css";

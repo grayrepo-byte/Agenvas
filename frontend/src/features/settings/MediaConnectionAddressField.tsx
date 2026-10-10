@@ -1,4 +1,4 @@
-import { Question } from "@phosphor-icons/react";
+import { Question } from "@/shared/ui/icons";
 import { useId,useState } from "react";
 import type { MediaConnection } from "../../shared/api/client";
 import { t,useLocale,type MessageKey } from "../../shared/i18n";

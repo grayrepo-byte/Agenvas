@@ -1,4 +1,4 @@
-import { MagnifyingGlass as SearchIcon } from "@phosphor-icons/react"
+import { MagnifyingGlass as SearchIcon } from "@/shared/ui/icons"
 import { Command as CommandPrimitive } from "cmdk"
 import { cn } from "cn"
 import * as React from "react"

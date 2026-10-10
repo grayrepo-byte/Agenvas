@@ -1,4 +1,4 @@
-import { CheckCircle, CircleNotch, Info, WarningCircle } from "@phosphor-icons/react";
+import { CheckCircle, CircleNotch, Info, WarningCircle } from "@/shared/ui/icons";
 import type { ReactNode } from "react";
 import "./EditorFeedbackRow.css";
 

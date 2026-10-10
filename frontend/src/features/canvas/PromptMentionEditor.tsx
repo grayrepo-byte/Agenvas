@@ -1,4 +1,4 @@
-import { ImageSquare, MusicNotes } from "@phosphor-icons/react";
+import { ImageSquare, MusicNotes } from "@/shared/ui/icons";
 import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { SaveMediaDraftRequest } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";

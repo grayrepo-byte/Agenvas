@@ -1,4 +1,4 @@
-import { BoundingBox, ImagesSquare, PaintBrush, Plus, UploadSimple } from "@phosphor-icons/react";
+import { BoundingBox, ImagesSquare, PaintBrush, Plus, UploadSimple } from "@/shared/ui/icons";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { t, useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";

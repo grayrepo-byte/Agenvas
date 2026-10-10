@@ -4,6 +4,102 @@
  */
 
 export interface paths {
+    "/api/v1/media-templates/third-party/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listThirdPartyPromptSources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/media-templates/third-party": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listThirdPartyPrompts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-template-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["createThirdPartyPromptSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/media-template-sources/{sourceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["updateThirdPartyPromptSource"];
+        trace?: never;
+    };
+    "/api/v1/settings/media-template-sources/{sourceId}/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["syncThirdPartyPromptSource"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/media-templates/third-party/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["importThirdPartyPrompt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/media-styles": {
         parameters: {
             query?: never;
@@ -572,7 +668,7 @@ export interface paths {
         get: operations["getDebugSettings"];
         /**
          * 修改系统 debug 模式
-         * @description 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。仅提取 DebugExchange.responseIdentifiers 定义的固定响应关联 ID；其余 header（含 Authorization、Cookie、Set-Cookie）均不保存。普通及流式 LLM 的请求、响应及 HTTP/SSE 正文仅按结构化 image_url 字段省略图片字节，其余字段、工具 Schema、参数和模型文本原样保留，不对正文进行凭据或正则替换。独立请求地址隐藏认证信息，媒体调用继续过滤凭据与私有推理。关闭停止新增正文，历史记录按日志保留设置清理，旧调用不会补录。不会触发 Provider 请求。
+         * @description 调用开始时固定开关。启用后保存脱敏原始 HTTP 地址及正文（每个正文最多 64 MiB，超限或未读完明确标注）；可能包含提示词、个人信息和素材，并显著增加数据库及备份体积。仅提取 DebugExchange.responseIdentifiers 定义的固定响应关联 ID；其余 header（含 Authorization、Cookie、Set-Cookie）均不保存。普通及流式 LLM 的请求、响应及 HTTP/SSE 正文仅按结构化 image_url 字段省略图片字节，其余字段、工具 Schema、参数和模型文本原样保留，不对正文进行凭据或正则替换。本次服务端登记的中继 URL 查询签名及其正文回显也隐藏，其他远程 URL 保留。独立请求地址隐藏认证信息，媒体调用继续过滤凭据与私有推理。关闭停止新增正文，历史记录按日志保留设置清理，旧调用不会补录。不会触发 Provider 请求。
          */
         put: operations["updateDebugSettings"];
         post?: never;
@@ -597,7 +693,7 @@ export interface paths {
         };
         /**
          * 查看本人项目的 debug 调用详情
-         * @description 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。仅提取固定白名单响应关联 ID，其他 header（含 Authorization、Cookie、Set-Cookie）均省略；LLM 正文不做凭据替换，保留实际请求与响应内容及推理字段，流式响应只保存一份于 llmStream.content.response，exchanges 只保留请求、HTTP 状态和响应关联 ID，媒体调用继续过滤凭据与私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（LLM JSON 仅将结构化 image_url 中的图片 data URI 整值替换为 [image bytes omitted] 占位符后序列化，工具 Schema、参数、数值和普通文本保留；非 LLM JSON 沿用凭据过滤），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
+         * @description 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。仅提取固定白名单响应关联 ID，其他 header（含 Authorization、Cookie、Set-Cookie）均省略；LLM 正文不做凭据替换，保留实际请求与响应内容及推理字段，流式响应只保存一份于 llmStream.content.response，exchanges 只保留请求、HTTP 状态和响应关联 ID，媒体调用继续过滤凭据与私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（LLM JSON 仅将结构化 image_url 中的图片 data URI 整值替换为 [image bytes omitted] 占位符后序列化，工具 Schema、参数、数值和普通文本保留，同时隐藏本次服务端登记的中继 URL 查询签名及其正文回显；非 LLM JSON 沿用凭据过滤），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
          */
         get: operations["getCallDebug"];
         put?: never;
@@ -810,9 +906,35 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Save an encrypted immutable destination without activating it */
+        /** Save an encrypted destination without activating it */
         post: operations["createStorageProfile"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/storage/profiles/{profileId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Update a connection; referenced locations remain fixed, omitted credentials are retained */
+        put: operations["updateStorageProfile"];
+        post?: never;
+        /** Delete an unreferenced connection and clear its default archive and relay selections */
+        delete: operations["deleteStorageProfile"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3284,6 +3406,9 @@ export interface components {
             thumbnailUrl: string;
         };
         MediaTemplateImport: {
+            references?: components["schemas"]["ImportedThirdPartyReference"][];
+            /** @enum {string|null} */
+            videoInputMode?: "TEXT" | "START_END" | "GENERAL_REFERENCE" | null;
             /** Format: uuid */
             templateId: string;
             /** Format: int64 */
@@ -3923,6 +4048,8 @@ export interface components {
             accessKeyMask: string;
             /** Format: date-time */
             createdAt: string;
+            /** @description Referenced by an archive */
+            inUse: boolean;
         };
         StorageSettings: {
             version: number;
@@ -3933,10 +4060,21 @@ export interface components {
             activeProfileId: string | null;
             /**
              * Format: uuid
-             * @description Independent media relay destination; null disables local video relay. Existing cloud originals are signed directly.
+             * @description Independent media relay destination; null keeps images inline and disables local video relay. Existing cloud videos are signed directly.
              */
             relayProfileId: string | null;
+            /** @description Use relay URLs for OpenAI-compatible LLM images when a relay connection is selected. Read per model call. */
+            llmRelayEnabled: boolean;
+            /** @description Use relay URLs for supported OpenAI Images reference and mask inputs. Frozen at task acceptance; other adapters retain their protocol. */
+            imageRelayEnabled: boolean;
             profiles: components["schemas"]["StorageProfile"][];
+        };
+        MediaRelaySettingsRequest: {
+            expectedVersion: number;
+            /** Format: uuid */
+            profileId: string | null;
+            llmRelayEnabled: boolean;
+            imageRelayEnabled: boolean;
         };
         CreateStorageProfileRequest: {
             expectedVersion: number;
@@ -3954,6 +4092,24 @@ export interface components {
             pathStyle: boolean;
             accessKeyId: string;
             secretAccessKey: string;
+        };
+        UpdateStorageProfileRequest: {
+            expectedVersion: number;
+            name: string;
+            provider: components["schemas"]["StorageProvider"];
+            /**
+             * Format: uri
+             * @description HTTPS service endpoint without bucket or path
+             */
+            endpoint: string;
+            /** @description OSS region ID such as cn-chengdu */
+            region: string;
+            bucket: string;
+            keyPrefix: string;
+            pathStyle: boolean;
+            /** @description Omit both credentials to keep the existing key; supply both to rotate */
+            accessKeyId?: string;
+            secretAccessKey?: string;
         };
         ActivateStorageProfileRequest: {
             expectedVersion: number;
@@ -5519,6 +5675,138 @@ export interface components {
             resources: components["schemas"]["SkillVersionResource"][];
             assets: components["schemas"]["SkillPublishedAsset"][];
         };
+        ThirdPartyImagePrompt: {
+            id: string;
+            sourceId: string;
+            title: string;
+            prompt: string;
+            description: string;
+            coverUrl: string;
+            tags: string[];
+            author: string;
+            sourceUrl: string;
+            createdAt: string;
+            referenceImageUrls: string[];
+            /** @enum {string} */
+            imageMode: "generate" | "edit";
+            imageModel: string;
+        };
+        ThirdPartyPromptReference: {
+            /** @enum {string} */
+            kind: "IMAGE" | "VIDEO" | "AUDIO";
+            /** @enum {string} */
+            role: "REFERENCE" | "START_FRAME" | "END_FRAME" | "VIDEO_REFERENCE" | "AUDIO_REFERENCE";
+            /** Format: uri */
+            url: string;
+        };
+        ThirdPartyImageGeneration: {
+            prompt: string;
+            imageModel: string;
+            referenceImageUrls: string[];
+        };
+        ThirdPartyVideoPrompt: {
+            id: string;
+            sourceId: string;
+            title: string;
+            prompt: string;
+            description: string;
+            coverUrl: string;
+            tags: string[];
+            author: string;
+            sourceUrl: string;
+            createdAt: string;
+            /** @enum {string} */
+            videoMode: "text_to_video" | "image_to_video" | "video_reference" | "omni_reference" | "text_to_image_to_video";
+            videoModel: string;
+            references: components["schemas"]["ThirdPartyPromptReference"][];
+            imageGeneration: components["schemas"]["ThirdPartyImageGeneration"] | null;
+            /** @description Generated example video for preview only; never a generation input. */
+            previewVideoUrl?: string;
+            /** @description Required upstream inputs whose files were not published. Such entries can be browsed but cannot be imported. */
+            missingReferences?: {
+                /** @enum {string} */
+                kind: "IMAGE" | "VIDEO" | "AUDIO";
+                label: string;
+            }[];
+        };
+        ThirdPartyPromptEntry: {
+            id: string;
+            sourceId: string;
+            /** @enum {string} */
+            targetKind: "IMAGE" | "VIDEO";
+            image: components["schemas"]["ThirdPartyImagePrompt"] | null;
+            video: components["schemas"]["ThirdPartyVideoPrompt"] | null;
+            version: number;
+            /** Format: date-time */
+            cachedAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ThirdPartyPromptPage: {
+            items: components["schemas"]["ThirdPartyPromptEntry"][];
+            total: number;
+            offset: number;
+            limit: number;
+        };
+        ThirdPartyPromptSource: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            targetKind: "IMAGE" | "VIDEO";
+            /** @enum {string} */
+            format: "NATIVE_JSON" | "GITHUB_MARKDOWN" | "DAVID_JSON" | "BEATAPI_JSON" | "IMAGE_PROMPT_GALLERY_JSON";
+            url: string;
+            model: string;
+            enabled: boolean;
+            version: number;
+            /** Format: date-time */
+            nextSyncAt: string;
+            /** Format: date-time */
+            lastSyncedAt: string | null;
+            lastError: string | null;
+            promptCount: number;
+            syncing: boolean;
+        };
+        ThirdPartyPromptSources: {
+            items: components["schemas"]["ThirdPartyPromptSource"][];
+        };
+        CreateThirdPartyPromptSource: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            targetKind: "IMAGE" | "VIDEO";
+            /** Format: uri */
+            url: string;
+        };
+        UpdateThirdPartyPromptSource: {
+            enabled: boolean;
+            expectedVersion: number;
+        };
+        ThirdPartyPromptSync: {
+            sourceId: string;
+            /** @enum {string} */
+            state: "SUCCESS" | "FAILED" | "RUNNING" | "DISABLED" | "SUPERSEDED";
+            inserted: number;
+            updated: number;
+            received: number;
+        };
+        ImportThirdPartyPrompt: {
+            promptId: string;
+            expectedVersion: number;
+            commandKey: string;
+        };
+        ImportedThirdPartyReference: {
+            /** Format: uuid */
+            versionId: string;
+            /** Format: uuid */
+            assetId: string;
+            title: string;
+            /** @enum {string} */
+            kind: "IMAGE" | "VIDEO" | "AUDIO";
+            /** @enum {string} */
+            role: "REFERENCE" | "START_FRAME" | "END_FRAME" | "VIDEO_REFERENCE" | "AUDIO_REFERENCE";
+            thumbnailUrl: string;
+        };
         /** TEXT Artifact content v1 */
         "text-v1.schema": {
             /** @enum {string} */
@@ -5697,6 +5985,366 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listThirdPartyPromptSources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSources"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listThirdPartyPrompts: {
+        parameters: {
+            query: {
+                targetKind: "IMAGE" | "VIDEO";
+                sourceId?: string;
+                query?: string;
+                offset?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptPage"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createThirdPartyPromptSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateThirdPartyPromptSource"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSource"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateThirdPartyPromptSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateThirdPartyPromptSource"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSource"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    syncThirdPartyPromptSource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sourceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSync"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    importThirdPartyPrompt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportThirdPartyPrompt"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaTemplateImport"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listMediaStyles: {
         parameters: {
             query?: never;
@@ -7153,6 +7801,81 @@ export interface operations {
             503: components["responses"]["Unavailable"];
         };
     };
+    updateStorageProfile: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStorageProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated connection; defaults and historical objects retain their identities */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    deleteStorageProfile: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                profileId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated configuration; referenced connections return STORAGE_PROFILE_IN_USE without changes */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StorageSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     activateStorageProfile: {
         parameters: {
             query?: never;
@@ -7202,7 +7925,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ActivateStorageProfileRequest"];
+                "application/json": components["schemas"]["MediaRelaySettingsRequest"];
             };
         };
         responses: {

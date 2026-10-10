@@ -1,4 +1,4 @@
-import { CaretDown,SlidersHorizontal,Trash } from "@phosphor-icons/react";
+import { CaretDown,SlidersHorizontal,Trash } from "@/shared/ui/icons";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { useMutation } from "@tanstack/react-query";
 import { Fragment,useEffect,useId,useRef,useState,type FormEvent } from "react";

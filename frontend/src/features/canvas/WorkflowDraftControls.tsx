@@ -1,4 +1,4 @@
-import { Image as ImageIcon, MusicNotes, VideoCamera, X } from "@phosphor-icons/react";
+import { Image as ImageIcon, MusicNotes, VideoCamera, X } from "@/shared/ui/icons";
 import { cn } from "cn";
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import type { RunningHubDefinition, RunningHubField } from "../../shared/api/client";

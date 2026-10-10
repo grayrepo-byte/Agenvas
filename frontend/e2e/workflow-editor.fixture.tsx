@@ -104,7 +104,7 @@ window.fetch = async (input, init) => {
 };
 const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
 createRoot(document.getElementById("root")!).render(<QueryClientProvider client={client}>
-  <div className="workflow-layout-fixture" style={{ width: "min(680px, calc(100vw - 24px))", margin: "auto" }}>
+  <div className="workflow-layout-fixture workspace-media-editor" style={{ margin: "auto" }}>
     <MediaDraftEditor artifact={{ id: "synthetic-artifact", projectId, kind: video ? "VIDEO" : "IMAGE", title: "合成图片",
       version: 0, resourceDefaultVersionId: null, archivedAt: null, createdAt: now, updatedAt: now }} canvasItemId="synthetic-canvas" />
   </div>

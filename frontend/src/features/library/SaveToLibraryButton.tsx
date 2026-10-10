@@ -1,5 +1,5 @@
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
-import { BookmarkSimple } from "@phosphor-icons/react";
+import { BookmarkSimple } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";

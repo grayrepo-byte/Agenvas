@@ -1,4 +1,4 @@
-import { CaretDown,Stack } from "@phosphor-icons/react";
+import { CaretDown,Stack } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {

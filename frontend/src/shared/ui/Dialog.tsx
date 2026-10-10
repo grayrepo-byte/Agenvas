@@ -1,4 +1,4 @@
-import { X } from "@phosphor-icons/react";
+import { X } from "@/shared/ui/icons";
 import { cn } from "cn";
 import { useId,useRef,type FormEventHandler,type ReactNode } from "react";
 import { t,useLocale } from "../i18n";

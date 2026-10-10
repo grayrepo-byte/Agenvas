@@ -7,7 +7,7 @@ import tools.jackson.databind.JsonNode;
 final class VideoDuration {
 
     private static final int FIRST_WHOLE_SECONDS_SCHEMA_VERSION = 2;
-    private static final int MEDIA_INPUT_SCHEMA_VERSION = 5;
+    private static final int LAST_SUPPORTED_SCHEMA_VERSION = 6;
     private static final int MINIMUM_SECONDS = 1;
     private static final int MAXIMUM_SECONDS = 30;
 
@@ -16,9 +16,9 @@ final class VideoDuration {
     static Duration fromFrozenTask(JsonNode input) {
         int schemaVersion = input.path("schemaVersion")
                 .asInt(-1);
-        // Schema 4 adds styles and schema 5 mixed references; both keep whole-second duration.
+        // Styles (4), mixed references (5), and image relay selection (6) retain whole seconds.
         if (schemaVersion >= FIRST_WHOLE_SECONDS_SCHEMA_VERSION
-                && schemaVersion <= MEDIA_INPUT_SCHEMA_VERSION) {
+                && schemaVersion <= LAST_SUPPORTED_SCHEMA_VERSION) {
             JsonNode seconds = input.path("durationSeconds");
             if (!seconds.isIntegralNumber() || seconds.longValue() < MINIMUM_SECONDS
                     || seconds.longValue() > MAXIMUM_SECONDS) {

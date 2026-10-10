@@ -18,14 +18,21 @@ public class StoredChatModelFactory {
     private final CredentialCipher cipher;
     /** 限制端点及 DNS 解析地址，供正常调用和诊断共用。 */
     private final LlmEndpointPolicy endpoints;
+    private final LlmImageRelay imageRelay;
 
     /** 注入服务端密钥解密器和端点出站策略。
      * @param cipher 加密凭据的版本化解密器
      * @param endpoints 校验 Provider 地址及解析 IP 的策略
      */
     public StoredChatModelFactory(CredentialCipher cipher, LlmEndpointPolicy endpoints) {
+        this(cipher, endpoints, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public StoredChatModelFactory(CredentialCipher cipher, LlmEndpointPolicy endpoints, LlmImageRelay imageRelay) {
         this.cipher = cipher;
         this.endpoints = endpoints;
+        this.imageRelay = imageRelay;
     }
 
     /** 只在构造模型客户端时解密凭据，并对运行和诊断请求应用相同出站限制。 */
@@ -46,7 +53,11 @@ public class StoredChatModelFactory {
         return SpringAiChatGateway.withDebugCapture(OpenAiChatModel.builder().options(options)
                 .httpClientBuilderCustomizer(builder ->
                         builder.interceptor(transport.interceptor()))
-                .build(), config.version());
+                .build(), config.version(), imageRelay);
+    }
+
+    SpringAiChatGateway environment(org.springframework.ai.chat.model.ChatModel model, int version) {
+        return new SpringAiChatGateway(model, version, imageRelay);
     }
 
     /** 历史部署密钥已退役时，在预留用量前拒绝创建客户端。 */

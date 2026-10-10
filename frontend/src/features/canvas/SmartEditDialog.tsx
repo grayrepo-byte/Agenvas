@@ -1,7 +1,7 @@
 import {
 ArrowClockwise,ArrowCounterClockwise,ArrowUp,BoundingBox,Coins,Cube,Eraser,
 PaintBrush,Plus,UploadSimple,X
-} from "@phosphor-icons/react";
+} from "@/shared/ui/icons";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import {
 useMemo,useRef,useState,type FormEvent,type ReactNode,

@@ -960,6 +960,31 @@ export type WriteMediaTemplateRequest = components["schemas"]["CreateMediaTempla
 export type MediaTemplateImport = components["schemas"]["MediaTemplateImport"];
 export type MediaTemplateKind = MediaTemplate["targetKind"];
 export type MediaTemplateScope = MediaTemplate["scope"];
+export type ThirdPartyPromptEntry = components["schemas"]["ThirdPartyPromptEntry"];
+export type ThirdPartyPromptSource = components["schemas"]["ThirdPartyPromptSource"];
+export type ThirdPartyPromptPage = components["schemas"]["ThirdPartyPromptPage"];
+export type ThirdPartyPromptReference = components["schemas"]["ThirdPartyPromptReference"];
+export function listThirdPartyPromptSources(): Promise<components["schemas"]["ThirdPartyPromptSources"]> {
+  return readJson("/api/v1/media-templates/third-party/sources", t("templates.loadFailed"));
+}
+export function listThirdPartyPrompts(kind: MediaTemplateKind, sourceId: string, query: string, offset: number): Promise<ThirdPartyPromptPage> {
+  const params = new URLSearchParams({ targetKind: kind, query, offset: String(offset), limit: "50" });
+  if (sourceId) params.set("sourceId", sourceId);
+  return readJson(`/api/v1/media-templates/third-party?${params}`, t("templates.loadFailed"));
+}
+export function createThirdPartyPromptSource(input: components["schemas"]["CreateThirdPartyPromptSource"]): Promise<ThirdPartyPromptSource> {
+  return writeJson("/api/v1/settings/media-template-sources", { method: "POST", body: JSON.stringify(input) });
+}
+export function setThirdPartyPromptSource(source: ThirdPartyPromptSource, enabled: boolean): Promise<ThirdPartyPromptSource> {
+  return writeJson(`/api/v1/settings/media-template-sources/${encodeURIComponent(source.id)}`, { method: "PATCH", body: JSON.stringify({ enabled, expectedVersion: source.version }) });
+}
+export function syncThirdPartyPromptSource(id: string): Promise<components["schemas"]["ThirdPartyPromptSync"]> {
+  return writeJson(`/api/v1/settings/media-template-sources/${encodeURIComponent(id)}/sync`, { method: "POST" });
+}
+export function importThirdPartyPrompt(projectId: string, entry: ThirdPartyPromptEntry, commandKey: string): Promise<MediaTemplateImport> {
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/media-templates/third-party/import`,
+    { method: "POST", body: JSON.stringify({ promptId: entry.id, expectedVersion: entry.version, commandKey }) });
+}
 
 /** Templates contain reusable text and independently archived images; they never run a Provider. */
 export async function listMediaTemplates(targetKind?: MediaTemplateKind, system = false): Promise<MediaTemplate[]> {
@@ -1006,9 +1031,12 @@ export async function uploadLibraryEntry(request: { file: File; kind: "IMAGE" | 
   return writeJson<LibraryCommand>("/api/v1/library/uploads", { method: "POST", body }, t("api.errors.libraryUploadFailed"));
 }
 
+export type MediaRelaySettingsRequest = components["schemas"]["MediaRelaySettingsRequest"];
 export type StorageSettings = components["schemas"]["StorageSettings"];
 export type StorageProvider = components["schemas"]["StorageProvider"];
 export type CreateStorageProfileRequest = components["schemas"]["CreateStorageProfileRequest"];
+export type UpdateStorageProfileRequest = components["schemas"]["UpdateStorageProfileRequest"];
+export type StorageProfile = components["schemas"]["StorageProfile"];
 export type RotateStorageCredentialsRequest = components["schemas"]["RotateStorageCredentialsRequest"];
 export async function getStorageSettings(): Promise<StorageSettings> {
   return readJson<StorageSettings>("/api/v1/settings/storage", t("api.errors.storageSettingsUnavailable"));
@@ -1018,12 +1046,22 @@ export async function createStorageProfile(input: CreateStorageProfileRequest): 
     method: "POST", body: JSON.stringify(input),
   });
 }
+export async function updateStorageProfile(id: string, input: UpdateStorageProfileRequest): Promise<StorageSettings> {
+  return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}`, {
+    method: "PUT", body: JSON.stringify(input),
+  });
+}
+export async function deleteStorageProfile(id: string, expectedVersion: number): Promise<StorageSettings> {
+  return writeJson<StorageSettings>(`/api/v1/settings/storage/profiles/${encodeURIComponent(id)}?expectedVersion=${expectedVersion}`, {
+    method: "DELETE",
+  });
+}
 export async function activateStorageProfile(input: components["schemas"]["ActivateStorageProfileRequest"]): Promise<StorageSettings> {
   return writeJson<StorageSettings>("/api/v1/settings/storage/active", {
     method: "PUT", body: JSON.stringify(input),
   });
 }
-export async function activateMediaRelayProfile(input: components["schemas"]["ActivateStorageProfileRequest"]): Promise<StorageSettings> {
+export async function activateMediaRelayProfile(input: components["schemas"]["MediaRelaySettingsRequest"]): Promise<StorageSettings> {
   return writeJson<StorageSettings>("/api/v1/settings/storage/relay", {
     method: "PUT", body: JSON.stringify(input),
   });

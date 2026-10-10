@@ -42,6 +42,23 @@ class OpenAiImage2ClientTest {
         server.stop(0);
     }
 
+    @Test void urlEditsUseOrderedJsonReferencesAndMaskWithoutUploadingFiles() throws Exception {
+        var received = new java.util.concurrent.atomic.AtomicReference<tools.jackson.databind.JsonNode>();
+        server.createContext("/v1/images/edits", exchange -> {
+            assertThat(exchange.getRequestHeaders().getFirst("Content-Type")).startsWith("application/json");
+            received.set(mapper.readTree(exchange.getRequestBody().readAllBytes()));
+            respond(exchange, 200, "{\"data\":[{\"b64_json\":\"" + Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10}) + "\"}]}");
+        });
+        try (var result = client.editUrls("synthetic-key", "gpt-image-2", "Synthetic edit", "high", "1024x1024",
+                List.of("https://example.com/first.png", "https://example.com/second.png"), "https://example.com/mask.png", true, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+            assertThat(result.declaredContentType()).isEqualTo("image/png");
+        }
+        assertThat(received.get().at("/images/0/image_url").asText()).isEqualTo("https://example.com/first.png");
+        assertThat(received.get().at("/images/1/image_url").asText()).isEqualTo("https://example.com/second.png");
+        assertThat(received.get().at("/mask/image_url").asText()).isEqualTo("https://example.com/mask.png");
+        assertThat(received.get().path("background").asText()).isEqualTo("transparent");
+    }
+
     @Test
     void generationAndReferenceEditUseSeparateFixedPathsAndPngResponses() throws IOException {
         byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
