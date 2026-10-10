@@ -12,6 +12,11 @@ import type { Task } from "../../shared/api/client";
 
 /** 与后端 `dev.agenvas.shared.error.ProviderFailureCodes` 一一对应，改一处必须同步另一处。 */
 export const PROVIDER_FAILURE_CODES = {
+  MINIMAX_CREATE_REJECTED: "MINIMAX_CREATE_REJECTED",
+  MINIMAX_CREATE_UNCERTAIN: "MINIMAX_CREATE_UNCERTAIN",
+  MINIMAX_TASK_FAILED: "MINIMAX_TASK_FAILED",
+  MINIMAX_TASK_EXPIRED: "MINIMAX_TASK_EXPIRED",
+  MINIMAX_RESULT_EXPIRED: "MINIMAX_RESULT_EXPIRED",
   CALL_TIMEOUT: "PROVIDER_CALL_TIMEOUT",
   DOWNLOAD_FAILED: "PROVIDER_DOWNLOAD_FAILED",
   RESPONSE_LOST: "PROVIDER_RESPONSE_LOST",
@@ -56,6 +61,11 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get MEDIA_RELAY_REQUIRED() { return t("media.editor.videoRelayHint"); },
   get MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED() { return t("tasks.errors.videoPublicEndpointRequired"); },
   get SEEDANCE_VIDEO_REFERENCE_INVALID() { return t("tasks.errors.videoReferenceInvalid"); },
+  get MINIMAX_CREATE_UNCERTAIN() { return t("tasks.errors.submissionUnknown"); },
+  get MINIMAX_CREATE_REJECTED() { return t("tasks.errors.minimaxRejected"); },
+  get MINIMAX_TASK_FAILED() { return t("tasks.errors.minimaxFailed"); },
+  get MINIMAX_TASK_EXPIRED() { return t("tasks.errors.minimaxExpired"); },
+  get MINIMAX_RESULT_EXPIRED() { return t("tasks.errors.minimaxExpired"); },
   get ARK_CREATE_UNCERTAIN() { return t("tasks.errors.submissionUnknown"); },
   get OPENAI_IMAGE_REJECTED() { return t("tasks.errors.imageRequestRejected"); },
   get GOOGLE_IMAGE_REJECTED() { return t("tasks.errors.imageRequestRejected"); },

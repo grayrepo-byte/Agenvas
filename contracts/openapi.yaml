@@ -5022,7 +5022,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
-        platform: {type: string, enum: [LOCAL, MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE, AUTODL, RUNNINGHUB]}
+        platform: {type: string, enum: [LOCAL, MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE, AUTODL, RUNNINGHUB, MINIMAX]}
         enabled: {type: boolean}
         version: {type: integer, format: int64, minimum: 0}
         connectionVersion: {type: integer, minimum: 1}
@@ -5126,7 +5126,7 @@ components:
           maxProperties: 16
           propertyNames: {pattern: '^[1-9][0-9]{2,3}p$'}
           additionalProperties: {$ref: '#/components/schemas/MediaCapabilityPricing'}
-          description: AutoDL video estimates by a published resolution tier. Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost.
+          description: AutoDL published tiers or MINIMAX_H3 768p/1440p video estimates. Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost.
     ComfyUiGraph:
       type: object
       minProperties: 1
@@ -5385,8 +5385,8 @@ components:
       required: [name, platform]
       properties:
         name: {type: string, minLength: 1, maxLength: 160}
-        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE, AUTODL, RUNNINGHUB]}
-        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
+        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE, AUTODL, RUNNINGHUB, MINIMAX]}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
         apiKey: {type: [string, "null"], maxLength: 4096}
     UpdateMediaConnectionRequest:
       type: object
@@ -5396,7 +5396,7 @@ components:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         name: {type: string, minLength: 1, maxLength: 160}
         enabled: {type: boolean}
-        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
         apiKey: {type: [string, "null"], maxLength: 4096}
     CreateMediaCapabilityRequest:
       type: object
@@ -6101,7 +6101,7 @@ components:
     ImageGenerationParameters:
       type: object
       additionalProperties: false
-      description: 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio 和 AutoDL 专用 videoResolution，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。
+      description: 媒体草稿的原子生成参数；图片使用图片字段，视频使用 aspectRatio 和协议支持的 videoResolution，音频使用 speaker 和 speechRate。缺省字段由服务端按兼容默认值补齐并在 Task 中冻结。
       properties:
         dynamicValues:
           type: object
@@ -6113,7 +6113,7 @@ components:
         loudnessRate: {type: integer, minimum: -50, maximum: 100}
         pitchRate: {type: integer, minimum: -12, maximum: 12}
         aspectRatio: {type: string, enum: [AUTO, "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
-        videoResolution: {type: string, pattern: '^[1-9][0-9]{2,3}p$', description: "AutoDL only; a published resolution tier. Omitted uses the capability default. Frozen into accepted tasks."}
+        videoResolution: {type: string, pattern: '^[1-9][0-9]{2,3}p$', description: "AutoDL published resolution tier or MINIMAX_H3 768p/1440p (official 768P/2K). Omitted uses the capability default. Frozen into accepted tasks."}
         resolution: {type: string, enum: [1K, 2K, 4K]}
         quality: {type: string, enum: [low, medium, high]}
         transparentBackground: {type: boolean}

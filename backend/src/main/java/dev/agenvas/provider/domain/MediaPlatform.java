@@ -19,5 +19,7 @@ public enum MediaPlatform {
     /** Fixed RunningHub V2 task protocol with administrator-published input mappings. */
     RUNNINGHUB,
     /** AutoDL hosted ComfyUI workflow task API. */
-    AUTODL
+    AUTODL,
+    /** MiniMax official H3 V2 video generation API. */
+    MINIMAX
 }

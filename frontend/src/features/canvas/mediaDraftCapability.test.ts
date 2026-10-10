@@ -33,6 +33,38 @@ const dynamic: MediaCapability = { ...video, id: "runninghub", adapterId: "RUNNI
   settings: { runningHub: definition } };
 
 describe("media capability changes", () => {
+  it.each(["768p", "1440p", "480p"])("switches into H3 with compatible resolution %s and exact mixed inputs", (tier) => {
+    const h3: MediaCapability = { ...video, id: "h3", adapterId: "MINIMAX_H3", maxReferenceImages: 9,
+      settings: { defaultParameters: { videoResolution: "1440p" } } };
+    const videoInput = { versionId: "video-version", role: "VIDEO_REFERENCE", color: "#67C7F3" } as const;
+    const inputs = [imageInput, audioInput, videoInput];
+    const before = { ...fields, videoInputMode: "GENERAL_REFERENCE" as const, parameters: { videoResolution: tier },
+      mediaInputs: inputs, prompt: inputs.map(() => MENTION_MARKER).join("/"), mentions: inputs };
+    const change = planMediaCapabilityChange({ kind: "VIDEO", fields: before, capabilityId: h3.id,
+      resolvedCapabilityId: h3.id, previous: video, next: h3 });
+    expect(change.fields.mediaInputs).toEqual(inputs);
+    expect(change.fields.mentions).toEqual(inputs);
+    expect(change.fields.parameters?.videoResolution).toBe(tier === "480p" ? "1440p" : tier);
+    const back = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...before, ...change.fields }, capabilityId: video.id,
+      resolvedCapabilityId: video.id, previous: h3, next: video });
+    expect(back.fields.mediaInputs).toEqual(inputs);
+    expect(back.fields.parameters).not.toHaveProperty("videoResolution");
+  });
+  it("switches H3 2K into AutoDL and back while keeping duration and compatible audio/image references", () => {
+    const h3: MediaCapability = { ...video, id: "h3", adapterId: "MINIMAX_H3", settings: {} };
+    const autodl: MediaCapability = { ...video, id: "autodl", adapterId: AUTODL_ADAPTER, maxReferenceVideos: 0,
+      settings: { workflowId: "minimax_h3_image_audio_to_video_v2", videoResolution: "480p", videoResolutions: ["480p", "768p"] } };
+    const before = { ...fields, videoInputMode: "GENERAL_REFERENCE" as const, parameters: { videoResolution: "1440p" },
+      durationSeconds: 3, mediaInputs: [imageInput, audioInput] };
+    const toAuto = planMediaCapabilityChange({ kind: "VIDEO", fields: before, capabilityId: autodl.id,
+      resolvedCapabilityId: autodl.id, previous: h3, next: autodl });
+    expect(toAuto.fields.parameters?.videoResolution).toBe("480p");
+    const back = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...before, ...toAuto.fields }, capabilityId: h3.id,
+      resolvedCapabilityId: h3.id, previous: autodl, next: h3 });
+    expect(back.fields.parameters?.videoResolution).toBe("768p");
+    expect(back.fields.mediaInputs).toEqual([imageInput, audioInput]);
+    expect({ ...before, ...back.fields }.durationSeconds).toBe(3);
+  });
   it.each((["IMAGE", "VIDEO", "AUDIO"] as const).flatMap((kind) =>
     (["IMAGE", "VIDEO", "AUDIO"] as const).map((inputKind) => ({ kind, inputKind }))))(
     "matches $inputKind references to published slots independently of $kind output", ({ kind, inputKind }) => {

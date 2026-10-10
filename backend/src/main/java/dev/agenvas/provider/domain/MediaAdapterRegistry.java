@@ -63,6 +63,8 @@ public final class MediaAdapterRegistry {
             boolean supportsTransparentBackground, boolean supportsImageMask, int maxReferenceAudios, int maxReferenceVideos) {}
 
     private static final Map<String, Declaration> DECLARATIONS = Map.ofEntries(
+            Map.entry(MiniMaxH3Protocol.ADAPTER_ID, video(MediaPlatform.MINIMAX, 4, 15, true, 9,
+                    Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "TEXT", true)),
             Map.entry(LOCAL_VIDEO_PROCESSOR, video(MediaPlatform.LOCAL, 0, 30, false, 0,
                     Set.of("GENERAL_REFERENCE"), "GENERAL_REFERENCE", false)),
             Map.entry(LOCAL_VIDEO_AUDIO_EXTRACTOR, audio(MediaPlatform.LOCAL)),
@@ -120,8 +122,8 @@ public final class MediaAdapterRegistry {
         return new Declaration(platform, Task.Kind.VIDEO_GENERATION, minimumSeconds,
                 maximumSeconds, originRequired, maxReferenceImages, inputModes, defaultInputMode,
                 supportsEndFrame, Set.of(), Set.of(), Set.of(), false, false,
-                platform == MediaPlatform.MOCK || platform == MediaPlatform.ARK ? 3 : 0,
-                platform == MediaPlatform.ARK ? SEEDANCE_MAX_REFERENCE_VIDEOS : 0);
+                platform == MediaPlatform.MOCK || platform == MediaPlatform.ARK || platform == MediaPlatform.MINIMAX ? 3 : 0,
+                platform == MediaPlatform.ARK || platform == MediaPlatform.MINIMAX ? 3 : 0);
     }
 
     private static Declaration audio(MediaPlatform platform) {

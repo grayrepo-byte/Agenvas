@@ -7,6 +7,7 @@ export const RUNNINGHUB_OUTPUT_ADAPTERS = {
 
 /** Presentation metadata for compiled protocols; the server validates their actual bounds. */
 export const mediaAdapters = {
+  MINIMAX_H3: { label: "MiniMax H3", model: "MiniMax-H3", kind: "VIDEO_GENERATION", references: 9, minimum: 4, maximum: 15 },
   RUNNINGHUB_IMAGE: { get label() { return t("settings.adapters.runningHubImage"); }, kind: "IMAGE_GENERATION", references: 14, minimum: 0, maximum: 0 },
   RUNNINGHUB_VIDEO: { get label() { return t("settings.adapters.runningHubVideo"); }, kind: "VIDEO_GENERATION", references: 14, minimum: 0, maximum: 60 },
   RUNNINGHUB_AUDIO: { get label() { return t("settings.adapters.runningHubAudio"); }, kind: "AUDIO_GENERATION", references: 14, minimum: 0, maximum: 0 },
@@ -26,6 +27,7 @@ export const mediaAdapters = {
 } as const;
 
 export const platformAdapters: Record<MediaConnection["platform"], string[]> = {
+  MINIMAX: ["MINIMAX_H3"],
   RUNNINGHUB: ["RUNNINGHUB_IMAGE", "RUNNINGHUB_VIDEO", "RUNNINGHUB_AUDIO"],
   LOCAL: ["LOCAL_IMAGE_PROCESSOR"], MOCK: ["MOCK_IMAGE", "MOCK_VIDEO", "MOCK_AUDIO"],
   COMFYUI: ["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"], OPENAI: ["OPENAI_GPT_IMAGE_2"],

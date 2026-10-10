@@ -37,7 +37,7 @@
 | 图片处理 | 标注、裁剪、旋转、镜像、放大、深度提取，以及配置能力支持的 AI 编辑 |
 | 自托管管理 | 模型配置、本地及 OSS/COS/S3 存储、任务与调用记录、项目清单导出 |
 
-界面支持中文、英文、俄文和日文。媒体适配器包括 GPT Image、Google Nano Banana、火山方舟 Seedance、Seed Audio、ComfyUI 导入并映射发布的 API 工作流和 RunningHub V2 工作流 / AI 应用；可用操作取决于管理员发布的能力。
+界面支持中文、英文、俄文和日文。媒体适配器包括 GPT Image、Google Nano Banana、火山方舟 Seedance、MiniMax 官方 H3、Seed Audio、ComfyUI 导入并映射发布的 API 工作流和 RunningHub V2 工作流 / AI 应用；可用操作取决于管理员发布的能力。MiniMax H3 的官方地址、输入限制与升级说明见 [ADR 0042](docs/adr/0042-minimax-h3-official-api.md)。
 
 ## 快速开始
 
@@ -103,7 +103,7 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 
 创建项目，通过画布右键菜单添加卡片或上传素材。选择模型、填写提示词和参考输入，检查预计费用后运行；完成后可预览、选用结果或重新生成。Agent 卡片可绑定上下文并选择 Skill，媒体提案在对话中统一批准或拒绝。
 
-媒体中继可按功能独立控制 OpenAI 兼容 LLM 图片输入与 OpenAI Images 参考图/蒙版；未启用时保持原传输。Seedance 本地视频参考需要可公网访问的中继，配置见[媒体中继说明](docs/media-relay-design.md)。
+媒体中继可按功能独立控制 OpenAI 兼容 LLM 图片输入与 OpenAI Images 参考图/蒙版；未启用时保持原传输。Seedance 和 MiniMax H3 本地视频参考需要可公网访问的中继，配置见[媒体中继说明](docs/media-relay-design.md)。
 
 > 结果未知（UNKNOWN）时需显式重试，可能产生重复费用；取消不保证外部服务停止或退款。项目清单包含数据与素材元数据，不能替代数据库和媒体文件备份。
 

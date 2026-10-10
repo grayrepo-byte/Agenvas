@@ -52,6 +52,7 @@ MVP 已完成，项目进入持续迭代阶段。后续开发按当前需求推�
 | 后端分层、配置、事务、执行器 | 规格 §20 |
 | 数据库 schema、查询、API 契约 | 规格 §15、§21；schema 变化按 [ADR 0012](docs/adr/0012-jooq-persistence.md)重新生成 jOOQ，普通构建不连接生成数据库 |
 | 媒体版本、复制、派生、结果选用 | 规格 §6.10、§7.5–7.6；[ADR 0017](docs/adr/0017-operation-specific-media-versioning.md) |
+| 媒体 Provider 新增、适配器扩展、节点能力切换 | [Provider 接入与切换指南](docs/agents/adding-media-provider.md) |
 | Agent Runtime、工具、上下文与权限 | 规格 §8–10；通过 Spring AI 通信并关闭该路径的自动工具执行 |
 | Agent 媒体提案、审批、结果续接 | [媒体审批设计](docs/agent-media-approval-design.md) |
 | 对话审批、公开执行记录、流式回答 | [对话流式设计](docs/agent-conversation-stream-design.md) |

@@ -6,6 +6,7 @@ import { Select } from "../../shared/ui/Select";
 import { comfyReferenceCount } from "./comfyWorkflow";
 import { adapterMetadata } from "./mediaAdapterCatalog";
 
+import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, minimaxResolutionLabel } from "../../shared/minimaxH3";
 import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
 import { VideoResolutionPricingFields } from "./VideoResolutionPricingFields";
 import { autodlWorkflow } from "./AutoDlWorkflowFields";
@@ -30,6 +31,7 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
     maximum: workflow.maximumSeconds, references: workflow.imageFields.length } : metadata;
   if (!adapter) return null;
   const image = adapter.kind === "IMAGE_GENERATION";
+  const minimax = adapterId === MINIMAX_H3_ADAPTER;
   const audio = adapter.kind === "AUDIO_GENERATION";
   const comfyImage = adapterId === "COMFY_IMAGE_V1";
   const transparent = adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "MOCK_IMAGE";
@@ -70,6 +72,10 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
           value={values.defaultDurationSeconds ?? ""} placeholder={t("common.unset")}
           onChange={(event) => onChange({ ...values, defaultDurationSeconds: event.target.value ? Number(event.target.value) : undefined })} />
       </FieldLabel></Field>}
+      {minimax ? <Field><FieldLabel className="ui-field block">{t("media.defaultResolution")}<Select value={parameters.videoResolution ?? "768p"}
+        onChange={(event) => changeParameters({ videoResolution: event.target.value })}>
+        {MINIMAX_H3_RESOLUTIONS.map((tier) => <option key={tier} value={tier}>{minimaxResolutionLabel(tier)}</option>)}
+      </Select></FieldLabel></Field> : null}
       <p className="ui-muted">{t("settings.capabilities.defaultsHint")}</p>
     </div> : null}
     {section === "limits" ? <div className="media-config-section ui-form-grid">
@@ -88,8 +94,8 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
           value={values.maxReferenceImages ?? ""} placeholder={String(adapter.references)}
           onChange={(event) => onChange({ ...values, maxReferenceImages: event.target.value ? Number(event.target.value) : undefined })} />
       </FieldLabel></Field>
-      {adapterId === "ARK_SEEDANCE_2_I2V" ? <Field><FieldLabel className="ui-field block">{t("settings.capabilities.maxVideos")}<Input type="number" min={0} max={SEEDANCE_MAX_REFERENCE_VIDEOS} step={1} value={values.maxReferenceVideos ?? ""} placeholder={String(SEEDANCE_MAX_REFERENCE_VIDEOS)} onChange={(event) => onChange({ ...values, maxReferenceVideos: event.target.value ? Number(event.target.value) : undefined })} /></FieldLabel></Field> : null}
-      {audio || adapterId === "MOCK_VIDEO" || adapterId === "ARK_SEEDANCE_2_I2V" || (workflow && workflow.audioFields.length > 0) ? <Field><FieldLabel className="ui-field block">{t("settings.capabilities.maxAudios")}<Input type="number" min={workflow?.minimumAudios ?? 0} max={workflow?.audioFields.length ?? 3} step={1} value={values.maxReferenceAudios ?? ""} placeholder={String(workflow?.audioFields.length ?? 3)} onChange={(event) => onChange({ ...values, maxReferenceAudios: event.target.value ? Number(event.target.value) : undefined })} /></FieldLabel></Field> : null}
+      {adapterId === "ARK_SEEDANCE_2_I2V" || minimax ? <Field><FieldLabel className="ui-field block">{t("settings.capabilities.maxVideos")}<Input type="number" min={0} max={SEEDANCE_MAX_REFERENCE_VIDEOS} step={1} value={values.maxReferenceVideos ?? ""} placeholder={String(SEEDANCE_MAX_REFERENCE_VIDEOS)} onChange={(event) => onChange({ ...values, maxReferenceVideos: event.target.value ? Number(event.target.value) : undefined })} /></FieldLabel></Field> : null}
+      {audio || adapterId === "MOCK_VIDEO" || adapterId === "ARK_SEEDANCE_2_I2V" || minimax || (workflow && workflow.audioFields.length > 0) ? <Field><FieldLabel className="ui-field block">{t("settings.capabilities.maxAudios")}<Input type="number" min={workflow?.minimumAudios ?? 0} max={workflow?.audioFields.length ?? 3} step={1} value={values.maxReferenceAudios ?? ""} placeholder={String(workflow?.audioFields.length ?? 3)} onChange={(event) => onChange({ ...values, maxReferenceAudios: event.target.value ? Number(event.target.value) : undefined })} /></FieldLabel></Field> : null}
       <p className="ui-muted">{t("settings.capabilities.referenceLimitHint", { "0": image || audio ? "" : t("settings.capabilities.protocolDurationHint", { "0": adapter.minimum, "1": adapter.maximum }), "1": adapter.references })}</p>
     </div> : null}
     {section === "pricing" ? <div className="media-config-section ui-form-grid">
@@ -114,7 +120,7 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
         </Select>
       </FieldLabel></Field>
       <p className="ui-muted">{t("settings.capabilities.pricingHint")}</p>
-      {workflow ? <VideoResolutionPricingFields values={values} onChange={onChange} /> : null}
+      {workflow || minimax ? <VideoResolutionPricingFields values={values} onChange={onChange} tiers={minimax ? MINIMAX_H3_RESOLUTIONS : undefined} tierLabel={minimax ? minimaxResolutionLabel : undefined} /> : null}
     </div> : null}
   </>;
 }

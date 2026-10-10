@@ -1,3 +1,4 @@
+import { Select } from "../../shared/ui/Select";
 import { Question } from "@/shared/ui/icons";
 import { useId,useState } from "react";
 import type { MediaConnection } from "../../shared/api/client";
@@ -11,6 +12,7 @@ const ORIGIN_LIMIT = 500;
 const ADDRESS_FIELDS: Partial<Record<MediaConnection["platform"], {
   label: MessageKey; hint: MessageKey; placeholder?: string; fixed?: string; required?: boolean;
 }>> = {
+  MINIMAX: { label: "settings.mediaSettings.minimaxAddressLabel", hint: "settings.mediaSettings.minimaxAddressHint" },
   COMFYUI: { label: "settings.mediaSettings.comfyUrl", hint: "settings.mediaSettings.comfyAddressHint", placeholder: "http://127.0.0.1:8188", required: true },
   RUNNINGHUB: { label: "settings.mediaSettings.runningHubApi", hint: "settings.mediaSettings.runningHubAddressHint", placeholder: "https://www.runninghub.ai" },
   OPENAI: { label: "settings.mediaSettings.baseUrl", hint: "settings.mediaSettings.openAiAddressHint", placeholder: "https://api.openai.com/v1" },
@@ -40,9 +42,12 @@ export function MediaConnectionAddressField({ platform, origin, onChange, descri
         <TooltipContent className="media-connection-address-tooltip" side="top"><p>{hint}</p></TooltipContent>
       </Tooltip></TooltipProvider>
     </div>
-    <Input id={id} type="url" value={config.fixed ?? origin} readOnly={Boolean(config.fixed)} required={config.required}
+    {platform === "MINIMAX" ? <Select id={id} value={origin || "https://api.minimax.cn"} aria-describedby={describedBy ?? `${id}-hint`} onChange={(event) => onChange(event.target.value)}>
+      <option value="https://api.minimax.cn">https://api.minimax.cn</option>
+      <option value="https://api.minimax.io">https://api.minimax.io</option>
+    </Select> : <Input id={id} type="url" value={config.fixed ?? origin} readOnly={Boolean(config.fixed)} required={config.required}
       maxLength={ORIGIN_LIMIT} placeholder={config.placeholder} aria-describedby={describedBy ?? `${id}-hint`}
-      onChange={(event) => onChange(event.target.value)} />
+      onChange={(event) => onChange(event.target.value)} />}
     {!describedBy ? <span id={`${id}-hint`} className="sr-only">{hint}</span> : null}
   </Field>;
 }

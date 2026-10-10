@@ -2374,5 +2374,10 @@
   "settings.storage.deleteHint": "仅删除连接配置，不删除 Bucket 中的文件。若此连接是默认存储或中继，删除后将切回本地存储并关闭关联中继。",
   "settings.storage.locationLocked": "此连接已被素材、归档、中继副本或任务引用。可修改名称和凭证；位置须保留，无法删除。更换位置请添加新连接。",
   "settings.storage.keepCredentialsHint": "两项凭证留空则保留现有密钥；更换密钥时请同时填写 ID 和 Secret。",
-  "settings.storage.ossRegionHint": "OSS Region 填写 cn-chengdu 等区域 ID，不带 oss- 前缀。"
+  "settings.storage.ossRegionHint": "OSS Region 填写 cn-chengdu 等区域 ID，不带 oss- 前缀。",
+  "settings.mediaSettings.minimaxAddressHint": "选择 MiniMax 官方中国站或国际站，API Key 必须属于所选站点。H3 V2 路径由应用固定。",
+  "tasks.errors.minimaxExpired": "MiniMax 原任务或结果已过期，无法继续取回。",
+  "tasks.errors.minimaxFailed": "MiniMax 视频生成失败。",
+  "tasks.errors.minimaxRejected": "MiniMax 拒绝了本次生成，请核对密钥、余额与输入。",
+  "settings.mediaSettings.minimaxAddressLabel": "MiniMax API 地址"
 }
