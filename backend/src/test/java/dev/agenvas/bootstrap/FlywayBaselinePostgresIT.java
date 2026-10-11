@@ -33,6 +33,8 @@ class FlywayBaselinePostgresIT {
     private static final String CAPABILITY_DELETION_VERSION = "11";
     private static final String BEFORE_IMAGE_RELAY_VERSION = "16";
     private static final String IMAGE_RELAY_VERSION = "17";
+    private static final String BEFORE_NATIVE_CHECKPOINT_VERSION = "21";
+    private static final String NATIVE_CHECKPOINT_VERSION = "23";
     private static final String INITIAL_BASELINE_SCRIPT = "V1__initial_schema.sql";
     private static final String FOREIGN_KEY_VIOLATION = "23503";
     private static final String CHECK_VIOLATION = "23514";
@@ -84,7 +86,7 @@ class FlywayBaselinePostgresIT {
     @Test
     void nativeCheckpointUpgradePreservesOldRowsAndKeepsOtherProtocolsAtSixteenResults() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration").target("21").load().migrate();
+                .locations("classpath:db/migration").target(BEFORE_NATIVE_CHECKPOINT_VERSION).load().migrate();
         UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), nativeTask = UUID.randomUUID();
         try (Connection connection = connection()) {
             insertOwner(connection, owner); insertProject(connection, project, owner);
@@ -96,7 +98,11 @@ class FlywayBaselinePostgresIT {
                         (select jsonb_agg('{}'::jsonb) from generate_series(1,16))))
                     """, nativeTask, project);
         }
-        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
+        // This scenario verifies V22/V23; later migrations must not change its upgrade boundary.
+        Flyway nativeCheckpointUpgrade = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target(NATIVE_CHECKPOINT_VERSION).load();
+        assertThat(nativeCheckpointUpgrade.migrate().migrationsExecuted).isEqualTo(2);
         try (Connection connection = connection()) {
             assertThat(text(connection, "select provider_request_id from task where id=?", nativeTask)).isEqualTo("synthetic-retained-id");
             assertThat(count(connection, "select jsonb_array_length(provider_result_manifest->'results') from task where id=?", nativeTask)).isEqualTo(16);

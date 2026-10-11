@@ -2259,4 +2259,5 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] OpenAPI 新增 image-prompts 查询、受理及取消 API，生成 TypeScript 并同步四语言 UI 与后端错误目录。V24 仅增加可编辑、不可删除的内置提示词，不改变表结构、jOOQ 或依赖；规格与 ADR 0045 已同步。真实 PostgreSQL 验证新安装及 V23 → V24 升级，保留已有 text.generate 的用户修改。
 - [x] 定向执行 ImagePromptInputServiceTest 10、ImagePromptPostgresIT 6、DirectTextGenerationWorkerTest 18、DirectTextGenerationPostgresIT 2、ApiI18nTest 7、MessageCatalogTest 2，共 45 个用例全部通过，无失败、错误或跳过；其中 8 个使用隔离 Testcontainers PostgreSQL 17.11。覆盖固定请求、并发幂等、权限/CSRF/来源 CAS、配置切换后重放、完整响应恢复不重发、取消发布屏障、用量、预览大小/资源关闭/事务边界和迁移。
 - [x] 定向执行 ImageReversePromptDialog、MediaCanvasCard、PromptManagementSection 三个 Vitest 文件，109 个用例全部通过。TypeScript、改动文件 ESLint、主题颜色、四语言 2451 键检查及 Vite 生产构建通过；构建保留既有大 chunk 提示。后端主源码与全部测试源码编译、最终 git diff --check 通过。
+- [x] 发布 PR 的 CI 发现 V24 使原生检查点历史升级测试的迁移数量从 2 变为 3；已在隔离 PostgreSQL 17.11 中定向复现，并将该场景的 V21 → V23 升级边界固定，保留全部旧数据与协议数量约束断言。执行 `./mvnw --batch-mode --no-transfer-progress -Pci-integration -Dit.test=FlywayBaselinePostgresIT verify`，20 项迁移测试全部通过，无失败、错误或跳过；包含最新迁移的新安装检查，未修改生产迁移。
 - [ ] 全量测试、真实视觉模型、浏览器端到端与部署未运行；后端模型为合成网关、图片为合成 PNG，前端请求为 Mock，不能证明具体外部模型支持图片理解或服务方会响应取消。没有修改运行服务或用户数据库；使用时需配置支持图片理解的文字模型，并随同步后端应用 V24 迁移。
