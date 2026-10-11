@@ -41,7 +41,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
-import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.ObjectMapper;
 
@@ -61,7 +60,8 @@ class ApprovedMediaAcceptanceTest {
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final CanvasItemQueryService cards = mock(CanvasItemQueryService.class);
     private final CanvasService canvas = mock(CanvasService.class);
-    private final MediaCapabilityService capabilities = mock(MediaCapabilityService.class, Answers.RETURNS_DEEP_STUBS);
+    // Optional protocol profiles stay absent for the Mock and ComfyUI capabilities used here.
+    private final MediaCapabilityService capabilities = mock(MediaCapabilityService.class);
     private final ProjectEventService events = mock(ProjectEventService.class);
     private final UsageService usage = mock(UsageService.class);
     private final AgentRunService runs = mock(AgentRunService.class);

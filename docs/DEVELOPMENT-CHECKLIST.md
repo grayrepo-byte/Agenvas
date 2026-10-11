@@ -2244,3 +2244,10 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 八类真实 PostgreSQL 专项 55 项通过：NativeMedia9、Kling9、MediaCapabilitySettings1、FlywayBaseline20、MediaDraftReplacement7、ImageFunction6、TaskMediaCompletion2、TaskQueueMetrics1；默认值修复后前三类共 19 项再次全部通过，不重复计数。运行 ci-integration 定向 verify；迁移、原 ID/Key 固定、UNKNOWN 不重提、清单原子归档、布局、图片派生、队列 epoch 与草稿 CAS 检查通过。
 - [x] 前端 25 个定向文件去重 574 项 Vitest 用例通过，另 i18n 脚本 6 项通过，无跳过；覆盖原生设置发布、地区地址、工作流输入、能力切换、草稿 session/保存恢复、模板与原生画幅预览。TypeScript、46 个合并变更 TS/TSX 的 ESLint、主题/四语言 2433 键、生产构建及差异空白检查通过；构建保留既有大 chunk 提示。
 - [ ] 全量测试、真实付费 Provider、浏览器端到端与部署未运行；检查使用临时 PostgreSQL、回环假 HTTP 与合成素材，没有修改运行服务或用户数据库。
+
+### PR #37 后端 CI 修复
+
+- [x] 修复结果清单 JSON 往返时 Java null 与 Jackson NullNode 不相等：`ProviderResultManifest` 的可选 usage/providerMetadata 顶层空值统一表示缺失，保留非空对象及对象内部表示未知的 null。新增五项回归覆盖旧清单缺失字段、显式 null、两种可选字段往返和非空元数据/用量；修复前三项失败，修复后全部通过。
+- [x] 媒体审批受理测试使用普通 Mock，避免深度 Mock 为 Mock/ComfyUI 能力自动构造不存在的原生/Kling profile；原有预检、批准受理、幂等、视频/音频和风格长度断言保留。
+- [x] 运行 `./mvnw --batch-mode --no-transfer-progress -Dtest=RunningHubAdapterTest,ApprovedMediaAcceptanceTest,ProviderResultManifestTest,MediaExecutionWorkerTest,TaskMediaCompletionTest test`，57 项单元测试全部通过；使用 ci-integration 定向 verify 运行 RunningHub 多输出清单恢复、ZIP 恢复及 NativeMedia 十七层元数据归档，3 项真实 PostgreSQL 测试全部通过，均无失败、错误或跳过。主源码及测试源码编译、打包与差异空白检查通过。
+- [ ] 本轮本地全量测试、真实 Provider、浏览器端到端与部署未运行；上游与素材为合成数据。API 合约、数据库迁移、依赖及 CI 工作流无改动。
