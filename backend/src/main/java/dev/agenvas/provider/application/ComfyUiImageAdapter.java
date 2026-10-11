@@ -17,38 +17,39 @@ import dev.agenvas.provider.infrastructure.ComfyUiInputImage;
 import dev.agenvas.provider.infrastructure.ComfyUiHistory;
 import dev.agenvas.provider.infrastructure.ComfyUiImageProperties;
 import dev.agenvas.provider.infrastructure.ComfyUiImageWorkflow;
-import dev.agenvas.provider.infrastructure.ComfyUiProperties;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Snapshot;
-import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.task.domain.Task;
-import dev.agenvas.settings.application.CredentialCipher;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.UUID;
 import javax.imageio.ImageIO;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /** Execute the pinned published image graph; legacy fixed graphs remain available for recovery. */
 @Component
 public class ComfyUiImageAdapter implements MediaAdapter {
-    private final JooqMediaCapabilityRepository catalog;
+    private final MediaCapabilityService catalog;
     private final ArtifactService artifacts;
     private final AssetService assets;
     private final ProjectService projects;
     private final ObjectMapper mapper;
-    private final CredentialCipher cipher;
+    private final ComfyUiClientFactory clients;
     private final ComfyUiPublishedWorkflow published;
 
-    public ComfyUiImageAdapter(JooqMediaCapabilityRepository catalog, ArtifactService artifacts,
-            AssetService assets, ProjectService projects, ObjectMapper mapper, CredentialCipher cipher, ComfyUiPublishedWorkflow published) {
+    // The catalog builds its registry from adapters; defer catalog resolution until execution.
+    public ComfyUiImageAdapter(@Lazy MediaCapabilityService catalog, ArtifactService artifacts,
+            AssetService assets, ProjectService projects, ObjectMapper mapper,
+            ComfyUiClientFactory clients, ComfyUiPublishedWorkflow published) {
         this.catalog = catalog;
         this.artifacts = artifacts;
         this.assets = assets;
         this.projects = projects;
         this.mapper = mapper;
-        this.cipher = cipher;
+        this.clients = clients;
         this.published = published;
     }
 
@@ -59,11 +60,11 @@ public class ComfyUiImageAdapter implements MediaAdapter {
     }
 
     @Override public Submission submit(AttemptContext context) {
-        Snapshot snapshot = snapshot(context);
-        ComfyUiClient client = client(snapshot);
+        Snapshot snapshot = catalog.pinnedSnapshot(context.binding());
+        ComfyUiClient client = clients.create(snapshot.connectionVersion());
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
         if (ComfyUiWorkflowDefinition.configured(settings)) return published.submit(context, client, settings);
-        ComfyUiImageWorkflow workflow = workflow(snapshot);
+        ComfyUiImageWorkflow workflow = workflow(settings);
         Task task = context.lease();
         UUID requestKey = UUID.fromString(context.requestKey());
         boolean reference = !FrozenMediaInputs.images(task).isEmpty();
@@ -77,8 +78,8 @@ public class ComfyUiImageAdapter implements MediaAdapter {
     }
 
     @Override public Submission reconcile(AttemptContext context) {
-        Snapshot snapshot = snapshot(context);
-        ComfyUiClient client = client(snapshot);
+        Snapshot snapshot = catalog.pinnedSnapshot(context.binding());
+        ComfyUiClient client = clients.create(snapshot.connectionVersion());
         var settings = mapper.readTree(snapshot.specJson()).path("settings");
         if (ComfyUiWorkflowDefinition.configured(settings)) return published.reconcile(context, client, settings);
         String promptId = context.originalRequestId();
@@ -97,39 +98,8 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         }
     }
 
-    private ComfyUiClient client(Snapshot snapshot) {
-        var version = snapshot.connectionVersion();
-        // Existing local versions have no ciphertext; newly configured full URLs are encrypted.
-        String origin = version.credentialCiphertext() == null ? version.origin()
-                : cipher.decryptMedia(version.connectionId(), version.version(),
-                        new CredentialCipher.Encrypted(version.credentialCiphertext(),
-                                version.credentialNonce(), version.credentialKeyVersion()));
-        if (origin == null || snapshot.connectionVersion().originSha256() == null) {
-            throw new IllegalStateException("Pinned ComfyUI origin is missing");
-        }
-        ComfyUiClient client = new ComfyUiClient(new ComfyUiProperties(origin), mapper);
-        if (!snapshot.connectionVersion().originSha256().equals(client.originSha256())) {
-            throw new IllegalStateException("Pinned ComfyUI origin fingerprint differs");
-        }
-        return client;
-    }
-
-    private Snapshot snapshot(AttemptContext context) {
-        var binding = context.binding();
-        Snapshot snapshot = catalog.snapshotAt(binding.capabilityId(),
-                binding.capabilityVersion(), binding.connectionId(),
-                binding.connectionVersion()).orElseThrow(() ->
-                new IllegalStateException("Pinned media capability version is missing"));
-        if (!binding.adapterId().equals(snapshot.adapterId())
-                || !binding.mappingSha256().equals(snapshot.mappingSha256())) {
-            throw new IllegalStateException("Pinned media adapter identity differs");
-        }
-        return snapshot;
-    }
-
-    private ComfyUiImageWorkflow workflow(Snapshot snapshot) {
-        String checkpoint = mapper.readTree(snapshot.specJson()).path("settings")
-                .path("checkpoint").asText();
+    private ComfyUiImageWorkflow workflow(JsonNode settings) {
+        String checkpoint = settings.path("checkpoint").asText();
         return new ComfyUiImageWorkflow(new ComfyUiImageProperties(checkpoint), mapper);
     }
 

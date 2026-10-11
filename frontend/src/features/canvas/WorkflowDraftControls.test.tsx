@@ -1,10 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { RunningHubDefinition } from "../../shared/api/client";
+import type { CreatorInputField, RunningHubDefinition } from "../../shared/api/client";
 import { changeControl, clickControl } from "../../test/controls";
-import type { RunningHubValue } from "./RunningHubForm";
-import { WorkflowMediaInputs, WorkflowParametersDialog, type WorkflowMediaChoice } from "./WorkflowDraftControls";
+import type { WorkflowValue } from "./workflowFields";
+import { WorkflowMediaInputs, WorkflowParameterFields, WorkflowParametersDialog, type WorkflowMediaChoice } from "./WorkflowDraftControls";
 
 const definition: RunningHubDefinition = {
   schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "synthetic-workflow",
@@ -34,9 +34,9 @@ const canvasChoices: WorkflowMediaChoice[] = [
   { id: "image-canvas", label: "画布图片 · v3", title: "画布图片", kind: "IMAGE", available: true },
 ];
 
-function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolean; initialValues?: Record<string, RunningHubValue> }) {
+function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolean; initialValues?: Record<string, WorkflowValue> }) {
   const [values, setValues] = useState(initialValues);
-  function change(key: string, value: RunningHubValue | undefined) {
+  function change(key: string, value: WorkflowValue | undefined) {
     setValues((previous) => { const next = { ...previous }; if (value === undefined) delete next[key]; else next[key] = value; return next; });
   }
   return <>{dialog ? <WorkflowParametersDialog open onOpenChange={() => {}} definition={definition} values={values} prompt="画面提示词" durationSeconds={45} onChange={change} />
@@ -45,6 +45,15 @@ function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolea
 }
 
 describe("WorkflowMediaInputs", () => {
+  it("displays native creator parameter descriptions without graph mapping labels", () => {
+    const field: CreatorInputField = { key: "aspect_ratio", label: "Aspect ratio", type: "SELECT", required: false,
+      advanced: false, description: "Only used for text-to-video; the first frame determines image-to-video proportions.",
+      options: [{ label: "16:9", value: "16:9" }] };
+    render(<WorkflowParameterFields definition={{ fields: [field] }} values={{ aspect_ratio: "16:9" }} prompt=""
+      durationSeconds={null} onChange={vi.fn()} />);
+    expect(screen.getByText(field.description!)).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Aspect ratio" })).toHaveTextContent("16:9");
+  });
   it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("uses the %s slot description for selection, clearing and unavailable-input feedback", async (kind) => {
     const label = `来源${kind}`;
     const field = { key: "source", label: "LoadMedia", description: label, type: kind, nodeId: "2", fieldName: "file", required: true, advanced: false };

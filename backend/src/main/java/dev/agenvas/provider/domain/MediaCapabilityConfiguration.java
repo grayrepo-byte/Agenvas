@@ -37,7 +37,10 @@ public final class MediaCapabilityConfiguration {
         if (source.has("defaultParameters")) {
             JsonNode parameters = source.get("defaultParameters");
             if (!parameters.isObject()) throw invalid(ApiMessage.of("api.media-capability-configuration.default-build-parameters-must-be-objects"));
-            if (adapter.kind() == Task.Kind.IMAGE_GENERATION) {
+            if (target.has("nativeInputs") || adapter.platform() == MediaPlatform.KLING && target.has("operation")) {
+                // Kling owns native scalar defaults. The compiled profile validates them before this step.
+                if (!target.has("defaultParameters")) throw KlingProtocol.invalid();
+            } else if (adapter.kind() == Task.Kind.IMAGE_GENERATION) {
                 ObjectNode imageParameters = (ObjectNode) parameters.deepCopy();
                 if (!imageParameters.has("quality") && source.has("quality")) {
                     imageParameters.set("quality", source.get("quality"));
@@ -53,6 +56,8 @@ public final class MediaCapabilityConfiguration {
                 var parsed = VideoGenerationParameters.parse(parameters);
                 if (adapter.platform() == MediaPlatform.MINIMAX) {
                     parsed = new VideoGenerationParameters(parsed.aspectRatio(), MiniMaxH3Protocol.resolution(parsed.videoResolution()));
+                } else if (adapter.platform() == MediaPlatform.KLING) {
+                    parsed = new VideoGenerationParameters(parsed.aspectRatio(), KlingProtocol.resolution(parsed.videoResolution()));
                 } else if (parsed.videoResolution() != null)
                     throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
                 target.set("defaultParameters", parsed.toJson(mapper));
@@ -62,11 +67,28 @@ public final class MediaCapabilityConfiguration {
         if (source.has("pricingByResolution")) {
             JsonNode prices = source.get("pricingByResolution");
             // Resolution prices are limited to protocols declaring selectable tiers.
-            if (adapter.platform() != MediaPlatform.AUTODL && adapter.platform() != MediaPlatform.MINIMAX || adapter.kind() != Task.Kind.VIDEO_GENERATION || !prices.isObject())
+            if (!target.has("nativeInputs") && !Set.of(MediaPlatform.AUTODL, MediaPlatform.MINIMAX, MediaPlatform.KLING).contains(adapter.platform())
+                    || adapter.kind() != Task.Kind.VIDEO_GENERATION || !prices.isObject())
                 throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
             ObjectNode normalized = target.putObject("pricingByResolution");
             for (String tier : prices.propertyNames()) {
-                if (adapter.platform() == MediaPlatform.MINIMAX) MiniMaxH3Protocol.resolution(tier);
+                if (target.has("nativeInputs")) {
+                    boolean supported = false;
+                    for (JsonNode field : target.path("nativeInputs")) if ("resolution".equals(field.path("key").asText()))
+                        for (JsonNode option : field.path("options")) if (tier.equals(option.path("value").asText())
+                                || "2160p".equals(tier) && "4k".equalsIgnoreCase(option.path("value").asText())) supported = true;
+                    if (!supported) throw NativeMediaProfiles.invalid();
+                } else if (adapter.platform() == MediaPlatform.MINIMAX) MiniMaxH3Protocol.resolution(tier);
+                else if (adapter.platform() == MediaPlatform.KLING) {
+                    KlingProtocol.resolution(tier);
+                    if (target.has("operation")) {
+                        var profile = KlingModels.resolve(target, adapter.kind());
+                        String nativeTier = "2160p".equals(tier) ? "4k" : tier;
+                        boolean supported = KlingModels.inputs(profile).stream().filter(field -> "resolution".equals(field.key()))
+                                .anyMatch(field -> field.options().stream().anyMatch(option -> nativeTier.equals(option.value().asText())));
+                        if (!supported) throw KlingProtocol.invalid();
+                    }
+                }
                 else AutoDlWorkflows.selectedResolution(target, tier);
                 normalized.set(tier, normalizePrice(mapper, adapter, prices.get(tier)));
             }

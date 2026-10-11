@@ -26,6 +26,13 @@ class DebugHttpCaptureTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TIMEOUT_SECONDS = 5;
 
+    @Test void nativeVideoDebugRemovesOmniThoughtSteps() {
+        try (var capture = DebugHttpCapture.open(ignored -> {})) {
+            String saved = capture.sanitizeJson("{\"steps\":[{\"type\":\"thought\",\"content\":[{\"type\":\"text\",\"text\":\"private-thought-marker\"}]},{\"type\":\"model_output\",\"content\":[{\"type\":\"video\",\"uri\":\"files/public-result\"}]}]}");
+            assertThat(saved).doesNotContain("private-thought-marker").contains("files/public-result", "model_output");
+        }
+    }
+
     @Test void llmDebugRedactsOnlyRegisteredRelaySignaturesAndPreservesOtherText() {
         String url = "https://example.com/media-relay/image.png?X-Amz-Credential=synthetic-id&X-Amz-Signature=synthetic-signature";
         try (var capture = DebugHttpCapture.openLlm(ignored -> {})) {

@@ -35,7 +35,7 @@
 | Image tools | Annotate, crop, rotate, mirror, resize, extract depth, and use configured AI editing capabilities |
 | Self-hosting | Model settings, local and OSS/COS/S3 storage, task and call records, and project manifest exports |
 
-The interface supports Chinese, English, Russian, and Japanese. Media adapters include GPT Image, Google Nano Banana, Volcano Ark Seedance, Seed Audio, fixed ComfyUI templates, and RunningHub V2 workflows / AI apps. Available operations depend on administrator-published capabilities.
+The interface supports Chinese, English, Russian, and Japanese. Media adapters include GPT Image, Google Nano Banana, Volcano Ark Seedance, the current Kling image/video generation model catalog, Wan images/videos, Seedream 5.0 images, Google Veo/Omni videos, Seed Audio, fixed ComfyUI templates, and RunningHub V2 workflows / AI apps. Available operations depend on administrator-published capabilities. See the [Kling integration guide](docs/kling-api-integration.md) for the API Key, regional endpoints, models, operations, and supported inputs. See the [native generation guide](docs/native-media-api-integration.md) for Wan, Seedream, and Google video configuration and parameters.
 
 ## Quick start
 

@@ -45,7 +45,7 @@ import tools.jackson.databind.ObjectMapper;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, AgentFailureRecoveryPostgresIT.FakeConfig.class},
         properties = {"agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false",
-                "agenvas.export.scheduler-enabled=false", "spring.main.allow-bean-definition-overriding=true"})
+                "spring.main.allow-bean-definition-overriding=true"})
 class AgentFailureRecoveryPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @DynamicPropertySource static void properties(DynamicPropertyRegistry registry) {

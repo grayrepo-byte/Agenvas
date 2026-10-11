@@ -44,5 +44,24 @@ public final class ProviderFailureCodes {
     public static final String MINIMAX_TASK_EXPIRED = "MINIMAX_TASK_EXPIRED";
     public static final String MINIMAX_RESULT_EXPIRED = "MINIMAX_RESULT_EXPIRED";
 
+    public static final String KLING_CREATE_REJECTED = "KLING_CREATE_REJECTED";
+    public static final String KLING_CREATE_UNCERTAIN = "KLING_CREATE_UNCERTAIN";
+    public static final String KLING_TASK_FAILED = "KLING_TASK_FAILED";
+    public static final String KLING_TASK_EXPIRED = "KLING_TASK_EXPIRED";
+    public static final String KLING_RESULT_EXPIRED = "KLING_RESULT_EXPIRED";
+
+    public static final String WAN_CREATE_REJECTED = "WAN_CREATE_REJECTED";
+    public static final String WAN_CREATE_UNCERTAIN = "WAN_CREATE_UNCERTAIN";
+    public static final String WAN_TASK_FAILED = "WAN_TASK_FAILED";
+    public static final String WAN_TASK_EXPIRED = "WAN_TASK_EXPIRED";
+    public static final String WAN_RESULT_EXPIRED = "WAN_RESULT_EXPIRED";
+    public static final String SEEDREAM_CREATE_REJECTED = "SEEDREAM_CREATE_REJECTED";
+    public static final String SEEDREAM_CREATE_UNCERTAIN = "SEEDREAM_CREATE_UNCERTAIN";
+    public static final String SEEDREAM_GENERATION_FAILED = "SEEDREAM_GENERATION_FAILED";
+    public static final String GOOGLE_VIDEO_CREATE_REJECTED = "GOOGLE_VIDEO_CREATE_REJECTED";
+    public static final String GOOGLE_VIDEO_TASK_FAILED = "GOOGLE_VIDEO_TASK_FAILED";
+    public static final String GOOGLE_VIDEO_TASK_EXPIRED = "GOOGLE_VIDEO_TASK_EXPIRED";
+    public static final String GOOGLE_VIDEO_RESULT_EXPIRED = "GOOGLE_VIDEO_RESULT_EXPIRED";
+
     private ProviderFailureCodes() {}
 }

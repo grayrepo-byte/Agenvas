@@ -1618,6 +1618,32 @@ paths:
         '401': {$ref: '#/components/responses/Unauthenticated'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '502': {description: Problem response, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+  /api/v1/settings/media-profiles:
+    get:
+      operationId: getNativeMediaProfiles
+      summary: 读取万相、Seedream 与 Google 视频的编译模型、操作和完整生成输入
+      tags: [Settings]
+      responses:
+        "200":
+          description: 服务端只读原生生成协议目录
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/NativeMediaProfiles"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/settings/kling/profiles:
+    get:
+      operationId: getKlingProfiles
+      summary: 读取应用编译的可灵图片与视频生成模型、操作及输入字段
+      tags: [Settings]
+      responses:
+        "200":
+          description: 创建和编辑能力时使用的只读协议目录
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/KlingProfiles"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
   /api/v1/settings/media-connections:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -4989,6 +5015,7 @@ components:
         traceId: {type: [string, "null"]}
         providerRequestId:
           type: [string, "null"]
+          maxLength: 512
           description: LLM 为响应正文的生成 ID（界面标为生成 ID），媒体为原 Provider 任务 ID；不代表 HTTP 响应头中的请求或追踪 ID。第三方响应关联 ID 见 DebugExchange.responseIdentifiers。
         errorCode: {type: [string, "null"]}
         startedAt: {type: string, format: date-time}
@@ -5022,11 +5049,11 @@ components:
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
-        platform: {type: string, enum: [LOCAL, MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE, AUTODL, RUNNINGHUB, MINIMAX]}
+        platform: {type: string, enum: [LOCAL, MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE, AUTODL, RUNNINGHUB, MINIMAX, KLING, WAN]}
         enabled: {type: boolean}
         version: {type: integer, format: int64, minimum: 0}
         connectionVersion: {type: integer, minimum: 1}
-        origin: {type: [string, "null"], description: "COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL; null uses the platform official endpoint."}
+        origin: {type: [string, "null"], description: "COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTPS root, or optional OPENAI/GOOGLE HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint."}
         keyMask: {type: [string, "null"]}
         connectivityStatus: {type: string, enum: [NOT_CHECKED]}
         realGenerationTested: {type: boolean}
@@ -5083,7 +5110,7 @@ components:
     FixedMediaAdapterSettings:
       type: object
       additionalProperties: false
-      description: Versioned settings within a compiled adapter protocol. New ComfyUI publication requires comfyWorkflow; legacy model-only capabilities retain their snapshot for recovery and metadata changes. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits narrow the published declaration. Pricing is an administrator estimate, never an actual provider charge.
+      description: Versioned settings within a compiled adapter protocol. New ComfyUI publication requires comfyWorkflow; legacy model-only capabilities retain their snapshot for recovery and metadata changes. OPENAI and GOOGLE image adapters accept a compatible model name and a connection API base URL; native video uses its fixed official protocol. Defaults fill missing draft fields; limits narrow the published declaration. Pricing is an administrator estimate, never an actual provider charge.
       properties:
         comfyWorkflow: {$ref: "#/components/schemas/ComfyUiWorkflowDefinition"}
         comfyInputs:
@@ -5092,6 +5119,26 @@ components:
           maxItems: 80
           description: Derived creator input metadata for a published ComfyUI graph. Includes declared scalar parameters and synthesized PROMPT, reference_0 through reference_13 IMAGE slots, and video DURATION_SECONDS. Does not expose the graph or fixed private literals. Ignored on administrator writes and recomputed by the server.
           items: {$ref: "#/components/schemas/RunningHubField"}
+        klingInputs:
+          type: array
+          readOnly: true
+          maxItems: 78
+          description: 服务端按可灵模型与操作派生的创建者输入字段。媒体槽通过精确版本 UUID 绑定，不能指定外部 URL；回调与外部任务 ID 由应用管理。
+          items: {$ref: "#/components/schemas/CreatorInputField"}
+        nativeInputs:
+          type: array
+          readOnly: true
+          maxItems: 256
+          description: 按原生生成模型与操作派生的受限字段，精确媒体版本 UUID 槽和标量参数；不接受 URL、回调、Key 或任意协议 JSON。
+          items: {$ref: "#/components/schemas/CreatorInputField"}
+        nativeReusableSlots:
+          type: array
+          readOnly: true
+          maxItems: 2
+          uniqueItems: true
+          description: 服务端声明可复用同一已授权精确图片版本的首尾帧槽；mediaInputs 仍只保留一个授权条目。管理员写入会被忽略并重新派生。
+          items: {type: string, enum: [first_frame, last_frame]}
+        operation: {type: string, enum: [GENERATE, MULTI_IMAGE, EXPAND, SUBJECT_COMPLETION, MOTION_CONTROL, LAYER_DECOMPOSITION, INTERACTIVE_EDIT, EDIT, EXTEND], description: 编译目录声明的原生生成操作；省略使用 GENERATE。可灵的模型无关操作 EXPAND 和 SUBJECT_COMPLETION 不接受 model。}
         runningHub: {$ref: "#/components/schemas/RunningHubDefinition"}
         workflowId: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$', description: AutoDL preset or administrator-published workflow ID. Must match workflowDefinition.id when a definition is present.}
         workflowDefinition: {$ref: '#/components/schemas/AutoDlWorkflowDefinition'}
@@ -5110,23 +5157,23 @@ components:
         vae: {type: string, maxLength: 160}
         clipVision: {type: string, maxLength: 160}
         quality: {type: string, enum: [low, medium, high]}
-        model: {type: string, maxLength: 120, pattern: "^([A-Za-z0-9][A-Za-z0-9._:/-]{0,119})?$", description: "Empty uses the compiled default; only OPENAI/GOOGLE accept this field. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
+        model: {type: string, maxLength: 120, pattern: "^([A-Za-z0-9][A-Za-z0-9._:/-]{0,119})?$", description: "OPENAI/GOOGLE accept provider model names; KLING_IMAGE/KLING_VIDEO use the compiled Kling profile catalog. Empty uses the compiled default. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1."}
         defaultParameters:
           $ref: "#/components/schemas/ImageGenerationParameters"
-          description: "Image defaults; video adapters accept aspectRatio only. Unsupported parameters are rejected."
+          description: "Image defaults; fixed video adapters accept their declared parameters. Native media adapters use dynamicValues derived from nativeInputs or klingInputs. Unsupported parameters are rejected."
         defaultDurationSeconds: {type: integer, minimum: 1, maximum: 30}
         minimumSeconds: {type: integer, minimum: 0, maximum: 30}
         maximumSeconds: {type: integer, minimum: 0, maximum: 30}
         maxReferenceImages: {type: integer, minimum: 0, maximum: 14}
-        maxReferenceAudios: {type: integer, minimum: 0, maximum: 3}
-        maxReferenceVideos: {type: integer, minimum: 0, maximum: 3}
+        maxReferenceAudios: {type: integer, minimum: 0, maximum: 14}
+        maxReferenceVideos: {type: integer, minimum: 0, maximum: 14}
         pricing: {$ref: "#/components/schemas/MediaCapabilityPricing"}
         pricingByResolution:
           type: object
           maxProperties: 16
           propertyNames: {pattern: '^[1-9][0-9]{2,3}p$'}
           additionalProperties: {$ref: '#/components/schemas/MediaCapabilityPricing'}
-          description: AutoDL published tiers or MINIMAX_H3 768p/1440p video estimates. Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost.
+          description: AutoDL published tiers, MINIMAX_H3 768p/1440p, or the declared KLING video model 720p/1080p/2160p tiers (2160p maps to native 4k). Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost.
     ComfyUiGraph:
       type: object
       minProperties: 1
@@ -5293,6 +5340,100 @@ components:
                 minimum: 1
                 maximum: 16
                 description: 按 Provider 结果及 ZIP 成员顺序选取此映射的前 N 个媒体结果。超出的结果和未映射附件跳过，不因返回数量超过上限而拒绝整个任务。
+    NativeMediaProfiles:
+      type: object
+      additionalProperties: false
+      required: [profiles]
+      properties:
+        profiles:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [adapterId, model, operation, kind, inputs, inputLimits]
+            properties:
+              adapterId: {type: string, enum: [WAN_IMAGE, WAN_VIDEO, ARK_SEEDREAM_IMAGE, GOOGLE_VEO, GOOGLE_OMNI_VIDEO]}
+              model: {type: string}
+              operation: {type: string, enum: [GENERATE, LAYER_DECOMPOSITION, INTERACTIVE_EDIT, EDIT, EXTEND]}
+              kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+              inputs:
+                type: array
+                maxItems: 256
+                items: {$ref: "#/components/schemas/CreatorInputField"}
+              inputLimits:
+                type: object
+                additionalProperties: false
+                required: [maxReferenceImages, maxReferenceVideos, maxReferenceAudios]
+                properties:
+                  maxReferenceImages: {type: integer, minimum: 0, maximum: 14}
+                  maxReferenceVideos: {type: integer, minimum: 0, maximum: 14}
+                  maxReferenceAudios: {type: integer, minimum: 0, maximum: 14}
+    KlingProfiles:
+      type: object
+      additionalProperties: false
+      required: [profiles]
+      properties:
+        profiles:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [adapterId, model, operation, kind, inputs]
+            properties:
+              adapterId: {type: string, enum: [KLING_IMAGE, KLING_VIDEO]}
+              model: {type: [string, "null"], description: 模型无关操作为 null。}
+              operation: {type: string, enum: [GENERATE, MULTI_IMAGE, EXPAND, SUBJECT_COMPLETION, MOTION_CONTROL]}
+              kind: {type: string, enum: [IMAGE_GENERATION, VIDEO_GENERATION]}
+              inputs:
+                type: array
+                maxItems: 78
+                items: {$ref: "#/components/schemas/CreatorInputField"}
+              inputLimits:
+                type: object
+                additionalProperties: false
+                required: [maxReferenceImages, maxReferenceVideos]
+                description: 模型全部合法组合中的素材总上限；命名槽数量不等于可同时填写的数量，运行另校验交叉限制。
+                properties:
+                  maxReferenceImages: {type: integer, minimum: 0, maximum: 14}
+                  maxReferenceVideos: {type: integer, minimum: 0, maximum: 14}
+    CreatorInputField:
+      type: object
+      additionalProperties: false
+      required: [key, label, type]
+      description: 创建者可编辑的协议输入，不含工作流图节点或传输目标。
+      properties:
+        key: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"}
+        label: {type: string, minLength: 1, maxLength: 160}
+        description: {type: [string, "null"], maxLength: 1000}
+        type: {type: string, enum: [STRING, NUMBER, INTEGER, BOOLEAN, SELECT, IMAGE, AUDIO, VIDEO]}
+        required: {type: boolean, default: false}
+        advanced: {type: boolean, default: false}
+        defaultValue:
+          oneOf:
+            - {$ref: "#/components/schemas/RunningHubScalar"}
+            - {type: "null"}
+        minimum: {type: [number, "null"]}
+        maximum: {type: [number, "null"]}
+        step: {type: [number, "null"], exclusiveMinimum: 0}
+        maxLength: {type: [integer, "null"], minimum: 1, maximum: 20000}
+        options:
+          type: [array, "null"]
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [label, value]
+            properties:
+              label: {type: string, minLength: 1, maxLength: 160}
+              value: {$ref: "#/components/schemas/RunningHubScalar"}
+        source: {type: [string, "null"], enum: [PARAMETER, PROMPT, DURATION_SECONDS, null]}
+        enabledWhen:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [field, value]
+          properties:
+            field: {type: string}
+            value: {$ref: "#/components/schemas/RunningHubScalar"}
     RunningHubField:
       type: object
       additionalProperties: false
@@ -5385,9 +5526,9 @@ components:
       required: [name, platform]
       properties:
         name: {type: string, minLength: 1, maxLength: 160}
-        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE, AUTODL, RUNNINGHUB, MINIMAX]}
-        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
-        apiKey: {type: [string, "null"], maxLength: 4096}
+        platform: {type: string, enum: [MOCK, COMFYUI, OPENAI, ARK, GOOGLE, VOLCENGINE, AUTODL, RUNNINGHUB, MINIMAX, KLING, WAN]}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
+        apiKey: {type: [string, "null"], maxLength: 4096, writeOnly: true, description: "Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential."}
     UpdateMediaConnectionRequest:
       type: object
       additionalProperties: false
@@ -5396,8 +5537,8 @@ components:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         name: {type: string, minLength: 1, maxLength: 160}
         enabled: {type: boolean}
-        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
-        apiKey: {type: [string, "null"], maxLength: 4096}
+        origin: {type: [string, "null"], maxLength: 500, description: "Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image."}
+        apiKey: {type: [string, "null"], maxLength: 4096, writeOnly: true, description: "Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential."}
     CreateMediaCapabilityRequest:
       type: object
       additionalProperties: false
@@ -5611,9 +5752,9 @@ components:
           required: [imageCount, videoCount, videoSeconds,
             llmRequestCount, inputTokens, outputTokens]
           properties:
-            imageCount: {type: integer, minimum: 0}
+            imageCount: {type: [integer, "null"], minimum: 0, description: 自动连续出图预留时数量未知，结算使用实际归档结果数。}
             videoCount: {type: integer, minimum: 0}
-            videoSeconds: {type: string, pattern: "^[0-9]+\\.[0-9]{3}$"}
+            videoSeconds: {type: [string, "null"], pattern: "^[0-9]+(\\.[0-9]{1,3})?$", description: 未声明输出时长的协议预留为 null，结算可采用已归档实际时长。}
             llmRequestCount: {type: integer, minimum: 0}
             inputTokens: {type: [integer, "null"], minimum: 0}
             outputTokens: {type: [integer, "null"], minimum: 0}
@@ -5927,7 +6068,7 @@ components:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         prompt: {type: string, maxLength: 20000}
         parameters: {$ref: "#/components/schemas/ImageGenerationParameters"}
-        durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 60, description: "RunningHub 的具名时长来源支持 1–60 整数秒；其他适配器仍按各自较小范围校验。未声明时长字段的 RunningHub 视频可以为 null。"}
+        durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 60, description: "草稿保存 1–60 整数秒并在能力切换时保留原时长；运行按所选适配器的范围校验。未声明时长字段的 RunningHub 视频和可灵动作控制可以为 null。"}
         capabilityId: {type: [string, "null"], format: uuid}
         styleId: {type: [string, "null"], format: uuid, description: Image/video only. Backend appends the selected preset after rendering media mentions; prompt remains user text. Disabled selections fail submission explicitly.}
         videoInputMode:
@@ -5936,7 +6077,7 @@ components:
             - {type: "null"}
         mediaInputs:
           type: array
-          maxItems: 8
+          maxItems: 14
           items: {$ref: "#/components/schemas/SaveMediaInput"}
         mentions:
           type: array
@@ -6073,7 +6214,7 @@ components:
         canvasItemId: {type: string, format: uuid}
         prompt: {type: string, maxLength: 20000}
         parameters: {$ref: "#/components/schemas/ImageGenerationParameters"}
-        durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 60, description: "RunningHub 的具名时长来源支持 1–60 整数秒；其他适配器仍按各自较小范围校验。未声明时长字段的 RunningHub 视频可以为 null。"}
+        durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 60, description: "草稿保存 1–60 整数秒并在能力切换时保留原时长；运行按所选适配器的范围校验。未声明时长字段的 RunningHub 视频和可灵动作控制可以为 null。"}
         capabilityId: {type: [string, "null"], format: uuid}
         styleId: {type: [string, "null"], format: uuid, description: Image/video only. Backend appends the selected preset after rendering media mentions; prompt remains user text. Disabled selections fail submission explicitly.}
         videoInputMode:
@@ -6113,7 +6254,7 @@ components:
         loudnessRate: {type: integer, minimum: -50, maximum: 100}
         pitchRate: {type: integer, minimum: -12, maximum: 12}
         aspectRatio: {type: string, enum: [AUTO, "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
-        videoResolution: {type: string, pattern: '^[1-9][0-9]{2,3}p$', description: "AutoDL published resolution tier or MINIMAX_H3 768p/1440p (official 768P/2K). Omitted uses the capability default. Frozen into accepted tasks."}
+        videoResolution: {type: string, pattern: '^[1-9][0-9]{2,3}p$', description: "AutoDL published resolution tier, MINIMAX_H3 768p/1440p (official 768P/2K), or KLING_VIDEO_3 720p/1080p/2160p (official 720p/1080p/4k). Omitted uses the capability default. Frozen into accepted tasks."}
         resolution: {type: string, enum: [1K, 2K, 4K]}
         quality: {type: string, enum: [low, medium, high]}
         transparentBackground: {type: boolean}
@@ -6829,7 +6970,7 @@ components:
               properties:
                 modelRetry: {$ref: "#/components/schemas/AgentModelRetry"}
             - {type: "null"}
-        providerRequestId: {type: [string, "null"]}
+        providerRequestId: {type: [string, "null"], maxLength: 512}
         attemptNo: {type: integer, minimum: 1}
         nextActionAt: {type: string, format: date-time}
         version: {type: integer, format: int64, minimum: 0}

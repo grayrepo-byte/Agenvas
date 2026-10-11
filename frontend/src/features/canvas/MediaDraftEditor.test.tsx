@@ -3,9 +3,11 @@ import { act,cleanup,fireEvent,render,screen,waitFor,within } from "@testing-lib
 import userEvent from "@testing-library/user-event";
 import { http,HttpResponse,type RequestHandler } from "msw";
 import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
-import type { Artifact,MediaCapability,MediaDraft,MediaSettings,SaveMediaDraftRequest,Task } from "../../shared/api/client";
+import type { Artifact,KlingProfile,MediaCapability,MediaDraft,MediaSettings,SaveMediaDraftRequest,Task } from "../../shared/api/client";
 import { changeControl,clickControl } from "../../test/controls";
 import { server } from "../../test/server";
+import { klingField, klingProfiles } from "../../test/klingProfiles";
+import { nativeCapability, nativePlatform, nativeProfiles } from "../../test/nativeProfiles";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { useCanvasStore } from "./canvasStore";
 
@@ -72,6 +74,22 @@ const audioSettings: MediaSettings = {
   connections: [{ ...settings.connections[0]!, platform: "VOLCENGINE", capabilities: [audioCapability] }],
   defaults: [{ kind: "AUDIO_GENERATION", capabilityId: audioCapability.id, version: 0 }],
 };
+function nativeKlingCapability(profile: KlingProfile): MediaCapability {
+  return { ...(profile.kind === "IMAGE_GENERATION" ? imageCapability : videoCapability),
+    id: "native-kling", name: "完整可灵", adapterId: profile.adapterId, kind: profile.kind,
+    supportedImageAspectRatios: [], supportedImageResolutions: [], supportedImageQualities: [],
+    maxReferenceImages: profile.inputLimits?.maxReferenceImages ?? profile.inputs.filter((field) => field.type === "IMAGE").length,
+    maxReferenceVideos: profile.inputLimits?.maxReferenceVideos ?? profile.inputs.filter((field) => field.type === "VIDEO").length,
+    maxReferenceAudios: profile.inputs.filter((field) => field.type === "AUDIO").length,
+    supportsTransparentBackground: false, supportsImageMask: false,
+    supportedVideoInputModes: profile.kind === "VIDEO_GENERATION" ? ["GENERAL_REFERENCE"] : [],
+    defaultVideoInputMode: profile.kind === "VIDEO_GENERATION" ? "GENERAL_REFERENCE" : null,
+    settings: { model: profile.model ?? "", operation: profile.operation, klingInputs: profile.inputs } };
+}
+function nativeKlingSettings(capability: MediaCapability): MediaSettings {
+  return { connections: [{ ...settings.connections[0]!, platform: "KLING", capabilities: [capability] }],
+    defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] };
+}
 function task(status: Task["status"]): Task {
   return { id: "task-direct", projectId: PROJECT_ID, runId: null,
     stepKey: "direct", kind: "IMAGE_GENERATION", status, cancelRequested: false,
@@ -117,6 +135,270 @@ describe("MediaDraftEditor", () => {
     // Closing can flush a debounced save; let it settle before the shared HTTP handlers reset.
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
+  });
+  it("runs one Wan request with finite image count and keeps sequential cost unknown", async () => {
+    const capability = nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "WAN_IMAGE")!);
+    capability.settings.pricing = { amount: "0.1", currency: "CNY", unit: "IMAGE" };
+    const generate = vi.fn();
+    const { saves } = setup({ settings: { ...nativeKlingSettings(capability), connections: [{ ...settings.connections[0]!, platform: "WAN", capabilities: [capability] }] },
+      draft: { ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: {} } }, handlers: [
+        http.post(`${BASE}/run`, () => { generate(); return HttpResponse.json(task("READY")); }),
+      ] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "扩展参数" }));
+    const dialog = screen.getByRole("dialog", { name: "扩展参数" });
+    const count = within(dialog).getByRole("spinbutton", { name: "Image count / sequential maximum" });
+    await user.clear(count); await user.type(count, "4");
+    expect(screen.getByText("预计 CNY 0.4")).toBeInTheDocument();
+    await changeControl(within(dialog).getByRole("combobox", { name: "Sequential images" }), { target: { value: "true" } });
+    await user.clear(count); await user.type(count, "12");
+    expect(screen.getByText("费用未知")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "尺寸与画质" })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({ dynamicValues: { n: 12, enable_sequential: true } }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+  });
+
+  it("retains Seedream group defaults and edits after a failed save", async () => {
+    const capability = nativeCapability(nativeProfiles.find((profile) => profile.model === "doubao-seedream-5-0-260128")!);
+    capability.settings.pricing = { amount: "0.1", currency: "CNY", unit: "IMAGE" };
+    setup({ settings: { ...nativeKlingSettings(capability), connections: [{ ...settings.connections[0]!, platform: "ARK", capabilities: [capability] }] },
+      draft: { ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: {} } }, handlers: [
+        http.put(DRAFT_URL, () => HttpResponse.json({ detail: "保存失败" }, { status: 503 })),
+      ] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "扩展参数" }));
+    await changeControl(screen.getByRole("combobox", { name: "Sequential images" }), { target: { value: "1" } });
+    const count = screen.getByRole("spinbutton", { name: "Maximum images" });
+    expect(count).toHaveValue(15);
+    await user.clear(count); await user.type(count, "6");
+    expect(screen.getByText("费用未知")).toBeInTheDocument();
+    await screen.findByRole("button", { name: "重试保存", hidden: true });
+    expect(count).toHaveValue(6);
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    cleanup();
+    expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]?.request.parameters)
+      .toEqual({ dynamicValues: { sequential_image_generation: "auto", max_images: 6 } });
+  });
+
+  it("uses Veo's catalog duration default and blocks invalid resolution-duration combinations", async () => {
+    const capability = nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "GOOGLE_VEO")!);
+    const generate = vi.fn();
+    const { saves } = setup({ kind: "VIDEO", settings: { ...nativeKlingSettings(capability), connections: [{ ...settings.connections[0]!, platform: "GOOGLE", capabilities: [capability] }] },
+      draft: { ...initialDraft, capabilityId: capability.id, durationSeconds: null, videoInputMode: "GENERAL_REFERENCE", parameters: { dynamicValues: {} } }, handlers: [
+        http.post(`${BASE}/run`, () => { generate(); return HttpResponse.json({ ...task("READY"), kind: "VIDEO_GENERATION" }); }),
+      ] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "扩展参数" }));
+    const dialog = screen.getByRole("dialog", { name: "扩展参数" });
+    const duration = within(dialog).getByRole("combobox", { name: "Duration (seconds)" });
+    expect(duration).toHaveTextContent("8");
+    await changeControl(duration, { target: { value: "0" } });
+    await changeControl(within(dialog).getByRole("combobox", { name: "Resolution" }), { target: { value: "1" } });
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ durationSeconds: 4, parameters: { dynamicValues: { resolution: "1080p" } } }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await screen.findByText("Veo 参考图、续接或高分辨率生成需要 8 秒时长。");
+    expect(generate).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "扩展参数" }));
+    await changeControl(screen.getByRole("combobox", { name: "Duration (seconds)" }), { target: { value: "2" } });
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(saves.at(-1)?.durationSeconds).toBe(8));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+  });
+
+  it("reuses one Google exact image version for both frames and retains it when one slot is cleared", async () => {
+    const capability = nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "GOOGLE_VEO")!);
+    capability.settings = { ...capability.settings, nativeReusableSlots: ["first_frame", "last_frame"] };
+    const { saves } = setup({ kind: "VIDEO", settings: { ...nativeKlingSettings(capability), connections: [{ ...settings.connections[0]!, platform: "GOOGLE", capabilities: [capability] }] },
+      draft: { ...initialDraft, capabilityId: capability.id, durationSeconds: null, videoInputMode: "GENERAL_REFERENCE",
+        parameters: { dynamicValues: { first_frame: "same-frame", personGeneration: "allow_adult" } },
+        mediaInputs: [{ versionId: "same-frame", artifactId: "reference-frame", role: "REFERENCE", order: 0, color: "#F15CAF", sources: [] }] }, handlers: [
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact, id: "reference-frame", title: "合成帧" }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-frame/versions`, () => HttpResponse.json({ items: [{ id: "same-frame", versionNo: 1, content: { assetId: "frame-asset" } }] })),
+      ] });
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: "清空first_frame" });
+    await user.click(screen.getByRole("button", { name: "添加参考素材" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    const candidate = await screen.findByRole("button", { name: "选择 合成帧 · v1" });
+    expect(candidate).toBeEnabled();
+    await user.click(candidate);
+    await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toMatchObject({ first_frame: "same-frame", last_frame: "same-frame" }));
+    expect(saves.at(-1)?.mediaInputs).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "清空last_frame" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ first_frame: "same-frame", personGeneration: "allow_adult" }));
+    expect(saves.at(-1)?.mediaInputs).toHaveLength(1);
+    expect(saves.at(-1)?.mediaInputs[0]?.versionId).toBe("same-frame");
+    await user.click(screen.getByRole("button", { name: "清空first_frame" }));
+    await waitFor(() => expect(saves.at(-1)?.mediaInputs).toEqual([]));
+  });
+
+  it("keeps Omni native duration separate and checks explicit image-to-video tasks", async () => {
+    const capability = nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "GOOGLE_OMNI_VIDEO")!);
+    capability.settings.pricing = { amount: "0.1", currency: "CNY", unit: "SECOND" };
+    const generate = vi.fn();
+    setup({ kind: "VIDEO", settings: { ...nativeKlingSettings(capability), connections: [{ ...settings.connections[0]!, platform: nativePlatform(capability.adapterId), capabilities: [capability] }] },
+      draft: { ...initialDraft, capabilityId: capability.id, durationSeconds: null, videoInputMode: "GENERAL_REFERENCE", parameters: { dynamicValues: { task: "image_to_video" } } }, handlers: [
+        http.post(`${BASE}/run`, () => { generate(); return HttpResponse.json({ ...task("READY"), kind: "VIDEO_GENERATION" }); }),
+      ] });
+    await screen.findByText("费用未知");
+    expect(screen.queryByRole("button", { name: "尺寸与画质" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await userEvent.setup().click(screen.getByRole("button", { name: "运行" }));
+    await screen.findByText("素材与所选生成任务不匹配，请调整任务或输入槽。");
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("edits native Kling n and series quantities, estimates them, and submits one task", async () => {
+    const profile = klingProfiles.find((item) => item.model === "kling-v3-omni")!;
+    const capability = nativeKlingCapability(profile);
+    capability.settings.defaultParameters = { dynamicValues: { n: 3, resolution: "2k" } };
+    capability.settings.pricing = { amount: "0.1", currency: "CNY", unit: "IMAGE" };
+    const generate = vi.fn();
+    const { saves } = setup({ settings: nativeKlingSettings(capability),
+      draft: { ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: {} } }, handlers: [
+        http.post(`${BASE}/run`, () => { generate(); return HttpResponse.json(task("READY")); }),
+      ] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "扩展参数" }));
+    const dialog = screen.getByRole("dialog", { name: "扩展参数" });
+    const count = within(dialog).getByRole("spinbutton", { name: "Image count" });
+    expect(count).toHaveValue(3);
+    expect(screen.queryByRole("button", { name: "尺寸与画质" })).not.toBeInTheDocument();
+    await user.clear(count); await user.type(count, "9");
+    expect(screen.getByText("预计 CNY 0.9")).toBeInTheDocument();
+    await changeControl(within(dialog).getByRole("combobox", { name: "Result type" }), { target: { value: "1" } });
+    await changeControl(within(dialog).getByRole("combobox", { name: "Series amount" }), { target: { value: "7" } });
+    expect(screen.getByText("预计 CNY 0.9")).toBeInTheDocument();
+    await changeControl(within(dialog).getByRole("combobox", { name: "Series amount" }), { target: { value: "8" } });
+    expect(screen.getByText("费用未知")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({ dynamicValues: {
+      n: 9, resolution: "2k", result_type: "series", series_amount: "auto",
+    } }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+  });
+
+  it("preserves native Kling scalar edits after a failed draft save", async () => {
+    const capability = nativeKlingCapability(klingProfiles[0]!);
+    const generate = vi.fn();
+    setup({ settings: nativeKlingSettings(capability), draft: { ...initialDraft, capabilityId: capability.id,
+      parameters: { dynamicValues: {} } }, handlers: [
+      http.put(DRAFT_URL, () => HttpResponse.json({ detail: "保存失败" }, { status: 503 })),
+      http.post(`${BASE}/run`, () => { generate(); return HttpResponse.json(task("READY")); }),
+    ] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "扩展参数" }));
+    const count = screen.getByRole("spinbutton", { name: "Image count" });
+    await user.clear(count); await user.type(count, "9");
+    await screen.findByRole("button", { name: "重试保存", hidden: true });
+    expect(count).toHaveValue(9);
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    await screen.findByRole("button", { name: "重试保存" });
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    expect(generate).not.toHaveBeenCalled();
+    cleanup();
+    expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]?.request.parameters)
+      .toEqual({ dynamicValues: { n: 9 } });
+  });
+
+  it("runs native Kling motion slots without draft duration and estimates archived video metadata", async () => {
+    const profile = klingProfiles.find((item) => item.operation === "MOTION_CONTROL")!;
+    const capability = nativeKlingCapability(profile);
+    capability.settings.pricing = { amount: "0.2", currency: "CNY", unit: "SECOND" };
+    const generate = vi.fn();
+    const { saves } = setup({ kind: "VIDEO", settings: nativeKlingSettings(capability),
+      draft: { ...initialDraft, capabilityId: capability.id, prompt: "", durationSeconds: null, videoInputMode: "GENERAL_REFERENCE",
+        parameters: { dynamicValues: { image_1: "character-version", motion_video: "motion-version" } },
+        mediaInputs: [{ versionId: "character-version", artifactId: "character", role: "REFERENCE", order: 0, color: "#F15CAF", sources: [] },
+          { versionId: "motion-version", artifactId: "motion", role: "VIDEO_REFERENCE", order: 1, color: "#67C7F3", sources: [] }] }, handlers: [
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+          { ...artifact, id: "character" }, { ...artifact, id: "motion", kind: "VIDEO" },
+        ] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/character/versions`, () => HttpResponse.json({ items: [{ id: "character-version", versionNo: 1, content: { assetId: "character-asset" } }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/motion/versions`, () => HttpResponse.json({ items: [{ id: "motion-version", versionNo: 1, content: { assetId: "motion-asset" } }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/assets/motion-asset`, () => HttpResponse.json({ id: "motion-asset", durationMs: 7500 })),
+        http.post(`${BASE}/run`, () => { generate(); return HttpResponse.json({ ...task("READY"), kind: "VIDEO_GENERATION" }); }),
+      ] });
+    await screen.findByText("预计 CNY 1.6 · 参考视频时长上限估算");
+    expect(screen.queryByRole("button", { name: "尺寸与画质" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await userEvent.setup().click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(generate).toHaveBeenCalledTimes(1));
+    expect(saves).toHaveLength(0);
+  });
+
+  it("keeps native Kling video drafts dynamic when adding the declared default reference mode", async () => {
+    const capability = nativeKlingCapability(klingProfiles.find((item) => item.model === "kling-3.0-turbo")!);
+    const { saves } = setup({ kind: "VIDEO", settings: nativeKlingSettings(capability), draft: { ...initialDraft,
+      capabilityId: capability.id, videoInputMode: "TEXT", parameters: { dynamicValues: { resolution: "1080p" } } } });
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ videoInputMode: "GENERAL_REFERENCE",
+      parameters: { dynamicValues: { resolution: "1080p" } }, durationSeconds: null }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "扩展参数" }));
+    expect(screen.getByRole("spinbutton", { name: "Duration (seconds)" })).toHaveValue(5);
+    expect(screen.getByRole("combobox", { name: "Resolution" })).toHaveTextContent("1080p");
+    expect(screen.queryByRole("button", { name: "选择视频输入模式" })).not.toBeInTheDocument();
+  });
+  it("estimates native Kling video resolution prices from dynamic provider tiers", async () => {
+    const capability = nativeKlingCapability(klingProfiles.find((item) => item.model === "kling-3.0")!);
+    capability.settings.pricingByResolution = {
+      "720p": { amount: "0.1", currency: "CNY", unit: "SECOND" },
+      "2160p": { amount: "0.35", currency: "CNY", unit: "SECOND" },
+    };
+    const { saves } = setup({ kind: "VIDEO", settings: nativeKlingSettings(capability), draft: {
+      ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: {} }, videoInputMode: "GENERAL_REFERENCE",
+    } });
+    await screen.findByText("预计 CNY 0.5");
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "扩展参数" }));
+    await changeControl(screen.getByRole("combobox", { name: "Resolution" }), { target: { value: "2" } });
+    expect(screen.getByText("预计 CNY 1.75")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({ dynamicValues: { resolution: "4k" } }));
+  });
+
+  it("keeps native Kling motion second pricing unknown before video duration is available", async () => {
+    const capability = nativeKlingCapability(klingProfiles.find((item) => item.operation === "MOTION_CONTROL")!);
+    capability.settings.pricing = { amount: "0.2", currency: "CNY", unit: "SECOND" };
+    setup({ kind: "VIDEO", settings: nativeKlingSettings(capability), draft: {
+      ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: {} }, videoInputMode: "GENERAL_REFERENCE",
+    } });
+    await screen.findByRole("button", { name: "扩展参数" });
+    expect(screen.getByText("费用未知")).toBeInTheDocument();
+  });
+  it.each(["IMAGE", "VIDEO"] as const)("checks native Kling simultaneous $kind reference limits before requesting a task", async (kind) => {
+    const profile = klingProfiles.find((item) => item.model === "kling-3.0-omni")!;
+    const capability = nativeKlingCapability({ ...profile, inputs: [...profile.inputs,
+      klingField("video_1", "First reference video", "VIDEO"), klingField("video_2", "Second reference video", "VIDEO"),
+    ] });
+    capability.maxReferenceImages = 1; capability.maxReferenceVideos = 1;
+    const keys = kind === "IMAGE" ? ["first_frame", "last_frame"] : ["video_1", "video_2"];
+    const inputs = keys.map((key, order) => ({ versionId: `${key}-version`, artifactId: key,
+      role: kind === "IMAGE" ? "REFERENCE" as const : "VIDEO_REFERENCE" as const,
+      order, color: order === 0 ? "#F15CAF" : "#67C7F3", sources: [] }));
+    const generate = vi.fn();
+    setup({ kind: "VIDEO", settings: nativeKlingSettings(capability), draft: { ...initialDraft,
+      capabilityId: capability.id, videoInputMode: "GENERAL_REFERENCE", mediaInputs: inputs,
+      parameters: { dynamicValues: Object.fromEntries(keys.map((key) => [key, `${key}-version`])) } }, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: keys.map((key) => ({ ...artifact, id: key, kind })) })),
+      ...keys.map((key) => http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/${key}/versions`, () => HttpResponse.json({ items: [
+        { id: `${key}-version`, versionNo: 1, content: { assetId: `${key}-asset` } },
+      ] }))),
+      http.post(`${BASE}/run`, () => { generate(); return HttpResponse.json(task("READY")); }),
+    ] });
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await userEvent.setup().click(screen.getByRole("button", { name: "运行" }));
+    await screen.findByText("所选素材超过该模型可同时使用的上限：图片 1、视频 1。");
+    expect(generate).not.toHaveBeenCalled();
   });
   it.each((["IMAGE", "VIDEO"] as const).flatMap((kind) =>
     (["READY", "SUBMITTING", "RUNNING", "WAITING_PROVIDER"] as const).flatMap((status) =>
@@ -388,6 +670,75 @@ describe("MediaDraftEditor", () => {
       .toBe("Unsaved local prompt");
   });
 
+  it("waits for an existing close-save before reopening without duplicating the PUT", async () => {
+    let release = () => {};
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const requests: SaveMediaDraftRequest[] = [];
+    let acknowledged = initialDraft;
+    const { client } = setup({ handlers: [
+      http.get(DRAFT_URL, () => HttpResponse.json(acknowledged)),
+      http.put(DRAFT_URL, async ({ request }) => {
+        const input = await request.json() as SaveMediaDraftRequest;
+        requests.push(input);
+        await pending;
+        acknowledged = { ...initialDraft, ...input, mediaInputs: [], version: 1 };
+        return HttpResponse.json(acknowledged);
+      }),
+    ] });
+    try {
+      const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
+      await waitFor(() => expect(prompt).toHaveAttribute("contenteditable", "true"));
+      prompt.textContent = "Wait for this acknowledged input";
+      fireEvent.input(prompt);
+      await waitFor(() => expect(requests).toHaveLength(1));
+      cleanup();
+      render(<QueryClientProvider client={client}><MediaDraftEditor artifact={artifact} canvasItemId={CANVAS_ITEM_ID} /></QueryClientProvider>);
+      expect(await screen.findByRole("status", { name: "正在保存工作草稿" })).toBeVisible();
+      expect(screen.queryByRole("textbox", { name: "图片提示词" })).not.toBeInTheDocument();
+      release();
+      expect(await screen.findByRole("textbox", { name: "图片提示词" })).toHaveTextContent("Wait for this acknowledged input");
+      expect(requests).toHaveLength(1);
+      expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, CANVAS_ITEM_ID])?.version).toBe(1);
+      expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]).toBeUndefined();
+    } finally { release(); }
+  });
+
+  it("finishes a closed resource commit without resaving its already acknowledged input", async () => {
+    let release = () => {};
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const requests: SaveMediaDraftRequest[] = [];
+    const { client } = setup({ handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, id: "reference-image", title: "合成参考图", resourceDefaultVersionId: "reference-v1" },
+      ] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => HttpResponse.json({ items: [
+        { id: "reference-v1", versionNo: 1, content: { assetId: "reference-asset" } },
+      ] })),
+      http.put(DRAFT_URL, async ({ request }) => {
+        const input = await request.json() as SaveMediaDraftRequest;
+        requests.push(input);
+        await pending;
+        return HttpResponse.json({ ...initialDraft, ...input, version: 1 });
+      }),
+    ] });
+    try {
+      const user = userEvent.setup();
+      await screen.findByRole("textbox", { name: "图片提示词" });
+      await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+      await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+      await user.click(await screen.findByRole("checkbox", { name: "选择 合成参考图 · v1" }));
+      await user.click(screen.getByRole("button", { name: "添加所选图片（1）" }));
+      await waitFor(() => expect(requests).toHaveLength(1));
+      cleanup();
+      expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]?.saving).toBe(true);
+      release();
+      await waitFor(() => expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]).toBeUndefined());
+      expect(requests).toHaveLength(1);
+      expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, CANVAS_ITEM_ID]))
+        .toMatchObject({ version: 1, mediaInputs: [{ versionId: "reference-v1" }] });
+    } finally { release(); }
+  });
+
   it.each([null, "versatile-video-capability"])("initializes an image-only video model in its supported reference mode (selection: %s)", async (capabilityId) => {
     const capability = { ...versatileVideoCapability, supportedVideoInputModes: ["GENERAL_REFERENCE"] as MediaCapability["supportedVideoInputModes"],
       defaultVideoInputMode: "GENERAL_REFERENCE" as const };
@@ -632,6 +983,52 @@ describe("MediaDraftEditor", () => {
       role: kind === "IMAGE" ? "REFERENCE" : kind === "VIDEO" ? "VIDEO_REFERENCE" : "AUDIO_REFERENCE" })]);
   });
 
+  it.each(["removed", "inactive"] as const)("does not redirect an open named picker when its slot becomes %s", async (change) => {
+    const capability: MediaCapability = { ...imageCapability, id: "changing-workflow", adapterId: "RUNNINGHUB_IMAGE",
+      settings: { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "synthetic-changing",
+        usePersonalQueue: false, addMetadata: false, fields: [
+          { key: "enabled", label: "启用目标", type: "BOOLEAN", defaultValue: true, nodeId: "1", fieldName: "enabled", required: false, advanced: false },
+          { key: "target", label: "目标素材", type: "IMAGE", enabledWhen: { field: "enabled", value: true }, nodeId: "2", fieldName: "image", required: false, advanced: false },
+          { key: "spare", label: "备用素材", type: "IMAGE", nodeId: "3", fieldName: "image", required: false, advanced: false },
+        ], outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+      } } };
+    const workflowSettings: MediaSettings = {
+      connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
+      defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }],
+    };
+    const { client, saves } = setup({ settings: workflowSettings,
+      draft: { ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: { target: "source-v1" } },
+        mediaInputs: [{ versionId: "source-v1", artifactId: "source-image", order: 0, role: "REFERENCE", color: "#F15CAF",
+          sources: [{ id: "manual-source", type: "MANUAL", connectionId: null }] }] },
+      handlers: [
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+          { ...artifact, id: "source-image", title: "合成图片", resourceDefaultVersionId: "source-v1" },
+        ] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/source-image/versions`, () => HttpResponse.json({ items: [1, 2].map((versionNo) => ({
+          id: `source-v${versionNo}`, versionNo, content: { assetId: `source-asset-${versionNo}` },
+        })) })),
+      ],
+    });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "选择目标素材" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    const replacement = await screen.findByRole("button", { name: "选择 合成图片 · v2" });
+    const definition = capability.settings.runningHub!;
+    const updatedCapability: MediaCapability = { ...capability, settings: { runningHub: { ...definition,
+      fields: change === "removed" ? definition.fields.filter((field) => field.key !== "target")
+        : definition.fields.map((field) => field.key === "enabled" ? { ...field, defaultValue: false } : field),
+    } } };
+    act(() => client.setQueryData(["media-settings"], { ...workflowSettings,
+      connections: [{ ...workflowSettings.connections[0]!, capabilities: [updatedCapability] }],
+    }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "选择目标素材" })).not.toBeInTheDocument());
+    await user.click(replacement);
+    expect(screen.getByRole("dialog", { name: "输入图片版本" })).toBeVisible();
+    expect(saves).toHaveLength(0);
+    expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, CANVAS_ITEM_ID])?.parameters.dynamicValues)
+      .toEqual({ target: "source-v1" });
+  });
+
   it("adds mixed workflow resources through one entry without filling earlier optional image slots", async () => {
     const kinds = ["IMAGE", "VIDEO", "AUDIO"] as const;
     const capability: MediaCapability = { ...imageCapability, id: "mixed-workflow-add", adapterId: "RUNNINGHUB_IMAGE",
@@ -860,6 +1257,72 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByText("预计 CNY 1.5")).toBeInTheDocument();
     await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({ aspectRatio: "16:9", videoResolution: "1440p" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+  });
+
+  it("saves Kling 4K video resolution, keeps native audio guidance and estimates its selected tier", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "kling", adapterId: "KLING_VIDEO_3", name: "可灵视频",
+      minimumSeconds: 3, maximumSeconds: 15, supportedVideoInputModes: ["TEXT", "START_END"], defaultVideoInputMode: "TEXT",
+      settings: { defaultParameters: { videoResolution: "1080p" }, pricingByResolution: {
+        "1080p": { amount: "0.1", currency: "CNY", unit: "SECOND" }, "2160p": { amount: "0.3", currency: "CNY", unit: "SECOND" } } } };
+    const { saves } = setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, platform: "KLING", capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
+      draft: { ...initialDraft, capabilityId: capability.id, videoInputMode: "TEXT", durationSeconds: 6, parameters: { aspectRatio: "16:9" } } });
+    expect(await screen.findByText("预计 CNY 0.6")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    const picker = screen.getByRole("dialog", { name: "尺寸与画质设置" });
+    expect(within(picker).getByText(/保留原生音轨/)).toBeInTheDocument();
+    expect(within(picker).getByRole("spinbutton", { name: "时长（秒）" })).toHaveAttribute("min", "3");
+    expect(within(picker).getByRole("spinbutton", { name: "时长（秒）" })).toHaveAttribute("max", "15");
+    await user.click(within(picker).getByRole("radio", { name: "4K" }));
+    expect(screen.getByText("预计 CNY 1.8")).toBeInTheDocument();
+    await waitFor(() => expect(saves.at(-1)?.parameters).toEqual({ aspectRatio: "16:9", videoResolution: "2160p" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+  });
+
+  it("keeps a 60-second RunningHub draft editable after switching to Kling and blocks generation until duration is adjusted", async () => {
+    const runningHub: MediaCapability = { ...videoCapability, id: "rh-long-video", name: "长视频工作流", adapterId: "RUNNINGHUB_VIDEO",
+      minimumSeconds: 1, maximumSeconds: 60, supportedVideoInputModes: ["TEXT"], defaultVideoInputMode: "TEXT", settings: { runningHub: {
+        schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false, addMetadata: false,
+        fields: [
+          { key: "positive", label: "提示词", type: "STRING", source: "PROMPT", nodeId: "1", fieldName: "text", required: true, advanced: false },
+          { key: "seconds", label: "时长", type: "INTEGER", source: "DURATION_SECONDS", nodeId: "2", fieldName: "duration", required: true, advanced: false, minimum: 1, maximum: 60 },
+        ], outputs: [{ kind: "VIDEO", primary: true, maxCount: 1 }],
+      } } };
+    const kling: MediaCapability = { ...videoCapability, id: "kling-video", name: "可灵视频", adapterId: "KLING_VIDEO_3",
+      minimumSeconds: 3, maximumSeconds: 15, supportedVideoInputModes: ["TEXT", "START_END"], defaultVideoInputMode: "TEXT", settings: {} };
+    let runs = 0;
+    const { saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, capabilityId: runningHub.id, durationSeconds: 60,
+      videoInputMode: "TEXT", parameters: { dynamicValues: {} } },
+      settings: { connections: [
+        { ...settings.connections[0]!, platform: "RUNNINGHUB", capabilities: [runningHub] },
+        { ...settings.connections[0]!, id: "kling-connection", platform: "KLING", capabilities: [kling] },
+      ], defaults: [{ kind: "VIDEO_GENERATION", capabilityId: runningHub.id, version: 0 }] },
+      handlers: [http.post(`${BASE}/run`, () => { runs++; return HttpResponse.json({ ...task("READY"), kind: "VIDEO_GENERATION" }); })],
+    });
+    const user = userEvent.setup();
+    const model = await screen.findByRole("button", { name: "选择生成模型" });
+    await waitFor(() => expect(model).toBeEnabled());
+    await user.click(model);
+    await user.click(screen.getByRole("menuitemradio", { name: /可灵视频/ }));
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ capabilityId: kling.id, durationSeconds: 60,
+      parameters: { aspectRatio: "AUTO", videoResolution: "1080p" } }));
+    expect(saves.at(-1)?.parameters).not.toHaveProperty("dynamicValues");
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    expect(screen.getByRole("dialog", { name: "请检查生成输入" })).toHaveTextContent("时长");
+    expect(runs).toBe(0);
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    const duration = within(screen.getByRole("dialog", { name: "尺寸与画质设置" })).getByRole("spinbutton", { name: "时长（秒）" });
+    expect(duration).toHaveValue(60);
+    expect(duration).not.toBeDisabled();
+    fireEvent.change(duration, { target: { value: "6" } });
+    await waitFor(() => expect(saves.at(-1)).toMatchObject({ capabilityId: kling.id, durationSeconds: 6 }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(runs).toBe(1));
   });
 
   it("saves a selected AutoDL tier and updates its exact estimate", async () => {

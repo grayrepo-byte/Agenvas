@@ -129,7 +129,9 @@ class ComfyUiVideoDisabledPostgresIT {
         tasks.waitForProvider(lease, "original-submitter", requestId.toString(),
                 Instant.now().plusSeconds(1));
         var publishedConnection = catalog.getConnection(connection);
-        catalog.setConnectionEnabled(connection, publishedConnection.version(), false);
+        var connectionVersion = catalog.getConnectionVersion(connection, publishedConnection.currentVersion()).orElseThrow();
+        catalog.updateConnection(connection, publishedConnection.version(), publishedConnection.name(), false,
+                connectionVersion.origin(), null);
         assertThat(worker.submitOnce("disabled-connection-submitter")).isZero();
         jdbc.sql("update task set next_action_at = now() - interval '1 second' where id = :id")
                 .param("id", task.id()).update();

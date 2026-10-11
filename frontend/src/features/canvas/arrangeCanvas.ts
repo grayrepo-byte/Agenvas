@@ -1,8 +1,5 @@
 export const CANVAS_ARRANGE_COLUMNS = 5;
 export const CANVAS_ARRANGE_GAP = { x: 80, y: 120 };
-/** The existing canvas command API accepts at most 100 commands per transaction. */
-export const CANVAS_LAYOUT_BATCH_SIZE = 100;
-
 export type ArrangeNode = {
   id: string; x: number; y: number; width: number; height: number; locked: boolean;
 };

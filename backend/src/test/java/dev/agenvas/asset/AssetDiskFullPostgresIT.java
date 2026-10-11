@@ -55,9 +55,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @Import(AssetDiskFullPostgresIT.FaultConfiguration.class)
-@SpringBootTest(classes = AgenvasApplication.class,
-        properties = {
-                "agenvas.export.scheduler-enabled=false"})
+@SpringBootTest(classes = AgenvasApplication.class)
 class AssetDiskFullPostgresIT {
 
     @Container

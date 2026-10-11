@@ -134,6 +134,10 @@ class CallLogServiceTest {
         assertThat(CallLogService.safeIdentifier("https://provider.invalid/v1")).isNull();
         assertThat(CallLogService.safeIdentifier("model-v2.1/image")).isEqualTo("model-v2.1/image");
         assertThat(CallLogService.safeRequestId("Bearer secret")).isNull();
+        String nativeId = "models/veo-3.1-generate-preview/operations/" + "x".repeat(300);
+        assertThat(CallLogService.safeRequestId(nativeId)).isEqualTo(nativeId);
+        assertThat(CallLogService.safeRequestId("https://provider.invalid/operations/synthetic")).isNull();
+        assertThat(CallLogService.safeRequestId("x".repeat(513))).isNull();
         assertThat(CallLogService.safeErrorCode("provider failure with private details")).isNull();
         assertThat(CallLogService.safeErrorCode("PROVIDER_TIMEOUT")).isEqualTo("PROVIDER_TIMEOUT");
     }

@@ -121,7 +121,7 @@ public class Task extends TableImpl<TaskRecord> {
      * The column <code>public.task.provider_request_id</code>.
      * 外部已受理请求标识，供状态查询与结果归档
      */
-    public final TableField<TaskRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(240), this, "外部已受理请求标识，供状态查询与结果归档");
+    public final TableField<TaskRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(512), this, "外部已受理请求标识，供状态查询与结果归档");
 
     /**
      * The column <code>public.task.attempt_no</code>. 用户批准的独立执行尝试序号
@@ -447,7 +447,7 @@ public class Task extends TableImpl<TaskRecord> {
             Internal.createCheck(this, DSL.name("ck_task_lease_epoch_non_negative"), "((lease_epoch >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_lease_pair"), "((((lease_owner IS NULL) AND (lease_until IS NULL)) OR ((lease_owner IS NOT NULL) AND (lease_until IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_media_binding"), "((((capability_id IS NULL) AND (capability_version IS NULL) AND (connection_id IS NULL) AND (connection_version IS NULL)) OR ((capability_id IS NOT NULL) AND (capability_version IS NOT NULL) AND (connection_id IS NOT NULL) AND (connection_version IS NOT NULL))))", true),
-            Internal.createCheck(this, DSL.name("ck_task_provider_result_manifest"), "(((provider_result_manifest IS NULL) OR COALESCE(((jsonb_typeof(provider_result_manifest) = 'object'::text) AND ((provider_result_manifest ->> 'schemaVersion'::text) = '1'::text) AND (jsonb_typeof((provider_result_manifest -> 'results'::text)) = 'array'::text) AND ((jsonb_array_length((provider_result_manifest -> 'results'::text)) >= 1) AND (jsonb_array_length((provider_result_manifest -> 'results'::text)) <= 16))), false)))", true),
+            Internal.createCheck(this, DSL.name("ck_task_provider_result_manifest"), "(((provider_result_manifest IS NULL) OR COALESCE(((jsonb_typeof(provider_result_manifest) = 'object'::text) AND ((provider_result_manifest ->> 'schemaVersion'::text) = '1'::text) AND (jsonb_typeof((provider_result_manifest -> 'results'::text)) = 'array'::text) AND ((jsonb_array_length((provider_result_manifest -> 'results'::text)) >= 1) AND (jsonb_array_length((provider_result_manifest -> 'results'::text)) <=\nCASE\n    WHEN ((input_json ->> 'providerProtocol'::text) = 'NATIVE_MEDIA'::text) THEN 17\n    ELSE 16\nEND))), false)))", true),
             Internal.createCheck(this, DSL.name("ck_task_run_scope"), "(((run_id IS NOT NULL) OR ((kind)::text = ANY ((ARRAY['TEXT_GENERATION'::character varying, 'IMAGE_GENERATION'::character varying, 'VIDEO_GENERATION'::character varying, 'AUDIO_GENERATION'::character varying])::text[]))))", true),
             Internal.createCheck(this, DSL.name("ck_task_status"), "(((status)::text = ANY ((ARRAY['READY'::character varying, 'RUNNING'::character varying, 'SUBMITTING'::character varying, 'WAITING_PROVIDER'::character varying, 'UNKNOWN'::character varying, 'BLOCKED'::character varying, 'SUCCEEDED'::character varying, 'FAILED'::character varying, 'CANCELED'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_task_step_key_not_blank"), "((length(btrim((step_key)::text)) > 0))", true),

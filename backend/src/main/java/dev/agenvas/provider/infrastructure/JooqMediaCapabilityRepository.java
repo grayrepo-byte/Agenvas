@@ -159,17 +159,6 @@ public class JooqMediaCapabilityRepository {
                         row.getCredentialKeyVersion(), row.getKeyMask()));
     }
 
-    public boolean updateConnectionEnabled(UUID id, long expectedVersion, boolean enabled,
-            Instant now) {
-        return dsl.update(MEDIA_PROVIDER_CONNECTION)
-                .set(MEDIA_PROVIDER_CONNECTION.ENABLED, enabled)
-                .set(MEDIA_PROVIDER_CONNECTION.VERSION, MEDIA_PROVIDER_CONNECTION.VERSION.plus(1))
-                .set(MEDIA_PROVIDER_CONNECTION.UPDATED_AT, atUtc(now))
-                .where(MEDIA_PROVIDER_CONNECTION.ID.eq(id))
-                .and(MEDIA_PROVIDER_CONNECTION.VERSION.eq(expectedVersion))
-                .execute() == 1;
-    }
-
     public void insertCapability(UUID id, UUID connectionId, String name, String adapterId,
             String mappingSha256, String specJson, Instant now) {
         dsl.insertInto(MEDIA_CAPABILITY)

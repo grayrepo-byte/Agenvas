@@ -54,6 +54,13 @@ public class ApiExceptionHandler {
                 null);
     }
 
+    @ExceptionHandler(dev.agenvas.provider.domain.NativeMediaFailure.class)
+    ResponseEntity<ProblemDetail> handleNativeMedia(dev.agenvas.provider.domain.NativeMediaFailure exception, HttpServletRequest request) {
+        return build(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY, exception.code(),
+                dev.agenvas.shared.i18n.ApiMessage.of("api.native-media.invalid-title"),
+                dev.agenvas.shared.i18n.ApiMessage.of("api.native-media.invalid"), false, request, null);
+    }
+
     /** 映射请求体校验错误，不回显被拒绝的字段值。 */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ProblemDetail> handleInvalidBody(

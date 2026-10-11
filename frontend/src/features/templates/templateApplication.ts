@@ -1,7 +1,7 @@
 import type { MediaCapability, MediaTemplateImport, MediaTemplateKind } from "../../shared/api/client";
 import { t } from "../../shared/i18n";
 import type { MediaDraftFields } from "../canvas/mediaDraftCapability";
-import { runningHubFieldValue } from "../canvas/RunningHubForm";
+import { evaluateWorkflowFields, isWorkflowMediaField } from "../canvas/workflowFields";
 import { MENTION_MARKER, promptForMediaInputs } from "../canvas/mediaPrompt";
 import { workflowDefinition, workflowDraftValues } from "../canvas/workflowDraft";
 
@@ -30,10 +30,8 @@ export function templateImageSlots(capability: MediaCapability | undefined, fiel
   const definition = workflowDefinition(capability);
   if (!definition) return [];
   const values = workflowDraftValues(capability, fields);
-  const effective = Object.fromEntries(definition.fields.map((field) => [field.key,
-    runningHubFieldValue(field, values, fields.prompt, fields.durationSeconds)]));
-  return definition.fields.filter((field) => field.type === "IMAGE" && (field.source == null || field.source === "PARAMETER")
-    && (!field.enabledWhen || effective[field.enabledWhen.field] === field.enabledWhen.value));
+  return evaluateWorkflowFields(definition, values, fields.prompt, fields.durationSeconds).activeFields
+    .filter((field) => field.type === "IMAGE" && (field.source == null || field.source === "PARAMETER"));
 }
 
 /** Templates cannot write a prompt when the published workflow exposes no active prompt input. */
@@ -42,10 +40,8 @@ export function templatePromptEnabled(capability: MediaCapability | undefined, f
   if (!definition) return true;
   const prompt = definition.fields.find((field) => field.source === "PROMPT");
   if (!prompt) return false;
-  if (!prompt.enabledWhen) return true;
-  const condition = definition.fields.find((field) => field.key === prompt.enabledWhen?.field);
-  return Boolean(condition && runningHubFieldValue(condition, workflowDraftValues(capability, fields), fields.prompt,
-    fields.durationSeconds) === prompt.enabledWhen.value);
+  return evaluateWorkflowFields(definition, workflowDraftValues(capability, fields), fields.prompt,
+    fields.durationSeconds).activeFields.includes(prompt);
 }
 
 /** Validate the whole replacement before importing bytes; no reference is silently truncated. */
@@ -101,7 +97,7 @@ export function templateDraftChanges(kind: MediaTemplateKind, fields: MediaDraft
     const dynamicValues = workflowDraftValues(capability, fields);
     // Replaced references must not linger in dynamic fields after leaving the reference list.
     for (const field of definition.fields) {
-      if (["IMAGE", "VIDEO", "AUDIO"].includes(field.type)) delete dynamicValues[field.key];
+      if (isWorkflowMediaField(field)) delete dynamicValues[field.key];
     }
     imported.images.forEach((image, index) => { dynamicValues[options.imageSlots[index]!] = image.versionId; });
     changes.parameters = { ...fields.parameters, dynamicValues };

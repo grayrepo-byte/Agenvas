@@ -102,6 +102,57 @@ class UsageMediaPricingTest {
                 task.updatedAt(), task.completedAt());
     }
 
+    @Test
+    void klingBatchReservesRequestedImagesAndSettlesArchivedCount() {
+        UsageService service = service();
+        Task task = task(Task.Kind.IMAGE_GENERATION, "{\"amount\":\"0.2\",\"currency\":\"CNY\",\"unit\":\"IMAGE\"}");
+        var input = (tools.jackson.databind.node.ObjectNode) task.input();
+        input.put("providerProtocol", "KLING").put("expectedImageCount", 4);
+        service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED", 7);
+        service.settleMediaTask(UUID.randomUUID(), task, 3, null);
+        assertThat(entries.getFirst().quantity().path("imageCount").asInt()).isEqualTo(4);
+        assertThat(entries.getFirst().estimatedCost()).isEqualByComparingTo("0.8");
+        assertThat(entries.getLast().quantity().path("imageCount").asInt()).isEqualTo(3);
+        assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("0.6");
+        assertThat(entries.getLast().actualCost()).isNull();
+    }
+
+    @Test
+    void klingAutoSeriesAndMotionKeepUnknownReservationsUntilArchive() {
+        UsageService service = service();
+        Task image = task(Task.Kind.IMAGE_GENERATION, "{\"amount\":\"0.2\",\"currency\":\"CNY\",\"unit\":\"IMAGE\"}");
+        ((tools.jackson.databind.node.ObjectNode) image.input()).put("providerProtocol", "KLING").putNull("expectedImageCount");
+        service.reserveMediaTask(UUID.randomUUID(), image, "PROVIDER_UNPRICED", 7);
+        assertThat(entries.getLast().estimatedCost()).isNull();
+        assertThat(entries.getLast().quantity().path("imageCount").isNull()).isTrue();
+        service.settleMediaTask(UUID.randomUUID(), image, 7, null);
+        assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("1.4");
+        Task video = task(Task.Kind.VIDEO_GENERATION, "{\"amount\":\"0.1\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}");
+        var input = (tools.jackson.databind.node.ObjectNode) video.input();
+        input.put("providerProtocol", "KLING"); input.remove("durationSeconds");
+        service.reserveMediaTask(UUID.randomUUID(), video, "PROVIDER_UNPRICED", 7);
+        assertThat(entries.getLast().estimatedCost()).isNull();
+        assertThat(entries.getLast().quantity().path("videoSeconds").isNull()).isTrue();
+        service.settleMediaTask(UUID.randomUUID(), video, 0, new java.math.BigDecimal("4.321"));
+        assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("0.4321");
+        Task precise = task(Task.Kind.VIDEO_GENERATION, "{\"amount\":\"0.000001\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}");
+        ((tools.jackson.databind.node.ObjectNode) precise.input()).put("providerProtocol", "KLING");
+        service.settleMediaTask(UUID.randomUUID(), precise, 0, new java.math.BigDecimal("5.033"));
+        assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("0.000005");
+    }
+
+    @Test void nativeReferenceVideoReservationIncludesPinnedInputSecondsAndSettlementUsesActualTotal() {
+        UsageService service = service();
+        Task video = task(Task.Kind.VIDEO_GENERATION, "{\"amount\":\"0.1\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}");
+        ((tools.jackson.databind.node.ObjectNode) video.input()).put("providerProtocol", "NATIVE_MEDIA").put("nativeBillableInputSeconds", new java.math.BigDecimal("3.250"));
+        service.reserveMediaTask(UUID.randomUUID(), video, "PROVIDER_UNPRICED", 7);
+        assertThat(entries.getFirst().quantity().path("videoSeconds").asText()).isEqualTo("11.250");
+        assertThat(entries.getFirst().estimatedCost()).isEqualByComparingTo("1.125");
+        service.settleMediaTask(UUID.randomUUID(), video, 0, new java.math.BigDecimal("9.750"));
+        assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("0.975");
+        assertThat(entries.getLast().actualCost()).isNull();
+    }
+
     private UsageService service() {
         when(ledger.insertOnce(any())).thenAnswer(invocation -> {
             entries.add(invocation.getArgument(0)); return true;

@@ -1,6 +1,9 @@
 package dev.agenvas.library;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -13,20 +16,26 @@ import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.application.PrivateMediaArchive;
+import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.library.application.LibraryService;
+import dev.agenvas.library.domain.LibraryCommand;
+import dev.agenvas.library.infrastructure.LibraryRepository;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.testing.ImageAssetFixture;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,9 +45,13 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.web.context.WebApplicationContext;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -61,10 +74,13 @@ class LibraryRecoveryPostgresIT {
     @Autowired IdentityService identities;
     @Autowired ProjectService projects;
     @Autowired ArtifactService artifacts;
-    @Autowired AssetService assets;
+    @MockitoSpyBean AssetService assets;
     @Autowired CanvasService canvas;
     @Autowired ProjectEventService events;
     @Autowired LibraryService library;
+    @Autowired LibraryRepository repository;
+    @Autowired PlatformTransactionManager transactionManager;
+    @Autowired Clock clock;
     @Autowired PrivateMediaArchive archive;
     @Autowired dev.agenvas.asset.infrastructure.MediaToolRunner tools;
     @Autowired ObjectMapper mapper;
@@ -182,6 +198,94 @@ class LibraryRecoveryPostgresIT {
         assertThat(read(draftPath).path("mediaInputs").size()).isZero();
         assertThat(read("/api/v1/projects/" + card.project() + "/artifacts").path("items").size()).isEqualTo(1);
         assertThat(read("/api/v1/projects/" + card.project() + "/snapshot").path("snapshotSeq").asLong()).isEqualTo(seq);
+    }
+
+    @Test void rollsBackASupersededImportAfterFileInstallationAndRecoversThePinnedReferenceOnce() throws Exception {
+        Card card = image();
+        String saved = postJson(source(card), saveRequest(card, "superseded-import-source"), 202).path("id").asText();
+        assertThat(library.processNext()).isTrue();
+        String entry = command(saved).path("result").path("entryId").asText();
+        String draftPath = "/api/v1/projects/" + card.project() + "/canvas-items/" + card.item() + "/media-draft";
+        JsonNode beforeDraft = read(draftPath);
+        var request = Map.of("entryId", entry, "expectedVersion", 0, "commandKey", "superseded-reference",
+                "draft", Map.of("expectedVersion", beforeDraft.path("version").asLong(), "prompt", "冻结的参考输入",
+                        "parameters", Map.of(), "mediaInputs", List.of(), "mentions", List.of()),
+                "role", "REFERENCE", "color", "#67C7F3");
+        String path = "/api/v1/projects/" + card.project() + "/canvas-items/" + card.item() + "/library-references";
+        UUID commandId = UUID.fromString(postJson(path, request, 202).path("id").asText());
+        Path pin = archive.pinned(owner.userId(), library.command(owner.userId(), commandId).input().path("pin").asText());
+        long beforeSeq = read("/api/v1/projects/" + card.project() + "/snapshot").path("snapshotSeq").asLong();
+        long beforeEvents = jdbc.sql("SELECT count(*) FROM project_event WHERE project_id=:project")
+                .param("project", card.project()).query(Long.class).single();
+        AtomicReference<Asset> installed = new AtomicReference<>();
+        AtomicReference<LibraryCommand> replacement = new AtomicReference<>();
+        AtomicBoolean takeOver = new AtomicBoolean(true);
+        var tx = new TransactionTemplate(transactionManager);
+        doAnswer(invocation -> {
+            Asset prepared = (Asset) invocation.callRealMethod();
+            if (takeOver.getAndSet(false)) {
+                installed.set(prepared);
+                assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                assertThat(Files.isRegularFile(ROOT.resolve(prepared.objectKey()))).isTrue();
+                LibraryCommand previous = library.command(owner.userId(), commandId);
+                assertThat(previous.status()).isEqualTo(LibraryCommand.Status.ARCHIVING);
+                assertThat(jdbc.sql("UPDATE library_command SET lease_until=now()-interval '1 second' WHERE id=:id")
+                        .param("id", commandId).update()).isEqualTo(1);
+                var now = clock.instant();
+                LibraryCommand claimed = tx.execute(ignored -> repository.claim(now, now.plusSeconds(60)).orElseThrow());
+                assertThat(claimed).isNotNull();
+                assertThat(claimed.id()).isEqualTo(commandId);
+                assertThat(claimed.epoch()).isEqualTo(previous.epoch() + 1);
+                replacement.set(claimed);
+            }
+            return prepared;
+        }).when(assets).prepareLibraryImport(eq(owner.userId()), eq(card.project()), eq(commandId), eq(Asset.MediaKind.IMAGE), any(Path.class));
+
+        assertThat(library.processNext()).isTrue();
+        assertThat(replacement.get()).isNotNull();
+        var superseded = library.command(owner.userId(), commandId);
+        assertThat(superseded.status()).isEqualTo(LibraryCommand.Status.ARCHIVING);
+        assertThat(superseded.epoch()).isEqualTo(replacement.get().epoch());
+        assertThat(superseded.result()).isNull();
+        assertThat(superseded.errorCode()).isNull();
+        assertThat(read(draftPath)).isEqualTo(beforeDraft);
+        assertThat(read("/api/v1/projects/" + card.project() + "/artifacts").path("items").size()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM artifact_version WHERE project_id=:project")
+                .param("project", card.project()).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM asset WHERE id=:id").param("id", commandId).query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM library_import WHERE project_id=:project")
+                .param("project", card.project()).query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("SELECT count(*) FROM project_event WHERE project_id=:project")
+                .param("project", card.project()).query(Long.class).single()).isEqualTo(beforeEvents);
+        assertThat(read("/api/v1/projects/" + card.project() + "/snapshot").path("snapshotSeq").asLong()).isEqualTo(beforeSeq);
+        assertThat(Files.isRegularFile(pin)).isTrue();
+        assertThat(Files.isRegularFile(ROOT.resolve(installed.get().objectKey()))).isTrue();
+
+        // A new epoch recovers the same installed bytes and frozen input, rather than replaying generation.
+        jdbc.sql("UPDATE library_command SET lease_until=now()-interval '1 second' WHERE id=:id").param("id", commandId).update();
+        assertThat(library.processNext()).isTrue();
+        JsonNode finished = command(commandId.toString());
+        assertThat(finished.path("status").asText()).isEqualTo("SUCCEEDED");
+        assertThat(library.command(owner.userId(), commandId).epoch()).isEqualTo(replacement.get().epoch() + 1);
+        JsonNode restored = read(draftPath);
+        assertThat(restored.path("prompt").asText()).isEqualTo("冻结的参考输入");
+        assertThat(restored.path("version").asLong()).isEqualTo(beforeDraft.path("version").asLong() + 1);
+        assertThat(restored.path("mediaInputs").size()).isEqualTo(1);
+        assertThat(restored.path("mediaInputs").get(0).path("versionId").asText()).isEqualTo(finished.path("result").path("versionId").asText());
+        assertThat(read("/api/v1/projects/" + card.project() + "/artifacts").path("items").size()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT count(*) FROM artifact_version WHERE project_id=:project")
+                .param("project", card.project()).query(Long.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("SELECT count(*) FROM asset WHERE id=:id").param("id", commandId).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM library_import WHERE project_id=:project")
+                .param("project", card.project()).query(Long.class).single()).isEqualTo(1);
+        assertThat(Files.exists(pin)).isFalse();
+        assertThat(assets.get(owner.userId(), card.project(), commandId).asset().sha256()).isEqualTo(installed.get().sha256());
+        long completedSeq = read("/api/v1/projects/" + card.project() + "/snapshot").path("snapshotSeq").asLong();
+        assertThat(completedSeq).isGreaterThan(beforeSeq);
+        assertThat(postJson(path, request, 202).path("id").asText()).isEqualTo(commandId.toString());
+        assertThat(library.processNext()).isFalse();
+        assertThat(read(draftPath)).isEqualTo(restored);
+        assertThat(read("/api/v1/projects/" + card.project() + "/snapshot").path("snapshotSeq").asLong()).isEqualTo(completedSeq);
     }
 
     @Test void savesTheNodeVersionRatherThanTheResourceDefaultAndIgnoresLayoutChanges() throws Exception {

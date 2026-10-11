@@ -71,32 +71,22 @@ public class LlmTurnCheckpointService {
      * @param configVersion Run 启动时固定的模型配置版本
      * @param configSource Run 启动时固定的模型配置来源
      * @param request 模型实际可见的版本化请求快照
+     * @param lease 当前模型任务租约，在预留检查点和用量之前核验并加锁
+     * @param workerId 当前租约持有者
      * @return 原有或新创建的请求检查点
      */
-    @Transactional
-    public LlmTurn reserve(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
-            int configVersion, String configSource, JsonNode request) {
-        return reserveInternal(ownerId, projectId, runId, stepIndex, configVersion, configSource, request, null, null);
-    }
-
-    /** Production model requests are fenced before reserving usage or a checkpoint. */
     @Transactional
     public LlmTurn reserveLeased(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
             int configVersion, String configSource, JsonNode request, Task lease, String workerId) {
         requireLeaseScope(projectId, runId, stepIndex, lease);
-        return reserveInternal(ownerId, projectId, runId, stepIndex, configVersion, configSource, request, lease, workerId);
-    }
-
-    private LlmTurn reserveInternal(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
-            int configVersion, String configSource, JsonNode request, Task lease, String workerId) {
         if (stepIndex < 0 || configVersion < 1 || configSource == null
                 || configSource.isBlank() || request == null || !request.isObject()) {
             throw new IllegalArgumentException("Invalid model turn request");
         }
         return events.recordChange(ownerId, projectId, () -> {
-            if (lease != null) leaseGuard.requireActive(lease, workerId);
+            leaseGuard.requireActive(lease, workerId);
             AgentRun run = requireRunning(ownerId, projectId, runId);
-            if (lease != null && run.nextStepIndex() != stepIndex) throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-is-not-accepting-a-model-round"));
+            if (run.nextStepIndex() != stepIndex) throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-is-not-accepting-a-model-round"));
             int pinnedVersion = run.policySnapshot().path("modelConfigVersion")
                     .asInt(-1);
             String pinnedSource = run.policySnapshot().path("modelConfigSource").asText("");
@@ -127,32 +117,22 @@ public class LlmTurnCheckpointService {
      * @param stepIndex 已预留请求的回合序号
      * @param configVersion 发起请求时固定的配置版本，必须与预留记录一致
      * @param response 模型返回的完整协议响应
+     * @param lease 当前模型任务租约，公开回答与响应检查点在同一事务内受其保护
+     * @param workerId 当前租约持有者
      * @return 已落库的响应检查点
      */
-    @Transactional
-    public LlmTurn saveResponse(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
-            int configVersion, JsonNode response) {
-        return saveResponseInternal(ownerId, projectId, runId, stepIndex, configVersion, response, null, null);
-    }
-
-    /** Complete public projection and protocol checkpoint atomically, while the exact lease is locked. */
     @Transactional
     public LlmTurn saveResponseLeased(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
             int configVersion, JsonNode response, Task lease, String workerId) {
         requireLeaseScope(projectId, runId, stepIndex, lease);
-        return saveResponseInternal(ownerId, projectId, runId, stepIndex, configVersion, response, lease, workerId);
-    }
-
-    private LlmTurn saveResponseInternal(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
-            int configVersion, JsonNode response, Task lease, String workerId) {
         if (response == null || !response.isObject()) {
             throw new IllegalArgumentException("Invalid model response checkpoint");
         }
         return events.recordChange(ownerId, projectId, () -> {
-            if (lease != null) leaseGuard.requireActive(lease, workerId);
+            leaseGuard.requireActive(lease, workerId);
             AgentRun run = runs.find(ownerId, projectId, runId)
                     .orElseThrow(() -> conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accessible")));
-            if (lease != null && (run.status() != AgentRun.Status.RUNNING || run.nextStepIndex() != stepIndex)) {
+            if (run.status() != AgentRun.Status.RUNNING || run.nextStepIndex() != stepIndex) {
                 throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.run-is-not-accepting-a-model-round"));
             }
             LlmTurn existing = turns.find(projectId, runId, stepIndex)
@@ -166,10 +146,8 @@ public class LlmTurnCheckpointService {
                 }
                 return ProjectEventService.Change.unchanged(existing);
             }
-            if (lease != null) {
-                String text = codec.selectedAssistant(response).getText();
-                tasks.completeAgentStream(lease, workerId, text == null ? "" : text);
-            }
+            String text = codec.selectedAssistant(response).getText();
+            tasks.completeAgentStream(lease, workerId, text == null ? "" : text);
             if (!turns.saveResponse(projectId, runId, stepIndex, response, clock.instant())) {
                 throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-response-checkpoint-was-updated-concurrently"));
             }

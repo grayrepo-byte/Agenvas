@@ -6,7 +6,8 @@ import { t, useLocale } from "../../shared/i18n";
 import { MEDIA_FUNCTIONS_QUERY_KEY, videoOperationLabel, videoFunctionChoices, videoFunction } from "../../shared/mediaFunctions";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
 import { Button } from "../../shared/ui/primitives/button";
-import { RunningHubForm, runningHubErrors, type RunningHubValue } from "./RunningHubForm";
+import { RunningHubForm } from "./RunningHubForm";
+import { workflowValidationErrors, type WorkflowValue } from "./workflowFields";
 import "./VideoOperationPanel.css";
 
 type SubmissionInput = Pick<RunVideoOperationRequest, "expectedFunctionVersion" | "expectedCapabilityVersion" | "prompt" | "parameters">;
@@ -40,7 +41,7 @@ function ConfiguredOperation({ operation, sourceVersionId, sourceTitle, settingV
   configured: ReturnType<typeof videoFunctionChoices>[number]; busy: boolean; error: Error | null;
   onSubmit: (input: SubmissionInput) => void;
 }) {
-  const [values, setValues] = useState<Record<string, RunningHubValue>>({});
+  const [values, setValues] = useState<Record<string, WorkflowValue>>({});
   const definition = configured.capability.settings.runningHub;
   const videoField = definition?.fields.find((field) => field.type === "VIDEO");
   const fixedValues = videoField ? { ...values, [videoField.key]: sourceVersionId } : values;
@@ -51,7 +52,7 @@ function ConfiguredOperation({ operation, sourceVersionId, sourceTitle, settingV
   const durationValue = durationField ? values[durationField.key] ?? durationField.defaultValue : undefined;
   const promptField = definition?.fields.find((field) => field.source === "PROMPT");
   const prompt = promptField ? values[promptField.key] ?? promptField.defaultValue : "";
-  const errors = definition ? runningHubErrors(definition, fixedValues, typeof prompt === "string" ? prompt : "",
+  const errors = definition ? workflowValidationErrors(definition, fixedValues, typeof prompt === "string" ? prompt : "",
     typeof durationValue === "number" ? durationValue : null, choices) : [];
   return <>
     <p className="video-operation-method" title={configured.label}>{configured.capability.name}</p>

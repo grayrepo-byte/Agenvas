@@ -53,7 +53,14 @@ public class MediaRelayService {
     }
 
     public String signedVideo(UUID owner, UUID project, UUID assetId, UUID pinnedProfile) {
-        Asset asset = assets.requireReadyMedia(owner, project, assetId, Asset.MediaKind.VIDEO);
+        return signedMedia(owner, project, assetId, pinnedProfile, Asset.MediaKind.VIDEO);
+    }
+
+    /** Freeze the original media identity; video and audio transports share the cleanup reservation. */
+    public String signedMedia(UUID owner, UUID project, UUID assetId, UUID pinnedProfile, Asset.MediaKind kind) {
+        if (org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Media relay upload cannot hold a database transaction");
+        Asset asset = assets.requireReadyMedia(owner, project, assetId, kind);
         var original = storage.cloudObject(asset.objectKey());
         if (original.isPresent()) {
             var object = original.get();
@@ -64,13 +71,22 @@ public class MediaRelayService {
         cloud.requirePublic(profile);
         UUID copyId = UUID.randomUUID();
         String key = (profile.keyPrefix().isEmpty() ? "" : profile.keyPrefix() + "/")
-                + RELAY_DIRECTORY + copyId + ".mp4";
+                + RELAY_DIRECTORY + copyId + switch (asset.contentType()) {
+                    case "audio/mpeg" -> ".mp3";
+                    case "audio/wav", "audio/x-wav" -> ".wav";
+                    case "image/png" -> ".png";
+                    case "image/jpeg" -> ".jpg";
+                    case "image/webp" -> ".webp";
+                    default -> ".mp4";
+                };
         var copy = new MediaRelayRepository.Copy(copyId, profile.id(), key, clock.instant().plus(COPY_RETENTION));
         // Commit cleanup identity BEFORE PUT. A lost response or process crash cannot orphan the object.
         copies.register(copy, clock.instant());
         var file = assets.get(owner, project, assetId);
         cloud.put(profile, key, file.path(), asset.contentType(), asset.byteSize(), asset.sha256());
-        return cloud.signedGet(profile, key, URL_LIFETIME);
+        String url = cloud.signedGet(profile, key, URL_LIFETIME);
+        dev.agenvas.shared.http.DebugHttpCapture.registerMediaRelayUrl(url);
+        return url;
     }
 
     /** Optional image transport; a null selection means the caller keeps its existing inline protocol. */

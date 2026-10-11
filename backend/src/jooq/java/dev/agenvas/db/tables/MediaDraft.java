@@ -262,7 +262,7 @@ public class MediaDraft extends TableImpl<MediaDraftRecord> {
     public List<Check<MediaDraftRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_media_draft_display_mode"), "(((display_mode)::text = ANY ((ARRAY['DRAFT'::character varying, 'RESULT'::character varying])::text[])))", true),
-            Internal.createCheck(this, DSL.name("ck_media_draft_duration"), "(((duration_seconds IS NULL) OR ((duration_seconds >= 1) AND (duration_seconds <= 30))))", true),
+            Internal.createCheck(this, DSL.name("ck_media_draft_duration"), "(((duration_seconds IS NULL) OR ((duration_seconds >= 1) AND (duration_seconds <= 60))))", true),
             Internal.createCheck(this, DSL.name("ck_media_draft_mentions_array"), "((jsonb_typeof(mentions_json) = 'array'::text))", true),
             Internal.createCheck(this, DSL.name("ck_media_draft_parameters_object"), "((jsonb_typeof(parameters_json) = 'object'::text))", true),
             Internal.createCheck(this, DSL.name("ck_media_draft_prompt_length"), "((length(prompt) <= 20000))", true),

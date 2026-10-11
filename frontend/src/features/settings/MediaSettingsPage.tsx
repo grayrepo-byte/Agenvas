@@ -2,16 +2,18 @@ import { Field, FieldLabel, FieldGroup, FieldSet } from "../../shared/ui/primiti
 import { ImageSquare,MusicNotes,PlugsConnected,Plus,VideoCamera } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
-import { useId,useRef,useState,type FormEvent } from "react";
+import { useEffect,useId,useRef,useState,type FormEvent } from "react";
 import { Link,Navigate } from "react-router";
 import {
 HTTP_STATUS,ApiError,deleteMediaCapability,createMediaCapability,createMediaConnection,getCurrentUser,
-getMediaSettings,setMediaDefault,updateMediaCapability,
+getMediaSettings,getKlingProfiles,getNativeMediaProfiles,setMediaDefault,updateMediaCapability,
 updateMediaConnection,
-type MediaCapability,type MediaConnection,type MediaSettings,
+type MediaCapability,type MediaConnection,type MediaSettings,type CreateMediaConnectionRequest,
 } from "../../shared/api/client";
 import { MINIMAX_H3_ADAPTER } from "../../shared/minimaxH3";
-import { AUTODL_ADAPTER,AUTODL_DEFAULT_WORKFLOW,autoDlResolutionTiers,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
+import { isKlingAdapter, isKlingNativeAdapter } from "../../shared/kling";
+import { isNativeMediaAdapter } from "../../shared/nativeMedia";
+import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
 import { MEDIA_FUNCTIONS_QUERY_KEY } from "../../shared/mediaFunctions";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -27,57 +29,27 @@ import { AutoDlWorkflowFields } from "./AutoDlWorkflowFields";
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
 import { GoogleImageConnectionHelp,googleImageApiLabel } from "./GoogleImageConnectionHelp";
 import { MediaConnectionAddressField } from "./MediaConnectionAddressField";
+import { KlingModelFields } from "./KlingModelFields";
+import { NativeModelFields } from "./NativeModelFields";
 import { RUNNINGHUB_OUTPUT_ADAPTERS,adapterLabel,adapterMetadata,adapterModel,platformAdapters } from "./mediaAdapterCatalog";
 import "./MediaSettingsPage.css";
 import { ComfyWorkflowEditor } from "./ComfyWorkflowEditor";
 import { isComfyAdapter } from "./comfyWorkflow";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
-import { selectRunningHubNodes } from "./runningHubSelection";
+import { buildMediaCapabilitySettings, CapabilityDraftError, type MediaCapabilityDraft } from "./mediaCapabilityDraft";
+import { mediaConnectionAddresses, mediaConnectionOrigin } from "./mediaConnectionConfiguration";
 
-// Node selection is an editor draft, never an API setting or capability-version field.
-type AdapterSettings = MediaCapability["settings"] & { runningHubSelectedNodeIds?: string[]; runningHubSelectedFieldKeys?: string[] };
+type AdapterSettings = MediaCapabilityDraft;
 const MODEL_LIMIT = 120;
 
 const settingsKey = ["settings", "media"] as const;
 const MEDIA_SETTINGS_TABS = ["connections", "capabilities"] as const;
 const NAME_LIMIT = 160;
 const cloudImageFields = [{ key: "model", get label() { return t("settings.mediaSettings.modelName"); } }] as const;
-class CapabilityDraftError extends Error {}
 
 function fixedModelFields(adapterId: string) {
   return adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2"
       ? cloudImageFields : [];
-}
-
-function fixedModelSettings(adapterId: string, values: AdapterSettings) {
-  if (adapterId.startsWith("RUNNINGHUB_")) {
-    const runningHub = values.runningHub ? selectRunningHubNodes(values.runningHub, values.runningHubSelectedNodeIds, values.runningHubSelectedFieldKeys) : undefined;
-    const orphaned = runningHub?.fields.find((field) => field.enabledWhen && !runningHub.fields.some((parent) => parent.key === field.enabledWhen?.field));
-    if (orphaned) throw new CapabilityDraftError(t("settings.runningHub.unselectedCondition", { "0": orphaned.label }));
-    return { runningHub, ...(values.pricing?.amount.trim() ? { pricing: values.pricing } : {}) };
-  }
-  const fields = Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
-    [key, values[key as keyof AdapterSettings]?.toString().trim() ?? ""]));
-  const { defaultParameters, defaultDurationSeconds, minimumSeconds, maximumSeconds,
-    maxReferenceImages, maxReferenceAudios, maxReferenceVideos, pricing } = values;
-  return { ...fields, ...(isComfyAdapter(adapterId) ? { comfyWorkflow: values.comfyWorkflow } : {}), ...(adapterId === AUTODL_ADAPTER ? {
-    workflowId: values.workflowDefinition?.id ?? values.workflowId ?? AUTODL_DEFAULT_WORKFLOW,
-    ...(values.workflowDefinition ? { workflowDefinition: values.workflowDefinition } : {}),
-    ...(values.videoResolution ? { videoResolution: values.videoResolution } : {}),
-    videoResolutions: values.videoResolutions ?? (values.videoResolution ? [values.videoResolution] : autoDlResolutionTiers(resolveAutoDlWorkflow(values)!)),
-    ...(values.pricingByResolution ? { pricingByResolution: Object.fromEntries(Object.entries(values.pricingByResolution).filter(([, price]) => price?.amount.trim())) } : {}),
-    ...(values.seed !== undefined ? { seed: values.seed } : {}),
-  } : {}), ...(adapterId === "OPENAI_GPT_IMAGE_2" ? { quality: values.quality ?? "medium" } : {}),
-    ...(adapterId === MINIMAX_H3_ADAPTER && values.pricingByResolution ? { pricingByResolution: Object.fromEntries(Object.entries(values.pricingByResolution).filter(([, price]) => price?.amount.trim())) } : {}),
-    ...(defaultParameters ? { defaultParameters } : {}),
-    ...(defaultDurationSeconds !== undefined ? { defaultDurationSeconds } : {}),
-    ...(minimumSeconds !== undefined ? { minimumSeconds } : {}),
-    ...(maximumSeconds !== undefined ? { maximumSeconds } : {}),
-    ...(maxReferenceImages !== undefined ? { maxReferenceImages } : {}),
-    ...(maxReferenceAudios !== undefined ? { maxReferenceAudios } : {}),
-    ...(maxReferenceVideos !== undefined ? { maxReferenceVideos } : {}),
-    ...(pricing?.amount.trim() ? { pricing } : {}) };
-
 }
 
 function QualityChoice({ value, onChange }: { value: string; onChange: (value: string) => void }) {
@@ -97,13 +69,13 @@ function FixedModelFields({ adapterId, values, onChange }: {
   useLocale();
   return <>
     {adapterId === AUTODL_ADAPTER ? <AutoDlWorkflowFields values={values} onChange={onChange} /> : null}
-    {adapterModel(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelOptions")}<Select value={values.model ? "custom" : "builtin"} onChange={(event) => onChange({ ...values,
+    {adapterModel(adapterId) && !isKlingAdapter(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelOptions")}<Select value={values.model ? "custom" : "builtin"} onChange={(event) => onChange({ ...values,
         model: event.target.value === "builtin" ? "" : adapterModel(adapterId) })}>
         <option value="builtin">{t("settings.mediaSettings.builtinModel", { "0": adapterModel(adapterId) })}</option>
         <option value="custom">{t("settings.mediaSettings.customModel")}</option>
       </Select>
     </FieldLabel></Field> : null}
-    {["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.fixedModel")}<Input value={adapterModel(adapterId)} readOnly />
+    {isKlingAdapter(adapterId) || ["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.fixedModel")}<Input value={adapterModel(adapterId)} readOnly />
     </FieldLabel></Field> : null}
     {fixedModelFields(adapterId).map(({ key, label }) => <Field key={key}><FieldLabel className="ui-field block">{label}
       <Input value={String(values[key as keyof AdapterSettings] ?? "")} onChange={(event) => onChange({ ...values, [key]: event.target.value })}
@@ -112,6 +84,7 @@ function FixedModelFields({ adapterId, values, onChange }: {
     </FieldLabel></Field>)}
     {adapterId === "GOOGLE_NANO_BANANA_2" ? <p className="ui-muted media-model-help">
       {t("settings.mediaSettings.googleModelHint")}</p> : null}
+    {isKlingAdapter(adapterId) ? <p className="ui-muted media-model-help">{t("settings.mediaSettings.klingModelHint")}</p> : null}
     {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={values.quality ?? "medium"}
       onChange={(quality) => onChange({ ...values, quality: quality as AdapterSettings["quality"],
         ...(values.defaultParameters ? { defaultParameters: { ...values.defaultParameters, quality: quality as AdapterSettings["quality"] } } : {}) })} /> : null}
@@ -131,9 +104,39 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
   values: AdapterSettings; onChange: (value: AdapterSettings) => void;
   creating?: boolean; disabled: boolean; onWorkflowReady: (ready: boolean) => void;
 }) {
-  useLocale();
+  const locale = useLocale();
   const fieldId = useId();
   const [tab, setTab] = useState<EditorTab>("model");
+  const nativeKling = isKlingNativeAdapter(adapterId);
+  const nativeMedia = isNativeMediaAdapter(adapterId);
+  const nativeCatalog = useQuery({ queryKey: ["settings", "media", "profiles", locale], queryFn: getNativeMediaProfiles,
+    enabled: nativeMedia, retry: false });
+  const nativeProfiles = nativeCatalog.data?.profiles.filter((profile) => profile.adapterId === adapterId) ?? [];
+  const nativeProfile = nativeProfiles.find((profile) => profile.operation === (values.operation ?? "GENERATE")
+    && profile.model === (values.model ?? ""))
+    ?? (values.model === undefined && values.operation === undefined ? nativeProfiles[0] : undefined);
+  useEffect(() => {
+    if (!nativeMedia) return;
+    onWorkflowReady(nativeCatalog.isSuccess && Boolean(nativeProfile));
+    if (nativeProfile && (values.model !== nativeProfile.model || values.operation !== nativeProfile.operation
+        || values.nativeInputs !== nativeProfile.inputs)) {
+      onChange({ ...values, model: nativeProfile.model, operation: nativeProfile.operation, nativeInputs: nativeProfile.inputs });
+    }
+  }, [nativeMedia, nativeCatalog.isSuccess, nativeProfile, values, onChange, onWorkflowReady]);
+  const klingCatalog = useQuery({ queryKey: ["settings", "kling", "profiles", locale], queryFn: getKlingProfiles,
+    enabled: nativeKling, retry: false });
+  const klingProfiles = klingCatalog.data?.profiles.filter((profile) => profile.adapterId === adapterId) ?? [];
+  const klingProfile = klingProfiles.find((profile) => profile.operation === (values.operation ?? "GENERATE")
+    && (profile.model ?? "") === (values.model ?? ""))
+    ?? (values.model === undefined && values.operation === undefined ? klingProfiles[0] : undefined);
+  useEffect(() => {
+    if (!nativeKling) return;
+    onWorkflowReady(klingCatalog.isSuccess && Boolean(klingProfile));
+    if (klingProfile && (values.model !== (klingProfile.model ?? "") || values.operation !== klingProfile.operation
+        || values.klingInputs !== klingProfile.inputs)) {
+      onChange({ ...values, model: klingProfile.model ?? "", operation: klingProfile.operation, klingInputs: klingProfile.inputs });
+    }
+  }, [nativeKling, klingCatalog.isSuccess, klingProfile, values, onChange, onWorkflowReady]);
   const currentName = useRef(name);
   currentName.current = name;
   function changeWorkflowOutput(kind: keyof typeof RUNNINGHUB_OUTPUT_ADAPTERS, runningHub = values.runningHub,
@@ -197,8 +200,21 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
               {availableAdapters.map((adapter) => <option key={adapter} value={adapter}>{adapterLabel(adapter)}</option>)}
             </Select>
           </FieldLabel></Field>
-          <FixedModelFields adapterId={adapterId} values={values} onChange={onChange} />
-        </> : <CapabilityConfigurationFields section={item.id} adapterId={adapterId} values={values} onChange={onChange} />}
+          {nativeMedia ? nativeProfile ? <NativeModelFields profiles={nativeProfiles} selected={nativeProfile} values={values} onChange={onChange} />
+            : <div className="ui-stack"><p className="ui-muted" role={nativeCatalog.error ? "alert" : "status"}>{nativeCatalog.error
+              ? t("settings.mediaSettings.nativeProfilesFailed", { "0": nativeCatalog.error.message }) : nativeCatalog.isPending
+                ? t("settings.mediaSettings.nativeProfilesLoading") : t("media.editor.modelUnavailableHint")}</p>
+              {nativeCatalog.error ? <Button type="button" variant="outline" onClick={() => void nativeCatalog.refetch()}>{t("common.retry")}</Button> : null}
+            </div>
+            : nativeKling ? klingProfile ? <KlingModelFields profiles={klingProfiles} selected={klingProfile} values={values} onChange={onChange} />
+            : <div className="ui-stack"><p className="ui-muted" role={klingCatalog.error ? "alert" : "status"}>{klingCatalog.error
+              ? t("settings.mediaSettings.klingProfilesFailed", { "0": klingCatalog.error.message }) : klingCatalog.isPending
+                ? t("settings.mediaSettings.klingProfilesLoading") : t("media.editor.modelUnavailableHint")}</p>
+              {klingCatalog.error ? <Button type="button" variant="outline" onClick={() => void klingCatalog.refetch()}>{t("common.retry")}</Button> : null}
+            </div>
+            : <FixedModelFields adapterId={adapterId} values={values} onChange={onChange} />}
+        </> : <CapabilityConfigurationFields section={item.id} adapterId={adapterId} values={values} onChange={onChange}
+          nativeInputLimits={nativeProfile?.inputLimits ?? klingProfile?.inputLimits} />}
       </FieldGroup></FieldSet>
     </TabsContent>)}
     </Tabs>
@@ -220,7 +236,7 @@ function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApi
       describedBy={platform === "GOOGLE" ? helpId : undefined} />
     {platform === "GOOGLE" ? <GoogleImageConnectionHelp id={helpId} origin={origin} /> : null}
     {platform === "AUTODL" ? <p className="ui-muted">{t("settings.mediaSettings.comfyTokenHint")}</p> : null}
-    {platform === "RUNNINGHUB" || platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" || platform === "VOLCENGINE" || platform === "AUTODL" || platform === "MINIMAX" ? <Field><FieldLabel className="ui-field block">
+    {mediaConnectionAddresses[platform]?.requiresApiKey ? <Field><FieldLabel className="ui-field block">
       {creating ? "API Key" : t("settings.mediaSettings.replaceApiKey")}
       <Input type="password" autoComplete="new-password" value={apiKey}
         onChange={(event) => onApiKeyChange(event.target.value)} required={creating} />
@@ -280,7 +296,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
     mutationFn: () => updateMediaCapability(connectionId, capability.id, {
       expectedVersion: baseline.version, name: name.trim(),
       enabled: baseline.enabled, adapterId,
-      settings: fixedModelSettings(adapterId, modelNames),
+      settings: buildMediaCapabilitySettings(adapterId, modelNames),
     }),
     onSuccess: (result) => {
       const saved = result.connections.find((item) => item.id === connectionId)
@@ -319,7 +335,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
   });
   const deleteStale = deleting !== null && deleting.version !== capability.version;
   const sameKindAdapters = capability.adapterId.startsWith("RUNNINGHUB_") ? availableAdapters
-    : availableAdapters.filter((id) => adapterMetadata(id)?.kind === capability.kind);
+    : [...new Set([capability.adapterId, ...availableAdapters.filter((id) => adapterMetadata(id)?.kind === capability.kind)])];
   const rowBusy = busy || save.isPending || remove.isPending;
   function loadLatest() {
     acceptBaseline(capability);
@@ -370,10 +386,10 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
     </Dialog> : null}
     {editing ? <Dialog className={cn(isComfyAdapter(adapterId) && "comfy-capability-dialog", adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.editCapabilityNamed", { "0": capability.name })} description={`${connectionName} · ${adapterLabel(adapterId)}`}
       onClose={() => setEditing(false)} busy={rowBusy} onSubmit={(event) => {
-        event.preventDefault(); if (isStale || rowBusy || isComfyAdapter(adapterId) && !workflowReady) return; setError(""); save.mutate();
+        event.preventDefault(); if (isStale || rowBusy || (isComfyAdapter(adapterId) || isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId)) && !workflowReady) return; setError(""); save.mutate();
       }} footer={<>
         <Button variant="outline"  type="button" disabled={rowBusy} onClick={() => setEditing(false)}>{t("common.cancel")}</Button>
-        <Button variant="default"  type="submit" disabled={rowBusy || isStale || isComfyAdapter(adapterId) && !workflowReady}>{save.isPending ? t("common.savingProgress") : t("settings.mediaSettings.saveCapability")}</Button>
+        <Button variant="default"  type="submit" disabled={rowBusy || isStale || (isComfyAdapter(adapterId) || isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId)) && !workflowReady}>{save.isPending ? t("common.savingProgress") : t("settings.mediaSettings.saveCapability")}</Button>
       </>}>
       <div className="ui-stack">
         {isStale ? <ConfigurationUpdatedNotice scope={t("settings.mediaSettings.capabilityParameters")} disabled={rowBusy} onReload={loadLatest} /> : null}
@@ -464,8 +480,7 @@ function ConnectionRow({ connection, settings, apply }: {
   const save = useMutation({
     mutationFn: () => updateMediaConnection(connection.id, {
       expectedVersion: baseline.version, name: name.trim(), enabled: baseline.enabled,
-      origin: connection.platform === "RUNNINGHUB" || connection.platform === "COMFYUI" || connection.platform === "OPENAI" || connection.platform === "GOOGLE" || connection.platform === "MINIMAX"
-        ? origin.trim() || null : null,
+      origin: mediaConnectionOrigin(connection.platform, origin),
       apiKey: apiKey || null,
     }),
     onSuccess: (result) => {
@@ -494,7 +509,7 @@ function ConnectionRow({ connection, settings, apply }: {
   const addCapability = useMutation({
     mutationFn: () => {
       const payload = { name: capabilityName.trim(), adapterId,
-        settings: fixedModelSettings(adapterId, newModelNames) };
+        settings: buildMediaCapabilitySettings(adapterId, newModelNames) };
       capabilityCreateKey.current = stableCreateKey(capabilityCreateKey.current, JSON.stringify(payload));
       return createMediaCapability(connection.id, payload, capabilityCreateKey.current.key);
     },
@@ -568,10 +583,10 @@ function ConnectionRow({ connection, settings, apply }: {
     </Dialog> : null}
     {dialog === "capability" ? <Dialog className={cn(isComfyAdapter(adapterId) && "comfy-capability-dialog", adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.publishNewCapability")} description={`${connection.name} · ${adapterLabel(adapterId)}`}
       onClose={() => setDialog(null)} busy={busy} onSubmit={(event) => {
-        event.preventDefault(); if (busy || !connection.enabled || isComfyAdapter(adapterId) && !workflowReady) return; setError(""); addCapability.mutate();
+        event.preventDefault(); if (busy || !connection.enabled || (isComfyAdapter(adapterId) || isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId)) && !workflowReady) return; setError(""); addCapability.mutate();
       }} footer={<>
         <Button variant="outline"  type="button" disabled={busy} onClick={() => setDialog(null)}>{t("common.cancel")}</Button>
-        <Button variant="default"  type="submit" disabled={busy || !connection.enabled || isComfyAdapter(adapterId) && !workflowReady}>{addCapability.isPending ? t("settings.mediaSettings.publishing") : t("settings.mediaSettings.publishCapability")}</Button>
+        <Button variant="default"  type="submit" disabled={busy || !connection.enabled || (isComfyAdapter(adapterId) || isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId)) && !workflowReady}>{addCapability.isPending ? t("settings.mediaSettings.publishing") : t("settings.mediaSettings.publishCapability")}</Button>
       </>}>
       <div className="ui-stack">
         <CapabilityEditorFields connectionId={connection.id} name={capabilityName} onNameChange={setCapabilityName} adapterId={adapterId}
@@ -592,7 +607,7 @@ export function MediaSettingsPage() {
   const settings = useQuery({ queryKey: settingsKey, queryFn: getMediaSettings,
     enabled: currentUser.isSuccess, retry: false });
   const [name, setName] = useState("");
-  const [platform, setPlatform] = useState<"RUNNINGHUB" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "MINIMAX">("COMFYUI");
+  const [platform, setPlatform] = useState<CreateMediaConnectionRequest["platform"]>("COMFYUI");
   const [origin, setOrigin] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
@@ -601,8 +616,7 @@ export function MediaSettingsPage() {
   const create = useMutation({
     mutationFn: () => {
       const payload = { name: name.trim(), platform,
-        origin: platform === "RUNNINGHUB" || platform === "COMFYUI" || platform === "OPENAI" || platform === "GOOGLE" || platform === "MINIMAX"
-          ? origin.trim() || null : null,
+        origin: mediaConnectionOrigin(platform, origin),
         apiKey: platform === "COMFYUI" ? null : apiKey };
       connectionCreateKey.current = stableCreateKey(connectionCreateKey.current, JSON.stringify(payload));
       return createMediaConnection(payload, connectionCreateKey.current.key);
@@ -686,7 +700,7 @@ export function MediaSettingsPage() {
               </FieldLabel></Field>
               <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.platform")}<Select value={platform} onChange={(event) => { setPlatform(event.target.value as typeof platform); setOrigin(""); setApiKey(""); }}>
                   <option value="RUNNINGHUB">RunningHub</option><option value="COMFYUI">ComfyUI</option><option value="OPENAI">OpenAI</option>
-                  <option value="MINIMAX">MiniMax H3</option><option value="AUTODL">{t("settings.mediaSettings.autoDlWorkflow")}</option><option value="GOOGLE">Google Gemini · Nano Banana 2</option><option value="ARK">{t("settings.mediaSettings.arkPlatform")}</option><option value="VOLCENGINE">{t("settings.mediaSettings.seedAudioPlatform")}</option>
+                  <option value="WAN">Wan · Model Studio</option><option value="KLING">{t("settings.mediaSettings.klingPlatform")}</option><option value="MINIMAX">MiniMax H3</option><option value="AUTODL">{t("settings.mediaSettings.autoDlWorkflow")}</option><option value="GOOGLE">Google Gemini</option><option value="ARK">{t("settings.mediaSettings.arkPlatform")}</option><option value="VOLCENGINE">{t("settings.mediaSettings.seedAudioPlatform")}</option>
                 </Select>
               </FieldLabel></Field>
               <ConnectionCredentials platform={platform} origin={origin} apiKey={apiKey}

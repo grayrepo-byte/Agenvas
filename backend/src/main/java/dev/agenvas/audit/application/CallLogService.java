@@ -208,7 +208,8 @@ public class CallLogService {
                 && !value.contains("://") ? value : null;
     }
     public static String safeRequestId(String value) {
-        return value != null && value.matches("[A-Za-z0-9._:-]{1,240}") ? value : null;
+        // Native operations contain path separators; URLs must still never enter public call identities.
+        return value != null && !value.contains("://") && value.matches("[A-Za-z0-9._:/-]{1,512}") ? value : null;
     }
     public static String safeErrorCode(String value) {
         return value != null && value.matches("[A-Z][A-Z0-9_]{0,119}") ? value : null;

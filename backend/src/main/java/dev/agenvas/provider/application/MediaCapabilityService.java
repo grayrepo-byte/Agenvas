@@ -137,6 +137,10 @@ public class MediaCapabilityService {
                 && java.util.Objects.equals(origin, previous.origin())
                 ? comfyEndpoint(previous) : validatedOrigin(current.platform(), origin);
         validateCredential(current.platform(), apiKey, false);
+        for (var capability : repository.capabilities(id)) if (!capability.deleted()) {
+            var snapshot = capabilitySnapshot(capability.id());
+            validateNativeOrigin(snapshot.adapterId(), settings(snapshot), normalizedOrigin);
+        }
         String originHash = normalizedOrigin == null ? null : Sha256.hex(normalizedOrigin);
         boolean newVersion = !java.util.Objects.equals(previous.originSha256(), originHash)
                 || apiKey != null && !apiKey.isBlank();
@@ -184,15 +188,15 @@ public class MediaCapabilityService {
 
     @Transactional
     public Capability publishCapability(UUID connectionId, String name, String adapterId) {
-        return publishCapabilityWithId(UUID.randomUUID(), connectionId, name, adapterId,
-                null);
+        return publishCapability(connectionId, name, adapterId, null);
     }
 
     @Transactional
     public Capability publishCapability(UUID connectionId, String name, String adapterId,
             JsonNode settings) {
-        return publishCapabilityWithId(UUID.randomUUID(), connectionId, name, adapterId,
-                settings);
+        UUID id = UUID.randomUUID();
+        validateCapabilityConnection(connectionId, adapterId, settings);
+        return insertCapability(id, connectionId, name, adapterId, spec(adapterId, settings));
     }
 
     @Transactional
@@ -223,11 +227,11 @@ public class MediaCapabilityService {
             }
             return repository.capability(previous.entityId()).orElseThrow();
         }
-        return publishCapabilityWithId(id, connectionId, normalizedName, adapterId, settings);
+        validateCapabilityConnection(connectionId, adapterId, settings);
+        return insertCapability(id, connectionId, normalizedName, adapterId, spec);
     }
 
-    private Capability publishCapabilityWithId(UUID id, UUID connectionId,
-            String name, String adapterId, JsonNode settings) {
+    private void validateCapabilityConnection(UUID connectionId, String adapterId, JsonNode settings) {
         Connection connection = getConnection(connectionId);
         requireAvailablePlatform(connection.platform());
         rejectSystemManaged(connection);
@@ -249,7 +253,11 @@ public class MediaCapabilityService {
         if (connection.platform() != declaration.platform()) {
             throw invalid(ApiMessage.of("api.media-capability-service.adapter-does-not-match-platform-connection"));
         }
-        String spec = spec(adapterId, settings);
+        validateNativeOrigin(adapterId, settings, version.origin());
+    }
+
+    private Capability insertCapability(UUID id, UUID connectionId,
+            String name, String adapterId, String spec) {
         repository.insertCapability(id, connectionId, requireName(name), adapterId,
                 Sha256.hex(adapterId + ":v1:" + spec), spec, clock.instant());
         return repository.capability(id).orElseThrow();
@@ -297,8 +305,11 @@ public class MediaCapabilityService {
         if (effectiveSettings != null && effectiveSettings.isMissingNode()) {
             effectiveSettings = mapper.createObjectNode();
         }
+        validateNativeOrigin(adapterId, effectiveSettings, current.connectionVersion().origin());
         String spec = spec(adapterId, effectiveSettings);
         if (oldSettings == null) oldSettings = settings(current);
+        // Compare persisted JSON node types: a small LongNode serializes back as an IntNode.
+        // Comparing the constructed settings directly would create spurious content versions.
         JsonNode newSettings = mapper.readTree(spec).path("settings");
         boolean newVersion = !current.adapterId().equals(adapterId)
                 || !newSettings.equals(oldSettings);
@@ -371,7 +382,20 @@ public class MediaCapabilityService {
     /** Versioned protocol settings, including administrator-published ComfyUI graphs. */
     private String spec(String adapterId, JsonNode suppliedSettings) {
         JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
-        var declaration = declaration(adapterId, source);
+        var declaration = registry.declaration(adapterId);
+        ComfyUiWorkflowDefinition comfyWorkflow = null;
+        if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapterId)) {
+            declaration = dev.agenvas.provider.domain.NativeMediaProfiles.resolve(adapterId, source).declaration();
+        } else if (dev.agenvas.provider.domain.KlingModels.adapter(adapterId)) {
+            declaration = dev.agenvas.provider.domain.KlingModels.declaration(
+                    dev.agenvas.provider.domain.KlingModels.resolve(source, declaration.kind()));
+        } else if (declaration.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(source)) {
+            comfyWorkflow = ComfyUiWorkflowDefinition.parse(mapper,
+                    source.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), declaration.kind());
+            declaration = comfyWorkflow.declaration(declaration.kind());
+        } else if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) {
+            declaration = AutoDlWorkflows.require(source).declaration();
+        }
         ObjectNode normalized = mapper.createObjectNode();
         normalized.put("schemaVersion", CAPABILITY_SCHEMA_VERSION);
         normalized.put("kind", declaration.kind().name());
@@ -393,12 +417,15 @@ public class MediaCapabilityService {
             MediaCapabilityConfiguration.normalize(mapper, declaration, price, settings);
             return normalized.toString();
         }
-        if (declaration.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(source)) {
+        if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapterId)) {
+            settings.setAll(dev.agenvas.provider.domain.NativeMediaProfiles.normalizeSettings(adapterId, source, mapper));
+        } else if (dev.agenvas.provider.domain.KlingModels.adapter(adapterId)) {
+            settings.setAll(dev.agenvas.provider.domain.KlingModels.normalizeSettings(source, declaration.kind(), mapper));
+        } else if (comfyWorkflow != null) {
             if (!java.util.stream.Stream.concat(MediaCapabilityConfiguration.FIELDS.stream(),
                     java.util.stream.Stream.of(ComfyUiWorkflowDefinition.SETTINGS_KEY, ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY)).collect(java.util.stream.Collectors.toSet())
                     .containsAll(source.propertyNames())) throw invalid(ApiMessage.of("api.media-capability-service.capability-template-contains-parameters-that-are-not-allowed"));
-            var workflow = ComfyUiWorkflowDefinition.parse(mapper, source.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), declaration.kind());
-            settings.set(ComfyUiWorkflowDefinition.SETTINGS_KEY, mapper.valueToTree(workflow));
+            settings.set(ComfyUiWorkflowDefinition.SETTINGS_KEY, mapper.valueToTree(comfyWorkflow));
         } else normalizeAdapterSettings(adapterId, source, settings);
         if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) AutoDlWorkflows.normalize(source, settings);
         MediaCapabilityConfiguration.normalize(mapper, declaration, source, settings);
@@ -413,9 +440,9 @@ public class MediaCapabilityService {
                 if (!"AUTO".equals(ratio)) workflow.resolution(tier, ratio);
             }
         }
-        if (declaration.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(settings)) {
-            var workflow = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), declaration.kind());
-            if (policy.maxReferenceImages() != workflow.referenceCount())
+        if (comfyWorkflow != null) {
+            ComfyUiWorkflowDefinition.requireDefinitionSize(settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY));
+            if (policy.maxReferenceImages() != comfyWorkflow.referenceCount())
                 throw invalid(ApiMessage.of("api.comfy-workflow.invalid", "references"));
         }
         putInputLimits(normalized, policy);
@@ -465,6 +492,10 @@ public class MediaCapabilityService {
 
     private MediaAdapterRegistry.Declaration declaration(String adapterId, JsonNode settings) {
         var compiled = registry.declaration(adapterId);
+        if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapterId))
+            return dev.agenvas.provider.domain.NativeMediaProfiles.resolve(adapterId, settings).declaration();
+        if (dev.agenvas.provider.domain.KlingModels.adapter(adapterId))
+            return dev.agenvas.provider.domain.KlingModels.declaration(dev.agenvas.provider.domain.KlingModels.resolve(settings, compiled.kind()));
         if (compiled.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(settings))
             return ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), compiled.kind()).declaration(compiled.kind());
         return AutoDlWorkflows.ADAPTER_ID.equals(adapterId)
@@ -487,23 +518,14 @@ public class MediaCapabilityService {
             case "VOLC_SEED_AUDIO_1" -> target.put("modelId", SeedAudioClient.MODEL_ID).put("outputFormat", "mp3");
             case "MINIMAX_H3" -> target.put("modelId", dev.agenvas.provider.domain.MiniMaxH3Protocol.MODEL_ID)
                     .put("outputFormat", "mp4").put("generateAudio", true);
+            case "KLING_IMAGE_3" -> target.put("modelId", dev.agenvas.provider.domain.KlingProtocol.IMAGE_MODEL_ID)
+                    .put("outputFormat", "image");
+            case "KLING_VIDEO_3" -> target.put("modelId", dev.agenvas.provider.domain.KlingProtocol.VIDEO_MODEL_ID)
+                    .put("outputFormat", "mp4").put("generateAudio", true);
             case "ARK_SEEDANCE_2_I2V" -> target.put("modelId", ArkSeedanceClient.MODEL_ID)
                     .put("outputFormat", "mp4").put("generateAudio", false);
             default -> { }
         }
-    }
-
-    @Transactional
-    public Connection setConnectionEnabled(UUID connectionId, long expectedVersion,
-            boolean enabled) {
-        Connection connection = getConnection(connectionId);
-        requireAvailablePlatform(connection.platform());
-        rejectSystemManaged(connection);
-        if (!repository.updateConnectionEnabled(connectionId, expectedVersion, enabled,
-                clock.instant())) {
-            throw conflict(ApiMessage.of("api.media-capability-service.the-connection-has-been-modified-by-other-operations"));
-        }
-        return getConnection(connectionId);
     }
 
     public long defaultVersion(Task.Kind kind) {
@@ -551,6 +573,30 @@ public class MediaCapabilityService {
         return comfy == null ? List.of() : comfy.inputs();
     }
 
+    public dev.agenvas.provider.domain.NativeMediaProfiles.Selection nativeProfile(MediaCapabilityBinding binding) {
+        return dev.agenvas.provider.domain.NativeMediaProfiles.supports(binding.adapterId())
+                ? dev.agenvas.provider.domain.NativeMediaProfiles.resolve(binding.adapterId(), settings(binding)) : null;
+    }
+
+    public dev.agenvas.provider.domain.KlingModels.Profile klingProfile(MediaCapabilityBinding binding) {
+        return dev.agenvas.provider.domain.KlingModels.adapter(binding.adapterId())
+                ? dev.agenvas.provider.domain.KlingModels.resolve(settings(binding), registry.declaration(binding.adapterId()).kind()) : null;
+    }
+
+    /** Media cleanup only needs keys; provider protocols do not acquire workflow graph targets. */
+    public java.util.Set<String> declaredMediaSlotKeys(UUID capabilityId) {
+        var selected = binding(capabilitySnapshot(capabilityId));
+        var nativeProfile = nativeProfile(selected);
+        if (nativeProfile != null) return nativeProfile.inputs().stream().filter(dev.agenvas.provider.domain.CreatorInputField::media)
+                .map(dev.agenvas.provider.domain.CreatorInputField::key).collect(java.util.stream.Collectors.toSet());
+        var kling = klingProfile(selected);
+        if (kling != null) return dev.agenvas.provider.domain.KlingModels.inputs(kling).stream()
+                .filter(dev.agenvas.provider.domain.KlingModels.Field::media)
+                .map(dev.agenvas.provider.domain.KlingModels.Field::key).collect(java.util.stream.Collectors.toSet());
+        return declaredDraftInputs(capabilityId).stream().filter(RunningHubDefinition.Field::media)
+                .map(RunningHubDefinition.Field::key).collect(java.util.stream.Collectors.toSet());
+    }
+
     public JsonNode settings(MediaCapabilityBinding binding) {
         return settings(pinnedSnapshot(binding));
     }
@@ -572,6 +618,15 @@ public class MediaCapabilityService {
                 parameters.set(entry.getKey(), entry.getValue()));
         if (draft != null && draft.isObject()) draft.properties().forEach(entry ->
                 parameters.set(entry.getKey(), entry.getValue()));
+        if (dev.agenvas.provider.domain.KlingModels.adapter(binding.adapterId())
+                || dev.agenvas.provider.domain.NativeMediaProfiles.supports(binding.adapterId())) {
+            ObjectNode values = mapper.createObjectNode();
+            if (defaults.path(RunningHubDefinition.VALUES_PROPERTY).isObject())
+                defaults.path(RunningHubDefinition.VALUES_PROPERTY).properties().forEach(entry -> values.set(entry.getKey(), entry.getValue()));
+            if (draft != null && draft.path(RunningHubDefinition.VALUES_PROPERTY).isObject())
+                draft.path(RunningHubDefinition.VALUES_PROPERTY).properties().forEach(entry -> values.set(entry.getKey(), entry.getValue()));
+            parameters.set(RunningHubDefinition.VALUES_PROPERTY, values);
+        }
         return parameters;
     }
 
@@ -651,6 +706,15 @@ public class MediaCapabilityService {
     /** Derived read-only input metadata is regenerated, never accepted as an executable mapping. */
     public JsonNode administratorSettings(Snapshot snapshot) {
         ObjectNode settings = (ObjectNode) settings(snapshot).deepCopy();
+        if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(snapshot.adapterId())) {
+            var selected = dev.agenvas.provider.domain.NativeMediaProfiles.resolve(snapshot.adapterId(), settings);
+            settings.set("nativeInputs", mapper.valueToTree(selected.inputs()));
+            settings.set("nativeReusableSlots", mapper.valueToTree(selected.protocol().reusableSlots(selected.profile()).stream().sorted().toList()));
+        }
+        if (dev.agenvas.provider.domain.KlingModels.adapter(snapshot.adapterId())) {
+            var profile = dev.agenvas.provider.domain.KlingModels.resolve(settings, registry.declaration(snapshot.adapterId()).kind());
+            settings.set("klingInputs", mapper.valueToTree(dev.agenvas.provider.domain.KlingModels.inputs(profile)));
+        }
         if (ComfyUiWorkflowDefinition.configured(settings)) {
             var definition = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY),
                     registry.declaration(snapshot.adapterId()).kind());
@@ -687,7 +751,9 @@ public class MediaCapabilityService {
 
     private boolean supports(Snapshot snapshot, Task.Kind kind, int durationSeconds) {
         var policy = inputPolicy(snapshot);
-        if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(snapshot.adapterId())) return policy.kind() == kind;
+        if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(snapshot.adapterId())
+                || dev.agenvas.provider.domain.KlingModels.adapter(snapshot.adapterId())
+                || dev.agenvas.provider.domain.NativeMediaProfiles.supports(snapshot.adapterId())) return policy.kind() == kind;
         return policy.kind() == kind && (kind == Task.Kind.IMAGE_GENERATION
                 || durationSeconds >= policy.minimumSeconds()
                         && durationSeconds <= policy.maximumSeconds());
@@ -753,7 +819,17 @@ public class MediaCapabilityService {
         }
     }
 
+    private void validateNativeOrigin(String adapterId, JsonNode settings, String origin) {
+        if (!dev.agenvas.provider.domain.NativeMediaProfiles.supports(adapterId)) return;
+        var profile = dev.agenvas.provider.domain.NativeMediaProfiles.resolve(adapterId, settings == null ? mapper.createObjectNode() : settings);
+        if ("WAN_IMAGE".equals(adapterId) || "WAN_VIDEO".equals(adapterId)) dev.agenvas.provider.infrastructure.WanClient.validateOrigin(profile.profile(), origin);
+        else if ("GOOGLE_VEO".equals(adapterId) || "GOOGLE_OMNI_VIDEO".equals(adapterId)) dev.agenvas.provider.infrastructure.GoogleVideoClient.validatedOrigin(origin);
+        else if ("ARK_SEEDREAM_IMAGE".equals(adapterId)) dev.agenvas.provider.infrastructure.SeedreamClient.validatedOrigin(origin);
+    }
+
     private static String validatedOrigin(MediaPlatform platform, String origin) {
+        if (platform == MediaPlatform.WAN) return dev.agenvas.provider.infrastructure.WanClient.validatedOrigin(origin);
+        if (platform == MediaPlatform.KLING) return dev.agenvas.provider.infrastructure.KlingClient.validatedOrigin(origin);
         if (platform == MediaPlatform.MINIMAX) return dev.agenvas.provider.infrastructure.MiniMaxH3Client.validatedOrigin(origin);
         if (platform == MediaPlatform.RUNNINGHUB) {
             return dev.agenvas.provider.infrastructure.RunningHubClient.validatedOrigin(origin);
@@ -809,7 +885,8 @@ public class MediaCapabilityService {
     private static void validateCredential(MediaPlatform platform, String apiKey, boolean creating) {
         boolean cloud = platform == MediaPlatform.OPENAI || platform == MediaPlatform.ARK
                 || platform == MediaPlatform.GOOGLE || platform == MediaPlatform.VOLCENGINE
-                || platform == MediaPlatform.RUNNINGHUB || platform == MediaPlatform.AUTODL || platform == MediaPlatform.MINIMAX;
+                || platform == MediaPlatform.RUNNINGHUB || platform == MediaPlatform.AUTODL
+                || platform == MediaPlatform.MINIMAX || platform == MediaPlatform.KLING || platform == MediaPlatform.WAN;
         if (cloud && creating && (apiKey == null || apiKey.isBlank())) {
             throw invalid(ApiMessage.of("api.media-capability-service.cloud-platform-connection-must-fill-in-the-api-key"));
         }

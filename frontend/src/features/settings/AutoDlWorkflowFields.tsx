@@ -10,13 +10,11 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { AutoDlWorkflowDefinitionEditor } from "./AutoDlWorkflowDefinitionEditor";
 import { Select } from "../../shared/ui/Select";
+import { applyAutoDlDraftDefinition, selectedAutoDlDraftTiers, selectAutoDlDraftPreset, selectAutoDlDraftTiers } from "./mediaCapabilityDraft";
 
 type Settings = MediaCapability["settings"];
 const MAX_SEED = 999_999_999_999_999;
 const METADATA_ROWS = 6;
-export function autodlWorkflow(values: Settings) {
-  return resolveAutoDlWorkflow(values);
-}
 export function AutoDlWorkflowFields({ values, onChange }: {
   values: Settings; onChange: (value: Settings) => void;
 }) {
@@ -25,34 +23,17 @@ export function AutoDlWorkflowFields({ values, onChange }: {
   const [source, setSource] = useState("");
   const [sourceError, setSourceError] = useState<string | null>(null);
   const catalog = useMutation({ mutationFn: getAutoDlWorkflowCatalog });
-  function applyDefinition(definition: NonNullable<Settings["workflowDefinition"]>, reset = false) {
-    const tiers = autoDlResolutionTiers(definition);
-    const previous = values.videoResolutions ?? (values.videoResolution ? [values.videoResolution] : tiers);
-    const retained = reset ? tiers : previous.filter((tier) => tiers.includes(tier));
-    const videoResolutions = retained.length ? retained : tiers;
-    const videoResolution = videoResolutions.includes(values.videoResolution ?? "") && !reset ? values.videoResolution
-      : videoResolutions.includes(definition.defaultResolution) ? definition.defaultResolution : videoResolutions[0];
-    onChange({ ...values, workflowId: definition.id, workflowDefinition: { ...definition, defaultResolution: videoResolution ?? definition.defaultResolution },
-      videoResolution, videoResolutions,
-      ...(values.pricingByResolution ? { pricingByResolution: Object.fromEntries(Object.entries(values.pricingByResolution).filter(([tier]) => videoResolutions.includes(tier))) } : {}),
-      ...(!definition.supportsSeed ? { seed: undefined } : {}), ...(reset ? { pricingByResolution: undefined, seed: undefined,
-        minimumSeconds: undefined, maximumSeconds: undefined, maxReferenceImages: undefined,
-        maxReferenceAudios: undefined, defaultDurationSeconds: undefined } : {}) });
-  }
   const preview = useMutation({ mutationFn: ({ id, metadata }: { id: string; metadata?: object }) => previewAutoDlWorkflow(id, metadata),
-    onSuccess: (definition) => applyDefinition(definition, definition.id !== workflow?.id) });
-  const workflow = autodlWorkflow(values);
+    onSuccess: (definition) => onChange(applyAutoDlDraftDefinition(values, definition, definition.id !== workflow?.id)) });
+  const workflow = resolveAutoDlWorkflow(values);
   const tiers = workflow ? autoDlResolutionTiers(workflow) : [];
-  const selected = values.videoResolutions ?? (values.videoResolution ? [values.videoResolution] : tiers);
+  const selected = selectedAutoDlDraftTiers(values, tiers);
   return <FieldGroup className="ui-form-grid autodl-workflow-fields">
     <Field className="autodl-workflow-selector"><FieldLabel htmlFor={`${fieldId}-workflow`}>{t("settings.autoDl.workflow")}</FieldLabel><Select id={`${fieldId}-workflow`} disabled={preview.isPending} value={values.workflowDefinition ? "custom" : values.workflowId ?? AUTODL_DEFAULT_WORKFLOW} onChange={(event) => {
-        if (event.target.value === "custom" && workflow) { applyDefinition({ ...workflow, schemaVersion: 1, imageFields: [...workflow.imageFields], audioFields: [...workflow.audioFields], resolutions: [...workflow.resolutions] }); return; }
+        if (event.target.value === "custom" && workflow) { onChange(applyAutoDlDraftDefinition(values, { ...workflow, schemaVersion: 1, imageFields: [...workflow.imageFields], audioFields: [...workflow.audioFields], resolutions: [...workflow.resolutions] })); return; }
         if (catalog.data?.items.some((entry) => entry.id === event.target.value)) { preview.mutate({ id: event.target.value }); return; }
         const next = autodlWorkflows.find((entry) => entry.id === event.target.value);
-        if (next) onChange({ ...values, workflowDefinition: undefined, workflowId: next.id, videoResolution: next.defaultResolution,
-          videoResolutions: autoDlResolutionTiers(next), pricingByResolution: undefined,
-          seed: undefined, minimumSeconds: undefined, maximumSeconds: undefined,
-          maxReferenceImages: undefined, maxReferenceAudios: undefined, defaultDurationSeconds: undefined });
+        if (next) onChange(selectAutoDlDraftPreset(values, next));
       }}>
         {autodlWorkflows.map((entry) => <option key={entry.id} value={entry.id}>{t(AUTODL_WORKFLOW_LABEL_KEYS[entry.id])} · {entry.id}</option>)}
         {(catalog.data?.items ?? []).filter((entry) => !autodlWorkflows.some((preset) => preset.id === entry.id)).map((entry) => <option key={entry.id} value={entry.id}>{entry.label} · {entry.id}</option>)}
@@ -79,16 +60,11 @@ export function AutoDlWorkflowFields({ values, onChange }: {
       } catch { setSourceError(t("settings.autoDl.invalidMetadata")); }
     }}>{t("settings.autoDl.importMetadata")}</Button>
     {sourceError ? <p role="alert">{sourceError}</p> : null}</FieldGroup></details>
-    {values.workflowDefinition ? <AutoDlWorkflowDefinitionEditor disabled={preview.isPending} value={values.workflowDefinition} onChange={(definition) => applyDefinition(definition)} /> : null}
+    {values.workflowDefinition ? <AutoDlWorkflowDefinitionEditor disabled={preview.isPending} value={values.workflowDefinition} onChange={(definition) => onChange(applyAutoDlDraftDefinition(values, definition))} /> : null}
     <FieldSet className="autodl-resolution-choices"><FieldLegend variant="label">{t("settings.autoDl.allowedResolutions")}</FieldLegend>
       <ToggleGroup type="multiple" variant="outline" spacing={2} className="flex-wrap" aria-label={t("settings.autoDl.allowedResolutions")} value={selected} onValueChange={(choices) => {
-        const next = tiers.filter((tier) => choices.includes(tier));
-        if (next.length === 0) return;
-        const current = values.videoResolution ?? workflow?.defaultResolution;
-        const videoResolution = next.find((tier) => tier === current) ?? next[0];
-        const pricingByResolution = Object.fromEntries(Object.entries(values.pricingByResolution ?? {}).filter(([tier]) => next.some((choice) => choice === tier)));
-        onChange({ ...values, videoResolutions: next, videoResolution, pricingByResolution,
-          ...(values.workflowDefinition && videoResolution ? { workflowDefinition: { ...values.workflowDefinition, defaultResolution: videoResolution } } : {}) });
+        const next = selectAutoDlDraftTiers(values, choices, tiers);
+        if (next) onChange(next);
       }}>{tiers.map((tier) => <ToggleGroupItem key={tier} value={tier}>{tier}</ToggleGroupItem>)}</ToggleGroup>
     </FieldSet>
     <Field><FieldLabel htmlFor={`${fieldId}-resolution`}>{t("media.defaultResolution")}</FieldLabel><Select id={`${fieldId}-resolution`} value={values.videoResolution ?? workflow?.defaultResolution} onChange={(event) => onChange({

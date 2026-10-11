@@ -7,6 +7,15 @@ export const RUNNINGHUB_OUTPUT_ADAPTERS = {
 
 /** Presentation metadata for compiled protocols; the server validates their actual bounds. */
 export const mediaAdapters = {
+  WAN_IMAGE: { label: "Wan · Image", kind: "IMAGE_GENERATION", references: 9, minimum: 0, maximum: 0 },
+  WAN_VIDEO: { label: "Wan · Video", kind: "VIDEO_GENERATION", references: 10, minimum: 2, maximum: 30 },
+  ARK_SEEDREAM_IMAGE: { label: "Seedream · Image", kind: "IMAGE_GENERATION", references: 14, minimum: 0, maximum: 0 },
+  GOOGLE_VEO: { label: "Veo · Google", kind: "VIDEO_GENERATION", references: 3, minimum: 4, maximum: 8 },
+  GOOGLE_OMNI_VIDEO: { label: "Omni Video · Google", kind: "VIDEO_GENERATION", references: 10, minimum: 1, maximum: 10 },
+  KLING_IMAGE: { get label() { return t("settings.adapters.klingImageNative"); }, kind: "IMAGE_GENERATION", references: 10, minimum: 0, maximum: 0 },
+  KLING_VIDEO: { get label() { return t("settings.adapters.klingVideoNative"); }, kind: "VIDEO_GENERATION", references: 10, minimum: 3, maximum: 30 },
+  KLING_IMAGE_3: { get label() { return t("settings.adapters.klingImage"); }, model: "kling-v3", kind: "IMAGE_GENERATION", references: 1, minimum: 0, maximum: 0 },
+  KLING_VIDEO_3: { get label() { return t("settings.adapters.klingVideo"); }, model: "kling-3.0", kind: "VIDEO_GENERATION", references: 2, minimum: 3, maximum: 15 },
   MINIMAX_H3: { label: "MiniMax H3", model: "MiniMax-H3", kind: "VIDEO_GENERATION", references: 9, minimum: 4, maximum: 15 },
   RUNNINGHUB_IMAGE: { get label() { return t("settings.adapters.runningHubImage"); }, kind: "IMAGE_GENERATION", references: 14, minimum: 0, maximum: 0 },
   RUNNINGHUB_VIDEO: { get label() { return t("settings.adapters.runningHubVideo"); }, kind: "VIDEO_GENERATION", references: 14, minimum: 0, maximum: 60 },
@@ -27,11 +36,13 @@ export const mediaAdapters = {
 } as const;
 
 export const platformAdapters: Record<MediaConnection["platform"], string[]> = {
+  WAN: ["WAN_IMAGE", "WAN_VIDEO"],
+  KLING: ["KLING_IMAGE", "KLING_VIDEO"],
   MINIMAX: ["MINIMAX_H3"],
   RUNNINGHUB: ["RUNNINGHUB_IMAGE", "RUNNINGHUB_VIDEO", "RUNNINGHUB_AUDIO"],
   LOCAL: ["LOCAL_IMAGE_PROCESSOR"], MOCK: ["MOCK_IMAGE", "MOCK_VIDEO", "MOCK_AUDIO"],
   COMFYUI: ["COMFY_IMAGE_V1", "COMFY_VIDEO_V1"], OPENAI: ["OPENAI_GPT_IMAGE_2"],
-  AUTODL: ["AUTODL_COMFY_VIDEO"], VOLCENGINE: ["VOLC_SEED_AUDIO_1"], GOOGLE: ["GOOGLE_NANO_BANANA_2"], ARK: ["ARK_SEEDANCE_2_I2V"],
+  AUTODL: ["AUTODL_COMFY_VIDEO"], VOLCENGINE: ["VOLC_SEED_AUDIO_1"], GOOGLE: ["GOOGLE_NANO_BANANA_2", "GOOGLE_VEO", "GOOGLE_OMNI_VIDEO"], ARK: ["ARK_SEEDANCE_2_I2V", "ARK_SEEDREAM_IMAGE"],
 };
 
 export function adapterMetadata(id: string) {

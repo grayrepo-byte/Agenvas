@@ -57,6 +57,33 @@ class MediaCapabilityConfigurationTest {
     }
 
     @Test
+    void klingDefaultsAndPricesStayWithinItsCompiledImageAndVideoProtocols() {
+        var settings = normalize("KLING_VIDEO_3", """
+                {"minimumSeconds":4,"maximumSeconds":12,"defaultDurationSeconds":7,
+                "defaultParameters":{"aspectRatio":"9:16","videoResolution":"2160p"},
+                "pricing":{"amount":"1","currency":"CNY","unit":"VIDEO"},
+                "pricingByResolution":{"2160p":{"amount":"2","currency":"CNY","unit":"SECOND"}}}
+                """);
+        assertThat(settings.at("/defaultParameters/videoResolution").asText()).isEqualTo("2160p");
+        assertThat(MediaCapabilityConfiguration.price(settings, "2160p").path("amount").asText()).isEqualTo("2");
+        assertThat(MediaCapabilityConfiguration.price(settings, "1080p").path("amount").asText()).isEqualTo("1");
+        assertThat(normalize("KLING_VIDEO_3", "{\"defaultParameters\":{}}")
+                .at("/defaultParameters/videoResolution").asText()).isEqualTo("1080p");
+        for (String json : List.of("{\"minimumSeconds\":2}", "{\"maximumSeconds\":16}",
+                "{\"defaultParameters\":{\"videoResolution\":\"1440p\"}}",
+                "{\"pricingByResolution\":{\"1440p\":{\"amount\":\"1\",\"currency\":\"CNY\",\"unit\":\"VIDEO\"}}}",
+                "{\"maxReferenceAudios\":1}", "{\"maxReferenceVideos\":1}")) {
+            assertThatThrownBy(() -> normalize("KLING_VIDEO_3", json)).isInstanceOf(ApiProblemException.class);
+        }
+        assertThat(normalize("KLING_IMAGE_3", "{\"defaultParameters\":{\"resolution\":\"2K\",\"aspectRatio\":\"21:9\"}}")
+                .at("/defaultParameters/resolution").asText()).isEqualTo("2K");
+        for (String json : List.of("{\"defaultParameters\":{\"resolution\":\"4K\"}}",
+                "{\"defaultParameters\":{\"transparentBackground\":true}}", "{\"maxReferenceImages\":2}")) {
+            assertThatThrownBy(() -> normalize("KLING_IMAGE_3", json)).isInstanceOf(ApiProblemException.class);
+        }
+    }
+
+    @Test
     void rejectsLimitsOutsideCompiledProtocolAndDefaultsOutsideConfiguredRange() {
         for (String json : List.of("{\"minimumSeconds\":3}", "{\"maximumSeconds\":16}",
                 "{\"minimumSeconds\":10,\"maximumSeconds\":5}",

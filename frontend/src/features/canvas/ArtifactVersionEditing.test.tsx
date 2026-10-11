@@ -7,7 +7,6 @@ import { describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import { selectValue } from "../../test/controls";
 import { server } from "../../test/server";
-import { ArtifactVersionHistory } from "./ArtifactVersionHistory";
 import { TextCanvasEditor } from "./TextCanvasEditor";
 import type { VersionedArtifact } from "./versionedArtifact";
 
@@ -171,36 +170,4 @@ describe("Artifact version editing", () => {
     expect(screen.queryByRole("button", { name: "载入最新版本" })).not.toBeInTheDocument();
   });
 
-  it("loads history on demand and selects a past exact version with artifact CAS", async () => {
-    let reads = 0;
-    let selections = 0;
-    server.use(
-      http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () => {
-        reads++;
-        return HttpResponse.json({ items: [artifact().resourceDefaultVersion,
-          { ...artifact().resourceDefaultVersion, id: "version-1", versionNo: 1 }] });
-      }),
-      csrf(),
-      http.post("/api/v1/projects/:projectId/artifacts/:artifactId/set-default-version",
-        async ({ request }) => {
-          selections++;
-          expect(await request.json()).toEqual({ versionId: "version-1", expectedVersion: 4 });
-          return HttpResponse.json(artifact());
-        }),
-    );
-    renderEditor(<ArtifactVersionHistory artifact={artifact()} />);
-    expect(reads).toBe(0);
-    const user = userEvent.setup();
-    await user.click(screen.getByText("版本历史与选用"));
-    expect(await screen.findByText(/v1 · USER/)).toBeInTheDocument();
-    expect(reads).toBe(1);
-    await user.click(screen.getByRole("button", { name: "选用此版本" }));
-    await waitFor(() => expect(selections).toBe(1));
-  });
-
-  it("does not expose version switching for a media node", () => {
-    const media: VersionedArtifact = { ...artifact(), kind: "IMAGE" };
-    const rendered = renderEditor(<ArtifactVersionHistory artifact={media} />);
-    expect(rendered.container).toBeEmptyDOMElement();
-  });
 });

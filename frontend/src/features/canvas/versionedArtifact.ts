@@ -21,9 +21,3 @@ export function canvasItemVersionId(item: CanvasItem): string | null {
   if (isMediaArtifactItem(item)) return item.selectedVersionId;
   return item.artifact?.resourceDefaultVersionId ?? null;
 }
-
-/** The materialized counterpart to [canvasItemVersionId]. */
-export function canvasItemVersion(item: CanvasItem) {
-  if (isMediaArtifactItem(item)) return item.selectedVersion;
-  return item.artifact?.resourceDefaultVersion ?? null;
-}

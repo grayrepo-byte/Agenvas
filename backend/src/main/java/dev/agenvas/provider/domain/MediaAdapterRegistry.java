@@ -63,6 +63,21 @@ public final class MediaAdapterRegistry {
             boolean supportsTransparentBackground, boolean supportsImageMask, int maxReferenceAudios, int maxReferenceVideos) {}
 
     private static final Map<String, Declaration> DECLARATIONS = Map.ofEntries(
+            Map.entry("WAN_IMAGE", new WanModels().declaration(new WanModels().profiles().getFirst())),
+            Map.entry("WAN_VIDEO", new WanModels().declaration(new WanModels().profiles().stream().filter(p -> "WAN_VIDEO".equals(p.adapterId())).findFirst().orElseThrow())),
+            Map.entry("ARK_SEEDREAM_IMAGE", new SeedreamModels().declaration(new SeedreamModels().profiles().getFirst())),
+            Map.entry("GOOGLE_VEO", new GoogleVideoModels().declaration(new GoogleVideoModels().profiles().getFirst())),
+            Map.entry("GOOGLE_OMNI_VIDEO", new GoogleVideoModels().declaration(new GoogleVideoModels().profiles().stream().filter(p -> "GOOGLE_OMNI_VIDEO".equals(p.adapterId())).findFirst().orElseThrow())),
+            Map.entry(KlingModels.IMAGE_ADAPTER_ID, image(MediaPlatform.KLING, true, 10,
+                    Set.of(), Set.of(), Set.of(), false, false)),
+            Map.entry(KlingModels.VIDEO_ADAPTER_ID, new Declaration(MediaPlatform.KLING, Task.Kind.VIDEO_GENERATION,
+                    0, 30, true, 10, Set.of("TEXT", "GENERAL_REFERENCE"), "TEXT", false,
+                    Set.of(), Set.of(), Set.of(), false, false, 0, 1)),
+            Map.entry(KlingProtocol.IMAGE_ADAPTER_ID, image(MediaPlatform.KLING, true, 1,
+                    Set.of("AUTO", "16:9", "9:16", "1:1", "4:3", "3:4", "3:2", "2:3", "21:9"),
+                    Set.of("1K", "2K"), Set.of(), false, false)),
+            Map.entry(KlingProtocol.VIDEO_ADAPTER_ID, video(MediaPlatform.KLING, 3, 15, true, 2,
+                    Set.of("TEXT", "START_END"), "TEXT", true)),
             Map.entry(MiniMaxH3Protocol.ADAPTER_ID, video(MediaPlatform.MINIMAX, 4, 15, true, 9,
                     Set.of("TEXT", "START_END", "GENERAL_REFERENCE"), "TEXT", true)),
             Map.entry(LOCAL_VIDEO_PROCESSOR, video(MediaPlatform.LOCAL, 0, 30, false, 0,

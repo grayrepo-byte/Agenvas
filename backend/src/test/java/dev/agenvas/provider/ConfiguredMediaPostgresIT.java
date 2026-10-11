@@ -132,7 +132,9 @@ class ConfiguredMediaPostgresIT {
         assertThat(catalog.pinnedSnapshot(pinned)).isEqualTo(historical);
         assertThat(jdbc.sql("select enabled from media_provider_connection where id=:id")
                 .param("id", historical.connection().id()).query(Boolean.class).single()).isTrue();
-        catalog.setConnectionEnabled(connection.id(), connection.version(), false);
+        var connectionVersion = catalog.getConnectionVersion(connection.id(), connection.currentVersion()).orElseThrow();
+        catalog.updateConnection(connection.id(), connection.version(), connection.name(), false,
+                connectionVersion.origin(), null);
         assertThat(diagnostics.snapshot().imageConfigured()).isFalse();
         assertThat(diagnostics.snapshot().videoConfigured()).isFalse();
     }

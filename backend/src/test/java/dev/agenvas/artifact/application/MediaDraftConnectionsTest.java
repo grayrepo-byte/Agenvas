@@ -261,6 +261,8 @@ class MediaDraftConnectionsTest {
 
     private void workflow(List<RunningHubDefinition.Field> fields) {
         when(capabilities.declaredDraftInputs(capability)).thenReturn(fields);
+        when(capabilities.declaredMediaSlotKeys(capability)).thenReturn(fields.stream()
+                .filter(RunningHubDefinition.Field::media).map(RunningHubDefinition.Field::key).collect(java.util.stream.Collectors.toSet()));
         when(capabilities.runningHubDefinition(binding)).thenReturn(new RunningHubDefinition(1,
                 "V2", RunningHubDefinition.TargetType.WORKFLOW, "123456", fields, List.of(), List.of(),
                 "default", false, false, null, null, null, null));

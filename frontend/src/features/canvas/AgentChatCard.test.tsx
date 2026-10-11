@@ -149,6 +149,17 @@ describe("AgentChatCard", () => {
     expect(screen.queryByRole("button", { name: "结束本次运行" })).not.toBeInTheDocument();
   });
 
+  it("prefers a terminal Run list entry at the same timestamp and retains its history while releasing the send slot", async () => {
+    const snapshot = run({ status: "RUNNING" });
+    storedRuns = [{ ...snapshot, status: "SUCCEEDED" }];
+    mountCard(snapshot);
+    await userEvent.setup().type(await readyComposer(), "继续下一次创作");
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
+    expect(screen.getByRole("article", { name: "你" })).toHaveTextContent(TASK_TEXT);
+    expect(screen.queryByRole("button", { name: "停止" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "结束本次运行" })).not.toBeInTheDocument();
+  });
+
   it("shows a blocked run as needing an explicit end action instead of an executing stop button", async () => {
     const blocked = run({ status: "BLOCKED" });
     storedRuns = [blocked];

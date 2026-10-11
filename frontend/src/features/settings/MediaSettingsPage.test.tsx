@@ -3,11 +3,12 @@ import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { http,HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
-import { describe,expect,it } from "vitest";
+import { beforeEach,describe,expect,it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { MediaCapability,MediaConnection,MediaSettings } from "../../shared/api/client";
+import type { KlingProfile,MediaCapability,MediaConnection,MediaSettings } from "../../shared/api/client";
 import { clickControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
+import { klingField, klingProfiles } from "../../test/klingProfiles";
 import { definition as comfyDefinition, graph as comfyGraph } from "./comfyWorkflowFixture";
 import { MediaSettingsPage } from "./MediaSettingsPage";
 
@@ -52,6 +53,254 @@ function settingsFixture(connectionChanges: Partial<MediaConnection> = {}, capab
 }
 
 describe("MediaSettingsPage", () => {
+  beforeEach(() => server.use(http.get("/api/v1/settings/kling/profiles", () => HttpResponse.json({ profiles: klingProfiles }))));
+  it.each(["https://api-singapore.klingai.com", "https://api-beijing.klingai.com"])("creates a Kling connection at %s and keeps its draft after a failed save", async (origin) => {
+    const writes: { body: unknown; key: string | null }[] = [];
+    const fixture = settingsFixture({ name: "可灵连接", platform: "KLING", origin });
+    fixture.connections[0]!.capabilities = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: mockDefault })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections", async ({ request }) => {
+        writes.push({ body: await request.json(), key: request.headers.get("Idempotency-Key") });
+        return writes.length === 1 ? HttpResponse.json({ detail: "连接暂不可用" }, { status: 503 }) : HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "添加连接" }));
+    const dialog = screen.getByRole("dialog");
+    await selectValue(within(dialog).getByRole("combobox", { name: "平台" }), "KLING");
+    const address = within(dialog).getByRole("combobox", { name: "固定 API 地址" });
+    expect(address).toHaveValue("https://api-singapore.klingai.com");
+    if (origin !== "https://api-singapore.klingai.com") await selectValue(address, origin);
+    await user.type(within(dialog).getByRole("textbox", { name: "连接名称" }), "可灵连接");
+    await user.type(within(dialog).getByLabelText("API Key"), "synthetic-kling-key");
+    await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "添加连接" })).toBeEnabled());
+    expect(within(dialog).getByRole("textbox", { name: "连接名称" })).toHaveValue("可灵连接");
+    expect(address).toHaveValue(origin);
+    expect(within(dialog).getByLabelText("API Key")).toHaveValue("synthetic-kling-key");
+    await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[0]?.body).toEqual({ name: "可灵连接", platform: "KLING", origin, apiKey: "synthetic-kling-key" });
+    expect(writes[1]).toEqual(writes[0]);
+    expect(writes[0]?.key).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(document.body).not.toHaveTextContent("synthetic-kling-key");
+  });
+
+  it.each([
+    { adapterId: "KLING_IMAGE_3", model: "kling-v3", resolution: "2K", kind: "IMAGE_GENERATION" as const },
+    { adapterId: "KLING_VIDEO_3", model: "kling-3.0", resolution: "2160p", kind: "VIDEO_GENERATION" as const },
+  ])("edits legacy $adapterId with supported defaults and its pinned fixed model", async ({ adapterId, model, resolution, kind }) => {
+    const fixture = settingsFixture({ name: "可灵连接", platform: "KLING", origin: "https://api-singapore.klingai.com" });
+    fixture.connections[0]!.capabilities = [{ ...fixture.connections[0]!.capabilities[0]!, adapterId, kind }];
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        writes.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    const dialog = screen.getByRole("dialog");
+    await selectValue(within(dialog).getByRole("combobox", { name: "固定适配器" }), adapterId);
+    expect(within(dialog).getByRole("textbox", { name: "固定模型" })).toHaveValue(model);
+    expect(within(dialog).queryByRole("combobox", { name: "模型选项" })).not.toBeInTheDocument();
+    await user.clear(within(dialog).getByRole("textbox", { name: "能力名称" }));
+    await user.type(within(dialog).getByRole("textbox", { name: "能力名称" }), "可灵创作");
+    await user.click(within(dialog).getByRole("tab", { name: "默认参数" }));
+    const resolutionControl = within(dialog).getByRole("combobox", { name: "默认分辨率" });
+    if (kind === "IMAGE_GENERATION") {
+      await user.click(resolutionControl);
+      expect(screen.queryByRole("option", { name: "4K" })).not.toBeInTheDocument();
+      await user.keyboard("{Escape}");
+      expect(within(dialog).queryByRole("combobox", { name: "默认背景" })).not.toBeInTheDocument();
+    }
+    await selectValue(resolutionControl, resolution);
+    if (kind === "VIDEO_GENERATION") {
+      const seconds = within(dialog).getByRole("spinbutton", { name: "默认视频时长（秒）" });
+      expect(seconds).toHaveAttribute("min", "3"); expect(seconds).toHaveAttribute("max", "15");
+      await user.type(seconds, "6");
+      await user.click(within(dialog).getByRole("tab", { name: "估算价格" }));
+      await user.type(within(dialog).getByRole("spinbutton", { name: "4K 单位价格" }), "0.3");
+    }
+    await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(writes).toEqual([{ expectedVersion: 4, enabled: true, name: "可灵创作", adapterId, settings: kind === "IMAGE_GENERATION" ? {
+      defaultParameters: { aspectRatio: "AUTO", resolution: "2K", generationCount: 1 },
+    } : {
+      defaultParameters: { aspectRatio: "AUTO", videoResolution: "2160p" }, defaultDurationSeconds: 6,
+      pricingByResolution: { "2160p": { amount: "0.3", currency: "CNY", unit: "SECOND" } },
+    } }]));
+  });
+
+  it.each(klingProfiles)("publishes native Kling $model $operation from its compiled catalog", async (profile) => {
+    const fixture = settingsFixture({ name: "可灵连接", platform: "KLING", capabilities: [] });
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        writes.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    const dialog = screen.getByRole("dialog");
+    await selectValue(within(dialog).getByRole("combobox", { name: "固定适配器" }), profile.adapterId);
+    const operation = await within(dialog).findByRole("combobox", { name: "生成操作" });
+    if (operation.getAttribute("value") !== profile.operation) await selectValue(operation, profile.operation);
+    if (profile.model !== null) await selectValue(within(dialog).getByRole("combobox", { name: "可灵模型" }), profile.model);
+    else expect(within(dialog).queryByRole("combobox", { name: "可灵模型" })).not.toBeInTheDocument();
+    await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "完整可灵能力");
+    await user.click(within(dialog).getByRole("tab", { name: "默认参数" }));
+    expect(within(dialog).queryByRole("combobox", { name: "默认分辨率" })).not.toBeInTheDocument();
+    const dynamicValues: Record<string, string | number | boolean> = {};
+    if (profile.inputs.some((field) => field.key === "n")) {
+      const count = within(dialog).getByRole("spinbutton", { name: "Image count" });
+      expect(count).toHaveAttribute("min", "1"); expect(count).toHaveAttribute("max", "9");
+      await user.clear(count); await user.type(count, "9"); dynamicValues.n = 9;
+    }
+    if (profile.operation === "EXPAND") {
+      const expansion = within(dialog).getByRole("spinbutton", { name: "up expansion" });
+      expect(expansion).toHaveAttribute("step", "0.1");
+      await user.clear(expansion); await user.type(expansion, "0.4"); dynamicValues.up_expansion_ratio = 0.4;
+    }
+    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(writes).toEqual([{ name: "完整可灵能力", adapterId: profile.adapterId,
+      settings: { model: profile.model ?? "", operation: profile.operation,
+        ...(Object.keys(dynamicValues).length ? { defaultParameters: { dynamicValues } } : {}) } }]));
+  });
+
+  it("retains native Kling model/default drafts and the create key when publication fails", async () => {
+    const fixture = settingsFixture({ platform: "KLING", capabilities: [] });
+    const writes: { body: unknown; key: string | null }[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        writes.push({ body: await request.json(), key: request.headers.get("Idempotency-Key") });
+        return writes.length === 1 ? HttpResponse.json({ detail: "发布失败" }, { status: 503 }) : HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    const dialog = screen.getByRole("dialog");
+    await within(dialog).findByRole("combobox", { name: "生成操作" });
+    await selectValue(within(dialog).getByRole("combobox", { name: "可灵模型" }), "kling-v3-omni");
+    await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "连续系列");
+    await user.click(within(dialog).getByRole("tab", { name: "默认参数" }));
+    await selectValue(within(dialog).getByRole("combobox", { name: "Result type" }), "1");
+    await selectValue(within(dialog).getByRole("combobox", { name: "Series amount" }), "7");
+    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(within(dialog).getByRole("combobox", { name: "Series amount" })).toHaveTextContent("9");
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "发布能力" })).toBeEnabled());
+    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[0]).toEqual(writes[1]);
+    expect(writes[0]?.body).toMatchObject({ settings: { model: "kling-v3-omni", operation: "GENERATE",
+      defaultParameters: { dynamicValues: { result_type: "series", series_amount: 9 } } } });
+  });
+
+  it("waits for a verified Kling profile and preserves the capability name across a catalog retry", async () => {
+    const fixture = settingsFixture({ platform: "KLING", capabilities: [] });
+    let reads = 0;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/settings/kling/profiles", () => ++reads === 1
+        ? HttpResponse.json({ detail: "目录暂不可用" }, { status: 503 }) : HttpResponse.json({ profiles: klingProfiles })),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "保留的能力名称");
+    await within(dialog).findByRole("alert");
+    expect(within(dialog).getByRole("button", { name: "发布能力" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "重试" }));
+    await within(dialog).findByRole("combobox", { name: "可灵模型" });
+    expect(within(dialog).getByRole("textbox", { name: "新能力名称" })).toHaveValue("保留的能力名称");
+    expect(within(dialog).getByRole("button", { name: "发布能力" })).toBeEnabled();
+    expect(reads).toBe(2);
+  });
+
+  it.each(["GENERATE", "MOTION_CONTROL"] as const)("publishes Kling $operation with catalog combination limits rather than selectable slot counts", async (operation) => {
+    const source = klingProfiles.find((profile) => profile.model === (operation === "GENERATE" ? "kling-3.0-omni" : "kling-3.0")
+      && profile.operation === operation)!;
+    const profile: KlingProfile = { ...source, inputLimits: { maxReferenceImages: operation === "GENERATE" ? 7 : 1, maxReferenceVideos: 1 },
+      inputs: operation === "GENERATE" ? [...source.inputs,
+        ...Array.from({ length: 7 }, (_, index) => klingField(`image_${index + 1}`, `Reference image ${index + 1}`, "IMAGE")),
+        klingField("feature_video", "Feature video", "VIDEO"), klingField("base_video", "Base video", "VIDEO"),
+      ] : source.inputs };
+    const fixture = settingsFixture({ platform: "KLING", capabilities: [] });
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/settings/kling/profiles", () => HttpResponse.json({ profiles: [profile] })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        writes.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    const dialog = screen.getByRole("dialog");
+    await selectValue(within(dialog).getByRole("combobox", { name: "固定适配器" }), "KLING_VIDEO");
+    await within(dialog).findByRole("combobox", { name: "可灵模型" });
+    await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "组合限制");
+    await user.click(within(dialog).getByRole("tab", { name: "输入限制" }));
+    const images = within(dialog).getByRole("spinbutton", { name: "最多参考图数量" });
+    const videos = within(dialog).getByRole("spinbutton", { name: "最多参考视频数" });
+    expect(images).toHaveAttribute("max", String(profile.inputLimits!.maxReferenceImages));
+    expect(videos).toHaveAttribute("max", "1");
+    if (operation === "MOTION_CONTROL") {
+      expect(within(dialog).queryByRole("spinbutton", { name: "最短视频时长（秒）" })).not.toBeInTheDocument();
+      expect(within(dialog).queryByRole("spinbutton", { name: "最长视频时长（秒）" })).not.toBeInTheDocument();
+    }
+    await user.type(images, String(profile.inputLimits!.maxReferenceImages));
+    await user.type(videos, "1");
+    await user.click(within(dialog).getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(writes).toEqual([{ name: "组合限制", adapterId: "KLING_VIDEO", settings: {
+      model: profile.model, operation, maxReferenceImages: profile.inputLimits!.maxReferenceImages, maxReferenceVideos: 1,
+    } }]));
+  });
+
+  it.each([
+    { initialOrigin: null, origin: "https://api-singapore.klingai.com" },
+    { initialOrigin: "https://api-singapore.klingai.com", origin: "https://api-beijing.klingai.com" },
+    { initialOrigin: "https://api-beijing.klingai.com", origin: "https://api-beijing.klingai.com" },
+  ])("saves Kling connection at $origin from $initialOrigin without replacing the existing API key", async ({ initialOrigin, origin }) => {
+    const fixture = settingsFixture({ platform: "KLING", origin: initialOrigin });
+    fixture.connections[0]!.capabilities = [];
+    const writes: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1", async ({ request }) => {
+        writes.push(await request.json()); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑连接" }));
+    const dialog = screen.getByRole("dialog");
+    const address = within(dialog).getByRole("combobox", { name: "固定 API 地址" });
+    expect(address).toHaveValue(initialOrigin ?? "https://api-singapore.klingai.com");
+    if (origin !== (initialOrigin ?? "https://api-singapore.klingai.com")) await selectValue(address, origin);
+    await user.click(within(dialog).getByRole("button", { name: "保存连接" }));
+    await waitFor(() => expect(writes).toEqual([{ expectedVersion: 1, name: "OpenAI", enabled: true, origin, apiKey: null }]));
+  });
+
   it("publishes H3 with a fixed model, 2K default and per-type reference limits", async () => {
     const fixture = settingsFixture({ platform: "MINIMAX", origin: "https://api.minimax.cn" });
     fixture.connections[0]!.capabilities = [];
@@ -1178,6 +1427,38 @@ describe("MediaSettingsPage", () => {
     await waitFor(() => expect(submitted).toMatchObject({ settings: { model: "gateway-image", quality: "high",
       defaultParameters: { aspectRatio: "16:9", resolution: "4K", generationCount: 2 },
       maxReferenceImages: 3, pricing: { amount: "0.125", currency: "USD", unit: "IMAGE" } } }));
+  });
+
+  it("saves explicit zero prices and reference limits with an opaque image default", async () => {
+    const settings = settingsFixture({}, { settings: { model: "gateway-image", quality: "high",
+      defaultParameters: { aspectRatio: "16:9", resolution: "2K", transparentBackground: true, generationCount: 2 },
+      maxReferenceImages: 3, pricing: { amount: "0.125", currency: "CNY", unit: "IMAGE" } } });
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(settings);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
+    await user.click(await screen.findByText("编辑能力参数"));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("tab", { name: "默认参数" }));
+    await selectValue(within(dialog).getByRole("combobox", { name: "默认背景" }), "opaque");
+    await user.click(within(dialog).getByRole("tab", { name: "输入限制" }));
+    const references = within(dialog).getByRole("spinbutton", { name: "最多参考图数量" });
+    await user.clear(references); await user.type(references, "0");
+    await user.click(within(dialog).getByRole("tab", { name: "估算价格" }));
+    const amount = within(dialog).getByRole("spinbutton", { name: "单位价格" });
+    await user.clear(amount); await user.type(amount, "0");
+    await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(submitted).toEqual({ expectedVersion: 4, name: "Portrait", enabled: true,
+      adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "gateway-image", quality: "high",
+        defaultParameters: { aspectRatio: "16:9", resolution: "2K", quality: "high", transparentBackground: false, generationCount: 2 },
+        maxReferenceImages: 0, pricing: { amount: "0", currency: "CNY", unit: "IMAGE" } } }));
   });
 
   it("publishes the fixed Nano Banana 2 image capability", async () => {

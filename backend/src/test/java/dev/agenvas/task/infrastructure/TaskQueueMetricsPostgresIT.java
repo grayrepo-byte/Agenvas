@@ -29,8 +29,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.llm.scheduler-enabled=false",
-        "agenvas.export.scheduler-enabled=false"})
+        "agenvas.llm.scheduler-enabled=false"})
 class TaskQueueMetricsPostgresIT {
 
     @Container

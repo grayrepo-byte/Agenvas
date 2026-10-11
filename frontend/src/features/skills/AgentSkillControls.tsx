@@ -170,6 +170,3 @@ function SkillChoicePanel({agent,choice,state,index,resources,resourcesFetching,
     </Panel> : null}
   </>;
 }
-export function RunSkillSummary({skill}:{skill:import("../../shared/api/client").RunPreflight["creativeSkills"][number]}) {
-  return <section aria-label={t("skills.preflight")}><p>{skill.title} · {t("skills.version",{"0":skill.versionNumber})}</p><ul>{skill.resources.map((resource)=><li key={resource.path}><details><summary>{resource.path} · {resource.contentHash}</summary><pre className="skills-source-preview">{resource.content}</pre></details></li>)}{skill.assets.map((asset)=><li key={asset.alias}>{asset.alias} · {asset.purpose}</li>)}</ul><p>{t("skills.fees")}</p></section>;
-}

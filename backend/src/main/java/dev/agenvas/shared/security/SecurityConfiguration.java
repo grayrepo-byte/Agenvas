@@ -56,6 +56,7 @@ public class SecurityConfiguration {
                                 "/api/v1/settings/media-templates", "/api/v1/settings/media-templates/**",
                                 "/api/v1/settings/media-template-sources", "/api/v1/settings/media-template-sources/**",
                                 "/api/v1/settings/autodl-workflows", "/api/v1/settings/autodl-workflows/**",
+                                "/api/v1/settings/kling/**", "/api/v1/settings/media-profiles",
                                 "/api/v1/settings/media-defaults/**", "/api/v1/call-logs",
                                 "/api/v1/settings/media-styles", "/api/v1/settings/media-styles/**",
                                 "/api/v1/settings/prompts",
