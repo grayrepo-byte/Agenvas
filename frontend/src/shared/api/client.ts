@@ -36,6 +36,23 @@ export type RemoveMediaDraftMediaInputRequest = components["schemas"]["RemoveMed
 export type RunMediaDraftRequest = components["schemas"]["RunMediaDraftRequest"];
 export type RunImageOperationRequest = components["schemas"]["RunImageOperationRequest"];
 export type ImageOperation = RunImageOperationRequest["operation"];
+export type ImagePromptRequest = components["schemas"]["ImagePromptRequest"];
+
+/** Image analysis is durable text work; it never changes the card's media draft. */
+export function listImagePromptTasks(projectId: string, artifactId: string, canvasItemId: string): Promise<Task[]> {
+  return readJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/image-prompts?canvasItemId=${encodeURIComponent(canvasItemId)}`,
+    t("image.reversePrompt.loadFailed"));
+}
+export function runImagePrompt(projectId: string, artifactId: string, input: ImagePromptRequest, key: string): Promise<Task> {
+  return writeJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/image-prompts`, {
+    method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(input),
+  }, t("image.reversePrompt.failed"));
+}
+export function cancelImagePrompt(projectId: string, artifactId: string, taskId: string): Promise<Task> {
+  return writeJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/image-prompts/${taskId}/cancel`, {
+    method: "POST",
+  }, t("image.reversePrompt.cancelFailed"));
+}
 export type VideoOperation = components["schemas"]["VideoOperation"];
 export type MediaFunction = components["schemas"]["MediaFunction"];
 export type MediaFunctionSetting = components["schemas"]["MediaFunctionSetting"];

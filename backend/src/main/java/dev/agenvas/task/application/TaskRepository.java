@@ -59,6 +59,12 @@ public interface TaskRepository {
     /** Recent direct requests for one stable media Artifact, newest first. */
     List<Task> listDirectForArtifact(UUID ownerId, UUID projectId, UUID artifactId);
 
+    /** Image analysis has no output Artifact target; its immutable input identifies the source card. */
+    List<Task> listImagePrompts(UUID ownerId, UUID projectId, UUID canvasItemId);
+
+    /** Stops queued or running image analysis with CAS; this cannot promise provider cancellation. */
+    boolean cancelImagePrompt(Task current, Instant now);
+
     /** Recent media requests for one CanvasItem, including approved Agent work, newest first. */
     List<Task> listMediaForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId);
 

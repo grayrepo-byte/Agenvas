@@ -66,7 +66,8 @@ class DirectTextGenerationWorkerTest {
     @BeforeEach
     void setup() throws Exception {
         claimedTask(null);
-        worker = new DirectTextGenerationWorker(tasks, gateway, codec, callLogs, mapper, executor);
+        worker = new DirectTextGenerationWorker(tasks, gateway, codec, callLogs, mapper, executor,
+                mock(ImagePromptInputService.class));
         when(executor.open(any(), eq(WORKER))).thenReturn(execution);
         when(gateway.modelDetailsFor(pinned)).thenReturn(new ChatGateway.ModelDetails(true, "MOCK", "synthetic-text", false));
         when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned))).thenReturn(exchange);

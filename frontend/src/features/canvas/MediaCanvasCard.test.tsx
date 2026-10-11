@@ -390,6 +390,7 @@ describe("MediaCanvasCard", () => {
 
   it("offers upload into the empty card and keeps image operations disabled until a source exists", async () => {
     const { onCardClick } = showCard();
+    expect(screen.getByRole("button", { name: "提示词反推" })).toBeDisabled();
     const pickerClick = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
     await clickControl(await screen.findByRole("button", { name: "上传图片" }));
     expect(pickerClick).toHaveBeenCalledOnce();
@@ -403,6 +404,28 @@ describe("MediaCanvasCard", () => {
     expect(screen.queryByLabelText("图片扩展功能")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "扩展" })).toHaveFocus());
     expect(screen.queryByRole("button", { name: "卡片详情" })).not.toBeInTheDocument();
+  });
+
+  it("opens reverse prompt for the displayed image and pins it across selection changes", async () => {
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode: "RESULT", version: 0 })),
+      http.get("/api/v1/projects/project-1/artifacts/image-1/image-prompts", () => HttpResponse.json([])),
+    );
+    const image = { ...artifact, resourceDefaultVersionId: "image-version", resourceDefaultVersion: {
+      id: "image-version", versionNo: 1, schemaVersion: 1, content: { assetId: "image-asset", sourceType: "UPLOAD" },
+      inputReferences: [], createdByKind: "USER" as const, runId: null, createdAt: artifact.createdAt,
+    } } satisfies Artifact;
+    const view = showCard(image);
+    await waitFor(() => expect(screen.getByRole("button", { name: "提示词反推" })).toBeEnabled());
+    await clickControl(screen.getByRole("button", { name: "提示词反推" }));
+    const dialog = await screen.findByRole("dialog", { name: "提示词反推" });
+    expect(within(dialog).getByRole("img")).toHaveAttribute("src", "/api/v1/projects/project-1/assets/image-asset/content");
+    view.setItem({ ...itemFor(image), selectedVersionId: "new-version", selectedVersion: {
+      ...image.resourceDefaultVersion, id: "new-version", content: { assetId: "new-asset", sourceType: "UPLOAD" },
+    } });
+    expect(within(dialog).getByRole("img")).toHaveAttribute("src", "/api/v1/projects/project-1/assets/image-asset/content");
+    view.setToolbarState(false);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "提示词反推" })).not.toBeInTheDocument());
   });
 
   it("submits depth extraction against the exact visible image version", async () => {

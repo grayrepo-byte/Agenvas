@@ -22,7 +22,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Executes direct text-card prompts with a durable response checkpoint and fenced Artifact commit. */
+/** Executes direct text and image-to-prompt work with durable responses and fenced result commits. */
 @Service
 public class DirectTextGenerationWorker {
     private static final Logger LOGGER = LoggerFactory.getLogger(DirectTextGenerationWorker.class);
@@ -35,23 +35,25 @@ public class DirectTextGenerationWorker {
     private final CallLogService callLogs;
     private final ObjectMapper mapper;
     private final LeasedModelExecutor modelExecutor;
+    private final ImagePromptInputService images;
 
     @Autowired
     public DirectTextGenerationWorker(TaskService tasks, TaskProperties taskProperties,
             ChatGateway gateway, LlmProtocolCodec codec, CallLogService callLogs,
-            ObjectMapper mapper) {
+            ObjectMapper mapper, ImagePromptInputService images) {
         this(tasks, gateway, codec, callLogs, mapper,
-                new LeasedModelExecutor("direct-text", tasks, taskProperties));
+                new LeasedModelExecutor("direct-text", tasks, taskProperties), images);
     }
 
     DirectTextGenerationWorker(TaskService tasks, ChatGateway gateway, LlmProtocolCodec codec,
-            CallLogService callLogs, ObjectMapper mapper, LeasedModelExecutor modelExecutor) {
+            CallLogService callLogs, ObjectMapper mapper, LeasedModelExecutor modelExecutor, ImagePromptInputService images) {
         this.tasks = tasks;
         this.gateway = gateway;
         this.codec = codec;
         this.callLogs = callLogs;
         this.mapper = mapper;
         this.modelExecutor = modelExecutor;
+        this.images = images;
     }
 
     public synchronized int runOnce(String workerId) {
@@ -78,7 +80,14 @@ public class DirectTextGenerationWorker {
             if (checkpoint == null) checkpoint = invokeAndCheckpoint(lease, workerId, execution);
             ObjectNode content = textContent(lease, checkpoint);
             execution.checkActive();
-            tasks.succeedWithTextArtifact(lease, workerId, content);
+            if (lease.isImagePrompt()) {
+                ObjectNode output = (ObjectNode) checkpoint.deepCopy();
+                ObjectNode result = mapper.createObjectNode().put("prompt", content.path("text").asText())
+                        .put("sourceVersionId", lease.input().path("sourceVersionId").asText())
+                        .put("mock", "mock".equals(lease.input().path("modelConfigSource").asText()));
+                output.set("result", result);
+                tasks.succeed(lease, workerId, output);
+            } else tasks.succeedWithTextArtifact(lease, workerId, content);
         } catch (LeasedModelExecutor.Stopped stopped) {
             throw stopped;
         } catch (ExecutionException | TimeoutException failure) {
@@ -117,7 +126,7 @@ public class DirectTextGenerationWorker {
 
     private JsonNode invokeAndCheckpoint(Task lease, String workerId, LeasedModelExecutor.Execution execution)
             throws InterruptedException, ExecutionException, TimeoutException {
-        List<Message> messages = List.of(
+        List<Message> messages = lease.isImagePrompt() ? images.messages(lease) : List.of(
                 new SystemMessage(frozenSystemPrompt(lease)),
                 new UserMessage("Instruction:\n" + lease.input().path("prompt").asText()
                         + "\n\nCurrent card content:\n"
@@ -132,7 +141,8 @@ public class DirectTextGenerationWorker {
                         CallLog.Kind.LLM, CallLog.Operation.CHAT,
                         "mock".equals(pinned.source()) ? "mock" : model.providerAdapter(),
                         model.modelId(), "mock".equals(pinned.source())),
-                () -> gateway.call(messages, List.of(), Map.of(), pinned),
+                () -> gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
+                        List.of(), Map.of(), pinned),
                 ignored -> CallLogService.CallOutcome.succeeded(null)), MODEL_TIMEOUT);
         execution.checkActive();
         if (exchange.configVersion() != pinned.version()) {
