@@ -606,7 +606,7 @@ export interface paths {
         };
         /**
          * 统一提示词管理列表（仅管理员）
-         * @description 内置功能提示词包括文字生成及角色、脸部、道具三视图和场景宫格；可编辑但不可删除。四种视图分别由固定用途标识 image.three-view.character、image.three-view.face、image.three-view.prop 和 image.three-view.scene-grid 消费。
+         * @description 内置功能提示词包括文字生成、图片提示词反推及角色、脸部、道具三视图和场景宫格；可编辑但不可删除。图片反推使用 image.reverse-prompt；四种视图分别由固定用途标识 image.three-view.character、image.three-view.face、image.three-view.prop 和 image.three-view.scene-grid 消费。
          */
         get: operations["listPrompts"];
         put?: never;
@@ -1873,6 +1873,66 @@ export interface paths {
         put?: never;
         /** 固定已保存的媒体草稿，首个输出为当前节点追加版本，其余输出使用独立节点并受理 USER_DIRECT Task */
         post: operations["runMediaDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/artifacts/{artifactId}/image-prompts": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        /** 查询图片节点最近的提示词反推任务 */
+        get: operations["listImagePromptTasks"];
+        put?: never;
+        /**
+         * 固定选用图片版本、语言、功能提示词与文字模型，受理提示词反推任务
+         * @description 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 3；无产物输出目标，不修改媒体草稿或选用结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送受控图片预览，关闭自动工具执行，成功后 output 仅返回 prompt、sourceVersionId、mock。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
+         */
+        post: operations["runImagePrompt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/artifacts/{artifactId}/image-prompts/{taskId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 取消排队或运行中的图片提示词反推
+         * @description 原子停止本系统后续处理；不保证服务方已经停止或退款。取消后的晚到响应不能发布提示词。重复取消重放 CANCELED 状态。
+         */
+        post: operations["cancelImagePrompt"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5318,6 +5378,14 @@ export interface components {
             /** Format: int64 */
             expectedTaskVersion: number;
         };
+        ImagePromptRequest: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            sourceVersionId: string;
+            /** Format: int64 */
+            expectedCanvasItemVersion: number;
+        };
         Task: {
             /** Format: uuid */
             id: string;
@@ -5338,6 +5406,7 @@ export interface components {
              *     AssistantTurnStream；这不是已提交的工具响应。完整回合提交后
              *     assistantText 为最终公开文本。失败或取消保留 INTERRUPTED 文本。
              *     modelRetry 是 AgentModelRetry 投影；READY 使用 nextActionAt 显示下次重试时间。
+             *     TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时仅返回 prompt、sourceVersionId、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
              */
             output?: ({
                 modelRetry?: components["schemas"]["AgentModelRetry"];
@@ -9745,6 +9814,111 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listImagePromptTasks: {
+        parameters: {
+            query: {
+                canvasItemId: string;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最近任务，新任务在前；Cache-Control no-store，不返回模型完整响应 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"][];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    runImagePrompt: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImagePromptRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理或重放的持久任务；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cancelImagePrompt: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已取消的任务 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];

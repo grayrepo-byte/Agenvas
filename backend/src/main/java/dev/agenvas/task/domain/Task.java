@@ -54,6 +54,12 @@ public record Task(
 
     public static final String MODEL_RETRY_PROPERTY = "modelRetry";
     public static final String APPROVAL_INPUT_PROPERTY = "agentApprovalId";
+    public static final String IMAGE_PROMPT_PURPOSE = "IMAGE_REVERSE_PROMPT";
+
+    /** Image analysis produces text in the Task result without mutating a media draft or Artifact. */
+    public boolean isImagePrompt() {
+        return kind == Kind.TEXT_GENERATION && IMAGE_PROMPT_PURPOSE.equals(input.path("purpose").asText());
+    }
 
     /** Only the approval application entry point attaches this server-created identity. */
     public boolean approvedMedia() {
@@ -69,7 +75,7 @@ public record Task(
     public enum Kind {
         /** 调用模型并恢复受控工具回合。 */
         AGENT_TURN,
-        /** 用户从文字卡片直接调用模型并生成一个新的文字版本。 */
+        /** 用户直接调用文字模型，生成文字版本或图片反推提示词。 */
         TEXT_GENERATION,
         /** 生成并归档图片。 */
         IMAGE_GENERATION,

@@ -2251,3 +2251,12 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 媒体审批受理测试使用普通 Mock，避免深度 Mock 为 Mock/ComfyUI 能力自动构造不存在的原生/Kling profile；原有预检、批准受理、幂等、视频/音频和风格长度断言保留。
 - [x] 运行 `./mvnw --batch-mode --no-transfer-progress -Dtest=RunningHubAdapterTest,ApprovedMediaAcceptanceTest,ProviderResultManifestTest,MediaExecutionWorkerTest,TaskMediaCompletionTest test`，57 项单元测试全部通过；使用 ci-integration 定向 verify 运行 RunningHub 多输出清单恢复、ZIP 恢复及 NativeMedia 十七层元数据归档，3 项真实 PostgreSQL 测试全部通过，均无失败、错误或跳过。主源码及测试源码编译、打包与差异空白检查通过。
 - [ ] 本轮本地全量测试、真实 Provider、浏览器端到端与部署未运行；上游与素材为合成数据。API 合约、数据库迁移、依赖及 CI 工作流无改动。
+
+### 2026-10-11 图片工具栏提示词反推
+
+- [x] 图片工具栏新增「提示词反推」，只对当前展示的选用图片结果开放。窗口固定来源版本，明确开始后由后台文字模型分析受控预览；结果可编辑、复制并标注 Mock，不覆盖媒体草稿或修改图片、节点及连线。覆盖记录载入、排队、运行、失败、冲突、未授权、响应未确认、取消及复制失败；关闭不取消，重新打开或刷新恢复持久任务，窗口内编辑只作临时草稿。
+- [x] 复用 TEXT_GENERATION Task、租约、用量、模型调用日志及完整响应检查点；schema 3 / IMAGE_REVERSE_PROMPT 固定图片版本、语言、模型和内置 FUNCTION image.reverse-prompt 正文版本。图片字节仅在事务外派发前鉴权加载，不进入消息检查点；关闭工具执行，公开输出仅包含 prompt、sourceVersionId、mock。同键重放不重新读取配置，JSONB 数值按请求类型比较；同节点其他活动命令返回冲突。取消使用版本 CAS，晚到结果不公开；归档项目不能新建任务，已有任务仍能重放和查询。
+- [x] OpenAPI 新增 image-prompts 查询、受理及取消 API，生成 TypeScript 并同步四语言 UI 与后端错误目录。V24 仅增加可编辑、不可删除的内置提示词，不改变表结构、jOOQ 或依赖；规格与 ADR 0045 已同步。真实 PostgreSQL 验证新安装及 V23 → V24 升级，保留已有 text.generate 的用户修改。
+- [x] 定向执行 ImagePromptInputServiceTest 10、ImagePromptPostgresIT 6、DirectTextGenerationWorkerTest 18、DirectTextGenerationPostgresIT 2、ApiI18nTest 7、MessageCatalogTest 2，共 45 个用例全部通过，无失败、错误或跳过；其中 8 个使用隔离 Testcontainers PostgreSQL 17.11。覆盖固定请求、并发幂等、权限/CSRF/来源 CAS、配置切换后重放、完整响应恢复不重发、取消发布屏障、用量、预览大小/资源关闭/事务边界和迁移。
+- [x] 定向执行 ImageReversePromptDialog、MediaCanvasCard、PromptManagementSection 三个 Vitest 文件，109 个用例全部通过。TypeScript、改动文件 ESLint、主题颜色、四语言 2451 键检查及 Vite 生产构建通过；构建保留既有大 chunk 提示。后端主源码与全部测试源码编译、最终 git diff --check 通过。
+- [ ] 全量测试、真实视觉模型、浏览器端到端与部署未运行；后端模型为合成网关、图片为合成 PNG，前端请求为 Mock，不能证明具体外部模型支持图片理解或服务方会响应取消。没有修改运行服务或用户数据库；使用时需配置支持图片理解的文字模型，并随同步后端应用 V24 迁移。

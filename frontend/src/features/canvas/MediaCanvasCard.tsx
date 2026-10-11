@@ -37,6 +37,7 @@ import { readContentText } from "./artifactContent";
 import { AudioPlayer } from "./AudioPlayer";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
 import { ImageResizePanel } from "./ImageResizePanel";
+import { ImageReversePromptDialog } from "./ImageReversePromptDialog";
 import { CropPanel } from "./CropPanel";
 import { MediaPreviewDialog } from "./MediaPreviewDialog";
 import { MediaCardUpload } from "./MediaCardUpload";
@@ -99,6 +100,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const [menuOpen, setMenuOpen] = useState(false);
   const [threeViewMenuOpen, setThreeViewMenuOpen] = useState(false);
   const [operationOpen, setOperationOpen] = useState<ImageTool | null>(null);
+  const [reversePrompt, setReversePrompt] = useState<{ assetId: string; sourceVersionId: string; expectedCanvasItemVersion: number; open: boolean } | null>(null);
   const [videoOperationOpen, setVideoOperationOpen] = useState<VideoOperation | null>(null);
   const videoCommand = useRef<{ payload: string; key: string; input: RunVideoOperationRequest } | null>(null);
   const [threeViewType, setThreeViewType] = useState<ThreeViewType | null>(null);
@@ -175,6 +177,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     setMenuOpen(false);
     setThreeViewMenuOpen(false);
     setOperationOpen(null);
+    setReversePrompt((current) => current?.open ? { ...current, open: false } : current);
     setVideoOperationOpen(null);
     setThreeViewType(null);
     // Keep tracking an in-flight submission even after its panel is dismissed.
@@ -219,11 +222,20 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     titleIcon={isImage ? <ImageIcon size={16} /> : isAudio ? <MusicNotes size={16} /> : <VideoCamera size={16} />}
     className={isAudio && assetId ? "audio-canvas-card" : undefined}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible}
-    toolbarRaised={menuOpen || operationOpen !== null || videoOperationOpen !== null}
+    toolbarRaised={menuOpen || operationOpen !== null || videoOperationOpen !== null || Boolean(reversePrompt?.open)}
     editableTitle={{ projectId: artifact.projectId, item }}
     toolbarLabel={t("media.card.toolbarLabel")} toolbar={<>
         <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={!assetId} />
         {isImage ? <>
+          <Button variant="ghost" type="button" disabled={!assetId || !item.selectedVersionId}
+            onClick={() => { if (assetId && item.selectedVersionId) setReversePrompt({ assetId,
+              sourceVersionId: item.selectedVersionId, expectedCanvasItemVersion: item.version, open: true }); }}>
+            <MagicWand data-icon="inline-start" />{t("image.reversePrompt.title")}</Button>
+          {reversePrompt ? <ImageReversePromptDialog key={reversePrompt.sourceVersionId}
+            projectId={artifact.projectId} artifactId={artifact.id} title={item.title} assetId={reversePrompt.assetId}
+            request={{ canvasItemId: item.id, sourceVersionId: reversePrompt.sourceVersionId,
+              expectedCanvasItemVersion: reversePrompt.expectedCanvasItemVersion }}
+            open={reversePrompt.open} onClose={() => setReversePrompt((current) => current ? { ...current, open: false } : null)} /> : null}
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />{t("media.card.smartEdit")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}

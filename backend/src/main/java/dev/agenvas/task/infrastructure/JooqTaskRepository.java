@@ -414,6 +414,30 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     }
 
     @Override
+    public List<Task> listImagePrompts(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        return dsl.select(TASK.fields()).from(TASK)
+                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
+                .where(PROJECT.OWNER_ID.eq(ownerId)).and(TASK.PROJECT_ID.eq(projectId))
+                .and(TASK.RUN_ID.isNull()).and(TASK.KIND.eq(Task.Kind.TEXT_GENERATION.name()))
+                .and(DSL.field("{0}->>'purpose'", String.class, TASK.INPUT_JSON).eq(Task.IMAGE_PROMPT_PURPOSE))
+                .and(DSL.field("{0}->>'canvasItemId'", String.class, TASK.INPUT_JSON).eq(canvasItemId.toString()))
+                .orderBy(TASK.CREATED_AT.desc(), TASK.ID.desc()).limit(RECENT_TARGET_TASK_LIMIT)
+                .fetch(row -> mapTask(row.into(TASK)));
+    }
+
+    @Override
+    public boolean cancelImagePrompt(Task current, Instant now) {
+        if (!current.isImagePrompt()) return false;
+        return dsl.update(TASK).set(TASK.STATUS, Task.Status.CANCELED.name())
+                .set(TASK.CANCEL_REQUESTED, true).set(TASK.COMPLETED_AT, utc(now))
+                .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1))
+                .where(TASK.ID.eq(current.id())).and(TASK.PROJECT_ID.eq(current.projectId()))
+                .and(TASK.VERSION.eq(current.version())).and(TASK.RUN_ID.isNull())
+                .and(TASK.STATUS.in(Task.Status.READY.name(), Task.Status.RUNNING.name()))
+                .execute() == 1;
+    }
+
+    @Override
     public List<Task> listMediaForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId) {
         // The target card displays generation activity regardless of the request's entry point.
         return listForTarget(ownerId, projectId, TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID,
