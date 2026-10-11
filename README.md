@@ -4,12 +4,13 @@
 
 <h1 align="center">Agenvas</h1>
 
+<p align="center"><strong>简体中文</strong> | <a href="README.en.md">English</a></p>
+
 <p align="center"><strong>可自托管的 AI 创作画布</strong><br />文字、图片、视频、音频与 Agent，一个工作空间。</p>
 
 <p align="center">Agenvas 希望让个人用户能够使用最低的代价获得商业画布的体验，而不用绑定昂贵的会员或者顶尖的模型，将低价的选择权掌握在自己手中</p>
 
 <p align="center">
-  <a href="README.en.md">English</a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#部署与维护">部署与维护</a> ·
   <a href="#本地开发">本地开发</a> ·
