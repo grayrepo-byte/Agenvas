@@ -14,7 +14,8 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * 不可变本地或对象存储配置及加密凭据
+ * Pinned archive destinations and encrypted object-store or remote-file
+ * credentials
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class StorageProfileRecord extends UpdatableRecordImpl<StorageProfileRecord> {
@@ -64,42 +65,50 @@ public class StorageProfileRecord extends UpdatableRecordImpl<StorageProfileReco
     }
 
     /**
-     * Setter for <code>public.storage_profile.endpoint</code>. 管理员配置的连接地址
+     * Setter for <code>public.storage_profile.endpoint</code>. Object service
+     * origin, HTTPS WebDAV collection, or smb://host/share/base directory; no
+     * embedded credentials
      */
     public void setEndpoint(String value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.storage_profile.endpoint</code>. 管理员配置的连接地址
+     * Getter for <code>public.storage_profile.endpoint</code>. Object service
+     * origin, HTTPS WebDAV collection, or smb://host/share/base directory; no
+     * embedded credentials
      */
     public String getEndpoint() {
         return (String) get(3);
     }
 
     /**
-     * Setter for <code>public.storage_profile.region</code>. 对象存储区域
+     * Setter for <code>public.storage_profile.region</code>. Object-store
+     * region; empty for SMB and WebDAV
      */
     public void setRegion(String value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.storage_profile.region</code>. 对象存储区域
+     * Getter for <code>public.storage_profile.region</code>. Object-store
+     * region; empty for SMB and WebDAV
      */
     public String getRegion() {
         return (String) get(4);
     }
 
     /**
-     * Setter for <code>public.storage_profile.bucket</code>. 对象存储桶
+     * Setter for <code>public.storage_profile.bucket</code>. Object-store
+     * bucket; empty for SMB and WebDAV
      */
     public void setBucket(String value) {
         set(5, value);
     }
 
     /**
-     * Getter for <code>public.storage_profile.bucket</code>. 对象存储桶
+     * Getter for <code>public.storage_profile.bucket</code>. Object-store
+     * bucket; empty for SMB and WebDAV
      */
     public String getBucket() {
         return (String) get(5);
@@ -196,16 +205,16 @@ public class StorageProfileRecord extends UpdatableRecordImpl<StorageProfileReco
     }
 
     /**
-     * Setter for <code>public.storage_profile.access_key_mask</code>.
-     * 对象存储访问密钥掩码
+     * Setter for <code>public.storage_profile.access_key_mask</code>. Masked
+     * access key ID or remote-file username; never a password
      */
     public void setAccessKeyMask(String value) {
         set(12, value);
     }
 
     /**
-     * Getter for <code>public.storage_profile.access_key_mask</code>.
-     * 对象存储访问密钥掩码
+     * Getter for <code>public.storage_profile.access_key_mask</code>. Masked
+     * access key ID or remote-file username; never a password
      */
     public String getAccessKeyMask() {
         return (String) get(12);

@@ -31,11 +31,16 @@ public class ConfiguredAssetStorage implements AssetStorage {
     private final LocalAssetStorage local;
     private final StorageRepository repository;
     private final StorageSettingsService settings;
-    private final ObjectStorageClient cloud;
+    private final RemoteStorageClient cloud;
     private final ObjectMapper mapper;
     private final java.time.Clock clock;
+    @org.springframework.beans.factory.annotation.Autowired
     public ConfiguredAssetStorage(LocalAssetStorage local, StorageRepository repository,
-            StorageSettingsService settings, ObjectStorageClient cloud, ObjectMapper mapper, java.time.Clock clock) {
+            StorageSettingsService settings, ArchiveStorageClient cloud, ObjectMapper mapper, java.time.Clock clock) {
+        this(local, repository, settings, (RemoteStorageClient) cloud, mapper, clock);
+    }
+    ConfiguredAssetStorage(LocalAssetStorage local, StorageRepository repository,
+            StorageSettingsService settings, RemoteStorageClient cloud, ObjectMapper mapper, java.time.Clock clock) {
         this.local = local; this.repository = repository; this.settings = settings; this.cloud = cloud; this.mapper = mapper; this.clock = clock;
     }
     /** Receipt contains only validated metadata and local staging keys, never credentials or URLs. */
@@ -150,11 +155,12 @@ public class ConfiguredAssetStorage implements AssetStorage {
         if (!thumbnail && !key.equals(archive.key())) throw new IllegalStateException("Remote key differs from receipt");
         return new Remote(settings.requireProfile(profileId), key, archive, thumbnail);
     }
-    /** Internal provider input descriptor, validated against the asset's durable archive route. */
+    /** Signable object-store input only; SMB/WebDAV use an independent relay like local archives. */
     public record CloudObject(StorageProfile profile, String key) {}
     public Optional<CloudObject> cloudObject(String objectKey) {
         if (!objectKey.startsWith(REMOTE_PREFIX)) return Optional.empty();
         Remote r = remote(objectKey);
+        if (!r.profile().provider().supportsRelay()) return Optional.empty();
         if (r.thumbnail()) throw new IllegalArgumentException("Provider references must use original bytes");
         return Optional.of(new CloudObject(r.profile(), remoteKey(r.profile(), r.key())));
     }
@@ -162,8 +168,7 @@ public class ConfiguredAssetStorage implements AssetStorage {
     @Override public void verify(String key, long size, String hash) {
         if (!key.startsWith(REMOTE_PREFIX)) { local.verify(key, size, hash); return; }
         Remote r = remote(key);
-        if (!cloud.matches(r.profile(), remoteKey(r.profile(), r.key()), size, hash))
-            throw new IllegalStateException("READY remote object missing");
+        cloud.verify(r.profile(), remoteKey(r.profile(), r.key()), size, hash);
     }
     private void verifyLocal(String key, long size, String hash) {
         verifyCache(local.checkedPath(key), size, hash);

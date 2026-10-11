@@ -143,3 +143,7 @@ CI 的 jOOQ 漂移检查不再占用固定 55432 端口；Docker 自动预留仅
 ## 2026-10-06 GitHub Release Notes
 
 不升级应用依赖、构建镜像或 Docker Actions；新增 Release job 复用 GitHub Ubuntu runner 的 Python 标准库与 GitHub CLI。仅版本标签推送在 CI Gate 和 server/web 双架构 Docker Hub 发布成功后获得 job 级 `contents: write`；其他 job 继续只读。通过 [Release Notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release) 生成 PR/贡献者/变更链接，结合 Git 标签区间实际提交与版本镜像地址构造说明，再用 [gh release create/edit](https://cli.github.com/manual/gh_release_create) 创建或补齐空白说明，不新建/移动标签、不覆盖已有说明或发布草稿。PR、main、普通手动运行不创建 Release，也不重建镜像。脚本核对远端标签与验证提交；预发布和旧稳定版本补发不抢占 Latest。实际检查与尚未验证范围见开发清单。
+
+## SMB / WebDAV 验证范围
+
+SMB 新增固定正式版 [`com.hierynomus:smbj:0.15.0`](https://github.com/hierynomus/smbj/releases/tag/v0.15.0)，使用 SMB2/3、强制签名、关闭 DFS 和带超时的会话。Maven 在 Spring Boot BOM 管理下解析传递依赖；WebDAV 复用 OkHttp 4.12.0，不引入 WebDAV SDK。协议根据 [RFC 4918](https://www.rfc-editor.org/rfc/rfc4918.html) 实现 MKCOL/PUT/MOVE/HEAD/GET/DELETE，发布禁止覆盖并核对 SHA-256。验证涵盖协议单元测试、真实 PostgreSQL 加模拟 WebDAV HTTP、现有对象存储与媒体中继回归，以及前端设置、四语言、类型、lint 和构建。真实 NAS/WebDAV 产品与大文件吞吐未验证；具体执行结果见开发清单。

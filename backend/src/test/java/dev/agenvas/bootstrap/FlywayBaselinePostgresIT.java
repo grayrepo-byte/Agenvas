@@ -55,6 +55,41 @@ class FlywayBaselinePostgresIT {
     }
 
     @Test
+    void remoteFileStorageUpgradePreservesExistingDestinationsAndAllowsNewProtocols() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("24").load().migrate();
+        UUID profile = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            execute(connection,"""
+                insert into storage_profile(id,name,provider,endpoint,region,bucket,key_prefix,path_style,
+                    credential_version,credential_ciphertext,credential_nonce,credential_key_version,access_key_mask,created_at)
+                values (?,'Synthetic old archive','S3','https://s3.example.com','us-east-1','test-bucket','agenvas',true,
+                    1,decode('001122','hex'),decode(repeat('00',12),'hex'),1,'masked',now())
+                """,profile);
+            execute(connection,"update storage_settings set active_profile_id=?,relay_profile_id=?,version=9",profile,profile);
+            assertRejected(connection,CHECK_VIOLATION,"update storage_profile set provider='SMB' where id=?",profile);
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+        try (Connection connection = connection()) {
+            assertThat(text(connection,"select provider from storage_profile where id=?",profile)).isEqualTo("S3");
+            assertThat(text(connection,"select active_profile_id::text from storage_settings")).isEqualTo(profile.toString());
+            assertThat(text(connection,"select relay_profile_id::text from storage_settings")).isEqualTo(profile.toString());
+            assertThat(text(connection,"select credential_ciphertext::text from storage_profile where id=?",profile)).isEqualTo("\\x001122");
+            for (String protocol : List.of("SMB","WEBDAV")) {
+                execute(connection,"""
+                    insert into storage_profile(id,name,provider,endpoint,region,bucket,key_prefix,path_style,
+                        credential_version,credential_ciphertext,credential_nonce,credential_key_version,access_key_mask,created_at)
+                    values (?,'Synthetic remote',?,'synthetic-endpoint','','','agenvas',false,
+                        1,decode('001122','hex'),decode(repeat('00',12),'hex'),1,'masked',now())
+                    """,UUID.randomUUID(),protocol);
+            }
+            assertRejected(connection,CHECK_VIOLATION,"update storage_profile set provider='UNKNOWN' where id=?",profile);
+            assertThat(text(connection,"select obj_description(oid,'pg_constraint') from pg_constraint where conname='storage_profile_provider_check'"))
+                    .isNotBlank();
+        }
+    }
+
+    @Test
     void draftDurationUpgradePreservesExistingDraftAndAllowsLongWorkflowSwitches() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("19").load().migrate();

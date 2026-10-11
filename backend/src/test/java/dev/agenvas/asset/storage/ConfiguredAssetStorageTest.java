@@ -52,6 +52,20 @@ class ConfiguredAssetStorageTest {
         assertThat(local.recoverImage(project, asset)).isPresent();
         verifyNoInteractions(cloud);
     }
+    @Test void remoteFileArchivesUseThePinnedRouteButRequireAnIndependentRelay() {
+        var repository = mock(StorageRepository.class); var settings = mock(StorageSettingsService.class); var client = mock(RemoteStorageClient.class);
+        var mapper = new ObjectMapper(); UUID project = UUID.randomUUID(), asset = UUID.randomUUID(), profile = UUID.randomUUID();
+        String key = project + "/" + asset + ".png";
+        var receipt = new ConfiguredAssetStorage.Archive(1,"IMAGE",key,"image/png",4,"hash",4,4,null,null,null,null);
+        when(repository.route(project,asset)).thenReturn(Optional.of(new StorageRepository.Route(profile,"IMAGE",mapper.writeValueAsString(receipt),true)));
+        var storage = new ConfiguredAssetStorage(mock(LocalAssetStorage.class),repository,settings,client,mapper,Clock.systemUTC());
+        for (var protocol : java.util.List.of(StorageProfile.Provider.SMB,StorageProfile.Provider.WEBDAV)) {
+            when(settings.requireProfile(profile)).thenReturn(new StorageProfile(profile,"NAS",protocol,"synthetic-endpoint","","","",false,1,null,"masked",Instant.EPOCH));
+            assertThat(storage.cloudObject("objects/"+profile+"/"+key)).isEmpty();
+            storage.verify("objects/"+profile+"/"+key,4,"hash");
+        }
+        verify(client,times(2)).verify(any(),eq(profile+"/"+key),eq(4L),eq("hash"));
+    }
     @Test void cacheCleanupDeletesOnlyIdleProcessingCopiesAndNeverLocalArchivesOrLinks() throws Exception {
         Path cache = root.resolve(".cloud-cache"); Files.createDirectories(cache);
         Path expired = Files.writeString(cache.resolve("expired"), "old");

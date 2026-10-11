@@ -40,7 +40,8 @@ class StorageSettingsServiceTest {
         var repository = mock(StorageRepository.class);
         UUID archive = UUID.randomUUID(), relay = UUID.randomUUID();
         when(repository.lockVersion()).thenReturn(4);
-        when(repository.profile(relay)).thenReturn(java.util.Optional.of(mock(StorageProfile.class)));
+        var relayProfile = mock(StorageProfile.class); when(relayProfile.provider()).thenReturn(StorageProfile.Provider.S3);
+        when(repository.profile(relay)).thenReturn(java.util.Optional.of(relayProfile));
         when(repository.state()).thenReturn(new StorageRepository.State(5, archive, relay, true, true));
         when(repository.profiles()).thenReturn(java.util.List.of());
         var service = new StorageSettingsService(repository, mock(CredentialCipher.class), Clock.systemUTC(), mock(TaskStorageReferences.class));
@@ -109,6 +110,47 @@ class StorageSettingsServiceTest {
         assertThatThrownBy(() -> service.create(3,"new",old.provider(),old.endpoint(),"oss-cn-chengdu",old.bucket(),"",false,
                 "new-id","new-secret")).isInstanceOf(ApiProblemException.class);
         verify(repository,never()).updateProfile(any()); verify(repository,never()).insertProfile(any());
+    }
+    @Test void fileEndpointsAcceptBasePathsButRejectTraversalAndEmbeddedCredentials() {
+        assertThat(RemoteFileSupport.endpoint(StorageProfile.Provider.SMB, " smb://nas.example.com:445/media/archives/ "))
+                .isEqualTo("smb://nas.example.com:445/media/archives");
+        assertThat(RemoteFileSupport.endpoint(StorageProfile.Provider.WEBDAV, "https://nas.example.com/dav/media/"))
+                .isEqualTo("https://nas.example.com/dav/media");
+        for (String endpoint : new String[] { "smb://nas.example.com", "smb://user:password@nas.example.com/media", "smb://nas.example.com/media/../other",
+                "smb://nas.example.com/media/%2e%2e", "smb://nas.example.com/media/%2fother", "smb://nas.example.com/media/%5cother", "smb://nas.example.com:0/media", "smb://nas.example.com/media/%0A%0D" })
+            assertThatThrownBy(() -> RemoteFileSupport.endpoint(StorageProfile.Provider.SMB, endpoint)).isInstanceOf(ApiProblemException.class);
+        for (String endpoint : new String[] { "http://nas.example.com/dav", "https://user@nas.example.com/dav", "https://nas.example.com/dav?token=secret", "https://nas.example.com/dav#part" })
+            assertThatThrownBy(() -> RemoteFileSupport.endpoint(StorageProfile.Provider.WEBDAV, endpoint)).isInstanceOf(ApiProblemException.class);
+    }
+    @Test void remoteUserPasswordsAreEncryptedAndCannotBeSelectedForRelay() {
+        var repository = mock(StorageRepository.class); when(repository.lockVersion()).thenReturn(0);
+        when(repository.state()).thenReturn(new StorageRepository.State(0,null,null,true,true)); when(repository.profiles()).thenReturn(java.util.List.of());
+        var cipher = new CredentialCipher(new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]),1,""));
+        var service = new StorageSettingsService(repository,cipher,Clock.systemUTC(),mock(TaskStorageReferences.class));
+        service.create(0,"NAS",StorageProfile.Provider.SMB,"smb://nas.example.com/media","","","",false,"DOMAIN\\demo","合成 密码");
+        var captured = org.mockito.ArgumentCaptor.forClass(StorageProfile.class); verify(repository).insertProfile(captured.capture());
+        var smb = captured.getValue(); assertThat(service.credentials(smb)).containsExactly("DOMAIN\\demo","合成 密码");
+        assertThat(smb.region()).isEmpty(); assertThat(smb.bucket()).isEmpty();
+        when(repository.profile(smb.id())).thenReturn(java.util.Optional.of(smb));
+        assertThatThrownBy(() -> service.activateRelay(0,smb.id(),true,true)).isInstanceOf(ApiProblemException.class);
+        verify(repository,never()).advanceRelay(anyInt(),any(),anyBoolean(),anyBoolean());
+        assertThatThrownBy(() -> service.create(0,"DAV",StorageProfile.Provider.WEBDAV,"https://nas.example.com/dav","","","",false,"user:bad","password"))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> service.create(0,"DAV",StorageProfile.Provider.WEBDAV,"https://nas.example.com/dav","us-east-1","bucket","",false,"demo","password"))
+                .isInstanceOf(ApiProblemException.class);
+    }
+    @Test void protocolChangesRequireNewCredentialsAndCannotInvalidateASelectedRelay() {
+        var repository = mock(StorageRepository.class); when(repository.lockVersion()).thenReturn(0);
+        var cipher = new CredentialCipher(new CredentialProperties(Base64.getEncoder().encodeToString(new byte[32]),1,""));
+        var old = profile(cipher); when(repository.lockProfile(old.id())).thenReturn(java.util.Optional.of(old));
+        when(repository.state()).thenReturn(new StorageRepository.State(0,null,null,true,true));
+        var service = new StorageSettingsService(repository,cipher,Clock.systemUTC(),mock(TaskStorageReferences.class));
+        assertThatThrownBy(() -> service.update(0,old.id(),"DAV",StorageProfile.Provider.WEBDAV,"https://nas.example.com/dav","","","",false,null,null))
+                .isInstanceOf(ApiProblemException.class);
+        when(repository.state()).thenReturn(new StorageRepository.State(0,null,old.id(),true,true));
+        assertThatThrownBy(() -> service.update(0,old.id(),"DAV",StorageProfile.Provider.WEBDAV,"https://nas.example.com/dav","","","",false,"demo","password"))
+                .isInstanceOf(ApiProblemException.class);
+        verify(repository,never()).updateProfile(any());
     }
     private static StorageProfile profile(CredentialCipher cipher) {
         return profile(cipher,"cn-chengdu");

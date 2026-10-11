@@ -36,6 +36,26 @@ describe("StorageSettingsPage", () => {
     server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })));
   });
+  it.each(["SMB", "WEBDAV"] as const)("saves %s with username/password and hides object fields", async (provider) => {
+    let body: unknown;
+    const remote = { ...profile, provider, name: "NAS", endpoint: provider === "SMB" ? "smb://nas.example.com/media" : "https://nas.example.com/dav/media", region: "", bucket: "", pathStyle: false };
+    server.use(http.post("/api/v1/settings/storage/profiles", async ({ request }) => {
+      body = await request.json(); return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: 1, activeProfileId: null, relayProfileId: null, profiles: [remote] });
+    }));
+    const client = setup(); const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("连接名称"), "NAS");
+    await changeControl(screen.getByLabelText("存储类型"), { target: { value: provider } });
+    expect(screen.queryByLabelText("Region")).not.toBeInTheDocument(); expect(screen.queryByLabelText("Bucket")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Endpoint"), remote.endpoint);
+    await user.type(screen.getByLabelText("用户名"), "synthetic-user"); await user.type(screen.getByLabelText("密码"), "synthetic-password");
+    await user.click(screen.getByRole("button", { name: "保存连接" }));
+    await screen.findByRole("button", { name: "编辑：NAS" });
+    expect(body).toMatchObject({ provider, endpoint: remote.endpoint, region: "", bucket: "", pathStyle: false, accessKeyId: "synthetic-user", secretAccessKey: "synthetic-password" });
+    expect(JSON.stringify(client.getQueryData(["settings", "storage"]))).not.toContain("synthetic-password");
+    const relay = screen.getByLabelText("中继连接"); expect(within(relay).queryByRole("option", { name: "NAS" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "编辑：NAS" }));
+    expect(screen.getByLabelText("用户名")).toHaveValue(""); expect(screen.getByLabelText("密码")).toHaveValue("");
+  });
   it("defaults to local and saves cloud settings without switching or retaining credentials", async () => {
     const writes: unknown[] = [];
     server.use(http.post("/api/v1/settings/storage/profiles", async ({ request }) => {

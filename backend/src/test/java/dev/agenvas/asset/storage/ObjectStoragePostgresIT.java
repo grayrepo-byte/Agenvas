@@ -105,7 +105,7 @@ class ObjectStoragePostgresIT {
         assertThat(settings.status().activeProfileId()).isNull();
         var original = assets.archiveImage(owner.userId(), project, new ByteArrayInputStream(png));
         assertThat(original.objectKey()).startsWith(project.toString());
-        for (StorageProfile.Provider provider : StorageProfile.Provider.values()) {
+        for (StorageProfile.Provider provider : java.util.List.of(StorageProfile.Provider.ALIYUN_OSS, StorageProfile.Provider.TENCENT_COS, StorageProfile.Provider.S3)) {
             int beforeCreate = settings.status().version();
             var saved = settings.create(beforeCreate, provider.name(), provider, "https://storage.example.com", "us-east-1",
                     "test-bucket", "agenvas", provider == StorageProfile.Provider.S3, "test-access-id", "test-access-secret");

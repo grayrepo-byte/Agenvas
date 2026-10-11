@@ -5688,7 +5688,7 @@ components:
         lastAt: {type: string, format: date-time}
     StorageProvider:
       type: string
-      enum: [ALIYUN_OSS, TENCENT_COS, S3]
+      enum: [ALIYUN_OSS, TENCENT_COS, S3, SMB, WEBDAV]
     StorageProfile:
       type: object
       required: [id, name, provider, endpoint, region, bucket, keyPrefix, pathStyle, accessKeyMask, createdAt, inUse]
@@ -5697,13 +5697,13 @@ components:
         name: { type: string }
         provider: { $ref: '#/components/schemas/StorageProvider' }
         endpoint: { type: string, format: uri }
-        region: { type: string }
-        bucket: { type: string }
+        region: { type: string, description: 'Object-store region; empty for SMB and WebDAV' }
+        bucket: { type: string, description: 'Object-store bucket; empty for SMB and WebDAV' }
         keyPrefix: { type: string }
         pathStyle: { type: boolean }
         accessKeyMask: { type: string }
         createdAt: { type: string, format: date-time }
-        inUse: { type: boolean, description: Referenced by an archive, relay copy or frozen task; prevents relocation and deletion }
+        inUse: { type: boolean, description: 'Referenced by an archive, relay copy or frozen task; prevents relocation and deletion' }
     StorageSettings:
       type: object
       required: [version, activeProfileId, relayProfileId, llmRelayEnabled, imageRelayEnabled, profiles]
@@ -5716,7 +5716,7 @@ components:
         relayProfileId:
           type: [string, 'null']
           format: uuid
-          description: Independent media relay destination; null keeps images inline and disables local video relay. Existing cloud videos are signed directly.
+          description: OSS/COS/S3 media relay destination; SMB/WebDAV cannot be selected; null keeps images inline and disables local video relay. Existing cloud videos are signed directly.
         llmRelayEnabled:
           type: boolean
           description: Use relay URLs for OpenAI-compatible LLM images when a relay connection is selected. Read per model call.
@@ -5741,13 +5741,13 @@ components:
         expectedVersion: { type: integer, minimum: 0 }
         name: { type: string, minLength: 1, maxLength: 120 }
         provider: { $ref: '#/components/schemas/StorageProvider' }
-        endpoint: { type: string, format: uri, description: HTTPS service endpoint without bucket or path }
-        region: { type: string, maxLength: 80 }
-        bucket: { type: string, maxLength: 63 }
+        endpoint: { type: string, format: uri, description: 'Object service HTTPS origin, WebDAV HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment' }
+        region: { type: string, maxLength: 80, description: 'Object-store region; empty for SMB and WebDAV' }
+        bucket: { type: string, maxLength: 63, description: 'Object-store bucket; empty for SMB and WebDAV' }
         keyPrefix: { type: string, maxLength: 120 }
-        pathStyle: { type: boolean, description: Available only for S3 compatible services }
-        accessKeyId: { type: string, writeOnly: true }
-        secretAccessKey: { type: string, writeOnly: true }
+        pathStyle: { type: boolean, description: 'Available only for S3 compatible services' }
+        accessKeyId: { type: string, writeOnly: true, description: 'Object access key ID or SMB/WebDAV username. SMB accepts DOMAIN\username' }
+        secretAccessKey: { type: string, writeOnly: true, description: 'Object secret or SMB/WebDAV password' }
     UpdateStorageProfileRequest:
       type: object
       additionalProperties: false
@@ -5756,13 +5756,13 @@ components:
         expectedVersion: { type: integer, minimum: 0 }
         name: { type: string, minLength: 1, maxLength: 120 }
         provider: { $ref: '#/components/schemas/StorageProvider' }
-        endpoint: { type: string, format: uri, description: HTTPS service endpoint without bucket or path }
-        region: { type: string, maxLength: 80, description: OSS region ID such as cn-chengdu, without the oss- prefix }
-        bucket: { type: string, maxLength: 63 }
+        endpoint: { type: string, format: uri, description: 'Object service HTTPS origin, WebDAV HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment' }
+        region: { type: string, maxLength: 80, description: 'Object-store region (OSS without oss- prefix); empty for SMB and WebDAV' }
+        bucket: { type: string, maxLength: 63, description: 'Object-store bucket; empty for SMB and WebDAV' }
         keyPrefix: { type: string, maxLength: 120 }
         pathStyle: { type: boolean }
-        accessKeyId: { type: string, writeOnly: true, description: Omit both credentials to keep the existing key; supply both to rotate }
-        secretAccessKey: { type: string, writeOnly: true }
+        accessKeyId: { type: string, writeOnly: true, description: 'Access key ID or remote-file username. Omit both credentials to keep them; supply both to rotate or change protocol' }
+        secretAccessKey: { type: string, writeOnly: true, description: 'Object secret or SMB/WebDAV password' }
     ActivateStorageProfileRequest:
       type: object
       required: [expectedVersion, profileId]
@@ -5774,8 +5774,8 @@ components:
       required: [expectedVersion, accessKeyId, secretAccessKey]
       properties:
         expectedVersion: { type: integer, minimum: 0 }
-        accessKeyId: { type: string, writeOnly: true }
-        secretAccessKey: { type: string, writeOnly: true }
+        accessKeyId: { type: string, writeOnly: true, description: 'Object access key ID or SMB/WebDAV username. SMB accepts DOMAIN\username' }
+        secretAccessKey: { type: string, writeOnly: true, description: 'Object secret or SMB/WebDAV password' }
     LlmSettings:
       type: object
       additionalProperties: false

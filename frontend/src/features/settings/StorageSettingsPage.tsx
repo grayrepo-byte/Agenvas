@@ -19,12 +19,15 @@ import "./SettingsPages.css";
 
 const CONNECTION_NAME_MAX_LENGTH = 120;
 const LOCATION_FIELDS = ["provider", "endpoint", "region", "bucket", "keyPrefix", "pathStyle"] as const;
-const LABELS: Record<StorageProvider, string> = { get ALIYUN_OSS() { return t("settings.storage.oss"); }, get TENCENT_COS() { return t("settings.storage.cos"); }, get S3() { return t("settings.storage.s3"); } };
+const LABELS: Record<StorageProvider, string> = { get ALIYUN_OSS() { return t("settings.storage.oss"); }, get TENCENT_COS() { return t("settings.storage.cos"); }, get S3() { return t("settings.storage.s3"); }, SMB: "SMB", WEBDAV: "WebDAV" };
 const EXAMPLES: Record<StorageProvider, { endpoint: string; region: string; bucket: string }> = {
   ALIYUN_OSS: { endpoint: "https://oss-cn-hangzhou.aliyuncs.com", region: "cn-hangzhou", bucket: "my-bucket" },
   TENCENT_COS: { endpoint: "https://cos.ap-guangzhou.myqcloud.com", region: "ap-guangzhou", bucket: "my-bucket-1250000000" },
+  SMB: { endpoint: "smb://nas.example.com/media/archives", region: "", bucket: "" },
+  WEBDAV: { endpoint: "https://nas.example.com/dav/media", region: "", bucket: "" },
   S3: { endpoint: "https://s3.us-east-1.amazonaws.com", region: "us-east-1", bucket: "my-bucket" },
 };
+function fileProtocol(provider: StorageProvider) { return provider === "SMB" || provider === "WEBDAV"; }
 function empty(version: number): CreateStorageProfileRequest {
   return { expectedVersion: version, name: "", provider: "ALIYUN_OSS", endpoint: "", region: "", bucket: "",
     keyPrefix: "agenvas", pathStyle: false, accessKeyId: "", secretAccessKey: "" };
@@ -38,7 +41,7 @@ export function StorageSettingsPage() {
   const query = useQuery({ queryKey: ["settings", "storage"], queryFn: getStorageSettings, enabled: session.isSuccess, retry: false });
   const [draft, setDraft] = useState<CreateStorageProfileRequest | null>(null);
   const [relayDraft, setRelayDraft] = useState<MediaRelaySettingsRequest | null>(null);
-  const [rotation, setRotation] = useState<{ id: string; version: number; accessKeyId: string; secret: string } | null>(null);
+  const [rotation, setRotation] = useState<{ id: string; provider: StorageProvider; version: number; accessKeyId: string; secret: string } | null>(null);
   const [editing, setEditing] = useState<StorageProfile | null>(null);
   const [deleting, setDeleting] = useState<{ profile: StorageProfile; version: number } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,6 +54,7 @@ export function StorageSettingsPage() {
   const current = draft ?? empty(snapshot?.version ?? 0);
   const remoteUpdate = !!snapshot && (draft?.expectedVersion ?? rotation?.version ?? snapshot.version) !== snapshot.version;
   const deleteStale = !!deleting && deleting.version !== snapshot?.version;
+  const isFile = fileProtocol(current.provider);
   const locationLocked = !!editing && (snapshot?.profiles.find((profile) => profile.id === editing.id)?.inUse ?? editing.inUse);
   const locationDraftConflict = !!editing && locationLocked && LOCATION_FIELDS.some((field) => current[field] !== editing[field]);
   const deleteInUse = !!deleting && (snapshot?.profiles.find((profile) => profile.id === deleting.profile.id)?.inUse ?? deleting.profile.inUse);
@@ -132,11 +136,11 @@ export function StorageSettingsPage() {
                 <Button variant="outline"  disabled={busy} onClick={() => void write(() => activateStorageProfile({ expectedVersion: snapshot.version, profileId: null }), t("settings.storage.localDefaultHint"))}>{t("settings.storage.switchLocal")}</Button>}
             </div>
             {snapshot.profiles.map((profile) => <div className="storage-destination" key={profile.id}><div>
-              <strong>{profile.name}</strong><p className="ui-muted">{LABELS[profile.provider]} · {profile.bucket} · {profile.region}</p>
+              <strong>{profile.name}</strong><p className="ui-muted">{LABELS[profile.provider]}{!fileProtocol(profile.provider) ? ` · ${profile.bucket} · ${profile.region}` : ""}</p>
               <p className="ui-muted">{t("settings.storage.connectionSummary", { "0": profile.endpoint, "1": profile.accessKeyMask })}</p></div>
               <div className="ui-form-actions">{profile.id === snapshot.activeProfileId ? <StatusBadge tone="success">{t("settings.storage.currentDefault")}</StatusBadge> :
                 <Button variant="outline"  disabled={busy} onClick={() => void write(() => activateStorageProfile({ expectedVersion: snapshot.version, profileId: profile.id }), t("settings.storage.cloudDefaultHint"))}>{t("settings.storage.setDefaultNamed", { "0": profile.name })}</Button>}
-                <Button variant="outline"  disabled={busy} onClick={() => { setRotation({ id: profile.id, version: snapshot.version, accessKeyId: "", secret: "" }); setMessage(""); }}>{t("settings.storage.updateCredentialsNamed", { "0": profile.name })}</Button>
+                <Button variant="outline"  disabled={busy} onClick={() => { setRotation({ id: profile.id, provider: profile.provider, version: snapshot.version, accessKeyId: "", secret: "" }); setMessage(""); }}>{t("settings.storage.updateCredentialsNamed", { "0": profile.name })}</Button>
                 <Button variant="outline" disabled={busy} onClick={() => startEditing(profile)}>{t("settings.storage.editNamed", { "0": profile.name })}</Button>
                 <Button variant="ghost" disabled={busy} onClick={() => { setDeleting({ profile, version: snapshot.version }); setError(""); setMessage(""); }}>{t("settings.storage.deleteNamed", { "0": profile.name })}</Button>
               </div></div>)}
@@ -148,7 +152,7 @@ export function StorageSettingsPage() {
             <Select aria-label={t("settings.storage.relayConnection")} disabled={busy || relayStale} value={relayCurrent?.profileId ?? ""}
               onChange={(event) => void saveRelay({ profileId: event.target.value || null })}>
               <option value="">{t("settings.storage.relayDisabled")}</option>
-              {snapshot.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+              {snapshot.profiles.filter((profile) => !fileProtocol(profile.provider)).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
             </Select>
           </Field>
           <FieldSet disabled={busy || relayStale || relayCurrent?.profileId === null}>
@@ -178,9 +182,9 @@ export function StorageSettingsPage() {
           <form className="ui-form" onSubmit={(event) => { event.preventDefault(); void write(() => rotateStorageCredentials(rotation.id,
             { expectedVersion: rotation.version, accessKeyId: rotation.accessKeyId, secretAccessKey: rotation.secret }), t("settings.storage.credentialsUpdated"), false, true); }}>
             <FieldGroup>
-            <Field><FieldLabel className="ui-field block">{t("settings.storage.newAccessKeyId")}<Input required autoComplete="off" disabled={busy} value={rotation.accessKeyId}
+            <Field><FieldLabel className="ui-field block">{t(fileProtocol(rotation.provider) ? "settings.storage.username" : "settings.storage.newAccessKeyId")}<Input required autoComplete="off" disabled={busy} value={rotation.accessKeyId}
               onChange={(event) => setRotation({ ...rotation, accessKeyId: event.target.value })} /></FieldLabel></Field>
-            <Field><FieldLabel className="ui-field block">{t("settings.storage.newAccessKeySecret")}<Input required type="password" autoComplete="new-password" disabled={busy} value={rotation.secret}
+            <Field><FieldLabel className="ui-field block">{t(fileProtocol(rotation.provider) ? "settings.storage.password" : "settings.storage.newAccessKeySecret")}<Input required type="password" autoComplete="new-password" disabled={busy} value={rotation.secret}
               onChange={(event) => setRotation({ ...rotation, secret: event.target.value })} /></FieldLabel></Field>
             <div className="ui-form-actions"><Button variant="default"  disabled={busy}>{t("settings.storage.saveCredentials")}</Button>
               <Button variant="outline" type="button"  disabled={busy} onClick={() => setRotation(null)}>{t("settings.storage.cancelUpdate")}</Button></div>
@@ -199,17 +203,20 @@ export function StorageSettingsPage() {
           </Notice> : null}
           <Field><FieldLabel className="ui-field block">{t("settings.shared.connectionName")}<Input required maxLength={CONNECTION_NAME_MAX_LENGTH} disabled={busy} value={current.name} onChange={(e) => edit("name", e.target.value)} /></FieldLabel></Field>
           <Field><FieldLabel className="ui-field block">{t("settings.storage.storageType")}<Select disabled={busy || locationLocked} value={current.provider} onChange={(e) => {
-            const provider = e.target.value as StorageProvider; setDraft({ ...current, provider, pathStyle: false }); setMessage("");
+            const provider = e.target.value as StorageProvider; setDraft({ ...current, provider, pathStyle: false,
+              endpoint: fileProtocol(provider) !== isFile || provider !== current.provider && fileProtocol(provider) ? "" : current.endpoint,
+              region: fileProtocol(provider) ? "" : current.region, bucket: fileProtocol(provider) ? "" : current.bucket, accessKeyId: "", secretAccessKey: "" }); setMessage("");
           }}>{Object.entries(LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></FieldLabel></Field>
           <Field><FieldLabel className="ui-field block">Endpoint<Input required type="url" autoComplete="off" disabled={busy || locationLocked} value={current.endpoint} placeholder={EXAMPLES[current.provider].endpoint} onChange={(e) => edit("endpoint", e.target.value)} /></FieldLabel></Field>
-          <p className="ui-muted">{t("settings.storage.endpointHint")}</p>
-          <Field><FieldLabel className="ui-field block">Region<Input required disabled={busy || locationLocked} value={current.region} placeholder={EXAMPLES[current.provider].region} onChange={(e) => edit("region", e.target.value)} /></FieldLabel></Field>
+          <p className="ui-muted">{t(current.provider === "SMB" ? "settings.storage.smbEndpointHint" : current.provider === "WEBDAV" ? "settings.storage.webdavEndpointHint" : "settings.storage.endpointHint")}</p>
+          {!isFile ? <Field><FieldLabel className="ui-field block">Region<Input required disabled={busy || locationLocked} value={current.region} placeholder={EXAMPLES[current.provider].region} onChange={(e) => edit("region", e.target.value)} /></FieldLabel></Field> : null}
           {current.provider === "ALIYUN_OSS" ? <p className="ui-muted">{t("settings.storage.ossRegionHint")}</p> : null}
-          <Field><FieldLabel className="ui-field block">Bucket<Input required disabled={busy || locationLocked} value={current.bucket} placeholder={EXAMPLES[current.provider].bucket} onChange={(e) => edit("bucket", e.target.value)} /></FieldLabel></Field>
+          {!isFile ? <Field><FieldLabel className="ui-field block">Bucket<Input required disabled={busy || locationLocked} value={current.bucket} placeholder={EXAMPLES[current.provider].bucket} onChange={(e) => edit("bucket", e.target.value)} /></FieldLabel></Field> : null}
           <Field><FieldLabel className="ui-field block">{t("settings.storage.objectPrefix")}<Input disabled={busy || locationLocked} value={current.keyPrefix} onChange={(e) => edit("keyPrefix", e.target.value)} /></FieldLabel></Field>
           {current.provider === "S3" ? <label className="settings-consent"><Checkbox disabled={busy || locationLocked} checked={current.pathStyle} onCheckedChange={(e) => edit("pathStyle", e === true)} />{t("settings.storage.pathStyle")}</label> : null}
-          <Field><FieldLabel className="ui-field block">AccessKey ID<Input required={!editing || !!current.secretAccessKey} autoComplete="off" disabled={busy} value={current.accessKeyId} onChange={(e) => edit("accessKeyId", e.target.value)} /></FieldLabel></Field>
-          <Field><FieldLabel className="ui-field block">AccessKey Secret<Input required={!editing || !!current.accessKeyId} type="password" autoComplete="new-password" disabled={busy} value={current.secretAccessKey} onChange={(e) => edit("secretAccessKey", e.target.value)} /></FieldLabel></Field>
+          <Field><FieldLabel className="ui-field block">{isFile ? t("settings.storage.username") : "AccessKey ID"}<Input required={!editing || !!current.secretAccessKey} autoComplete="off" disabled={busy} value={current.accessKeyId} onChange={(e) => edit("accessKeyId", e.target.value)} /></FieldLabel></Field>
+          <Field><FieldLabel className="ui-field block">{isFile ? t("settings.storage.password") : "AccessKey Secret"}<Input required={!editing || !!current.accessKeyId} type="password" autoComplete="new-password" disabled={busy} value={current.secretAccessKey} onChange={(e) => edit("secretAccessKey", e.target.value)} /></FieldLabel></Field>
+          {isFile ? <p className="ui-muted">{t("settings.storage.fileProtocolHint")}</p> : null}
           {editing ? <p className="ui-muted">{t("settings.storage.keepCredentialsHint")}</p> : null}
           <p className="ui-muted">{t("settings.storage.credentialPrivacyHint")}</p>
           <div className="ui-form-actions settings-save-bar"><Button variant="default" disabled={busy || remoteUpdate || locationDraftConflict}>{busy ? t("common.savingProgress") : t(editing ? "settings.storage.saveChanges" : "settings.shared.saveConnection")}</Button>

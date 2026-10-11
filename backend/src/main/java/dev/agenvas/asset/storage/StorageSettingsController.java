@@ -43,13 +43,13 @@ public class StorageSettingsController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(result);
     }
     public record Create(@NotNull @Min(0) Integer expectedVersion, @NotBlank String name, @NotNull StorageProfile.Provider provider,
-            @NotBlank String endpoint, @NotBlank String region, @NotBlank String bucket, String keyPrefix,
+            @NotBlank String endpoint, @NotNull String region, @NotNull String bucket, String keyPrefix,
             boolean pathStyle, @NotBlank String accessKeyId, @NotBlank String secretAccessKey) {}
     public record Relay(@NotNull @Min(0) Integer expectedVersion, UUID profileId,
             @NotNull Boolean llmRelayEnabled, @NotNull Boolean imageRelayEnabled) {}
     public record Activate(@NotNull @Min(0) Integer expectedVersion, UUID profileId) {}
     public record Update(@NotNull @Min(0) Integer expectedVersion, @NotBlank String name, @NotNull StorageProfile.Provider provider,
-            @NotBlank String endpoint, @NotBlank String region, @NotBlank String bucket, String keyPrefix,
+            @NotBlank String endpoint, @NotNull String region, @NotNull String bucket, String keyPrefix,
             boolean pathStyle, String accessKeyId, String secretAccessKey) {}
     public record Rotate(@NotNull @Min(0) Integer expectedVersion, @NotBlank String accessKeyId, @NotBlank String secretAccessKey) {}
 }

@@ -408,7 +408,8 @@ public class Public extends SchemaImpl {
     public final SpringSessionAttributes SPRING_SESSION_ATTRIBUTES = SpringSessionAttributes.SPRING_SESSION_ATTRIBUTES;
 
     /**
-     * 不可变本地或对象存储配置及加密凭据
+     * Pinned archive destinations and encrypted object-store or remote-file
+     * credentials
      */
     public final StorageProfile STORAGE_PROFILE = StorageProfile.STORAGE_PROFILE;
 

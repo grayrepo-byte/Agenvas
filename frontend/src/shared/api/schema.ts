@@ -4202,7 +4202,7 @@ export interface components {
             lastAt: string;
         };
         /** @enum {string} */
-        StorageProvider: "ALIYUN_OSS" | "TENCENT_COS" | "S3";
+        StorageProvider: "ALIYUN_OSS" | "TENCENT_COS" | "S3" | "SMB" | "WEBDAV";
         StorageProfile: {
             /** Format: uuid */
             id: string;
@@ -4210,14 +4210,16 @@ export interface components {
             provider: components["schemas"]["StorageProvider"];
             /** Format: uri */
             endpoint: string;
+            /** @description Object-store region; empty for SMB and WebDAV */
             region: string;
+            /** @description Object-store bucket; empty for SMB and WebDAV */
             bucket: string;
             keyPrefix: string;
             pathStyle: boolean;
             accessKeyMask: string;
             /** Format: date-time */
             createdAt: string;
-            /** @description Referenced by an archive */
+            /** @description Referenced by an archive, relay copy or frozen task; prevents relocation and deletion */
             inUse: boolean;
         };
         StorageSettings: {
@@ -4229,7 +4231,7 @@ export interface components {
             activeProfileId: string | null;
             /**
              * Format: uuid
-             * @description Independent media relay destination; null keeps images inline and disables local video relay. Existing cloud videos are signed directly.
+             * @description OSS/COS/S3 media relay destination; SMB/WebDAV cannot be selected; null keeps images inline and disables local video relay. Existing cloud videos are signed directly.
              */
             relayProfileId: string | null;
             /** @description Use relay URLs for OpenAI-compatible LLM images when a relay connection is selected. Read per model call. */
@@ -4251,15 +4253,19 @@ export interface components {
             provider: components["schemas"]["StorageProvider"];
             /**
              * Format: uri
-             * @description HTTPS service endpoint without bucket or path
+             * @description Object service HTTPS origin, WebDAV HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment
              */
             endpoint: string;
+            /** @description Object-store region; empty for SMB and WebDAV */
             region: string;
+            /** @description Object-store bucket; empty for SMB and WebDAV */
             bucket: string;
             keyPrefix: string;
             /** @description Available only for S3 compatible services */
             pathStyle: boolean;
+            /** @description Object access key ID or SMB/WebDAV username. SMB accepts DOMAIN\username */
             accessKeyId: string;
+            /** @description Object secret or SMB/WebDAV password */
             secretAccessKey: string;
         };
         UpdateStorageProfileRequest: {
@@ -4268,16 +4274,18 @@ export interface components {
             provider: components["schemas"]["StorageProvider"];
             /**
              * Format: uri
-             * @description HTTPS service endpoint without bucket or path
+             * @description Object service HTTPS origin, WebDAV HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment
              */
             endpoint: string;
-            /** @description OSS region ID such as cn-chengdu */
+            /** @description Object-store region (OSS without oss- prefix); empty for SMB and WebDAV */
             region: string;
+            /** @description Object-store bucket; empty for SMB and WebDAV */
             bucket: string;
             keyPrefix: string;
             pathStyle: boolean;
-            /** @description Omit both credentials to keep the existing key; supply both to rotate */
+            /** @description Access key ID or remote-file username. Omit both credentials to keep them; supply both to rotate or change protocol */
             accessKeyId?: string;
+            /** @description Object secret or SMB/WebDAV password */
             secretAccessKey?: string;
         };
         ActivateStorageProfileRequest: {
@@ -4287,7 +4295,9 @@ export interface components {
         };
         RotateStorageCredentialsRequest: {
             expectedVersion: number;
+            /** @description Object access key ID or SMB/WebDAV username. SMB accepts DOMAIN\username */
             accessKeyId: string;
+            /** @description Object secret or SMB/WebDAV password */
             secretAccessKey: string;
         };
         LlmSettings: {
