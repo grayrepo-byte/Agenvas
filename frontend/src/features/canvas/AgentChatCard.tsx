@@ -54,6 +54,27 @@ export type AgentChatCardData = {
 const EMPTY_CONVERSATION_DRAFT = "new-conversation";
 const EMPTY_DRAFT = { instruction: "" };
 type ConversationDraft = typeof EMPTY_DRAFT;
+
+function resolveConversationRuns(snapshotRun: AgentRun | null, listedRuns: readonly AgentRunList["items"][number][],
+  agentId: string | undefined, conversationId: string | null) {
+  const byId = new Map(listedRuns.map((run) => [run.id, run]));
+  const snapshotOwnRun = snapshotRun?.agentInstanceId === agentId ? snapshotRun : null;
+  const listedOwnRun = snapshotOwnRun ? byId.get(snapshotOwnRun.id) : undefined;
+  // A Run list or decision response may arrive before the refreshed project snapshot.
+  // Run summaries expose updatedAt rather than version; the list wins equal timestamps.
+  const resolvedOwnRun = listedOwnRun && snapshotOwnRun
+    && Date.parse(listedOwnRun.updatedAt) >= Date.parse(snapshotOwnRun.updatedAt)
+    ? listedOwnRun : snapshotOwnRun;
+  const resolvedProjectRun = resolvedOwnRun ?? snapshotRun;
+  const projectActiveRun = resolvedProjectRun && !TERMINAL_RUN_STATUSES.has(resolvedProjectRun.status)
+    ? resolvedProjectRun : null;
+  const ownRun = projectActiveRun?.agentInstanceId === agentId ? projectActiveRun : null;
+  const currentActiveRun = ownRun?.conversationId === conversationId ? ownRun : null;
+  if (resolvedOwnRun?.conversationId === conversationId) byId.set(resolvedOwnRun.id, resolvedOwnRun);
+  const displayedRuns = [...byId.values()].sort((left, right) => left.conversationTurn - right.conversationTurn);
+  return { displayedRuns, projectActiveRun, ownRun, currentActiveRun };
+}
+
 /** Conversations persist across messages; each submitted message retains its own Run. */
 export function AgentChatCard({ data, selected, selectionControl, resizeVisible = true }: {
   data: AgentChatCardData; selected: boolean; selectionControl?: ReactNode; resizeVisible?: boolean;
@@ -98,7 +119,6 @@ export function AgentChatCard({ data, selected, selectionControl, resizeVisible 
   const runInstruction = draft.instruction;
   const sessions = conversations.data?.pages.flatMap((page) => page.items) ?? [];
   const currentConversation = sessions.find((session) => session.id === conversationId);
-  const snapshotOwnRun = data.activeRun?.agentInstanceId === agent?.id ? data.activeRun : null;
   const runsKey = ["conversation-runs", data.projectId, agent?.id, conversationId];
   const runs = useInfiniteQuery({
     queryKey: runsKey,
@@ -107,25 +127,13 @@ export function AgentChatCard({ data, selected, selectionControl, resizeVisible 
     getNextPageParam: (page) => page.nextCursor ?? undefined,
     enabled: Boolean(agent && conversationId),
   });
-  const byId = new Map((runs.data?.pages.flatMap((page) => page.items) ?? []).map((run) => [run.id, run]));
-  const listedOwnRun = snapshotOwnRun ? byId.get(snapshotOwnRun.id) : undefined;
-  // A Run list or decision response may arrive before the refreshed project snapshot.
-  // Run summaries expose updatedAt rather than version; retain the latest server timestamp.
-  const resolvedOwnRun = listedOwnRun && snapshotOwnRun
-    && Date.parse(listedOwnRun.updatedAt) >= Date.parse(snapshotOwnRun.updatedAt)
-    ? listedOwnRun : snapshotOwnRun;
-  const resolvedProjectRun = resolvedOwnRun ?? data.activeRun;
-  const projectActiveRun = resolvedProjectRun && !TERMINAL_RUN_STATUSES.has(resolvedProjectRun.status)
-    ? resolvedProjectRun : null;
-  const ownRun = projectActiveRun?.agentInstanceId === agent?.id ? projectActiveRun : null;
-  const currentActiveRun = ownRun?.conversationId === conversationId ? ownRun : null;
-  if (resolvedOwnRun?.conversationId === conversationId) byId.set(resolvedOwnRun.id, resolvedOwnRun);
+  const { displayedRuns, projectActiveRun, ownRun, currentActiveRun } = resolveConversationRuns(
+    data.activeRun, runs.data?.pages.flatMap((page) => page.items) ?? [], agent?.id, conversationId);
   const approvals = useQuery({ queryKey: ["run-media-approvals", data.projectId, ownRun?.id],
     queryFn: () => listRunMediaApprovals(data.projectId, ownRun!.id),
     enabled: ownRun?.status === "WAITING_TASKS" });
   const pendingApprovals = ownRun?.status === "WAITING_TASKS"
     ? (approvals.data ?? []).filter((approval) => approval.status === "PENDING") : [];
-  const displayedRuns = [...byId.values()].sort((left, right) => left.conversationTurn - right.conversationTurn);
   const latestRun = displayedRuns.at(-1);
   const activeTasks = useQuery({ queryKey: ["run-history-tasks", data.projectId, currentActiveRun?.id],
     queryFn: () => listRunTasks(data.projectId, currentActiveRun!.id),

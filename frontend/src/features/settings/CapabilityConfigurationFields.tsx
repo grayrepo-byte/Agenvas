@@ -7,9 +7,8 @@ import { comfyReferenceCount } from "./comfyWorkflow";
 import { adapterMetadata } from "./mediaAdapterCatalog";
 
 import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, minimaxResolutionLabel } from "../../shared/minimaxH3";
-import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
+import { AUTODL_ADAPTER, resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { VideoResolutionPricingFields } from "./VideoResolutionPricingFields";
-import { autodlWorkflow } from "./AutoDlWorkflowFields";
 type Settings = MediaCapability["settings"];
 type Parameters = NonNullable<Settings["defaultParameters"]>;
 const IMAGE_RATIOS = ["AUTO", "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"] as const;
@@ -26,7 +25,7 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
 }) {
   useLocale();
   const metadata = adapterMetadata(adapterId);
-  const workflow = adapterId === AUTODL_ADAPTER ? autodlWorkflow(values) : undefined;
+  const workflow = adapterId === AUTODL_ADAPTER ? resolveAutoDlWorkflow(values) : undefined;
   const adapter = metadata && values.comfyWorkflow ? { ...metadata, minimum: values.comfyWorkflow.minimumSeconds, maximum: values.comfyWorkflow.maximumSeconds, references: comfyReferenceCount(values.comfyWorkflow) } : metadata && workflow ? { ...metadata, minimum: workflow.minimumSeconds,
     maximum: workflow.maximumSeconds, references: workflow.imageFields.length } : metadata;
   if (!adapter) return null;

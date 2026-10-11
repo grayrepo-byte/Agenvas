@@ -1180,6 +1180,38 @@ describe("MediaSettingsPage", () => {
       maxReferenceImages: 3, pricing: { amount: "0.125", currency: "USD", unit: "IMAGE" } } }));
   });
 
+  it("saves explicit zero prices and reference limits with an opaque image default", async () => {
+    const settings = settingsFixture({}, { settings: { model: "gateway-image", quality: "high",
+      defaultParameters: { aspectRatio: "16:9", resolution: "2K", transparentBackground: true, generationCount: 2 },
+      maxReferenceImages: 3, pricing: { amount: "0.125", currency: "CNY", unit: "IMAGE" } } });
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(settings);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
+    await user.click(await screen.findByText("编辑能力参数"));
+    const dialog = screen.getByRole("dialog");
+    await user.click(within(dialog).getByRole("tab", { name: "默认参数" }));
+    await selectValue(within(dialog).getByRole("combobox", { name: "默认背景" }), "opaque");
+    await user.click(within(dialog).getByRole("tab", { name: "输入限制" }));
+    const references = within(dialog).getByRole("spinbutton", { name: "最多参考图数量" });
+    await user.clear(references); await user.type(references, "0");
+    await user.click(within(dialog).getByRole("tab", { name: "估算价格" }));
+    const amount = within(dialog).getByRole("spinbutton", { name: "单位价格" });
+    await user.clear(amount); await user.type(amount, "0");
+    await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(submitted).toEqual({ expectedVersion: 4, name: "Portrait", enabled: true,
+      adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "gateway-image", quality: "high",
+        defaultParameters: { aspectRatio: "16:9", resolution: "2K", quality: "high", transparentBackground: false, generationCount: 2 },
+        maxReferenceImages: 0, pricing: { amount: "0", currency: "CNY", unit: "IMAGE" } } }));
+  });
+
   it("publishes the fixed Nano Banana 2 image capability", async () => {
     let submitted: unknown;
     server.use(

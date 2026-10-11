@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -96,7 +97,8 @@ public class SkillRunService {
                 if (!prior.get().payloadHash().equals(hash)) throw problem("IDEMPOTENCY_CONFLICT", HttpStatus.CONFLICT, ApiMessage.of("api.skill-run.idempotency-conflict"));
                 return ProjectEventService.Change.unchanged(mapper.treeToValue(prior.get().response(), BindingResponse.class));
             }
-            for (var item : selected) selectedVersion(owner, project, agent, new Choice(item.skillId(), item.skillVersionId(), List.of()));
+            Set<VersionRef> retained = selected.isEmpty() ? Set.of() : retainedVersions(owner, project, agent);
+            for (var item : selected) selectedVersion(owner, new Choice(item.skillId(), item.skillVersionId(), List.of()), retained);
             AgentInstance changed = agents.touchConfigurationWithinChange(owner, project, agent, expected);
             skills.saveBindings(owner, project, agent, selected.stream().map(item -> new SkillContent.Binding(
                     agent, project, owner, item.skillId(), item.skillVersionId(), selected.indexOf(item), clock.instant())).toList());
@@ -140,8 +142,11 @@ public class SkillRunService {
     }
 
     public List<Summary> preview(UUID owner, UUID project, UUID agent, Selection selection) {
-        return selectedChoices(owner, project, agent, selection).stream().map(choice -> {
-            var version = selectedVersion(owner, project, agent, choice);
+        List<Choice> choices = selectedChoices(owner, project, agent, selection);
+        if (choices.isEmpty()) return List.of();
+        Set<VersionRef> retained = retainedVersions(owner, project, agent);
+        return choices.stream().map(choice -> {
+            var version = selectedVersion(owner, choice, retained);
             var published = skills.getVersion(owner, version.skillId(), version.id());
             return new Summary(version.skillId(), version.id(), skills.get(owner, version.skillId()).title(), version.versionNumber(), version.bundleHash(),
                     version.bundle().inputSlots(), version.bundle().resources(), published.assets());
@@ -151,13 +156,16 @@ public class SkillRunService {
     /** Call only within the final Run creation transaction, after Agent/conversation CAS checks. */
     public void freezeIntoRun(UUID owner, UUID project, AgentInstance agent, UUID runId, Selection selection, ObjectNode context) {
         ArrayNode frozen = context.putArray("creativeSkills");
-        for (var choice : selectedChoices(owner, project, agent.id(), selection)) {
-            frozen.add(freezeSkill(owner, project, agent, runId, choice));
+        List<Choice> choices = selectedChoices(owner, project, agent.id(), selection);
+        if (choices.isEmpty()) return;
+        Set<VersionRef> retained = retainedVersions(owner, project, agent.id());
+        for (var choice : choices) {
+            frozen.add(freezeSkill(owner, project, agent, runId, choice, retained));
         }
     }
 
-    private ObjectNode freezeSkill(UUID owner, UUID project, AgentInstance agent, UUID runId, Choice choice) {
-        var version = selectedVersion(owner, project, agent.id(), choice);
+    private ObjectNode freezeSkill(UUID owner, UUID project, AgentInstance agent, UUID runId, Choice choice, Set<VersionRef> retained) {
+        var version = selectedVersion(owner, choice, retained);
         ObjectNode snapshot=mapper.createObjectNode().put("schemaVersion",SkillContent.SCHEMA_VERSION);
         // Fixed images are private Skill references, never project versions or write permissions.
         snapshot.put("assetDelivery", SkillContent.AssetDelivery.LLM_CONTEXT.name());
@@ -244,12 +252,20 @@ public class SkillRunService {
         return requested;
     }
 
-    private SkillContent.Version selectedVersion(UUID owner, UUID project, UUID agent, Choice choice) {
-        skills.requireAvailable(owner, choice.skillId());
-        boolean retained = skills.getBindings(owner, project, agent).stream().anyMatch(binding -> binding.skillId().equals(choice.skillId())
-                && binding.skillVersionId().equals(choice.skillVersionId()));
-        return retained ? skills.getBundle(owner, choice.skillId(), choice.skillVersionId())
-                : skills.requireSelectableVersion(owner, choice.skillId(), choice.skillVersionId());
+    /** A binding retains only its exact publication, never another version of the same Skill. */
+    private Set<VersionRef> retainedVersions(UUID owner, UUID project, UUID agent) {
+        return skills.getBindings(owner, project, agent).stream()
+                .map(binding -> new VersionRef(binding.skillId(), binding.skillVersionId()))
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private SkillContent.Version selectedVersion(UUID owner, Choice choice, Set<VersionRef> retained) {
+        if (retained.contains(new VersionRef(choice.skillId(), choice.skillVersionId()))) {
+            // Trash does not revoke an existing personal binding; retirement still blocks new Runs.
+            skills.requireAvailable(owner, choice.skillId());
+            return skills.getBundle(owner, choice.skillId(), choice.skillVersionId());
+        }
+        return skills.requireSelectableVersion(owner, choice.skillId(), choice.skillVersionId());
     }
     private void checkKey(String key){if(key==null||key.isBlank()||key.length()>MAX_KEY)throw problem("IDEMPOTENCY_KEY_INVALID",HttpStatus.BAD_REQUEST,ApiMessage.of("api.skill-run.idempotency-key-invalid"));}
     private ApiProblemException problem(String code, HttpStatus status, ApiMessage detail) {

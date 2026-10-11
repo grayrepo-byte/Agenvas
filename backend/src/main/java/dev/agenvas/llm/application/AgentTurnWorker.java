@@ -3,7 +3,6 @@ package dev.agenvas.llm.application;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskProperties;
-import dev.agenvas.task.application.TaskRepository;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import jakarta.annotation.PreDestroy;
@@ -12,17 +11,11 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 
@@ -40,8 +33,6 @@ public class AgentTurnWorker {
     /** 认领模型回合任务并续租的应用服务。 */
     private final TaskService tasks;
     private final Clock clock;
-    /** 从已认领任务反查可信项目所有者，避免采用模型提供的身份。 */
-    private final TaskRepository taskRepository;
     /** 提供任务租约时长，用于计算心跳间隔。 */
     private final TaskProperties taskProperties;
     /** 在短事务中推进 Run、回合任务和下一步调度。 */
@@ -64,19 +55,11 @@ public class AgentTurnWorker {
     private final ToolRegistry registry;
     /** 核验本次 Run 钉住的模型配置具有工具调用能力。 */
     private final ChatGateway gateway;
-    /** 模型调用期间续租；任务结束时取消对应的定时心跳。 */
-    private final ScheduledExecutorService heartbeatExecutor =
-            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
-                    Thread.ofPlatform().daemon().name("agent-turn-heartbeat").factory());
-    /** 单线程且仅允许一个排队请求，防止超时模型调用无限积压。 */
-    private final ExecutorService modelExecutor = new ThreadPoolExecutor(1, 1,
-            0, TimeUnit.SECONDS, new ArrayBlockingQueue<>(1),
-            Thread.ofPlatform().daemon().name("agent-turn-model").factory(),
-            new ThreadPoolExecutor.AbortPolicy());
+    /** 独立于直连文本的有界模型调用与租约心跳生命周期。 */
+    private final LeasedModelExecutor modelExecutor;
 
     /** 组装持久化回合认领、上下文恢复、模型调用及工具执行流程。
      * @param tasks 认领 Agent 回合任务并续租
-     * @param taskRepository 读取任务的可信项目所有者
      * @param taskProperties 提供租约期限和续租配置
      * @param commits 以短事务提交回合结果和状态变化
      * @param initialContext 构建 Run 首轮固定输入
@@ -89,15 +72,27 @@ public class AgentTurnWorker {
      * @param registry 按 Run 策略选择可用工具
      * @param gateway 调用 Run 固定的模型配置
      */
-    public AgentTurnWorker(TaskService tasks, TaskRepository taskRepository,
+    @Autowired
+    public AgentTurnWorker(TaskService tasks,
             TaskProperties taskProperties, AgentTurnCommitService commits,
             InitialModelContextService initialContext, LlmConversationService conversation,
             RepairModelContextService repairContext,
             LlmRoundService rounds, LlmTurnRepository turns, LlmProtocolCodec codec,
             ToolBatchExecutionService executor, ToolRegistry registry, ChatGateway gateway, Clock clock) {
+        this(tasks, taskProperties, commits, initialContext, conversation, repairContext, rounds,
+                turns, codec, executor, registry, gateway, clock,
+                new LeasedModelExecutor("agent-turn", tasks, taskProperties));
+    }
+
+    AgentTurnWorker(TaskService tasks,
+            TaskProperties taskProperties, AgentTurnCommitService commits,
+            InitialModelContextService initialContext, LlmConversationService conversation,
+            RepairModelContextService repairContext,
+            LlmRoundService rounds, LlmTurnRepository turns, LlmProtocolCodec codec,
+            ToolBatchExecutionService executor, ToolRegistry registry, ChatGateway gateway, Clock clock,
+            LeasedModelExecutor modelExecutor) {
         this.clock = clock;
         this.tasks = tasks;
-        this.taskRepository = taskRepository;
         this.taskProperties = taskProperties;
         this.commits = commits;
         this.initialContext = initialContext;
@@ -109,6 +104,7 @@ public class AgentTurnWorker {
         this.executor = executor;
         this.registry = registry;
         this.gateway = gateway;
+        this.modelExecutor = modelExecutor;
     }
 
     /**
@@ -133,97 +129,119 @@ public class AgentTurnWorker {
      * @param workerId 本次租约的持有者标识
      */
     private void runClaimed(Task lease, String workerId) {
-        long intervalMillis = Math.max(1_000, taskProperties.leaseDuration().toMillis() / 3);
-        ScheduledFuture<?> heartbeat = heartbeatExecutor.scheduleAtFixedRate(() -> {
+        try (var execution = modelExecutor.open(lease, workerId)) {
             try {
-                tasks.heartbeat(lease.id(), workerId, lease.leaseEpoch());
-            } catch (RuntimeException lost) {
-                LOGGER.warn("Agent-turn lease heartbeat stopped for task {}", lease.id());
-                throw lost;
+                execution.checkActive();
+                AgentRun run = commits.start(lease, workerId);
+                ChatGateway.ConfigIdentity pinned = new ChatGateway.ConfigIdentity(
+                        run.policySnapshot().path("modelConfigSource").asText(""),
+                        run.policySnapshot().path("modelConfigVersion").asInt(-1));
+                gateway.requireToolCalling(pinned);
+                UUID ownerId = tasks.ownerForWorker(lease);
+                int stepIndex = lease.input().path("stepIndex").asInt(-1);
+                continueTurn(lease, workerId, ownerId, stepIndex, run, execution);
+            } catch (LeasedModelExecutor.Stopped | InterruptedException stopped) {
+                throw stopped;
+            } catch (Exception failure) {
+                execution.checkActive();
+                recordFailure(lease, workerId, failure, execution);
             }
-        }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+        } catch (LeasedModelExecutor.Stopped stopped) {
+            // Renewal uncertainty is not a model failure. Durable checkpoints and fencing own recovery.
+            LOGGER.warn("Agent-turn task {} stopped locally; awaiting durable recovery", lease.id());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            LOGGER.info("Agent-turn task {} interrupted; awaiting durable recovery", lease.id());
+        }
+    }
+
+    /** Resolve durable responses before considering another request or an expired retry window. */
+    private void continueTurn(Task lease, String workerId, UUID ownerId, int stepIndex, AgentRun run,
+            LeasedModelExecutor.Execution execution)
+            throws Exception {
+        // 等待态已有完整模型响应，恢复时只读取检查点，不再次调用模型。
+        if (run.status() == AgentRun.Status.WAITING_TASKS || run.nextStepIndex() > stepIndex) {
+            LlmTurn turn = turns.find(lease.projectId(), lease.runId(), stepIndex)
+                    .orElseThrow(() -> new IllegalStateException("Waiting Run has no model turn"));
+            if (turn.status() != LlmTurn.Status.RESPONDED) {
+                throw new IllegalStateException("Waiting Run has no recorded model response");
+            }
+            applyResponse(lease, workerId, ownerId, stepIndex, turn.response(), execution);
+            return;
+        }
+        LlmTurn saved = turns.find(lease.projectId(), lease.runId(), stepIndex).orElse(null);
+        Duration remaining = AgentModelRetryPolicy.remaining(lease, clock.instant());
+        if ((saved == null || saved.status() != LlmTurn.Status.RESPONDED)
+                && (remaining.isNegative() || remaining.isZero())) {
+            execution.checkActive();
+            JsonNode recorded = commits.modelFailed(lease, workerId, AgentModelRetryPolicy.progress(lease)
+                    .path("lastErrorCode").asText());
+            if (recorded != null) applyResponse(lease, workerId, ownerId, stepIndex, recorded, execution);
+            return;
+        }
+        List<Message> messages = frozenMessages(lease, ownerId, stepIndex, saved);
+        JsonNode response = awaitModelResponse(lease, workerId, ownerId, stepIndex, run,
+                messages, remaining, saved != null && saved.status() == LlmTurn.Status.RESPONDED, execution);
+        applyResponse(lease, workerId, ownerId, stepIndex, response, execution);
+    }
+
+    /** Retry and restart replay the saved request instead of assembling changed user content. */
+    private List<Message> frozenMessages(Task lease, UUID ownerId, int stepIndex, LlmTurn saved) {
+        if (saved != null) return codec.requestMessages(saved.request());
+        if (lease.input().has("repairFromStep")) return repairContext.assemble(ownerId, lease);
+        if (stepIndex == 0) return initialContext.assemble(ownerId, lease.projectId(), lease.runId());
+        return conversation.afterToolRound(ownerId, lease.projectId(), lease.runId(), stepIndex - 1);
+    }
+
+    private JsonNode awaitModelResponse(Task lease, String workerId, UUID ownerId, int stepIndex,
+            AgentRun run, List<Message> messages, Duration remaining, boolean recorded,
+            LeasedModelExecutor.Execution execution) throws Exception {
+        // rounds.callLeased 在网络请求两侧提交带租约校验的检查点；这里不持有数据库事务。
+        Duration wait = remaining.compareTo(MODEL_TIMEOUT) < 0 ? remaining : MODEL_TIMEOUT;
+        // Replaying a saved response is allowed after the retry deadline, without a request.
+        Duration timeout = recorded ? MODEL_TIMEOUT : Duration.ofMillis(Math.max(1, wait.toMillis()));
+        return execution.call(() -> rounds.callLeased(ownerId,
+                lease.projectId(), lease.runId(), stepIndex, messages,
+                registry.modelDefinitions(run.policySnapshot()),
+                Map.of("projectId", lease.projectId().toString(),
+                        "runId", lease.runId().toString()), lease, workerId), timeout);
+    }
+
+    private void recordFailure(Task lease, String workerId, Exception failure,
+            LeasedModelExecutor.Execution execution) {
+        LOGGER.error("Agent-turn task {} could not continue: {} code={}", lease.id(),
+                failure.getClass().getSimpleName(), failureCode(failure));
         try {
-            AgentRun run = commits.start(lease, workerId);
-            ChatGateway.ConfigIdentity pinned = new ChatGateway.ConfigIdentity(
-                    run.policySnapshot().path("modelConfigSource").asText(""),
-                    run.policySnapshot().path("modelConfigVersion").asInt(-1));
-            gateway.requireToolCalling(pinned);
-            UUID ownerId = taskRepository.ownerId(lease.id()).orElseThrow();
-            int stepIndex = lease.input().path("stepIndex").asInt(-1);
-            JsonNode response;
-            // 等待态已有完整模型响应，恢复时只读取检查点，不再次调用模型。
-            if (run.status() == AgentRun.Status.WAITING_TASKS
-                    || run.nextStepIndex() > stepIndex) {
-                LlmTurn turn = turns.find(lease.projectId(), lease.runId(), stepIndex)
-                        .orElseThrow(() -> new IllegalStateException("Waiting Run has no model turn"));
-                if (turn.status() != LlmTurn.Status.RESPONDED) {
-                    throw new IllegalStateException("Waiting Run has no recorded model response");
-                }
-                response = turn.response();
-            } else {
-                LlmTurn saved = turns.find(lease.projectId(), lease.runId(), stepIndex).orElse(null);
-                Duration remaining = AgentModelRetryPolicy.remaining(lease, clock.instant());
-                if ((saved == null || saved.status() != LlmTurn.Status.RESPONDED)
-                        && (remaining.isNegative() || remaining.isZero())) {
-                    JsonNode recorded = commits.modelFailed(lease, workerId, AgentModelRetryPolicy.progress(lease)
-                            .path("lastErrorCode").asText());
-                    if (recorded != null) applyResponse(lease, workerId, ownerId, stepIndex, recorded);
-                    return;
-                }
-                List<Message> messages = saved != null ? codec.requestMessages(saved.request())
-                        : lease.input().has("repairFromStep")
-                        ? repairContext.assemble(ownerId, lease)
-                        : stepIndex == 0
-                                ? initialContext.assemble(ownerId, lease.projectId(), lease.runId())
-                                : conversation.afterToolRound(ownerId, lease.projectId(),
-                                        lease.runId(), stepIndex - 1);
-                List<Message> boundedMessages = messages;
-                // rounds.callLeased 在网络请求两侧提交带租约校验的检查点；这里不持有数据库事务。
-                Future<JsonNode> call = modelExecutor.submit(() -> rounds.callLeased(ownerId,
-                        lease.projectId(), lease.runId(), stepIndex, boundedMessages,
-                        registry.modelDefinitions(run.policySnapshot()),
-                        Map.of("projectId", lease.projectId().toString(),
-                                "runId", lease.runId().toString()), lease, workerId));
-                try {
-                    Duration wait = remaining.compareTo(MODEL_TIMEOUT) < 0 ? remaining : MODEL_TIMEOUT;
-                    // Replaying a saved response is allowed after the retry deadline, without a request.
-                    response = call.get(saved != null && saved.status() == LlmTurn.Status.RESPONDED
-                            ? MODEL_TIMEOUT.toMillis() : Math.max(1, wait.toMillis()), TimeUnit.MILLISECONDS);
-                } catch (Exception failure) {
-                    call.cancel(true);
-                    throw failure;
-                }
+            String retryCode = AgentModelRetryPolicy.retryableCode(failure);
+            if (retryCode == null) {
+                commits.finishFailure(lease, workerId, failureCode(failure));
+                return;
             }
-            applyResponse(lease, workerId, ownerId, stepIndex, response);
-        } catch (Exception failure) {
-            LOGGER.error("Agent-turn task {} could not continue: {} code={}", lease.id(),
-                    failure.getClass().getSimpleName(), failureCode(failure));
+            JsonNode recorded = commits.modelFailed(lease, workerId, retryCode);
+            if (recorded == null) return;
+            // A complete checkpoint can win the timeout race. Continue it immediately,
+            // without another model request or waiting for this lease to expire.
             try {
-                String retryCode = AgentModelRetryPolicy.retryableCode(failure);
-                if (retryCode != null) {
-                    JsonNode recorded = commits.modelFailed(lease, workerId, retryCode);
-                    // A complete checkpoint can win the timeout race. Continue it immediately,
-                    // without another model request or waiting for this lease to expire.
-                    if (recorded != null) {
-                        try {
-                            applyResponse(lease, workerId, taskRepository.ownerId(lease.id()).orElseThrow(),
-                                    lease.input().path("stepIndex").asInt(-1), recorded);
-                        } catch (RuntimeException processingFailure) {
-                            commits.finishFailure(lease, workerId, failureCode(processingFailure));
-                        }
-                    }
-                } else commits.finishFailure(lease, workerId, failureCode(failure));
-            } catch (RuntimeException changed) {
-                LOGGER.warn("Agent-turn task {} changed before failure could be recorded: {}",
-                        lease.id(), changed.getClass().getSimpleName());
+                applyResponse(lease, workerId, tasks.ownerForWorker(lease),
+                        lease.input().path("stepIndex").asInt(-1), recorded, execution);
+            } catch (LeasedModelExecutor.Stopped stopped) {
+                throw stopped;
+            } catch (RuntimeException processingFailure) {
+                execution.checkActive();
+                commits.finishFailure(lease, workerId, failureCode(processingFailure));
             }
-        } finally {
-            heartbeat.cancel(false);
+        } catch (LeasedModelExecutor.Stopped stopped) {
+            throw stopped;
+        } catch (RuntimeException changed) {
+            LOGGER.warn("Agent-turn task {} changed before failure could be recorded: {}",
+                    lease.id(), changed.getClass().getSimpleName());
         }
     }
 
     /** Only a committed response can enter the tool transaction; replay is idempotent. */
-    private void applyResponse(Task lease, String workerId, UUID ownerId, int stepIndex, JsonNode response) {
+    private void applyResponse(Task lease, String workerId, UUID ownerId, int stepIndex, JsonNode response,
+            LeasedModelExecutor.Execution execution) {
+        execution.checkActive();
         try {
             AssistantMessage assistant = codec.selectedAssistant(response);
             validateCalls(assistant);
@@ -235,13 +253,16 @@ public class AgentTurnWorker {
             if (!"TOOL_ARGUMENT_INVALID".equals(invalid.code())) {
                 throw invalid;
             }
+            execution.checkActive();
             commits.scheduleRepair(lease, workerId, invalid.code(), invalid.getMessage());
             return;
         } catch (IllegalArgumentException invalid) {
+            execution.checkActive();
             commits.scheduleRepair(lease, workerId, "MODEL_OUTPUT_INVALID",
                     "Model response or tool call structure is malformed");
             return;
         }
+        execution.checkActive();
         commits.complete(lease, workerId);
     }
 
@@ -288,7 +309,6 @@ public class AgentTurnWorker {
     /** 关闭租约心跳和模型调用线程池，避免应用停机后仍继续调度后台工作。 */
     @PreDestroy
     public void shutdown() {
-        heartbeatExecutor.shutdownNow();
-        modelExecutor.shutdownNow();
+        modelExecutor.close();
     }
 }

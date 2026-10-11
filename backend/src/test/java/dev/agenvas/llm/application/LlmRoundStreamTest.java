@@ -72,6 +72,14 @@ class LlmRoundStreamTest {
     }
 
     @Test
+    void missingLeaseCannotReadRunReserveOrDispatch() {
+        assertThatThrownBy(() -> service.callLeased(owner, project, runId, 0,
+                List.of(new UserMessage("Hello")), List.of(), Map.of(), null, "worker"))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("Missing model task lease");
+        verifyNoInteractions(runs, checkpoints, gateway, tasks, logs, images);
+    }
+
+    @Test
     void commitsIncrementalPublicBatchesThenCompleteCheckpointUsingExactLease() {
         assertThat(call()).isEqualTo(response);
         var order = inOrder(tasks, gateway, checkpoints);

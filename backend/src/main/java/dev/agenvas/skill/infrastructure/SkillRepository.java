@@ -7,6 +7,7 @@ import static dev.agenvas.db.Tables.SKILL_PUBLISH_OPERATION;
 import static dev.agenvas.db.Tables.SKILL_VERSION;
 
 import dev.agenvas.skill.domain.SkillContent;
+import dev.agenvas.db.tables.records.SkillVersionRecord;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -93,17 +94,15 @@ public class SkillRepository {
     }
     public Optional<SkillContent.Version> version(UUID owner, UUID skillId, UUID versionId) {
         return db.selectFrom(SKILL_VERSION).where(SKILL_VERSION.OWNER_ID.eq(owner).and(SKILL_VERSION.SKILL_ID.eq(skillId))
-                .and(SKILL_VERSION.ID.eq(versionId))).fetchOptional().map(row -> new SkillContent.Version(row.getId(), row.getOwnerId(),
-                        row.getSkillId(), row.getVersionNumber(), row.getBundleHash(), mapper.readValue(row.getBundleJson().data(), SkillContent.Bundle.class),
-                        instant(row.getCreatedAt())));
+                .and(SKILL_VERSION.ID.eq(versionId))).fetchOptional().map(this::version);
     }
     public Optional<SkillContent.Version> version(UUID owner, UUID versionId) {
-        return db.select(SKILL_VERSION.SKILL_ID).from(SKILL_VERSION).where(SKILL_VERSION.OWNER_ID.eq(owner)
-                .and(SKILL_VERSION.ID.eq(versionId))).fetchOptional(SKILL_VERSION.SKILL_ID).flatMap(skill -> version(owner, skill, versionId));
+        return db.selectFrom(SKILL_VERSION).where(SKILL_VERSION.OWNER_ID.eq(owner)
+                .and(SKILL_VERSION.ID.eq(versionId))).fetchOptional().map(this::version);
     }
     public List<SkillContent.Version> versions(UUID owner, UUID skillId) {
-        return db.select(SKILL_VERSION.ID).from(SKILL_VERSION).where(SKILL_VERSION.OWNER_ID.eq(owner).and(SKILL_VERSION.SKILL_ID.eq(skillId)))
-                .orderBy(SKILL_VERSION.VERSION_NUMBER.desc()).fetch(SKILL_VERSION.ID).stream().map(id -> version(owner, skillId, id).orElseThrow()).toList();
+        return db.selectFrom(SKILL_VERSION).where(SKILL_VERSION.OWNER_ID.eq(owner).and(SKILL_VERSION.SKILL_ID.eq(skillId)))
+                .orderBy(SKILL_VERSION.VERSION_NUMBER.desc()).fetch(this::version);
     }
     public long nextVersion(UUID owner, UUID skillId) {
         Long last = db.select(org.jooq.impl.DSL.max(SKILL_VERSION.VERSION_NUMBER)).from(SKILL_VERSION)
@@ -213,6 +212,10 @@ public class SkillRepository {
                     .set(AGENT_SKILL_BINDING.POSITION, index).set(AGENT_SKILL_BINDING.UPDATED_AT, time(now)).execute();
             if (inserted != 1) throw new IllegalStateException("Skill binding was not inserted");
         }
+    }
+    private SkillContent.Version version(SkillVersionRecord row) {
+        return new SkillContent.Version(row.getId(), row.getOwnerId(), row.getSkillId(), row.getVersionNumber(),
+                row.getBundleHash(), mapper.readValue(row.getBundleJson().data(), SkillContent.Bundle.class), instant(row.getCreatedAt()));
     }
     private SkillContent.PublishOperation operation(dev.agenvas.db.tables.records.SkillPublishOperationRecord row) {
         return new SkillContent.PublishOperation(row.getId(), row.getOwnerId(), row.getSkillId(), row.getCommandKey(), row.getPayloadHash(),

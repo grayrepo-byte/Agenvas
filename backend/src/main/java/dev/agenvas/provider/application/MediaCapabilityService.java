@@ -184,15 +184,15 @@ public class MediaCapabilityService {
 
     @Transactional
     public Capability publishCapability(UUID connectionId, String name, String adapterId) {
-        return publishCapabilityWithId(UUID.randomUUID(), connectionId, name, adapterId,
-                null);
+        return publishCapability(connectionId, name, adapterId, null);
     }
 
     @Transactional
     public Capability publishCapability(UUID connectionId, String name, String adapterId,
             JsonNode settings) {
-        return publishCapabilityWithId(UUID.randomUUID(), connectionId, name, adapterId,
-                settings);
+        UUID id = UUID.randomUUID();
+        validateCapabilityConnection(connectionId, adapterId);
+        return insertCapability(id, connectionId, name, adapterId, spec(adapterId, settings));
     }
 
     @Transactional
@@ -223,11 +223,11 @@ public class MediaCapabilityService {
             }
             return repository.capability(previous.entityId()).orElseThrow();
         }
-        return publishCapabilityWithId(id, connectionId, normalizedName, adapterId, settings);
+        validateCapabilityConnection(connectionId, adapterId);
+        return insertCapability(id, connectionId, normalizedName, adapterId, spec);
     }
 
-    private Capability publishCapabilityWithId(UUID id, UUID connectionId,
-            String name, String adapterId, JsonNode settings) {
+    private void validateCapabilityConnection(UUID connectionId, String adapterId) {
         Connection connection = getConnection(connectionId);
         requireAvailablePlatform(connection.platform());
         rejectSystemManaged(connection);
@@ -249,7 +249,10 @@ public class MediaCapabilityService {
         if (connection.platform() != declaration.platform()) {
             throw invalid(ApiMessage.of("api.media-capability-service.adapter-does-not-match-platform-connection"));
         }
-        String spec = spec(adapterId, settings);
+    }
+
+    private Capability insertCapability(UUID id, UUID connectionId,
+            String name, String adapterId, String spec) {
         repository.insertCapability(id, connectionId, requireName(name), adapterId,
                 Sha256.hex(adapterId + ":v1:" + spec), spec, clock.instant());
         return repository.capability(id).orElseThrow();
@@ -299,6 +302,8 @@ public class MediaCapabilityService {
         }
         String spec = spec(adapterId, effectiveSettings);
         if (oldSettings == null) oldSettings = settings(current);
+        // Compare persisted JSON node types: a small LongNode serializes back as an IntNode.
+        // Comparing the constructed settings directly would create spurious content versions.
         JsonNode newSettings = mapper.readTree(spec).path("settings");
         boolean newVersion = !current.adapterId().equals(adapterId)
                 || !newSettings.equals(oldSettings);
@@ -371,7 +376,15 @@ public class MediaCapabilityService {
     /** Versioned protocol settings, including administrator-published ComfyUI graphs. */
     private String spec(String adapterId, JsonNode suppliedSettings) {
         JsonNode source = suppliedSettings == null ? mapper.createObjectNode() : suppliedSettings;
-        var declaration = declaration(adapterId, source);
+        var declaration = registry.declaration(adapterId);
+        ComfyUiWorkflowDefinition comfyWorkflow = null;
+        if (declaration.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(source)) {
+            comfyWorkflow = ComfyUiWorkflowDefinition.parse(mapper,
+                    source.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), declaration.kind());
+            declaration = comfyWorkflow.declaration(declaration.kind());
+        } else if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) {
+            declaration = AutoDlWorkflows.require(source).declaration();
+        }
         ObjectNode normalized = mapper.createObjectNode();
         normalized.put("schemaVersion", CAPABILITY_SCHEMA_VERSION);
         normalized.put("kind", declaration.kind().name());
@@ -393,12 +406,11 @@ public class MediaCapabilityService {
             MediaCapabilityConfiguration.normalize(mapper, declaration, price, settings);
             return normalized.toString();
         }
-        if (declaration.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(source)) {
+        if (comfyWorkflow != null) {
             if (!java.util.stream.Stream.concat(MediaCapabilityConfiguration.FIELDS.stream(),
                     java.util.stream.Stream.of(ComfyUiWorkflowDefinition.SETTINGS_KEY, ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY)).collect(java.util.stream.Collectors.toSet())
                     .containsAll(source.propertyNames())) throw invalid(ApiMessage.of("api.media-capability-service.capability-template-contains-parameters-that-are-not-allowed"));
-            var workflow = ComfyUiWorkflowDefinition.parse(mapper, source.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), declaration.kind());
-            settings.set(ComfyUiWorkflowDefinition.SETTINGS_KEY, mapper.valueToTree(workflow));
+            settings.set(ComfyUiWorkflowDefinition.SETTINGS_KEY, mapper.valueToTree(comfyWorkflow));
         } else normalizeAdapterSettings(adapterId, source, settings);
         if (AutoDlWorkflows.ADAPTER_ID.equals(adapterId)) AutoDlWorkflows.normalize(source, settings);
         MediaCapabilityConfiguration.normalize(mapper, declaration, source, settings);
@@ -413,9 +425,9 @@ public class MediaCapabilityService {
                 if (!"AUTO".equals(ratio)) workflow.resolution(tier, ratio);
             }
         }
-        if (declaration.platform() == MediaPlatform.COMFYUI && ComfyUiWorkflowDefinition.configured(settings)) {
-            var workflow = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), declaration.kind());
-            if (policy.maxReferenceImages() != workflow.referenceCount())
+        if (comfyWorkflow != null) {
+            ComfyUiWorkflowDefinition.requireDefinitionSize(settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY));
+            if (policy.maxReferenceImages() != comfyWorkflow.referenceCount())
                 throw invalid(ApiMessage.of("api.comfy-workflow.invalid", "references"));
         }
         putInputLimits(normalized, policy);

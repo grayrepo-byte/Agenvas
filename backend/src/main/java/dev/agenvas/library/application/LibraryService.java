@@ -478,41 +478,8 @@ public class LibraryService {
         ObjectNode result = mapper.createObjectNode().put("artifactId", created.artifact().id().toString())
                 .put("versionId", created.resourceDefaultVersion().id().toString());
         if (command.kind() == LibraryCommand.Kind.REFERENCE) {
-            ReferenceDraft draft = mapper.treeToValue(input.path("draft"), ReferenceDraft.class);
-            UUID item = UUID.fromString(input.path("itemId").asText());
-            var inputs = new java.util.ArrayList<>(draft.mediaInputs() == null ? List.<MediaDraftService.SaveMediaInput>of() : draft.mediaInputs());
-            inputs.add(new MediaDraftService.SaveMediaInput(created.resourceDefaultVersion().id(),
-                    MediaDraft.InputRole.valueOf(input.path("role").asText()), input.path("color").asText()));
-            Artifact.Kind kind = artifacts.get(command.ownerId(), project, items.requireArtifactItem(command.ownerId(), project, item).subjectId()).artifact().kind();
-            var assignment = input.hasNonNull("slotKey")
-                    ? drafts.assignWorkflowSlotParameters(command.ownerId(), project, item,
-                            draft.parameters(), draft.prompt(), draft.durationSeconds(), draft.capabilityId(),
-                            draft.mediaInputs(), Artifact.Kind.valueOf(input.path("kind").asText()),
-                            created.resourceDefaultVersion().id(), input.path("slotKey").asText())
-                    : null;
-            JsonNode parameters = assignment == null ? draft.parameters() : assignment.parameters();
-            long expectedDraftVersion = draft.expectedVersion();
-            List<MediaDraft.PromptMention> mentions = draft.mentions() == null ? List.of() : draft.mentions();
-            String prompt = draft.prompt();
-            if (assignment != null && assignment.removedVersionId() != null) {
-                UUID removed = assignment.removedVersionId();
-                inputs.removeIf(reference -> reference.versionId().equals(removed));
-                var retainedMentions = mentions.stream().filter(mention -> !mention.versionId().equals(removed)).toList();
-                prompt = drafts.pruneRemovedMentions(prompt, mentions, retainedMentions);
-                mentions = retainedMentions;
-                var persisted = drafts.get(command.ownerId(), project, item);
-                if (persisted.version() != expectedDraftVersion) throw conflict();
-                if (persisted.mediaInputs().stream().anyMatch(reference -> reference.versionId().equals(removed))) {
-                    expectedDraftVersion = connections.removeMediaInput(command.ownerId(), project, item,
-                            removed, expectedDraftVersion).version();
-                }
-            }
-            MediaDraft.VideoInputMode mode = input.hasNonNull("slotKey") && kind == Artifact.Kind.VIDEO
-                    ? MediaDraft.VideoInputMode.GENERAL_REFERENCE : draft.videoInputMode();
-            var saved = drafts.save(command.ownerId(), project, item, expectedDraftVersion, prompt, parameters,
-                    draft.durationSeconds(), draft.capabilityId(), mode, inputs, mentions, draft.styleId());
-            mediaTasks.validateLibraryReference(command.ownerId(), project, kind, saved);
-            result.put("draftVersion", saved.version()).put("canvasItemId", item.toString());
+            var saved = applyImportedReference(command, project, created.resourceDefaultVersion().id());
+            result.put("draftVersion", saved.version()).put("canvasItemId", saved.canvasItemId().toString());
         } else {
             canvas.apply(command.ownerId(), project, List.of(new CanvasService.PlaceArtifact(command.id(),
                     created.artifact().id(), input.path("x").decimalValue(), input.path("y").decimalValue(),
@@ -523,6 +490,46 @@ public class LibraryService {
         if (!repository.finish(command, LibraryCommand.Status.SUCCEEDED, result, null, null, clock.instant()))
             throw new IllegalStateException("Transfer lease superseded");
         repository.enqueuePinCleanup(command, clock.instant());
+    }
+
+    /** Slot replacement, source removal and draft CAS remain in the import's completion transaction. */
+    private MediaDraft applyImportedReference(LibraryCommand command, UUID project, UUID importedVersion) {
+        JsonNode input = command.input();
+        ReferenceDraft draft = mapper.treeToValue(input.path("draft"), ReferenceDraft.class);
+        UUID item = UUID.fromString(input.path("itemId").asText());
+        var inputs = new java.util.ArrayList<>(draft.mediaInputs() == null ? List.<MediaDraftService.SaveMediaInput>of() : draft.mediaInputs());
+        inputs.add(new MediaDraftService.SaveMediaInput(importedVersion,
+                MediaDraft.InputRole.valueOf(input.path("role").asText()), input.path("color").asText()));
+        Artifact.Kind kind = artifacts.get(command.ownerId(), project, items.requireArtifactItem(command.ownerId(), project, item).subjectId()).artifact().kind();
+        var assignment = input.hasNonNull("slotKey")
+                ? drafts.assignWorkflowSlotParameters(command.ownerId(), project, item,
+                        draft.parameters(), draft.prompt(), draft.durationSeconds(), draft.capabilityId(),
+                        draft.mediaInputs(), Artifact.Kind.valueOf(input.path("kind").asText()),
+                        importedVersion, input.path("slotKey").asText())
+                : null;
+        JsonNode parameters = assignment == null ? draft.parameters() : assignment.parameters();
+        long expectedDraftVersion = draft.expectedVersion();
+        List<MediaDraft.PromptMention> mentions = draft.mentions() == null ? List.of() : draft.mentions();
+        String prompt = draft.prompt();
+        if (assignment != null && assignment.removedVersionId() != null) {
+            UUID removed = assignment.removedVersionId();
+            inputs.removeIf(reference -> reference.versionId().equals(removed));
+            var retainedMentions = mentions.stream().filter(mention -> !mention.versionId().equals(removed)).toList();
+            prompt = drafts.pruneRemovedMentions(prompt, mentions, retainedMentions);
+            mentions = retainedMentions;
+            var persisted = drafts.get(command.ownerId(), project, item);
+            if (persisted.version() != expectedDraftVersion) throw conflict();
+            if (persisted.mediaInputs().stream().anyMatch(reference -> reference.versionId().equals(removed))) {
+                expectedDraftVersion = connections.removeMediaInput(command.ownerId(), project, item,
+                        removed, expectedDraftVersion).version();
+            }
+        }
+        MediaDraft.VideoInputMode mode = input.hasNonNull("slotKey") && kind == Artifact.Kind.VIDEO
+                ? MediaDraft.VideoInputMode.GENERAL_REFERENCE : draft.videoInputMode();
+        var saved = drafts.save(command.ownerId(), project, item, expectedDraftVersion, prompt, parameters,
+                draft.durationSeconds(), draft.capabilityId(), mode, inputs, mentions, draft.styleId());
+        mediaTasks.validateLibraryReference(command.ownerId(), project, kind, saved);
+        return saved;
     }
 
     private void completeSave(LibraryCommand command, Media media) {

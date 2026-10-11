@@ -725,43 +725,10 @@ public class DirectMediaTaskService {
             String promptKey = operationSpec.promptKey();
             PromptService.Prompt functionPrompt = promptKey == null ? null
                     : prompts.require(promptKey, PromptService.Kind.FUNCTION);
-            String prompt = operationSpec.prompt(normalizedInstruction,
-                    functionPrompt == null ? null : functionPrompt.content());
-            if (definition != null && (operation == ImageOperation.UPSCALE || operation == ImageOperation.DEPTH_MAP)) {
-                prompt = operation.resultLabel() + (normalizedInstruction.isBlank() ? "" : ": " + normalizedInstruction);
-            }
-            if (!referenceVersions.isEmpty()) {
-                prompt += " Image 1 is the source to edit. Images 2 through "
-                        + (referenceVersions.size() + 1)
-                        + " are additional visual references; use only the traits explicitly requested "
-                        + "and keep unrelated source content unchanged.";
-            }
-            if (maskAssetId != null) {
-                prompt += " Apply the requested change only in the transparent mask-guided area and "
-                        + "preserve every unmasked pixel as closely as possible.";
-            }
-            ObjectNode workflowParameters = mapper.createObjectNode();
-            if (definition != null) {
-                Asset sourceAsset = assets.requireReadyMedia(ownerId, projectId,
-                        UUID.fromString(source.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
-                if (sourceAsset.byteSize() > dev.agenvas.provider.infrastructure.RunningHubClient.MAX_UPLOAD_BYTES) {
-                    throw invalid(ApiMessage.of("api.direct-media-task-service.a-single-piece-of-runninghub-material-cannot-exceed-30-mb"));
-                }
-                JsonNode dynamic = requestedParameters.path(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY);
-                if (!dynamic.isMissingNode() && !dynamic.isObject()) {
-                    throw invalid(ApiMessage.of("api.media-function.invalid-request"));
-                }
-                workflowParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY,
-                        dynamic.isMissingNode() ? mapper.createObjectNode() : dynamic.deepCopy());
-                var sourceField = definition.fields().stream().filter(dev.agenvas.provider.domain.RunningHubDefinition.Field::media)
-                        .findFirst().orElseThrow();
-                workflowParameters.withObject(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY)
-                        .put(sourceField.key(), sourceVersionId.toString());
-                workflowParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY,
-                        definition.values(mapper, workflowParameters, prompt, null, true));
-            } else if (requestedParameters.has(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY)) {
-                throw invalid(ApiMessage.of("api.media-function.invalid-request"));
-            }
+            String prompt = imageOperationPrompt(operation, operationSpec, normalizedInstruction,
+                    functionPrompt, definition, referenceVersions.size(), maskAssetId != null);
+            ObjectNode workflowParameters = imageWorkflowParameters(ownerId, projectId, source,
+                    sourceVersionId, definition, requestedParameters, prompt);
             String outputRatio = operation == ImageOperation.OUTPAINT || operation == ImageOperation.THREE_VIEW
                     ? operationParameters.path("aspectRatio").asText()
                     : sourceAspectRatio(ownerId, projectId, source, inputPolicy.supportedImageAspectRatios());
@@ -807,46 +774,9 @@ public class DirectMediaTaskService {
             if (maskAssetId == null) frozenOperation.putNull("maskAssetId");
             else frozenOperation.put("maskAssetId", maskAssetId.toString());
             frozenOperation.set("parameters", operationParameters.deepCopy());
-            ObjectNode frozen = input.putObject("mediaInput");
-            if (ComfyUiWorkflowDefinition.configured(operationSettings)) {
-                var workflow = ComfyUiWorkflowDefinition.parse(mapper, operationSettings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), Task.Kind.IMAGE_GENERATION);
-                workflow.requireReferences(1 + normalizedReferenceIds.size());
-                frozen.set("providerParameters", mapper.valueToTree(workflow.dimensions(outputRatio)));
-            }
-            frozen.put("parentVersionId", sourceVersionId.toString());
-            frozen.put("mode", MediaDraft.VideoInputMode.GENERAL_REFERENCE.name());
-            frozen.put("prompt", prompt);
-            frozen.put("renderedPrompt", prompt);
-            ObjectNode generationParameters = frozen.putObject("parameters");
-            generationParameters.put("aspectRatio", outputRatio);
-            generationParameters.put("resolution", "1K");
-            generationParameters.put("quality", "high");
-            generationParameters.put("transparentBackground", transparentOutput);
-            generationParameters.put("generationCount", 1);
-            frozen.put("capabilityId", binding.capabilityId().toString());
-            frozen.put("capabilityVersion", binding.capabilityVersion());
-            ArrayNode images = frozen.putArray("images");
-                frozen.putArray("audios");
-            ObjectNode image = images.addObject();
-            image.put("artifactId", artifactId.toString());
-            image.put("versionId", sourceVersionId.toString());
-            image.put("role", MediaDraft.InputRole.REFERENCE.name());
-            image.put("order", 0);
-            int referenceOrder = 1;
-            for (ArtifactVersion reference : referenceVersions) {
-                ObjectNode referenceImage = images.addObject();
-                referenceImage.put("artifactId", reference.artifactId().toString());
-                referenceImage.put("versionId", reference.id().toString());
-                referenceImage.put("role", MediaDraft.InputRole.REFERENCE.name());
-                referenceImage.put("order", referenceOrder++);
-            }
-            pinImageRelay(input, binding);
-            frozen.putArray("mentions");
-            if (definition != null) {
-                input.put("providerProtocol", "RUNNINGHUB_V2");
-                frozen.set("runningHubContract", mapper.valueToTree(definition.executionContract()));
-                frozen.set("parameters", workflowParameters);
-            }
+            freezeImageOperationMediaInput(input, artifactId, sourceVersionId, operationSettings,
+                    new PreparedImageOperation(binding, definition, prompt, outputRatio,
+                            transparentOutput, referenceVersions, workflowParameters));
             Task task = new Task(UUID.randomUUID(), projectId, null, commandKey,
                     Task.Kind.IMAGE_GENERATION, Task.Status.READY, false, input,
                     Sha256.hex(input.toString()), null, null, 1, now, null, null, 0, 0,
@@ -870,6 +800,103 @@ public class DirectMediaTaskService {
             return ProjectEventService.Change.unchanged(task);
         }).value();
     }
+
+    /** Function prompts are read only for first acceptance, then fixed in the Task snapshot. */
+    private String imageOperationPrompt(ImageOperation operation, ImageOperationSpec spec,
+            String instruction, PromptService.Prompt functionPrompt, RunningHubDefinition definition,
+            int referenceCount, boolean masked) {
+        String prompt = spec.prompt(instruction, functionPrompt == null ? null : functionPrompt.content());
+        if (definition != null && (operation == ImageOperation.UPSCALE || operation == ImageOperation.DEPTH_MAP)) {
+            prompt = operation.resultLabel() + (instruction.isBlank() ? "" : ": " + instruction);
+        }
+        if (referenceCount > 0) {
+            prompt += " Image 1 is the source to edit. Images 2 through " + (referenceCount + 1)
+                    + " are additional visual references; use only the traits explicitly requested "
+                    + "and keep unrelated source content unchanged.";
+        }
+        if (masked) {
+            prompt += " Apply the requested change only in the transparent mask-guided area and "
+                    + "preserve every unmasked pixel as closely as possible.";
+        }
+        return prompt;
+    }
+
+    /** The operation owns its source slot; client workflow parameters cannot replace it. */
+    private ObjectNode imageWorkflowParameters(UUID ownerId, UUID projectId, ArtifactVersion source,
+            UUID sourceVersionId, RunningHubDefinition definition, JsonNode requestedParameters, String prompt) {
+        ObjectNode parameters = mapper.createObjectNode();
+        if (definition == null) {
+            if (requestedParameters.has(RunningHubDefinition.VALUES_PROPERTY))
+                throw invalid(ApiMessage.of("api.media-function.invalid-request"));
+            return parameters;
+        }
+        Asset sourceAsset = assets.requireReadyMedia(ownerId, projectId,
+                UUID.fromString(source.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
+        if (sourceAsset.byteSize() > dev.agenvas.provider.infrastructure.RunningHubClient.MAX_UPLOAD_BYTES) {
+            throw invalid(ApiMessage.of("api.direct-media-task-service.a-single-piece-of-runninghub-material-cannot-exceed-30-mb"));
+        }
+        JsonNode dynamic = requestedParameters.path(RunningHubDefinition.VALUES_PROPERTY);
+        if (!dynamic.isMissingNode() && !dynamic.isObject()) {
+            throw invalid(ApiMessage.of("api.media-function.invalid-request"));
+        }
+        parameters.set(RunningHubDefinition.VALUES_PROPERTY,
+                dynamic.isMissingNode() ? mapper.createObjectNode() : dynamic.deepCopy());
+        var sourceField = definition.fields().stream().filter(RunningHubDefinition.Field::media)
+                .findFirst().orElseThrow();
+        parameters.withObject(RunningHubDefinition.VALUES_PROPERTY).put(sourceField.key(), sourceVersionId.toString());
+        parameters.set(RunningHubDefinition.VALUES_PROPERTY,
+                definition.values(mapper, parameters, prompt, null, true));
+        return parameters;
+    }
+
+    /** Field and reference order are preserved because the accepted input JSON is hashed. */
+    private void freezeImageOperationMediaInput(ObjectNode input, UUID artifactId, UUID sourceVersionId,
+            JsonNode settings, PreparedImageOperation prepared) {
+        ObjectNode frozen = input.putObject("mediaInput");
+        if (ComfyUiWorkflowDefinition.configured(settings)) {
+            var workflow = ComfyUiWorkflowDefinition.parse(mapper, settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY), Task.Kind.IMAGE_GENERATION);
+            workflow.requireReferences(1 + prepared.references().size());
+            frozen.set("providerParameters", mapper.valueToTree(workflow.dimensions(prepared.outputRatio())));
+        }
+        frozen.put("parentVersionId", sourceVersionId.toString());
+        frozen.put("mode", MediaDraft.VideoInputMode.GENERAL_REFERENCE.name());
+        frozen.put("prompt", prepared.prompt());
+        frozen.put("renderedPrompt", prepared.prompt());
+        ObjectNode generationParameters = frozen.putObject("parameters");
+        generationParameters.put("aspectRatio", prepared.outputRatio());
+        generationParameters.put("resolution", "1K");
+        generationParameters.put("quality", "high");
+        generationParameters.put("transparentBackground", prepared.transparentOutput());
+        generationParameters.put("generationCount", 1);
+        frozen.put("capabilityId", prepared.binding().capabilityId().toString());
+        frozen.put("capabilityVersion", prepared.binding().capabilityVersion());
+        ArrayNode images = frozen.putArray("images");
+        frozen.putArray("audios");
+        ObjectNode image = images.addObject();
+        image.put("artifactId", artifactId.toString());
+        image.put("versionId", sourceVersionId.toString());
+        image.put("role", MediaDraft.InputRole.REFERENCE.name());
+        image.put("order", 0);
+        int referenceOrder = 1;
+        for (ArtifactVersion reference : prepared.references()) {
+            ObjectNode referenceImage = images.addObject();
+            referenceImage.put("artifactId", reference.artifactId().toString());
+            referenceImage.put("versionId", reference.id().toString());
+            referenceImage.put("role", MediaDraft.InputRole.REFERENCE.name());
+            referenceImage.put("order", referenceOrder++);
+        }
+        pinImageRelay(input, prepared.binding());
+        frozen.putArray("mentions");
+        if (prepared.definition() != null) {
+            input.put("providerProtocol", "RUNNINGHUB_V2");
+            frozen.set("runningHubContract", mapper.valueToTree(prepared.definition().executionContract()));
+            frozen.set("parameters", prepared.workflowParameters());
+        }
+    }
+
+    private record PreparedImageOperation(MediaCapabilityBinding binding, RunningHubDefinition definition,
+            String prompt, String outputRatio, boolean transparentOutput, List<ArtifactVersion> references,
+            ObjectNode workflowParameters) {}
 
     /** Only the fixed OpenAI Images protocol currently declares URL reference support. */
     private void pinImageRelay(ObjectNode input, MediaCapabilityBinding binding) {

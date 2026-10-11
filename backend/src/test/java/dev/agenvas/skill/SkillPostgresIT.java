@@ -13,28 +13,39 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.asset.application.SkillAssetArchiveService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.library.application.LibraryService;
 import dev.agenvas.library.domain.LibraryEntry;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.skill.application.SkillService;
 import dev.agenvas.skill.domain.SkillContent;
+import dev.agenvas.skill.infrastructure.SkillRepository;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.jooq.Configuration;
+import org.jooq.DSLContext;
+import org.jooq.ExecuteContext;
+import org.jooq.ExecuteListener;
+import org.jooq.impl.DSL;
+import org.jooq.impl.DefaultExecuteListenerProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -75,8 +86,10 @@ class SkillPostgresIT {
     @Autowired dev.agenvas.skill.infrastructure.SkillRepository repository;
     @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
     @Autowired LibraryService library;
+    @Autowired SkillAssetArchiveService archive;
     @Autowired ObjectMapper mapper;
     @Autowired JdbcClient jdbc;
+    @Autowired DSLContext db;
     @Autowired WebApplicationContext context;
     private AdminPrincipal owner;
     private MockMvc mvc;
@@ -109,8 +122,52 @@ class SkillPostgresIT {
         assertThat(skills.list(account, "short-drama", true, null).items()).isEmpty();
         assertThatThrownBy(() -> skills.get(owner.userId(), one.id())).isInstanceOfSatisfying(ApiProblemException.class,
                 problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
-        assertThatThrownBy(() -> skills.getBundleByVersion(owner.userId(), one.currentVersionId())).isInstanceOfSatisfying(ApiProblemException.class,
+        assertThatThrownBy(() -> skills.getBundle(owner.userId(), one.id(), one.currentVersionId())).isInstanceOfSatisfying(ApiProblemException.class,
                 problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
+    }
+
+    @Test void immutableVersionReadsUseOneQueryAndKeepPublicationOrderAndAccountScope() {
+        var primary = skills.create(owner.userId(), "Synthetic version history", "Query fixture");
+        var sibling = skills.create(owner.userId(), "Synthetic sibling history", "Query fixture");
+        UUID otherOwner = UUID.randomUUID();
+        jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
+                .param("id", otherOwner).param("login", "version-query-" + otherOwner).update();
+        var otherSkill = skills.create(otherOwner, "Synthetic other account history", "Query fixture");
+        var first = syntheticVersion(owner.userId(), primary.id(), 1);
+        var second = syntheticVersion(owner.userId(), primary.id(), 2);
+        var third = syntheticVersion(owner.userId(), primary.id(), 3);
+        var siblingVersion = syntheticVersion(owner.userId(), sibling.id(), 1);
+        var otherVersion = syntheticVersion(otherOwner, otherSkill.id(), 1);
+        transactions.executeWithoutResult(ignored -> {
+            repository.publish(first, 0);
+            repository.publish(second, 1);
+            repository.publish(third, 2);
+            repository.publish(siblingVersion, 0);
+            repository.publish(otherVersion, 0);
+        });
+
+        AtomicInteger queries = new AtomicInteger();
+        Configuration measured = db.configuration().derive();
+        measured.set(new DefaultExecuteListenerProvider(new ExecuteListener() {
+            @Override public void executeEnd(ExecuteContext context) { queries.incrementAndGet(); }
+        }));
+        SkillRepository reads = new SkillRepository(DSL.using(measured), mapper);
+
+        assertThat(reads.versions(owner.userId(), primary.id())).containsExactly(third, second, first);
+        assertThat(queries.getAndSet(0)).isEqualTo(1);
+        assertThat(reads.version(owner.userId(), second.id())).contains(second);
+        assertThat(queries.getAndSet(0)).isEqualTo(1);
+        assertThat(reads.version(owner.userId(), primary.id(), second.id())).contains(second);
+        assertThat(queries.getAndSet(0)).isEqualTo(1);
+        assertThat(reads.versions(owner.userId(), sibling.id())).containsExactly(siblingVersion);
+        assertThat(reads.versions(otherOwner, primary.id())).isEmpty();
+        assertThat(reads.versions(owner.userId(), otherSkill.id())).isEmpty();
+        assertThat(reads.version(otherOwner, second.id())).isEmpty();
+        assertThat(reads.version(owner.userId(), otherVersion.id())).isEmpty();
+        assertThat(reads.version(owner.userId(), sibling.id(), second.id())).isEmpty();
+        assertThatThrownBy(() -> skills.getBundle(owner.userId(), sibling.id(), second.id()))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
     }
 
     @Test void builtinVersionsAreReadableThroughTheApiAndCannotBeEditedTrashedOrCopied() throws Exception {
@@ -340,6 +397,67 @@ class SkillPostgresIT {
         assertThat(skills.getVersion(owner.userId(), skill.id(), completed.resultVersionId()).assets()).hasSize(1);
         while (skills.cleanupNext()) { /* Drain durable pin cleanup for successful fixtures. */ }
         assertThat(Files.exists(STORAGE.resolve("library").resolve(pinned.pinKey()))).isFalse();
+    }
+
+    @Test void committedArchiveResumesWithoutReadingTheRemovedPinOrArchivingAgain() throws Exception {
+        byte[] image = image();
+        UUID entry = uploadedImage(image, "archived-source");
+        var skill = skills.create(owner.userId(), "Archived reference", "");
+        var draft = skills.saveDraft(owner.userId(), skill.id(), 0, imageDraft(entry, 0L));
+        var operation = skills.publish(owner.userId(), skill.id(), draft.version(), "publish-archived-source");
+        UUID pinId = UUID.nameUUIDFromBytes(("agenvas:skill-pin:v1:" + operation.id() + ":style-reference")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        UUID fileId = UUID.nameUUIDFromBytes(("agenvas:skill-file:v1:" + operation.id() + ":style-reference")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var pinned = library.pinForSkill(owner.userId(), entry, 0, pinId);
+        var archived = archive.archivePinned(owner.userId(), fileId, pinned);
+        var progress = mapper.createObjectNode();
+        progress.withObject("pins").set("style-reference", mapper.valueToTree(pinned));
+        progress.withObject("archived").set("style-reference", mapper.valueToTree(archived));
+        assertThat(jdbc.sql("update skill_publish_operation set progress_json = cast(:progress as jsonb), status = 'ARCHIVING', epoch = 3, lease_until = now() - interval '1 minute' where id = :id")
+                .param("progress", progress.toString()).param("id", operation.id()).update()).isEqualTo(1);
+        var trashed = library.trash(owner.userId(), entry, 0, false);
+        library.delete(owner.userId(), entry, trashed.version());
+        // archivePinned requires the pin to exist even when its stable output file already exists.
+        // Removing this file makes a second archival call fail, while checkpoint replay can publish.
+        archive.discardPin(owner.userId(), pinned.pinKey());
+        assertThat(Files.exists(STORAGE.resolve("library").resolve(pinned.pinKey()))).isFalse();
+        assertThat(skills.versions(owner.userId(), skill.id())).isEmpty();
+
+        assertThat(skills.processNext()).isTrue();
+
+        var completed = skills.getOperation(owner.userId(), operation.id());
+        assertThat(completed.status()).isEqualTo(SkillContent.OperationStatus.SUCCEEDED);
+        assertThat(completed.resultVersionId()).isEqualTo(operation.id());
+        assertThat(completed.errorCode()).isNull();
+        var published = skills.getBundle(owner.userId(), skill.id(), completed.resultVersionId());
+        assertThat(published.bundle().assets()).singleElement().satisfies(asset -> {
+            assertThat(asset.alias()).isEqualTo("style-reference");
+            assertThat(asset.title()).isEqualTo(pinned.title());
+            assertThat(asset.contentHash()).isEqualTo(pinned.contentHash());
+            assertThat(asset.media()).isEqualTo(archived);
+            assertThat(asset.media().id()).isEqualTo(fileId);
+        });
+        assertThat(skills.versions(owner.userId(), skill.id())).hasSize(1);
+        assertThat(jdbc.sql("select epoch from skill_publish_operation where id = :id")
+                .param("id", operation.id()).query(Long.class).single()).isEqualTo(4);
+        assertThat(Files.readAllBytes(skills.file(owner.userId(), skill.id(), completed.resultVersionId(),
+                "style-reference", false).path())).containsExactly(image);
+        while (skills.cleanupNext()) { /* Cleanup remains idempotent after the temporary pin is gone. */ }
+        assertThat(jdbc.sql("select pins_cleaned from skill_publish_operation where id = :id")
+                .param("id", operation.id()).query(Boolean.class).single()).isTrue();
+    }
+
+    private SkillContent.Version syntheticVersion(UUID account, UUID skill, long number) {
+        String instructions = "Synthetic instructions for publication " + number;
+        String reference = "Synthetic reference for publication " + number;
+        var bundle = new SkillContent.Bundle(1, "synthetic-version-" + number, "Synthetic publication",
+                instructions, List.of(dev.agenvas.artifact.domain.Artifact.Kind.TEXT),
+                List.of(new SkillContent.InputSlot("subject", dev.agenvas.artifact.domain.Artifact.Kind.TEXT, false)),
+                List.of(new SkillContent.PublishedResource("references/guide.md", reference, Sha256.hex(reference))), List.of());
+        // Publication number, rather than timestamp, defines the history order.
+        return new SkillContent.Version(UUID.randomUUID(), account, skill, number,
+                Sha256.hex(mapper.writeValueAsString(bundle)), bundle, Instant.parse("2026-10-11T00:00:00Z").minusSeconds(number));
     }
 
     private SkillContent.DraftContent imageDraft(UUID entry, long version) {

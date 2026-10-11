@@ -22,6 +22,8 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
@@ -64,6 +66,29 @@ class LlmTurnStreamFenceTest {
         when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("modelConfigVersion", 3).put("modelConfigSource", "mock"));
         when(run.nextStepIndex()).thenReturn(0);
         when(turns.find(project, runId, 0)).thenReturn(Optional.of(turn(LlmTurn.Status.REQUESTED, null)));
+    }
+
+    @Test
+    void missingLeaseCannotEnterEitherCheckpointTransaction() {
+        assertThatThrownBy(() -> service.reserveLeased(owner, project, runId, 0, 3,
+                "mock", request, null, "worker")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.saveResponseLeased(owner, project, runId, 0, 3,
+                response, null, "worker")).isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(events, guard, runs, turns, usage, tasks);
+    }
+
+    @ParameterizedTest
+    @EnumSource(InvalidScope.class)
+    void mismatchedLeaseCannotEnterEitherCheckpointTransaction(InvalidScope scope) {
+        switch (scope) {
+            case PROJECT -> when(lease.projectId()).thenReturn(UUID.randomUUID());
+            case RUN -> when(lease.runId()).thenReturn(UUID.randomUUID());
+            case STEP -> when(lease.input()).thenReturn(mapper.createObjectNode().put("stepIndex", 1));
+        }
+        assertThatThrownBy(() -> service.reserveLeased(owner, project, runId, 0, 3,
+                "mock", request, lease, "worker")).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(this::save).isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(events, guard, runs, turns, usage, tasks);
     }
 
     @Test
@@ -114,4 +139,6 @@ class LlmTurnStreamFenceTest {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(ApiProblemException.class,
                 failure -> assertThat(failure.code()).isEqualTo("LLM_TURN_CONFLICT"));
     }
+
+    private enum InvalidScope { PROJECT, RUN, STEP }
 }

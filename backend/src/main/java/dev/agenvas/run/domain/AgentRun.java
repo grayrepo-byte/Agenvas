@@ -1,6 +1,7 @@
 package dev.agenvas.run.domain;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
@@ -93,6 +94,22 @@ public record AgentRun(
 
         /** 释放项目活动槽位的最终状态集合；BLOCKED 和等待状态不在其中。 */
         private static final Set<Status> TERMINAL = Set.of(CANCELED, FAILED, SUCCEEDED);
+
+        /** Legal state changes; the application checks versioned same-state replays before this rule. */
+        public boolean canTransitionTo(Status target) {
+            Objects.requireNonNull(target);
+            return switch (this) {
+                case QUEUED -> target == RUNNING || target == BLOCKED
+                        || target == CANCEL_REQUESTED || target == FAILED;
+                case RUNNING -> target == WAITING_TASKS || target == BLOCKED
+                        || target == CANCEL_REQUESTED || target == SUCCEEDED || target == FAILED;
+                case WAITING_TASKS -> target == RUNNING || target == WAITING_TASKS || target == BLOCKED
+                        || target == CANCEL_REQUESTED || target == FAILED;
+                case BLOCKED -> target == RUNNING || target == CANCEL_REQUESTED || target == FAILED;
+                case CANCEL_REQUESTED -> target == CANCELED;
+                case CANCELED, FAILED, SUCCEEDED -> false;
+            };
+        }
 
         /** 仅真正终态返回 true；WAITING 和 BLOCKED 仍占用项目活动槽位。 */
         public boolean terminal() {

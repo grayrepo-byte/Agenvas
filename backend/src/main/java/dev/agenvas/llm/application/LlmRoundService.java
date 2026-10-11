@@ -65,24 +65,14 @@ public class LlmRoundService {
      * @param messages 本轮实际发送给模型的消息序列
      * @param tools 本轮按策略允许模型看到的工具定义
      * @param trustedContext 服务端生成的模型调用上下文，不接受模型自报身份
+     * @param lease Worker 当前认领的模型任务；公开流和响应检查点使用同一租约 epoch
+     * @param workerId 当前租约持有者
      * @return 已提交到回合检查点的完整模型响应
      */
-    public JsonNode call(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
-            List<Message> messages, List<ToolCallback> tools, Map<String, Object> trustedContext) {
-        return callInternal(ownerId, projectId, runId, stepIndex, messages, tools, trustedContext, null, null);
-    }
-
-    /** Worker path: incremental public text and the final checkpoint use the same task fencing epoch. */
     public JsonNode callLeased(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
             List<Message> messages, List<ToolCallback> tools, Map<String, Object> trustedContext,
             Task lease, String workerId) {
         if (lease == null) throw new IllegalArgumentException("Missing model task lease");
-        return callInternal(ownerId, projectId, runId, stepIndex, messages, tools, trustedContext, lease, workerId);
-    }
-
-    private JsonNode callInternal(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
-            List<Message> messages, List<ToolCallback> tools, Map<String, Object> trustedContext,
-            Task lease, String workerId) {
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Model calls must not hold a database transaction");
         }
@@ -96,10 +86,8 @@ public class LlmRoundService {
         gateway.requireToolCalling(selected);
         int configVersion = selected.version();
         String configSource = selected.source();
-        LlmTurn turn = lease == null
-                ? checkpoints.reserve(ownerId, projectId, runId, stepIndex, configVersion, configSource, request)
-                : checkpoints.reserveLeased(ownerId, projectId, runId, stepIndex, configVersion, configSource,
-                        request, lease, workerId);
+        LlmTurn turn = checkpoints.reserveLeased(ownerId, projectId, runId, stepIndex,
+                configVersion, configSource, request, lease, workerId);
         // 响应已落库时不再发起第二次模型调用，避免恢复路径重复消耗用量。
         if (turn.status() == LlmTurn.Status.RESPONDED) {
             return turn.response();
@@ -110,22 +98,18 @@ public class LlmRoundService {
         CallLogService.CallDescriptor descriptor = new CallLogService.CallDescriptor(
                 projectId, null, runId, stepIndex, CallLog.Kind.LLM, CallLog.Operation.CHAT,
                 mock ? "mock" : model.providerAdapter(), model.modelId(), mock);
-        PublicStreamSink stream = lease == null ? null : new PublicStreamSink(lease, workerId);
-        if (lease != null) tasks.startAgentStream(lease, workerId);
-        ChatGateway.Exchange exchange = stream == null
-                ? callLogs.record(descriptor, () -> modelCall(() -> gateway.call(dispatched, tools, trustedContext, selected)),
-                        value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()))
-                : callLogs.recordStream(descriptor, (captureContent, log) -> modelCall(() -> gateway.callStreaming(
+        PublicStreamSink stream = new PublicStreamSink(lease, workerId);
+        tasks.startAgentStream(lease, workerId);
+        ChatGateway.Exchange exchange = callLogs.recordStream(descriptor,
+                (captureContent, log) -> modelCall(() -> gateway.callStreaming(
                         dispatched, tools, trustedContext, selected, stream, captureContent, log)),
-                        value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()));
+                value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()));
         if (exchange.configVersion() != turn.modelConfigVersion()) {
             throw new IllegalStateException("ChatGateway configuration changed during model call");
         }
         JsonNode response = codec.response(exchange.response());
-        return (lease == null
-                ? checkpoints.saveResponse(ownerId, projectId, runId, stepIndex, exchange.configVersion(), response)
-                : checkpoints.saveResponseLeased(ownerId, projectId, runId, stepIndex, exchange.configVersion(),
-                        response, lease, workerId)).response();
+        return checkpoints.saveResponseLeased(ownerId, projectId, runId, stepIndex,
+                exchange.configVersion(), response, lease, workerId).response();
     }
     private ChatGateway.Exchange modelCall(java.util.function.Supplier<ChatGateway.Exchange> call) {
         try { return call.get(); }

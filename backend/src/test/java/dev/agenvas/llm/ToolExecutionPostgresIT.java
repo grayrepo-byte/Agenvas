@@ -97,23 +97,23 @@ class ToolExecutionPostgresIT {
                 List.of());
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create a short text", "tool-run").run();
-        AgentRun run = runs.transition(owner.userId(), project.id(), queued.id(), 0,
-                AgentRun.Status.RUNNING);
         Task lease = tasks.claimAgentTurns("llm-ledger-worker", 1).getFirst();
-        assertThat(turnCommits.start(lease, "llm-ledger-worker").status())
-                .isEqualTo(AgentRun.Status.RUNNING);
+        assertThat(lease.runId()).isEqualTo(queued.id());
+        AgentRun run = turnCommits.start(lease, "llm-ledger-worker");
+        assertThat(run.status()).isEqualTo(AgentRun.Status.RUNNING);
         TrustedToolContext trusted = new TrustedToolContext(owner.userId(), project.id(), run.id());
         List<Message> prompt = List.of(new UserMessage("Create a short text"));
         List<ToolCallback> definitions = registry.modelDefinitions(run.policySnapshot());
 
-        checkpoints.reserve(owner.userId(), project.id(), run.id(), 0, 1, "test-fake",
-                codec.request(prompt, definitions));
+        checkpoints.reserveLeased(owner.userId(), project.id(), run.id(), 0, 1, "test-fake",
+                codec.request(prompt, definitions), lease, "llm-ledger-worker");
         assertThatThrownBy(() -> executor.execute(trusted, 0, "call-1"))
                 .isInstanceOf(ApiProblemException.class);
         assertThat(jdbc.sql("select count(*) from tool_execution")
                 .query(Long.class).single()).isZero();
 
-        rounds.call(owner.userId(), project.id(), run.id(), 0, prompt, definitions, Map.of());
+        rounds.callLeased(owner.userId(), project.id(), run.id(), 0, prompt, definitions,
+                Map.of(), lease, "llm-ledger-worker");
         assertThatThrownBy(() -> executor.executeLeased(trusted, 0, "unselected-call",
                 lease, "llm-ledger-worker"))
                 .isInstanceOf(ApiProblemException.class);
@@ -152,6 +152,7 @@ class ToolExecutionPostgresIT {
                 .isEqualTo(AgentTurnCommitService.Decision.CONTINUE);
         Task nextLease = tasks.claimAgentTurns("llm-ledger-worker", 1).getFirst();
         assertThat(nextLease.input().path("stepIndex").asInt()).isEqualTo(1);
+        turnCommits.start(nextLease, "llm-ledger-worker");
         assertThat(runs.get(owner.userId(), project.id(), run.id()).nextStepIndex()).isEqualTo(1);
         List<Message> continuation = conversation.afterToolRound(owner.userId(),
                 project.id(), run.id(), 0);
@@ -162,8 +163,8 @@ class ToolExecutionPostgresIT {
                 .contains("\"status\":\"SUCCEEDED\"");
         assertThatThrownBy(() -> conversation.afterToolRound(UUID.randomUUID(),
                 project.id(), run.id(), 0)).isInstanceOf(IllegalArgumentException.class);
-        rounds.call(owner.userId(), project.id(), run.id(), 1,
-                continuation, definitions, Map.of());
+        rounds.callLeased(owner.userId(), project.id(), run.id(), 1,
+                continuation, definitions, Map.of(), nextLease, "llm-ledger-worker");
         assertThatThrownBy(() -> executor.executeLeased(trusted, 1, "call-2",
                 nextLease, "llm-ledger-worker"))
                 .isInstanceOf(ApiProblemException.class);
