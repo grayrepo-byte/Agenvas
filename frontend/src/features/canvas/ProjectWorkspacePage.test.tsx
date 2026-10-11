@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent,render,screen,waitFor,within } from "@testing-library/react";
+import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactFlowInstance,ReactFlowProps } from "@xyflow/react";
 import { http,HttpResponse } from "msw";
@@ -472,17 +472,20 @@ describe("ProjectWorkspacePage", () => {
   });
 
   it.each([
-    { count: 6, failBatch: 0, reverseResponse: false },
-    { count: 6, failBatch: 0, reverseResponse: true },
-    { count: 101, failBatch: 0, reverseResponse: false },
-    { count: 6, failBatch: 1, reverseResponse: false },
-    { count: 101, failBatch: 2, reverseResponse: false },
-  ])("arranges $count connected cards and retains unsaved drafts on batch $failBatch failure (reversed: $reverseResponse)", async ({ count, failBatch, reverseResponse }) => {
+    { count: 6, failBatch: 0, reverseResponse: false, editPendingBatch: false },
+    { count: 6, failBatch: 0, reverseResponse: true, editPendingBatch: false },
+    { count: 101, failBatch: 0, reverseResponse: false, editPendingBatch: false },
+    { count: 6, failBatch: 1, reverseResponse: false, editPendingBatch: false },
+    { count: 101, failBatch: 2, reverseResponse: false, editPendingBatch: false },
+    { count: 101, failBatch: 0, reverseResponse: false, editPendingBatch: true },
+  ])("arranges $count connected cards and retains unsaved drafts on batch $failBatch failure (reversed: $reverseResponse, edited: $editPendingBatch)", async ({ count, failBatch, reverseResponse, editPendingBatch }) => {
     let items = Array.from({ length: count }, (_, index): CanvasItem => ({
       ...textCard(), id: `card-${index}`, title: `Note ${index}`, x: count - index, y: count - index,
       version: 7, locked: false,
     }));
     const batches: CanvasCommand[][] = [];
+    let finishFirstBatch: (() => void) | undefined;
+    const firstBatch = new Promise<void>((resolve) => { finishFirstBatch = resolve; });
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
@@ -494,6 +497,7 @@ describe("ProjectWorkspacePage", () => {
       http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
         const { commands } = await request.json() as { commands: CanvasCommand[] };
         batches.push(commands);
+        if (editPendingBatch && batches.length === 1) await firstBatch;
         if (batches.length === failBatch) return HttpResponse.json({ code: "CANVAS_VERSION_CONFLICT", title: "合成布局冲突", detail: "合成布局冲突" },
           { status: 409, headers: { "Content-Type": "application/problem+json" } });
         items = items.map((item) => {
@@ -515,6 +519,29 @@ describe("ProjectWorkspacePage", () => {
     await waitFor(() => expect(viewportProbe.instance).not.toBeNull());
     const initialZoom = viewportProbe.instance?.getZoom();
     await user.click(screen.getByRole("menuitem", { name: "一键整理" }));
+    if (editPendingBatch) {
+      try {
+        await waitFor(() => expect(batches).toHaveLength(1));
+        const arrangedDraft = useCanvasStore.getState().drafts["card-100"];
+        expect(arrangedDraft).toBeDefined();
+        // A later edit is distinct even when it chooses the same coordinates and dimensions.
+        act(() => useCanvasStore.getState().updateDraft("card-100", { ...arrangedDraft }));
+        const laterDraft = useCanvasStore.getState().drafts["card-100"];
+        expect(laterDraft).not.toBe(arrangedDraft);
+        finishFirstBatch?.();
+        await waitFor(() => expect(client.isMutating()).toBe(0));
+        expect(batches).toHaveLength(2);
+        expect(useCanvasStore.getState().drafts).toEqual({ "card-100": laterDraft });
+        expect(useCanvasStore.getState().drafts["card-100"]).toBe(laterDraft);
+        expect(useCanvasStore.getState().saveState).not.toBe("saved");
+        expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items
+          .find((item) => item.id === "card-100")?.version).toBe(8);
+      } finally {
+        finishFirstBatch?.();
+        await waitFor(() => expect(client.isMutating()).toBe(0));
+      }
+      return;
+    }
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe(failBatch ? "conflict" : "saved"));
     await waitFor(() => expect(batches.length).toBe(Math.ceil(count / 100)));
     const commands = batches.flat();
@@ -535,6 +562,16 @@ describe("ProjectWorkspacePage", () => {
       if (failBatch === 2) {
         expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items.find((item) => item.id === "card-0")?.version).toBe(8);
         expect(useCanvasStore.getState().drafts["card-100"]).toBeDefined();
+        // Explicitly run the arrangement again. The confirmed batch uses its returned
+        // versions; the previously rejected item still uses its unchanged server version.
+        fireEvent.contextMenu(pane, { clientX: 300, clientY: 200 });
+        await user.click(await screen.findByRole("menuitem", { name: "一键整理" }));
+        await waitFor(() => expect(batches).toHaveLength(4));
+        await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+        expect(batches[2]?.find((command) => command.itemId === "card-0"))
+          .toMatchObject({ expectedVersion: 8 });
+        expect(batches[3]?.[0]).toMatchObject({ itemId: "card-100", expectedVersion: 7 });
+        expect(useCanvasStore.getState().drafts).toEqual({});
       }
     } else {
       await waitFor(() => expect(viewportProbe.center).toHaveBeenCalledExactlyOnceWith(

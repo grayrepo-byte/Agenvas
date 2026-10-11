@@ -142,7 +142,7 @@ class RunningHubAdapterTest {
         var client = mock(RunningHubClient.class);
         var response = mapper.readTree("""
             {"results":[{"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/first.mp4"},
-                        {"nodeId":"11","outputType":"zip","url":"https://cdn.example.com/companion.zip"}]}
+                        {"nodeId":"11","outputType":"zip","url":"http://127.0.0.1/never-download.zip"}]}
             """);
         assertThat(adapter(client, null).manifest(response, definition, "https://www.runninghub.ai").results())
                 .singleElement().satisfies(result -> {
@@ -193,6 +193,67 @@ class RunningHubAdapterTest {
         assertThat(results).extracting(ProviderResultManifest.Result::ordinal).containsExactly(0, 1, 2);
         assertThat(results).extracting(ProviderResultManifest.Result::primary).containsExactly(true, false, false);
         verifyNoInteractions(client);
+    }
+
+    @Test void repeatedCandidatesDoNotConsumeTheMappingQuota() {
+        var contract = new RunningHubDefinition(1, "V2", definition.targetType(), definition.targetId(), List.of(), List.of(),
+                List.of(new RunningHubDefinition.Output("10", RunningHubDefinition.OutputKind.VIDEO, true, 2)),
+                "default", false, false, null, null, null, null);
+        var response = mapper.readTree("""
+            {"results":[{"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/first.mp4"},
+                        {"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/first.mp4"},
+                        {"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/second.mp4"},
+                        {"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/excess.mp4"}]}
+            """);
+        var results = adapter.manifest(response, contract, "https://www.runninghub.ai").results();
+        assertThat(results).extracting(ProviderResultManifest.Result::url).containsExactly(
+                "https://cdn.example.com/first.mp4", "https://cdn.example.com/second.mp4");
+        assertThat(results).extracting(ProviderResultManifest.Result::ordinal).containsExactly(0, 1);
+        assertThat(results).extracting(ProviderResultManifest.Result::primary).containsExactly(true, false);
+    }
+
+    @Test void extraMediaBeforeTheMainOutputKeepsThePrimaryAtItsProviderOrdinal() {
+        var contract = new RunningHubDefinition(1, "V2", definition.targetType(), definition.targetId(), List.of(), List.of(),
+                List.of(new RunningHubDefinition.Output("10", RunningHubDefinition.OutputKind.VIDEO, true, 2),
+                        new RunningHubDefinition.Output("11", RunningHubDefinition.OutputKind.AUDIO, false, 1)),
+                "default", false, false, null, null, null, null);
+        var response = mapper.readTree("""
+            {"results":[{"nodeId":"11","outputType":"wav","url":"https://cdn.example.com/voice.wav"},
+                        {"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/first.mp4"},
+                        {"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/second.mp4"}]}
+            """);
+        var results = adapter.manifest(response, contract, "https://www.runninghub.ai").results();
+        assertThat(results).extracting(ProviderResultManifest.Result::url).containsExactly(
+                "https://cdn.example.com/voice.wav", "https://cdn.example.com/first.mp4", "https://cdn.example.com/second.mp4");
+        assertThat(results).extracting(ProviderResultManifest.Result::kind).containsExactly(
+                RunningHubDefinition.OutputKind.AUDIO, RunningHubDefinition.OutputKind.VIDEO, RunningHubDefinition.OutputKind.VIDEO);
+        assertThat(results).extracting(ProviderResultManifest.Result::ordinal).containsExactly(0, 1, 2);
+        assertThat(results).extracting(ProviderResultManifest.Result::primary).containsExactly(false, true, false);
+    }
+
+    @Test void directFilesAndZipMembersShareTheQuotaAndKeepTheirTraversalOrder() throws Exception {
+        var client = mock(RunningHubClient.class);
+        byte[] zip = zip("README.txt", "output/second.mp4", "output/third.mp4");
+        when(client.download("https://www.runninghub.ai", "https://cdn.example.com/result.zip"))
+                .thenReturn(new MediaPayload(new ByteArrayInputStream(zip), "application/zip"));
+        var contract = new RunningHubDefinition(1, "V2", definition.targetType(), definition.targetId(), List.of(), List.of(),
+                List.of(new RunningHubDefinition.Output("10", RunningHubDefinition.OutputKind.VIDEO, true, 4)),
+                "default", false, false, null, null, null, null);
+        var response = mapper.readTree("""
+            {"results":[{"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/first.mp4"},
+                        {"nodeId":"10","outputType":"zip","url":"https://cdn.example.com/result.zip"},
+                        {"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/fourth.mp4"},
+                        {"nodeId":"10","outputType":"mp4","url":"http://127.0.0.1/excess.mp4"}]}
+            """);
+        var results = adapter(client, null).manifest(response, contract, "https://www.runninghub.ai").results();
+        assertThat(results).extracting(ProviderResultManifest.Result::url).containsExactly(
+                "https://cdn.example.com/first.mp4", "https://cdn.example.com/result.zip", "https://cdn.example.com/result.zip",
+                "https://cdn.example.com/fourth.mp4");
+        assertThat(results).extracting(result -> result.archiveEntry() == null ? null : result.archiveEntry().name())
+                .containsExactly(null, "output/second.mp4", "output/third.mp4", null);
+        assertThat(results).extracting(ProviderResultManifest.Result::ordinal).containsExactly(0, 1, 2, 3);
+        assertThat(results).extracting(ProviderResultManifest.Result::primary).containsExactly(true, false, false, false);
+        verify(client).download("https://www.runninghub.ai", "https://cdn.example.com/result.zip");
     }
 
     private RunningHubAdapter adapter(RunningHubClient client, JooqMediaCapabilityRepository catalog) {

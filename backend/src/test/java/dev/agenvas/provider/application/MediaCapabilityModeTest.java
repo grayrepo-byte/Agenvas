@@ -90,7 +90,8 @@ class MediaCapabilityModeTest {
         stub(snapshot);
         assertThatThrownBy(() -> configured.publishCapability(snapshot.connection().id(), "Fixture", "MOCK_IMAGE"))
                 .isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> configured.setConnectionEnabled(snapshot.connection().id(), 0, true))
+        assertThatThrownBy(() -> configured.updateConnection(snapshot.connection().id(), 0,
+                snapshot.connection().name(), true, snapshot.connectionVersion().origin(), null))
                 .isInstanceOf(ApiProblemException.class);
         assertThat(configured.getConnectionVersion(snapshot.connection().id(), 1)).isPresent();
     }

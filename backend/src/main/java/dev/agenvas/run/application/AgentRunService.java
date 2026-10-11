@@ -551,7 +551,7 @@ public class AgentRunService {
                     if (current.status() == target) {
                         return ProjectEventService.Change.unchanged(current);
                     }
-                    if (!allowedTargets(current.status()).contains(target)) {
+                    if (!current.status().canTransitionTo(target)) {
                         throw new ApiProblemException(
                                 HttpStatus.CONFLICT,
                                 "RUN_STATE_CONFLICT",
@@ -774,35 +774,6 @@ public class AgentRunService {
         policy.putNull("maxModelTurns");
         policy.putNull("maxToolExecutions");
         return policy;
-    }
-
-    /** 列出当前状态允许的目标状态，终态不再接受转换。 */
-    private Set<AgentRun.Status> allowedTargets(AgentRun.Status current) {
-        return switch (current) {
-            case QUEUED -> Set.of(
-                    AgentRun.Status.RUNNING,
-                    AgentRun.Status.BLOCKED,
-                    AgentRun.Status.CANCEL_REQUESTED,
-                    AgentRun.Status.FAILED);
-            case RUNNING -> Set.of(
-                    AgentRun.Status.WAITING_TASKS,
-                    AgentRun.Status.BLOCKED,
-                    AgentRun.Status.CANCEL_REQUESTED,
-                    AgentRun.Status.SUCCEEDED,
-                    AgentRun.Status.FAILED);
-            case WAITING_TASKS -> Set.of(
-                    AgentRun.Status.RUNNING,
-                    AgentRun.Status.WAITING_TASKS,
-                    AgentRun.Status.BLOCKED,
-                    AgentRun.Status.CANCEL_REQUESTED,
-                    AgentRun.Status.FAILED);
-            case BLOCKED -> Set.of(
-                    AgentRun.Status.RUNNING,
-                    AgentRun.Status.CANCEL_REQUESTED,
-                    AgentRun.Status.FAILED);
-            case CANCEL_REQUESTED -> Set.of(AgentRun.Status.CANCELED);
-            case CANCELED, FAILED, SUCCEEDED -> Set.of();
-        };
     }
 
     /** 在所有者和项目范围内读取 Run，避免泄露其他项目资源是否存在。 */

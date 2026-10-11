@@ -127,20 +127,20 @@ public final class SkillService {
     public SkillContent.Version getBundle(UUID owner, UUID skillId, UUID versionId) {
         return repository.version(owner, skillId, versionId).orElseThrow(this::notFound);
     }
-    public SkillContent.Version getBundleByVersion(UUID owner, UUID versionId) {
-        return repository.version(owner, versionId).orElseThrow(this::notFound);
-    }
     public SkillContent.Version requireSelectableVersion(UUID owner, UUID skillId, UUID versionId) {
         return reads.execute(status -> {
-            requireAvailable(owner, skillId);
-            active(require(owner, skillId, false));
+            active(availableCatalogue(owner, skillId));
             return getBundle(owner, skillId, versionId);
         });
     }
     /** Retiring a built-in prevents new use; immutable versions remain readable for existing runs and exports. */
     public void requireAvailable(UUID owner, UUID skillId) {
+        availableCatalogue(owner, skillId);
+    }
+    private SkillContent.Catalogue availableCatalogue(UUID owner, UUID skillId) {
         var value = require(owner, skillId, false);
         if (value.builtinKey() != null && !builtins.keys().contains(value.builtinKey())) throw notFound();
+        return value;
     }
     public SkillResponse copy(UUID owner, UUID skillId, UUID versionId, String title) {
         format.text(title, SkillFormat.MAX_TITLE_LENGTH, true);
@@ -219,59 +219,9 @@ public final class SkillService {
         var operation = claimed.get();
         var progress = (ObjectNode) operation.progress().deepCopy();
         try {
-            List<SkillContent.PublishedAsset> assets = new ArrayList<>();
-            for (var binding : operation.input().draft().assets()) {
-                PrivateMediaArchive.Media media;
-                String title;
-                if (binding.sourceVersionId() != null) {
-                    var source = sourceAsset(operation.ownerId(), binding);
-                    media = source.media(); title = source.title();
-                } else {
-                    LibraryService.PinnedSkillAsset pinned;
-                    var pins = progress.withObject("pins");
-                    if (pins.has(binding.alias())) pinned = mapper.treeToValue(pins.get(binding.alias()), LibraryService.PinnedSkillAsset.class);
-                    else {
-                        pinned = tx.execute(status -> {
-                            // Fence and lock the operation before creating its temporary hard link.
-                            // A stale publisher must not recreate a pin after successful cleanup.
-                            saveProgress(operation, progress);
-                            var value = library.getObject().pinForSkill(operation.ownerId(), binding.libraryEntryId(), binding.expectedLibraryVersion(),
-                                    pinId(operation.id(), binding.alias()));
-                            if (!value.contentHash().equals(binding.contentHash())) throw referenceChanged();
-                            pins.set(binding.alias(), mapper.valueToTree(value));
-                            saveProgress(operation, progress);
-                            return value;
-                        });
-                    }
-                    if (pinned == null) throw new IllegalStateException("Skill pin transaction returned no result");
-                    title = pinned.title();
-                    var archived = progress.withObject("archived");
-                    if (archived.has(binding.alias())) media = mapper.treeToValue(archived.get(binding.alias()), PrivateMediaArchive.Media.class);
-                    else {
-                        media = archive.archivePinned(operation.ownerId(), fileId(operation.id(), binding.alias()), pinned);
-                        archived.set(binding.alias(), mapper.valueToTree(media));
-                        tx.executeWithoutResult(status -> saveProgress(operation, progress));
-                    }
-                }
-                if (!media.sha256().equals(binding.contentHash())) throw referenceChanged();
-                assets.add(new SkillContent.PublishedAsset(binding.alias(), Artifact.Kind.IMAGE, title, media.sha256(),
-                        binding.usage(), binding.required(), binding.purpose(), media));
-            }
-            var draft = operation.input().draft();
-            var frontmatter = format.publishedFrontmatter(draft.skillMd());
-            var resources = draft.resources().stream().map(value -> new SkillContent.PublishedResource(value.path(), value.content(), Sha256.hex(value.content()))).toList();
-            var bundle = new SkillContent.Bundle(SkillContent.SCHEMA_VERSION, frontmatter.name(), frontmatter.description(), draft.skillMd(),
-                    draft.outputKinds(), draft.inputSlots(), resources, List.copyOf(assets));
-            String hash = bundleHash(bundle);
-            tx.executeWithoutResult(status -> {
-                var skill = require(operation.ownerId(), operation.skillId(), true);
-                active(skill);
-                Instant now = clock.instant();
-                var version = new SkillContent.Version(operation.id(), operation.ownerId(), operation.skillId(),
-                        repository.nextVersion(operation.ownerId(), operation.skillId()), hash, bundle, now);
-                repository.publish(version, skill.version());
-                if (!repository.finish(operation, SkillContent.OperationStatus.SUCCEEDED, version.id(), null, null, now)) throw new LeaseLost();
-            });
+            var assets = publishedAssets(operation, progress);
+            var bundle = buildBundle(operation.input().draft(), assets);
+            publishBundle(operation, bundle);
         } catch (RuntimeException failure) {
             String code = failure instanceof ApiProblemException problem ? problem.code() : "SKILL_ARCHIVE_FAILED";
             String detail = failure instanceof ApiProblemException problem ? mapper.writeValueAsString(problem.detail())
@@ -280,6 +230,80 @@ public final class SkillService {
         }
         return true;
     }
+
+    private List<SkillContent.PublishedAsset> publishedAssets(SkillContent.PublishOperation operation, ObjectNode progress) {
+        List<SkillContent.PublishedAsset> assets = new ArrayList<>();
+        for (var binding : operation.input().draft().assets()) {
+            PrivateMediaArchive.Media media;
+            String title;
+            if (binding.sourceVersionId() != null) {
+                var source = sourceAsset(operation.ownerId(), binding);
+                media = source.media(); title = source.title();
+            } else {
+                var pinned = restorePin(operation, binding, progress);
+                title = pinned.title();
+                media = restoreArchive(operation, binding, pinned, progress);
+            }
+            if (!media.sha256().equals(binding.contentHash())) throw referenceChanged();
+            assets.add(new SkillContent.PublishedAsset(binding.alias(), Artifact.Kind.IMAGE, title, media.sha256(),
+                    binding.usage(), binding.required(), binding.purpose(), media));
+        }
+        return assets;
+    }
+
+    private LibraryService.PinnedSkillAsset restorePin(SkillContent.PublishOperation operation,
+            SkillContent.DraftAsset binding, ObjectNode progress) {
+        LibraryService.PinnedSkillAsset pinned;
+        var pins = progress.withObject("pins");
+        if (pins.has(binding.alias())) pinned = mapper.treeToValue(pins.get(binding.alias()), LibraryService.PinnedSkillAsset.class);
+        else {
+            pinned = tx.execute(status -> {
+                // Fence and lock the operation before creating its temporary hard link.
+                // A stale publisher must not recreate a pin after successful cleanup.
+                saveProgress(operation, progress);
+                var value = library.getObject().pinForSkill(operation.ownerId(), binding.libraryEntryId(), binding.expectedLibraryVersion(),
+                        pinId(operation.id(), binding.alias()));
+                if (!value.contentHash().equals(binding.contentHash())) throw referenceChanged();
+                pins.set(binding.alias(), mapper.valueToTree(value));
+                saveProgress(operation, progress);
+                return value;
+            });
+        }
+        if (pinned == null) throw new IllegalStateException("Skill pin transaction returned no result");
+        return pinned;
+    }
+
+    private PrivateMediaArchive.Media restoreArchive(SkillContent.PublishOperation operation,
+            SkillContent.DraftAsset binding, LibraryService.PinnedSkillAsset pinned, ObjectNode progress) {
+        var archived = progress.withObject("archived");
+        if (archived.has(binding.alias()))
+            return mapper.treeToValue(archived.get(binding.alias()), PrivateMediaArchive.Media.class);
+        var media = archive.archivePinned(operation.ownerId(), fileId(operation.id(), binding.alias()), pinned);
+        archived.set(binding.alias(), mapper.valueToTree(media));
+        tx.executeWithoutResult(status -> saveProgress(operation, progress));
+        return media;
+    }
+
+    private SkillContent.Bundle buildBundle(SkillContent.DraftContent draft, List<SkillContent.PublishedAsset> assets) {
+        var frontmatter = format.publishedFrontmatter(draft.skillMd());
+        var resources = draft.resources().stream().map(value -> new SkillContent.PublishedResource(value.path(), value.content(), Sha256.hex(value.content()))).toList();
+        return new SkillContent.Bundle(SkillContent.SCHEMA_VERSION, frontmatter.name(), frontmatter.description(), draft.skillMd(),
+                draft.outputKinds(), draft.inputSlots(), resources, List.copyOf(assets));
+    }
+
+    private void publishBundle(SkillContent.PublishOperation operation, SkillContent.Bundle bundle) {
+        String hash = bundleHash(bundle);
+        tx.executeWithoutResult(status -> {
+            var skill = require(operation.ownerId(), operation.skillId(), true);
+            active(skill);
+            Instant now = clock.instant();
+            var version = new SkillContent.Version(operation.id(), operation.ownerId(), operation.skillId(),
+                    repository.nextVersion(operation.ownerId(), operation.skillId()), hash, bundle, now);
+            repository.publish(version, skill.version());
+            if (!repository.finish(operation, SkillContent.OperationStatus.SUCCEEDED, version.id(), null, null, now)) throw new LeaseLost();
+        });
+    }
+
     /** The successful command is itself a durable cleanup record for deterministic temporary links. */
     public boolean cleanupNext() {
         var pending = repository.cleanup();

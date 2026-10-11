@@ -6,7 +6,8 @@ import { t, useLocale } from "../../shared/i18n";
 import { MEDIA_FUNCTIONS_QUERY_KEY, imageFunction, imageOperationLabel, mediaFunctionChoices } from "../../shared/mediaFunctions";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
 import { Button } from "../../shared/ui/primitives/button";
-import { RunningHubForm, runningHubErrors, type RunningHubValue } from "./RunningHubForm";
+import { RunningHubForm } from "./RunningHubForm";
+import { workflowValidationErrors, type WorkflowValue } from "./workflowFields";
 import "./ImageFunctionConfiguration.css";
 
 type Submission = Pick<RunImageOperationRequest, "expectedFunctionVersion" | "expectedCapabilityVersion" | "parameters" | "instruction" | "referenceVersionIds" | "maskAssetId">;
@@ -45,13 +46,13 @@ function ConfiguredImageFunction({ configured, version, sourceVersionId, busy, o
   configured: ReturnType<typeof mediaFunctionChoices>[number]; version: number; sourceVersionId: string; busy: boolean;
   onSubmit: (input: Submission) => void; children: (configuration: Configuration) => ReactNode;
 }) {
-  const [values, setValues] = useState<Record<string, RunningHubValue>>({});
+  const [values, setValues] = useState<Record<string, WorkflowValue>>({});
   const definition = configured.capability.settings.runningHub;
   const sourceField = definition?.fields.find((field) => field.type === "IMAGE");
   const fixedValues = sourceField ? { ...values, [sourceField.key]: sourceVersionId } : values;
   // The backend renders the operation's instruction; it owns PROMPT and the pinned source slot.
   const ordinary = definition ? { ...definition, fields: definition.fields.filter((field) => field.type !== "IMAGE" && field.source !== "PROMPT") } : undefined;
-  const errors = ordinary ? runningHubErrors(ordinary, values, "", null, []) : [];
+  const errors = ordinary ? workflowValidationErrors(ordinary, values, "", null, []) : [];
   const parameterControls = ordinary?.fields.length ? <div className="image-function-parameters ui-stack">
     <RunningHubForm definition={ordinary} values={values} prompt="" durationSeconds={null} choices={[]}
       disabled={busy} onChange={(key, value) => setValues((current) => {

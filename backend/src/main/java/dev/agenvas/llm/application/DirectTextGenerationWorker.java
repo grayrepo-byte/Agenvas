@@ -9,13 +9,11 @@ import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -27,32 +25,33 @@ import tools.jackson.databind.node.ObjectNode;
 /** Executes direct text-card prompts with a durable response checkpoint and fenced Artifact commit. */
 @Service
 public class DirectTextGenerationWorker {
+    private static final Logger LOGGER = LoggerFactory.getLogger(DirectTextGenerationWorker.class);
     private static final int MAX_OUTPUT_LENGTH = 20_000;
     private static final Duration MODEL_TIMEOUT = LlmCallTimeouts.REQUEST;
 
     private final TaskService tasks;
-    private final TaskProperties taskProperties;
     private final ChatGateway gateway;
     private final LlmProtocolCodec codec;
     private final CallLogService callLogs;
     private final ObjectMapper mapper;
-    private final ScheduledExecutorService heartbeatExecutor =
-            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
-                    Thread.ofPlatform().daemon().name("direct-text-heartbeat").factory());
-    private final ExecutorService modelExecutor = new ThreadPoolExecutor(1, 1, 0,
-            TimeUnit.SECONDS, new ArrayBlockingQueue<>(1),
-            Thread.ofPlatform().daemon().name("direct-text-model").factory(),
-            new ThreadPoolExecutor.AbortPolicy());
+    private final LeasedModelExecutor modelExecutor;
 
+    @Autowired
     public DirectTextGenerationWorker(TaskService tasks, TaskProperties taskProperties,
             ChatGateway gateway, LlmProtocolCodec codec, CallLogService callLogs,
             ObjectMapper mapper) {
+        this(tasks, gateway, codec, callLogs, mapper,
+                new LeasedModelExecutor("direct-text", tasks, taskProperties));
+    }
+
+    DirectTextGenerationWorker(TaskService tasks, ChatGateway gateway, LlmProtocolCodec codec,
+            CallLogService callLogs, ObjectMapper mapper, LeasedModelExecutor modelExecutor) {
         this.tasks = tasks;
-        this.taskProperties = taskProperties;
         this.gateway = gateway;
         this.codec = codec;
         this.callLogs = callLogs;
         this.mapper = mapper;
+        this.modelExecutor = modelExecutor;
     }
 
     public synchronized int runOnce(String workerId) {
@@ -62,30 +61,46 @@ public class DirectTextGenerationWorker {
     }
 
     private void runClaimed(Task lease, String workerId) {
-        long intervalMillis = Math.max(1_000, taskProperties.leaseDuration().toMillis() / 3);
-        ScheduledFuture<?> heartbeat = heartbeatExecutor.scheduleAtFixedRate(
-                () -> tasks.heartbeat(lease.id(), workerId, lease.leaseEpoch()),
-                intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+        try (var execution = modelExecutor.open(lease, workerId)) {
+            completeText(lease, workerId, execution);
+        } catch (LeasedModelExecutor.Stopped stopped) {
+            LOGGER.warn("Direct-text task {} stopped before its lease could be confirmed", lease.id());
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            LOGGER.warn("Direct-text task {} interrupted; durable work remains recoverable", lease.id());
+        }
+    }
+
+    private void completeText(Task lease, String workerId, LeasedModelExecutor.Execution execution)
+            throws InterruptedException {
         try {
             JsonNode checkpoint = lease.output();
-            if (checkpoint == null) checkpoint = invokeAndCheckpoint(lease, workerId);
-            JsonNode response = checkpoint.path("response");
-            var assistant = codec.selectedAssistant(response);
-            String text = assistant.getText() == null ? "" : assistant.getText().trim();
-            if (!assistant.getToolCalls().isEmpty() || text.isEmpty()
-                    || text.length() > MAX_OUTPUT_LENGTH) {
-                throw new IllegalArgumentException("Direct text model output is invalid");
-            }
-            ObjectNode content = mapper.createObjectNode();
-            content.put("format", "MARKDOWN".equals(lease.input().path("format").asText())
-                    ? "MARKDOWN" : "PLAIN_TEXT");
-            content.put("text", text);
+            if (checkpoint == null) checkpoint = invokeAndCheckpoint(lease, workerId, execution);
+            ObjectNode content = textContent(lease, checkpoint);
+            execution.checkActive();
             tasks.succeedWithTextArtifact(lease, workerId, content);
+        } catch (LeasedModelExecutor.Stopped stopped) {
+            throw stopped;
+        } catch (ExecutionException | TimeoutException failure) {
+            execution.checkActive();
+            tasks.fail(lease, workerId, "MODEL_CALL_FAILED");
         } catch (RuntimeException failure) {
+            execution.checkActive();
             tasks.fail(lease, workerId, errorCode(failure));
-        } finally {
-            heartbeat.cancel(false);
         }
+    }
+
+    private ObjectNode textContent(Task lease, JsonNode checkpoint) {
+        var assistant = codec.selectedAssistant(checkpoint.path("response"));
+        String text = assistant.getText() == null ? "" : assistant.getText().trim();
+        if (!assistant.getToolCalls().isEmpty() || text.isEmpty() || text.length() > MAX_OUTPUT_LENGTH) {
+            throw new IllegalArgumentException("Direct text model output is invalid");
+        }
+        ObjectNode content = mapper.createObjectNode();
+        content.put("format", "MARKDOWN".equals(lease.input().path("format").asText())
+                ? "MARKDOWN" : "PLAIN_TEXT");
+        content.put("text", text);
+        return content;
     }
 
     private static final int LEGACY_INPUT_SCHEMA_VERSION = 1;
@@ -100,7 +115,8 @@ public class DirectTextGenerationWorker {
         return content;
     }
 
-    private JsonNode invokeAndCheckpoint(Task lease, String workerId) {
+    private JsonNode invokeAndCheckpoint(Task lease, String workerId, LeasedModelExecutor.Execution execution)
+            throws InterruptedException, ExecutionException, TimeoutException {
         List<Message> messages = List.of(
                 new SystemMessage(frozenSystemPrompt(lease)),
                 new UserMessage("Instruction:\n" + lease.input().path("prompt").asText()
@@ -111,20 +127,14 @@ public class DirectTextGenerationWorker {
                 lease.input().path("modelConfigVersion").asInt(-1));
         ChatGateway.ModelDetails model = gateway.modelDetailsFor(pinned);
         if (!model.available()) throw new IllegalStateException("Pinned text model unavailable");
-        Future<ChatGateway.Exchange> future = modelExecutor.submit(() -> callLogs.record(
+        ChatGateway.Exchange exchange = execution.call(() -> callLogs.record(
                 new CallLogService.CallDescriptor(lease.projectId(), lease.id(), null, null,
                         CallLog.Kind.LLM, CallLog.Operation.CHAT,
                         "mock".equals(pinned.source()) ? "mock" : model.providerAdapter(),
                         model.modelId(), "mock".equals(pinned.source())),
                 () -> gateway.call(messages, List.of(), Map.of(), pinned),
-                ignored -> CallLogService.CallOutcome.succeeded(null)));
-        ChatGateway.Exchange exchange;
-        try {
-            exchange = future.get(MODEL_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
-        } catch (Exception failure) {
-            future.cancel(true);
-            throw new IllegalStateException("Direct text model call failed", failure);
-        }
+                ignored -> CallLogService.CallOutcome.succeeded(null)), MODEL_TIMEOUT);
+        execution.checkActive();
         if (exchange.configVersion() != pinned.version()) {
             throw new IllegalStateException("Text model configuration changed during call");
         }
@@ -132,6 +142,7 @@ public class DirectTextGenerationWorker {
         checkpoint.put("schemaVersion", 1);
         checkpoint.set("request", codec.request(messages, List.of()));
         checkpoint.set("response", codec.response(exchange.response()));
+        execution.checkActive();
         return tasks.checkpointTextResponse(lease, workerId, checkpoint);
     }
 
@@ -142,7 +153,6 @@ public class DirectTextGenerationWorker {
 
     @PreDestroy
     void close() {
-        heartbeatExecutor.shutdownNow();
-        modelExecutor.shutdownNow();
+        modelExecutor.close();
     }
 }

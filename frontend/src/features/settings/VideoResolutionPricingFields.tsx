@@ -4,6 +4,7 @@ import { t, useLocale } from "../../shared/i18n";
 import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { Select } from "../../shared/ui/Select";
+import { selectedAutoDlDraftTiers } from "./mediaCapabilityDraft";
 
 type Settings = MediaCapability["settings"];
 type Price = NonNullable<Settings["pricing"]>;
@@ -14,7 +15,7 @@ export function VideoResolutionPricingFields({ values, onChange, tiers: selected
 }) {
   useLocale();
   const workflow = resolveAutoDlWorkflow(values);
-  const tiers = selectedTiers ?? values.videoResolutions ?? (values.videoResolution ? [values.videoResolution] : workflow ? autoDlResolutionTiers(workflow) : []);
+  const tiers = selectedTiers ?? selectedAutoDlDraftTiers(values, workflow ? autoDlResolutionTiers(workflow) : []);
   function change(tier: NonNullable<Settings["videoResolution"]>, patch: Partial<Price>) {
     const current = values.pricingByResolution?.[tier];
     onChange({ ...values, pricingByResolution: { ...values.pricingByResolution,

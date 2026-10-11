@@ -99,7 +99,7 @@ import tools.jackson.databind.node.ObjectNode;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, AgentMediaApprovalPostgresIT.FakeConfig.class},
         properties = {
-                "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false", "agenvas.export.scheduler-enabled=false",
+                "agenvas.llm.scheduler-enabled=false", "agenvas.provider.media.scheduler-enabled=false",
                 "spring.main.allow-bean-definition-overriding=true"})
 class AgentMediaApprovalPostgresIT {
     private static final String MODEL_WORKER = "approval-model-test";

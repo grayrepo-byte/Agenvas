@@ -24,7 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.tasks.scheduler-enabled=false", "agenvas.library.worker-enabled=false"})
+        "agenvas.library.worker-enabled=false"})
 class LibraryCleanupPostgresIT {
     private static final Instant APPLICATION_NOW = Instant.parse("2020-01-01T00:00:00Z");
     private static final Duration RETRY_DELAY = Duration.ofMinutes(1);

@@ -670,6 +670,75 @@ describe("MediaDraftEditor", () => {
       .toBe("Unsaved local prompt");
   });
 
+  it("waits for an existing close-save before reopening without duplicating the PUT", async () => {
+    let release = () => {};
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const requests: SaveMediaDraftRequest[] = [];
+    let acknowledged = initialDraft;
+    const { client } = setup({ handlers: [
+      http.get(DRAFT_URL, () => HttpResponse.json(acknowledged)),
+      http.put(DRAFT_URL, async ({ request }) => {
+        const input = await request.json() as SaveMediaDraftRequest;
+        requests.push(input);
+        await pending;
+        acknowledged = { ...initialDraft, ...input, mediaInputs: [], version: 1 };
+        return HttpResponse.json(acknowledged);
+      }),
+    ] });
+    try {
+      const prompt = await screen.findByRole("textbox", { name: "图片提示词" });
+      await waitFor(() => expect(prompt).toHaveAttribute("contenteditable", "true"));
+      prompt.textContent = "Wait for this acknowledged input";
+      fireEvent.input(prompt);
+      await waitFor(() => expect(requests).toHaveLength(1));
+      cleanup();
+      render(<QueryClientProvider client={client}><MediaDraftEditor artifact={artifact} canvasItemId={CANVAS_ITEM_ID} /></QueryClientProvider>);
+      expect(await screen.findByRole("status", { name: "正在保存工作草稿" })).toBeVisible();
+      expect(screen.queryByRole("textbox", { name: "图片提示词" })).not.toBeInTheDocument();
+      release();
+      expect(await screen.findByRole("textbox", { name: "图片提示词" })).toHaveTextContent("Wait for this acknowledged input");
+      expect(requests).toHaveLength(1);
+      expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, CANVAS_ITEM_ID])?.version).toBe(1);
+      expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]).toBeUndefined();
+    } finally { release(); }
+  });
+
+  it("finishes a closed resource commit without resaving its already acknowledged input", async () => {
+    let release = () => {};
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const requests: SaveMediaDraftRequest[] = [];
+    const { client } = setup({ handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, id: "reference-image", title: "合成参考图", resourceDefaultVersionId: "reference-v1" },
+      ] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () => HttpResponse.json({ items: [
+        { id: "reference-v1", versionNo: 1, content: { assetId: "reference-asset" } },
+      ] })),
+      http.put(DRAFT_URL, async ({ request }) => {
+        const input = await request.json() as SaveMediaDraftRequest;
+        requests.push(input);
+        await pending;
+        return HttpResponse.json({ ...initialDraft, ...input, version: 1 });
+      }),
+    ] });
+    try {
+      const user = userEvent.setup();
+      await screen.findByRole("textbox", { name: "图片提示词" });
+      await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+      await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+      await user.click(await screen.findByRole("checkbox", { name: "选择 合成参考图 · v1" }));
+      await user.click(screen.getByRole("button", { name: "添加所选图片（1）" }));
+      await waitFor(() => expect(requests).toHaveLength(1));
+      cleanup();
+      expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]?.saving).toBe(true);
+      release();
+      await waitFor(() => expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]).toBeUndefined());
+      expect(requests).toHaveLength(1);
+      expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, CANVAS_ITEM_ID]))
+        .toMatchObject({ version: 1, mediaInputs: [{ versionId: "reference-v1" }] });
+    } finally { release(); }
+  });
+
   it.each([null, "versatile-video-capability"])("initializes an image-only video model in its supported reference mode (selection: %s)", async (capabilityId) => {
     const capability = { ...versatileVideoCapability, supportedVideoInputModes: ["GENERAL_REFERENCE"] as MediaCapability["supportedVideoInputModes"],
       defaultVideoInputMode: "GENERAL_REFERENCE" as const };
@@ -912,6 +981,52 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(saves.at(-1)?.parameters.dynamicValues).toEqual({ input: `${kind}-v1` }));
     expect(saves.at(-1)?.mediaInputs).toEqual([expect.objectContaining({ versionId: `${kind}-v1`,
       role: kind === "IMAGE" ? "REFERENCE" : kind === "VIDEO" ? "VIDEO_REFERENCE" : "AUDIO_REFERENCE" })]);
+  });
+
+  it.each(["removed", "inactive"] as const)("does not redirect an open named picker when its slot becomes %s", async (change) => {
+    const capability: MediaCapability = { ...imageCapability, id: "changing-workflow", adapterId: "RUNNINGHUB_IMAGE",
+      settings: { runningHub: { schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "synthetic-changing",
+        usePersonalQueue: false, addMetadata: false, fields: [
+          { key: "enabled", label: "启用目标", type: "BOOLEAN", defaultValue: true, nodeId: "1", fieldName: "enabled", required: false, advanced: false },
+          { key: "target", label: "目标素材", type: "IMAGE", enabledWhen: { field: "enabled", value: true }, nodeId: "2", fieldName: "image", required: false, advanced: false },
+          { key: "spare", label: "备用素材", type: "IMAGE", nodeId: "3", fieldName: "image", required: false, advanced: false },
+        ], outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
+      } } };
+    const workflowSettings: MediaSettings = {
+      connections: [{ ...settings.connections[0]!, capabilities: [capability] }],
+      defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }],
+    };
+    const { client, saves } = setup({ settings: workflowSettings,
+      draft: { ...initialDraft, capabilityId: capability.id, parameters: { dynamicValues: { target: "source-v1" } },
+        mediaInputs: [{ versionId: "source-v1", artifactId: "source-image", order: 0, role: "REFERENCE", color: "#F15CAF",
+          sources: [{ id: "manual-source", type: "MANUAL", connectionId: null }] }] },
+      handlers: [
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+          { ...artifact, id: "source-image", title: "合成图片", resourceDefaultVersionId: "source-v1" },
+        ] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/source-image/versions`, () => HttpResponse.json({ items: [1, 2].map((versionNo) => ({
+          id: `source-v${versionNo}`, versionNo, content: { assetId: `source-asset-${versionNo}` },
+        })) })),
+      ],
+    });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "选择目标素材" }));
+    await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+    const replacement = await screen.findByRole("button", { name: "选择 合成图片 · v2" });
+    const definition = capability.settings.runningHub!;
+    const updatedCapability: MediaCapability = { ...capability, settings: { runningHub: { ...definition,
+      fields: change === "removed" ? definition.fields.filter((field) => field.key !== "target")
+        : definition.fields.map((field) => field.key === "enabled" ? { ...field, defaultValue: false } : field),
+    } } };
+    act(() => client.setQueryData(["media-settings"], { ...workflowSettings,
+      connections: [{ ...workflowSettings.connections[0]!, capabilities: [updatedCapability] }],
+    }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "选择目标素材" })).not.toBeInTheDocument());
+    await user.click(replacement);
+    expect(screen.getByRole("dialog", { name: "输入图片版本" })).toBeVisible();
+    expect(saves).toHaveLength(0);
+    expect(client.getQueryData<MediaDraft>(["media-draft", PROJECT_ID, CANVAS_ITEM_ID])?.parameters.dynamicValues)
+      .toEqual({ target: "source-v1" });
   });
 
   it("adds mixed workflow resources through one entry without filling earlier optional image slots", async () => {

@@ -61,9 +61,9 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
 
     public static ComfyUiWorkflowDefinition parse(ObjectMapper mapper, JsonNode source, Task.Kind kind) {
         if (source == null || !source.isObject() || !FIELDS.containsAll(source.propertyNames())
-                || !source.propertyNames().containsAll(REQUIRED_FIELDS)
-                || source.toString().getBytes(StandardCharsets.UTF_8).length > MAX_JSON_BYTES
-                || integer(source, "schemaVersion", SCHEMA_VERSION, SCHEMA_VERSION) != SCHEMA_VERSION) throw invalid("definition");
+                || !source.propertyNames().containsAll(REQUIRED_FIELDS)) throw invalid("definition");
+        requireDefinitionSize(source);
+        if (integer(source, "schemaVersion", SCHEMA_VERSION, SCHEMA_VERSION) != SCHEMA_VERSION) throw invalid("definition");
         ObjectNode graph = validateGraph(mapper, source.get("graph"));
         JsonNode rawOutput = source.path("output");
         if (!rawOutput.isObject() || !Set.of("nodeId", "field").equals(rawOutput.propertyNames())) throw invalid("output");
@@ -113,6 +113,12 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
         return new ComfyUiWorkflowDefinition(SCHEMA_VERSION, graph, List.copyOf(bindings), new Output(outputNode, outputField),
                 integer(source, "width", PIXEL_ALIGNMENT, MAX_SIDE), integer(source, "height", PIXEL_ALIGNMENT, MAX_SIDE),
                 minimum, maximum, integer(source, "fps", 1, MAX_FPS), multiple, integer(source, "frameOffset", 0, multiple - 1), parameters);
+    }
+
+    /** Normalized defaults can expand a valid import; persisted definitions share the import limit. */
+    public static void requireDefinitionSize(JsonNode definition) {
+        if (definition.toString().getBytes(StandardCharsets.UTF_8).length > MAX_JSON_BYTES)
+            throw invalid("definition");
     }
 
     private static List<RunningHubDefinition.Field> parseParameters(ObjectMapper mapper, JsonNode raw,

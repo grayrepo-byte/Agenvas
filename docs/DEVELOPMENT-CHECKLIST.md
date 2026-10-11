@@ -2125,3 +2125,122 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 前端设置/原生辅助/切换/错误四文件86项通过；新增Google→Wan复用清理后相关三文件65项复验通过；最终新画布五项通过，跳过127项无关用例。运行 `pnpm -C frontend exec vitest run` 选择 NativeMediaSettingsPage、nativeMedia、mediaDraftCapability、taskErrorMessages；画布以 `-t 'Wan request|Seedream group|Veo.s catalog|Omni native|reuses one Google'` 定向。TypeScript、27个变更TS/TSX文件 ESLint、四语言2434键及主题检查、Vite生产构建、API生成与差异空白检查通过；仅保留既有大chunk提示。
 - [ ] 真实付费供应商创建/查询/下载、真实区域账号/结果桶/中转、全部极限组合与账单未运行；假HTTP和合成PNG/MP4不能证明真实模型已接通。节点沿用14条素材总限，本地BMP导入未支持，未确认的Wan区域结果桶会阻断；这些本地边界已在接入说明列出。
 - [ ] 全量测试、浏览器端到端/视觉验收和部署未运行；没有修改运行应用或用户数据库。一次性代码生成容器已清理。
+
+## 2026-10-11 工作流草稿与媒体受理维护重构
+
+- [x] 工作流字段求值、条件激活、类型校验和时长约束集中到 `frontend/src/features/canvas/workflowFields.ts`，表单、参数控件、媒体编辑器、能力切换及模板应用共用规则；纯草稿/模板逻辑不再反向依赖 React 表单。保留 `false`/`0`、空提示词默认值、精确版本、多槽复用、发布顺序及旧 Comfy 位置引用。
+- [x] `mediaDraftCapability.ts` 的能力切换入口由 82 行缩为 6 行，进入工作流、离开工作流和普通能力转换由同文件私有函数承担；移除递归调用，保持一次性输出完整字段变更、参数兼容、引用与标签整理以及原稿不变。
+- [x] `MediaDraftEditor` 的工作流选择器只保存槽位 key，字段定义从当前活动契约推导；共享添加入口与指定槽位区分保持不变。补充选择器打开后槽位被移除或条件停用的两项交互测试，确认不误填其它空槽位、不保存错误草稿。
+- [x] 核对生产调用、动态路由和注册后，删除孤立的 `ArtifactVersionHistory`、无人使用的 `getRun`、`RunSkillSummary` 与 `canvasItemVersion` 以及专属旧测试/四语言词条；服务端接口与 OpenAPI 保留，现行文字版本工具栏补齐打开前不读取、打开后按需加载的断言，保留 CAS 与未保存草稿阻断覆盖。
+- [x] `VideoOperationService` 分离操作参数准备和冻结媒体输入构造，保留来源校验、幂等/CAS、派生输出创建、JSON 插入顺序与任务哈希、用量和事件的事务写入顺序。`CanvasService` 集中碰撞公式、垂直避让与层级计算，Agent 网格搜索改为找到即返回，移除冗余列表复制；保留媒体 300×300 碰撞范围、音频 430×240 尺寸、搜索上限和不同失败优先级。
+- [x] 删除 `AssetService.getThumbnail/ThumbnailFile` 和 `MediaCapabilityService.setConnectionEnabled`/Repository 专用写入这两条仅测试使用的退役路径。缩略图断言统一走生产 `content/open` 授权存储流，连接启停测试统一走生产 `updateConnection`，保留权限、PNG 尺寸、视频海报/归档恢复、CONFIGURED 拒 Mock、系统连接不可修改；补强 CAS 冲突、地址脱敏及凭证/连接内容版本不变的断言。
+- [x] 核对生产配置绑定与动态条件后，从 16 个测试文件删除 20 项失效的旧 export/tasks/Mock scheduler 开关，含子 JVM 参数；当前媒体调度、LLM、恢复模式及 library/skill worker 配置保持原样，全部测试源码编译通过。
+- [x] 最新 `origin/main` 的修复已合入本轮工作树，无冲突；两个能力并发专项采用其刷新事务统计快照的修复。没有 API 合约、生成类型、迁移或依赖变更，没有修改现有服务或用户数据。
+- [x] 前端 16 个定向测试文件共 422 个唯一用例通过，包含新增字段规则 12 项、能力切换边界 3 项与失效槽位 2 项；除工作流/模板/媒体组件外，覆盖 `ContentCanvasCard`、`ArtifactVersionEditing`、`AgentSkillControls`、`AgentChatCard`、`client.upload` 与 `canvasRelations`。后续完整复验媒体编辑器 119 项及文字工具栏 18 项，重复执行不另计用例。最终 TypeScript、完整 ESLint、四语言/主题检查和 Vite 生产构建通过，保留既有大 chunk 提示。
+- [x] 后端五类单元测试 33 项通过，包含新增视频参数 10 项、布局 7 项、既有派生草稿 5 项、HTTP 流式缩略图 1 项与媒体模式 10 项；11 个真实 PostgreSQL 专项共 34 个唯一用例通过，零失败、错误或跳过。除视频/图片派生、结果放置、RunningHub 多结果/混合结果/UNKNOWN 与 Agent 会话输出外，追加素材与对象存储、CONFIGURED 媒体、ComfyUI 视频停用专项；两个能力并发专项清理后再次完整通过，其 14 个重复执行的用例不另计。Java 主源码与全部测试源码编译通过，最终 Maven 打包通过；打包复验使用 `-DskipTests`，不重复执行已通过的定向测试。
+- [x] 完成独立行为等价审查和差异空白检查；测试采用合成媒体、Mock/回环假 Provider 与本地 FFmpeg，不能证明真实供应商已接通。
+- [ ] 全量测试、真实 Provider、浏览器端到端/视觉验收和部署未运行。失效配置所在的其余测试仅编译，未逐类运行。大型画布/媒体编辑器的草稿保存与恢复另见下节；Task/Run/SSE 租约协议，以及 Comfy 连接快照/RunningHub 结果解析暂未重构，这些部分有并发、身份校验或恢复语义，需要独立切片及专项覆盖，未按代码长度或表面重复删除。`SkillService.getBundleByVersion` 等收益较小的孤立辅助路径留待独立清理。
+
+## 2026-10-11 大型组件草稿保存与恢复
+
+- [x] `MediaDraftEditor` 的字段、CAS、dirty 与错误从四处分开的状态集中为 `useMediaDraftSession.ts` 中的一份快照，通过同一入口同步更新渲染状态与异步读取快照。普通保存、显式读取版本、防抖、干净草稿同步、画幅投影及关闭恢复集中维护；组件内 effect 从 9 个降至 4 个、ref 从 15 个降至 10 个。资源添加、连线移除、素材库应用和模板应用仍各自计算业务合并结果，通过 `acceptSaved` 一次确认本地字段、CAS 与 Query。读取、自动保存、关闭及任务只读四种门控保持各自规则，保留初次任务读取失败时的锁定和音频例外。
+- [x] 受控 HTTP 延迟测试先复现资源添加/连线移除等待时关闭导致同一旧 CAS 的额外 PUT。两条业务写入在 `onMutate` 登记完成信号，`onSettled` 在各自合并与缓存确认后结束；关闭先等待完整确认，再以新 CAS 保存等待期间产生的最新输入。已全部确认的输入不重复保存，失败保留完整当前草稿和错误；重开等待原保存结束，冲突只由显式读取版本恢复，不自动改 CAS 或重发业务操作。普通 PUT 丢响应仍保留原 CAS；媒体生成请求的原幂等键/冻结载荷与 UNKNOWN 规则保持原样。
+- [x] `ProjectWorkspacePage` 的拖动、缩放、对齐与整理保存共用 `useCanvasLayoutSave.ts`。请求参数和草稿对象标识在调用入口同步冻结，响应只通过 `clearDraftIfUnchanged` 清理它提交的那份草稿；后续编辑即使坐标相同也保留。旧响应保留 Query 中同节点更高的版本，不覆盖后来发生的同节点或其它节点冲突；仍有布局草稿时不将全局状态误写成“已保存”。没有新增保存队列、自动 CAS 重试或通用回调转发层。
+- [x] 一键整理的 100 项串行保存移入同一 hook 的 `saveInBatches`，在首个等待前冻结整次整理的命令与草稿标识。受控的 101 节点测试先复现第一批等待时编辑第 101 个节点、第二批误清这份新草稿的问题，修复后保留它，包括同坐标的新对象。每批成功只确认该批，失败保留未完成草稿；再次显式整理使用前批已返回的版本，保留布局算法、媒体尺寸投影、保存顺序与成功居中规则。
+- [x] 八个前端定向文件共 264 个唯一用例通过：`MediaDraftEditor` 121、`MediaDraftPersistence` 6、`ProjectWorkspacePage` 38、`ProjectWorkspaceImageLayout` 32、`CanvasSelectionClearing` 39、`canvasStore` 7、`imageNodeLayout` 15、`arrangeCanvas` 6。新增 16 项，覆盖普通保存待确认时重开、业务确认后不重复保存、丢响应原 CAS、SSE 刷新脏草稿、资源/连线关闭串行补存、业务失败和补存 409 恢复、布局请求启动窗口、同节点/其它节点乱序响应、同值新编辑及跨批次编辑；增强既有第二批失败后的显式恢复断言。最后媒体收尾调整后定向复验 8 项，布局分批调整后完整复验页面与图片布局 70 项，重复执行不另计。
+- [x] 实际运行 `pnpm exec vitest run` 的上述指定文件；最终 `pnpm typecheck`、`pnpm lint`（含四语言与主题检查）、`pnpm build:ci` 和 `git diff --check` 均通过，保留既有大 chunk 提示。新测试夹具补齐当前生成类型的必填字段，没有用类型断言或关闭检查绕过错误。完成媒体与布局的交叉只读审查，未发现本次切片的阻断问题。本轮没有后端、API 合约、生成代码、数据库迁移或依赖变更；未修改运行中的应用或用户数据，未部署。
+- [ ] 本轮使用真实组件、Query/Zustand 和受控 Mock HTTP；未运行全量测试、后端测试、真实 Provider、浏览器端到端/视觉验收或部署。恢复沿用内存草稿，不宣称页面刷新或浏览器重启后恢复。完全卸载后任务锁变化，以及模板/素材库传输期间完全卸载的组合未新增验证，未发现本次提取改变其既有路径的证据。Task/Run 租约、完整 SSE 重连与快照排序协议继续保留，需独立跨前后端专项；本次只验证媒体事件触发刷新时的草稿保护，没有据此宣称完整协议已验证。
+
+## 2026-10-11 Task/Run 租约与回合恢复维护重构
+
+- [x] 确认执行权归属 Task 租约；Run 通过版本、步骤 CAS 和项目活动槽维护生命周期，不新增独立 Run 租约。`JooqTaskRepository` 将新执行与原请求轮询两处相同的认领写入集中为 `claimSelectedTasks`，保留各自候选条件、排序、批量上限和 `FOR UPDATE SKIP LOCKED`。候选选择与租约 owner/until、epoch/version 递增仍在同一条 `UPDATE FROM RETURNING` 中；删除轮询私有方法中所有调用均为空的 kind 参数及纯转发重载，媒体类型和绑定范围不变。
+- [x] 核对 `RunTaskCancellation.requestCancellation` 的唯一调用忽略返回结果，内部接口改为 `void`；删除取消更新后无人消费的媒体过滤、返回列表及逐项 Task 查询。项目/Run 范围、非终态筛选、流中断、READY 立即结束、其他任务取消标记、时间和版本赋值保持。Run 事件继续触发审批核对及未提交媒体用量释放，已验证释放一次和晚到归档不自动选用、不续接模型。
+- [x] `AgentRun.Status.canTransitionTo` 集中合法转换规则，服务删除重复构造目标集合的状态图。新旧图 64 个状态对、18 条合法边一致；保留先核对版本、再同状态幂等、最后核对合法转换的顺序，取消事务、事件和条件释放项目槽位保持。新增启动/等待、阻断/失败、取消、终态不能复活四个领域场景及服务优先级测试。
+- [x] `AgentTurnWorker` 在原文件内分离持久响应恢复、冻结请求组装、模型等待及失败重放，`runClaimed` 从 89 行降为 25 行；冻结消息的嵌套条件改为早退，失败记录减少两层条件嵌套。Worker 删除跨模块 Task 仓储注入，复用 `TaskService.ownerForWorker` 查询可信所有者并核对项目/Run 范围；租约校验仍由 Commit、Checkpoint、流和工具事务承担。独立心跳、Future 取消、剩余等待窗口、响应检查点胜出后的立即重放和 finally 停止心跳保持，没有新增执行框架。
+- [x] 11 类定向单元测试共 69 个唯一用例通过，零失败、错误或跳过：`TaskClaimTest` 17、`TaskWorkerOwnerTest` 6、`ApprovedMediaCancellationTest` 5、`AgentRunTest` 7、`AgentRunServiceTest` 2、`RunHistoryCleanupServiceTest` 3、`AgentTurnWorkerTest` 10、`AgentTurnFailureCodeTest` 3、`AgentModelRetryPolicyTest` 14、`LlmWorkerTimeoutTest` 1、`AgentTurnCommitServiceTest` 1。本轮新增 21 项，覆盖可信身份/作用域、状态规则/优先级、恢复不重复请求、截止后的完整响应、超时/中断取消、检查点竞态和租约丢失。首轮新增身份夹具的两项 Mockito 嵌套 stub 错误已修正，该类六项复验通过，重复执行不另计。
+- [x] 使用隔离 Testcontainers PostgreSQL 17.11，分两批执行 14 类中的 30 个定向用例，零失败、错误或跳过：`TaskLeasePostgresIT`、`TaskRecoveryPostgresIT`、`TaskSubmissionUnknownPostgresIT`、`AgentRunPostgresIT`、`AgentFailureRecoveryPostgresIT`、`ShutdownGatePostgresIT`，以及 `AgentMediaApprovalPostgresIT` 的取消/预留释放/晚到结果一项、`RunningHubPostgresIT` 的音频分离恢复、多结果 manifest 恢复与旧 Worker 检查点拒写三项；第二批为 `AgentTurnWorkerPostgresIT`、`AgentModelRetryPostgresIT`、`AgentTurnRepairPostgresIT`、`AgentStreamPostgresIT`、`AgentTurnSchedulerPostgresIT`、`ToolExecutionPostgresIT`。覆盖独占认领、旧 owner/epoch 拒写、到期边界、SUBMITTING 续租、UNKNOWN 不重提、原请求恢复、取消历史、等待占槽/终态释放、模型重试与检查点重放、公开流 fencing、旧租约不能执行工具和停机拒绝新认领。
+- [x] 实际执行指定 `-Dtest=... test` 和两批 `-Pci-integration -Dit.test=... verify`；Java 主源码及全部测试源码编译、Maven 打包、最终差异空白检查通过。本次新增文件与改动文本的凭据、私钥、带凭据 URL 和私人路径模式检查无命中，合成验证日志留在仓库外的私有临时目录。完成 Task/Run 与 Worker 的交叉只读复核，认领 SQL、取消用量事件链、网络调用前后检查点和异常边界未发现阻断。API 合约、数据库 schema/迁移、生成代码及依赖没有变更。
+- [ ] 未运行全量测试、前端测试、真实 Provider、浏览器端到端或部署；媒体与模型专项使用 Mock/回环假服务和合成素材。本轮公开流测试不代表完整 SSE 重连、游标过期及跨端快照排序协议验收。`LlmRoundService`/Checkpoint 无租约历史入口仍被既有测试使用，删除需先迁移到真实认领与检查点路径；媒体归档大方法、提交/查询失败边界和两个模型执行器暂保留，业务语义及取消/计费边界不同，不强行合并。心跳失败后主动中断模型 Future 的行为没有调整，继续依赖数据库 fencing，改变中断语义需独立故障覆盖。
+
+### 2026-10-11 无租约历史入口与媒体归档维护重构
+
+- [x] 核对生产 Worker、测试、配置及注册引用后，删除 `LlmRoundService.call`、`LlmTurnCheckpointService.reserve/saveResponse` 三个无租约历史入口、三个内部转发方法及十处可选租约分支；现行 `callLeased/reserveLeased/saveResponseLeased` 签名保持。项目事件锁、Task 租约与作用域、Run 状态/步骤、冻结配置/请求、响应幂等、公开流、用量及 debug 顺序保持，模型网络调用仍在数据库事务外。四类 PostgreSQL 测试迁移为真实认领 → 启动 → leased 调用，保留协议、权限、配置拒绝、日志与工具幂等断言；旧 epoch 在模型调用前不能预留或发请求，在响应后不能保存、结算或再次发请求。
+- [x] `TaskService.succeedWithArtifacts` 从 143 行收敛为 64 行编排，在原文件内分离清单验证、租约校验、主结果、普通额外输出、静音视频及最终事件。主输出可以位于任意合法 ordinal；普通额外输出消耗布局序号，静音副输出不消耗。主/静音目标受固定输入与各自节点 CAS 保护，普通额外输出仍使用原取消/归档条件，不强行合并选用规则。取消晚到可超过租约有效期，但仍要求原 epoch 与合法状态；最终 Repository CAS、所有版本/节点/Task/费用/事件的事务原子性及失败优先级保持。收尾事件复用已有费用判断，减少一次绑定查询。
+- [x] `MediaExecutionWorker.pollOnce` 从 53 行降为 37 行，在原文件内拆出 payload 与 manifest 收尾并集中三种媒体的资产归档分派。保留单结果最终 Task 写失败向外传播、多结果最终写失败进入原轮询重试的不同边界；资源关闭失败、提交归档失败、静音处理错误码保持。已有 manifest 优先恢复、两次 manifest 检查、先检查点后下载、共享下载会话、稳定 task/ordinal 资产身份、原请求轮询与 UNKNOWN 不自动重新生成保持；没有新增执行框架或依赖。
+- [x] 九类定向单元测试共 70 个唯一用例通过，零失败、错误或跳过：`LlmRoundStreamTest` 5、`LlmTurnStreamFenceTest` 8、`AgentTurnWorkerTest` 10、`AgentModelRetryPolicyTest` 14、`AgentTurnFailureCodeTest` 3、`CallLogStreamServiceTest` 6、`ApprovedMediaCancellationTest` 5、`TaskMediaCompletionTest` 9、`MediaExecutionWorkerTest` 10。本轮新增 24 个单元执行场景，覆盖缺失/错误租约作用域、非法输出、费用标志、归档恢复、检查点顺序、冻结参数、资源关闭与不同失败边界。
+- [x] 使用隔离 Testcontainers PostgreSQL 17.11，分两批执行 13 类中的 46 个定向用例，零失败、错误或跳过。LLM 批次 20 项：`LlmTurnPostgresIT` 3、`ToolExecutionPostgresIT` 1、`ToolAuthorityPostgresIT` 1、`ComfyUiWorkflowPostgresIT` 1、`AgentModelRetryPostgresIT` 9、`AgentStreamPostgresIT` 4、`AgentTurnWorkerPostgresIT` 1。媒体批次 26 项：`TaskMediaCompletionPostgresIT` 2、`TaskArtifactSelectionPostgresIT` 1、`TaskArchivedProjectPostgresIT` 1、`CanvasMediaVersionsPostgresIT` 8、`VideoOperationPostgresIT` 四项主/静音节点归档场景、`RunningHubPostgresIT` 十项 manifest/ZIP/混合输出/取消晚到/UNKNOWN/旧 epoch 场景。本轮新增四个 PostgreSQL 用例；主输出在序号 1 时仍绑定原目标，额外输出顺序正确；后续输出非法时已写版本、节点、历史、Task、ProviderAttempt、费用和事件序号全部回滚，再用原租约与原资产完成且重复完成无增量。
+- [x] 实际运行指定 `-Dtest=... test` 及两批 `-Pci-integration -Dit.test=... verify`；主源码、全部测试源码编译及 Maven 打包通过。三处生产切片交叉只读复核、最终差异空白检查与改动文本的凭据/私人路径模式检查通过，验证日志保存于仓库外私有临时目录。API 合约、数据库 schema/迁移、生成代码和依赖没有改动。
+- [ ] 未运行全量、前端、真实 Provider、浏览器端到端或部署；本次模型/媒体使用 Mock、回环假服务和合成素材，公开流专项不代表完整 SSE 重连/游标过期验收。上一节所列无租约入口与媒体归档大方法已在本轮处理；提交与轮询异常边界因恢复语义不同分别保留，两个模型执行器及心跳失败后主动中断语义仍需独立故障覆盖，不在本轮合并或改变。
+
+### 2026-10-11 模型执行器与心跳中断维护重构
+
+- [x] `AgentTurnWorker` 与 `DirectTextGenerationWorker` 共用包内 `LeasedModelExecutor` 管理线程和租约心跳生命周期，各自持有独立实例，保持单模型执行线程、一个排队位置、满额拒绝、独立心跳线程及租约三分之一且至少一秒的心跳间隔。两个 Worker 删除重复的线程池构造、定时任务与 Future 取消控制流；通过任务执行 scope 统一启动、等待、停止检查和关闭。Agent 的上下文/工具/修复/有界重试与直连文本的内容校验/计费/错误码各自保留，没有新增通用 Worker 框架、业务状态或依赖。
+- [x] 心跳返回租约错误或数据库续租回执无法确认时，记录本地停止、取消模型 Future 并唤醒等待方；运行中的模型只尝试中断，已取消的排队 Future 从有界队列移除，已取消心跳从调度队列移除。scope 注册、Future 注册/提交与停止由同一锁协调，数据库续租、模型调用和等待都在锁外。关闭执行器先停止活动 scope，使运行和排队等待方退出，并拒绝新 scope；正常关闭抑制已经在途的迟到心跳错误。
+- [x] `Stopped` 与等待线程中断不转换成模型失败或模型重试；中断恢复线程标记，由既有数据库任务和检查点接管。普通失败写入前、检查点返回后和工具/修复/最终提交前核对本地停止状态，最终仍受数据库 owner/epoch/到期/取消 CAS 保护。正常模型超时保留 Agent 剩余重试期限、完整响应胜出后的立即重放，以及直连文本原 `MODEL_CALL_FAILED`/`MODEL_OUTPUT_INVALID` 分类。测试改为注入执行模块，通过 Worker 公开入口验证，删除原先替换私有线程池的反射夹具。
+- [x] 本地停止不冒充供应商取消：真实 PostgreSQL 证明取消后实际心跳拒绝能中断合作模型、使 Worker 退出，并拒绝旧响应/流/工具/完成/失败/退避写入；公开 INTERRUPTED 前缀及用量预留保留。限定合成任务的续租 SQL trigger 故障证明未确认续租不创建错误或重试；忽略中断的合成模型在仍有效租约下可保存完整响应，旧编排不执行工具，真实过期接管后只重放检查点，模型请求、工具、产物、结算各一次。直连文本已保存检查点的过期接管也不再次调用模型或结算，并拒绝旧租约写入。规格 §12.3 同步说明这些停止与恢复边界。
+- [x] 九类定向单元测试共 81 个唯一用例通过，最终零失败、错误或跳过：`LeasedModelExecutorTest` 17、`AgentTurnWorkerTest` 14、`DirectTextGenerationWorkerTest` 18、`AgentModelRetryPolicyTest` 14、`AgentTurnFailureCodeTest` 3、`LlmWorkerTimeoutTest` 1、`AgentTurnCommitServiceTest` 1、`LlmRoundStreamTest` 5、`LlmTurnStreamFenceTest` 8。本轮新增 39 个单元执行场景；生命周期测试使用真实有界线程池与受控心跳时点，覆盖非合作调用、停止与模型错误先后、迟到续租、排队清理、容量拒绝、关闭唤醒、等待中断和独立容量。首轮五个新夹具的 Mockito 嵌套 stub 错误已修正，单独复验该类 17 项通过，不重复计数。
+- [x] 十一类定向真实 PostgreSQL 测试共 28 个唯一用例通过，最终零失败、错误或跳过：`AgentHeartbeatPostgresIT` 2、`DirectTextGenerationPostgresIT` 2、`AgentTurnWorkerPostgresIT` 1、`AgentModelRetryPostgresIT` 9、`AgentStreamPostgresIT` 4、`ToolExecutionPostgresIT` 1、`LlmTurnPostgresIT` 3、`AgentTurnRepairPostgresIT` 1、`AgentTurnSchedulerPostgresIT` 3、`TaskLeasePostgresIT` 1、`ShutdownGatePostgresIT` 1。本轮新增三个数据库故障/恢复场景。首轮直连文本测试共享实例的容器启动顺序错误已按仓库现有模式修正，单独复验两项通过，其余 26 项不重复执行或计数。
+- [x] 实际运行指定 `-Dtest=... test`、`-Pci-integration -Dit.test=... verify` 及上述失败夹具的定向复验；生产与全部测试源码编译、最终 Maven verify/打包通过。执行模块及两个 Worker 完成交叉只读复核，最终差异空白检查和新增/改动文本的凭据、私人路径模式检查通过；合成日志保存在仓库外私有临时目录。对外 API、数据库 schema/迁移、生成代码和依赖没有改动。
+- [ ] 未运行全量、前端、真实 Provider、浏览器端到端或部署；真实 PostgreSQL 配合 Mock/合成模型不证明外部供应商一定响应线程中断，也不承诺模型请求恰好一次或停止计费。直连文本普通业务失败后的既有检查点清理规则保持，改变该规则需独立定义失败后的恢复语义；本轮没有将其混入执行器重构。
+
+### 2026-10-11 Skill 固定版本与候选查询维护重构
+
+- [x] `SkillRepository` 的历史版本列表从 N+1 条 SQL 改为一次完整行查询，按版本 ID 查找从两条改为一条；两种查找与列表复用同文件的版本映射。保持所有者过滤、Skill 归属、完整 bundle、固定 hash 与版本号降序。核对生产调用和工具注册后删除只有测试调用的 `SkillService.getBundleByVersion`，权限断言迁到现行 `getBundle`；仍用于复制来源资产的 Repository 重载保留。
+- [x] `SkillRunService` 的保存绑定、预检与冻结入口在当前调用内复用精确 `(skillId, skillVersionId)` 集合；显式候选的完整绑定读取从 N 次降为一次，非空默认选择保留退役过滤与绑定检查两次读取，总次数从 N+1 降为两次。`SkillService` 集中目录可用性检查，使未绑定候选校验的目录读取从三次降为一次；不增加跨请求缓存、公开上下文或投影接口。已有个人回收站版本仅能按原精确绑定沿用，其他版本仍拒绝；退役内置版本不能开始新工作，历史 Run 和导出仍可读。原事务、项目事件锁、Agent CAS、幂等重放与空选择路径保持。
+- [x] 新增 `SkillSelectionQueryTest` 九项通过，分别从预检、冻结、保存入口覆盖绑定读取上限、个人回收站精确版本与退役内置拒绝。真实 PostgreSQL 的 `SkillPostgresIT` 十一项及 `SkillRunPostgresIT` 四项定向用例通过，覆盖多候选、100 项上限、退役绑定、固定输入与发布/解绑后的 Run 恢复。新增 PostgreSQL 用例以局部 jOOQ listener 确认三种版本读取各一条 SQL，并核对多版本排序、完整映射与跨账号/Skill 拒绝；合计 9 个单元及 15 个数据库用例，零失败、错误或跳过。
+
+### 2026-10-11 ComfyUI 历史配置装配维护重构
+
+- [x] `ComfyUiImageAdapter`、`ComfyUiVideoAdapter` 复用现有 `MediaCapabilityService.pinnedSnapshot`，删除两份快照查询及 adapter/mapping 身份校验；两份端点解密和指纹检查集中到有明确职责的 `ComfyUiClientFactory`。Factory 只接收固定连接版本，保持历史明文、按连接与版本认证的加密地址、缺失配置和指纹不符拒绝；不读取当前配置或缓存私有端点。适配器沿用仓库的 `@Lazy` 方式延迟解析持有注册表的目录服务，并说明构造依赖原因。
+- [x] 两个旧固定工作流直接使用本次已解析的 settings，去掉重复 JSON 解析；图像与视频的输入授权、比例、上传、输出规则分别保留。配置异常仍位于协议异常捕获之外；已受理任务继续按原固定版本和远程 prompt ID 查询，当前禁用/删除或连接轮换不替换历史配置。UNKNOWN、不确定受理及归档恢复机制保持。
+- [x] `ComfyUiClientFactoryTest` 八项、`ComfyUiPinnedConfigurationTest` 十项、`ComfyUiClientTest` 125 项通过，包含真实 AES-GCM/AAD 校验及两个适配器的历史身份和异常边界。真实 PostgreSQL 的 `ComfyUiRemoteConnectionPostgresIT`、`ComfyUiOriginPreflightPostgresIT`、`ComfyUiWorkflowPostgresIT`、`ComfyUiImagePostgresIT`、`ComfyUiVideoPostgresIT` 各一项通过；完整 Spring 装配、加密与脱敏、指纹预检、导入图及连接轮换后的原任务恢复均通过。合计 143 个单元及 5 个数据库用例，零失败、错误或跳过。
+- [x] 两批实际运行指定 `-Dtest=... test` 及各自的 `-Pci-integration -Dit.test=... verify`；生产与全部测试源码编译、Maven 打包及差异空白检查通过。首轮测试编译发现的异常夹具构造参数和旧 getter 调用已修正后复验。独立只读复核覆盖精确版本、退役/回收站区别、事务与错误顺序、ComfyUI 历史配置及异常边界，未发现阻断回归。本轮新增及改动的十个源码/测试文件完成凭据与私人路径模式检查，无命中；合成日志保存在仓库外私有临时目录。对外 API、数据库 schema/迁移、生成代码及依赖没有变更。
+- [ ] 未运行全量、前端、真实 Provider、浏览器端到端或部署；媒体验证使用回环假服务与合成素材，不证明真实 GPU 工作流兼容。已检查但留作后续独立批次：`RunningHubAdapter.manifest` 的结果选择状态和九参数 helper；`SkillService.processNext` 的发布归档与恢复职责；`MediaSettingsPage` 的能力草稿序列化、连接地址规则及 `AutoDlWorkflowFields` 的档位刷新/重置。前两者需要各自恢复/协议覆盖，设置页需要表单与零值边界覆盖；本轮不混入这些修改。SSE 有界队列、唤醒与并发关闭状态有明确职责，暂无足够收益支持改动。
+
+### 2026-10-11 RunningHub 结果解析维护重构
+
+- [x] `RunningHubAdapter.manifest` 的结果列表、输出配额和去重集合集中到同文件的 `ResultSelection`，候选加入方法从九个参数减为四个，主结果直接从已选结果推导；manifest 从 36 行收敛为 23 行编排，费用字段解析独立为 `usage`。保持按声明顺序匹配输出、先检查配额再去重和校验 URL、连续 ordinal 与非零序号主结果。不增加业务状态、公开接口或通用解析框架。
+- [x] ZIP 仍先判断是否有未满足的输出配额，再校验地址、下载和完整安全解包；资源关闭边界、普通文件与 ZIP 成员共享配额、未知费用和结果清单格式保持。新增三个候选选择用例，并加强超额 ZIP 使用危险地址仍应跳过的断言；`RunningHubAdapterTest` 14 项及 `RunningHubResultArchiveTest` 15 项通过。
+- [x] 实际执行上述指定 `-Dtest=... test` 及 `RunningHubPostgresIT` 六项指定 `-Pci-integration -Dit.test=... verify`，合计 29 个单元和 6 个真实 PostgreSQL 用例，零失败、错误或跳过；生产、全部测试源码编译及 Maven 打包通过。数据库专项覆盖 manifest 恢复、ZIP 恢复、混合媒体、取消晚到归档、UNKNOWN 不重提和旧租约检查点拒写，使用隔离 Testcontainers PostgreSQL、回环假服务和合成素材。
+
+### 2026-10-11 设置页配置转换维护重构
+
+- [x] `MediaSettingsPage` 中的 Provider 条件拼装改为 `mediaCapabilityDraft.ts` 中明确的 Provider 分派及通用字段白名单；AutoDL 与 MiniMax 的价格过滤共用同一规则。保留显式零值、false、undefined、空档位列表、原始十进制字符串和请求字段顺序，幂等键的 JSON 序列化不变；RunningHub 仍只发布选择后的协议定义与价格，不把编辑器选项或普通模型字段带入 API。
+- [x] `AutoDlWorkflowFields` 的定义刷新、预设切换和档位选择通过同一纯转换模块计算新草稿，发布转换和两个表单组件共用草稿档位推导，价格保留规则和两处目标重置字段集中维护。保留刷新当前目标、读取另一个目标、手工编辑定义及切换内置预设各自的保留与重置范围；移除档位同步清理对应价格并修复默认档位，不原地修改草稿。删除 `autodlWorkflow` 纯转发，调用方直接使用已有 `resolveAutoDlWorkflow`。
+- [x] `mediaConnectionConfiguration.ts` 集中已有地址元数据和 origin 转换，使地址展示、API Key 输入条件、连接创建与更新复用同一平台规则。固定地址、可编辑完整路径、空 origin、新建 ComfyUI 不提交密钥及更新空密钥保留旧值等行为保持；页面的异步操作、CAS、失败草稿和显式版本恢复路径未改变。仅新增两个设置领域模块，没有新增依赖、通用表单框架或运行状态。
+- [x] 定向执行四个 Vitest 文件，77 个唯一用例最终全部通过：`MediaSettingsPage` 46、`AutoDlWorkflowFields` 7、`mediaCapabilityDraft` 13、`mediaConnectionConfiguration` 11。本轮新增 26 项，并加强已有目标切换与手工编辑断言，覆盖字段白名单、零值/空价格、完整定义、条件依赖、档位/价格联动及实际编辑后的 HTTP 请求。首轮新增零值页面用例误将清空价格后的默认币种期待为 USD，按已有 CNY 默认修正测试夹具后单独复验通过；没有为该断言改变产品行为，重复执行不另计。
+- [x] `pnpm lint`（主题、四语言和 ESLint）及 `pnpm build`（TypeScript 检查与 Vite 构建）通过，构建保留既有大 chunk 提示；最后仅调整测试夹具，定向 Vitest 与该文件 ESLint 复验通过。两处生产切片完成独立只读复核，最终 `git diff --check` 通过；本轮 13 个源码/测试文件的新增及改动文本完成凭据、私钥、带凭据 URL 与私人路径模式检查，无命中。合成日志保存在仓库外私有临时目录，API 合约、数据库 schema/迁移、生成代码和依赖没有变更。
+- [ ] 本轮未运行全量测试、真实 Provider、浏览器端到端或部署；前端使用真实组件与 Mock HTTP，后端假服务及合成素材不证明真实 RunningHub 工作流兼容。上一节列出的 RunningHub 结果选择和设置转换已处理；`SkillService.processNext` 发布归档与恢复留作独立批次，需专项故障验证，SSE 并发状态仍未发现足够收益支持改动。
+
+### 2026-10-11 能力规范化与 ComfyUI 编辑转换维护重构
+
+- [x] `MediaCapabilityService` 将连接准入与规范配置插入分开，幂等首次创建的 spec 构造从两次降为一次；普通创建仍先检查连接，幂等创建仍先规范载荷并认领命令键，重放不重新检查当前连接。同一 ComfyUI 配置复用已解析定义，将完整解析从三次降为一次。字段顺序、配置/hash、白名单和错误优先级保持；更新仍保留序列化后读回的数值比较，避免小整数 LongNode 等节点类型造成额外换版。
+- [x] `ComfyUiWorkflowDefinition` 将定义字节上限检查集中为 `requireDefinitionSize`，保留原始输入及补齐默认值后的持久定义各自的大小限制；规范化后检查仍在配置校验之后、引用数量判断之前，不因省去完整重复解析放宽极限输入。新增五个 `MediaCapabilityNormalizationTest` 行为用例，覆盖精确 spec/hash、认领与准入顺序、重放、规范化膨胀与错误优先级、相同 JSON 数字不换版。
+- [x] `ComfyWorkflowEditor.mapInput` 的映射互斥、稳定参数键、默认值和首末尺寸基准转换集中到已有 `comfyWorkflow.ts` 的纯函数，组件事件函数从 26 行收敛为 7 行局部错误清理与提交。DOM validity、无效草稿门控、固定图、共享尺寸基准及缺省/空参数列表保持。新增扩展参数无效草稿切换为 WIDTH/HEIGHT 的交叉用例，验证旧错误清理、尺寸成对要求、原图数值、其他稳定键与输入对象不变。
+- [x] 第一批 34 个后端单元、10 个真实 PostgreSQL、63 个前端定向用例全部通过。实际执行单元 `MediaCapabilityNormalizationTest`、`MediaCapabilityModeTest`、`MediaCapabilityConfigurationTest`、`ComfyUiWorkflowDefinitionTest`；数据库 `ComfyUiWorkflowPostgresIT`、`MediaCapabilityConfigurationPostgresIT`、`MediaCapabilityPostgresIT`、`MediaCapabilitySettingsPostgresIT`；前端 `ComfyWorkflowEditor.test.tsx`、`MediaSettingsPage.test.tsx`。主源码与全部测试源码编译、Maven verify/打包、前端 typecheck 和三个改动文件 ESLint 通过，独立只读复核未发现阻断。
+
+### 2026-10-11 Skill 发布恢复与资产库引用导入维护重构
+
+- [x] `SkillService.processNext` 从 67 行收敛为 17 行调度，按职责提取发布资产恢复、pin 检查点、归档检查点、bundle 构建与事务发布。保留 pin 前后同事务租约检查、事务外文件归档、稳定文件/版本身份、哈希与字段顺序、目录锁和发布回滚；失败 finish 与清理入口未变。
+- [x] `LibraryService.completeImport` 将引用更新提取为 `applyImportedReference`，收尾函数从 56 行收敛为 23 行。工作流槽位替换、输入/mentions/提示词清理、持久草稿 CAS、连线移除后的版本接续、草稿保存及能力校验仍在原完成事务内，登记资产、创建版本、导入记录、状态 finish 和清理队列保持原顺序；未合并 Skill 与 Library 不同的租约判定规则。
+- [x] 新增两个真实 PostgreSQL 故障恢复用例：Skill 在来源和 pin 已删除时使用已提交的归档检查点完成唯一发布；Library 在文件安装后被新 epoch 接管时，旧完成事务回滚资产/产物/版本/引用/事件，保留 pin，由后续租约恢复一次，原命令重放不重复写入。原有恢复、并发发布、引用槽替换与冲突回滚用例继续通过。
+- [x] 第二批实际执行 `SkillFormatTest`、`MediaDraftConnectionsTest`、`MediaDraftReplacementTest` 共 24 个单元，以及 `SkillPostgresIT`、`LibraryRecoveryPostgresIT`、`WorkflowConnectionsPostgresIT` 共 23 个 PostgreSQL 用例，全部通过且无跳过；主源码及全部测试源码编译、Maven verify/打包通过，生产改动完成独立只读复核。
+
+### 2026-10-11 图片操作受理与 Agent 会话投影维护重构
+
+- [x] `DirectMediaTaskService.runImageOperation` 提取提示词组装、RunningHub 工作流参数校验和媒体输入快照构建，入口从约 260 行收敛为 190 行。同文件私有记录只传递已准备好的模型输入；基础校验、原始请求数值规范化、事务外蒙版读取、优先幂等重放、来源与能力检查、派生节点及任务/绑定/计费/事件写入继续保留原顺序。普通生成入口未泛化合并，ComfyUI 与 RunningHub 的参数差异、JSON 字段顺序和哈希输入保持。
+- [x] 新增一个真实 PostgreSQL 智能编辑用例，使用合成 alpha PNG 和两个精确参考版本，检查规范化提示词、来源/参考图顺序、蒙版、原始与执行参数分工、字段顺序及输入哈希；禁用功能路由后同键仍重放，改引用顺序冲突且不增加节点、任务、账本或事件。合成 Provider 只验受理，测试结束取消排队任务并还原配置，不触发外部生成。
+- [x] `AgentChatCard` 在同文件以纯函数集中列表/快照合并、会话历史及项目运行占用投影，组件的分散判断收敛为一次调用，未新增状态或缓存。保留同时间列表优先、较新快照优先、终态历史保留并释放发送槽、跨 Agent 占用、分页顺序和当前会话过滤；新增同时间已成功列表覆盖运行中快照的组件用例。构建发现并修正完整 Run 与列表摘要的类型边界，使用既有 `AgentRunList` 元素类型，无断言绕过。
+- [x] 第三批实际执行 `ImageOperationSpecTest`、`ImageOperationValidationTest`、`ImageResizeSpecTest` 共 49 个单元，以及 `ImageFunctionPostgresIT`、`ImageOperationDerivationPostgresIT`、`ThreeViewPromptPostgresIT` 共 11 个真实 PostgreSQL 用例，全部通过且无跳过；主源码及全部测试源码编译、Maven verify/打包通过。`AgentChatCard.test.tsx` 实际执行 34 个组件用例全部通过。`pnpm lint`（主题、四语言、ESLint）通过，最终类型修正后该文件 ESLint 及 `pnpm build`（TypeScript 与 Vite）复验通过；构建仍提示既有大 chunk。
+- [x] 六项优化分三批完成，累计 107 个后端单元、44 个真实 PostgreSQL 和 97 个前端定向用例全部通过；所有生产切片完成独立只读复核，最终 `git diff --check` 通过。本轮 15 个源码、测试与记录文件的新增/改动文本完成凭据、私钥、带凭据 URL 和私人路径模式检查，无命中；合成测试日志保存在仓库外私有临时目录。API 合约、数据库 schema/迁移、生成代码及依赖没有变更。
+- [ ] 本轮未运行全量测试、真实 Provider、浏览器端到端或部署；Mock HTTP、合成素材及本地处理器验证不能证明真实外部模型接通。SSE 核心同步尚未发现足够明确的重构收益；Skill 与 Library 的租约判定条件仍有实际差异，保留各自边界。
+
+
+## 2026-10-11 媒体接入与 develop 合并验证
+
+- [x] 可灵、万相、Seedream 与 Google 视频接入结合 develop 的工作流字段、媒体草稿会话、能力配置与受理/归档重构解决冲突；保留两边的 CAS、租约、取消和原 ID 恢复语义。原生 17 项上限迁入结果校验 helper，布局保留第 16 个附加结果；模型与操作参数、官方地区地址和只读输入目录迁入提取后的公共模块。
+- [x] 复核修正原生局部草稿参数覆盖发布默认值的问题：Kling 与五个原生适配器的 dynamicValues 均逐字段合并，显式 false/0 保留。新增七个适配器单元回归先复现五个原生失败，修复后全部通过；Wan PostgreSQL 用例确认发布 720P 默认值在局部素材草稿、冻结输入和真实生产客户端构造的合成请求中保持。
+- [x] 合并后 41 类后端定向单元初轮 268 项通过；默认值及 payload/manifest 永久归档失败分类新增 11 项，两类 26 项复验通过，去重 279 项。覆盖 native17/其他16、实际图数及探测秒数与 Wan 输入秒数、布局边界、profile 声明与归档重试；无失败、错误或跳过，主源码及全部测试源码编译通过。
+- [x] 八类真实 PostgreSQL 专项 55 项通过：NativeMedia9、Kling9、MediaCapabilitySettings1、FlywayBaseline20、MediaDraftReplacement7、ImageFunction6、TaskMediaCompletion2、TaskQueueMetrics1；默认值修复后前三类共 19 项再次全部通过，不重复计数。运行 ci-integration 定向 verify；迁移、原 ID/Key 固定、UNKNOWN 不重提、清单原子归档、布局、图片派生、队列 epoch 与草稿 CAS 检查通过。
+- [x] 前端 25 个定向文件去重 574 项 Vitest 用例通过，另 i18n 脚本 6 项通过，无跳过；覆盖原生设置发布、地区地址、工作流输入、能力切换、草稿 session/保存恢复、模板与原生画幅预览。TypeScript、46 个合并变更 TS/TSX 的 ESLint、主题/四语言 2433 键、生产构建及差异空白检查通过；构建保留既有大 chunk 提示。
+- [ ] 全量测试、真实付费 Provider、浏览器端到端与部署未运行；检查使用临时 PostgreSQL、回环假 HTTP 与合成素材，没有修改运行服务或用户数据库。

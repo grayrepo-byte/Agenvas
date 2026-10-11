@@ -34,6 +34,8 @@ import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.JSONB;
+import org.jooq.Record1;
+import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.JsonNode;
@@ -581,36 +583,28 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     @Override
     public List<Task> claimDueBoundMediaPolls(String workerId, int limit, Instant now,
             Instant leaseUntil) {
-        return claimProviderPolls(workerId, limit, now, leaseUntil, null,
+        return claimProviderPolls(workerId, limit, now, leaseUntil,
                 TASK.CAPABILITY_ID.isNotNull());
     }
 
-    /** 认领持有已确认 provider_request_id 的图片或视频查询任务，不会选新提交。 */
+    /** 认领持有已确认 provider_request_id 的媒体查询任务，不会选新提交。 */
     @Override
     public List<Task> claimDueProviderPolls(
             String workerId, int limit, Instant now, Instant leaseUntil) {
-        return claimProviderPolls(workerId, limit, now, leaseUntil, null);
+        return claimProviderPolls(workerId, limit, now, leaseUntil, DSL.noCondition());
     }
 
     /** 只按既有请求 ID 选取等待或租约过期的任务，并递增 fencing epoch。 */
     private List<Task> claimProviderPolls(String workerId, int limit, Instant now,
-            Instant leaseUntil, Task.Kind onlyKind) {
-        return claimProviderPolls(workerId, limit, now, leaseUntil, onlyKind, DSL.noCondition());
-    }
-
-    private List<Task> claimProviderPolls(String workerId, int limit, Instant now,
-            Instant leaseUntil, Task.Kind onlyKind, Condition bindingClause) {
-        Condition kindCondition = onlyKind == null
-                ? TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
-                        Task.Kind.VIDEO_GENERATION.name())
-                : TASK.KIND.eq(onlyKind.name());
+            Instant leaseUntil, Condition bindingClause) {
         Condition due = TASK.STATUS.eq(Task.Status.WAITING_PROVIDER.name())
                         .and(TASK.NEXT_ACTION_AT.le(utc(now)))
                 .or(TASK.STATUS.eq(Task.Status.RUNNING.name())
                         .and(TASK.LEASE_UNTIL.le(utc(now))));
         var candidates = DSL.select(TASK.ID)
                 .from(TASK)
-                .where(kindCondition)
+                .where(TASK.KIND.in(Task.Kind.AUDIO_GENERATION.name(), Task.Kind.IMAGE_GENERATION.name(),
+                        Task.Kind.VIDEO_GENERATION.name()))
                 .and(bindingClause)
                 .and(TASK.PROVIDER_REQUEST_ID.isNotNull())
                 .and(due)
@@ -618,17 +612,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .limit(limit)
                 .forUpdate().skipLocked()
                 .asTable("c");
-        return dsl.update(TASK)
-                .set(TASK.STATUS, Task.Status.RUNNING.name())
-                .set(TASK.LEASE_OWNER, workerId)
-                .set(TASK.LEASE_UNTIL, utc(leaseUntil))
-                .set(TASK.LEASE_EPOCH, TASK.LEASE_EPOCH.plus(1))
-                .set(TASK.VERSION, TASK.VERSION.plus(1))
-                .set(TASK.UPDATED_AT, utc(now))
-                .from(candidates)
-                .where(TASK.ID.eq(candidates.field(TASK.ID)))
-                .returning(TASK.fields())
-                .fetch(row -> mapTask(row.into(TASK)));
+        return claimSelectedTasks(candidates, workerId, now, leaseUntil);
     }
 
     /** 单独认领 Agent 回合，Run 状态和恢复计划条件在 SQL 中再次限定。 */
@@ -721,6 +705,12 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .limit(limit)
                 .forUpdate().skipLocked()
                 .asTable("c");
+        return claimSelectedTasks(candidates, workerId, now, leaseUntil);
+    }
+
+    /** 两类候选查询各自限定业务范围；认领写入统一递增 epoch 并返回数据库中的新租约。 */
+    private List<Task> claimSelectedTasks(Table<Record1<UUID>> candidates, String workerId,
+            Instant now, Instant leaseUntil) {
         return dsl.update(TASK)
                 .set(TASK.STATUS, Task.Status.RUNNING.name())
                 .set(TASK.LEASE_OWNER, workerId)
@@ -831,8 +821,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
 
     /** 取消 Run 的未终态任务；READY 立即结束，其他任务只打取消标记。 */
     @Override
-    public List<Task> requestCancellation(UUID projectId, UUID runId, Instant now) {
-        List<UUID> canceledBeforeSubmission = dsl.update(TASK)
+    public void requestCancellation(UUID projectId, UUID runId, Instant now) {
+        dsl.update(TASK)
                 .set(TASK.CANCEL_REQUESTED, true)
                 .set(TASK.OUTPUT_JSON, interruptedAgentOutput())
                 .set(TASK.STATUS, DSL.when(TASK.STATUS.eq(Task.Status.READY.name()),
@@ -847,16 +837,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .and(TASK.RUN_ID.eq(runId))
                 .and(TASK.STATUS.notIn(Task.Status.SUCCEEDED.name(), Task.Status.FAILED.name(),
                         Task.Status.CANCELED.name()))
-                .returning(TASK.ID, TASK.KIND, TASK.STATUS)
-                .fetch(record -> record.get(TASK.STATUS).equals(Task.Status.CANCELED.name())
-                        && (record.get(TASK.KIND).equals(Task.Kind.IMAGE_GENERATION.name())
-                                || record.get(TASK.KIND).equals(Task.Kind.VIDEO_GENERATION.name())
-                                || record.get(TASK.KIND).equals(Task.Kind.AUDIO_GENERATION.name()))
-                        ? record.get(TASK.ID) : null)
-                .stream().filter(java.util.Objects::nonNull).toList();
-        return canceledBeforeSubmission.stream()
-                .map(id -> findById(id).orElseThrow())
-                .toList();
+                .execute();
     }
 
     /** 在网络调用前原子写入 SUBMITTING 和 Provider 尝试记录，作为崩溃核对依据。 */

@@ -89,7 +89,7 @@ class MediaCapabilityPostgresIT {
 
     @Test
     void defaultsUseCasAndDisablingRetainsHistoricalVersions() {
-        UUID first = catalog.createConnection("First ComfyUI", "http://127.0.0.1:8288").id();
+        UUID first = catalog.createConnection("First ComfyUI", "http://127.0.0.1:8288/synthetic-proxy").id();
         UUID second = catalog.createConnection("Second ComfyUI", "http://127.0.0.1:8388").id();
         UUID image = catalog.publishCapability(first, "Image", "COMFY_IMAGE_V1",
                 imageSettings()).id();
@@ -107,7 +107,21 @@ class MediaCapabilityPostgresIT {
                         error -> assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT));
 
         var connection = catalog.getConnection(first);
-        catalog.setConnectionEnabled(first, connection.version(), false);
+        var connectionVersion = catalog.getConnectionVersion(first, connection.currentVersion()).orElseThrow();
+        assertThat(connectionVersion.origin()).endsWith("/[configured-path]");
+        assertThat(connectionVersion.credentialCiphertext()).isNotEmpty();
+        var disabled = catalog.updateConnection(first, connection.version(), connection.name(), false,
+                connectionVersion.origin(), null);
+        assertThat(disabled.enabled()).isFalse();
+        assertThat(disabled.version()).isEqualTo(connection.version() + 1);
+        assertThat(disabled.currentVersion()).isEqualTo(connection.currentVersion());
+        assertThat(catalog.getConnectionVersion(first, connection.currentVersion()).orElseThrow())
+                .usingRecursiveComparison().isEqualTo(connectionVersion);
+        assertThat(catalog.getConnectionVersion(first, connection.currentVersion() + 1)).isEmpty();
+        assertThatThrownBy(() -> catalog.updateConnection(first, connection.version(), connection.name(), true,
+                connectionVersion.origin(), null)).isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT));
+        assertThat(catalog.getConnection(first)).isEqualTo(disabled);
         assertThatThrownBy(() -> catalog.resolve(image, Task.Kind.IMAGE_GENERATION, 3))
                 .isInstanceOf(ApiProblemException.class);
         assertThat(catalog.getConnectionVersion(first, 1)).isPresent();
@@ -134,8 +148,8 @@ class MediaCapabilityPostgresIT {
         assertThatThrownBy(() -> catalog.setDefault(Task.Kind.IMAGE_GENERATION,
                 catalog.defaultVersion(Task.Kind.IMAGE_GENERATION), capabilityId))
                 .isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> catalog.setConnectionEnabled(connectionId,
-                connection.version(), false)).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> catalog.updateConnection(connectionId, connection.version(),
+                connection.name(), false, null, null)).isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> catalog.publishCapability(connectionId, "Duplicate",
                 "LOCAL_IMAGE_PROCESSOR")).isInstanceOf(ApiProblemException.class);
     }

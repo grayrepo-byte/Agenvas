@@ -59,6 +59,10 @@ public class CanvasService {
     /** 自动放置卡片之间保留的最小空隙。 */
     private static final BigDecimal OUTPUT_GAP = new BigDecimal("24");
     private static final int MAX_OUTPUT_PLACEMENT_ATTEMPTS = 100;
+    private static final int MAX_AGENT_OUTPUT_ROWS = 100;
+    private static final int AGENT_OUTPUT_COLUMNS = 3;
+    private static final BigDecimal DEFAULT_OUTPUT_COORDINATE = new BigDecimal("80");
+    private static final BigDecimal AGENT_OUTPUT_OFFSET = new BigDecimal("64");
     private static final int MAX_Z_INDEX = 1000;
 
     /** 验证项目读取与活动状态。 */
@@ -292,14 +296,13 @@ public class CanvasService {
         if (source == null) return null;
         var artifact = artifacts.get(ownerId, projectId, artifactId);
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
-        BigDecimal x = source.x().add(source.width()).add(OUTPUT_GAP);
-        BigDecimal y = source.y();
-        for (int attempt = 0; attempt < MAX_OUTPUT_PLACEMENT_ATTEMPTS && overlapsAny(x, y, existing); attempt++) y = y.add(source.height()).add(OUTPUT_GAP);
-        int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex).max().orElse(-1) + 1);
-        validateGeometry(x, y, source.width(), source.height(), zIndex);
-        if (overlapsAny(x, y, existing)) throw validation(ApiMessage.of("api.canvas-service.there-are-no-available-locations-near-the-additional-results"));
+        OutputPosition position = findOutputPositionBeside(source, source.y(), OUTPUT_WIDTH,
+                OUTPUT_HEIGHT, source.height(), existing);
+        int zIndex = nextOutputZIndex(existing);
+        validateGeometry(position.x(), position.y(), source.width(), source.height(), zIndex);
+        if (overlapsAny(position.x(), position.y(), existing)) throw validation(ApiMessage.of("api.canvas-service.there-are-no-available-locations-near-the-additional-results"));
         CanvasItem item = placement(UUID.randomUUID(), projectId, CanvasItem.SubjectType.ARTIFACT,
-                artifactId, null, derivationTitle(source.title(), Integer.toString(outputIndex + 1)), x, y, source.width(), source.height(), zIndex, source.groupId(), false);
+                artifactId, null, derivationTitle(source.title(), Integer.toString(outputIndex + 1)), position.x(), position.y(), source.width(), source.height(), zIndex, source.groupId(), false);
         if (!canvasItems.create(item)) throw conflict();
         if (source.subjectId().equals(artifactId)) mediaDrafts.initializeFrozenWithinChange(projectId, item.id(), artifact.artifact().kind(), frozenInput);
         else mediaDrafts.initializeWithinChange(projectId, item.id(), false);
@@ -332,22 +335,18 @@ public class CanvasService {
                 && mediaDrafts.get(ownerId, projectId, sourceItemId).version()
                         != expectedSourceDraftVersion) throw conflict();
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
-        BigDecimal x = source.x().add(source.width()).add(OUTPUT_GAP);
-        BigDecimal y = source.y().add(
+        BigDecimal initialY = source.y().add(
                 source.height().add(OUTPUT_GAP).multiply(BigDecimal.valueOf(outputIndex)));
-        for (int attempt = 0; attempt < MAX_OUTPUT_PLACEMENT_ATTEMPTS && overlapsAny(x, y, existing); attempt++) {
-            y = y.add(source.height()).add(OUTPUT_GAP);
-        }
-        if (overlapsAny(x, y, existing)) throw validation(ApiMessage.of("api.canvas-service.there-is-no-available-location-near-the-new-image-node"));
-        validateGeometry(x, y, source.width(), source.height(),
-                Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex).max().orElse(-1) + 1));
-        int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex)
-                .max().orElse(-1) + 1);
+        OutputPosition position = findOutputPositionBeside(source, initialY,
+                OUTPUT_WIDTH, OUTPUT_HEIGHT, source.height(), existing);
+        if (overlapsAny(position.x(), position.y(), existing)) throw validation(ApiMessage.of("api.canvas-service.there-is-no-available-location-near-the-new-image-node"));
+        int zIndex = nextOutputZIndex(existing);
+        validateGeometry(position.x(), position.y(), source.width(), source.height(), zIndex);
         CanvasItem target = placement(targetItemId, projectId,
                 CanvasItem.SubjectType.ARTIFACT, source.subjectId(), source.selectedVersionId(),
                 draftInitialization == MediaOutputDraft.EMPTY
                         ? derivationTitle(source.title(), resultLabel) : source.title(),
-                x, y, source.width(), source.height(), zIndex,
+                position.x(), position.y(), source.width(), source.height(), zIndex,
                 source.groupId(), false);
         if (!canvasItems.create(target)) throw conflict();
         if (draftInitialization == MediaOutputDraft.EMPTY) {
@@ -394,15 +393,13 @@ public class CanvasService {
         String title = derivationTitle(source.title(), resultLabel);
         var audio = artifacts.create(ownerId, projectId, Artifact.Kind.AUDIO, title, null);
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
-        BigDecimal x = source.x().add(source.width()).add(OUTPUT_GAP);
-        BigDecimal y = source.y();
-        for (int attempt = 0; attempt < MAX_OUTPUT_PLACEMENT_ATTEMPTS
-                && overlapsAny(x, y, AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, existing); attempt++) y = y.add(AUDIO_OUTPUT_HEIGHT).add(OUTPUT_GAP);
-        int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex).max().orElse(-1) + 1);
-        validateGeometry(x, y, AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, zIndex);
-        if (overlapsAny(x, y, AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, existing)) throw conflict();
+        OutputPosition position = findOutputPositionBeside(source, source.y(), AUDIO_OUTPUT_WIDTH,
+                AUDIO_OUTPUT_HEIGHT, AUDIO_OUTPUT_HEIGHT, existing);
+        int zIndex = nextOutputZIndex(existing);
+        validateGeometry(position.x(), position.y(), AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, zIndex);
+        if (overlapsAny(position.x(), position.y(), AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, existing)) throw conflict();
         CanvasItem target = placement(UUID.randomUUID(), projectId, CanvasItem.SubjectType.ARTIFACT,
-                audio.artifact().id(), null, title, x, y, AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, zIndex,
+                audio.artifact().id(), null, title, position.x(), position.y(), AUDIO_OUTPUT_WIDTH, AUDIO_OUTPUT_HEIGHT, zIndex,
                 source.groupId(), false);
         if (!canvasItems.create(target)) throw conflict();
         mediaDrafts.initializeWithinChange(projectId, target.id(), false);
@@ -424,48 +421,13 @@ public class CanvasService {
         projects.requireActiveProject(ownerId, projectId);
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
         AgentInstance agent = agents.get(ownerId, projectId, agentId);
-        List<CanvasItem> existing = new ArrayList<>(canvasItems.list(ownerId, projectId));
-        CanvasItem agentCard = existing.stream()
-                .filter(item -> item.subjectType() == CanvasItem.SubjectType.AGENT
-                        && item.subjectId().equals(agentId))
-                .findFirst().orElse(null);
-        BigDecimal baseX = agentCard == null ? new BigDecimal("80")
-                : agentCard.x().add(agentCard.width()).add(new BigDecimal("64"));
-        BigDecimal baseY = agentCard == null ? new BigDecimal("80") : agentCard.y();
-        if (baseX.add(OUTPUT_WIDTH).compareTo(MAX_COORDINATE) > 0) {
-            baseX = new BigDecimal("80");
-        }
-        if (baseY.add(OUTPUT_HEIGHT).compareTo(MAX_COORDINATE) > 0) {
-            baseY = new BigDecimal("80");
-        }
-        BigDecimal x = baseX;
-        BigDecimal y = baseY;
-        boolean found = false;
-        for (int row = 0; row < 100 && !found; row++) {
-            for (int column = 0; column < 3; column++) {
-                BigDecimal candidateX = baseX.add(new BigDecimal(324L * column));
-                BigDecimal candidateY = baseY.add(new BigDecimal(324L * row));
-                if (candidateX.add(OUTPUT_WIDTH).compareTo(MAX_COORDINATE) > 0
-                        || candidateY.add(OUTPUT_HEIGHT).compareTo(MAX_COORDINATE) > 0) {
-                    continue;
-                }
-                if (existing.stream().noneMatch(item -> overlaps(candidateX, candidateY, item))) {
-                    x = candidateX;
-                    y = candidateY;
-                    found = true;
-                    break;
-                }
-            }
-        }
-        if (!found) {
-            throw validation(ApiMessage.of("api.canvas-service.there-is-no-canvas-location-available-in-the-agent-output"));
-        }
-        int zIndex = Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex)
-                .max().orElse(-1) + 1);
+        List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
+        OutputPosition position = findAgentOutputPosition(agentId, existing);
+        int zIndex = nextOutputZIndex(existing);
         CanvasItem placed = placement(UUID.randomUUID(), projectId,
                 CanvasItem.SubjectType.ARTIFACT, artifactId,
                 mediaSelection(artifact), artifact.artifact().title(),
-                x, y, OUTPUT_WIDTH, OUTPUT_HEIGHT, zIndex, agent.outputGroupId(), false);
+                position.x(), position.y(), OUTPUT_WIDTH, OUTPUT_HEIGHT, zIndex, agent.outputGroupId(), false);
         if (!canvasItems.create(placed)) {
             throw new IllegalStateException("Generated CanvasItem id unexpectedly collided");
         }
@@ -533,23 +495,71 @@ public class CanvasService {
     public record OutputPlacements(List<CanvasItem> created,
             List<CanvasItem> alreadyPresent) {}
 
+    /** Searches a vertical strip beside the source; callers retain their own failure precedence. */
+    private OutputPosition findOutputPositionBeside(CanvasItem source, BigDecimal initialY,
+            BigDecimal collisionWidth, BigDecimal collisionHeight, BigDecimal rowHeight,
+            List<CanvasItem> existing) {
+        BigDecimal x = source.x().add(source.width()).add(OUTPUT_GAP);
+        BigDecimal step = rowHeight.add(OUTPUT_GAP);
+        BigDecimal y = initialY;
+        for (int attempt = 0; attempt < MAX_OUTPUT_PLACEMENT_ATTEMPTS
+                && overlapsAny(x, y, collisionWidth, collisionHeight, existing); attempt++) {
+            y = y.add(step);
+        }
+        return new OutputPosition(x, y);
+    }
+
+    /** Finds the first free grid cell without moving any existing card or changing its group. */
+    private OutputPosition findAgentOutputPosition(UUID agentId, List<CanvasItem> existing) {
+        CanvasItem agentCard = existing.stream()
+                .filter(item -> item.subjectType() == CanvasItem.SubjectType.AGENT
+                        && item.subjectId().equals(agentId))
+                .findFirst().orElse(null);
+        BigDecimal baseX = agentCard == null ? DEFAULT_OUTPUT_COORDINATE
+                : agentCard.x().add(agentCard.width()).add(AGENT_OUTPUT_OFFSET);
+        BigDecimal baseY = agentCard == null ? DEFAULT_OUTPUT_COORDINATE : agentCard.y();
+        if (baseX.add(OUTPUT_WIDTH).compareTo(MAX_COORDINATE) > 0) {
+            baseX = DEFAULT_OUTPUT_COORDINATE;
+        }
+        if (baseY.add(OUTPUT_HEIGHT).compareTo(MAX_COORDINATE) > 0) {
+            baseY = DEFAULT_OUTPUT_COORDINATE;
+        }
+        BigDecimal step = OUTPUT_WIDTH.add(OUTPUT_GAP);
+        for (int row = 0; row < MAX_AGENT_OUTPUT_ROWS; row++) {
+            for (int column = 0; column < AGENT_OUTPUT_COLUMNS; column++) {
+                BigDecimal x = baseX.add(step.multiply(BigDecimal.valueOf(column)));
+                BigDecimal y = baseY.add(step.multiply(BigDecimal.valueOf(row)));
+                if (x.add(OUTPUT_WIDTH).compareTo(MAX_COORDINATE) > 0
+                        || y.add(OUTPUT_HEIGHT).compareTo(MAX_COORDINATE) > 0) continue;
+                if (!overlapsAny(x, y, existing)) return new OutputPosition(x, y);
+            }
+        }
+        throw validation(ApiMessage.of("api.canvas-service.there-is-no-canvas-location-available-in-the-agent-output"));
+    }
+
+    private int nextOutputZIndex(List<CanvasItem> existing) {
+        return Math.min(MAX_Z_INDEX, existing.stream().mapToInt(CanvasItem::zIndex)
+                .max().orElse(-1) + 1);
+    }
+
+    private record OutputPosition(BigDecimal x, BigDecimal y) {}
+
     /** 将输出卡片和间距一并计入碰撞检测，避免遮挡已有工作。 */
-    private boolean overlaps(BigDecimal x, BigDecimal y, CanvasItem existing) {
+    private boolean overlaps(BigDecimal x, BigDecimal y, BigDecimal width,
+            BigDecimal height, CanvasItem existing) {
         return x.compareTo(existing.x().add(existing.width()).add(OUTPUT_GAP)) < 0
-                && x.add(OUTPUT_WIDTH).add(OUTPUT_GAP).compareTo(existing.x()) > 0
+                && x.add(width).add(OUTPUT_GAP).compareTo(existing.x()) > 0
                 && y.compareTo(existing.y().add(existing.height()).add(OUTPUT_GAP)) < 0
-                && y.add(OUTPUT_HEIGHT).add(OUTPUT_GAP).compareTo(existing.y()) > 0;
+                && y.add(height).add(OUTPUT_GAP).compareTo(existing.y()) > 0;
     }
 
     private boolean overlapsAny(BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, List<CanvasItem> existing) {
-        return existing.stream().anyMatch(item -> x.compareTo(item.x().add(item.width()).add(OUTPUT_GAP)) < 0
-                && x.add(width).add(OUTPUT_GAP).compareTo(item.x()) > 0
-                && y.compareTo(item.y().add(item.height()).add(OUTPUT_GAP)) < 0
-                && y.add(height).add(OUTPUT_GAP).compareTo(item.y()) > 0);
+        return existing.stream().anyMatch(item -> overlaps(x, y, width, height, item));
     }
 
+    /** Preserve the established 300x300 collision footprint for media and Agent outputs. */
     private boolean overlapsAny(BigDecimal x, BigDecimal y, List<CanvasItem> existing) {
-        return existing.stream().anyMatch(item -> overlaps(x, y, item));
+        return overlapsAny(x, y, OUTPUT_WIDTH, OUTPUT_HEIGHT, existing);
     }
 
     /**

@@ -154,30 +154,28 @@ public final class RunningHubAdapter implements MediaAdapter {
     ProviderResultManifest manifest(JsonNode response, RunningHubDefinition definition, String origin) {
         JsonNode raw = response.path("results");
         if (!raw.isArray() || raw.isEmpty()) throw new RunningHubClient.ProtocolFailure();
-        List<ProviderResultManifest.Result> results = new ArrayList<>();
-        Map<RunningHubDefinition.Output, Integer> counts = new HashMap<>();
-        Set<String> seen = new HashSet<>();
+        var selection = new ResultSelection(definition, origin);
         for (JsonNode item : raw) {
             String url = item.path("url").asText("");
             String nodeId = item.path("nodeId").asText("");
             if (ARCHIVE_TYPE.equalsIgnoreCase(item.path("outputType").asText(""))) {
                 // Once the matching mappings are full, an ancillary ZIP cannot improve
                 // the selection. Do not download it or let its contents reject a ready result.
-                boolean needed = definition.outputs().stream().anyMatch(output ->
-                        (output.nodeId() == null || output.nodeId().equals(nodeId))
-                        && counts.getOrDefault(output, 0) < output.maxCount());
-                if (!needed) continue;
+                if (!selection.needsArchive(nodeId)) continue;
                 RunningHubClient.validateDownload(origin, url);
                 try (var archive = RunningHubResultArchive.open(client.download(origin, url))) {
-                    for (var member : archive.members()) addResult(results, counts, seen, definition, origin, nodeId, member.kind(), url, member.entry());
+                    for (var member : archive.members()) selection.add(nodeId, member.kind(), url, member.entry());
                 }
             } else {
                 var outputKind = RunningHubResultArchive.outputKind(item.path("outputType").asText(""));
                 if (outputKind == null) continue;
-                addResult(results, counts, seen, definition, origin, nodeId, outputKind, url, null);
+                selection.add(nodeId, outputKind, url, null);
             }
         }
-        if (results.stream().noneMatch(ProviderResultManifest.Result::primary)) throw new RunningHubClient.ProtocolFailure();
+        return new ProviderResultManifest(ProviderResultManifest.SCHEMA_VERSION, selection.results(), usage(response));
+    }
+
+    private JsonNode usage(JsonNode response) {
         var usage = mapper.createObjectNode();
         for (String name : USAGE_FIELDS) {
             JsonNode value = response.path("usage").get(name);
@@ -185,24 +183,48 @@ public final class RunningHubAdapter implements MediaAdapter {
             if (normalized != null) usage.set(name, normalized);
         }
         // No inferred currency or total: null remains unknown and GPU time is not media duration.
-        return new ProviderResultManifest(ProviderResultManifest.SCHEMA_VERSION, List.copyOf(results), usage);
+        return usage;
     }
 
-    private void addResult(List<ProviderResultManifest.Result> results, Map<RunningHubDefinition.Output, Integer> counts,
-            Set<String> seen, RunningHubDefinition definition, String origin, String nodeId, RunningHubDefinition.OutputKind kind,
-            String url, ProviderResultManifest.ArchiveEntry entry) {
-        var output = definition.outputs().stream().filter(binding -> binding.kind() == kind
-                && (binding.nodeId() == null || binding.nodeId().equals(nodeId))).findFirst()
-                .orElse(null);
-        // maxCount is a selection cap in provider/member order, not an assertion
-        // about how many files a workflow may produce. Unmapped companions are optional.
-        if (output == null || counts.getOrDefault(output, 0) >= output.maxCount()
-                || results.size() >= RunningHubDefinition.MAX_OUTPUTS) return;
-        if (!seen.add(nodeId + ":" + kind + ":" + url + ":" + (entry == null ? "" : entry.name()))) return;
-        RunningHubClient.validateDownload(origin, url);
-        counts.merge(output, 1, Integer::sum);
-        boolean main = output.primary() && results.stream().noneMatch(ProviderResultManifest.Result::primary);
-        results.add(new ProviderResultManifest.Result(results.size(), nodeId, kind, main, url, entry));
+    /** Direct files and ZIP members share the same ordered selection and per-mapping caps. */
+    private static final class ResultSelection {
+        private final RunningHubDefinition definition;
+        private final String origin;
+        private final List<ProviderResultManifest.Result> results = new ArrayList<>();
+        private final Map<RunningHubDefinition.Output, Integer> counts = new HashMap<>();
+        private final Set<String> seen = new HashSet<>();
+
+        private ResultSelection(RunningHubDefinition definition, String origin) {
+            this.definition = definition;
+            this.origin = origin;
+        }
+
+        private boolean needsArchive(String nodeId) {
+            return definition.outputs().stream().anyMatch(output ->
+                    (output.nodeId() == null || output.nodeId().equals(nodeId))
+                    && counts.getOrDefault(output, 0) < output.maxCount());
+        }
+
+        private void add(String nodeId, RunningHubDefinition.OutputKind kind, String url,
+                ProviderResultManifest.ArchiveEntry entry) {
+            var output = definition.outputs().stream().filter(binding -> binding.kind() == kind
+                    && (binding.nodeId() == null || binding.nodeId().equals(nodeId))).findFirst()
+                    .orElse(null);
+            // maxCount is a selection cap in provider/member order, not an assertion
+            // about how many files a workflow may produce. Unmapped companions are optional.
+            if (output == null || counts.getOrDefault(output, 0) >= output.maxCount()
+                    || results.size() >= RunningHubDefinition.MAX_OUTPUTS) return;
+            if (!seen.add(nodeId + ":" + kind + ":" + url + ":" + (entry == null ? "" : entry.name()))) return;
+            RunningHubClient.validateDownload(origin, url);
+            counts.merge(output, 1, Integer::sum);
+            boolean main = output.primary() && results.stream().noneMatch(ProviderResultManifest.Result::primary);
+            results.add(new ProviderResultManifest.Result(results.size(), nodeId, kind, main, url, entry));
+        }
+
+        private List<ProviderResultManifest.Result> results() {
+            if (results.stream().noneMatch(ProviderResultManifest.Result::primary)) throw new RunningHubClient.ProtocolFailure();
+            return List.copyOf(results);
+        }
     }
 
     /** Real V2 responses also encode usage decimals as strings; currency and totals stay uninferred. */

@@ -21,20 +21,26 @@ import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.provider.application.MediaFunctionService;
 import dev.agenvas.provider.domain.MediaFunction;
+import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.ImageOperation;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.testing.ImageAssetFixture;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import javax.imageio.ImageIO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.annotation.DirtiesContext;
@@ -77,6 +83,7 @@ class ImageFunctionPostgresIT {
     @Autowired ObjectMapper mapper;
     @Autowired WebApplicationContext webContext;
     @Autowired dev.agenvas.usage.application.UsageService usage;
+    @Autowired JdbcClient jdbc;
     private static AdminPrincipal owner;
     @BeforeEach void setup() {
         if (owner == null) owner = identities.setup("synthetic-image-admin", "synthetic-image-password-123");
@@ -149,6 +156,92 @@ class ImageFunctionPostgresIT {
         } finally {
             var current = setting(MediaFunction.IMAGE_UPSCALE);
             functions.update(MediaFunction.IMAGE_UPSCALE, current.version(), previous.capabilityId());
+        }
+    }
+
+    @Test void freezesSmartEditReferencesAndMaskAndReplaysWithoutAnotherAcceptance() throws Exception {
+        var connection = capabilities.createConnection(UUID.randomUUID().toString(),
+                "Synthetic smart editing", "OPENAI", null, "synthetic-smart-edit-key");
+        var capability = capabilities.publishCapability(connection.id(), "Synthetic smart edit",
+                "OPENAI_GPT_IMAGE_2", mapper.createObjectNode());
+        var previous = setting(MediaFunction.IMAGE_SMART_EDIT);
+        functions.update(MediaFunction.IMAGE_SMART_EDIT, previous.version(), capability.id());
+        long functionVersion = previous.version() + 1;
+        var source = source();
+        var firstReference = artifacts.create(owner.userId(), source.project(), Artifact.Kind.IMAGE,
+                "Synthetic first reference", mapper.createObjectNode()
+                        .put("assetId", ImageAssetFixture.archive(assets, owner.userId(), source.project()).toString())
+                        .put("sourceType", "UPLOAD"));
+        var secondReference = artifacts.create(owner.userId(), source.project(), Artifact.Kind.IMAGE,
+                "Synthetic second reference", mapper.createObjectNode()
+                        .put("assetId", ImageAssetFixture.archive(assets, owner.userId(), source.project()).toString())
+                        .put("sourceType", "UPLOAD"));
+        List<UUID> references = List.of(firstReference.resourceDefaultVersion().id(),
+                secondReference.resourceDefaultVersion().id());
+        UUID mask;
+        try (ByteArrayOutputStream encoded = new ByteArrayOutputStream()) {
+            assertThat(ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_ARGB), "png", encoded)).isTrue();
+            mask = assets.archiveImage(owner.userId(), source.project(),
+                    new ByteArrayInputStream(encoded.toByteArray())).id();
+        }
+        ObjectNode parameters = mapper.createObjectNode().put("syntheticUnused", false);
+        Task accepted = null;
+        try {
+            accepted = direct.runImageOperation(owner.userId(), source.project(), source.artifact(),
+                    source.item(), source.version(), 0, ImageOperation.SMART_EDIT, "  change only the hat  ",
+                    functionVersion, 1, references, mask, parameters, "smart-edit-snapshot");
+            var frozenOperation = accepted.input().path("imageOperation");
+            assertThat(frozenOperation.path("instruction").asText()).isEqualTo("change only the hat");
+            assertThat(frozenOperation.path("maskAssetId").asText()).isEqualTo(mask.toString());
+            assertThat(frozenOperation.path("referenceVersionIds")).isEqualTo(mapper.valueToTree(references));
+            assertThat(frozenOperation.path("parameters")).isEqualTo(mapper.createObjectNode());
+            assertThat(accepted.input().path("imageOperationRequest").path("parameters")).isEqualTo(parameters);
+            var mediaInput = accepted.input().path("mediaInput");
+            assertThat(mediaInput.propertyNames()).containsExactly("parentVersionId", "mode", "prompt",
+                    "renderedPrompt", "parameters", "capabilityId", "capabilityVersion", "images", "audios", "mentions");
+            assertThat(mediaInput.path("parameters")).isEqualTo(mapper.readTree("""
+                    {"aspectRatio":"1:1","resolution":"1K","quality":"high",
+                     "transparentBackground":false,"generationCount":1}
+                    """));
+            var images = mediaInput.path("images");
+            assertThat(images.size()).isEqualTo(3);
+            assertThat(List.of(images.get(0).path("versionId").asText(), images.get(1).path("versionId").asText(),
+                    images.get(2).path("versionId").asText())).containsExactly(source.version().toString(),
+                    references.get(0).toString(), references.get(1).toString());
+            assertThat(List.of(images.get(0).path("order").asInt(), images.get(1).path("order").asInt(),
+                    images.get(2).path("order").asInt())).containsExactly(0, 1, 2);
+            assertThat(mediaInput.path("prompt").asText()).isEqualTo(
+                    "Edit the provided image according to this instruction. Preserve all "
+                    + "unmentioned subjects, identity, composition, and visual style. Instruction: change only the hat"
+                    + " Image 1 is the source to edit. Images 2 through 3 are additional visual references; "
+                    + "use only the traits explicitly requested and keep unrelated source content unchanged."
+                    + " Apply the requested change only in the transparent mask-guided area and "
+                    + "preserve every unmasked pixel as closely as possible.");
+            assertThat(mediaInput.path("renderedPrompt")).isEqualTo(mediaInput.path("prompt"));
+            assertThat(accepted.input().path("imageRelayProfileId").isNull()).isTrue();
+            assertThat(accepted.inputHash()).isEqualTo(Sha256.hex(accepted.input().toString()));
+            direct.cancelQueued(owner.userId(), source.project(), accepted.id());
+            functions.update(MediaFunction.IMAGE_SMART_EDIT, functionVersion, null);
+            long eventCount = jdbc.sql("select count(*) from project_event where project_id=:project")
+                    .param("project", source.project()).query(Long.class).single();
+            int ledgerCount = usage.listProject(owner.userId(), source.project()).size();
+            assertThat(direct.runImageOperation(owner.userId(), source.project(), source.artifact(), source.item(),
+                    source.version(), 0, ImageOperation.SMART_EDIT, "change only the hat", functionVersion, 1,
+                    references, mask, parameters, "smart-edit-snapshot").id()).isEqualTo(accepted.id());
+            assertThatThrownBy(() -> direct.runImageOperation(owner.userId(), source.project(), source.artifact(),
+                    source.item(), source.version(), 0, ImageOperation.SMART_EDIT, "change only the hat", functionVersion, 1,
+                    List.of(references.get(1), references.get(0)), mask, parameters, "smart-edit-snapshot"))
+                    .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("DIRECT_MEDIA_CONFLICT");
+            assertThat(canvas.list(owner.userId(), source.project())).hasSize(2);
+            assertThat(jdbc.sql("select count(*) from task where project_id=:project")
+                    .param("project", source.project()).query(Long.class).single()).isEqualTo(1L);
+            assertThat(usage.listProject(owner.userId(), source.project())).hasSize(ledgerCount);
+            assertThat(jdbc.sql("select count(*) from project_event where project_id=:project")
+                    .param("project", source.project()).query(Long.class).single()).isEqualTo(eventCount);
+        } finally {
+            if (accepted != null) direct.cancelQueued(owner.userId(), source.project(), accepted.id());
+            var current = setting(MediaFunction.IMAGE_SMART_EDIT);
+            functions.update(MediaFunction.IMAGE_SMART_EDIT, current.version(), previous.capabilityId());
         }
     }
 

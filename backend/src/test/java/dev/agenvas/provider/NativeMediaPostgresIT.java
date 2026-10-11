@@ -168,7 +168,9 @@ class NativeMediaPostgresIT {
     }
 
     @Test void wanReferencesUsePinnedRelayAndSettleInputPlusActualOutputSeconds() throws Exception {
-        Fixture f = fixture("WAN", "WAN_VIDEO", mapper.createObjectNode(), mapper.createObjectNode(), 4);
+        var settings = mapper.createObjectNode();
+        settings.putObject("defaultParameters").putObject("dynamicValues").put("resolution", "720P");
+        Fixture f = fixture("WAN", "WAN_VIDEO", settings, mapper.createObjectNode(), 4);
         byte[] bytes = video();
         var asset = assets.archiveVideo(owner, f.project(), new java.io.ByteArrayInputStream(bytes));
         var source = artifacts.create(owner, f.project(), Artifact.Kind.VIDEO, "Synthetic reference video",
@@ -190,10 +192,13 @@ class NativeMediaPostgresIT {
         var inputSeconds = java.math.BigDecimal.valueOf(asset.durationMs(), 3);
         assertThat(accepted.input().path("nativeBillableInputSeconds").decimalValue()).isEqualByComparingTo(inputSeconds);
         assertThat(accepted.input().at("/mediaInput/videos/0/relayProfileId").asText()).isEqualTo(relayProfile.toString());
+        assertThat(accepted.input().at("/mediaInput/providerParameters/native/values/resolution").asText()).isEqualTo("720P");
         worker.submitOnce("native-wan-submit"); due(accepted.id()); worker.pollOnce("native-wan-poll");
         assertThat(task(f, accepted.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(new java.math.BigDecimal(ledger(accepted.id()).path("videoSeconds").asText())).isEqualByComparingTo(inputSeconds.multiply(java.math.BigDecimal.valueOf(2)));
-        verify(wan, times(1)).create(any(), any(), any(), any());
+        var request = org.mockito.ArgumentCaptor.forClass(ObjectNode.class);
+        verify(wan, times(1)).create(any(), any(), any(), request.capture());
+        assertThat(request.getValue().at("/parameters/resolution").asText()).isEqualTo("720P");
         verify(wan).query(any(), any(), eq("synthetic-original-key"), eq("wan-original-request"));
         verify(relay).signedMedia(owner, f.project(), asset.id(), relayProfile, dev.agenvas.asset.domain.Asset.MediaKind.VIDEO);
     }

@@ -52,7 +52,11 @@ describe("AutoDL workflow discovery", () => {
         return HttpResponse.json(definition);
       }),
     );
-    const current = mount(); const user = userEvent.setup();
+    const current = mount({ workflowId: "minimax_h3_z0901", videoResolution: "480p", seed: 19,
+      pricingByResolution: { "480p": { amount: "0", currency: "CNY", unit: "SECOND" } },
+      minimumSeconds: 2, maximumSeconds: 10, defaultDurationSeconds: 3,
+      maxReferenceImages: 2, maxReferenceAudios: 1, maxReferenceVideos: 3 });
+    const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "刷新官方工作流目录" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "刷新官方工作流目录" })).toBeEnabled());
     await selectValue(screen.getByRole("combobox", { name: "AutoDL 工作流" }), definition.id);
@@ -61,6 +65,14 @@ describe("AutoDL workflow discovery", () => {
     expect(current().workflowDefinition).toEqual(definition);
     expect(current().videoResolutions).toEqual(["720p", "2160p"]);
     expect(current().videoResolution).toBe("720p");
+    expect(current().pricingByResolution).toBeUndefined();
+    expect(current().seed).toBeUndefined();
+    expect(current().minimumSeconds).toBeUndefined();
+    expect(current().maximumSeconds).toBeUndefined();
+    expect(current().defaultDurationSeconds).toBeUndefined();
+    expect(current().maxReferenceImages).toBeUndefined();
+    expect(current().maxReferenceAudios).toBeUndefined();
+    expect(current().maxReferenceVideos).toBe(3);
   });
   it("keeps the reviewed definition and prices when official discovery fails", async () => {
     server.use(http.post("/api/v1/settings/autodl-workflows/preview", () => HttpResponse.json({ status: 422, code: "AUTODL_WORKFLOW_UNSUPPORTED", detail: "工作流协议不支持" }, { status: 422, headers: { "Content-Type": "application/problem+json" } })));
@@ -86,10 +98,15 @@ describe("AutoDL workflow discovery", () => {
     await waitFor(() => expect(current().workflowDefinition?.id).toBe(definition.id));
   });
   it("allows manual same-protocol targets and exact enums without editing source code", async () => {
-    const current = mount(); const user = userEvent.setup();
+    const initial: Settings = { workflowId: "minimax_h3_z0901", videoResolution: "480p", minimumSeconds: 2,
+      maximumSeconds: 10, defaultDurationSeconds: 3, maxReferenceImages: 0,
+      pricingByResolution: { "480p": { amount: "0", currency: "CNY", unit: "SECOND" } } };
+    const current = mount(initial); const user = userEvent.setup();
     await selectValue(screen.getByRole("combobox", { name: "AutoDL 工作流" }), "custom");
     const id = screen.getByRole("textbox", { name: "工作流 ID" });
     await user.clear(id); await user.type(id, "manual_video_v1");
+    expect(current()).toMatchObject({ workflowId: "manual_video_v1", minimumSeconds: 2, maximumSeconds: 10,
+      defaultDurationSeconds: 3, maxReferenceImages: 0, pricingByResolution: initial.pricingByResolution });
     const enums = screen.getByRole("textbox", { name: "供应商精确分辨率枚举（每行一个）" });
     await user.clear(enums); await user.type(enums, "720p横(1280*720){Enter}720p竖(720*1280){Enter}");
     await user.tab();
@@ -105,5 +122,19 @@ describe("AutoDL workflow discovery", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "读取官方输入定义" })).toBeEnabled());
     expect(current().pricingByResolution).toEqual(initial.pricingByResolution);
     expect(current().videoResolutions).toEqual(["720p"]);
+  });
+  it("removes an unavailable tier and its price when refreshing the same target", async () => {
+    const updated = { ...definition, resolutions: ["720p横(1280*720)"] };
+    server.use(http.post("/api/v1/settings/autodl-workflows/preview", () => HttpResponse.json(updated)));
+    const initial: Settings = { workflowId: definition.id, workflowDefinition: definition,
+      videoResolution: "2160p", videoResolutions: ["720p", "2160p"], minimumSeconds: 2, defaultDurationSeconds: 3,
+      pricingByResolution: { "720p": { amount: "0", currency: "CNY", unit: "SECOND" },
+        "2160p": { amount: "1", currency: "CNY", unit: "SECOND" } } };
+    const current = mount(initial); const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "读取官方输入定义" }));
+    await waitFor(() => expect(current().videoResolutions).toEqual(["720p"]));
+    expect(current()).toEqual({ ...initial, workflowDefinition: updated, videoResolution: "720p", videoResolutions: ["720p"],
+      pricingByResolution: { "720p": initial.pricingByResolution!["720p"] }, seed: undefined });
+    expect(within(screen.getByRole("group", { name: "可选视频分辨率" })).queryByRole("button", { name: "2160p" })).not.toBeInTheDocument();
   });
 });

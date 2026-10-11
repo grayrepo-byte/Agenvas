@@ -12,13 +12,12 @@ import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../shared/ui/primitives/table";
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
 import "./ComfyWorkflowEditor.css";
-import { COMFY_WORKFLOW_DEFAULT_SIDE, COMFY_WORKFLOW_LIMITS as LIMITS, comfyParameterKey, comfyParameterTypes, comfyReferenceCount, comfyWorkflowProblem } from "./comfyWorkflow";
+import { COMFY_FIXED_MAPPING as NO_MAPPING, COMFY_PARAMETER_MAPPING as PARAMETER_MAPPING, COMFY_WORKFLOW_DEFAULT_SIDE,
+  COMFY_WORKFLOW_LIMITS as LIMITS, comfyParameterTypes, comfyReferenceCount, comfyWorkflowProblem, mapComfyInput, type ComfyInputMapping } from "./comfyWorkflow";
 
 type Settings = MediaCapability["settings"];
 type Binding = ComfyUiWorkflowDefinition["bindings"][number];
 type Source = Binding["source"];
-const NO_MAPPING = "FIXED";
-const PARAMETER_MAPPING = "PARAMETER";
 const STEPS = ["import", "mapping", "review"] as const;
 type Step = typeof STEPS[number];
 const TEXT_SOURCES: Source[] = ["PROMPT", "NEGATIVE_PROMPT", "REFERENCE_IMAGE"];
@@ -72,32 +71,12 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
     if (!definition) return;
     onChange({ ...values, comfyWorkflow: { ...definition, ...patch } });
   }
-  function mapInput(inputName: string, sourceName: string) {
+  function mapInput(inputName: string, source: ComfyInputMapping) {
     if (!definition) return;
-    const previousBinding = definition.bindings.find((binding) => binding.nodeId === selectedNode && binding.inputName === inputName);
-    const bindings = definition.bindings.filter((binding) => binding.nodeId !== selectedNode || binding.inputName !== inputName);
-    const parameters = (definition.parameters ?? []).filter((field) => field.nodeId !== selectedNode || field.fieldName !== inputName);
     const previousParameter = definition.parameters?.find((field) => field.nodeId === selectedNode && field.fieldName === inputName);
     if (previousParameter) setParameterErrors((before) => Object.fromEntries(Object.entries(before).filter(([key]) => !key.startsWith(`${previousParameter.key}:`))));
-    if (sourceName === PARAMETER_MAPPING) {
-      const value = node?.inputs[inputName];
-      const type = comfyParameterTypes(value)[0];
-      if (!type || typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return;
-      parameters.push({ key: comfyParameterKey(selectedNode, inputName, parameters), label: inputName,
-        type, nodeId: selectedNode, fieldName: inputName, source: "PARAMETER", defaultValue: value, required: false, advanced: false });
-    } else if (sourceName !== NO_MAPPING) bindings.push({ nodeId: selectedNode, inputName, source: sourceName as Source,
-      ...(sourceName === "REFERENCE_IMAGE" ? { referenceIndex: 0 } : {}) });
-    // The first mapped dimension supplies the common pixel basis; additional targets share it.
-    const dimension = sourceName === "WIDTH" ? "width" : sourceName === "HEIGHT" ? "height" : null;
-    const value = node?.inputs[inputName];
-    const dimensionPatch: Partial<ComfyUiWorkflowDefinition> = {};
-    // Removing the last dimension target also clears an invalid, now unused technical basis.
-    if (previousBinding?.source === "WIDTH" && !bindings.some((binding) => binding.source === "WIDTH")) dimensionPatch.width = COMFY_WORKFLOW_DEFAULT_SIDE;
-    if (previousBinding?.source === "HEIGHT" && !bindings.some((binding) => binding.source === "HEIGHT")) dimensionPatch.height = COMFY_WORKFLOW_DEFAULT_SIDE;
-    if (dimension && typeof value === "number"
-      && !definition.bindings.some((binding) => binding.source === sourceName
-        && (binding.nodeId !== selectedNode || binding.inputName !== inputName))) dimensionPatch[dimension] = value;
-    update({ bindings, ...dimensionPatch, ...(parameters.length || definition.parameters ? { parameters } : {}) });
+    const next = mapComfyInput(definition, selectedNode, inputName, source);
+    if (next) onChange({ ...values, comfyWorkflow: next });
   }
   function parameter(index: number, patch: Partial<RunningHubField>) {
     if (!definition) return;
@@ -164,7 +143,7 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
             return <div key={inputName} className="comfy-input-row">
               <code>{inputName}</code>
               {scalar ? <>
-                <Select aria-label={t("settings.comfy.mappingFor", { "0": inputName })} value={extended ? PARAMETER_MAPPING : binding?.source ?? NO_MAPPING} onChange={(event) => mapInput(inputName, event.target.value)}>
+                <Select aria-label={t("settings.comfy.mappingFor", { "0": inputName })} value={extended ? PARAMETER_MAPPING : binding?.source ?? NO_MAPPING} onChange={(event) => mapInput(inputName, event.target.value as ComfyInputMapping)}>
                   <option value={NO_MAPPING}>{t("settings.comfy.fixed")}</option>
                   <option value={PARAMETER_MAPPING} disabled={!extended && (definition.parameters?.length ?? 0) >= LIMITS.parameters}>{t("settings.comfy.extendedParameters")}</option>
                   {choices.map((choice) => <option key={choice} value={choice} disabled={!binding && definition.bindings.length >= LIMITS.bindings}>{t(SOURCE_KEYS[choice])}</option>)}

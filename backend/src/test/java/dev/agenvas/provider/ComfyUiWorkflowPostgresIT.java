@@ -21,6 +21,7 @@ import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.AgentTurnCommitService;
 import dev.agenvas.llm.application.LlmTurnCheckpointService;
 import dev.agenvas.llm.application.ToolExecutionService;
 import dev.agenvas.llm.application.TrustedToolContext;
@@ -29,7 +30,6 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.run.application.AgentRunService;
-import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.support.CanvasMediaFixture;
 import dev.agenvas.support.ComfyWorkflowFixture;
@@ -118,6 +118,7 @@ class ComfyUiWorkflowPostgresIT {
     @Autowired AgentInstanceService agents;
     @Autowired AgentRunService runs;
     @Autowired LlmTurnCheckpointService checkpoints;
+    @Autowired AgentTurnCommitService turnCommits;
     @Autowired LlmProtocolCodec codec;
     @Autowired ToolExecutionService toolExecutor;
 
@@ -284,15 +285,19 @@ class ComfyUiWorkflowPostgresIT {
 
         var agent = agents.create(owner.userId(), project.id(), "Catalog reader", "Read the published media inputs", List.of());
         var queuedRun = runs.create(owner.userId(), project.id(), agent.id(), "List media inputs", "comfy-catalog-run").run();
-        var run = runs.transition(owner.userId(), project.id(), queuedRun.id(), queuedRun.version(), AgentRun.Status.RUNNING);
+        String modelWorker = "comfy-catalog-worker";
+        Task modelLease = tasks.claimAgentTurns(modelWorker, 1).getFirst();
+        assertThat(modelLease.runId()).isEqualTo(queuedRun.id());
+        var run = turnCommits.start(modelLease, modelWorker);
         int modelVersion = run.policySnapshot().path("modelConfigVersion").asInt();
         String modelSource = run.policySnapshot().path("modelConfigSource").asText();
-        checkpoints.reserve(owner.userId(), project.id(), run.id(), 0, modelVersion, modelSource,
-                codec.request(List.of(new UserMessage("List the media inputs")), List.of()));
+        checkpoints.reserveLeased(owner.userId(), project.id(), run.id(), 0, modelVersion, modelSource,
+                codec.request(List.of(new UserMessage("List the media inputs")), List.of()), modelLease, modelWorker);
+        tasks.startAgentStream(modelLease, modelWorker);
         var response = AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(
                 "comfy-catalog-call", "function", "list_media_capabilities", "{}"))).build();
-        checkpoints.saveResponse(owner.userId(), project.id(), run.id(), 0, modelVersion,
-                codec.response(new ChatResponse(List.of(new Generation(response)))));
+        checkpoints.saveResponseLeased(owner.userId(), project.id(), run.id(), 0, modelVersion,
+                codec.response(new ChatResponse(List.of(new Generation(response)))), modelLease, modelWorker);
         long taskCountBeforeTool = jdbc.sql("select count(*) from task").query(Long.class).single();
         var trusted = new TrustedToolContext(owner.userId(), project.id(), run.id());
         JsonNode toolResult = toolExecutor.execute(trusted, 0, "comfy-catalog-call");

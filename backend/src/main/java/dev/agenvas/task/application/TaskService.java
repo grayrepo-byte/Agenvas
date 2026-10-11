@@ -37,6 +37,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /** 创建带固定输入的任务，并通过租约 epoch 约束 Worker 的每次状态写入。 */
@@ -627,16 +628,7 @@ public class TaskService {
     @Transactional
     public ArtifactService.TaskVersionResult succeedWithArtifacts(Task lease, String workerId,
             List<ArchivedProviderResult> results, JsonNode providerUsage) {
-        if (results == null || results.isEmpty() || results.size() > maximumProviderResults(lease)
-                || results.stream().anyMatch(java.util.Objects::isNull)
-                || results.stream().filter(ArchivedProviderResult::primary).count() != 1) throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid-bf2a2fd8"));
-        for (int index = 0; index < results.size(); index++) {
-            var result = results.get(index);
-            if (result.ordinal() != index || result.kind() == null || result.kind() == Artifact.Kind.TEXT
-                    || result.content() == null || result.primary() && !lease.kind().name().equals(result.kind().name() + "_GENERATION"))
-                throw validation(ApiMessage.of("api.task-service.the-resulting-order-or-media-type-is-invalid"));
-        }
-        JsonNode content = results.stream().filter(ArchivedProviderResult::primary).findFirst().orElseThrow().content();
+        JsonNode content = validateMediaResults(lease, results);
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         Instant now = clock.instant();
         return events.recordChange(ownerId, lease.projectId(), () -> {
@@ -659,82 +651,21 @@ public class TaskService {
             boolean allowTargetSelection = !canceled && !projectArchived && pinnedMediaInputsCurrent(ownerId, lease);
             boolean selectResult = allowTargetSelection
                     && (lease.runId() != null || canvasItemId != null);
-            boolean activeOrUnknown = current.status() == Task.Status.RUNNING
-                    || current.status() == Task.Status.SUBMITTING
-                    || current.status() == Task.Status.WAITING_PROVIDER
-                    || current.status() == Task.Status.UNKNOWN;
-            boolean acknowledgedPoll = current.status() == Task.Status.RUNNING
-                    && current.providerRequestId() != null
-                    && current.providerRequestId().equals(lease.providerRequestId());
-            boolean liveLease = workerId.equals(current.leaseOwner())
-                    && current.leaseUntil() != null
-                    && current.leaseUntil().isAfter(now);
-            if (current.leaseEpoch() != lease.leaseEpoch()
-                    || !activeOrUnknown
-                    || (!canceled && (!acknowledgedPoll
-                            && current.status() != Task.Status.SUBMITTING || !liveLease))) {
-                throw leaseLost();
-            }
+            boolean acknowledgedPoll = requireMediaResultLease(current, lease, workerId, canceled, now);
             if (content == null || !content.path("sourceTaskId").asText("")
                     .equals(lease.id().toString())) {
                 throw validation(ApiMessage.of("api.task-service.the-generated-result-must-identify-the-matching-sourcetaskid"));
             }
             UUID artifactId = target.artifactId();
-            ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
-                    ownerId, lease.projectId(), artifactId, lease.runId(),
-                    target.expectedCurrentVersionId(), target.expectedArtifactVersion(), content,
-                    lease.input().has("mediaInput") ? lease.input().path("mediaInput") : null,
-                    selectResult && canvasItemId == null);
-            if (canvasItemId != null) {
-                canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(),
-                        canvasItemId, artifactId, result.versionId());
-                boolean cardSelected = selectResult && canvas.selectTaskResultWithinChange(
-                        ownerId, lease.projectId(), canvasItemId, artifactId,
-                        target.expectedCurrentVersionId(), result.versionId(),
-                        lease.input().has("resultSelectionEpoch")
-                                ? lease.input().path("resultSelectionEpoch").asLong() : null,
-                        lease.input().has("resultDraftVersion")
-                                ? lease.input().path("resultDraftVersion").asLong() : null);
-                result = new ArtifactService.TaskVersionResult(result.versionId(), cardSelected);
-            }
+            ArtifactService.TaskVersionResult result = archivePrimaryResult(ownerId, lease, target, content, selectResult);
             ObjectNode output = objectMapper.createObjectNode();
             output.put("artifactId", artifactId.toString());
             output.put("artifactVersionId", result.versionId().toString());
             output.put("selected", result.selected());
-            var extraOutputs = output.putArray("additionalResults");
-            int outputIndex = 1;
-            for (ArchivedProviderResult extra : results) {
-                if (extra.primary()) continue;
-                if (!lease.id().toString().equals(extra.content().path("sourceTaskId").asText())) throw validation(ApiMessage.of("api.task-service.extra-results-sourcetaskid-is-invalid"));
-                if (lease.input().has(VideoOperation.SILENT_VIDEO_TARGET) && extra.kind() == Artifact.Kind.VIDEO
-                        && VideoOperation.SILENT_VIDEO_RESULT.equals(extra.content().path("parameters").path("videoOperationOutput").asText())) {
-                    // This output already has a node. Commit its own CAS snapshot, even if the audio node was removed.
-                    JsonNode silent = lease.input().path(VideoOperation.SILENT_VIDEO_TARGET);
-                    UUID silentArtifactId = UUID.fromString(silent.path("artifactId").asText());
-                    UUID silentItemId = UUID.fromString(silent.path("canvasItemId").asText());
-                    UUID parent = UUID.fromString(silent.path("parentVersionId").asText());
-                    var silentVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(),
-                            silentArtifactId, lease.runId(), parent, silent.path("artifactVersion").asLong(),
-                            extra.content(), lease.input().path("mediaInput"), false);
-                    canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(), silentItemId, silentArtifactId, silentVersion.versionId());
-                    boolean silentSelected = allowTargetSelection && canvas.selectTaskResultWithinChange(ownerId, lease.projectId(),
-                            silentItemId, silentArtifactId, parent, silentVersion.versionId(),
-                            silent.path("resultSelectionEpoch").asLong(), silent.path("resultDraftVersion").asLong());
-                    extraOutputs.addObject().put("ordinal", extra.ordinal()).put("artifactId", silentArtifactId.toString())
-                            .put("canvasItemId", silentItemId.toString()).put("artifactVersionId", silentVersion.versionId().toString())
-                            .put("selected", silentSelected);
-                    continue;
-                }
-                Artifact extraArtifact = artifacts.get(ownerId, lease.projectId(), artifactId).artifact();
-                if (extraArtifact.kind() != extra.kind()) extraArtifact = artifacts.createTaskMediaIdentityWithinChange(ownerId, lease.projectId(), extra.kind(), "RunningHub " + extra.kind() + " " + (outputIndex + 1));
-                var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(), lease.runId(), null,
-                        extraArtifact.version(), extra.content(), lease.input().path("mediaInput"), false);
-                var extraCard = canvas.placeTaskMediaOutputWithinChange(ownerId, lease.projectId(), canvasItemId, extraArtifact.id(), outputIndex++, lease.input().path("mediaInput"));
-                if (extraCard != null) canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(), extraCard.id(), extraArtifact.id(), extraVersion.versionId());
-                boolean extraSelected = extraCard != null && !canceled && !projectArchived && canvas.selectTaskResultWithinChange(ownerId, lease.projectId(), extraCard.id(), extraArtifact.id(), null, extraVersion.versionId(), null, null);
-                extraOutputs.addObject().put("ordinal", extra.ordinal()).put("artifactId", extraArtifact.id().toString())
-                        .put("canvasItemId", extraCard == null ? null : extraCard.id().toString()).put("artifactVersionId", extraVersion.versionId().toString()).put("selected", extraSelected);
-            }
+            // New output cards have no previous selection or draft to compare with the pinned input.
+            boolean allowAdditionalSelection = !canceled && !projectArchived;
+            output.set("additionalResults", archiveAdditionalResults(ownerId, lease, target, results,
+                    allowTargetSelection, allowAdditionalSelection));
             if (providerUsage != null) output.set("providerUsage", providerUsage.deepCopy());
             if (canceled) {
                 preserveCanceledResult(lease, workerId, output, now);
@@ -763,18 +694,128 @@ public class TaskService {
                 } else usage.settleMediaTask(ownerId, lease);
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
-            ProjectEventService.EventDraft outcomeEvent = taskEvent(updated, false);
-            ObjectNode payload = (ObjectNode) outcomeEvent.payload();
-            payload.put("artifactId", artifactId.toString());
-            payload.put("artifactVersionId", result.versionId().toString());
-            payload.put("selected", result.selected());
-            payload.put("possibleExternalCost", !MediaAdapterRegistry.localProcessor(
-                    tasks.mediaBinding(lease.id()).map(binding -> binding.adapterId()).orElse(null)));
-            events.append(ownerId, lease.projectId(),
-                    new ProjectEventService.EventDraft("task.status.changed", 1,
-                            lease.id(), updated.version(), payload));
+            appendMediaOutcomeEvent(ownerId, lease, updated, artifactId, result);
             return ProjectEventService.Change.unchanged(result);
         }).value();
+    }
+
+    /** Validate the ordered result contract without assuming that the primary is the first output. */
+    private JsonNode validateMediaResults(Task lease, List<ArchivedProviderResult> results) {
+        if (results == null || results.isEmpty() || results.size() > maximumProviderResults(lease)
+                || results.stream().anyMatch(java.util.Objects::isNull)
+                || results.stream().filter(ArchivedProviderResult::primary).count() != 1) {
+            throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid-bf2a2fd8"));
+        }
+        for (int index = 0; index < results.size(); index++) {
+            var result = results.get(index);
+            if (result.ordinal() != index || result.kind() == null || result.kind() == Artifact.Kind.TEXT
+                    || result.content() == null
+                    || result.primary() && !lease.kind().name().equals(result.kind().name() + "_GENERATION")) {
+                throw validation(ApiMessage.of("api.task-service.the-resulting-order-or-media-type-is-invalid"));
+            }
+        }
+        return results.stream().filter(ArchivedProviderResult::primary).findFirst().orElseThrow().content();
+    }
+
+    /** Canceled late results can outlive the lease, but must still belong to the unreplaced epoch. */
+    private boolean requireMediaResultLease(Task current, Task lease, String workerId,
+            boolean canceled, Instant now) {
+        boolean activeOrUnknown = current.status() == Task.Status.RUNNING
+                || current.status() == Task.Status.SUBMITTING
+                || current.status() == Task.Status.WAITING_PROVIDER
+                || current.status() == Task.Status.UNKNOWN;
+        boolean acknowledgedPoll = current.status() == Task.Status.RUNNING
+                && current.providerRequestId() != null
+                && current.providerRequestId().equals(lease.providerRequestId());
+        boolean liveLease = workerId.equals(current.leaseOwner())
+                && current.leaseUntil() != null
+                && current.leaseUntil().isAfter(now);
+        if (current.leaseEpoch() != lease.leaseEpoch() || !activeOrUnknown) throw leaseLost();
+        if (!canceled && ((!acknowledgedPoll && current.status() != Task.Status.SUBMITTING) || !liveLease)) {
+            throw leaseLost();
+        }
+        return acknowledgedPoll;
+    }
+
+    private ArtifactService.TaskVersionResult archivePrimaryResult(UUID ownerId, Task lease,
+            TaskRepository.ArtifactTarget target, JsonNode content, boolean selectResult) {
+        ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
+                ownerId, lease.projectId(), target.artifactId(), lease.runId(),
+                target.expectedCurrentVersionId(), target.expectedArtifactVersion(), content,
+                lease.input().has("mediaInput") ? lease.input().path("mediaInput") : null,
+                selectResult && target.canvasItemId() == null);
+        if (target.canvasItemId() == null) return result;
+        canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(),
+                target.canvasItemId(), target.artifactId(), result.versionId());
+        boolean cardSelected = selectResult && canvas.selectTaskResultWithinChange(
+                ownerId, lease.projectId(), target.canvasItemId(), target.artifactId(),
+                target.expectedCurrentVersionId(), result.versionId(),
+                lease.input().has("resultSelectionEpoch") ? lease.input().path("resultSelectionEpoch").asLong() : null,
+                lease.input().has("resultDraftVersion") ? lease.input().path("resultDraftVersion").asLong() : null);
+        return new ArtifactService.TaskVersionResult(result.versionId(), cardSelected);
+    }
+
+    /** Ordinary additional outputs consume layout positions; the prebuilt silent-video node does not. */
+    private ArrayNode archiveAdditionalResults(UUID ownerId, Task lease, TaskRepository.ArtifactTarget target,
+            List<ArchivedProviderResult> results, boolean allowTargetSelection, boolean allowAdditionalSelection) {
+        ArrayNode output = objectMapper.createArrayNode();
+        int outputIndex = 1;
+        for (ArchivedProviderResult extra : results) {
+            if (extra.primary()) continue;
+            if (!lease.id().toString().equals(extra.content().path("sourceTaskId").asText())) {
+                throw validation(ApiMessage.of("api.task-service.extra-results-sourcetaskid-is-invalid"));
+            }
+            if (lease.input().has(VideoOperation.SILENT_VIDEO_TARGET) && extra.kind() == Artifact.Kind.VIDEO
+                    && VideoOperation.SILENT_VIDEO_RESULT.equals(extra.content().path("parameters").path("videoOperationOutput").asText())) {
+                output.add(archiveSilentVideoResult(ownerId, lease, extra, allowTargetSelection));
+                continue;
+            }
+            Artifact extraArtifact = artifacts.get(ownerId, lease.projectId(), target.artifactId()).artifact();
+            if (extraArtifact.kind() != extra.kind()) {
+                extraArtifact = artifacts.createTaskMediaIdentityWithinChange(ownerId, lease.projectId(), extra.kind(),
+                        "RunningHub " + extra.kind() + " " + (outputIndex + 1));
+            }
+            var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(), lease.runId(), null,
+                    extraArtifact.version(), extra.content(), lease.input().path("mediaInput"), false);
+            var extraCard = canvas.placeTaskMediaOutputWithinChange(ownerId, lease.projectId(), target.canvasItemId(), extraArtifact.id(),
+                    outputIndex++, lease.input().path("mediaInput"));
+            if (extraCard != null) canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(), extraCard.id(), extraArtifact.id(), extraVersion.versionId());
+            boolean extraSelected = extraCard != null && allowAdditionalSelection && canvas.selectTaskResultWithinChange(
+                    ownerId, lease.projectId(), extraCard.id(), extraArtifact.id(), null, extraVersion.versionId(), null, null);
+            output.addObject().put("ordinal", extra.ordinal()).put("artifactId", extraArtifact.id().toString())
+                    .put("canvasItemId", extraCard == null ? null : extraCard.id().toString())
+                    .put("artifactVersionId", extraVersion.versionId().toString()).put("selected", extraSelected);
+        }
+        return output;
+    }
+
+    /** This output commits its own frozen node CAS, even if the primary audio node was removed. */
+    private ObjectNode archiveSilentVideoResult(UUID ownerId, Task lease, ArchivedProviderResult extra,
+            boolean allowTargetSelection) {
+        JsonNode silent = lease.input().path(VideoOperation.SILENT_VIDEO_TARGET);
+        UUID artifactId = UUID.fromString(silent.path("artifactId").asText());
+        UUID itemId = UUID.fromString(silent.path("canvasItemId").asText());
+        UUID parent = UUID.fromString(silent.path("parentVersionId").asText());
+        var version = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(),
+                artifactId, lease.runId(), parent, silent.path("artifactVersion").asLong(),
+                extra.content(), lease.input().path("mediaInput"), false);
+        canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(), itemId, artifactId, version.versionId());
+        boolean selected = allowTargetSelection && canvas.selectTaskResultWithinChange(ownerId, lease.projectId(),
+                itemId, artifactId, parent, version.versionId(),
+                silent.path("resultSelectionEpoch").asLong(), silent.path("resultDraftVersion").asLong());
+        return objectMapper.createObjectNode().put("ordinal", extra.ordinal()).put("artifactId", artifactId.toString())
+                .put("canvasItemId", itemId.toString()).put("artifactVersionId", version.versionId().toString())
+                .put("selected", selected);
+    }
+
+    private void appendMediaOutcomeEvent(UUID ownerId, Task lease, Task updated, UUID artifactId,
+            ArtifactService.TaskVersionResult result) {
+        ObjectNode payload = (ObjectNode) taskEvent(updated, true).payload();
+        payload.put("artifactId", artifactId.toString());
+        payload.put("artifactVersionId", result.versionId().toString());
+        payload.put("selected", result.selected());
+        events.append(ownerId, lease.projectId(), new ProjectEventService.EventDraft("task.status.changed", 1,
+                lease.id(), updated.version(), payload));
     }
 
     /** Persist model failure feedback and fence the old stream before waiting or abandoning. */

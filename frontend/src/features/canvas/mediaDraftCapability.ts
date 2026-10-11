@@ -2,9 +2,9 @@ import type { Artifact, ImageGenerationParameters, MediaCapability, SaveMediaDra
 import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, MINIMAX_H3_DEFAULT_RESOLUTION } from "../../shared/minimaxH3";
 import { KLING_VIDEO_ADAPTER, KLING_VIDEO_RESOLUTIONS, KLING_VIDEO_DEFAULT_RESOLUTION } from "../../shared/kling";
 import { AUTODL_ADAPTER, publishedAutoDlResolutions, resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
-import type { RunningHubValue } from "./RunningHubForm";
 import { creatorInputMapping } from "../../shared/creatorInputs";
 import { nativeVersionAssignable } from "../../shared/nativeMedia";
+import { isWorkflowMediaField, type WorkflowValue } from "./workflowFields";
 import { promptForMediaInputs } from "./mediaPrompt";
 import { activeWorkflowMediaFields, workflowDefinition, workflowDraftValues } from "./workflowDraft";
 
@@ -20,6 +20,11 @@ type DraftFields = MediaDraftFields;
 type ImageParameters = Required<Omit<ImageGenerationParameters, "speaker" | "speechRate" | "loudnessRate" | "pitchRate" | "dynamicValues" | "videoResolution">>;
 type VideoInputMode = NonNullable<DraftFields["videoInputMode"]>;
 type VideoParameters = { aspectRatio: (typeof VIDEO_ASPECT_RATIO_OPTIONS)[number]; videoResolution?: ImageGenerationParameters["videoResolution"] };
+type CapabilityChangeInput = {
+  kind: Artifact["kind"]; fields: DraftFields; capabilityId: string | null;
+  resolvedCapabilityId: string | undefined; previous?: MediaCapability; next?: MediaCapability;
+};
+type WorkflowDefinition = NonNullable<ReturnType<typeof workflowDefinition>>;
 const inputMediaType = (input: DraftFields["mediaInputs"][number]) => input.role === "AUDIO_REFERENCE" ? "AUDIO"
   : input.role === "VIDEO_REFERENCE" ? "VIDEO" : "IMAGE";
 
@@ -136,95 +141,87 @@ function regularParametersFromDeclaredInputs(kind: Artifact["kind"], fields: Dra
   return parameters;
 }
 
-/** Keeps compatible inputs and calculates one complete change for immediate application. */
-export function planMediaCapabilityChange({ kind, fields, capabilityId, resolvedCapabilityId, previous, next }: {
-  kind: Artifact["kind"]; fields: DraftFields; capabilityId: string | null;
-  resolvedCapabilityId: string | undefined; previous?: MediaCapability; next?: MediaCapability;
-}): { fields: Partial<DraftFields> } {
-  const beforeDefinition = workflowDefinition(previous);
-  const nextDefinition = workflowDefinition(next);
-  if (nextDefinition || beforeDefinition) {
-    if (!nextDefinition) {
-      const parameters = regularParametersFromDeclaredInputs(kind, fields, previous);
-      delete parameters.dynamicValues;
-      const regular = planMediaCapabilityChange({ kind, fields: { ...fields, parameters },
-        capabilityId, resolvedCapabilityId, next }).fields;
-      const retained = regular.mediaInputs ?? fields.mediaInputs;
-      return { fields: { ...regular, parameters: regular.parameters ?? parameters,
-        ...(kind !== "VIDEO" ? { durationSeconds: null } : {}),
-        mediaInputs: retained, ...promptForMediaInputs(fields, retained) } };
-    }
-    const oldValues = workflowDraftValues(previous, fields);
-    const compatible: Record<string, RunningHubValue> = {};
-    if (next?.settings.klingInputs && !beforeDefinition) {
-      const bridged: Record<string, RunningHubValue | undefined> = {
-        aspect_ratio: fields.parameters.aspectRatio === "AUTO" ? undefined : fields.parameters.aspectRatio,
-        resolution: kind === "IMAGE" ? fields.parameters.resolution?.toLowerCase()
-          : fields.parameters.videoResolution === "2160p" ? "4k" : fields.parameters.videoResolution,
-        n: kind === "IMAGE" ? fields.parameters.generationCount : undefined,
-      };
-      for (const candidate of nextDefinition.fields) {
-        const value = bridged[candidate.key];
-        if (value === undefined || candidate.source === "PROMPT" || candidate.source === "DURATION_SECONDS") continue;
-        if (candidate.type === "SELECT" && !candidate.options?.some((option) => option.value === value)) continue;
-        if (typeof value === "number" && ((candidate.minimum != null && value < candidate.minimum)
-            || (candidate.maximum != null && value > candidate.maximum))) continue;
-        compatible[candidate.key] = value;
-      }
-    }
-    if (nextDefinition && beforeDefinition) {
-      const beforeFields = new Map(beforeDefinition.fields.map((field) => [field.key, field]));
-      for (const candidate of nextDefinition.fields) {
-        const before = beforeFields.get(candidate.key);
-        const value = oldValues[candidate.key];
-        if (value === undefined || before?.type !== candidate.type || (before.source ?? "PARAMETER") !== (candidate.source ?? "PARAMETER")
-          || creatorInputMapping(before) !== creatorInputMapping(candidate)) continue;
-        if (typeof value === "number" && !((candidate.minimum == null || value >= candidate.minimum)
-          && (candidate.maximum == null || value <= candidate.maximum))) continue;
-        if (candidate.type === "SELECT" && !candidate.options?.some((option) => option.value === value)) continue;
-        if (candidate.type === "STRING" && typeof value === "string" && candidate.maxLength != null
-            && [...value].length > candidate.maxLength) continue;
-        compatible[candidate.key] = value;
-      }
-    }
-    const slots = activeWorkflowMediaFields(nextDefinition, compatible, fields.prompt, fields.durationSeconds);
-    // Preserve exact compatible assignments, respecting native reuse declarations, then
-    // move remaining references into active slots by media type and published order.
-    const nativeAssignments: Record<string, RunningHubValue> = {};
-    for (const slot of nextDefinition.fields.filter((field) => ["IMAGE", "AUDIO", "VIDEO"].includes(field.type))) {
-      if (!slots.includes(slot) || !fields.mediaInputs.some((input) =>
-        input.versionId === compatible[slot.key] && inputMediaType(input) === slot.type)) delete compatible[slot.key];
-      const value = compatible[slot.key];
-      if (next?.settings.nativeInputs && typeof value === "string") {
-        if (!nativeVersionAssignable(next, nativeAssignments, slot.key, value)) delete compatible[slot.key];
-        else nativeAssignments[slot.key] = value;
-      }
-    }
-    const used = new Set(slots.map((slot) => compatible[slot.key]).filter((value) => typeof value === "string"));
-    for (const input of fields.mediaInputs) {
-      if (used.has(input.versionId)) continue;
-      const slot = slots.find((slot) => slot.type === inputMediaType(input) && compatible[slot.key] === undefined);
-      if (!slot) continue;
-      compatible[slot.key] = input.versionId;
-      used.add(input.versionId);
-    }
-    const retained = fields.mediaInputs.filter((input) => used.has(input.versionId)).map((input) => ({ ...input,
-      role: inputMediaType(input) === "IMAGE" ? "REFERENCE" as const : input.role }));
-    return { fields: { capabilityId: resolvedCapabilityId ?? null,
-      parameters: { ...(next?.settings.comfyInputs
-        ? kind === "IMAGE" ? normalizedImageParameters(fields.parameters, next) : normalizedVideoParameters(fields.parameters, next)
-        : {}), dynamicValues: compatible },
-      mediaInputs: retained, ...promptForMediaInputs(fields, retained),
-      durationSeconds: nextDefinition.fields.some((field) => field.source === "DURATION_SECONDS") ? fields.durationSeconds : null,
-      ...(kind === "VIDEO" ? { videoInputMode: next?.settings.klingInputs || next?.settings.nativeInputs || retained.length ? "GENERAL_REFERENCE" : "TEXT" } : {}) } };
+/** A saved scalar is reusable only when it still targets the same published input. */
+function compatibleWorkflowValues(beforeDefinition: WorkflowDefinition | undefined,
+  nextDefinition: WorkflowDefinition, oldValues: Record<string, WorkflowValue>): Record<string, WorkflowValue> {
+  const compatible: Record<string, WorkflowValue> = {};
+  if (!beforeDefinition) return compatible;
+  const beforeFields = new Map(beforeDefinition.fields.map((field) => [field.key, field]));
+  for (const candidate of nextDefinition.fields) {
+    const before = beforeFields.get(candidate.key);
+    const value = oldValues[candidate.key];
+    if (value === undefined || before?.type !== candidate.type || (before.source ?? "PARAMETER") !== (candidate.source ?? "PARAMETER")
+      || creatorInputMapping(before) !== creatorInputMapping(candidate)) continue;
+    if (typeof value === "number" && !((candidate.minimum == null || value >= candidate.minimum)
+      && (candidate.maximum == null || value <= candidate.maximum))) continue;
+    if (candidate.type === "SELECT" && !candidate.options?.some((option) => option.value === value)) continue;
+    if (candidate.type === "STRING" && typeof value === "string" && candidate.maxLength != null
+      && [...value].length > candidate.maxLength) continue;
+    compatible[candidate.key] = value;
   }
+  return compatible;
+}
+
+function fieldsForWorkflowCapability({ kind, fields, resolvedCapabilityId, previous, next }: CapabilityChangeInput,
+  nextDefinition: WorkflowDefinition): Partial<DraftFields> {
+  const beforeDefinition = workflowDefinition(previous);
+  const compatible = compatibleWorkflowValues(beforeDefinition, nextDefinition, workflowDraftValues(previous, fields));
+  if (next?.settings.klingInputs && !beforeDefinition) {
+    const bridged: Record<string, WorkflowValue | undefined> = {
+      aspect_ratio: fields.parameters.aspectRatio === "AUTO" ? undefined : fields.parameters.aspectRatio,
+      resolution: kind === "IMAGE" ? fields.parameters.resolution?.toLowerCase()
+        : fields.parameters.videoResolution === "2160p" ? "4k" : fields.parameters.videoResolution,
+      n: kind === "IMAGE" ? fields.parameters.generationCount : undefined,
+    };
+    for (const candidate of nextDefinition.fields) {
+      const value = bridged[candidate.key];
+      if (value === undefined || candidate.source === "PROMPT" || candidate.source === "DURATION_SECONDS") continue;
+      if (candidate.type === "SELECT" && !candidate.options?.some((option) => option.value === value)) continue;
+      if (typeof value === "number" && ((candidate.minimum != null && value < candidate.minimum)
+        || (candidate.maximum != null && value > candidate.maximum))) continue;
+      compatible[candidate.key] = value;
+    }
+  }
+  const slots = activeWorkflowMediaFields(nextDefinition, compatible, fields.prompt, fields.durationSeconds);
+  // Preserve exact compatible assignments, respecting native reuse declarations, then
+  // move remaining references into active slots by media type and published order.
+  const nativeAssignments: Record<string, WorkflowValue> = {};
+  for (const slot of nextDefinition.fields.filter(isWorkflowMediaField)) {
+    if (!slots.includes(slot) || !fields.mediaInputs.some((input) =>
+      input.versionId === compatible[slot.key] && inputMediaType(input) === slot.type)) delete compatible[slot.key];
+    const value = compatible[slot.key];
+    if (next?.settings.nativeInputs && typeof value === "string") {
+      if (!nativeVersionAssignable(next, nativeAssignments, slot.key, value)) delete compatible[slot.key];
+      else nativeAssignments[slot.key] = value;
+    }
+  }
+  const used = new Set(slots.map((slot) => compatible[slot.key]).filter((value) => typeof value === "string"));
+  for (const input of fields.mediaInputs) {
+    if (used.has(input.versionId)) continue;
+    const slot = slots.find((slot) => slot.type === inputMediaType(input) && compatible[slot.key] === undefined);
+    if (!slot) continue;
+    compatible[slot.key] = input.versionId;
+    used.add(input.versionId);
+  }
+  const retained = fields.mediaInputs.filter((input) => used.has(input.versionId)).map((input) => ({ ...input,
+    role: inputMediaType(input) === "IMAGE" ? "REFERENCE" as const : input.role }));
+  return { capabilityId: resolvedCapabilityId ?? null,
+    parameters: { ...(next?.settings.comfyInputs
+      ? kind === "IMAGE" ? normalizedImageParameters(fields.parameters, next) : normalizedVideoParameters(fields.parameters, next)
+      : {}), dynamicValues: compatible },
+    mediaInputs: retained, ...promptForMediaInputs(fields, retained),
+    durationSeconds: nextDefinition.fields.some((field) => field.source === "DURATION_SECONDS") ? fields.durationSeconds : null,
+    ...(kind === "VIDEO" ? { videoInputMode: next?.settings.klingInputs || next?.settings.nativeInputs || retained.length ? "GENERAL_REFERENCE" : "TEXT" } : {}) };
+}
+
+function fieldsForRegularCapability({ kind, fields, capabilityId, next }: CapabilityChangeInput): Partial<DraftFields> {
   if (kind === "IMAGE") {
     const parameters = normalizedImageParameters(fields.parameters, next);
-    return { fields: { capabilityId, parameters,
-      ...changedRegularInputs(fields, inputsForRegularCapability(kind, fields, next)) } };
+    return { capabilityId, parameters,
+      ...changedRegularInputs(fields, inputsForRegularCapability(kind, fields, next)) };
   }
-  if (kind !== "VIDEO") return { fields: { capabilityId,
-    ...changedRegularInputs(fields, inputsForRegularCapability(kind, fields, next)) } };
+  if (kind !== "VIDEO") return { capabilityId,
+    ...changedRegularInputs(fields, inputsForRegularCapability(kind, fields, next)) };
 
   const videoInputMode = !fields.videoInputMode || !next?.supportedVideoInputModes.includes(fields.videoInputMode)
     || fields.mediaInputs.length > 0 && fields.videoInputMode === "TEXT"
@@ -242,6 +239,26 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
     else if (next?.adapterId === KLING_VIDEO_ADAPTER) parameters.videoResolution = next.settings.defaultParameters?.videoResolution ?? KLING_VIDEO_DEFAULT_RESOLUTION;
     else delete parameters.videoResolution;
   }
-  return { fields: { capabilityId, parameters, videoInputMode, mediaInputs,
-    ...promptForMediaInputs(fields, mediaInputs) } };
+  return { capabilityId, parameters, videoInputMode, mediaInputs,
+    ...promptForMediaInputs(fields, mediaInputs) };
+}
+
+/** Leaving a workflow discards its dynamic mappings, then applies the regular model's input rules. */
+function fieldsAfterWorkflow(change: CapabilityChangeInput): Partial<DraftFields> {
+  const { kind, fields } = change;
+  const parameters = regularParametersFromDeclaredInputs(kind, fields, change.previous);
+  delete parameters.dynamicValues;
+  const regular = fieldsForRegularCapability({ ...change, fields: { ...fields, parameters } });
+  const retained = regular.mediaInputs ?? fields.mediaInputs;
+  return { ...regular, parameters: regular.parameters ?? parameters,
+    ...(kind !== "VIDEO" ? { durationSeconds: null } : {}),
+    mediaInputs: retained, ...promptForMediaInputs(fields, retained) };
+}
+
+/** Explicit switches produce one atomic field change; background capability updates never use it. */
+export function planMediaCapabilityChange(change: CapabilityChangeInput): { fields: Partial<DraftFields> } {
+  const nextDefinition = workflowDefinition(change.next);
+  if (nextDefinition) return { fields: fieldsForWorkflowCapability(change, nextDefinition) };
+  if (workflowDefinition(change.previous)) return { fields: fieldsAfterWorkflow(change) };
+  return { fields: fieldsForRegularCapability(change) };
 }

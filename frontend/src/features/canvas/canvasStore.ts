@@ -3,7 +3,7 @@ import type { ImageGenerationParameters, SaveMediaDraftRequest } from "../../sha
 
 export type MediaDraftRecovery = { request: SaveMediaDraftRequest; saving: boolean; error: Error | null };
 
-type LayoutDraft = {
+export type LayoutDraft = {
   x?: number;
   y?: number;
   width?: number;
@@ -29,6 +29,8 @@ type CanvasInteractionState = {
   clearMediaDraftRecovery: (key: string) => void;
   updateDraft: (itemId: string, patch: LayoutDraft) => void;
   clearDraft: (itemId: string) => void;
+  /** A response acknowledges only the draft captured for that request, never a later edit. */
+  clearDraftIfUnchanged: (itemId: string, submitted: LayoutDraft | undefined) => void;
   setSelectedIds: (itemIds: string[], mode?: CanvasSelectionMode) => void;
   setSaveState: (saveState: SaveState) => void;
 };
@@ -71,6 +73,12 @@ export const useCanvasStore = create<CanvasInteractionState>((set) => ({
       void ignored;
       return { drafts: remaining };
     }),
+  clearDraftIfUnchanged: (itemId, submitted) => set((state) => {
+    if (!submitted || state.drafts[itemId] !== submitted) return state;
+    const { [itemId]: ignored, ...remaining } = state.drafts;
+    void ignored;
+    return { drafts: remaining };
+  }),
   setSelectedIds: (selectedIds, mode) =>
     set((state) => {
       const selectionMode = selectedIds.length > 1 ? CANVAS_SELECTION_MODE.MULTIPLE

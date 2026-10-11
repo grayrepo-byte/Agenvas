@@ -12,6 +12,7 @@ import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.AgentTurnCommitService;
 import dev.agenvas.llm.application.LlmTurnCheckpointService;
 import dev.agenvas.llm.application.ToolExecutionService;
 import dev.agenvas.llm.application.ToolRegistry;
@@ -21,6 +22,8 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.domain.Task;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -63,6 +66,8 @@ class ToolAuthorityPostgresIT {
     @Autowired private AgentInstanceService agents;
     @Autowired private AgentRunService runs;
     @Autowired private LlmTurnCheckpointService checkpoints;
+    @Autowired private AgentTurnCommitService turnCommits;
+    @Autowired private TaskService tasks;
     @Autowired private LlmProtocolCodec codec;
     @Autowired private ToolRegistry registry;
     @Autowired private ToolExecutionService executor;
@@ -80,8 +85,10 @@ class ToolAuthorityPostgresIT {
                         brief.resourceDefaultVersion().id())));
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                 "Draft one text", "authority-run").run();
-        AgentRun running = runs.transition(owner.userId(), project.id(), queued.id(),
-                queued.version(), AgentRun.Status.RUNNING);
+        String workerId = "tool-authority-worker";
+        Task lease = tasks.claimAgentTurns(workerId, 1).getFirst();
+        assertThat(lease.runId()).isEqualTo(queued.id());
+        AgentRun running = turnCommits.start(lease, workerId);
         TrustedToolContext trusted = new TrustedToolContext(owner.userId(), project.id(),
                 running.id());
         ObjectNode validDraft = draft(brief);
@@ -103,14 +110,16 @@ class ToolAuthorityPostgresIT {
                 "create_text", validDraft.toString()));
         int configVersion = running.policySnapshot().path("modelConfigVersion").asInt();
         String configSource = running.policySnapshot().path("modelConfigSource").asText();
-        checkpoints.reserve(owner.userId(), project.id(), running.id(), 0,
+        checkpoints.reserveLeased(owner.userId(), project.id(), running.id(), 0,
                 configVersion, configSource,
                 codec.request(List.of(new UserMessage("Draft one text")),
-                        registry.modelDefinitions(running.policySnapshot())));
+                        registry.modelDefinitions(running.policySnapshot())), lease, workerId);
+        tasks.startAgentStream(lease, workerId);
         AssistantMessage response = AssistantMessage.builder().content("")
                 .toolCalls(calls).build();
-        checkpoints.saveResponse(owner.userId(), project.id(), running.id(), 0,
-                configVersion, codec.response(new ChatResponse(List.of(new Generation(response)))));
+        checkpoints.saveResponseLeased(owner.userId(), project.id(), running.id(), 0,
+                configVersion, codec.response(new ChatResponse(List.of(new Generation(response)))),
+                lease, workerId);
 
         for (String field : List.of("ownerId", "userId", "projectId", "approved", "budget",
                 "maxModelTurns", "maxToolExecutions")) {

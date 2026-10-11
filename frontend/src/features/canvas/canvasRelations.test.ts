@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CanvasConnection, CanvasItem } from "../../shared/api/client";
-import { canvasItemVersion, canvasItemVersionId, type VersionedArtifact } from "./versionedArtifact";
+import { canvasItemVersionId, type VersionedArtifact } from "./versionedArtifact";
 import { agentImageConnection, canvasRelationRemoval, canvasTargetHandleId, inputBindingsAfterConnect,
   inputConnectionUpdate, isCanvasConnectionValid, mediaInputConnection, projectCanvasRelations } from "./canvasRelations";
 
@@ -92,14 +92,12 @@ describe("canvas relation projection", () => {
     target.artifact!.kind = "VIDEO";
     const agent = agentCard("selected-audio-version");
     expect(canvasItemVersionId(source)).toBe("selected-audio-version");
-    expect(canvasItemVersion(source)?.id).toBe("selected-audio-version");
     expect(inputBindingsAfterConnect(source, agent)).toEqual([{ artifactId: "artifact-a", selectedVersionId: "selected-audio-version" }]);
     expect(mediaInputConnection([source, target], { source: source.id, target: target.id,
       sourceHandle: "artifact-output", targetHandle: "artifact-input" })).toMatchObject({ sourceVersionId: "selected-audio-version" });
     expect(projectCanvasRelations([source, agent])[0]?.className).not.toContain("historical");
     source.selectedVersionId = null; source.selectedVersion = null;
     expect(canvasItemVersionId(source)).toBeNull();
-    expect(canvasItemVersion(source)).toBeNull();
     expect(inputBindingsAfterConnect(source, agent)).toBeNull();
   });
 

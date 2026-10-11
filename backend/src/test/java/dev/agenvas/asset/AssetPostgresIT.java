@@ -117,10 +117,7 @@ class AssetPostgresIT {
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId "
                         + "and type = 'asset.ready'")
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(1);
-        AssetService.ThumbnailFile preview = assets.getThumbnail(owner.userId(),
-                project.id(), id);
-        assertThat(preview.asset().thumbnailByteSize()).isGreaterThan(0);
-        assertThat(ImageIO.read(preview.path().toFile()).getWidth()).isEqualTo(3);
+        assertThat(readThumbnail(owner.userId(), project.id(), id).getWidth()).isEqualTo(3);
 
         MvcResult thumbnail = mvc.perform(get(path + "/" + id + "/thumbnail")
                         .with(authentication(asUser(owner))))
@@ -168,8 +165,7 @@ class AssetPostgresIT {
                 .param("projectId", project.id()).query(Integer.class).single()).isEqualTo(1);
         Asset larger = assets.archiveImage(owner.userId(), project.id(),
                 new ByteArrayInputStream(imagePng(1000, 500)));
-        BufferedImage scaled = ImageIO.read(assets.getThumbnail(owner.userId(), project.id(),
-                larger.id()).path().toFile());
+        BufferedImage scaled = readThumbnail(owner.userId(), project.id(), larger.id());
         assertThat(scaled.getWidth()).isEqualTo(480);
         assertThat(scaled.getHeight()).isEqualTo(240);
         assertThatThrownBy(() -> storage.checkedPath("../escape.png"))
@@ -308,8 +304,7 @@ class AssetPostgresIT {
         assertThat(file.asset().contentType()).isEqualTo("image/webp");
         assertThat(file.path().getFileName().toString()).endsWith(".webp");
         assertThat(Files.readAllBytes(file.path())).containsExactly(webp);
-        assertThat(ImageIO.read(assets.getThumbnail(owner.userId(), project.id(), id)
-                .path().toFile())).isNotNull();
+        assertThat(readThumbnail(owner.userId(), project.id(), id)).isNotNull();
         MvcResult content = mvc.perform(get(path + "/" + id + "/content")
                         .with(authentication(asUser(owner))))
                 .andExpect(status().isOk()).andReturn();
@@ -386,8 +381,7 @@ class AssetPostgresIT {
         assertThat(recovered.id()).isEqualTo(assetId);
         assertThat(recovered.sha256()).isEqualTo(staged.sha256());
         assertThat(downloads).hasValue(0);
-        assertThat(ImageIO.read(assets.getThumbnail(owner.userId(), project.id(), assetId)
-                .path().toFile())).isNotNull();
+        assertThat(readThumbnail(owner.userId(), project.id(), assetId)).isNotNull();
         Asset replay = assets.archiveTaskImage(owner.userId(), project.id(), taskId,
                 () -> {
                     downloads.incrementAndGet();
@@ -457,8 +451,7 @@ class AssetPostgresIT {
                     Files.newInputStream(video));
             assertThat(archived.contentType()).isEqualTo("video/mp4");
             assertThat(archived.durationMs()).isEqualTo(1_000);
-            assertThat(ImageIO.read(assets.getThumbnail(owner.userId(), project.id(),
-                    archived.id()).path().toFile())).isNotNull();
+            assertThat(readThumbnail(owner.userId(), project.id(), archived.id())).isNotNull();
             String path = "/api/v1/projects/" + project.id() + "/assets/" + archived.id();
             MvcResult metadata = mvc.perform(get(path).with(authentication(asUser(owner))))
                     .andExpect(status().isOk()).andReturn();
@@ -512,8 +505,7 @@ class AssetPostgresIT {
         assertThat(recovered.id()).isEqualTo(assetId);
         assertThat(recovered.sha256()).isEqualTo(staged.sha256());
         assertThat(downloads).hasValue(0);
-        assertThat(ImageIO.read(assets.getThumbnail(owner.userId(), project.id(), assetId)
-                .path().toFile())).isNotNull();
+        assertThat(readThumbnail(owner.userId(), project.id(), assetId)).isNotNull();
         assertThat(assets.archiveTaskVideo(owner.userId(), project.id(), taskId,
                 () -> {
                     downloads.incrementAndGet();
@@ -563,6 +555,17 @@ class AssetPostgresIT {
                         + "and type = 'asset.ready' and aggregate_id = :assetId")
                 .param("projectId", project.id()).param("assetId", assetId)
                 .query(Integer.class).single()).isEqualTo(1);
+    }
+
+    /** Decode through the same authorized storage descriptor and stream used by the API. */
+    private BufferedImage readThumbnail(UUID ownerId, UUID projectId, UUID assetId)
+            throws IOException {
+        AssetService.AssetContent content = assets.content(ownerId, projectId, assetId, true);
+        assertThat(content.contentType()).isEqualTo("image/png");
+        assertThat(content.size()).isGreaterThan(0);
+        try (var input = assets.open(content, 0, content.size())) {
+            return ImageIO.read(input);
+        }
     }
 
     private static UsernamePasswordAuthenticationToken asUser(AdminPrincipal principal) {

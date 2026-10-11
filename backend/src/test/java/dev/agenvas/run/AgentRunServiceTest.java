@@ -1,6 +1,7 @@
 package dev.agenvas.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -17,6 +18,8 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.*;
 import dev.agenvas.run.domain.AgentConversation;
+import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.skill.application.SkillRunService;
 import java.time.Clock;
@@ -28,9 +31,48 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
-/** Mock application boundaries isolate the real Run-create snapshot path; PostgreSQL is tested separately. */
+/** Mock application boundaries isolate Run snapshots and transition ordering; PostgreSQL is tested separately. */
 class AgentRunServiceTest {
     private static final Instant NOW = Instant.parse("2026-10-03T00:00:00Z");
+
+    @Test void transitionChecksVersionBeforeSameStateReplayOrTerminalStateRules() {
+        UUID owner = UUID.randomUUID(), projectId = UUID.randomUUID(), runId = UUID.randomUUID();
+        var projects = mock(ProjectService.class);
+        var rows = mock(AgentRunRepository.class);
+        var events = mock(ProjectEventService.class);
+        var cancellation = mock(RunTaskCancellation.class);
+        var mapper = new ObjectMapper();
+        var service = new AgentRunService(projects, mock(AgentInstanceService.class),
+                mock(ArtifactService.class), mock(CanvasService.class), rows, events,
+                cancellation, mock(RunTaskCreation.class), mock(ChatGateway.class), mapper,
+                Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), mock(AgentConversationService.class),
+                mock(ConversationMemoryReader.class), mock(SkillRunService.class));
+        var current = new AgentRun(runId, projectId, UUID.randomUUID(), UUID.randomUUID(), 1, owner,
+                AgentRun.Status.CANCELED, "Synthetic canceled run", mapper.createObjectNode(),
+                mapper.createObjectNode(), 1, 0, 7, NOW, NOW, NOW);
+        when(rows.findForUpdate(owner, projectId, runId)).thenReturn(java.util.Optional.of(current));
+        when(events.recordChange(eq(owner), eq(projectId), any())).thenAnswer(call -> {
+            Supplier<ProjectEventService.Change<Object>> mutation = call.getArgument(2);
+            var change = mutation.get();
+            assertThat(change.event()).isNull();
+            return new ProjectEventService.RecordedChange<>(change.value(), null);
+        });
+
+        // Stale versions conflict even for a replay or an otherwise illegal terminal transition.
+        for (var target : List.of(AgentRun.Status.CANCELED, AgentRun.Status.RUNNING)) {
+            assertThatThrownBy(() -> service.transition(owner, projectId, runId, 6, target))
+                    .isInstanceOfSatisfying(ApiProblemException.class,
+                            error -> assertThat(error.code()).isEqualTo("RUN_VERSION_CONFLICT"));
+        }
+        assertThat(service.transition(owner, projectId, runId, 7, AgentRun.Status.CANCELED)).isSameAs(current);
+        assertThatThrownBy(() -> service.transition(owner, projectId, runId, 7, AgentRun.Status.RUNNING))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        error -> assertThat(error.code()).isEqualTo("RUN_STATE_CONFLICT"));
+        verify(rows, never()).updateStatus(any(), any(), any(), anyLong(), any(), any(), any());
+        verify(projects, never()).releaseRunSlot(any(), any(), any());
+        verify(events, never()).append(any(), any(), any());
+        verifyNoInteractions(cancellation);
+    }
 
     @Test void freezesMediaNodeResultsTextVersionsAndEmptyDraftSelections() {
         UUID owner = UUID.randomUUID(), projectId = UUID.randomUUID(), agentId = UUID.randomUUID();

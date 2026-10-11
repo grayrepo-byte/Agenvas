@@ -10,14 +10,18 @@ import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.MediaPlatform;
+import dev.agenvas.provider.domain.ProviderResultManifest;
+import dev.agenvas.provider.domain.RunningHubDefinition.OutputKind;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -119,32 +123,12 @@ public class MediaExecutionWorker {
             switch (result) {
                 case Submission.Pending pending ->
                     tasks.deferProviderPoll(task, workerId, pending.nextActionAt());
-                case Submission.Completed completed -> {
-                    ObjectNode content;
-                    try {
-                        content = archive(attempt, completed.payload());
-                    } catch (RuntimeException archiveFailure) {
-                        String permanent = klingArchiveFailure(binding, archiveFailure);
-                        if (permanent != null) { tasks.blockProviderPoll(task, workerId, permanent); continue; }
-                        tasks.retryProviderPoll(task, workerId,
-                                "PROVIDER_POLL_TECHNICAL_FAILURE");
-                        continue;
-                    }
-                    completeArtifact(attempt, workerId, content);
-                }
+                case Submission.Completed completed ->
+                    finishPolledPayload(attempt, workerId, completed.payload());
                 case Submission.CompletedArtifact completed ->
                     completeArtifact(attempt, workerId, completed.content());
-                case Submission.CompletedResults completed -> {
-                    try {
-                        if (tasks.providerResultManifest(task).isEmpty()) tasks.checkpointProviderResults(task, workerId, completed.manifest());
-                        var results = archiveResults(attempt, adapter, completed.manifest());
-                        tasks.succeedWithArtifacts(task, workerId, withSilentVideo(attempt, results), completed.manifest().usage());
-                    } catch (RuntimeException archiveFailure) {
-                        String permanent = klingArchiveFailure(binding, archiveFailure);
-                        if (permanent != null) tasks.blockProviderPoll(task, workerId, permanent);
-                        else tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
-                    }
-                }
+                case Submission.CompletedResults completed ->
+                    finishPolledManifest(attempt, workerId, adapter, completed.manifest());
                 case Submission.Rejected rejected -> tasks.fail(task, workerId, rejected.code());
                 case Submission.Blocked blocked -> tasks.blockProviderPoll(task, workerId,
                         blocked.code());
@@ -170,6 +154,36 @@ public class MediaExecutionWorker {
         if (failure instanceof dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy.Expired) return "KLING_RESULT_EXPIRED";
         if (failure instanceof dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy.Rejected) return failure.getMessage();
         return null;
+    }
+
+    private void finishPolledPayload(AttemptContext attempt, String workerId, MediaPayload payload) {
+        ObjectNode content;
+        try {
+            content = archive(attempt, payload);
+        } catch (RuntimeException archiveFailure) {
+            String permanent = klingArchiveFailure(attempt.binding(), archiveFailure);
+            if (permanent != null) tasks.blockProviderPoll(attempt.lease(), workerId, permanent);
+            else tasks.retryProviderPoll(attempt.lease(), workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+            return;
+        }
+        // Payload polling retries byte archival, but final Task write failures still propagate.
+        completeArtifact(attempt, workerId, content);
+    }
+
+    private void finishPolledManifest(AttemptContext attempt, String workerId, MediaAdapter adapter,
+            ProviderResultManifest manifest) {
+        Task task = attempt.lease();
+        try {
+            if (tasks.providerResultManifest(task).isEmpty()) {
+                tasks.checkpointProviderResults(task, workerId, manifest);
+            }
+            var results = archiveResults(attempt, adapter, manifest);
+            tasks.succeedWithArtifacts(task, workerId, withSilentVideo(attempt, results), manifest.usage());
+        } catch (RuntimeException archiveFailure) {
+            String permanent = klingArchiveFailure(attempt.binding(), archiveFailure);
+            if (permanent != null) tasks.blockProviderPoll(task, workerId, permanent);
+            else tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+        }
     }
 
     private CallLogService.CallDescriptor descriptor(Task task, MediaCapabilityBinding binding,
@@ -255,19 +269,15 @@ public class MediaExecutionWorker {
     }
 
     private List<TaskService.ArchivedProviderResult> archiveResults(AttemptContext attempt, MediaAdapter adapter,
-            dev.agenvas.provider.domain.ProviderResultManifest manifest) {
+            ProviderResultManifest manifest) {
         List<TaskService.ArchivedProviderResult> archived = new java.util.ArrayList<>();
         try (var downloads = adapter.openResultDownloads(attempt)) {
             for (var result : manifest.results()) {
                 // This is an archive identity, not a new Task or a new provider generation.
                 UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:provider-output:v1:" + attempt.lease().id() + ":" + result.ordinal())
                         .getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                java.util.function.Supplier<java.io.InputStream> input = () -> downloads.download(result).stream();
-                Asset asset = switch (result.kind()) {
-                    case IMAGE -> assets.archiveTaskImage(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
-                    case AUDIO -> assets.archiveTaskAudio(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
-                    case VIDEO -> assets.archiveTaskVideo(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
-                };
+                Supplier<InputStream> input = () -> downloads.download(result).stream();
+                Asset asset = archiveAsset(attempt, archiveId, result.kind(), input);
                 ObjectNode content = resultContent(attempt, asset);
                 content.withObject("parameters").put("providerOutputOrdinal", result.ordinal()).put("providerOutputNodeId", result.nodeId());
                 content.withObject("parameters").set("providerUsage", manifest.usage());
@@ -277,6 +287,15 @@ public class MediaExecutionWorker {
             }
         }
         return List.copyOf(archived);
+    }
+
+    private Asset archiveAsset(AttemptContext attempt, UUID archiveId, OutputKind kind,
+            Supplier<InputStream> input) {
+        return switch (kind) {
+            case IMAGE -> assets.archiveTaskImage(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
+            case AUDIO -> assets.archiveTaskAudio(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
+            case VIDEO -> assets.archiveTaskVideo(attempt.ownerId(), attempt.lease().projectId(), archiveId, input);
+        };
     }
 
     private ObjectNode resultContent(AttemptContext attempt, Asset asset) {
@@ -330,13 +349,9 @@ public class MediaExecutionWorker {
     private ObjectNode archive(AttemptContext attempt, MediaPayload payload) {
         Task task = attempt.lease();
         try (payload) {
-            Asset asset = task.kind() == Task.Kind.IMAGE_GENERATION
-                    ? assets.archiveTaskImage(attempt.ownerId(), task.projectId(), task.id(),
-                            payload::stream)
-                    : task.kind() == Task.Kind.AUDIO_GENERATION
-                        ? assets.archiveTaskAudio(attempt.ownerId(), task.projectId(), task.id(), payload::stream)
-                        : assets.archiveTaskVideo(attempt.ownerId(), task.projectId(), task.id(),
-                            payload::stream);
+            OutputKind kind = task.kind() == Task.Kind.IMAGE_GENERATION ? OutputKind.IMAGE
+                    : task.kind() == Task.Kind.AUDIO_GENERATION ? OutputKind.AUDIO : OutputKind.VIDEO;
+            Asset asset = archiveAsset(attempt, task.id(), kind, payload::stream);
             ObjectNode content = resultContent(attempt, asset);
             addNativeMetadata(attempt, content, payload.providerMetadata());
             return content;

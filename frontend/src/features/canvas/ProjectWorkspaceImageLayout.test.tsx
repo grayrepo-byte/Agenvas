@@ -25,7 +25,8 @@ vi.mock("@xyflow/react", async (importOriginal) => ({
   ReactFlow: ({ nodes = [], onNodeDragStop, onNodesChange, onNodeClick, children }: ReactFlowProps<TestNode>) => <div>
     <button onClick={() => onNodesChange?.(nodes.map((node) =>
       ({ id: node.id, type: "select", selected: false })))}>canvas background</button>
-    {nodes.map((node) => <div key={node.id} data-testid={node.id} style={node.style}>
+    {nodes.map((node) => <div key={node.id} data-testid={node.id} style={node.style}
+      data-position={`${node.position.x},${node.position.y}`}>
       <button onClick={(event) => {
         onNodesChange?.([{ id: node.id, type: "select", selected: true }]);
         onNodeClick?.(event, node);
@@ -35,6 +36,9 @@ vi.mock("@xyflow/react", async (importOriginal) => ({
         [{ ...node, position: { x: 140, y: 180 } }])}>drag {node.id}</button>
       <button onClick={() => node.data.onResizeEnd(node.id,
         { x: 10, y: 30, width: 500, height: 25 })}>resize {node.id}</button>
+      <button onClick={() => onNodesChange?.([{ id: node.id, type: "position",
+        position: { x: 260, y: 320 }, dragging: true }])}>move {node.id}</button>
+      <button onClick={(event) => onNodeDragStop?.(event.nativeEvent, node, [node])}>finish move {node.id}</button>
       <button onClick={() => onNodesChange?.([{ type: "dimensions", id: node.id,
         dimensions: { width: 999, height: 999 } }])}>measure {node.id}</button>
     </div>)}
@@ -292,6 +296,159 @@ describe("workspace media dimensions", () => {
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
   });
 
+  it("keeps a newer move after an older resize acknowledgement and saves it with the returned version", async () => {
+    let finishSave: (() => void) | undefined;
+    saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
+    const { client } = showWorkspace();
+    try {
+      await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
+      await clickControl(screen.getByRole("button", { name: "resize image-card" }));
+      await waitFor(() => expect(commands[0]).toMatchObject({ expectedVersion: 0, width: 500 }));
+      await clickControl(screen.getByRole("button", { name: "move image-card" }));
+      const newerDraft = useCanvasStore.getState().drafts["image-card"];
+      expect(screen.getByTestId("image-card")).toHaveAttribute("data-position", "260,320");
+      finishSave?.();
+      await waitFor(() => expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items[0]?.version).toBe(1));
+      expect(useCanvasStore.getState().drafts["image-card"]).toBe(newerDraft);
+      expect(useCanvasStore.getState().saveState).not.toBe("saved");
+      expect(screen.getByTestId("image-card")).toHaveAttribute("data-position", "260,320");
+      saveGate = null;
+      await clickControl(screen.getByRole("button", { name: "finish move image-card" }));
+      await waitFor(() => expect(commands[0]).toMatchObject({ expectedVersion: 1, x: 260, y: 320, width: 500 }));
+      await waitFor(() => expect(useCanvasStore.getState().drafts["image-card"]).toBeUndefined());
+      expect(useCanvasStore.getState().saveState).toBe("saved");
+    } finally {
+      finishSave?.();
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+    }
+  });
+
+  it("freezes the submitted resize before mutation startup yields to a newer move", async () => {
+    const { client } = showWorkspace();
+    await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
+    // Both gestures run before React Query resumes after awaiting onMutate.
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "resize image-card" }));
+      fireEvent.click(screen.getByRole("button", { name: "move image-card" }));
+    });
+    const newerDraft = useCanvasStore.getState().drafts["image-card"];
+    await waitFor(() => expect(client.isMutating()).toBe(0));
+    expect(commands[0]).toMatchObject({ expectedVersion: 0, x: 10, y: 30, width: 500 });
+    expect(useCanvasStore.getState().drafts["image-card"]).toBe(newerDraft);
+    expect(useCanvasStore.getState().saveState).not.toBe("saved");
+    expect(screen.getByTestId("image-card")).toHaveAttribute("data-position", "260,320");
+  });
+
+  it("keeps a newer conflicted drag when an older successful response arrives and retries against the refreshed version", async () => {
+    let finishSave: (() => void) | undefined;
+    const firstResponse = new Promise<void>((resolve) => { finishSave = resolve; });
+    const submitted: CanvasCommand[][] = [];
+    server.use(http.post("/api/v1/projects/project-1/canvas/commands", async ({ request }) => {
+      const batch = (await request.json() as { commands: CanvasCommand[] }).commands;
+      submitted.push(batch);
+      const command = batch[0];
+      if (!command || command.type !== "UPDATE_LAYOUT") throw new Error("Expected layout update");
+      if (command.expectedVersion !== items[0]?.version) {
+        return HttpResponse.json({ code: "VERSION_CONFLICT", detail: "布局冲突" }, { status: 409 });
+      }
+      items = items.map((item) => ({ ...item, ...command, version: item.version + 1 }));
+      const saved = { items };
+      if (submitted.length === 1) await firstResponse;
+      return HttpResponse.json(saved);
+    }));
+    const { client } = showWorkspace();
+    try {
+      await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
+      await clickControl(screen.getByRole("button", { name: "resize image-card" }));
+      await waitFor(() => expect(submitted).toHaveLength(1));
+      await clickControl(screen.getByRole("button", { name: "drag image-card" }));
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("conflict"));
+      const newerDraft = useCanvasStore.getState().drafts["image-card"];
+      expect(submitted[1]?.[0]).toMatchObject({ expectedVersion: 0, x: 140, y: 180 });
+      // A concurrent server edit is already in the Query projection when the first response arrives.
+      items = items.map((item) => ({ ...item, version: 2, x: 600 }));
+      act(() => client.setQueryData(["canvas", "project-1"], { items }));
+      finishSave?.();
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+      expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items[0])
+        .toMatchObject({ version: 2, x: 600 });
+      expect(useCanvasStore.getState().drafts["image-card"]).toBe(newerDraft);
+      expect(useCanvasStore.getState().saveState).toBe("conflict");
+      expect(submitted).toHaveLength(2);
+      expect(screen.getByTestId("image-card")).toHaveAttribute("data-position", "140,180");
+      await clickControl(screen.getByRole("button", { name: "finish move image-card" }));
+      await waitFor(() => expect(submitted[2]?.[0]).toMatchObject({ expectedVersion: 2, x: 140, y: 180 }));
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+      expect(useCanvasStore.getState().drafts["image-card"]).toBeUndefined();
+    } finally {
+      finishSave?.();
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+    }
+  });
+
+  it("acknowledges an alignment without clearing a newer move of the same selected node", async () => {
+    let finishSave: (() => void) | undefined;
+    saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
+    items = [mediaItem(), { ...mediaItem("second-card"), x: 600 }];
+    const { client } = showWorkspace();
+    try {
+      await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "300px", height: "15px" }));
+      act(() => useCanvasStore.getState().setSelectedIds(["image-card", "second-card"]));
+      await clickControl(screen.getByRole("button", { name: "左对齐" }));
+      await waitFor(() => expect(commands).toHaveLength(2));
+      await clickControl(screen.getByRole("button", { name: "move image-card" }));
+      const newerDraft = useCanvasStore.getState().drafts["image-card"];
+      finishSave?.();
+      await waitFor(() => expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items[0]?.version).toBe(1));
+      expect(useCanvasStore.getState().drafts["image-card"]).toBe(newerDraft);
+      expect(useCanvasStore.getState().drafts["second-card"]).toBeUndefined();
+      expect(useCanvasStore.getState().saveState).not.toBe("saved");
+      expect(screen.getByTestId("image-card")).toHaveAttribute("data-position", "260,320");
+    } finally {
+      finishSave?.();
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+    }
+  });
+
+  it("keeps another node's conflict when an older successful response arrives", async () => {
+    let finishSave: (() => void) | undefined;
+    const firstResponse = new Promise<void>((resolve) => { finishSave = resolve; });
+    const submitted: CanvasCommand[][] = [];
+    items = [mediaItem(), { ...mediaItem("second-card"), x: 600 }];
+    server.use(http.post("/api/v1/projects/project-1/canvas/commands", async ({ request }) => {
+      const batch = (await request.json() as { commands: CanvasCommand[] }).commands;
+      submitted.push(batch);
+      const command = batch[0];
+      if (!command || command.type !== "UPDATE_LAYOUT") throw new Error("Expected layout update");
+      if (command.itemId === "second-card") {
+        return HttpResponse.json({ code: "VERSION_CONFLICT", detail: "布局冲突" }, { status: 409 });
+      }
+      items = items.map((item) => item.id === command.itemId ? { ...item, ...command, version: item.version + 1 } : item);
+      const saved = { items };
+      await firstResponse;
+      return HttpResponse.json(saved);
+    }));
+    const { client } = showWorkspace();
+    try {
+      await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "300px", height: "15px" }));
+      await clickControl(screen.getByRole("button", { name: "resize image-card" }));
+      await waitFor(() => expect(submitted).toHaveLength(1));
+      await clickControl(screen.getByRole("button", { name: "drag second-card" }));
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("conflict"));
+      const failedDraft = useCanvasStore.getState().drafts["second-card"];
+      finishSave?.();
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+      expect(useCanvasStore.getState().drafts["image-card"]).toBeUndefined();
+      expect(useCanvasStore.getState().drafts["second-card"]).toBe(failedDraft);
+      expect(useCanvasStore.getState().saveState).toBe("conflict");
+      expect(submitted).toHaveLength(2);
+      expect(screen.getByTestId("second-card")).toHaveAttribute("data-position", "140,180");
+    } finally {
+      finishSave?.();
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+    }
+  });
+
   it.each(["IMAGE", "VIDEO"] as const)("keeps a failed resize draft and its aspect ratio when CAS rejects the layout (%s)", async (kind) => {
     items = [mediaItem("image-card", "landscape", kind)];
     conflict = true;
@@ -414,7 +571,7 @@ describe("workspace media dimensions", () => {
     let finishSave: (() => void) | undefined;
     saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
     items = [mediaItem(), { ...mediaItem("second-card"), x: 600 }];
-    showWorkspace();
+    const { client } = showWorkspace();
     await waitFor(() => expect(screen.getByTestId("second-card")).toHaveStyle({ width: "300px", height: "15px" }));
     act(() => useCanvasStore.getState().setSelectedIds(["image-card", "second-card"]));
     await clickControl(screen.getByRole("button", { name: "左对齐" }));
@@ -424,7 +581,8 @@ describe("workspace media dimensions", () => {
       useCanvasStore.getState().updateDraft("unrelated-card", { x: 99 });
     });
     finishSave?.();
-    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+    await waitFor(() => expect(client.isMutating()).toBe(0));
+    expect(useCanvasStore.getState().saveState).not.toBe("saved");
     expect(useCanvasStore.getState().drafts).toEqual({ "unrelated-card": { x: 99 } });
   });
 });

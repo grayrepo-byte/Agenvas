@@ -13,25 +13,21 @@ import { Input } from "../../shared/ui/primitives/input";
 import { CreatorNumberInput } from "../../shared/ui/CreatorNumberInput";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../shared/ui/primitives/table";
 import { Textarea } from "../../shared/ui/primitives/textarea";
-import { runningHubFieldValue, type RunningHubChoice, type RunningHubValue } from "./RunningHubForm";
+import { evaluateWorkflowFields, isWorkflowMediaField, workflowFieldValue, workflowNumericBounds,
+  WORKFLOW_DEFAULT_MAX_LENGTH, type WorkflowChoice, type WorkflowValue } from "./workflowFields";
 import { MediaReferenceSourceMenu, type MediaReferenceSource } from "./MediaReferenceSourceMenu";
 import { activeWorkflowMediaFields } from "./workflowDraft";
 import { workflowFieldHint, workflowFieldLabel } from "./workflowFieldPresentation";
 import "./WorkflowDraftControls.css";
 
-const MIN_DURATION_SECONDS = 1;
-const MAX_DURATION_SECONDS = 60;
-const DEFAULT_MAX_LENGTH = 20_000;
-const MEDIA_TYPES = new Set<CreatorInputField["type"]>(["IMAGE", "VIDEO", "AUDIO"]);
-
-export type WorkflowMediaChoice = RunningHubChoice & { thumbnailUrl?: string | null; title?: string };
+export type WorkflowMediaChoice = WorkflowChoice & { thumbnailUrl?: string | null; title?: string };
 type WorkflowValuesProps = {
   definition: CreatorInputDefinition;
-  values: Record<string, RunningHubValue>;
+  values: Record<string, WorkflowValue>;
   prompt: string;
   durationSeconds: number | null | undefined;
   disabled?: boolean;
-  onChange: (key: string, value: RunningHubValue | undefined) => void;
+  onChange: (key: string, value: WorkflowValue | undefined) => void;
 };
 export type WorkflowMediaInputsProps = WorkflowValuesProps & {
   choices: WorkflowMediaChoice[];
@@ -47,13 +43,6 @@ export type WorkflowParametersDialogProps = WorkflowValuesProps & {
   onOpenChange: (open: boolean) => void;
 };
 
-/** Visibility uses the same effective defaults and prompt/duration sources as submission. */
-function activeFields({ definition, values, prompt, durationSeconds }: WorkflowValuesProps) {
-  const effective = Object.fromEntries(definition.fields.map((field) =>
-    [field.key, runningHubFieldValue(field, values, prompt, durationSeconds)]));
-  return definition.fields.filter((field) => !field.enabledWhen || effective[field.enabledWhen.field] === field.enabledWhen.value);
-}
-
 function MediaPreview({ choice, kind }: { choice?: WorkflowMediaChoice; kind: CreatorInputField["type"] }) {
   if (choice?.thumbnailUrl) return <img src={choice.thumbnailUrl} alt="" loading="lazy" />;
   const Icon = kind === "IMAGE" ? ImageIcon : kind === "VIDEO" ? VideoCamera : MusicNotes;
@@ -62,7 +51,7 @@ function MediaPreview({ choice, kind }: { choice?: WorkflowMediaChoice; kind: Cr
 
 function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabled, onChange, onUpload, onBusy, onChooseSource, libraryDisabled, pickerOpen }: {
   index: number;
-  field: CreatorInputField; value: RunningHubValue | undefined; choices: WorkflowMediaChoice[]; canvasChoices: WorkflowMediaChoice[];
+  field: CreatorInputField; value: WorkflowValue | undefined; choices: WorkflowMediaChoice[]; canvasChoices: WorkflowMediaChoice[];
   disabled: boolean; onChange: WorkflowValuesProps["onChange"]; onUpload?: WorkflowMediaInputsProps["onUpload"];
   onBusy: (busy: boolean) => void;
   onChooseSource: WorkflowMediaInputsProps["onChooseSource"]; libraryDisabled?: boolean; pickerOpen?: boolean;
@@ -115,7 +104,7 @@ function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabl
   </Field>;
 }
 
-type WorkflowUploadAttempt = { field: CreatorInputField; file: File; value: RunningHubValue | undefined };
+type WorkflowUploadAttempt = { field: CreatorInputField; file: File; value: WorkflowValue | undefined };
 
 /** A single add entry assigns uploads to the first available slot of their media type. */
 function WorkflowMediaAdd({ fields, emptyFields, props, onBusy }: {
@@ -128,7 +117,7 @@ function WorkflowMediaAdd({ fields, emptyFields, props, onBusy }: {
   latestProps.current = props;
   const fileInput = useRef<HTMLInputElement>(null);
   const labelId = useId();
-  const value = attempt ? runningHubFieldValue(attempt.field, props.values, props.prompt, props.durationSeconds) : undefined;
+  const value = attempt ? workflowFieldValue(attempt.field, props.values, props.prompt, props.durationSeconds) : undefined;
   // Keep the file after a concurrent slot claim or a later removal so it can use a freed slot.
   // A new value selected after failure replaces the retry; closing its picker does not.
   useEffect(() => {
@@ -144,7 +133,7 @@ function WorkflowMediaAdd({ fields, emptyFields, props, onBusy }: {
     try { await props.onUpload(selected.field, selected.file, { requireEmptySlot: true }); setAttempt(null); }
     catch (failure) {
       const current = latestProps.current;
-      setAttempt({ ...selected, value: runningHubFieldValue(selected.field, current.values, current.prompt, current.durationSeconds) });
+      setAttempt({ ...selected, value: workflowFieldValue(selected.field, current.values, current.prompt, current.durationSeconds) });
       setError(failure instanceof Error ? failure.message : t("media.runningHub.uploadFailed"));
     }
     finally { setBusy(false); onBusy(selected.field, false); }
@@ -152,7 +141,7 @@ function WorkflowMediaAdd({ fields, emptyFields, props, onBusy }: {
   function uploadSelection(file: File) {
     const kind = isAudioFile(file) ? "AUDIO" : isVideoFile(file) ? "VIDEO" : "IMAGE";
     const field = emptyFields.find((candidate) => candidate.type === kind);
-    if (field) void upload({ field, file, value: runningHubFieldValue(field, props.values, props.prompt, props.durationSeconds) });
+    if (field) void upload({ field, file, value: workflowFieldValue(field, props.values, props.prompt, props.durationSeconds) });
     else { setAttempt(null); setError(t("media.editor.invalidMixedInputs")); }
   }
   const accept = [...new Set(emptyFields.map((field) => MEDIA_FILE_ACCEPT[field.type as keyof typeof MEDIA_FILE_ACCEPT]))].join(",");
@@ -180,18 +169,18 @@ export function WorkflowMediaInputs(props: WorkflowMediaInputsProps) {
   const fields = activeWorkflowMediaFields(props.definition, props.values, props.prompt, props.durationSeconds);
   if (!fields.length) return null;
   const selectedFields = fields.filter((field) => {
-    const value = runningHubFieldValue(field, props.values, props.prompt, props.durationSeconds);
+    const value = workflowFieldValue(field, props.values, props.prompt, props.durationSeconds);
     return value !== undefined && value !== "";
   });
   const emptyFields = fields.filter((field) => !selectedFields.includes(field));
-  const declaredFields = props.definition.fields.filter((field) => MEDIA_TYPES.has(field.type));
+  const declaredFields = props.definition.fields.filter(isWorkflowMediaField);
   function uploadBusy(field: CreatorInputField, busy: boolean) {
     if (busy) uploads.current.add(field.key); else uploads.current.delete(field.key);
     props.onBusy?.(uploads.current.size > 0);
   }
   function slot(field: CreatorInputField, index: number) {
     return <WorkflowMediaSlot key={field.key} field={field} index={index}
-      value={runningHubFieldValue(field, props.values, props.prompt, props.durationSeconds)} choices={props.choices}
+      value={workflowFieldValue(field, props.values, props.prompt, props.durationSeconds)} choices={props.choices}
       canvasChoices={props.canvasChoices ?? []} disabled={props.disabled ?? false} onChange={props.onChange} onUpload={props.onUpload}
       onChooseSource={props.onChooseSource} libraryDisabled={props.libraryDisabled} pickerOpen={props.pickerOpen}
       onBusy={(busy) => uploadBusy(field, busy)} />;
@@ -204,16 +193,8 @@ export function WorkflowMediaInputs(props: WorkflowMediaInputsProps) {
   </div>;
 }
 
-function numericBounds(field: CreatorInputField) {
-  const duration = field.source === "DURATION_SECONDS";
-  return {
-    minimum: duration ? Math.max(MIN_DURATION_SECONDS, field.minimum ?? MIN_DURATION_SECONDS) : field.minimum ?? undefined,
-    maximum: duration ? Math.min(MAX_DURATION_SECONDS, field.maximum ?? MAX_DURATION_SECONDS) : field.maximum ?? undefined,
-  };
-}
-
 function WorkflowParameterControl({ field, value, disabled, onChange }: {
-  field: CreatorInputField; value: RunningHubValue | undefined; disabled: boolean; onChange: WorkflowValuesProps["onChange"];
+  field: CreatorInputField; value: WorkflowValue | undefined; disabled: boolean; onChange: WorkflowValuesProps["onChange"];
 }) {
   const label = `${workflowFieldLabel(field)}${field.required ? " *" : ""}`;
   const id = useId();
@@ -226,10 +207,10 @@ function WorkflowParameterControl({ field, value, disabled, onChange }: {
     onChange={(event) => onChange(field.key, event.target.value === "" ? undefined : event.target.value === "true")}>
     <option value="">{t("media.runningHub.useDefault")}</option><option value="true">{t("common.enabled")}</option><option value="false">{t("common.close")}</option>
   </Select>;
-  else if (field.type === "STRING") control = <Textarea id={id} rows={2} maxLength={field.maxLength ?? DEFAULT_MAX_LENGTH} disabled={disabled}
+  else if (field.type === "STRING") control = <Textarea id={id} rows={2} maxLength={field.maxLength ?? WORKFLOW_DEFAULT_MAX_LENGTH} disabled={disabled}
     aria-label={label} value={value === undefined ? "" : String(value)} onChange={(event) => onChange(field.key, event.target.value)} />;
   else {
-    const { minimum, maximum } = numericBounds(field);
+    const { minimum, maximum } = workflowNumericBounds(field);
     control = <CreatorNumberInput id={id} min={minimum} max={maximum} step={field.step ?? (field.type === "INTEGER" ? 1 : "any")} disabled={disabled}
       aria-label={label} value={value === undefined ? undefined : Number(value)} onValueChange={(next) => onChange(field.key, next)} />;
   }
@@ -237,8 +218,8 @@ function WorkflowParameterControl({ field, value, disabled, onChange }: {
 }
 
 function parameterConstraints(field: CreatorInputField) {
-  const { minimum, maximum } = numericBounds(field);
-  if (field.type === "STRING") return t("media.workflow.maxLength", { "0": field.maxLength ?? DEFAULT_MAX_LENGTH });
+  const { minimum, maximum } = workflowNumericBounds(field);
+  if (field.type === "STRING") return t("media.workflow.maxLength", { "0": field.maxLength ?? WORKFLOW_DEFAULT_MAX_LENGTH });
   if (field.type === "INTEGER" || field.type === "NUMBER") return [field.type === "INTEGER" ? t("media.workflow.integer") : t("media.workflow.number"),
     minimum !== undefined ? t("media.workflow.minimum", { "0": minimum }) : "",
     maximum !== undefined ? t("media.workflow.maximum", { "0": maximum }) : ""].filter(Boolean).join(" · ");
@@ -248,12 +229,13 @@ function parameterConstraints(field: CreatorInputField) {
 /** Edits persist through the draft's existing onChange path; closing needs no second save. */
 export function WorkflowParameterFields({ disabled = false, ...props }: WorkflowValuesProps) {
   useLocale();
-  const fields = activeFields(props).filter((field) => !MEDIA_TYPES.has(field.type) && field.source !== "PROMPT");
+  const fields = evaluateWorkflowFields(props.definition, props.values, props.prompt, props.durationSeconds)
+    .activeFields.filter((field) => !isWorkflowMediaField(field) && field.source !== "PROMPT");
   return fields.length ? <Table className="workflow-parameters-table"><TableHeader><TableRow>
       <TableHead>{t("media.workflow.parameter")}</TableHead><TableHead>{t("media.workflow.value")}</TableHead><TableHead>{t("media.workflow.constraints")}</TableHead>
     </TableRow></TableHeader><TableBody>{fields.map((field) => <TableRow key={field.key}>
       <TableCell><strong title={workflowFieldHint(field)}>{workflowFieldLabel(field)}{field.required ? " *" : ""}</strong></TableCell>
-      <TableCell><WorkflowParameterControl field={field} value={runningHubFieldValue(field, props.values, props.prompt, props.durationSeconds)}
+      <TableCell><WorkflowParameterControl field={field} value={workflowFieldValue(field, props.values, props.prompt, props.durationSeconds)}
         disabled={disabled} onChange={props.onChange} /></TableCell>
       <TableCell><span>{parameterConstraints(field)}</span>
         {!creatorInputMapping(field) && field.description ? <p className="ui-muted">{field.description}</p> : null}</TableCell>

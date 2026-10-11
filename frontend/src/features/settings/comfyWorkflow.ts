@@ -7,6 +7,10 @@ export const COMFY_WORKFLOW_LIMITS = {
   minimumSide: 8, maximumSide: 4096, fps: 120, frameMultiple: 64, seconds: 30,
   parameters: 64, fieldKeyLength: 64, fieldLabelLength: 160, fieldMaxLength: 20000, options: 100,
 } as const;
+export const COMFY_FIXED_MAPPING = "FIXED";
+export const COMFY_PARAMETER_MAPPING = "PARAMETER";
+export type ComfyInputMapping = ComfyUiWorkflowDefinition["bindings"][number]["source"]
+  | typeof COMFY_FIXED_MAPPING | typeof COMFY_PARAMETER_MAPPING;
 export function isComfyAdapter(adapterId: string) { return adapterId === "COMFY_IMAGE_V1" || adapterId === "COMFY_VIDEO_V1"; }
 
 export function comfyReferenceCount(definition: ComfyUiWorkflowDefinition) {
@@ -29,6 +33,33 @@ export function comfyParameterTypes(value: unknown): RunningHubField["type"][] {
   return typeof value === "string" ? ["STRING", "SELECT"]
     : typeof value === "boolean" ? ["BOOLEAN", "SELECT"]
       : typeof value === "number" ? [...(Number.isInteger(value) ? ["INTEGER" as const] : []), "NUMBER", "SELECT"] : [];
+}
+
+/** Replace one input's exposure without changing graph literals or unrelated mappings. */
+export function mapComfyInput(definition: ComfyUiWorkflowDefinition, nodeId: string, inputName: string,
+    source: ComfyInputMapping): ComfyUiWorkflowDefinition | null {
+  const previousBinding = definition.bindings.find((binding) => binding.nodeId === nodeId && binding.inputName === inputName);
+  const bindings = definition.bindings.filter((binding) => binding.nodeId !== nodeId || binding.inputName !== inputName);
+  const parameters = (definition.parameters ?? []).filter((field) => field.nodeId !== nodeId || field.fieldName !== inputName);
+  const value = definition.graph[nodeId]?.inputs[inputName];
+  if (source === COMFY_PARAMETER_MAPPING) {
+    const type = comfyParameterTypes(value)[0];
+    if (!type || typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return null;
+    parameters.push({ key: comfyParameterKey(nodeId, inputName, parameters), label: inputName,
+      type, nodeId, fieldName: inputName, source: "PARAMETER", defaultValue: value, required: false, advanced: false });
+  } else if (source !== COMFY_FIXED_MAPPING) bindings.push({ nodeId, inputName, source,
+    ...(source === "REFERENCE_IMAGE" ? { referenceIndex: 0 } : {}) });
+
+  const dimension = source === "WIDTH" ? "width" : source === "HEIGHT" ? "height" : null;
+  const dimensionPatch: Partial<ComfyUiWorkflowDefinition> = {};
+  // Removing the last dimension target clears its unused basis; the graph keeps its fixed value.
+  if (previousBinding?.source === "WIDTH" && !bindings.some((binding) => binding.source === "WIDTH")) dimensionPatch.width = COMFY_WORKFLOW_DEFAULT_SIDE;
+  if (previousBinding?.source === "HEIGHT" && !bindings.some((binding) => binding.source === "HEIGHT")) dimensionPatch.height = COMFY_WORKFLOW_DEFAULT_SIDE;
+  // The first target supplies the common basis; additional targets retain the published basis.
+  if (dimension && typeof value === "number"
+      && !definition.bindings.some((binding) => binding.source === source
+        && (binding.nodeId !== nodeId || binding.inputName !== inputName))) dimensionPatch[dimension] = value;
+  return { ...definition, bindings, ...dimensionPatch, ...(parameters.length || definition.parameters ? { parameters } : {}) };
 }
 
 function validParameter(field: RunningHubField, literal: unknown) {

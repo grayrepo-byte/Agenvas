@@ -15,7 +15,7 @@ import { useCallback, useEffect,useId,useLayoutEffect,useRef,useState } from "re
 import {
 HTTP_STATUS,ApiError,assetContentUrl,cancelQueuedDirectMediaTask,createArtifact,getDirectMediaQueueStatus,
 assetThumbnailUrl,
-getMediaDraft,getMediaSettings,getAssetMetadata,
+getMediaSettings,getAssetMetadata,
 listArtifactVersions,listArtifacts,listCanvasItems,listDirectMediaTasks,
 removeMediaDraftMediaInput,
 replaceMediaDraftInputs,
@@ -45,11 +45,11 @@ import { LibraryReferencePicker } from "../library/LibraryReferencePicker";
 import { MediaTemplatePicker } from "../templates/MediaTemplatePicker";
 import { templateDraftChanges, type TemplateApplyOptions } from "../templates/templateApplication";
 import { mediaModelDetails } from "./mediaModelPresentation";
-import { mediaDraftQueryOptions } from "./mediaDisplay";
 import { AudioPromptTools } from "./AudioPromptTools";
 import "./MediaDraftEditor.css";
 import type { CreatorInputField } from "../../shared/creatorInputs";
-import { runningHubErrors,runningHubUsedVersions,runningHubFieldValue,type RunningHubValue } from "./RunningHubForm";
+import { evaluateWorkflowFields, isWorkflowMediaField, workflowValidationErrors, workflowUsedVersions,
+  workflowFieldValue, type WorkflowValue } from "./workflowFields";
 import { WorkflowMediaInputs, WorkflowParametersDialog } from "./WorkflowDraftControls";
 import { MediaReferenceSourceMenu } from "./MediaReferenceSourceMenu";
 import { activeWorkflowMediaFields, workflowDefinition, workflowDraftValues } from "./workflowDraft";
@@ -57,8 +57,7 @@ import { EditorFeedbackRow } from "./EditorFeedbackRow";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { VoiceLibrary } from "./VoiceLibrary";
 import { readContentText } from "./artifactContent";
-import { useCanvasStore } from "./canvasStore";
-import { saveClosedMediaDraft,type PendingMediaDraftSave } from "./mediaDraftCloseSave";
+import { fieldsFromMediaDraft, useMediaDraftSession, useMediaDraftSessionLifecycle } from "./useMediaDraftSession";
 import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard,isMediaTaskRunning } from "./mediaTaskState";
 import { taskErrorDetail } from "./taskErrorMessages";
 import { VOICES } from "./voiceCatalog";
@@ -71,7 +70,6 @@ import { promptForMediaInputs, removePromptReferences } from "./mediaPrompt";
 import { mediaStylesQueryOptions } from "../../shared/mediaStyles";
 import { MediaStylePicker } from "./MediaStylePicker";
 
-const AUTOSAVE_DELAY_MS = 650;
 const MAX_PROMPT_LENGTH = 20000;
 const MAX_AUDIO_PROMPT_LENGTH = 3000;
 const MAX_MEDIA_INPUTS = 14;
@@ -116,18 +114,6 @@ function imageAssetId(content: unknown) {
 function uploadArtifactTitle(file: File) {
   const withoutExtension = file.name.replace(/\.[^.]+$/, "").trim();
   return (withoutExtension || t("media.uploadImage")).slice(0, MAX_ARTIFACT_TITLE_LENGTH);
-}
-
-function fieldsFromDraft(draft: MediaDraft): DraftFields {
-  return {
-    prompt: draft.prompt, parameters: draft.parameters ?? {}, styleId: draft.styleId ?? null,
-    durationSeconds: draft.durationSeconds, capabilityId: draft.capabilityId,
-    videoInputMode: draft.videoInputMode,
-    mediaInputs: (draft.mediaInputs ?? []).map(({ versionId, role, color }) => ({
-      versionId, role, color,
-    })),
-    mentions: draft.mentions ?? [],
-  };
 }
 
 function MediaReferenceThumbnail({ index, color, thumbnailUrl, accessibleLabel, connected, audio = false,
@@ -184,9 +170,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   useLocale();
   const isAudio = artifact.kind === "AUDIO";
   const queryClient = useQueryClient();
-  const draftOptions = mediaDraftQueryOptions(artifact.projectId, canvasItemId);
-  const key = draftOptions.queryKey;
-  const draft = useQuery(draftOptions);
+  const session = useMediaDraftSession(artifact.projectId, canvasItemId);
+  const { draft, queryKey: key, recovery, save, setError } = session;
+  const { fields, expectedVersion, dirty, error } = session.state;
   const resources = useQuery({
     queryKey: ["artifacts", artifact.projectId],
     queryFn: () => listArtifacts(artifact.projectId),
@@ -209,30 +195,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     enabled: latestTask?.status === "READY" && latestTask.runId === null,
     refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS,
   });
-  const [fields, setFields] = useState<DraftFields | null>(null);
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
   const [extendedParametersOpen, setExtendedParametersOpen] = useState(false);
   const [workflowUploading, setWorkflowUploading] = useState(false);
   const workflowUploads = useRef(new Set<string>());
   const styles = useQuery({ ...mediaStylesQueryOptions(), enabled: !isAudio && (stylePickerOpen || Boolean(fields?.styleId)) });
-  const fieldsRef = useRef<DraftFields | null>(null);
-  const ratioDraftKey = `${artifact.projectId}:${canvasItemId}`;
-  const recovery = useCanvasStore((state) => state.mediaDraftRecoveries[ratioDraftKey]);
-  const pendingSaveRef = useRef<PendingMediaDraftSave | undefined>(undefined);
-  const localAspectRatio = fields?.parameters.aspectRatio ?? ASPECT_RATIO_OPTIONS.find((ratio) => ratio !== "AUTO"
-    && ratio === fields?.parameters.dynamicValues?.aspect_ratio);
-  useEffect(() => {
-    if (artifact.kind === "IMAGE" && localAspectRatio !== undefined) {
-      useCanvasStore.getState().setImageRatioDraft(ratioDraftKey, localAspectRatio);
-    } else if (!useCanvasStore.getState().mediaDraftRecoveries[ratioDraftKey]) {
-      useCanvasStore.getState().clearImageRatioDraft(ratioDraftKey);
-    }
-  }, [artifact.kind, localAspectRatio, ratioDraftKey]);
-  const [expectedVersion, setExpectedVersion] = useState<number | null>(null);
-  const expectedVersionRef = useRef<number | null>(null);
-  useLayoutEffect(() => { expectedVersionRef.current = expectedVersion; }, [expectedVersion]);
-  const [dirty, setDirty] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
   const [failedRemovalVersionId, setFailedRemovalVersionId] = useState<string | null>(null);
   const draggedReferenceIndex = useRef<number | null>(null);
   const runIntent = useRef<RunIntent | null>(null);
@@ -255,7 +222,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const [uploading, setUploading] = useState(false);
   const [failedUploads, setFailedUploads] = useState<File[]>([]);
   const [uploadError, setUploadError] = useState<Error | null>(null);
-  const [workflowPickerField, setWorkflowPickerField] = useState<CreatorInputField | null>(null);
+  const [workflowPickerFieldKey, setWorkflowPickerFieldKey] = useState<string | null>(null);
   const [assetSearch, setAssetSearch] = useState("");
   const [assetSelection, setAssetSelection] = useState<string[]>([]);
   const [assetSelectionError, setAssetSelectionError] = useState<Error | null>(null);
@@ -344,49 +311,25 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     };
   }, [popover, libraryBusy]);
 
-  const save = useMutation({
-    mutationFn: (input: SaveMediaDraftRequest) => {
-      if (editorReadOnlyRef.current) throw new Error(t("media.editor.editingLocked"));
-      const result = saveMediaDraft(artifact.projectId, canvasItemId, input);
-      pendingSaveRef.current = { request: input, result };
-      return result;
-    },
-    onMutate: (input) => ({ capabilityChanged: queryClient.getQueryData<MediaDraft>(key)?.capabilityId !== input.capabilityId }),
-    onSuccess: (saved, input, context) => {
-      pendingSaveRef.current = undefined;
-      setExpectedVersion(saved.version);
-      queryClient.setQueryData(key, saved);
-      const latest = fieldsRef.current;
-      const submitted = Object.fromEntries(Object.entries(input)
-        .filter(([name]) => name !== "expectedVersion")) as DraftFields;
-      if (latest && JSON.stringify(latest) === JSON.stringify(submitted)) setDirty(false);
-      setError(null);
-      // A capability switch may remove unmatched connection sources in the save transaction.
-      if (context?.capabilityChanged) void queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] });
-    },
-    onError: (failure) => { pendingSaveRef.current = undefined; setError(failure); },
-  });
   const commitAssetReferences = useMutation({
     mutationFn: ({ request }: AssetReferenceCommit) => {
-      if (editorReadOnlyRef.current) throw new Error(t("media.editor.editingLocked"));
+      if (session.isReadOnly()) throw new Error(t("media.editor.editingLocked"));
       return saveMediaDraft(artifact.projectId, canvasItemId, request);
     },
-    onMutate: () => setAssetSelectionError(null),
+    onMutate: () => {
+      setAssetSelectionError(null);
+      return { finishWrite: session.beginBusinessWrite() };
+    },
     onSuccess: (saved, input) => {
-      const latest = fieldsRef.current;
+      const latest = session.getLatest().fields;
       const changedWhileSaving = latest !== null && latest !== input.fieldsAtStart;
       const next = changedWhileSaving
         ? { ...latest, mediaInputs: input.nextFields.mediaInputs }
         : input.nextFields;
-      fieldsRef.current = next;
-      setFields(next);
-      setExpectedVersion(saved.version);
-      setDirty(changedWhileSaving);
-      setError(null);
+      session.acceptSaved(saved, { fields: next, dirty: changedWhileSaving, error: null });
       setAssetSelection([]);
       setAssetSelectionError(null);
       setPopover(null);
-      queryClient.setQueryData(key, saved);
       triggerRef.current?.focus();
     },
     onError: async (failure) => {
@@ -397,13 +340,14 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         ...imageHistories.map((history) => history.refetch()),
       ]);
     },
+    onSettled: (_saved, failure, _input, context) => context?.finishWrite(failure),
   });
   const removeConnectedInput = useMutation({
     mutationFn: async ({ versionId, version = expectedVersion, allowDirty = false }: {
       versionId: string; version?: number | null; allowDirty?: boolean;
       preserveLocalChanges?: boolean;
     }) => {
-      if (editorReadOnlyRef.current) throw new Error(t("media.editor.editingLocked"));
+      if (session.isReadOnly()) throw new Error(t("media.editor.editingLocked"));
       if (!draft.data || version === null || (dirty || save.isPending) && !allowDirty) {
         throw new Error(t("media.editor.waitForSaveBeforeRemoval"));
       }
@@ -414,12 +358,13 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     onMutate: ({ versionId, preserveLocalChanges = false }) => {
       setFailedRemovalVersionId(null);
       setError(null);
-      return { versionId, fieldsAtStart: fieldsRef.current, preserveLocalChanges };
+      return { versionId, fieldsAtStart: session.getLatest().fields, preserveLocalChanges,
+        finishWrite: session.beginBusinessWrite() };
     },
     onSuccess: async (saved, _versionId, context) => {
-      const latest = fieldsRef.current;
+      const latest = session.getLatest().fields;
       let changedWhileRemoving = false;
-      let next = fieldsFromDraft(saved);
+      let next = fieldsFromMediaDraft(saved);
       if (latest !== null && (context?.preserveLocalChanges === true
         || latest !== context?.fieldsAtStart)) {
         changedWhileRemoving = true;
@@ -433,12 +378,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         next = { ...next, videoInputMode: preferredVideoMode(chosenCapability, false) };
         changedWhileRemoving = true;
       }
-      fieldsRef.current = next;
-      setFields(next);
-      setExpectedVersion(saved.version);
-      setDirty(changedWhileRemoving);
+      session.acceptSaved(saved, { fields: next, dirty: changedWhileRemoving });
       setFailedRemovalVersionId(null);
-      queryClient.setQueryData(key, saved);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
         queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] }),
@@ -448,6 +389,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       setFailedRemovalVersionId(versionId.versionId);
       setError(failure);
     },
+    onSettled: (_saved, failure, _input, context) => context?.finishWrite(failure),
   });
   const run = useMutation({
     mutationFn: () => {
@@ -474,12 +416,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   // explicit retry controls; active requests lock edits through local archival.
   const editorReadOnly = !isAudio && (run.isPending || !directTasks.isSuccess
     || Boolean(directTasks.data?.some(isMediaTaskRunning)));
-  const editorReadOnlyRef = useRef(editorReadOnly);
-  useLayoutEffect(() => { editorReadOnlyRef.current = editorReadOnly; }, [editorReadOnly]);
   useEffect(() => {
     if (!editorReadOnly) return;
     setPopover(null);
-    setWorkflowPickerField(null);
+    setWorkflowPickerFieldKey(null);
     setReferenceSourcesOpen(false);
     setStylePickerOpen(false);
     setTemplateOpen(false);
@@ -492,63 +432,13 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     onSuccess: () => queryClient.invalidateQueries({ queryKey: tasksKey }),
   });
 
-  const closeState = useRef<{ fields: DraftFields | null; dirty: boolean;
-    expectedVersion: number | null; error: Error | null; libraryBusy: boolean }>({ fields: null,
-    dirty: false, expectedVersion: null, error: null, libraryBusy: false });
-  useLayoutEffect(() => {
-    closeState.current = { fields, dirty, expectedVersion, error, libraryBusy: libraryBusy || templateBusy };
-  }, [fields, dirty, expectedVersion, error, libraryBusy, templateBusy]);
-  useEffect(() => () => {
-    const state = closeState.current;
-    if (state.dirty && state.fields && state.expectedVersion !== null) {
-      const request = { ...state.fields, expectedVersion: state.expectedVersion };
-      // An accepted reference owns this CAS version; closing must retain edits without racing it.
-      if (editorReadOnlyRef.current || state.error || state.libraryBusy) {
-        useCanvasStore.getState().setMediaDraftRecovery(ratioDraftKey,
-          { request, saving: false, error: state.error ?? new Error(t(editorReadOnlyRef.current ? "media.editor.editingLocked" : "media.editor.transferPendingHint")) });
-      } else {
-        void saveClosedMediaDraft(queryClient, artifact.projectId, canvasItemId,
-          request, pendingSaveRef.current);
-      }
-    } else if (!useCanvasStore.getState().mediaDraftRecoveries[ratioDraftKey]) {
-      useCanvasStore.getState().clearImageRatioDraft(ratioDraftKey);
-    }
-  }, [queryClient, artifact.projectId, canvasItemId, ratioDraftKey]);
-
-  useEffect(() => {
-    if (fields || !recovery || recovery.saving) return;
-    const { expectedVersion: recoveredVersion, ...recoveredFields } = recovery.request;
-    fieldsRef.current = recoveredFields;
-    setFields(recoveredFields);
-    setExpectedVersion(recoveredVersion);
-    setDirty(true);
-    setError(recovery.error);
-    useCanvasStore.getState().clearMediaDraftRecovery(ratioDraftKey);
-  }, [fields, recovery, ratioDraftKey]);
-
-  useEffect(() => {
-    // Run submission and result selection may advance the draft CAS version. Refresh only clean
-    // fields; an in-flight save, local edit or conflict must keep its current input intact.
-    if (recovery || !draft.data || dirty || save.isPending || commitAssetReferences.isPending
-        || libraryBusy || templateBusy || run.isPending || error) return;
-    // An earlier GET can finish after a successful save wrote its newer result to the cache.
-    // The last acknowledged CAS version is monotonic even if query responses arrive out of order.
-    if (expectedVersion !== null && draft.data.version < expectedVersion) return;
-    const initial = fieldsFromDraft(draft.data);
-    fieldsRef.current = initial;
-    setFields(initial);
-    setExpectedVersion(draft.data.version);
-  }, [draft.data, dirty, save.isPending, commitAssetReferences.isPending,
-    run.isPending, libraryBusy, templateBusy, error, expectedVersion, recovery]);
-
-  useEffect(() => {
-    if (editorReadOnly || !dirty || !fields || expectedVersion === null || save.isPending
-        || commitAssetReferences.isPending
-        || removeConnectedInput.isPending || libraryBusy || templateBusy || popover === "libraryReferences" || error) return;
-    const timer = window.setTimeout(() => save.mutate({ ...fields, expectedVersion }), AUTOSAVE_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [dirty, fields, expectedVersion, save.isPending, commitAssetReferences.isPending,
-    removeConnectedInput.isPending, libraryBusy, templateBusy, popover, error, editorReadOnly]);
+  useMediaDraftSessionLifecycle(session, artifact.kind, {
+    readOnly: editorReadOnly,
+    refreshBlocked: commitAssetReferences.isPending || libraryBusy || templateBusy || run.isPending,
+    autosaveBlocked: commitAssetReferences.isPending || removeConnectedInput.isPending
+      || libraryBusy || templateBusy || popover === "libraryReferences",
+    closeBlocked: libraryBusy || templateBusy,
+  });
 
   useEffect(() => {
     if (editorReadOnly || !fields || !chosenCapability || dirty || save.isPending || error || run.isPending || runIntent.current
@@ -574,33 +464,18 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     removeConnectedInput.isPending, save.isPending, templateBusy, error, run.isPending, editorReadOnly]);
 
   function edit(changes: Partial<DraftFields>) {
-    if (editorReadOnlyRef.current) return;
+    if (session.isReadOnly()) return;
     setSubmissionTipOpen(false);
     runIntent.current = null;
     if (!run.isPending) run.reset();
-    setFields((current) => {
-      if (!current) return current;
-      const next = { ...current, ...(workflow && chosenCapability ? { capabilityId: chosenCapability.id } : {}), ...changes };
-      fieldsRef.current = next;
-      return next;
-    });
-    setDirty(true);
+    session.edit((current) => ({ ...current, ...(workflow && chosenCapability ? { capabilityId: chosenCapability.id } : {}), ...changes }));
     setFailedRemovalVersionId(null);
-    if (!(error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT)) setError(null);
   }
 
   async function retry() {
     if (!fields || expectedVersion === null) return;
     if (error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT) {
-      try {
-        const fresh = await getMediaDraft(artifact.projectId, canvasItemId);
-        queryClient.setQueryData(key, fresh);
-        setExpectedVersion(fresh.version);
-        setFailedRemovalVersionId(null);
-        setError(null);
-      } catch (failure) {
-        setError(failure instanceof Error ? failure : new Error(t("media.editor.draftRefreshFailed")));
-      }
+      if (await session.refreshVersion()) setFailedRemovalVersionId(null);
       return;
     }
     setError(null);
@@ -611,7 +486,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           const saved = await save.mutateAsync({ ...fieldsBeingSaved, expectedVersion });
           removeConnectedInput.mutate({ versionId: failedRemovalVersionId,
             version: saved.version, allowDirty: true,
-            preserveLocalChanges: fieldsRef.current !== fieldsBeingSaved });
+            preserveLocalChanges: session.getLatest().fields !== fieldsBeingSaved });
         } catch {
           // The save mutation exposes its own actionable error and retains local fields.
         }
@@ -624,20 +499,20 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function togglePopover(next: Popover, trigger: HTMLButtonElement) {
-    if (editorReadOnlyRef.current || libraryBusy) return;
+    if (session.isReadOnly() || libraryBusy) return;
     triggerRef.current = trigger;
     setPopover((current) => current === next ? null : next);
   }
 
   function chooseCapability(capabilityId: string) {
-    if (editorReadOnlyRef.current) return;
+    if (session.isReadOnly()) return;
     if (!fields) return;
     const resolvedCapabilityId = capabilityId;
     const next = availableCapabilities.find((candidate) => candidate.id === resolvedCapabilityId);
     const change = planMediaCapabilityChange({ kind: artifact.kind, fields, capabilityId,
       resolvedCapabilityId, previous: chosenCapability, next });
     edit(change.fields);
-    setWorkflowPickerField(null);
+    setWorkflowPickerFieldKey(null);
     setPopover(null);
     triggerRef.current?.focus();
   }
@@ -745,13 +620,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   // Motion may trim its reference clip, so archived input duration only gives an upper estimate.
   const motionDurationUpperBound = chosenCapability?.settings.operation === "MOTION_CONTROL"
     && estimatePrice?.unit === "SECOND" && estimateDuration !== null && estimatedCost !== t("media.pricing.unknown");
-  const dynamicErrors = workflow ? runningHubErrors(workflow, workflowValues, fields.prompt, duration, imageChoices) : [];
-  const dynamicUsedVersions = workflow ? runningHubUsedVersions(workflow, workflowValues, fields.prompt, duration) : new Set<string>();
+  const dynamicErrors = workflow ? workflowValidationErrors(workflow, workflowValues, fields.prompt, duration, imageChoices) : [];
+  const dynamicUsedVersions = workflow ? workflowUsedVersions(workflow, workflowValues, fields.prompt, duration) : new Set<string>();
   const promptField = workflow?.fields.find((field) => field.source === "PROMPT");
-  const promptCondition = workflow?.fields.find((field) => field.key === promptField?.enabledWhen?.field);
-  const promptEnabled = !workflow || Boolean(promptField && (!promptField.enabledWhen
-    || promptCondition && runningHubFieldValue(promptCondition, workflowValues, fields.prompt, duration) === promptField.enabledWhen.value));
-  const promptValue = promptField ? runningHubFieldValue(promptField, workflowValues, fields.prompt, duration) : fields.prompt;
+  const evaluatedWorkflow = workflow ? evaluateWorkflowFields(workflow, workflowValues, fields.prompt, duration) : undefined;
+  const promptEnabled = !workflow || Boolean(promptField && evaluatedWorkflow?.activeFields.includes(promptField));
+  const promptValue = promptField ? evaluatedWorkflow?.effectiveValues[promptField.key] : fields.prompt;
   const displayedPrompt = promptEnabled && typeof promptValue === "string" ? promptValue : fields.prompt;
   const supportsStyle = !isAudio && promptEnabled;
   const selectedStyle = styles.data?.find((style) => style.id === fields.styleId);
@@ -794,10 +668,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     : chosenCapability?.settings.quality ? t("media.editor.qualityLabel", { "0": QUALITY_LABELS[chosenCapability.settings.quality] }) : t("media.editor.defaultQuality");
   const historyError = imageHistories.find((history) => history.error)?.error;
   const normalizedAssetSearch = assetSearch.trim().toLocaleLowerCase();
-  const workflowMediaFields = workflow ? activeWorkflowMediaFields(workflow, workflowValues, fields.prompt, duration) : [];
-  const pickerField = workflowMediaFields.find((field) => field.key === workflowPickerField?.key);
+  const workflowMediaFields = evaluatedWorkflow?.activeFields.filter(isWorkflowMediaField) ?? [];
+  const pickerField = workflowMediaFields.find((field) => field.key === workflowPickerFieldKey);
   const emptyWorkflowFields = workflowMediaFields.filter((field) => {
-    const value = runningHubFieldValue(field, workflowValues, fields.prompt, duration);
+    const value = workflowFieldValue(field, workflowValues, fields.prompt, duration);
     return value === undefined || value === "";
   });
   const pickerKinds: Artifact["kind"][] = workflow
@@ -825,14 +699,15 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
 
   // The shared add entry assigns by media type; existing thumbnails target their named slot.
   function workflowTargetField(kind: Artifact["kind"] | undefined) {
-    if (workflowPickerField) return pickerField?.type === kind ? pickerField : undefined;
+    // An invalidated named slot must not fall back to another empty slot.
+    if (workflowPickerFieldKey !== null) return pickerField?.type === kind ? pickerField : undefined;
     return emptyWorkflowFields.find((field) => field.type === kind);
   }
 
-  function changeDynamicField(fieldKey: string, value: RunningHubValue | undefined) {
-    if (!workflow || editorReadOnlyRef.current) return;
+  function changeDynamicField(fieldKey: string, value: WorkflowValue | undefined) {
+    if (!workflow || session.isReadOnly()) return;
     const field = workflow.fields.find((item) => item.key === fieldKey);
-    const latest = fieldsRef.current ?? currentFields;
+    const latest = session.getLatest().fields ?? currentFields;
     if (!field) return;
     if (field.source === "PROMPT") { edit({ prompt: typeof value === "string" ? value : "", mentions: [] }); return; }
     if (field.source === "DURATION_SECONDS") { edit({ durationSeconds: typeof value === "number" ? value : null }); return; }
@@ -843,8 +718,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     }
     const previousValue = dynamicValues[fieldKey];
     if (value === undefined) delete dynamicValues[fieldKey]; else dynamicValues[fieldKey] = value;
-    const mediaField = ["IMAGE", "AUDIO", "VIDEO"].includes(field.type);
-    const stillAssigned = workflow.fields.some((slot) => ["IMAGE", "AUDIO", "VIDEO"].includes(slot.type)
+    const mediaField = isWorkflowMediaField(field);
+    const stillAssigned = workflow.fields.some((slot) => isWorkflowMediaField(slot)
       && dynamicValues[slot.key] === previousValue);
     const removedVersion = mediaField && typeof previousValue === "string" && previousValue !== value && !stillAssigned
       ? previousValue : null;
@@ -886,7 +761,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       const uploaded = await uploadReferenceArtifact(file, field.type === "VIDEO" ? "VIDEO" : field.type === "AUDIO" ? "AUDIO" : "IMAGE");
       await queryClient.invalidateQueries({ queryKey: ["artifacts", artifact.projectId] });
       if (!uploaded.resourceDefaultVersionId) throw new Error(t("media.editor.uploadedVersionPending"));
-      if (editorReadOnlyRef.current) throw new Error(t("media.editor.editingLocked"));
+      if (session.isReadOnly()) throw new Error(t("media.editor.editingLocked"));
       const current = chosenCapabilityRef.current;
       if (!scope || current?.id !== scope.id || current.capabilityVersion !== scope.capabilityVersion
         || current.mappingSha256 !== scope.mappingSha256) throw new Error(t("media.editor.capabilityConflict"));
@@ -894,13 +769,13 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       if (options?.requireEmptySlot) {
         // A canvas connection can fill the original slot while the upload is archiving.
         // Add to the next available slot instead of replacing that newer user input.
-        const latest = fieldsRef.current;
+        const latest = session.getLatest().fields;
         const definition = workflowDefinition(current);
         const values = latest ? workflowDraftValues(current, latest) : {};
         const active = latest && definition ? activeWorkflowMediaFields(definition, values, latest.prompt,
           latest.durationSeconds ?? current.settings.defaultDurationSeconds) : [];
         const empty = active.find((candidate) => {
-          const value = runningHubFieldValue(candidate, values, latest?.prompt ?? "", latest?.durationSeconds ?? current.settings.defaultDurationSeconds);
+          const value = workflowFieldValue(candidate, values, latest?.prompt ?? "", latest?.durationSeconds ?? current.settings.defaultDurationSeconds);
           return candidate.type === field.type && (value === undefined || value === "");
         });
         if (!empty) throw new Error(t("media.workflow.noEmptySlot", { "0": field.type === "VIDEO" ? t("common.video") : field.type === "AUDIO" ? t("common.audio") : t("common.image") }));
@@ -966,7 +841,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function appendReferences(versionIds: string[], baseFields = currentFields) {
-    if (editorReadOnlyRef.current) return;
+    if (session.isReadOnly()) return;
     const next = fieldsWithReferences(versionIds, baseFields);
     if (next !== baseFields) edit({ mediaInputs: next.mediaInputs,
       ...(artifact.kind === "VIDEO" ? { videoInputMode: next.videoInputMode } : {}) });
@@ -981,7 +856,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
 
   function chooseWorkflowReference(versionId: string) {
     const field = workflowTargetField(referenceKind(versionId));
-    if (!field || editorReadOnlyRef.current || libraryBusy) return;
+    if (!field || session.isReadOnly() || libraryBusy) return;
     changeDynamicField(field.key, versionId);
     setPopover(null);
     triggerRef.current?.focus();
@@ -997,7 +872,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function confirmAssetReferences() {
-    if (editorReadOnlyRef.current) return;
+    if (session.isReadOnly()) return;
     if (!assetSelection.length || expectedVersion === null || save.isPending
         || commitAssetReferences.isPending) return;
     const nextFields = fieldsWithReferences(assetSelection);
@@ -1010,7 +885,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   async function uploadFiles(files: File[]) {
-    if (editorReadOnlyRef.current) return;
+    if (session.isReadOnly()) return;
     const remaining = Math.max(0, mediaCapacity - currentFields.mediaInputs.length);
     if (files.length > remaining) {
       setUploadError(new Error(t("media.editor.remainingImageLimit", { "0": remaining })));
@@ -1046,7 +921,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       }
     }
     if (successfulVersions.length) {
-      appendReferences(successfulVersions, fieldsRef.current ?? currentFields);
+      appendReferences(successfulVersions, session.getLatest().fields ?? currentFields);
       await queryClient.invalidateQueries({ queryKey: ["artifacts", artifact.projectId] });
     }
     setFailedUploads(failures);
@@ -1061,7 +936,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function removeReference(versionId: string) {
-    if (editorReadOnlyRef.current) return;
+    if (session.isReadOnly()) return;
     const persisted = draft.data?.mediaInputs.find((input) => input.versionId === versionId);
     if (persisted?.sources.some((source) => source.type === "CONNECTION"
         && source.connectionId)) {
@@ -1081,7 +956,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function chooseVideoMode(mode: VideoInputMode) {
-    if (editorReadOnlyRef.current) return;
+    if (session.isReadOnly()) return;
     if (artifact.kind !== "VIDEO" || mode === "TEXT" && currentFields.mediaInputs.length > 0) return;
     const nextInputs = inputsForVideoMode(currentFields.mediaInputs, mode);
     if (nextInputs.length < currentFields.mediaInputs.length
@@ -1092,7 +967,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   }
 
   function moveReferenceTo(index: number, target: number) {
-    if (editorReadOnlyRef.current) return;
+    if (session.isReadOnly()) return;
     if (target < 0 || target >= currentFields.mediaInputs.length || index === target
         || effectiveMode === "START_END") return;
     const next = [...currentFields.mediaInputs];
@@ -1112,10 +987,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     if (artifact.kind !== "IMAGE" && artifact.kind !== "VIDEO" || imported.targetKind !== artifact.kind) {
       throw new Error(t("templates.kindMismatch"));
     }
-    const pending = pendingSaveRef.current;
-    const settledSave = pending ? await pending.result : undefined;
-    const latest = fieldsRef.current;
-    const acknowledgedVersion = settledSave?.version ?? expectedVersionRef.current;
+    const settledSave = await session.awaitPendingSave();
+    const { fields: latest, expectedVersion: latestVersion } = session.getLatest();
+    const acknowledgedVersion = settledSave?.version ?? latestVersion;
     if (!latest || acknowledgedVersion === null) throw new Error(t("media.editor.waitForDraft"));
     if (JSON.stringify(latest) !== JSON.stringify(currentFields)) throw new Error(t("templates.draftChanged"));
     // Calculate the complete replacement before any current reference or line is removed.
@@ -1125,14 +999,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     await Promise.all(freshResources.items.filter((item) => item.kind !== "TEXT").map((item) =>
       queryClient.fetchQuery({ queryKey: ["artifact-versions", artifact.projectId, item.id],
         queryFn: () => listArtifactVersions(artifact.projectId, item.id), staleTime: 0 })));
-    if (editorReadOnlyRef.current) throw new Error(t("media.editor.editingLocked"));
+    if (session.isReadOnly()) throw new Error(t("media.editor.editingLocked"));
     if (imported.images.length > 0 || (imported.references?.length ?? 0) > 0) {
       // Reference replacement and connected-line removal either commit together or leave the old draft intact.
       const acknowledged = await replaceMediaDraftInputs(artifact.projectId, canvasItemId,
         { ...latest, ...changes, expectedVersion: acknowledgedVersion });
-      const retained = fieldsFromDraft(acknowledged);
-      fieldsRef.current = retained; setFields(retained); setExpectedVersion(acknowledged.version);
-      setDirty(false); setError(null); queryClient.setQueryData(key, acknowledged);
+      session.acceptSaved(acknowledged);
       runIntent.current = null; if (!run.isPending) run.reset();
       await Promise.all([queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }),
         queryClient.invalidateQueries({ queryKey: ["canvas-connections", artifact.projectId] })]);
@@ -1177,7 +1049,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
           title={uploading ? t("media.editor.assetUploading") : videoCapacity > 0 ? t("media.editor.videoReferenceLimits", { "0": imageCapacity, "1": videoCapacity, "2": audioCapacity }) : t("media.editor.referenceLimits", { "0": imageCapacity, "1": audioCapacity })}
           onTrigger={(trigger) => { triggerRef.current = trigger; }}
           onChoose={(source) => {
-            setWorkflowPickerField(null);
+            setWorkflowPickerFieldKey(null);
             if (source === "upload") uploadInputRef.current?.click();
             else if (source === "resources") openAssetReferences();
             else setPopover(source === "canvas" ? "canvasReferences" : "libraryReferences");
@@ -1213,7 +1085,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       libraryDisabled={save.isPending || expectedVersion === null || workflowUploading} pickerOpen={Boolean(popover)}
       onChooseSource={(field, source, trigger) => {
         if (source === "library" && workflowUploads.current.size > 0) return;
-        triggerRef.current = trigger; setWorkflowPickerField(field);
+        triggerRef.current = trigger; setWorkflowPickerFieldKey(field?.key ?? null);
         if (source === "resources") openAssetReferences();
         else setPopover(source === "canvas" ? "canvasReferences" : "libraryReferences");
       }} onChange={changeDynamicField} onUpload={uploadDynamicSlot} />}
@@ -1238,9 +1110,9 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
               const color = INPUT_COLORS.find((candidate) => !fields.mediaInputs.some((input) => input.color === candidate)) ?? INPUT_COLORS[0];
               return { role, color, videoInputMode: mode };
             }} onApplied={(saved, submitted, assignedSlotKey) => {
-              const latest = fieldsRef.current;
+              const latest = session.getLatest().fields;
               const changed = latest !== null && JSON.stringify(latest) !== JSON.stringify(Object.fromEntries(Object.entries(submitted).filter(([name]) => name !== "expectedVersion")));
-              const savedFields = fieldsFromDraft(saved);
+              const savedFields = fieldsFromMediaDraft(saved);
               const oldVersions = new Set(submitted.mediaInputs.map((input) => input.versionId));
               let next = savedFields;
               if (changed && latest) {
@@ -1253,8 +1125,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
                 } else next = { ...latest, videoInputMode: saved.videoInputMode,
                   mediaInputs: [...latest.mediaInputs, ...savedFields.mediaInputs.filter((input) => !oldVersions.has(input.versionId))] };
               }
-              fieldsRef.current = next; setFields(next); setExpectedVersion(saved.version); setDirty(changed); setError(null);
-              queryClient.setQueryData(key, saved); setPopover(null);
+              session.acceptSaved(saved, { fields: next, dirty: changed, error: null });
+              setPopover(null);
               void queryClient.invalidateQueries({ queryKey: ["artifacts", artifact.projectId] });
             }} />
         </div> : null}

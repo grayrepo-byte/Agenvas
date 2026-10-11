@@ -11,9 +11,9 @@ updateMediaConnection,
 type MediaCapability,type MediaConnection,type MediaSettings,type CreateMediaConnectionRequest,
 } from "../../shared/api/client";
 import { MINIMAX_H3_ADAPTER } from "../../shared/minimaxH3";
-import { KLING_API_ORIGIN, KLING_VIDEO_ADAPTER, KLING_NATIVE_VIDEO_ADAPTER, isKlingAdapter, isKlingNativeAdapter } from "../../shared/kling";
+import { isKlingAdapter, isKlingNativeAdapter } from "../../shared/kling";
 import { isNativeMediaAdapter } from "../../shared/nativeMedia";
-import { AUTODL_ADAPTER,AUTODL_DEFAULT_WORKFLOW,autoDlResolutionTiers,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
+import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
 import { MEDIA_FUNCTIONS_QUERY_KEY } from "../../shared/mediaFunctions";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -36,52 +36,20 @@ import "./MediaSettingsPage.css";
 import { ComfyWorkflowEditor } from "./ComfyWorkflowEditor";
 import { isComfyAdapter } from "./comfyWorkflow";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
-import { selectRunningHubNodes } from "./runningHubSelection";
+import { buildMediaCapabilitySettings, CapabilityDraftError, type MediaCapabilityDraft } from "./mediaCapabilityDraft";
+import { mediaConnectionAddresses, mediaConnectionOrigin } from "./mediaConnectionConfiguration";
 
-// Node selection is an editor draft, never an API setting or capability-version field.
-type AdapterSettings = MediaCapability["settings"] & { runningHubSelectedNodeIds?: string[]; runningHubSelectedFieldKeys?: string[] };
+type AdapterSettings = MediaCapabilityDraft;
 const MODEL_LIMIT = 120;
 
 const settingsKey = ["settings", "media"] as const;
 const MEDIA_SETTINGS_TABS = ["connections", "capabilities"] as const;
 const NAME_LIMIT = 160;
 const cloudImageFields = [{ key: "model", get label() { return t("settings.mediaSettings.modelName"); } }] as const;
-class CapabilityDraftError extends Error {}
 
 function fixedModelFields(adapterId: string) {
   return adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2"
       ? cloudImageFields : [];
-}
-
-function fixedModelSettings(adapterId: string, values: AdapterSettings) {
-  if (adapterId.startsWith("RUNNINGHUB_")) {
-    const runningHub = values.runningHub ? selectRunningHubNodes(values.runningHub, values.runningHubSelectedNodeIds, values.runningHubSelectedFieldKeys) : undefined;
-    const orphaned = runningHub?.fields.find((field) => field.enabledWhen && !runningHub.fields.some((parent) => parent.key === field.enabledWhen?.field));
-    if (orphaned) throw new CapabilityDraftError(t("settings.runningHub.unselectedCondition", { "0": orphaned.label }));
-    return { runningHub, ...(values.pricing?.amount.trim() ? { pricing: values.pricing } : {}) };
-  }
-  const fields = Object.fromEntries(fixedModelFields(adapterId).map(({ key }) =>
-    [key, values[key as keyof AdapterSettings]?.toString().trim() ?? ""]));
-  const { defaultParameters, defaultDurationSeconds, minimumSeconds, maximumSeconds,
-    maxReferenceImages, maxReferenceAudios, maxReferenceVideos, pricing } = values;
-  return { ...fields, ...(isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId) ? { model: values.model ?? "", operation: values.operation ?? "GENERATE" } : {}), ...(isComfyAdapter(adapterId) ? { comfyWorkflow: values.comfyWorkflow } : {}), ...(adapterId === AUTODL_ADAPTER ? {
-    workflowId: values.workflowDefinition?.id ?? values.workflowId ?? AUTODL_DEFAULT_WORKFLOW,
-    ...(values.workflowDefinition ? { workflowDefinition: values.workflowDefinition } : {}),
-    ...(values.videoResolution ? { videoResolution: values.videoResolution } : {}),
-    videoResolutions: values.videoResolutions ?? (values.videoResolution ? [values.videoResolution] : autoDlResolutionTiers(resolveAutoDlWorkflow(values)!)),
-    ...(values.pricingByResolution ? { pricingByResolution: Object.fromEntries(Object.entries(values.pricingByResolution).filter(([, price]) => price?.amount.trim())) } : {}),
-    ...(values.seed !== undefined ? { seed: values.seed } : {}),
-  } : {}), ...(adapterId === "OPENAI_GPT_IMAGE_2" ? { quality: values.quality ?? "medium" } : {}),
-    ...((adapterId === MINIMAX_H3_ADAPTER || adapterId === KLING_VIDEO_ADAPTER || adapterId === KLING_NATIVE_VIDEO_ADAPTER || isNativeMediaAdapter(adapterId)) && values.pricingByResolution ? { pricingByResolution: Object.fromEntries(Object.entries(values.pricingByResolution).filter(([, price]) => price?.amount.trim())) } : {}),
-    ...(defaultParameters ? { defaultParameters } : {}),
-    ...(defaultDurationSeconds !== undefined ? { defaultDurationSeconds } : {}),
-    ...(minimumSeconds !== undefined ? { minimumSeconds } : {}),
-    ...(maximumSeconds !== undefined ? { maximumSeconds } : {}),
-    ...(maxReferenceImages !== undefined ? { maxReferenceImages } : {}),
-    ...(maxReferenceAudios !== undefined ? { maxReferenceAudios } : {}),
-    ...(maxReferenceVideos !== undefined ? { maxReferenceVideos } : {}),
-    ...(pricing?.amount.trim() ? { pricing } : {}) };
-
 }
 
 function QualityChoice({ value, onChange }: { value: string; onChange: (value: string) => void }) {
@@ -268,7 +236,7 @@ function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApi
       describedBy={platform === "GOOGLE" ? helpId : undefined} />
     {platform === "GOOGLE" ? <GoogleImageConnectionHelp id={helpId} origin={origin} /> : null}
     {platform === "AUTODL" ? <p className="ui-muted">{t("settings.mediaSettings.comfyTokenHint")}</p> : null}
-    {platform === "WAN" || platform === "RUNNINGHUB" || platform === "OPENAI" || platform === "ARK" || platform === "GOOGLE" || platform === "VOLCENGINE" || platform === "AUTODL" || platform === "MINIMAX" || platform === "KLING" ? <Field><FieldLabel className="ui-field block">
+    {mediaConnectionAddresses[platform]?.requiresApiKey ? <Field><FieldLabel className="ui-field block">
       {creating ? "API Key" : t("settings.mediaSettings.replaceApiKey")}
       <Input type="password" autoComplete="new-password" value={apiKey}
         onChange={(event) => onApiKeyChange(event.target.value)} required={creating} />
@@ -328,7 +296,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
     mutationFn: () => updateMediaCapability(connectionId, capability.id, {
       expectedVersion: baseline.version, name: name.trim(),
       enabled: baseline.enabled, adapterId,
-      settings: fixedModelSettings(adapterId, modelNames),
+      settings: buildMediaCapabilitySettings(adapterId, modelNames),
     }),
     onSuccess: (result) => {
       const saved = result.connections.find((item) => item.id === connectionId)
@@ -512,9 +480,7 @@ function ConnectionRow({ connection, settings, apply }: {
   const save = useMutation({
     mutationFn: () => updateMediaConnection(connection.id, {
       expectedVersion: baseline.version, name: name.trim(), enabled: baseline.enabled,
-      origin: connection.platform === "KLING" ? origin.trim() || KLING_API_ORIGIN
-        : connection.platform === "WAN" || connection.platform === "RUNNINGHUB" || connection.platform === "COMFYUI" || connection.platform === "OPENAI" || connection.platform === "GOOGLE" || connection.platform === "MINIMAX"
-          ? origin.trim() || null : null,
+      origin: mediaConnectionOrigin(connection.platform, origin),
       apiKey: apiKey || null,
     }),
     onSuccess: (result) => {
@@ -543,7 +509,7 @@ function ConnectionRow({ connection, settings, apply }: {
   const addCapability = useMutation({
     mutationFn: () => {
       const payload = { name: capabilityName.trim(), adapterId,
-        settings: fixedModelSettings(adapterId, newModelNames) };
+        settings: buildMediaCapabilitySettings(adapterId, newModelNames) };
       capabilityCreateKey.current = stableCreateKey(capabilityCreateKey.current, JSON.stringify(payload));
       return createMediaCapability(connection.id, payload, capabilityCreateKey.current.key);
     },
@@ -650,9 +616,7 @@ export function MediaSettingsPage() {
   const create = useMutation({
     mutationFn: () => {
       const payload = { name: name.trim(), platform,
-        origin: platform === "KLING" ? origin.trim() || KLING_API_ORIGIN
-          : platform === "WAN" || platform === "RUNNINGHUB" || platform === "COMFYUI" || platform === "OPENAI" || platform === "GOOGLE" || platform === "MINIMAX"
-            ? origin.trim() || null : null,
+        origin: mediaConnectionOrigin(platform, origin),
         apiKey: platform === "COMFYUI" ? null : apiKey };
       connectionCreateKey.current = stableCreateKey(connectionCreateKey.current, JSON.stringify(payload));
       return createMediaConnection(payload, connectionCreateKey.current.key);

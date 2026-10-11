@@ -51,7 +51,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class, properties = {
-        "agenvas.library.worker-enabled=false", "agenvas.skill.worker-enabled=false", "agenvas.tasks.scheduler-enabled=false"})
+        "agenvas.library.worker-enabled=false", "agenvas.skill.worker-enabled=false"})
 class SkillAssetArchivePostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     private static final Path STORAGE_ROOT = temporaryRoot();

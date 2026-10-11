@@ -10,9 +10,8 @@ import { KLING_IMAGE_ADAPTER, KLING_IMAGE_ASPECT_RATIOS, KLING_IMAGE_RESOLUTIONS
 import { WorkflowParameterFields } from "../canvas/WorkflowDraftControls";
 
 import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, minimaxResolutionLabel } from "../../shared/minimaxH3";
-import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
+import { AUTODL_ADAPTER, resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { VideoResolutionPricingFields } from "./VideoResolutionPricingFields";
-import { autodlWorkflow } from "./AutoDlWorkflowFields";
 type Settings = MediaCapability["settings"];
 type Parameters = NonNullable<Settings["defaultParameters"]>;
 const IMAGE_RATIOS = ["AUTO", "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"] as const;
@@ -30,7 +29,7 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
 }) {
   useLocale();
   const metadata = adapterMetadata(adapterId);
-  const workflow = adapterId === AUTODL_ADAPTER ? autodlWorkflow(values) : undefined;
+  const workflow = adapterId === AUTODL_ADAPTER ? resolveAutoDlWorkflow(values) : undefined;
   const declaredNative = isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId);
   const nativeInputs = isNativeMediaAdapter(adapterId) ? values.nativeInputs ?? [] : declaredNative ? values.klingInputs ?? [] : [];
   const nativeDuration = nativeInputs.find((field) => field.source === "DURATION_SECONDS");

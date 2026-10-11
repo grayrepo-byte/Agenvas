@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MediaCapability, RunningHubField } from "../../shared/api/client";
+import type { CreatorInputField } from "../../shared/creatorInputs";
 import type { MediaDraftFields } from "./mediaDraftCapability";
 import { activeWorkflowMediaFields, workflowDefinition, workflowDraftValues } from "./workflowDraft";
 
@@ -17,6 +18,21 @@ const fields: MediaDraftFields = { prompt: "", parameters: {}, durationSeconds: 
   videoInputMode: null, mediaInputs: [{ versionId: "old-image", role: "REFERENCE", color: "#F15CAF" }], mentions: [] };
 
 describe("workflow draft presentation", () => {
+  it.each(["klingInputs", "nativeInputs"] as const)("keeps %s defaults when a partial draft explicitly changes false and zero", (inputKey) => {
+    const inputs: CreatorInputField[] = [
+      { key: "enabled", label: "Enabled", type: "BOOLEAN", required: false, advanced: false },
+      { key: "seed", label: "Seed", type: "INTEGER", required: false, advanced: false },
+      { key: "resolution", label: "Resolution", type: "STRING", required: false, advanced: false },
+    ];
+    const native: MediaCapability = { ...capability, settings: { [inputKey]: inputs,
+      defaultParameters: { dynamicValues: { enabled: true, seed: 19, resolution: "2K" } } } };
+    const draft = { ...fields, parameters: { dynamicValues: { enabled: false, seed: 0 } } };
+    expect(workflowDefinition(native)?.fields).toEqual(inputs);
+    expect(workflowDraftValues(native, draft)).toEqual({ enabled: false, seed: 0, resolution: "2K" });
+    expect(draft.parameters.dynamicValues).toEqual({ enabled: false, seed: 0 });
+    expect(native.settings.defaultParameters?.dynamicValues).toEqual({ enabled: true, seed: 19, resolution: "2K" });
+  });
+
   it("preserves legacy positional assignments without guessing missing named slots", () => {
     expect(workflowDraftValues(capability, fields)).toEqual({ reference_0: "old-image" });
     expect(workflowDraftValues(capability, { ...fields, parameters: { dynamicValues: { reference_2: "old-image" } } }))

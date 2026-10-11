@@ -137,6 +137,31 @@ describe("ComfyWorkflowEditor", () => {
     expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
   });
 
+  it("replaces an invalid extended parameter with a dimension mapping and retains the graph and unrelated parameters", async () => {
+    const widthParameter: RunningHubField = { ...stepsParameter, key: "published_width", fieldName: "width", defaultValue: 777 };
+    const initial = { ...dimensionDefinition, parameters: [widthParameter, stepsParameter] };
+    const before = structuredClone(initial);
+    render(<Harness initial={initial} />); const user = userEvent.setup();
+    const publish = screen.getByRole("button", { name: "Publish fixture" });
+    expect(publish).toBeEnabled();
+    const row = within(screen.getByRole("table", { name: "扩展参数" })).getByRole("row", { name: "#14.width" });
+    const input = within(row).getByRole("textbox", { name: "默认值" });
+    await user.click(input); await changeControl(input, { target: { value: "[640]" } }); await user.tab();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(publish).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+    await selectValue(screen.getByRole("combobox", { name: "width 的参数来源" }), "WIDTH");
+    expect(currentWorkflow()).toMatchObject({ width: 640, height: 768, parameters: [stepsParameter], graph: dimensionGraph });
+    expect(screen.queryByRole("row", { name: "#14.width" })).not.toBeInTheDocument();
+    expect(publish).toBeDisabled(); // The height mapping is still required.
+    await selectValue(screen.getByRole("combobox", { name: "height 的参数来源" }), "HEIGHT");
+    expect(publish).toBeEnabled();
+    expect(currentWorkflow()).toEqual({ ...initial, width: 640, height: 360, parameters: [stepsParameter],
+      bindings: [...initial.bindings, { nodeId: "14", inputName: "width", source: "WIDTH" },
+        { nodeId: "14", inputName: "height", source: "HEIGHT" }] });
+    expect(initial).toEqual(before);
+  });
+
   it.each([7, 640.5])("blocks publishing when a mapped graph width of %s is invalid", async (width) => {
     const initial = { ...dimensionDefinition, graph: { ...dimensionGraph, "14": { ...dimensionGraph["14"],
       inputs: { ...dimensionGraph["14"].inputs, width },
