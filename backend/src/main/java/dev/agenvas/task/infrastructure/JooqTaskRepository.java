@@ -90,6 +90,9 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     /** 执行任务行的条件更新、行锁与产物目标查询。 */
     private final DSLContext dsl;
     /** 将 JSONB 输入、输出映射为受控 JSON 树。 */
+    private static final ObjectMapper RESULT_MAPPER = tools.jackson.databind.json.JsonMapper.builder(
+            tools.jackson.core.json.JsonFactory.builder().streamReadConstraints(tools.jackson.core.StreamReadConstraints.builder()
+                    .maxStringLength(70 * 1024 * 1024).maxNestingDepth(32).build()).build()).build();
     private final ObjectMapper objectMapper;
 
     /** 注入任务队列查询上下文和 JSON 映射器。 */
@@ -102,7 +105,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     public Optional<dev.agenvas.provider.domain.ProviderResultManifest> providerResultManifest(UUID taskId) {
         return dsl.select(TASK.PROVIDER_RESULT_MANIFEST).from(TASK).where(TASK.ID.eq(taskId))
                 .and(TASK.PROVIDER_RESULT_MANIFEST.isNotNull()).fetchOptional(TASK.PROVIDER_RESULT_MANIFEST)
-                .map(value -> objectMapper.readValue(value.data(), dev.agenvas.provider.domain.ProviderResultManifest.class));
+                .map(value -> RESULT_MAPPER.readValue(value.data(), dev.agenvas.provider.domain.ProviderResultManifest.class));
     }
 
     @Override
@@ -110,7 +113,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
             dev.agenvas.provider.domain.ProviderResultManifest manifest, Instant now) {
         return dsl.update(TASK).set(TASK.PROVIDER_RESULT_MANIFEST, JSONB.valueOf(objectMapper.writeValueAsString(manifest)))
                 .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
-                .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .and(TASK.STATUS.in(Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name()))
                 .and(TASK.PROVIDER_RESULT_MANIFEST.isNull()).execute() == 1;
     }
 

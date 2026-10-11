@@ -74,6 +74,34 @@ class MediaCapabilitySettingsPostgresIT {
         mvc.perform(get("/api/v1/settings/media-connections")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/v1/settings/media-connections").with(userAuth))
                 .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/settings/media-profiles")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/settings/media-profiles").with(userAuth)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/settings/media-profiles").with(adminAuth)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.profiles.length()").value(19))
+                .andExpect(result -> {
+                    assertThat(result.getResponse().getHeader("Cache-Control")).contains("no-store");
+                    JsonNode profiles = mapper.readTree(result.getResponse().getContentAsString()).path("profiles");
+                    assertThat(profiles.toString()).doesNotContain("\"apiKey\":", "\"origin\":", "\"nodeId\":");
+                    for (JsonNode profile : profiles) assertThat(profile.path("inputs").isArray()).isTrue();
+                });
+        mvc.perform(get("/api/v1/settings/kling/profiles")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/settings/kling/profiles").with(userAuth)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/settings/kling/profiles").with(adminAuth)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.profiles.length()").value(15))
+                .andExpect(result -> {
+                    assertThat(result.getResponse().getHeader("Cache-Control")).contains("no-store");
+                    JsonNode profiles = mapper.readTree(result.getResponse().getContentAsString()).path("profiles");
+                    for (JsonNode profile : profiles) {
+                        assertThat(profile.path("inputs").isArray()).isTrue();
+                        for (JsonNode field : profile.path("inputs")) assertThat(field.has("nodeId")).isFalse();
+                        if ("kling-3.0-omni".equals(profile.path("model").asText())) {
+                            assertThat(profile.at("/inputLimits/maxReferenceImages").asInt()).isEqualTo(7);
+                            assertThat(profile.at("/inputLimits/maxReferenceVideos").asInt()).isEqualTo(1);
+                        }
+                        if ("SUBJECT_COMPLETION".equals(profile.path("operation").asText()))
+                            assertThat(profile.path("model").isNull()).isTrue();
+                    }
+                });
         mvc.perform(put("/api/v1/settings/media-defaults/IMAGE_GENERATION")
                         .with(userAuth).with(csrf()).contentType("application/json")
                         .content("{\"expectedVersion\":0,\"capabilityId\":\""
@@ -203,6 +231,35 @@ class MediaCapabilitySettingsPostgresIT {
                     assertThat(google.at("/capabilities/0/maxReferenceImages").asInt()).isEqualTo(3);
                     assertThat(google.at("/capabilities/0/settings/pricing/amount").asText()).isEqualTo("0.125");
                 });
+
+        String klingKey = "synthetic-kling-api-key";
+        String klingResponse = mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
+                        .header("Idempotency-Key", "kling-config-create").contentType("application/json")
+                        .content(mapper.createObjectNode().put("name", "Kling official").put("platform", "KLING")
+                                .put("apiKey", klingKey).toString()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        JsonNode kling = connection(klingResponse, "KLING");
+        assertThat(klingResponse).doesNotContain(klingKey, "ciphertext", "nonce", "apiKey");
+        assertThat(kling.path("origin").asText()).isEqualTo("https://api-singapore.klingai.com");
+        assertThat(kling.path("keyMask").asText()).isEqualTo("••••-key");
+        String klingId = kling.path("id").asText();
+        for (String adapter : List.of("KLING_IMAGE_3", "KLING_VIDEO_3")) {
+            mvc.perform(post("/api/v1/settings/media-connections/" + klingId + "/capabilities")
+                            .with(adminAuth).with(csrf()).header("Idempotency-Key", "publish-" + adapter)
+                            .contentType("application/json")
+                            .content(mapper.createObjectNode().put("name", adapter).put("adapterId", adapter).toString()))
+                    .andExpect(status().isOk());
+        }
+        mvc.perform(get("/api/v1/settings/media-connections").with(adminAuth)).andExpect(status().isOk())
+                .andExpect(result -> assertThat(connection(result.getResponse().getContentAsString(), "KLING")
+                        .path("capabilities").size()).isEqualTo(2));
+        mvc.perform(post("/api/v1/settings/media-connections").with(adminAuth).with(csrf())
+                        .header("Idempotency-Key", "kling-untrusted-origin").contentType("application/json")
+                        .content("""
+                                {"name":"Untrusted Kling address","platform":"KLING",
+                                "origin":"https://untrusted.example.com","apiKey":"synthetic-key"}
+                                """))
+                .andExpect(status().isUnprocessableEntity());
     }
     private JsonNode connection(String response, String platform) {
         for (JsonNode connection : mapper.readTree(response).path("connections")) {

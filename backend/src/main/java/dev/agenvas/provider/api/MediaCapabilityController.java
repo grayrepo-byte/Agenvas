@@ -3,6 +3,7 @@ package dev.agenvas.provider.api;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
+import dev.agenvas.provider.domain.KlingModels;
 import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
@@ -55,6 +56,29 @@ public class MediaCapabilityController {
             @AuthenticationPrincipal AdminPrincipal administrator) {
         Objects.requireNonNull(administrator, "Authenticated administrator required");
         return response();
+    }
+
+    /** The server owns the protocol catalog used before a capability has been published. */
+    @GetMapping("/kling/profiles")
+    public ResponseEntity<KlingProfiles> klingProfiles(
+            @AuthenticationPrincipal AdminPrincipal administrator) {
+        Objects.requireNonNull(administrator, "Authenticated administrator required");
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new KlingProfiles(
+                KlingModels.profiles().stream().map(profile -> new KlingProfile(
+                        profile.kind() == Task.Kind.IMAGE_GENERATION ? KlingModels.IMAGE_ADAPTER_ID : KlingModels.VIDEO_ADAPTER_ID,
+                        profile.model().isEmpty() ? null : profile.model(), profile.operation().name(), profile.kind(),
+                        KlingModels.inputs(profile), new KlingInputLimits(KlingModels.declaration(profile).maxReferenceImages(),
+                                KlingModels.declaration(profile).maxReferenceVideos()))).toList()));
+    }
+
+    @GetMapping("/media-profiles")
+    public ResponseEntity<NativeProfiles> mediaProfiles(@AuthenticationPrincipal AdminPrincipal administrator) {
+        Objects.requireNonNull(administrator, "Authenticated administrator required");
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new NativeProfiles(
+                dev.agenvas.provider.domain.NativeMediaProfiles.profiles().stream().map(p -> new NativeProfile(
+                        p.profile().adapterId(), p.profile().model(), p.profile().operation(), p.profile().kind(),
+                        p.inputs(), new NativeInputLimits(p.declaration().maxReferenceImages(), p.declaration().maxReferenceVideos(),
+                                p.declaration().maxReferenceAudios()))).toList()));
     }
 
     @PostMapping("/media-connections")
@@ -195,4 +219,12 @@ public class MediaCapabilityController {
             boolean supportsTransparentBackground, boolean supportsImageMask, String mappingSha256,
             JsonNode settings) {}
     public record DefaultView(Task.Kind kind, UUID capabilityId, long version) {}
+    public record NativeProfiles(List<NativeProfile> profiles) {}
+    public record NativeProfile(String adapterId, String model, String operation, Task.Kind kind,
+            List<dev.agenvas.provider.domain.CreatorInputField> inputs, NativeInputLimits inputLimits) {}
+    public record NativeInputLimits(int maxReferenceImages, int maxReferenceVideos, int maxReferenceAudios) {}
+    public record KlingProfiles(List<KlingProfile> profiles) {}
+    public record KlingProfile(String adapterId, String model, String operation, Task.Kind kind,
+            List<KlingModels.Field> inputs, KlingInputLimits inputLimits) {}
+    public record KlingInputLimits(int maxReferenceImages, int maxReferenceVideos) {}
 }

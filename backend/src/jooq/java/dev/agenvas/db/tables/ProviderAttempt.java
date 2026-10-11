@@ -102,7 +102,7 @@ public class ProviderAttempt extends TableImpl<ProviderAttemptRecord> {
      * The column <code>public.provider_attempt.provider_request_id</code>.
      * 外部已受理请求标识，供状态查询与结果归档
      */
-    public final TableField<ProviderAttemptRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(240), this, "外部已受理请求标识，供状态查询与结果归档");
+    public final TableField<ProviderAttemptRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(512), this, "外部已受理请求标识，供状态查询与结果归档");
 
     /**
      * The column <code>public.provider_attempt.created_at</code>. 创建时间（UTC）

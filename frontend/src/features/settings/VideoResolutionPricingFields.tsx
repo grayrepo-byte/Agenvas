@@ -9,8 +9,8 @@ type Settings = MediaCapability["settings"];
 type Price = NonNullable<Settings["pricing"]>;
 const PRICE_STEP = "0.000001";
 
-export function VideoResolutionPricingFields({ values, onChange, tiers: selectedTiers, tierLabel = (tier) => tier }: {
-  values: Settings; onChange: (value: Settings) => void; tiers?: readonly string[]; tierLabel?: (tier: string) => string;
+export function VideoResolutionPricingFields({ values, onChange, tiers: selectedTiers, tierLabel = (tier) => tier, kind = "VIDEO" }: {
+  values: Settings; onChange: (value: Settings) => void; tiers?: readonly string[]; tierLabel?: (tier: string) => string; kind?: "IMAGE" | "VIDEO";
 }) {
   useLocale();
   const workflow = resolveAutoDlWorkflow(values);
@@ -18,7 +18,7 @@ export function VideoResolutionPricingFields({ values, onChange, tiers: selected
   function change(tier: NonNullable<Settings["videoResolution"]>, patch: Partial<Price>) {
     const current = values.pricingByResolution?.[tier];
     onChange({ ...values, pricingByResolution: { ...values.pricingByResolution,
-      [tier]: { amount: "", currency: values.pricing?.currency ?? "CNY", unit: values.pricing?.unit ?? "SECOND", ...current, ...patch },
+      [tier]: { amount: "", currency: values.pricing?.currency ?? "CNY", unit: values.pricing?.unit ?? (kind === "IMAGE" ? "IMAGE" : "SECOND"), ...current, ...patch },
     } });
   }
   return <FieldSet>
@@ -36,9 +36,10 @@ export function VideoResolutionPricingFields({ values, onChange, tiers: selected
         </Select>
       </FieldLabel></Field>
       <Field><FieldLabel className="ui-field block">{t("settings.resolutionPricing.unitLabel", { "0": tierLabel(tier) })}
-        <Select value={values.pricingByResolution?.[tier]?.unit ?? values.pricing?.unit ?? "SECOND"}
+        <Select value={values.pricingByResolution?.[tier]?.unit ?? values.pricing?.unit ?? (kind === "IMAGE" ? "IMAGE" : "SECOND")}
           onChange={(event) => change(tier, { unit: event.target.value as Price["unit"] })}>
-          <option value="SECOND">{t("media.pricing.perVideoSecond")}</option><option value="VIDEO">{t("media.pricing.perVideo")}</option>
+          {kind === "IMAGE" ? <option value="IMAGE">{t("settings.capabilities.perImage")}</option>
+            : <><option value="SECOND">{t("media.pricing.perVideoSecond")}</option><option value="VIDEO">{t("media.pricing.perVideo")}</option></>}
         </Select>
       </FieldLabel></Field>
     </FieldGroup>)}

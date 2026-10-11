@@ -35,7 +35,8 @@ import tools.jackson.databind.node.ObjectNode;
 public class MediaDraftService {
     private static final int MAX_PROMPT_LENGTH = 20_000;
     private static final int MIN_VIDEO_SECONDS = 1;
-    private static final int MAX_VIDEO_SECONDS = 30;
+    // Drafts must survive switching away from longer workflows; execution checks the target protocol.
+    private static final int MAX_VIDEO_SECONDS = MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS;
     private static final int MAX_MEDIA_INPUTS = 14;
     // Each marker maps positionally to one exact-version structured prompt mention.
     private static final char MENTION_MARKER = '\uFFFC';
@@ -99,9 +100,15 @@ public class MediaDraftService {
         var binding = capabilityId == null ? null : capabilities.forDraft(capabilityId, taskKind);
         var definition = binding == null ? null : capabilities.runningHubDefinition(binding);
         var comfy = binding == null ? null : capabilities.comfyWorkflowDefinition(binding);
-        boolean dynamic = definition != null;
+        var nativeProfile = binding == null ? null : capabilities.nativeProfile(binding);
+        var kling = binding == null ? null : capabilities.klingProfile(binding);
+        boolean dynamic = definition != null || kling != null || nativeProfile != null;
         JsonNode standardParameters = comfy == null ? normalizedParameters : dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.standardParameters(normalizedParameters);
-        if (dynamic) definition.values(mapper, normalizedParameters, prompt, durationSeconds, false);
+        if (definition != null) definition.values(mapper, normalizedParameters, prompt, durationSeconds, false);
+        else if (nativeProfile != null) dev.agenvas.provider.domain.NativeMediaProfiles.effectiveValues(nativeProfile,
+                capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, mapper);
+        else if (kling != null) dev.agenvas.provider.domain.KlingModels.effectiveValues(kling,
+                capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, mapper);
         else if (kind == Artifact.Kind.IMAGE) ImageGenerationParameters.parse(standardParameters);
         else if (kind == Artifact.Kind.VIDEO) VideoGenerationParameters.parse(standardParameters);
         else dev.agenvas.artifact.domain.AudioGenerationParameters.parse(standardParameters);
@@ -128,8 +135,8 @@ public class MediaDraftService {
             throw invalid(ApiMessage.of("api.media-draft-service.image-drafts-cannot-specify-video-duration"));
         }
         if (kind == Artifact.Kind.VIDEO && durationSeconds != null &&
-                (durationSeconds < MIN_VIDEO_SECONDS || durationSeconds > (dynamic ? MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS : MAX_VIDEO_SECONDS))) {
-            throw invalid(dynamic ? ApiMessage.of("api.media-draft-service.video-duration-must-be-an-integer-from-1-60-seconds") : ApiMessage.of("api.media-draft-service.video-length-must-be-an-integer-between-1-30-seconds"));
+                (durationSeconds < MIN_VIDEO_SECONDS || durationSeconds > MAX_VIDEO_SECONDS)) {
+            throw invalid(ApiMessage.of("api.media-draft-service.video-duration-must-be-an-integer-from-1-60-seconds"));
         }
         if (!dynamic && mode == MediaDraft.VideoInputMode.TEXT && !inputCommands.isEmpty()) {
             throw invalid(ApiMessage.of("api.media-draft-service.text-only-video-mode-cannot-save-image-input"));
@@ -161,7 +168,11 @@ public class MediaDraftService {
                             new MediaDraft.InputSource(UUID.randomUUID(),
                                     MediaDraft.SourceType.MANUAL, null))));
         }
-        if (dynamic) validateSlots(definition, normalizedParameters, inputs, false);
+        if (definition != null) validateSlots(definition, normalizedParameters, inputs, false);
+        if (nativeProfile != null) dev.agenvas.provider.domain.NativeMediaProfiles.validateDraft(nativeProfile,
+                capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, inputs, false, mapper);
+        if (kling != null) dev.agenvas.provider.domain.KlingModels.validateDraft(kling,
+                capabilities.parameters(binding, normalizedParameters), prompt, durationSeconds, inputs, false);
         if (comfy != null) {
             ObjectNode values = mapper.createObjectNode();
             values.set(RunningHubDefinition.VALUES_PROPERTY, comfy.values(mapper, normalizedParameters, prompt, durationSeconds,
@@ -445,6 +456,10 @@ public class MediaDraftService {
                 Task.Kind.valueOf(kind.name() + "_GENERATION"));
         var definition = binding == null ? null : capabilities.runningHubDefinition(binding);
         var comfy = binding == null ? null : capabilities.comfyWorkflowDefinition(binding);
+        var nativeProfile = binding == null ? null : capabilities.nativeProfile(binding);
+        var kling = binding == null ? null : capabilities.klingProfile(binding);
+        if (nativeProfile != null) return nativeSlotParameters(nativeProfile, draftParameters, sourceKind, versionId, slotKey, replaceSelectedSlot);
+        if (kling != null) return klingSlotParameters(kling, draftParameters, sourceKind, versionId, slotKey, replaceSelectedSlot);
         if (definition == null && comfy == null) {
             if (slotKey != null) throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
             return null;
@@ -477,6 +492,62 @@ public class MediaDraftService {
         UUID removedVersion = previous.isBlank() || fields.stream().anyMatch(field -> field.media()
                 && previous.equals(values.path(field.key()).asText())) ? null : UUID.fromString(previous);
         return new WorkflowSlotAssignment(parameters, removedVersion);
+    }
+
+    private WorkflowSlotAssignment nativeSlotParameters(dev.agenvas.provider.domain.NativeMediaProfiles.Selection profile,
+            JsonNode draftParameters, Artifact.Kind sourceKind, UUID versionId, String slotKey, boolean replaceSelectedSlot) {
+        if (!draftParameters.isObject() || draftParameters.has(RunningHubDefinition.VALUES_PROPERTY)
+                && !draftParameters.path(RunningHubDefinition.VALUES_PROPERTY).isObject())
+            throw invalid(ApiMessage.of("api.media-draft-service.media-parameters-must-be-objects"));
+        ObjectNode parameters = (ObjectNode) draftParameters.deepCopy();
+        ObjectNode values = parameters.path(RunningHubDefinition.VALUES_PROPERTY).isObject()
+                ? (ObjectNode) parameters.path(RunningHubDefinition.VALUES_PROPERTY).deepCopy() : mapper.createObjectNode();
+        var fields = profile.inputs();
+        var candidates = fields.stream().filter(field -> field.media() && field.type().name().equals(sourceKind.name())
+                && (slotKey == null || slotKey.equals(field.key()))
+                && (replaceSelectedSlot && slotKey != null || !values.hasNonNull(field.key())
+                    || values.path(field.key()).asText().isBlank() || versionId.toString().equals(values.path(field.key()).asText()))).toList();
+        if (candidates.isEmpty()) throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
+        if (slotKey == null && candidates.stream().anyMatch(field -> versionId.toString().equals(values.path(field.key()).asText())))
+            return new WorkflowSlotAssignment(parameters, null);
+        String key = candidates.getFirst().key();
+        String previous = values.path(key).asText("");
+        // Reuse is limited to protocol-declared frame roles and still has one authorized mediaInput.
+        if (fields.stream().anyMatch(field -> field.media() && !field.key().equals(key)
+                && versionId.toString().equals(values.path(field.key()).asText())
+                && !dev.agenvas.provider.domain.NativeMediaProfiles.canReuse(profile, field.key(), key)))
+            throw dev.agenvas.provider.domain.NativeMediaProfiles.invalid();
+        values.put(key, versionId.toString());
+        parameters.set(RunningHubDefinition.VALUES_PROPERTY, values);
+        UUID removedVersion = previous.isBlank() || fields.stream().anyMatch(field -> field.media()
+                && previous.equals(values.path(field.key()).asText())) ? null : UUID.fromString(previous);
+        return new WorkflowSlotAssignment(parameters, removedVersion);
+    }
+
+    private WorkflowSlotAssignment klingSlotParameters(dev.agenvas.provider.domain.KlingModels.Profile profile,
+            JsonNode draftParameters, Artifact.Kind sourceKind, UUID versionId, String slotKey, boolean replaceSelectedSlot) {
+        if (!draftParameters.isObject() || draftParameters.has(RunningHubDefinition.VALUES_PROPERTY)
+                && !draftParameters.path(RunningHubDefinition.VALUES_PROPERTY).isObject())
+            throw invalid(ApiMessage.of("api.media-draft-service.media-parameters-must-be-objects"));
+        ObjectNode parameters = (ObjectNode) draftParameters.deepCopy();
+        ObjectNode values = parameters.path(RunningHubDefinition.VALUES_PROPERTY).isObject()
+                ? (ObjectNode) parameters.path(RunningHubDefinition.VALUES_PROPERTY).deepCopy() : mapper.createObjectNode();
+        var fields = dev.agenvas.provider.domain.KlingModels.inputs(profile);
+        var candidates = fields.stream().filter(field -> field.media() && field.type().name().equals(sourceKind.name())
+                && (slotKey == null || slotKey.equals(field.key()))
+                && (replaceSelectedSlot && slotKey != null || !values.hasNonNull(field.key())
+                    || values.path(field.key()).asText().isBlank() || versionId.toString().equals(values.path(field.key()).asText()))).toList();
+        if (candidates.isEmpty()) throw invalid(ApiMessage.of("api.media-draft-service.workflow-slot-unavailable"));
+        if (slotKey == null && candidates.stream().anyMatch(field -> versionId.toString().equals(values.path(field.key()).asText())))
+            return new WorkflowSlotAssignment(parameters, null);
+        String key = candidates.getFirst().key();
+        String previous = values.path(key).asText("");
+        // One archived version represents one native contents item; implicit duplicate slot copies would alter aliases.
+        if (fields.stream().anyMatch(field -> field.media() && !field.key().equals(key)
+                && versionId.toString().equals(values.path(field.key()).asText()))) throw dev.agenvas.provider.domain.KlingProtocol.invalid();
+        values.put(key, versionId.toString());
+        parameters.set(RunningHubDefinition.VALUES_PROPERTY, values);
+        return new WorkflowSlotAssignment(parameters, previous.isBlank() ? null : UUID.fromString(previous));
     }
 
     /** Conditional slots follow the same effective scalar defaults that the editor displays. */
@@ -550,9 +621,7 @@ public class MediaDraftService {
                 input.versionId().equals(old.versionId()))).forEach(old -> removed.add(old.versionId().toString()));
         if (parameters.path(RunningHubDefinition.VALUES_PROPERTY) instanceof ObjectNode values) {
             Set<String> mediaSlots = before.capabilityId() == null ? Set.of()
-                    : capabilities.declaredDraftInputs(before.capabilityId()).stream()
-                            .filter(RunningHubDefinition.Field::media).map(RunningHubDefinition.Field::key)
-                            .collect(java.util.stream.Collectors.toSet());
+                    : capabilities.declaredMediaSlotKeys(before.capabilityId());
             List<String> keys = values.propertyNames().stream().filter(key ->
                     mediaSlots.contains(key) && values.path(key).isTextual()
                             && removed.contains(values.path(key).asText())).toList();

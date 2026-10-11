@@ -21,5 +21,9 @@ public enum MediaPlatform {
     /** AutoDL hosted ComfyUI workflow task API. */
     AUTODL,
     /** MiniMax official H3 V2 video generation API. */
-    MINIMAX
+    MINIMAX,
+    /** Kling official API Key image and video generation protocols. */
+    KLING,
+    /** Alibaba Model Studio image and video generation. */
+    WAN
 }

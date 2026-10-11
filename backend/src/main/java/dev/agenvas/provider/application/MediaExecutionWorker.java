@@ -111,6 +111,8 @@ public class MediaExecutionWorker {
                         : callLogs.record(descriptor(task, binding, CallLog.Operation.POLL),
                             () -> adapter.reconcile(attempt), resultValue -> callOutcome(resultValue, task.providerRequestId()));
             } catch (RuntimeException transientFailure) {
+                String permanent = klingArchiveFailure(binding, transientFailure);
+                if (permanent != null) { tasks.blockProviderPoll(task, workerId, permanent); continue; }
                 tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
                 continue;
             }
@@ -122,6 +124,8 @@ public class MediaExecutionWorker {
                     try {
                         content = archive(attempt, completed.payload());
                     } catch (RuntimeException archiveFailure) {
+                        String permanent = klingArchiveFailure(binding, archiveFailure);
+                        if (permanent != null) { tasks.blockProviderPoll(task, workerId, permanent); continue; }
                         tasks.retryProviderPoll(task, workerId,
                                 "PROVIDER_POLL_TECHNICAL_FAILURE");
                         continue;
@@ -136,7 +140,9 @@ public class MediaExecutionWorker {
                         var results = archiveResults(attempt, adapter, completed.manifest());
                         tasks.succeedWithArtifacts(task, workerId, withSilentVideo(attempt, results), completed.manifest().usage());
                     } catch (RuntimeException archiveFailure) {
-                        tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+                        String permanent = klingArchiveFailure(binding, archiveFailure);
+                        if (permanent != null) tasks.blockProviderPoll(task, workerId, permanent);
+                        else tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
                     }
                 }
                 case Submission.Rejected rejected -> tasks.fail(task, workerId, rejected.code());
@@ -144,11 +150,26 @@ public class MediaExecutionWorker {
                         blocked.code());
                 case Submission.Unknown ignored ->
                     tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
+                case Submission.AcceptedResults ignored ->
+                    tasks.retryProviderPoll(task, workerId, "PROVIDER_PROTOCOL_INVALID");
                 case Submission.Accepted ignored ->
                     tasks.deferProviderPoll(task, workerId, Instant.now().plusSeconds(5));
             }
         }
         return claimed.size();
+    }
+
+    private String klingArchiveFailure(MediaCapabilityBinding binding, RuntimeException failure) {
+        if (dev.agenvas.provider.domain.NativeMediaProfiles.supports(binding.adapterId())
+                && failure instanceof dev.agenvas.provider.domain.NativeMediaFailure nativeFailure) return nativeFailure.code();
+        if (!dev.agenvas.provider.domain.KlingModels.adapter(binding.adapterId())) return null;
+        if (failure instanceof dev.agenvas.provider.infrastructure.KlingClient.CredentialUnavailable)
+            return "MEDIA_CREDENTIAL_UNAVAILABLE";
+        if (failure instanceof dev.agenvas.provider.infrastructure.KlingClient.TaskExpired) return "KLING_TASK_EXPIRED";
+        if (failure instanceof dev.agenvas.provider.infrastructure.KlingClient.ProtocolFailure) return "PROTOCOL_INVALID";
+        if (failure instanceof dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy.Expired) return "KLING_RESULT_EXPIRED";
+        if (failure instanceof dev.agenvas.provider.infrastructure.KlingMediaDownloadPolicy.Rejected) return failure.getMessage();
+        return null;
     }
 
     private CallLogService.CallDescriptor descriptor(Task task, MediaCapabilityBinding binding,
@@ -170,6 +191,7 @@ public class MediaExecutionWorker {
     private CallLogService.CallOutcome callOutcome(Submission result, String originalRequestId) {
         return switch (result) {
             case Submission.Accepted accepted -> CallLogService.CallOutcome.succeeded(accepted.requestId());
+            case Submission.AcceptedResults accepted -> CallLogService.CallOutcome.succeeded(accepted.requestId());
             case Submission.Rejected rejected -> new CallLogService.CallOutcome(
                     CallLog.Status.FAILED, originalRequestId, rejected.code());
             case Submission.Blocked blocked -> new CallLogService.CallOutcome(
@@ -183,6 +205,7 @@ public class MediaExecutionWorker {
     private void recordSubmission(Task task, String workerId, AttemptContext attempt,
             Submission result) {
         switch (result) {
+            case Submission.AcceptedResults accepted -> tasks.waitForProviderWithResults(task, workerId, accepted.requestId(), accepted.manifest());
             case Submission.Accepted accepted -> tasks.waitForProvider(task, workerId,
                     accepted.requestId(), Instant.now().plusSeconds(5));
             case Submission.Completed completed -> completeArtifact(attempt, workerId,
@@ -248,6 +271,7 @@ public class MediaExecutionWorker {
                 ObjectNode content = resultContent(attempt, asset);
                 content.withObject("parameters").put("providerOutputOrdinal", result.ordinal()).put("providerOutputNodeId", result.nodeId());
                 content.withObject("parameters").set("providerUsage", manifest.usage());
+                addNativeMetadata(attempt, content, result.providerMetadata());
                 archived.add(new TaskService.ArchivedProviderResult(result.ordinal(),
                         dev.agenvas.artifact.domain.Artifact.Kind.valueOf(result.kind().name()), result.primary(), content));
             }
@@ -262,8 +286,44 @@ public class MediaExecutionWorker {
         ObjectNode parameters = MediaResult.copyFrozenParameters(content, task);
         parameters.put("adapterId", attempt.binding().adapterId());
         parameters.put("capabilityId", attempt.binding().capabilityId().toString());
+        if ((dev.agenvas.provider.domain.KlingModels.adapter(attempt.binding().adapterId())
+                || dev.agenvas.provider.domain.NativeMediaProfiles.supports(attempt.binding().adapterId())) && asset.durationMs() != null)
+            parameters.put("providerResultDurationMs", asset.durationMs());
         parameters.put("providerRequestId", attempt.originalRequestId() != null ? attempt.originalRequestId() : attempt.requestKey());
         return content;
+    }
+
+    /** Only provider result identity and layer annotations may enter public artifact content. */
+    private void addNativeMetadata(AttemptContext attempt, ObjectNode content, tools.jackson.databind.JsonNode metadata) {
+        if (metadata == null || !metadata.isObject() || !dev.agenvas.provider.domain.NativeMediaProfiles.supports(attempt.binding().adapterId())) return;
+        ObjectNode safe = mapper.createObjectNode();
+        String fileName = metadata.path("fileName").asText("");
+        if ("GOOGLE_VEO".equals(attempt.binding().adapterId()) && fileName.matches("files/[A-Za-z0-9_-]{1,180}")) {
+            safe.put("fileName", fileName).put("adapterId", attempt.binding().adapterId());
+            var profile = catalog.nativeProfile(attempt.binding());
+            safe.put("model", profile.profile().model()).put("connectionId", attempt.binding().connectionId().toString())
+                    .put("connectionVersion", attempt.binding().connectionVersion());
+            content.withObject("parameters").set("nativeProviderResult", safe);
+        }
+        if ("ARK_SEEDREAM_IMAGE".equals(attempt.binding().adapterId())) {
+            for (String key : java.util.List.of("z_index", "name", "description", "bounding_box")) {
+                var value = metadata.get(key);
+                if (value != null && (value.isIntegralNumber() || value.isTextual() && value.asText().length() <= 4000
+                        || "bounding_box".equals(key) && safeLayerBox(value))) safe.set(key, value);
+            }
+            if (!safe.isEmpty()) content.withObject("parameters").set("providerLayer", safe);
+        }
+    }
+
+    private static boolean safeLayerBox(tools.jackson.databind.JsonNode value) {
+        if (!value.isObject() || !value.propertyNames().equals(java.util.Set.of("absolute", "normalized"))) return false;
+        for (String key : java.util.List.of("absolute", "normalized")) {
+            var points = value.path(key);
+            if (!points.isArray() || points.size() != 4) return false;
+            for (var point : points) if (!point.isIntegralNumber() || !point.canConvertToInt() || point.asInt() < 0
+                    || "normalized".equals(key) && point.asInt() > 1000) return false;
+        }
+        return true;
     }
 
     /** Archive bytes by task identity before committing the immutable artifact version. */
@@ -277,7 +337,9 @@ public class MediaExecutionWorker {
                         ? assets.archiveTaskAudio(attempt.ownerId(), task.projectId(), task.id(), payload::stream)
                         : assets.archiveTaskVideo(attempt.ownerId(), task.projectId(), task.id(),
                             payload::stream);
-            return resultContent(attempt, asset);
+            ObjectNode content = resultContent(attempt, asset);
+            addNativeMetadata(attempt, content, payload.providerMetadata());
+            return content;
         } catch (IOException failure) {
             throw new IllegalStateException("Cannot close media response", failure);
         }

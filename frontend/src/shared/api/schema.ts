@@ -1115,6 +1115,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/media-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取万相、Seedream 与 Google 视频的编译模型、操作和完整生成输入 */
+        get: operations["getNativeMediaProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/kling/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取应用编译的可灵图片与视频生成模型、操作及输入字段 */
+        get: operations["getKlingProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/media-connections": {
         parameters: {
             query?: never;
@@ -3679,12 +3713,12 @@ export interface components {
             id: string;
             name: string;
             /** @enum {string} */
-            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB" | "MINIMAX";
+            platform: "LOCAL" | "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB" | "MINIMAX" | "KLING" | "WAN";
             enabled: boolean;
             /** Format: int64 */
             version: number;
             connectionVersion: number;
-            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL; null uses the platform official endpoint. */
+            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTPS root, or optional OPENAI/GOOGLE HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint. */
             origin: string | null;
             keyMask: string | null;
             /** @enum {string} */
@@ -3719,11 +3753,22 @@ export interface components {
             mappingSha256: string;
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
-        /** @description Versioned settings within a compiled adapter protocol. New ComfyUI publication requires comfyWorkflow; legacy model-only capabilities retain their snapshot for recovery and metadata changes. OPENAI and GOOGLE accept a compatible model name and a connection API base URL. Defaults fill missing draft fields; limits narrow the published declaration. Pricing is an administrator estimate, never an actual provider charge. */
+        /** @description Versioned settings within a compiled adapter protocol. New ComfyUI publication requires comfyWorkflow; legacy model-only capabilities retain their snapshot for recovery and metadata changes. OPENAI and GOOGLE image adapters accept a compatible model name and a connection API base URL; native video uses its fixed official protocol. Defaults fill missing draft fields; limits narrow the published declaration. Pricing is an administrator estimate, never an actual provider charge. */
         FixedMediaAdapterSettings: {
             comfyWorkflow?: components["schemas"]["ComfyUiWorkflowDefinition"];
             /** @description Derived creator input metadata for a published ComfyUI graph. Includes declared scalar parameters and synthesized PROMPT, reference_0 through reference_13 IMAGE slots, and video DURATION_SECONDS. Does not expose the graph or fixed private literals. Ignored on administrator writes and recomputed by the server. */
             readonly comfyInputs?: components["schemas"]["RunningHubField"][];
+            /** @description 服务端按可灵模型与操作派生的创建者输入字段。媒体槽通过精确版本 UUID 绑定，不能指定外部 URL；回调与外部任务 ID 由应用管理。 */
+            readonly klingInputs?: components["schemas"]["CreatorInputField"][];
+            /** @description 按原生生成模型与操作派生的受限字段，精确媒体版本 UUID 槽和标量参数；不接受 URL、回调、Key 或任意协议 JSON。 */
+            readonly nativeInputs?: components["schemas"]["CreatorInputField"][];
+            /** @description 服务端声明可复用同一已授权精确图片版本的首尾帧槽；mediaInputs 仍只保留一个授权条目。管理员写入会被忽略并重新派生。 */
+            readonly nativeReusableSlots?: ("first_frame" | "last_frame")[];
+            /**
+             * @description 编译目录声明的原生生成操作；省略使用 GENERATE。可灵的模型无关操作 EXPAND 和 SUBJECT_COMPLETION 不接受 model。
+             * @enum {string}
+             */
+            operation?: "GENERATE" | "MULTI_IMAGE" | "EXPAND" | "SUBJECT_COMPLETION" | "MOTION_CONTROL" | "LAYER_DECOMPOSITION" | "INTERACTIVE_EDIT" | "EDIT" | "EXTEND";
             runningHub?: components["schemas"]["RunningHubDefinition"];
             /** @description AutoDL preset or administrator-published workflow ID. Must match workflowDefinition.id when a definition is present. */
             workflowId?: string;
@@ -3744,9 +3789,9 @@ export interface components {
             clipVision?: string;
             /** @enum {string} */
             quality?: "low" | "medium" | "high";
-            /** @description Empty uses the compiled default; only OPENAI/GOOGLE accept this field. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description OPENAI/GOOGLE accept provider model names; KLING_IMAGE/KLING_VIDEO use the compiled Kling profile catalog. Empty uses the compiled default. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. */
             model?: string;
-            /** @description Image defaults; video adapters accept aspectRatio only. Unsupported parameters are rejected. */
+            /** @description Image defaults; fixed video adapters accept their declared parameters. Native media adapters use dynamicValues derived from nativeInputs or klingInputs. Unsupported parameters are rejected. */
             defaultParameters?: components["schemas"]["ImageGenerationParameters"];
             defaultDurationSeconds?: number;
             minimumSeconds?: number;
@@ -3755,7 +3800,7 @@ export interface components {
             maxReferenceAudios?: number;
             maxReferenceVideos?: number;
             pricing?: components["schemas"]["MediaCapabilityPricing"];
-            /** @description AutoDL published tiers or MINIMAX_H3 768p/1440p video estimates. Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost. */
+            /** @description AutoDL published tiers, MINIMAX_H3 768p/1440p, or the declared KLING video model 720p/1080p/2160p tiers (2160p maps to native 4k). Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost. */
             pricingByResolution?: {
                 [key: string]: components["schemas"]["MediaCapabilityPricing"];
             };
@@ -3872,6 +3917,68 @@ export interface components {
                 maxCount: number;
             }[];
         };
+        NativeMediaProfiles: {
+            profiles: {
+                /** @enum {string} */
+                adapterId: "WAN_IMAGE" | "WAN_VIDEO" | "ARK_SEEDREAM_IMAGE" | "GOOGLE_VEO" | "GOOGLE_OMNI_VIDEO";
+                model: string;
+                /** @enum {string} */
+                operation: "GENERATE" | "LAYER_DECOMPOSITION" | "INTERACTIVE_EDIT" | "EDIT" | "EXTEND";
+                /** @enum {string} */
+                kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+                inputs: components["schemas"]["CreatorInputField"][];
+                inputLimits: {
+                    maxReferenceImages: number;
+                    maxReferenceVideos: number;
+                    maxReferenceAudios: number;
+                };
+            }[];
+        };
+        KlingProfiles: {
+            profiles: {
+                /** @enum {string} */
+                adapterId: "KLING_IMAGE" | "KLING_VIDEO";
+                /** @description 模型无关操作为 null。 */
+                model: string | null;
+                /** @enum {string} */
+                operation: "GENERATE" | "MULTI_IMAGE" | "EXPAND" | "SUBJECT_COMPLETION" | "MOTION_CONTROL";
+                /** @enum {string} */
+                kind: "IMAGE_GENERATION" | "VIDEO_GENERATION";
+                inputs: components["schemas"]["CreatorInputField"][];
+                /** @description 模型全部合法组合中的素材总上限；命名槽数量不等于可同时填写的数量，运行另校验交叉限制。 */
+                inputLimits?: {
+                    maxReferenceImages: number;
+                    maxReferenceVideos: number;
+                };
+            }[];
+        };
+        /** @description 创建者可编辑的协议输入，不含工作流图节点或传输目标。 */
+        CreatorInputField: {
+            key: string;
+            label: string;
+            description?: string | null;
+            /** @enum {string} */
+            type: "STRING" | "NUMBER" | "INTEGER" | "BOOLEAN" | "SELECT" | "IMAGE" | "AUDIO" | "VIDEO";
+            /** @default false */
+            required: boolean;
+            /** @default false */
+            advanced: boolean;
+            defaultValue?: components["schemas"]["RunningHubScalar"] | null;
+            minimum?: number | null;
+            maximum?: number | null;
+            step?: number | null;
+            maxLength?: number | null;
+            options?: {
+                label: string;
+                value: components["schemas"]["RunningHubScalar"];
+            }[] | null;
+            /** @enum {string|null} */
+            source?: "PARAMETER" | "PROMPT" | "DURATION_SECONDS" | null;
+            enabledWhen?: {
+                field: string;
+                value: components["schemas"]["RunningHubScalar"];
+            } | null;
+        };
         RunningHubField: {
             key: string;
             label: string;
@@ -3947,9 +4054,10 @@ export interface components {
         CreateMediaConnectionRequest: {
             name: string;
             /** @enum {string} */
-            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB" | "MINIMAX";
-            /** @description Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB" | "MINIMAX" | "KLING" | "WAN";
+            /** @description Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
+            /** @description Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential. */
             apiKey?: string | null;
         };
         UpdateMediaConnectionRequest: {
@@ -3957,8 +4065,9 @@ export interface components {
             expectedVersion: number;
             name: string;
             enabled: boolean;
-            /** @description Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
+            /** @description Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential. */
             apiKey?: string | null;
         };
         CreateMediaCapabilityRequest: {
@@ -4153,9 +4262,11 @@ export interface components {
             /** @enum {string} */
             entryType: "RESERVATION" | "SETTLEMENT" | "RELEASE";
             quantity: {
-                imageCount: number;
+                /** @description 自动连续出图预留时数量未知，结算使用实际归档结果数。 */
+                imageCount: number | null;
                 videoCount: number;
-                videoSeconds: string;
+                /** @description 未声明输出时长的协议预留为 null，结算可采用已归档实际时长。 */
+                videoSeconds: string | null;
                 llmRequestCount: number;
                 inputTokens: number | null;
                 outputTokens: number | null;
@@ -4404,7 +4515,7 @@ export interface components {
             expectedVersion: number;
             prompt: string;
             parameters: components["schemas"]["ImageGenerationParameters"];
-            /** @description RunningHub 的具名时长来源支持 1–60 整数秒；其他适配器仍按各自较小范围校验。未声明时长字段的 RunningHub 视频可以为 null。 */
+            /** @description 草稿保存 1–60 整数秒并在能力切换时保留原时长；运行按所选适配器的范围校验。未声明时长字段的 RunningHub 视频和可灵动作控制可以为 null。 */
             durationSeconds?: number | null;
             /** Format: uuid */
             capabilityId?: string | null;
@@ -4534,7 +4645,7 @@ export interface components {
             canvasItemId: string;
             prompt: string;
             parameters: components["schemas"]["ImageGenerationParameters"];
-            /** @description RunningHub 的具名时长来源支持 1–60 整数秒；其他适配器仍按各自较小范围校验。未声明时长字段的 RunningHub 视频可以为 null。 */
+            /** @description 草稿保存 1–60 整数秒并在能力切换时保留原时长；运行按所选适配器的范围校验。未声明时长字段的 RunningHub 视频和可灵动作控制可以为 null。 */
             durationSeconds: number | null;
             /** Format: uuid */
             capabilityId: string | null;
@@ -4573,7 +4684,7 @@ export interface components {
             pitchRate?: number;
             /** @enum {string} */
             aspectRatio?: "AUTO" | "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9";
-            /** @description AutoDL published resolution tier or MINIMAX_H3 768p/1440p (official 768P/2K). Omitted uses the capability default. Frozen into accepted tasks. */
+            /** @description AutoDL published resolution tier, MINIMAX_H3 768p/1440p (official 768P/2K), or KLING_VIDEO_3 720p/1080p/2160p (official 720p/1080p/4k). Omitted uses the capability default. Frozen into accepted tasks. */
             videoResolution?: string;
             /** @enum {string} */
             resolution?: "1K" | "2K" | "4K";
@@ -5823,6 +5934,7 @@ export interface components {
         generated: {
             /** Format: uuid */
             assetId: string;
+            /** @description Actual frozen result prompt after protocol mention rendering; empty when the operation has no prompt input. */
             prompt: string;
             negativePrompt?: string;
             workflowVersion: string;
@@ -8212,6 +8324,50 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getNativeMediaProfiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 服务端只读原生生成协议目录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NativeMediaProfiles"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getKlingProfiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 创建和编辑能力时使用的只读协议目录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KlingProfiles"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getMediaSettings: {

@@ -286,7 +286,8 @@ public class CanvasService {
     public CanvasItem placeTaskMediaOutputWithinChange(UUID ownerId, UUID projectId, UUID sourceItemId,
             UUID artifactId, int outputIndex, JsonNode frozenInput) {
         projects.get(ownerId, projectId);
-        if (outputIndex < 1 || outputIndex >= dev.agenvas.provider.domain.RunningHubDefinition.MAX_OUTPUTS) throw validation(ApiMessage.of("api.canvas-service.the-result-sequence-number-is-invalid"));
+        // TaskService validates each protocol's count before placement; decomposition can include 16 extra layers.
+        if (outputIndex < 1 || outputIndex >= dev.agenvas.provider.domain.NativeMediaProtocol.MAX_RESULTS) throw validation(ApiMessage.of("api.canvas-service.the-result-sequence-number-is-invalid"));
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId).orElse(null);
         if (source == null) return null;
         var artifact = artifacts.get(ownerId, projectId, artifactId);

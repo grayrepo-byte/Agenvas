@@ -191,13 +191,19 @@ public class UsageService {
     /** 仅在带 fencing 校验的媒体结果同事务提交后结算。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleMediaTask(UUID ownerId, Task task) {
+        settleMediaTask(ownerId, task, null, null);
+    }
+
+    /** Multiple Kling images and clipped motion durations settle from archived media, not requested counts. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void settleMediaTask(UUID ownerId, Task task, Integer archivedImageCount, BigDecimal archivedVideoSeconds) {
         if (task.kind() != Task.Kind.AUDIO_GENERATION && task.kind() != Task.Kind.IMAGE_GENERATION
                 && task.kind() != Task.Kind.VIDEO_GENERATION) return;
         UsageEntry reservation = ledger.findByOperationKey(
                 "media:" + task.id() + ":reserve").orElseThrow(() ->
                 new IllegalStateException("Direct media Task has no media usage reservation"));
         persist(ownerId, entry(task, UsageEntry.EntryType.SETTLEMENT,
-                reservation.costSource(), "media:" + task.id() + ":settle", reservation.providerConfigVersion()));
+                reservation.costSource(), "media:" + task.id() + ":settle", reservation.providerConfigVersion(), archivedImageCount, archivedVideoSeconds));
     }
 
     /** 调用方确认任务未到达提交检查点后，释放媒体任务的预留。 */
@@ -246,8 +252,15 @@ public class UsageService {
     /** 从已批准任务的固定输入生成数量账目，并核验 Provider 与工作流快照。 */
     private UsageEntry entry(Task task, UsageEntry.EntryType type, String source,
             String operationKey, int connectionVersion) {
+        return entry(task, type, source, operationKey, connectionVersion, null, null);
+    }
+
+    private UsageEntry entry(Task task, UsageEntry.EntryType type, String source,
+            String operationKey, int connectionVersion, Integer archivedImageCount, BigDecimal archivedVideoSeconds) {
         ObjectNode quantity = mapper.createObjectNode();
         boolean runningHub = "RUNNINGHUB_V2".equals(task.input().path("providerProtocol").asText());
+        boolean kling = dev.agenvas.provider.domain.KlingModels.PROTOCOL_ID.equals(task.input().path("providerProtocol").asText())
+                || dev.agenvas.provider.domain.NativeMediaProtocol.PROTOCOL_ID.equals(task.input().path("providerProtocol").asText());
         switch (task.kind()) {
             case AUDIO_GENERATION -> {
                 quantity.put("audioCount", 1);
@@ -259,7 +272,9 @@ public class UsageService {
                 quantity.put("videoSeconds", "0");
             }
             case IMAGE_GENERATION -> {
-                quantity.put("imageCount", 1);
+                if (kling && archivedImageCount != null) quantity.put("imageCount", archivedImageCount);
+                else if (kling && task.input().path("expectedImageCount").isNull()) quantity.putNull("imageCount");
+                else quantity.put("imageCount", kling ? task.input().path("expectedImageCount").asInt(1) : 1);
                 quantity.put("videoCount", 0);
                 quantity.put("videoSeconds", "0");
             }
@@ -268,7 +283,8 @@ public class UsageService {
                 JsonNode seconds = task.input().path("durationSeconds");
                 if ("LOCAL_NO_COST".equals(source) && task.input().has("sourceDurationMs")) {
                     durationText = BigDecimal.valueOf(task.input().path("sourceDurationMs").asLong(), 3).toPlainString();
-                } else if (runningHub && seconds.isMissingNode()) durationText = null;
+                } else if (kling && archivedVideoSeconds != null) durationText = archivedVideoSeconds.toPlainString();
+                else if ((runningHub || kling) && seconds.isMissingNode()) durationText = null;
                 else {
                     int maxSeconds = runningHub
                             ? dev.agenvas.provider.domain.MediaAdapterRegistry.RUNNINGHUB_MAX_VIDEO_SECONDS
@@ -277,7 +293,8 @@ public class UsageService {
                             || seconds.intValue() > maxSeconds) {
                         throw new IllegalStateException("Approved video Task lacks pinned duration");
                     }
-                    durationText = Integer.toString(seconds.intValue());
+                    durationText = BigDecimal.valueOf(seconds.intValue()).add(task.input().path("nativeBillableInputSeconds").isNumber()
+                            ? task.input().path("nativeBillableInputSeconds").decimalValue() : BigDecimal.ZERO).toPlainString();
                 }
                 quantity.put("imageCount", 0);
                 quantity.put("videoCount", 1);
@@ -304,8 +321,10 @@ public class UsageService {
             if ("SECOND".equals(pricing.path("unit").asText())) {
                 JsonNode duration = quantity.path(task.kind() == Task.Kind.AUDIO_GENERATION ? "audioSeconds" : "videoSeconds");
                 estimate = duration.isNull() ? null : estimate.multiply(new BigDecimal(duration.asText()));
+            } else if (kling && "IMAGE".equals(pricing.path("unit").asText())) {
+                estimate = quantity.path("imageCount").isNull() ? null : estimate.multiply(BigDecimal.valueOf(quantity.path("imageCount").asInt()));
             }
-            if (estimate != null) estimate = estimate.setScale(MONEY_SCALE);
+            if (estimate != null) estimate = estimate.setScale(MONEY_SCALE, java.math.RoundingMode.HALF_UP);
             currency = pricing.path("currency").asText();
         }
         return new UsageEntry(UUID.randomUUID(), task.projectId(), task.runId(), task.id(),

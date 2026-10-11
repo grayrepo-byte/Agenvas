@@ -9,9 +9,12 @@ public record ProviderResultManifest(int schemaVersion, List<Result> results, Js
     /** ZIP members are pinned by name and bytes, independently of a later archive's ordering. */
     public record ArchiveEntry(String name, String sha256) {}
     public record Result(int ordinal, String nodeId, RunningHubDefinition.OutputKind kind,
-            boolean primary, String url, ArchiveEntry archiveEntry) {
+            boolean primary, String url, ArchiveEntry archiveEntry, JsonNode providerMetadata) {
         public Result(int ordinal, String nodeId, RunningHubDefinition.OutputKind kind, boolean primary, String url) {
-            this(ordinal, nodeId, kind, primary, url, null);
+            this(ordinal, nodeId, kind, primary, url, null, null);
+        }
+        public Result(int ordinal, String nodeId, RunningHubDefinition.OutputKind kind, boolean primary, String url, ArchiveEntry entry) {
+            this(ordinal, nodeId, kind, primary, url, entry, null);
         }
     }
 }

@@ -596,9 +596,11 @@ public class TaskService {
     public void checkpointProviderResults(Task lease, String workerId, ProviderResultManifest manifest) {
         if (manifest == null || manifest.schemaVersion() != ProviderResultManifest.SCHEMA_VERSION
                 || manifest.results() == null || manifest.results().isEmpty()
-                || manifest.results().size() > RunningHubDefinition.MAX_OUTPUTS
+                || manifest.results().size() > maximumProviderResults(lease)
                 || manifest.results().stream().anyMatch(java.util.Objects::isNull)
                 || manifest.results().stream().filter(ProviderResultManifest.Result::primary).count() != 1) throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
+        if (manifest.results().stream().mapToLong(r -> r.url() == null ? 0 : r.url().length()).sum() > 96L * 1024 * 1024)
+            throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
         for (int index = 0; index < manifest.results().size(); index++) {
             var result = manifest.results().get(index);
             if (result.ordinal() != index || result.kind() == null || result.url() == null || result.url().isBlank()
@@ -625,7 +627,7 @@ public class TaskService {
     @Transactional
     public ArtifactService.TaskVersionResult succeedWithArtifacts(Task lease, String workerId,
             List<ArchivedProviderResult> results, JsonNode providerUsage) {
-        if (results == null || results.isEmpty() || results.size() > RunningHubDefinition.MAX_OUTPUTS
+        if (results == null || results.isEmpty() || results.size() > maximumProviderResults(lease)
                 || results.stream().anyMatch(java.util.Objects::isNull)
                 || results.stream().filter(ArchivedProviderResult::primary).count() != 1) throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid-bf2a2fd8"));
         for (int index = 0; index < results.size(); index++) {
@@ -750,7 +752,15 @@ public class TaskService {
             tasks.clearProviderPollFailures(lease.id());
             // Approved Agent media shares the same reservation ledger as direct generation.
             if (lease.runId() == null || lease.approvedMedia()) {
-                usage.settleMediaTask(ownerId, lease);
+                if (dev.agenvas.provider.domain.KlingModels.PROTOCOL_ID.equals(lease.input().path("providerProtocol").asText())
+                        || dev.agenvas.provider.domain.NativeMediaProtocol.PROTOCOL_ID.equals(lease.input().path("providerProtocol").asText())) {
+                    int images = (int) results.stream().filter(media -> media.kind() == Artifact.Kind.IMAGE).count();
+                    java.math.BigDecimal seconds = lease.kind() == Task.Kind.VIDEO_GENERATION
+                            ? java.math.BigDecimal.valueOf(content.path("parameters").path("providerResultDurationMs").asLong(), 3) : null;
+                    if (seconds != null && seconds.signum() <= 0) throw new IllegalStateException("Archived Kling video lacks probed duration");
+                    if (seconds != null) seconds = seconds.add(lease.input().path("nativeBillableInputSeconds").isNumber() ? lease.input().path("nativeBillableInputSeconds").decimalValue() : java.math.BigDecimal.ZERO);
+                    usage.settleMediaTask(ownerId, lease, images, seconds);
+                } else usage.settleMediaTask(ownerId, lease);
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
             ProjectEventService.EventDraft outcomeEvent = taskEvent(updated, false);
@@ -939,6 +949,18 @@ public class TaskService {
         }).value();
     }
 
+    private static int maximumProviderResults(Task task) {
+        return dev.agenvas.provider.domain.NativeMediaProtocol.PROTOCOL_ID.equals(task.input().path("providerProtocol").asText())
+                ? dev.agenvas.provider.domain.NativeMediaProtocol.MAX_RESULTS : RunningHubDefinition.MAX_OUTPUTS;
+    }
+
+    /** Capture synchronous outputs and acknowledge the original response in one fenced transaction. */
+    @Transactional
+    public void waitForProviderWithResults(Task lease, String workerId, String requestId, ProviderResultManifest manifest) {
+        checkpointProviderResults(lease, workerId, manifest);
+        waitForProvider(lease, workerId, requestId, clock.instant().plusSeconds(1));
+    }
+
     /** 外部请求受理且原请求 ID 已落库后释放 Worker 租约，后续由轮询任务接续。 */
     @Transactional
     public void waitForProvider(
@@ -949,7 +971,7 @@ public class TaskService {
         String requestId = providerRequestId == null ? "" : providerRequestId.trim();
         Instant now = clock.instant();
         if (requestId.isEmpty()
-                || requestId.length() > 240
+                || requestId.length() > 512
                 || nextActionAt == null
                 || nextActionAt.isBefore(now)) {
             throw validation(ApiMessage.of("api.task-service.provider-requestid-or-next-check-time-is-invalid"));

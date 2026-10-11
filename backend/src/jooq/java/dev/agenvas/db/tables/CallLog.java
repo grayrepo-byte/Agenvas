@@ -124,7 +124,7 @@ public class CallLog extends TableImpl<CallLogRecord> {
      * The column <code>public.call_log.provider_request_id</code>.
      * 外部已受理请求标识，供状态查询与结果归档
      */
-    public final TableField<CallLogRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(240), this, "外部已受理请求标识，供状态查询与结果归档");
+    public final TableField<CallLogRecord, String> PROVIDER_REQUEST_ID = createField(DSL.name("provider_request_id"), SQLDataType.VARCHAR(512), this, "外部已受理请求标识，供状态查询与结果归档");
 
     /**
      * The column <code>public.call_log.error_code</code>. 稳定错误代码，不含堆栈或凭据

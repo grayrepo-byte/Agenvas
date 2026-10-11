@@ -58,8 +58,9 @@
         },
         "prompt": {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 8000
+          "minLength": 0,
+          "maxLength": 20000,
+          "description": "Actual frozen result prompt after protocol mention rendering; empty when the operation has no prompt input."
         },
         "negativePrompt": {
           "type": "string",

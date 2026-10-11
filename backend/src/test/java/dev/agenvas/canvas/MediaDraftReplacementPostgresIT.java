@@ -73,7 +73,45 @@ class MediaDraftReplacementPostgresIT {
     @Autowired dev.agenvas.provider.application.MediaCapabilityService capabilities;
     @Autowired dev.agenvas.asset.infrastructure.MediaToolRunner mediaTools;
     @Autowired javax.sql.DataSource dataSource;
+    @Autowired dev.agenvas.task.application.DirectMediaTaskService directMedia;
     private static AdminPrincipal sharedOwner;
+
+    @Test void longWorkflowDurationSurvivesKlingSwitchAndCannotRunUntilAdjusted() {
+        var owner = owner();
+        var project = projects.create(owner.userId(), "Long workflow to Kling", Project.AspectRatio.SQUARE_1_1);
+        var workflowConnection = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic long workflow",
+                "RUNNINGHUB", null, "synthetic-runninghub-key");
+        var settings = mapper.readTree("""
+                {"runningHub":{"schemaVersion":1,"protocolVersion":"V2","targetType":"WORKFLOW","targetId":"123",
+                "fields":[{"key":"duration","label":"Duration","type":"INTEGER","required":true,
+                "source":"DURATION_SECONDS","nodeId":"1","fieldName":"duration","minimum":1,"maximum":60}],
+                "outputs":[{"kind":"VIDEO","primary":true,"maxCount":1}]}}
+                """);
+        var workflow = capabilities.publishCapability(workflowConnection.id(), "Long workflow", "RUNNINGHUB_VIDEO", settings);
+        var klingConnection = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic Kling",
+                "KLING", null, "synthetic-kling-key");
+        var kling = capabilities.publishCapability(klingConnection.id(), "Kling switch", "KLING_VIDEO_3");
+        var target = artifacts.create(owner.userId(), project.id(), Artifact.Kind.VIDEO, "Switch target", null);
+        UUID item = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), target.artifact().id());
+        var before = drafts.save(owner.userId(), project.id(), item, 0, "A long synthetic scene",
+                mapper.createObjectNode(), 60, workflow.id(), dev.agenvas.artifact.domain.MediaDraft.VideoInputMode.TEXT,
+                List.of(), List.of(), null);
+        var switched = drafts.save(owner.userId(), project.id(), item, before.version(), before.prompt(),
+                mapper.createObjectNode(), before.durationSeconds(), kling.id(),
+                dev.agenvas.artifact.domain.MediaDraft.VideoInputMode.TEXT, List.of(), List.of(), null);
+        assertThat(drafts.get(owner.userId(), project.id(), item).capabilityId()).isEqualTo(kling.id());
+        assertThat(switched.durationSeconds()).isEqualTo(60);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> directMedia.run(owner.userId(), project.id(),
+                target.artifact().id(), item, switched.version(), "long-workflow-kling-run"))
+                .isInstanceOf(ApiProblemException.class);
+        assertThat(jdbc.sql("select count(*) from task where project_id = :project")
+                .param("project", project.id()).query(Integer.class).single()).isZero();
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> drafts.save(owner.userId(), project.id(), item,
+                switched.version(), switched.prompt(), mapper.createObjectNode(), 61, kling.id(),
+                dev.agenvas.artifact.domain.MediaDraft.VideoInputMode.TEXT, List.of(), List.of(), null))
+                .isInstanceOf(ApiProblemException.class);
+        assertThat(drafts.get(owner.userId(), project.id(), item).durationSeconds()).isEqualTo(60);
+    }
 
     @Test void seedanceAndOfficialH3SwitchBothWaysWithLinkedMixedInputsAndCas() throws Exception {
         var owner = owner();

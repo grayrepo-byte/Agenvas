@@ -1,7 +1,10 @@
 import type { Artifact, ImageGenerationParameters, MediaCapability, SaveMediaDraftRequest } from "../../shared/api/client";
 import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, MINIMAX_H3_DEFAULT_RESOLUTION } from "../../shared/minimaxH3";
+import { KLING_VIDEO_ADAPTER, KLING_VIDEO_RESOLUTIONS, KLING_VIDEO_DEFAULT_RESOLUTION } from "../../shared/kling";
 import { AUTODL_ADAPTER, publishedAutoDlResolutions, resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import type { RunningHubValue } from "./RunningHubForm";
+import { creatorInputMapping } from "../../shared/creatorInputs";
+import { nativeVersionAssignable } from "../../shared/nativeMedia";
 import { promptForMediaInputs } from "./mediaPrompt";
 import { activeWorkflowMediaFields, workflowDefinition, workflowDraftValues } from "./workflowDraft";
 
@@ -46,6 +49,7 @@ export function normalizedVideoParameters(raw: ImageGenerationParameters | undef
   raw = { ...capability?.settings.defaultParameters, ...raw };
   const aspectRatio = VIDEO_ASPECT_RATIO_OPTIONS.find((candidate) => candidate === raw.aspectRatio) ?? "AUTO";
   if (capability?.adapterId === MINIMAX_H3_ADAPTER) return { aspectRatio, videoResolution: raw.videoResolution ?? MINIMAX_H3_DEFAULT_RESOLUTION };
+  if (capability?.adapterId === KLING_VIDEO_ADAPTER) return { aspectRatio, videoResolution: raw.videoResolution ?? KLING_VIDEO_DEFAULT_RESOLUTION };
   if (capability?.adapterId === AUTODL_ADAPTER) {
     const defaultResolution = capability.settings.videoResolution
       ?? resolveAutoDlWorkflow(capability.settings)?.defaultResolution as VideoParameters["videoResolution"];
@@ -113,6 +117,25 @@ function changedRegularInputs(fields: DraftFields, inputs: DraftFields["mediaInp
   return { mediaInputs: inputs, ...promptForMediaInputs(fields, inputs) };
 }
 
+/** Explicit switches preserve the common controls while keeping provider-specific values scoped. */
+function regularParametersFromDeclaredInputs(kind: Artifact["kind"], fields: DraftFields, capability?: MediaCapability) {
+  const parameters = { ...fields.parameters };
+  if (!capability?.settings.klingInputs && !capability?.settings.nativeInputs) return parameters;
+  const values = workflowDraftValues(capability, fields);
+  const ratioValue = values.aspect_ratio ?? values.aspectRatio ?? values.ratio;
+  const ratio = ASPECT_RATIO_OPTIONS.find((option) => option === ratioValue || option === "AUTO" && ["auto", "adaptive"].includes(String(ratioValue)));
+  if (ratio) parameters.aspectRatio = ratio;
+  if (kind === "IMAGE") {
+    const resolution = RESOLUTION_OPTIONS.find((option) => option.toLowerCase() === String(values.resolution ?? values.size).toLowerCase());
+    if (resolution) parameters.resolution = resolution;
+    const quantity = values.result_type === "series" ? values.series_amount : values.n;
+    parameters.generationCount = GENERATION_COUNT_OPTIONS.find((count) => count === quantity) ?? 1;
+  } else if (kind === "VIDEO" && typeof values.resolution === "string") {
+    parameters.videoResolution = values.resolution.toLowerCase() === "4k" ? "2160p" : values.resolution.toLowerCase();
+  }
+  return parameters;
+}
+
 /** Keeps compatible inputs and calculates one complete change for immediate application. */
 export function planMediaCapabilityChange({ kind, fields, capabilityId, resolvedCapabilityId, previous, next }: {
   kind: Artifact["kind"]; fields: DraftFields; capabilityId: string | null;
@@ -122,7 +145,7 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
   const nextDefinition = workflowDefinition(next);
   if (nextDefinition || beforeDefinition) {
     if (!nextDefinition) {
-      const parameters = { ...fields.parameters };
+      const parameters = regularParametersFromDeclaredInputs(kind, fields, previous);
       delete parameters.dynamicValues;
       const regular = planMediaCapabilityChange({ kind, fields: { ...fields, parameters },
         capabilityId, resolvedCapabilityId, next }).fields;
@@ -133,25 +156,49 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
     }
     const oldValues = workflowDraftValues(previous, fields);
     const compatible: Record<string, RunningHubValue> = {};
+    if (next?.settings.klingInputs && !beforeDefinition) {
+      const bridged: Record<string, RunningHubValue | undefined> = {
+        aspect_ratio: fields.parameters.aspectRatio === "AUTO" ? undefined : fields.parameters.aspectRatio,
+        resolution: kind === "IMAGE" ? fields.parameters.resolution?.toLowerCase()
+          : fields.parameters.videoResolution === "2160p" ? "4k" : fields.parameters.videoResolution,
+        n: kind === "IMAGE" ? fields.parameters.generationCount : undefined,
+      };
+      for (const candidate of nextDefinition.fields) {
+        const value = bridged[candidate.key];
+        if (value === undefined || candidate.source === "PROMPT" || candidate.source === "DURATION_SECONDS") continue;
+        if (candidate.type === "SELECT" && !candidate.options?.some((option) => option.value === value)) continue;
+        if (typeof value === "number" && ((candidate.minimum != null && value < candidate.minimum)
+            || (candidate.maximum != null && value > candidate.maximum))) continue;
+        compatible[candidate.key] = value;
+      }
+    }
     if (nextDefinition && beforeDefinition) {
       const beforeFields = new Map(beforeDefinition.fields.map((field) => [field.key, field]));
       for (const candidate of nextDefinition.fields) {
         const before = beforeFields.get(candidate.key);
         const value = oldValues[candidate.key];
-        if (value === undefined || before?.type !== candidate.type || before.source !== candidate.source
-          || before.nodeId !== candidate.nodeId || before.fieldName !== candidate.fieldName) continue;
+        if (value === undefined || before?.type !== candidate.type || (before.source ?? "PARAMETER") !== (candidate.source ?? "PARAMETER")
+          || creatorInputMapping(before) !== creatorInputMapping(candidate)) continue;
         if (typeof value === "number" && !((candidate.minimum == null || value >= candidate.minimum)
           && (candidate.maximum == null || value <= candidate.maximum))) continue;
         if (candidate.type === "SELECT" && !candidate.options?.some((option) => option.value === value)) continue;
+        if (candidate.type === "STRING" && typeof value === "string" && candidate.maxLength != null
+            && [...value].length > candidate.maxLength) continue;
         compatible[candidate.key] = value;
       }
     }
     const slots = activeWorkflowMediaFields(nextDefinition, compatible, fields.prompt, fields.durationSeconds);
-    // Preserve exact compatible assignments (including one version in several slots), then
+    // Preserve exact compatible assignments, respecting native reuse declarations, then
     // move remaining references into active slots by media type and published order.
+    const nativeAssignments: Record<string, RunningHubValue> = {};
     for (const slot of nextDefinition.fields.filter((field) => ["IMAGE", "AUDIO", "VIDEO"].includes(field.type))) {
       if (!slots.includes(slot) || !fields.mediaInputs.some((input) =>
         input.versionId === compatible[slot.key] && inputMediaType(input) === slot.type)) delete compatible[slot.key];
+      const value = compatible[slot.key];
+      if (next?.settings.nativeInputs && typeof value === "string") {
+        if (!nativeVersionAssignable(next, nativeAssignments, slot.key, value)) delete compatible[slot.key];
+        else nativeAssignments[slot.key] = value;
+      }
     }
     const used = new Set(slots.map((slot) => compatible[slot.key]).filter((value) => typeof value === "string"));
     for (const input of fields.mediaInputs) {
@@ -169,7 +216,7 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
         : {}), dynamicValues: compatible },
       mediaInputs: retained, ...promptForMediaInputs(fields, retained),
       durationSeconds: nextDefinition.fields.some((field) => field.source === "DURATION_SECONDS") ? fields.durationSeconds : null,
-      ...(kind === "VIDEO" ? { videoInputMode: retained.length ? "GENERAL_REFERENCE" : "TEXT" } : {}) } };
+      ...(kind === "VIDEO" ? { videoInputMode: next?.settings.klingInputs || next?.settings.nativeInputs || retained.length ? "GENERAL_REFERENCE" : "TEXT" } : {}) } };
   }
   if (kind === "IMAGE") {
     const parameters = normalizedImageParameters(fields.parameters, next);
@@ -187,10 +234,12 @@ export function planMediaCapabilityChange({ kind, fields, capabilityId, resolved
   const previousResolution = fields.parameters.videoResolution;
   const resolutionIncompatible = previousResolution !== undefined
     && (next?.adapterId === MINIMAX_H3_ADAPTER ? !MINIMAX_H3_RESOLUTIONS.some((tier) => tier === previousResolution)
+      : next?.adapterId === KLING_VIDEO_ADAPTER ? !KLING_VIDEO_RESOLUTIONS.some((tier) => tier === previousResolution)
       : next?.adapterId !== AUTODL_ADAPTER || !publishedAutoDlResolutions(next.settings).includes(previousResolution));
   if (resolutionIncompatible) {
     if (next?.adapterId === AUTODL_ADAPTER) parameters.videoResolution = next.settings.videoResolution;
     else if (next?.adapterId === MINIMAX_H3_ADAPTER) parameters.videoResolution = next.settings.defaultParameters?.videoResolution ?? MINIMAX_H3_DEFAULT_RESOLUTION;
+    else if (next?.adapterId === KLING_VIDEO_ADAPTER) parameters.videoResolution = next.settings.defaultParameters?.videoResolution ?? KLING_VIDEO_DEFAULT_RESOLUTION;
     else delete parameters.videoResolution;
   }
   return { fields: { capabilityId, parameters, videoInputMode, mediaInputs,

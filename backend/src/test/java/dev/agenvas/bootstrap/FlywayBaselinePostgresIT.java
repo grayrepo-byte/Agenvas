@@ -53,6 +53,119 @@ class FlywayBaselinePostgresIT {
     }
 
     @Test
+    void draftDurationUpgradePreservesExistingDraftAndAllowsLongWorkflowSwitches() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("19").load().migrate();
+        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), artifact = UUID.randomUUID(), card = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertOwner(connection, owner);
+            insertProject(connection, project, owner);
+            insertArtifact(connection, project, artifact, "VIDEO");
+            insertCard(connection, project, artifact, card, null);
+            execute(connection, """
+                    insert into media_draft(project_id,canvas_item_id,prompt,duration_seconds,version,created_at,updated_at)
+                    values (?,?,'Synthetic retained draft',30,7,now(),now())
+                    """, project, card);
+        }
+        Flyway durationUpgrade = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("20").load();
+        assertThat(durationUpgrade.migrate().migrationsExecuted).isEqualTo(1);
+        try (Connection connection = connection()) {
+            assertThat(count(connection, "select duration_seconds from media_draft where canvas_item_id=?", card)).isEqualTo(30);
+            assertThat(count(connection, "select version from media_draft where canvas_item_id=?", card)).isEqualTo(7);
+            assertThat(text(connection, "select prompt from media_draft where canvas_item_id=?", card)).isEqualTo("Synthetic retained draft");
+            execute(connection, "update media_draft set duration_seconds=60 where canvas_item_id=?", card);
+            assertRejected(connection, CHECK_VIOLATION,
+                    "update media_draft set duration_seconds=61 where canvas_item_id=?", card);
+            assertThat(count(connection, "select duration_seconds from media_draft where canvas_item_id=?", card)).isEqualTo(60);
+        }
+    }
+
+    @Test
+    void nativeCheckpointUpgradePreservesOldRowsAndKeepsOtherProtocolsAtSixteenResults() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("21").load().migrate();
+        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), nativeTask = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertOwner(connection, owner); insertProject(connection, project, owner);
+            execute(connection, """
+                    insert into task(id,project_id,step_key,kind,status,input_json,input_hash,provider_request_id,
+                      attempt_no,next_action_at,created_at,updated_at,provider_result_manifest)
+                    values (?,?,'native-synthetic','IMAGE_GENERATION','READY','{"providerProtocol":"NATIVE_MEDIA"}',repeat('0',64),
+                      'synthetic-retained-id',1,now(),now(),now(),jsonb_build_object('schemaVersion',1,'results',
+                        (select jsonb_agg('{}'::jsonb) from generate_series(1,16))))
+                    """, nativeTask, project);
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(2);
+        try (Connection connection = connection()) {
+            assertThat(text(connection, "select provider_request_id from task where id=?", nativeTask)).isEqualTo("synthetic-retained-id");
+            assertThat(count(connection, "select jsonb_array_length(provider_result_manifest->'results') from task where id=?", nativeTask)).isEqualTo(16);
+            assertThat(count(connection, "select count(*) from information_schema.columns where table_schema='public' and table_name in ('task','provider_attempt','call_log') and column_name='provider_request_id' and character_maximum_length=512")).isEqualTo(3);
+            execute(connection, "update task set provider_request_id=repeat('x',512),provider_result_manifest=jsonb_build_object('schemaVersion',1,'results',(select jsonb_agg('{}'::jsonb) from generate_series(1,17))) where id=?", nativeTask);
+            assertRejected(connection, CHECK_VIOLATION, "update task set provider_result_manifest=jsonb_build_object('schemaVersion',1,'results',(select jsonb_agg('{}'::jsonb) from generate_series(1,18))) where id=?", nativeTask);
+            assertRejected(connection, CHECK_VIOLATION, """
+                    insert into task(id,project_id,step_key,kind,status,input_json,input_hash,attempt_no,next_action_at,created_at,updated_at,provider_result_manifest)
+                    values (?,?,'ordinary-synthetic','IMAGE_GENERATION','READY','{}',repeat('0',64),1,now(),now(),now(),
+                      jsonb_build_object('schemaVersion',1,'results',(select jsonb_agg('{}'::jsonb) from generate_series(1,17))))
+                    """, UUID.randomUUID(), project);
+        }
+    }
+
+    @Test
+    void wanUpgradeKeepsExistingEncryptedVersionsAndAddsOnlyThePlatformConstraint() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("20").load().migrate();
+        UUID existing = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            execute(connection, "insert into media_provider_connection(id,name,enabled,version,current_version,created_at,updated_at,platform) values (?,'Synthetic Kling',false,3,2,now(),now(),'KLING')", existing);
+            for (int version : List.of(1, 2)) execute(connection, "insert into media_provider_connection_version(connection_id,version,origin,origin_sha256,credential_ciphertext,credential_nonce,credential_key_version,key_mask,created_at) values (?,?,'https://api-singapore.klingai.com',repeat('0',64),decode('0001','hex'),decode(repeat('00',12),'hex'),1,'synthetic',now())", existing, version);
+        }
+        assertThat(Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("21").load().migrate().migrationsExecuted).isEqualTo(1);
+        try (Connection connection = connection()) {
+            assertThat(count(connection, "select current_version from media_provider_connection where id=?", existing)).isEqualTo(2);
+            assertThat(count(connection, "select count(*) from media_provider_connection_version where connection_id=? and encode(credential_ciphertext,'hex')='0001'", existing)).isEqualTo(2);
+            execute(connection, "insert into media_provider_connection(id,name,enabled,version,current_version,created_at,updated_at,platform) values (?,'Synthetic Wan',true,0,1,now(),now(),'WAN')", UUID.randomUUID());
+            assertRejected(connection, CHECK_VIOLATION, "update media_provider_connection set platform='UNRECOGNIZED' where id=?", existing);
+        }
+    }
+
+    @Test
+    void klingPlatformUpgradePreservesExistingConnectionVersionsAndRejectsUnknownPlatforms() throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("18").load().migrate();
+        UUID existing = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            execute(connection, """
+                    insert into media_provider_connection(id,name,enabled,version,current_version,created_at,updated_at,platform)
+                    values (?,'Synthetic retained MiniMax',false,3,2,now(),now(),'MINIMAX')
+                    """, existing);
+            for (int version : List.of(1, 2)) execute(connection, """
+                    insert into media_provider_connection_version(connection_id,version,origin,origin_sha256,
+                      credential_ciphertext,credential_nonce,credential_key_version,key_mask,created_at)
+                    values (?,?,'https://api.minimax.cn',repeat('0',64),decode('0001','hex'),
+                      decode('0002','hex'),1,'synthetic-mask',now())
+                    """, existing, version);
+        }
+        Flyway klingUpgrade = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("19").load();
+        assertThat(klingUpgrade.migrate().migrationsExecuted).isEqualTo(1);
+        try (Connection connection = connection()) {
+            assertThat(text(connection, "select platform from media_provider_connection where id=?", existing)).isEqualTo("MINIMAX");
+            assertThat(text(connection, "select enabled::text from media_provider_connection where id=?", existing)).isEqualTo("false");
+            assertThat(count(connection, "select version from media_provider_connection where id=?", existing)).isEqualTo(3);
+            assertThat(count(connection, "select current_version from media_provider_connection where id=?", existing)).isEqualTo(2);
+            assertThat(count(connection, "select count(*) from media_provider_connection_version where connection_id=? and encode(credential_ciphertext,'hex')='0001'", existing)).isEqualTo(2);
+            execute(connection, """
+                    insert into media_provider_connection(id,name,enabled,version,current_version,created_at,updated_at,platform)
+                    values (?,'Synthetic Kling',true,0,1,now(),now(),'KLING')
+                    """, UUID.randomUUID());
+            assertRejected(connection, CHECK_VIOLATION,
+                    "update media_provider_connection set platform='UNTRUSTED' where id=?", existing);
+        }
+    }
+
+    @Test
     void multipleSkillUpgradePreservesTheExistingVersionAndAllowsAnotherOrderedBinding() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").target("12").load().migrate();

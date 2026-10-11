@@ -92,6 +92,11 @@ export type ReplaceLlmSettingsRequest = components["schemas"]["ReplaceLlmSetting
 export type DiagnoseLlmRequest = components["schemas"]["DiagnoseLlmRequest"];
 export type RunningHubDefinition = components["schemas"]["RunningHubDefinition"];
 export type RunningHubField = components["schemas"]["RunningHubField"];
+export type CreatorInputField = components["schemas"]["CreatorInputField"];
+export type NativeMediaProfiles = components["schemas"]["NativeMediaProfiles"];
+export type NativeMediaProfile = NativeMediaProfiles["profiles"][number];
+export type KlingProfiles = paths["/api/v1/settings/kling/profiles"]["get"]["responses"][200]["content"]["application/json"];
+export type KlingProfile = KlingProfiles["profiles"][number];
 export type RunningHubImportRequest = components["schemas"]["RunningHubImportRequest"];
 export type RunningHubImportPreview = components["schemas"]["RunningHubImportPreview"];
 export type MediaSettings = components["schemas"]["MediaSettings"];
@@ -302,6 +307,14 @@ export async function previewAutoDlWorkflow(workflowId: string, source?: object)
 
 export async function getMediaSettings(): Promise<MediaSettings> {
   return readJson<MediaSettings>("/api/v1/settings/media-connections", t("api.errors.mediaSettingsUnavailable"));
+}
+
+export async function getNativeMediaProfiles(): Promise<NativeMediaProfiles> {
+  return readJson<NativeMediaProfiles>("/api/v1/settings/media-profiles", t("api.errors.mediaSettingsUnavailable"));
+}
+
+export async function getKlingProfiles(): Promise<KlingProfiles> {
+  return readJson<KlingProfiles>("/api/v1/settings/kling/profiles", t("api.errors.mediaSettingsUnavailable"));
 }
 
 export async function createMediaConnection(input: CreateMediaConnectionRequest,

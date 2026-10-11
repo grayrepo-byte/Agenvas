@@ -2093,3 +2093,35 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 发布前并发专项：main CI 暴露能力默认项选择测试在事务内缓存 `pg_stat_activity` 首次空快照的时序问题。同类删除测试一起补充首次空观察的确定性夹具，修复前两项稳定失败；每轮显式刷新统计快照后，MediaCapabilityPostgresIT 与 MediaCapabilityDeletionPostgresIT 两类共 14 项真实 PostgreSQL 测试全部通过，零失败、错误或跳过，保留阻塞、类型变更拒绝、默认项版本和删除绑定断言。仅修改测试与验收记录，不调整生产锁或数据库迁移；公开内容及差异空白检查通过。main 的 Maven provider 下载失败在官方仓库返回 200 后重试恢复，main CI 已通过；未升级依赖。
 - [ ] 真实 MiniMax 付费创建/查询/下载、实际返回主机、真实中继视频参考、全部素材/档位组合及账单验收未运行；假 HTTP 和合成媒体不能证明供应商已接通。
 - [ ] 全量测试、浏览器端到端/视觉验收和部署未运行。没有修改运行中的应用或用户数据库。
+
+## 2026-10-11 可灵官方图片与视频生成协议
+
+范围与升级见 [ADR 0043](adr/0043-kling-image-and-video-api.md)、[接入说明](kling-api-integration.md)和规格 §13.7。用户确认范围为图片、视频生成的全部当前模型与参数，官方字段与组合依据保存在[图片研究](research/kling-full-image-protocol.md)和[视频研究](research/kling-full-video-protocol.md)。
+
+- [x] 新增 KLING 加密连接，固定 Singapore/Beijing 官方根地址和单个 API Key；管理员响应只返回掩码，凭据与连接版本固定。发布 KLING_IMAGE / KLING_VIDEO，当前四个图片模型、六个视频模型共十五种模型/操作组合；旧 _3 能力保留历史任务恢复。
+- [x] 图片覆盖普通生成、2.1 多图参考、Omni 生成/编辑、3.0 Omni 连续出图、扩图和主体多视图补全；视频覆盖六种模型的文生/图生、Omni 参考/编辑、3.0/2.6 动作控制。模型路径、原生 contents/settings/options、主体/声音 ID、分辨率、画幅、数量、音轨、多镜头、朝向及水印按目录和交叉约束构造。图片 int64 ID 保存字符串避免精度丢失，新视频元素 ID 保留不透明字符串。
+- [x] 新增只读 `/api/v1/settings/kling/profiles`，能力派生 graph-free klingInputs，发布默认值与草稿动态值按字段合并；画布复用既有参数、上传/媒体库/连线和具名槽位控件。精确版本、授权、素材格式/尺寸/时长/FPS、主体与素材组合、模型时长及管理员收紧范围在生成前校验。
+- [x] 图片 n/连续出图由一个 Task、一次创建请求产生全部结果，归档使用固定身份及密集本地序号；自动数量预留未知，结算按实际归档数量。动作控制忽略草稿残留固定时长，预留秒数未知，按已归档探测时长估算；金额精度按六位小数四舍五入，不声称供应商实际账单。
+- [x] UNKNOWN 不重新创建，原 ID 查询、下载重试及过期 URL 刷新不能变成生成。网络准备不持事务；视频参考固定中继或原对象签名，图片发送精确归档 PNG/JPEG 原始 Base64。结果固定官方域名、DNS 检查、禁止重定向、无凭据、大小/MIME/魔数及实际媒体探测；缺失所选水印或结果身份不符时阻断。
+- [x] 双向能力切换保留兼容参数、精确素材、角色和标签，清理不支持的槽。草稿保留既有 1–60 秒并在运行按目标模型限制校验；Motion 不声明固定输出时长。V19 扩展平台，V20 对齐草稿时长约束；OpenAPI、生成 TypeScript 与一次性 PostgreSQL 生成的 jOOQ 同步，前后端与迁移需一起升级。完整协议目录使用既有版本化 JSON，没有额外数据库列或依赖升级。
+- [x] 完整协议后端定向单元/回环 HTTP 检查：一轮 81 项全部通过，边界修订后 Models/Client 15 项复验通过（其中新增 1 项，去重 82 项）。覆盖模型目录、参数/组合、路径、原任务身份、拒绝/UNKNOWN、多结果、素材准备、下载策略、默认值、草稿连线/替换、金额与消息目录；无失败、错误或跳过。
+- [x] V19/V20 初始接入的五类真实 PostgreSQL 检查 31 项通过：Kling 4、FlywayBaseline 18、媒体设置 1、草稿替换 7、媒体草稿 1。覆盖 V18→V19 的连接/密文版本保留、V19→V20 草稿及边界、空库/数据库注释、API 脱敏、CAS 与原 ID 恢复；假 HTTP 和合成素材，不代表真实 Provider。实际队列取消验证不提交；晚到结果使用持久化取消意图验证不选用，不声明直接任务提交后有公开取消入口。
+- [x] 完整协议三类真实 PostgreSQL 定向检查去重 17 项最终通过：Kling 9、草稿替换 7、媒体设置 1。覆盖十五种配置、默认参数合并、60 秒切换、单次 POST 多结果与失败归档重试、Turbo 原生路径、Omni 稀疏槽标签/精确字节、Motion 固定素材与中继/事务外准备/实际时长估算，以及模型目录 401/403/200、十五项 graph-free 输入和 7/1 素材总量合约。Omni 假查询响应补齐官方 result_type 后九项复验通过；目录路由补齐管理员权限后设置类复验通过。没有失败、错误或跳过。
+- [x] 完整协议前端相关六文件 268 项通过；最后模型/操作、Omni 素材上限、Motion 估算、能力切换与失败保留定向回归 34 项通过（含新增上限用例）。TypeScript、21 个改动 TS 文件 ESLint、四语言/主题、Vite 生产构建及差异空白检查通过；构建保留既有大 chunk 提示。使用合成 HTTP，未运行浏览器端到端/视觉验收。
+- [ ] 真实可灵付费创建/查询/下载、实际结果主机、真实中继、全部模型/素材/档位组合及账单验收未运行；当前供应商请求为回环假 HTTP，素材为合成 PNG/MP4，不能证明真实 Provider 已接通。Omni 素材总量文档存在分组歧义，目前首尾帧计入图片总量，极限组合未实测。
+- [ ] 全量测试、浏览器端到端/视觉验收和部署未运行。没有修改运行中的应用或用户数据库。
+
+
+### 万相、Seedream 与 Google 当前原生生成协议（2026-10-11）
+
+用户确认范围为当前主力模型及其生成参数。模型、原生接口与本地边界见 [接入说明](native-media-api-integration.md)、[ADR 0044](adr/0044-native-media-generation-protocols.md)及三份供应商研究。
+
+- [x] 发布 WAN_IMAGE / WAN_VIDEO、ARK_SEEDREAM_IMAGE、GOOGLE_VEO / GOOGLE_OMNI_VIDEO；万相四个、Seedream 七个、Google 八个模型/操作组合，共十九个 profile。管理员只读目录 `/api/v1/settings/media-profiles` 与能力派生 nativeInputs 支持原生参数、条件字段、媒体槽和声明限制。Google 官方地址可以留空，显式地址仍校验；Wan 使用官方区域 Workspace 根地址。
+- [x] 原生动态参数与精确版本素材在受理时固定，Key 仅使用加密服务器连接版本。原始媒体授权、摘要、格式/尺寸/时长与组合在上传或生成前校验；Wan 视频/音频固定中转，Google 原始 inline，Seedream data URI。Google GENERATE 首尾帧可复用一个授权版本，替换或切换后仍引用的素材不会被误删；Veo EXTEND 检查不可变 TASK 来源，用户复制 Files metadata 不会取得资格。
+- [x] Seedream 单次同步结果与原 ID 在一个 fenced 事务落库，恢复读取私有清单而不重 POST。Wan 原 task_id、Google 原 operation/interaction ID 查询；UNKNOWN 无自动重发。组图及最多十七项拆层单任务完整归档，层序/名称/描述/bbox 保留，取消后的结果保留历史并不自动选用。结果下载、原始 Base64 与模型 thought 遵守现有出站/归档/日志边界。
+- [x] 数量未知、智能时长与 Omni 时长保持未知估算；归档按实际图数与探测秒数结算，Wan 另计冻结参考视频秒数。V21 增 WAN 平台、V22 将三处原 ID 列扩至512、V23 仅将 NATIVE_MEDIA 清单放至17（其他16）；画布可归档第16个附加层。OpenAPI、生成 TypeScript、隔离 PostgreSQL 生成 jOOQ，以及图片/视频产物的实际 prompt Schema 已同步。需一起升级后端、前端与迁移；没有依赖升级。
+- [x] 后端定向单元检查一轮183项通过；最后 Google 长ID/默认地址、原生复用与画布/产物规则54项复验通过，去重196项、33类。Google30、Wan25、Seedream17项均通过，覆盖真实生产客户端的回环假HTTP、512字符原ID完整恢复、超限拒绝、原生字段/组合、无效媒体与技术失败分类、素材、估算、审计和消息目录。命令使用 `./mvnw -Dtest='Wan*Test,Seedream*Test,GoogleVideo*Test,NativeMediaProfilesTest,DebugHttpCaptureTest,UsageMediaPricingTest,MediaCapabilityConfigurationTest,MediaDraftConnectionsTest,MediaExecutionWorkerTest,Kling*Test,CallLogServiceTest,MessageCatalogTest' test`，最后复验使用 GoogleVideo/NativeMediaProfiles/CallLogService/ArtifactContentValidator/CanvasTaskResultSelection/CanvasMediaDerivationDraft 六组模式；零失败、错误或跳过。
+- [x] 真实 PostgreSQL 定向检查去重46项通过：NativeMedia9、FlywayBaseline20、MediaCapabilitySettings1、Kling9、MediaDraftReplacement7。运行 `./mvnw -Pci-integration -Dit.test='NativeMediaPostgresIT,MediaCapabilitySettingsPostgresIT,FlywayBaselinePostgresIT,MediaDraftReplacementPostgresIT,KlingPostgresIT' verify`；初轮发现默认地址、Seedream组图夹具和17项数据库/画布旧上限，修复后相关类及拆层复验通过，最后 NativeMedia 整类9项通过。覆盖十九配置发布、401/403/200/no-store、V21–V23保留已有行与其他协议16项边界、原ID和原Key版本、同步清单恢复、UNKNOWN无重发、17层原子归档、取消不选用、精确首尾复用、防伪TASK来源、固定中转及实际输入/输出秒数。Native测试强制所有外部边界为合成响应，未配置的调用直接使测试失败，不会联系真实API。
+- [x] 前端设置/原生辅助/切换/错误四文件86项通过；新增Google→Wan复用清理后相关三文件65项复验通过；最终新画布五项通过，跳过127项无关用例。运行 `pnpm -C frontend exec vitest run` 选择 NativeMediaSettingsPage、nativeMedia、mediaDraftCapability、taskErrorMessages；画布以 `-t 'Wan request|Seedream group|Veo.s catalog|Omni native|reuses one Google'` 定向。TypeScript、27个变更TS/TSX文件 ESLint、四语言2434键及主题检查、Vite生产构建、API生成与差异空白检查通过；仅保留既有大chunk提示。
+- [ ] 真实付费供应商创建/查询/下载、真实区域账号/结果桶/中转、全部极限组合与账单未运行；假HTTP和合成PNG/MP4不能证明真实模型已接通。节点沿用14条素材总限，本地BMP导入未支持，未确认的Wan区域结果桶会阻断；这些本地边界已在接入说明列出。
+- [ ] 全量测试、浏览器端到端/视觉验收和部署未运行；没有修改运行应用或用户数据库。一次性代码生成容器已清理。

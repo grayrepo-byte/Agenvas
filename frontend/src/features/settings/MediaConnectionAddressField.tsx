@@ -7,11 +7,14 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Field,FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { Tooltip,TooltipContent,TooltipProvider,TooltipTrigger } from "../../shared/ui/primitives/tooltip";
+import { KLING_API_ORIGIN, KLING_API_ORIGINS } from "../../shared/kling";
 
 const ORIGIN_LIMIT = 500;
 const ADDRESS_FIELDS: Partial<Record<MediaConnection["platform"], {
   label: MessageKey; hint: MessageKey; placeholder?: string; fixed?: string; required?: boolean;
 }>> = {
+  WAN: { label: "settings.mediaSettings.baseUrl", hint: "settings.mediaSettings.wanAddressHint", placeholder: "https://your-workspace.cn-beijing.maas.aliyuncs.com", required: true },
+  KLING: { label: "settings.mediaSettings.fixedApiUrl", hint: "settings.mediaSettings.klingAddressHint" },
   MINIMAX: { label: "settings.mediaSettings.minimaxAddressLabel", hint: "settings.mediaSettings.minimaxAddressHint" },
   COMFYUI: { label: "settings.mediaSettings.comfyUrl", hint: "settings.mediaSettings.comfyAddressHint", placeholder: "http://127.0.0.1:8188", required: true },
   RUNNINGHUB: { label: "settings.mediaSettings.runningHubApi", hint: "settings.mediaSettings.runningHubAddressHint", placeholder: "https://www.runninghub.ai" },
@@ -42,7 +45,9 @@ export function MediaConnectionAddressField({ platform, origin, onChange, descri
         <TooltipContent className="media-connection-address-tooltip" side="top"><p>{hint}</p></TooltipContent>
       </Tooltip></TooltipProvider>
     </div>
-    {platform === "MINIMAX" ? <Select id={id} value={origin || "https://api.minimax.cn"} aria-describedby={describedBy ?? `${id}-hint`} onChange={(event) => onChange(event.target.value)}>
+    {platform === "KLING" ? <Select id={id} value={origin || KLING_API_ORIGIN} aria-describedby={describedBy ?? `${id}-hint`} onChange={(event) => onChange(event.target.value)}>
+      {KLING_API_ORIGINS.map((address) => <option key={address} value={address}>{address}</option>)}
+    </Select> : platform === "MINIMAX" ? <Select id={id} value={origin || "https://api.minimax.cn"} aria-describedby={describedBy ?? `${id}-hint`} onChange={(event) => onChange(event.target.value)}>
       <option value="https://api.minimax.cn">https://api.minimax.cn</option>
       <option value="https://api.minimax.io">https://api.minimax.io</option>
     </Select> : <Input id={id} type="url" value={config.fixed ?? origin} readOnly={Boolean(config.fixed)} required={config.required}

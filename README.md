@@ -37,7 +37,7 @@
 | 图片处理 | 标注、裁剪、旋转、镜像、放大、深度提取，以及配置能力支持的 AI 编辑 |
 | 自托管管理 | 模型配置、本地及 OSS/COS/S3 存储、任务与调用记录、项目清单导出 |
 
-界面支持中文、英文、俄文和日文。媒体适配器包括 GPT Image、Google Nano Banana、火山方舟 Seedance、MiniMax 官方 H3、Seed Audio、ComfyUI 导入并映射发布的 API 工作流和 RunningHub V2 工作流 / AI 应用；可用操作取决于管理员发布的能力。MiniMax H3 的官方地址、输入限制与升级说明见 [ADR 0042](docs/adr/0042-minimax-h3-official-api.md)。
+界面支持中文、英文、俄文和日文。媒体适配器包括 GPT Image、Google Nano Banana、火山方舟 Seedance、MiniMax 官方 H3、可灵图片/视频完整生成协议、通义万相图片/视频、Seedream 5.0 图片、Google Veo/Omni 视频、Seed Audio、ComfyUI 导入并映射发布的 API 工作流和 RunningHub V2 工作流 / AI 应用；可用操作取决于管理员发布的能力。MiniMax H3 的官方地址、输入限制与升级说明见 [ADR 0042](docs/adr/0042-minimax-h3-official-api.md)。可灵的 API Key、地区地址与模型/操作目录见[接入说明](docs/kling-api-integration.md)。万相、Seedream 与 Google 视频的配置和参数范围见[原生生成接入说明](docs/native-media-api-integration.md)。
 
 ## 快速开始
 

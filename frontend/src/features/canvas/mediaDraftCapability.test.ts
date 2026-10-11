@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { MediaCapability, RunningHubDefinition } from "../../shared/api/client";
 import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
+import { klingField, klingProfiles } from "../../test/klingProfiles";
+import { nativeCapability, nativeProfiles } from "../../test/nativeProfiles";
 import { inputsForVideoMode, planMediaCapabilityChange, type MediaDraftFields } from "./mediaDraftCapability";
 import { MENTION_MARKER } from "./mediaPrompt";
 
@@ -33,6 +35,133 @@ const dynamic: MediaCapability = { ...video, id: "runninghub", adapterId: "RUNNI
   settings: { runningHub: definition } };
 
 describe("media capability changes", () => {
+  it("switches native providers by typed slots and drops unrelated native scalar values", () => {
+    const previous = nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "WAN_IMAGE")!);
+    const next = { ...nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "ARK_SEEDREAM_IMAGE")!), id: "seedream" };
+    const before: MediaDraftFields = { ...fields, prompt: `Edit ${MENTION_MARKER}`, mentions: [imageInput], mediaInputs: [imageInput],
+      parameters: { dynamicValues: { image_1: imageInput.versionId, n: 4, enable_sequential: true } } };
+    const changed = planMediaCapabilityChange({ kind: "IMAGE", fields: before, capabilityId: next.id, resolvedCapabilityId: next.id, previous, next });
+    expect(changed.fields).toMatchObject({ mediaInputs: [imageInput], parameters: { dynamicValues: { image1: imageInput.versionId } }, prompt: `Edit ${MENTION_MARKER}`, durationSeconds: null });
+    expect(changed.fields.parameters?.dynamicValues).not.toHaveProperty("n");
+    expect(changed.fields.parameters?.dynamicValues).not.toHaveProperty("enable_sequential");
+    expect(before.parameters.dynamicValues).toHaveProperty("n", 4);
+  });
+
+  it("keeps reusable Google frames when allowed and removes duplicate assignments on switching to Wan", () => {
+    const previous = nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "GOOGLE_VEO")!);
+    previous.settings = { ...previous.settings, nativeReusableSlots: ["first_frame", "last_frame"] };
+    const next = { ...nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "WAN_VIDEO")!), id: "wan" };
+    const before: MediaDraftFields = { ...fields, mediaInputs: [imageInput],
+      parameters: { dynamicValues: { first_frame: imageInput.versionId, last_frame: imageInput.versionId } } };
+    const kept = planMediaCapabilityChange({ kind: "VIDEO", fields: before, capabilityId: previous.id, resolvedCapabilityId: previous.id, previous, next: previous });
+    expect(kept.fields.parameters?.dynamicValues).toEqual({ first_frame: imageInput.versionId, last_frame: imageInput.versionId });
+    const changed = planMediaCapabilityChange({ kind: "VIDEO", fields: before, capabilityId: next.id, resolvedCapabilityId: next.id, previous, next });
+    expect(changed.fields.parameters?.dynamicValues).toEqual({ first_frame: imageInput.versionId });
+    expect(changed.fields.mediaInputs).toHaveLength(1);
+  });
+
+  it("bridges ordinary image parameters into native Kling and back without leaking provider fields", () => {
+    const profile = klingProfiles.find((item) => item.model === "kling-v3-omni")!;
+    const native: MediaCapability = { ...image, id: "native-image", adapterId: "KLING_IMAGE", settings: {
+      model: profile.model!, operation: profile.operation, klingInputs: profile.inputs,
+    } };
+    const second = { ...imageInput, versionId: "second-image" };
+    const before: MediaDraftFields = { ...fields,
+      parameters: { aspectRatio: "16:9", resolution: "2K", generationCount: 4, transparentBackground: true, quality: "high" },
+      mediaInputs: [imageInput, second], prompt: `${MENTION_MARKER}/${MENTION_MARKER}`, mentions: [imageInput, second] };
+    const into = planMediaCapabilityChange({ kind: "IMAGE", fields: before, capabilityId: native.id,
+      resolvedCapabilityId: native.id, previous: image, next: native });
+    expect(into.fields).toMatchObject({ parameters: { dynamicValues: {
+      aspect_ratio: "16:9", resolution: "2k", n: 4, image_1: imageInput.versionId,
+    } }, mediaInputs: [imageInput], prompt: `${MENTION_MARKER}/`, durationSeconds: null });
+    expect(into.fields.parameters).not.toHaveProperty("aspectRatio");
+    const back = planMediaCapabilityChange({ kind: "IMAGE", fields: { ...before, ...into.fields }, capabilityId: image.id,
+      resolvedCapabilityId: image.id, previous: native, next: image });
+    expect(back.fields.parameters).toMatchObject({ aspectRatio: "16:9", resolution: "2K", generationCount: 4 });
+    expect(back.fields.parameters).not.toHaveProperty("dynamicValues");
+    expect(back.fields).toMatchObject({ mediaInputs: [imageInput], prompt: `${MENTION_MARKER}/` });
+    expect(before.parameters).toHaveProperty("transparentBackground", true);
+  });
+
+  it("switches native Kling profiles by compatible scalar and media declarations", () => {
+    const oldFields = [klingField("prompt", "Prompt", "STRING", { source: "PROMPT" }),
+      klingField("duration", "Duration", "INTEGER", { source: "DURATION_SECONDS", minimum: 3, maximum: 15 }),
+      klingField("resolution", "Resolution", "SELECT", { options: [{ label: "4K", value: "4k" }, { label: "1080p", value: "1080p" }] }),
+      klingField("first_frame", "First frame", "IMAGE"), klingField("last_frame", "Last frame", "IMAGE"),
+      klingField("video_1", "Video", "VIDEO"), klingField("sound", "Sound", "BOOLEAN")];
+    const previous: MediaCapability = { ...video, id: "native-omni", adapterId: "KLING_VIDEO", settings: { model: "kling-3.0-omni", operation: "GENERATE", klingInputs: oldFields } };
+    const next: MediaCapability = { ...previous, id: "native-turbo", settings: { model: "kling-3.0-turbo", operation: "GENERATE",
+      klingInputs: oldFields.filter((item) => !["last_frame", "video_1", "sound"].includes(item.key)).map((item) => item.key === "resolution"
+        ? { ...item, defaultValue: "1080p", options: [{ label: "1080p", value: "1080p" }] } : item) } };
+    const second = { ...imageInput, versionId: "second-image" };
+    const referenceVideo = { ...imageInput, versionId: "motion", role: "VIDEO_REFERENCE" as const };
+    const inputs = [imageInput, second, referenceVideo];
+    const before: MediaDraftFields = { ...fields, durationSeconds: 3, videoInputMode: "GENERAL_REFERENCE",
+      parameters: { dynamicValues: { first_frame: imageInput.versionId, last_frame: second.versionId,
+        video_1: referenceVideo.versionId, resolution: "4k", sound: true } }, mediaInputs: inputs,
+      prompt: inputs.map(() => MENTION_MARKER).join("/"), mentions: inputs };
+    const change = planMediaCapabilityChange({ kind: "VIDEO", fields: before, capabilityId: next.id,
+      resolvedCapabilityId: next.id, previous, next });
+    expect(change.fields).toMatchObject({ parameters: { dynamicValues: { first_frame: imageInput.versionId } },
+      mediaInputs: [imageInput], mentions: [{ versionId: imageInput.versionId, role: "REFERENCE" }],
+      prompt: `${MENTION_MARKER}//`, durationSeconds: 3, videoInputMode: "GENERAL_REFERENCE" });
+    expect(change.fields.parameters?.dynamicValues).not.toHaveProperty("resolution");
+    expect(before.mediaInputs).toHaveLength(3);
+  });
+
+  it("assigns workflow images to native Kling frame slots and uses the declared reference mode", () => {
+    const profile = klingProfiles.find((item) => item.model === "kling-3.0")!;
+    const next: MediaCapability = { ...video, id: "native-video", adapterId: "KLING_VIDEO", settings: {
+      model: profile.model!, operation: profile.operation, klingInputs: profile.inputs,
+    } };
+    const second = { ...imageInput, versionId: "second-image" };
+    const before: MediaDraftFields = { ...fields, durationSeconds: 60, parameters: { dynamicValues: { frame: imageInput.versionId, strength: 0.7 } },
+      mediaInputs: [imageInput, second, audioInput], prompt: `${MENTION_MARKER}/${MENTION_MARKER}/${MENTION_MARKER}`,
+      mentions: [imageInput, second, audioInput], videoInputMode: "GENERAL_REFERENCE" };
+    const into = planMediaCapabilityChange({ kind: "VIDEO", fields: before, capabilityId: next.id,
+      resolvedCapabilityId: next.id, previous: dynamic, next });
+    expect(into.fields).toMatchObject({ parameters: { dynamicValues: { first_frame: imageInput.versionId, last_frame: second.versionId } },
+      mediaInputs: [imageInput, second], prompt: `${MENTION_MARKER}/${MENTION_MARKER}/`, durationSeconds: 60, videoInputMode: "GENERAL_REFERENCE" });
+    const empty = planMediaCapabilityChange({ kind: "VIDEO", fields, capabilityId: next.id, resolvedCapabilityId: next.id, next });
+    expect(empty.fields).toMatchObject({ parameters: { dynamicValues: {} }, videoInputMode: "GENERAL_REFERENCE" });
+  });
+
+  it("switches images into Kling and back, clearing unsupported output settings and excess image mentions", () => {
+    const kling: MediaCapability = { ...image, id: "kling-image", adapterId: "KLING_IMAGE_3", maxReferenceImages: 1,
+      supportedImageResolutions: ["1K", "2K"], supportedImageQualities: [], supportsTransparentBackground: false, supportsImageMask: false };
+    const second = { ...imageInput, versionId: "second-image" };
+    const before: MediaDraftFields = { ...fields, parameters: { aspectRatio: "16:9", resolution: "4K", transparentBackground: true },
+      mediaInputs: [imageInput, second], prompt: `${MENTION_MARKER}/${MENTION_MARKER}`, mentions: [imageInput, second] };
+    const into = planMediaCapabilityChange({ kind: "IMAGE", fields: before, capabilityId: kling.id, resolvedCapabilityId: kling.id, previous: image, next: kling });
+    expect(into.fields.parameters).toMatchObject({ aspectRatio: "16:9", resolution: "1K", transparentBackground: false });
+    expect(into.fields).toMatchObject({ mediaInputs: [imageInput], prompt: `${MENTION_MARKER}/`, mentions: [imageInput] });
+    const back = planMediaCapabilityChange({ kind: "IMAGE", fields: { ...before, ...into.fields }, capabilityId: image.id, resolvedCapabilityId: image.id, previous: kling, next: image });
+    expect(back.fields.parameters).toMatchObject({ aspectRatio: "16:9", resolution: "1K", transparentBackground: false });
+    expect({ ...before, ...into.fields, ...back.fields }.mediaInputs).toEqual([imageInput]);
+    expect(before.mediaInputs).toEqual([imageInput, second]);
+  });
+
+  it.each(["720p", "1080p", "2160p", "1440p"])("switches video into Kling with resolution %s and rebinds surviving frame mentions", (tier) => {
+    const kling: MediaCapability = { ...video, id: "kling-video", adapterId: "KLING_VIDEO_3", maxReferenceImages: 2,
+      maxReferenceAudios: 0, maxReferenceVideos: 0, supportedVideoInputModes: ["TEXT", "START_END"],
+      supportsEndFrame: true, minimumSeconds: 3, maximumSeconds: 15,
+      settings: { defaultParameters: { videoResolution: "1080p" } } };
+    const second = { ...imageInput, versionId: "second-image" };
+    const videoInput = { ...imageInput, role: "VIDEO_REFERENCE" as const, versionId: "video-version" };
+    const inputs = [imageInput, second, audioInput, videoInput];
+    const before: MediaDraftFields = { ...fields, videoInputMode: "GENERAL_REFERENCE", parameters: { aspectRatio: "16:9", videoResolution: tier },
+      mediaInputs: inputs, prompt: inputs.map(() => MENTION_MARKER).join("/"), mentions: inputs, durationSeconds: 3 };
+    const into = planMediaCapabilityChange({ kind: "VIDEO", fields: before, capabilityId: kling.id, resolvedCapabilityId: kling.id, previous: video, next: kling });
+    const frames = [{ ...imageInput, role: "START_FRAME" }, { ...second, role: "END_FRAME" }];
+    expect(into.fields).toMatchObject({ videoInputMode: "START_END", mediaInputs: frames, mentions: frames,
+      prompt: `${MENTION_MARKER}/${MENTION_MARKER}//`, parameters: { aspectRatio: "16:9", videoResolution: tier === "1440p" ? "1080p" : tier } });
+    const back = planMediaCapabilityChange({ kind: "VIDEO", fields: { ...before, ...into.fields }, capabilityId: video.id, resolvedCapabilityId: video.id, previous: kling, next: video });
+    expect(back.fields.mediaInputs).toEqual(frames);
+    expect(back.fields.mentions).toEqual(frames);
+    expect(back.fields.parameters).not.toHaveProperty("videoResolution");
+    expect({ ...before, ...into.fields, ...back.fields }.durationSeconds).toBe(3);
+  });
+
   it.each(["768p", "1440p", "480p"])("switches into H3 with compatible resolution %s and exact mixed inputs", (tier) => {
     const h3: MediaCapability = { ...video, id: "h3", adapterId: "MINIMAX_H3", maxReferenceImages: 9,
       settings: { defaultParameters: { videoResolution: "1440p" } } };

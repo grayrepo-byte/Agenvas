@@ -1,7 +1,7 @@
 import { Image as ImageIcon, MusicNotes, VideoCamera, X } from "@/shared/ui/icons";
 import { cn } from "cn";
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
-import type { RunningHubDefinition, RunningHubField } from "../../shared/api/client";
+import { creatorInputMapping, type CreatorInputDefinition, type CreatorInputField } from "../../shared/creatorInputs";
 import { t, useLocale } from "../../shared/i18n";
 import { isAudioFile, isVideoFile, MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -10,6 +10,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Empty, EmptyDescription, EmptyHeader } from "../../shared/ui/primitives/empty";
 import { Field, FieldError, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
+import { CreatorNumberInput } from "../../shared/ui/CreatorNumberInput";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../shared/ui/primitives/table";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { runningHubFieldValue, type RunningHubChoice, type RunningHubValue } from "./RunningHubForm";
@@ -21,11 +22,11 @@ import "./WorkflowDraftControls.css";
 const MIN_DURATION_SECONDS = 1;
 const MAX_DURATION_SECONDS = 60;
 const DEFAULT_MAX_LENGTH = 20_000;
-const MEDIA_TYPES = new Set<RunningHubField["type"]>(["IMAGE", "VIDEO", "AUDIO"]);
+const MEDIA_TYPES = new Set<CreatorInputField["type"]>(["IMAGE", "VIDEO", "AUDIO"]);
 
 export type WorkflowMediaChoice = RunningHubChoice & { thumbnailUrl?: string | null; title?: string };
 type WorkflowValuesProps = {
-  definition: Pick<RunningHubDefinition, "fields">;
+  definition: CreatorInputDefinition;
   values: Record<string, RunningHubValue>;
   prompt: string;
   durationSeconds: number | null | undefined;
@@ -35,11 +36,11 @@ type WorkflowValuesProps = {
 export type WorkflowMediaInputsProps = WorkflowValuesProps & {
   choices: WorkflowMediaChoice[];
   canvasChoices?: WorkflowMediaChoice[];
-  onUpload?: (field: RunningHubField, file: File, options?: { requireEmptySlot: boolean }) => Promise<void>;
+  onUpload?: (field: CreatorInputField, file: File, options?: { requireEmptySlot: boolean }) => Promise<void>;
   onBusy?: (busy: boolean) => void;
   libraryDisabled?: boolean;
   pickerOpen?: boolean;
-  onChooseSource: (field: RunningHubField | null, source: Exclude<MediaReferenceSource, "upload">, trigger: HTMLButtonElement) => void;
+  onChooseSource: (field: CreatorInputField | null, source: Exclude<MediaReferenceSource, "upload">, trigger: HTMLButtonElement) => void;
 };
 export type WorkflowParametersDialogProps = WorkflowValuesProps & {
   open: boolean;
@@ -53,7 +54,7 @@ function activeFields({ definition, values, prompt, durationSeconds }: WorkflowV
   return definition.fields.filter((field) => !field.enabledWhen || effective[field.enabledWhen.field] === field.enabledWhen.value);
 }
 
-function MediaPreview({ choice, kind }: { choice?: WorkflowMediaChoice; kind: RunningHubField["type"] }) {
+function MediaPreview({ choice, kind }: { choice?: WorkflowMediaChoice; kind: CreatorInputField["type"] }) {
   if (choice?.thumbnailUrl) return <img src={choice.thumbnailUrl} alt="" loading="lazy" />;
   const Icon = kind === "IMAGE" ? ImageIcon : kind === "VIDEO" ? VideoCamera : MusicNotes;
   return <Icon aria-hidden="true" />;
@@ -61,7 +62,7 @@ function MediaPreview({ choice, kind }: { choice?: WorkflowMediaChoice; kind: Ru
 
 function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabled, onChange, onUpload, onBusy, onChooseSource, libraryDisabled, pickerOpen }: {
   index: number;
-  field: RunningHubField; value: RunningHubValue | undefined; choices: WorkflowMediaChoice[]; canvasChoices: WorkflowMediaChoice[];
+  field: CreatorInputField; value: RunningHubValue | undefined; choices: WorkflowMediaChoice[]; canvasChoices: WorkflowMediaChoice[];
   disabled: boolean; onChange: WorkflowValuesProps["onChange"]; onUpload?: WorkflowMediaInputsProps["onUpload"];
   onBusy: (busy: boolean) => void;
   onChooseSource: WorkflowMediaInputsProps["onChooseSource"]; libraryDisabled?: boolean; pickerOpen?: boolean;
@@ -114,11 +115,11 @@ function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabl
   </Field>;
 }
 
-type WorkflowUploadAttempt = { field: RunningHubField; file: File; value: RunningHubValue | undefined };
+type WorkflowUploadAttempt = { field: CreatorInputField; file: File; value: RunningHubValue | undefined };
 
 /** A single add entry assigns uploads to the first available slot of their media type. */
 function WorkflowMediaAdd({ fields, emptyFields, props, onBusy }: {
-  fields: RunningHubField[]; emptyFields: RunningHubField[]; props: WorkflowMediaInputsProps; onBusy: (field: RunningHubField, busy: boolean) => void;
+  fields: CreatorInputField[]; emptyFields: CreatorInputField[]; props: WorkflowMediaInputsProps; onBusy: (field: CreatorInputField, busy: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState<WorkflowUploadAttempt | null>(null);
@@ -184,11 +185,11 @@ export function WorkflowMediaInputs(props: WorkflowMediaInputsProps) {
   });
   const emptyFields = fields.filter((field) => !selectedFields.includes(field));
   const declaredFields = props.definition.fields.filter((field) => MEDIA_TYPES.has(field.type));
-  function uploadBusy(field: RunningHubField, busy: boolean) {
+  function uploadBusy(field: CreatorInputField, busy: boolean) {
     if (busy) uploads.current.add(field.key); else uploads.current.delete(field.key);
     props.onBusy?.(uploads.current.size > 0);
   }
-  function slot(field: RunningHubField, index: number) {
+  function slot(field: CreatorInputField, index: number) {
     return <WorkflowMediaSlot key={field.key} field={field} index={index}
       value={runningHubFieldValue(field, props.values, props.prompt, props.durationSeconds)} choices={props.choices}
       canvasChoices={props.canvasChoices ?? []} disabled={props.disabled ?? false} onChange={props.onChange} onUpload={props.onUpload}
@@ -203,7 +204,7 @@ export function WorkflowMediaInputs(props: WorkflowMediaInputsProps) {
   </div>;
 }
 
-function numericBounds(field: RunningHubField) {
+function numericBounds(field: CreatorInputField) {
   const duration = field.source === "DURATION_SECONDS";
   return {
     minimum: duration ? Math.max(MIN_DURATION_SECONDS, field.minimum ?? MIN_DURATION_SECONDS) : field.minimum ?? undefined,
@@ -212,7 +213,7 @@ function numericBounds(field: RunningHubField) {
 }
 
 function WorkflowParameterControl({ field, value, disabled, onChange }: {
-  field: RunningHubField; value: RunningHubValue | undefined; disabled: boolean; onChange: WorkflowValuesProps["onChange"];
+  field: CreatorInputField; value: RunningHubValue | undefined; disabled: boolean; onChange: WorkflowValuesProps["onChange"];
 }) {
   const label = `${workflowFieldLabel(field)}${field.required ? " *" : ""}`;
   const id = useId();
@@ -229,13 +230,13 @@ function WorkflowParameterControl({ field, value, disabled, onChange }: {
     aria-label={label} value={value === undefined ? "" : String(value)} onChange={(event) => onChange(field.key, event.target.value)} />;
   else {
     const { minimum, maximum } = numericBounds(field);
-    control = <Input id={id} type="number" min={minimum} max={maximum} step={field.type === "INTEGER" ? 1 : "any"} disabled={disabled}
-      aria-label={label} value={value === undefined ? "" : Number(value)} onChange={(event) => onChange(field.key, event.target.value === "" ? undefined : Number(event.target.value))} />;
+    control = <CreatorNumberInput id={id} min={minimum} max={maximum} step={field.step ?? (field.type === "INTEGER" ? 1 : "any")} disabled={disabled}
+      aria-label={label} value={value === undefined ? undefined : Number(value)} onValueChange={(next) => onChange(field.key, next)} />;
   }
   return <Field data-disabled={disabled}><FieldLabel className="sr-only" htmlFor={id}>{label}</FieldLabel>{control}</Field>;
 }
 
-function parameterConstraints(field: RunningHubField) {
+function parameterConstraints(field: CreatorInputField) {
   const { minimum, maximum } = numericBounds(field);
   if (field.type === "STRING") return t("media.workflow.maxLength", { "0": field.maxLength ?? DEFAULT_MAX_LENGTH });
   if (field.type === "INTEGER" || field.type === "NUMBER") return [field.type === "INTEGER" ? t("media.workflow.integer") : t("media.workflow.number"),
@@ -245,21 +246,28 @@ function parameterConstraints(field: RunningHubField) {
 }
 
 /** Edits persist through the draft's existing onChange path; closing needs no second save. */
-export function WorkflowParametersDialog({ open, onOpenChange, disabled = false, ...props }: WorkflowParametersDialogProps) {
+export function WorkflowParameterFields({ disabled = false, ...props }: WorkflowValuesProps) {
   useLocale();
-  if (!open) return null;
   const fields = activeFields(props).filter((field) => !MEDIA_TYPES.has(field.type) && field.source !== "PROMPT");
-  return <Dialog className="workflow-parameters-dialog nodrag nowheel nopan" title={t("media.workflow.extendedParameters")}
-    description={disabled ? t("media.workflow.readOnlyParameters") : t("media.workflow.parametersHint")}
-    onClose={() => onOpenChange(false)} onSubmit={(event) => { event.preventDefault(); onOpenChange(false); }}
-    footer={<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>}>
-    {fields.length ? <Table className="workflow-parameters-table"><TableHeader><TableRow>
+  return fields.length ? <Table className="workflow-parameters-table"><TableHeader><TableRow>
       <TableHead>{t("media.workflow.parameter")}</TableHead><TableHead>{t("media.workflow.value")}</TableHead><TableHead>{t("media.workflow.constraints")}</TableHead>
     </TableRow></TableHeader><TableBody>{fields.map((field) => <TableRow key={field.key}>
       <TableCell><strong title={workflowFieldHint(field)}>{workflowFieldLabel(field)}{field.required ? " *" : ""}</strong></TableCell>
       <TableCell><WorkflowParameterControl field={field} value={runningHubFieldValue(field, props.values, props.prompt, props.durationSeconds)}
         disabled={disabled} onChange={props.onChange} /></TableCell>
-      <TableCell><span>{parameterConstraints(field)}</span></TableCell>
-    </TableRow>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyDescription>{t("media.workflow.noParameters")}</EmptyDescription></EmptyHeader></Empty>}
+      <TableCell><span>{parameterConstraints(field)}</span>
+        {!creatorInputMapping(field) && field.description ? <p className="ui-muted">{field.description}</p> : null}</TableCell>
+    </TableRow>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyDescription>{t("media.workflow.noParameters")}</EmptyDescription></EmptyHeader></Empty>;
+}
+
+/** Declared provider inputs share controls with workflows without exposing transport details. */
+export function WorkflowParametersDialog({ open, onOpenChange, disabled = false, ...props }: WorkflowParametersDialogProps) {
+  useLocale();
+  if (!open) return null;
+  return <Dialog className="workflow-parameters-dialog nodrag nowheel nopan" title={t("media.workflow.extendedParameters")}
+    description={disabled ? t("media.workflow.readOnlyParameters") : t("media.workflow.parametersHint")}
+    onClose={() => onOpenChange(false)} onSubmit={(event) => { event.preventDefault(); onOpenChange(false); }}
+    footer={<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.close")}</Button>}>
+    <WorkflowParameterFields {...props} disabled={disabled} />
   </Dialog>;
 }

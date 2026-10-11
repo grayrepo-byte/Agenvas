@@ -173,7 +173,15 @@ public final class DebugHttpCapture implements AutoCloseable {
         if (node.isObject()) {
             ObjectNode object = (ObjectNode) node;
             // Gemini marks a whole content part as thought, rather than naming its text field.
-            if (!preserveModelContent && (object.path("thought").asBoolean(false) || "analysis".equals(object.path("channel").asText()))) return MAPPER.getNodeFactory().textNode(REDACTED);
+            if (!preserveModelContent && (object.path("thought").asBoolean(false) || "analysis".equals(object.path("channel").asText())
+                    || java.util.Set.of("thought", "thought_summary", "thinking", "reasoning").contains(object.path("type").asText()))) return MAPPER.getNodeFactory().textNode(REDACTED);
+            if (!preserveModelContent) {
+                String mime = object.path("mime_type").asText(object.path("mimeType").asText(""));
+                boolean media = java.util.Set.of("image", "video", "audio").contains(object.path("type").asText())
+                        || mime.startsWith("image/") || mime.startsWith("video/") || mime.startsWith("audio/");
+                if (media && object.path("data").isTextual()) object.put("data", "[media bytes omitted]");
+                for (String key : java.util.List.of("b64_json", "bytesBase64Encoded")) if (object.path(key).isTextual()) object.put(key, "[media bytes omitted]");
+            }
             for (String name : object.propertyNames()) {
                 if (privateField(name)) object.put(name, REDACTED);
                 else object.set(name, scrub(object.get(name)));

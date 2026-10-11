@@ -1,10 +1,11 @@
 import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { useId, useState } from "react";
-import type { RunningHubDefinition,RunningHubField } from "../../shared/api/client";
+import type { CreatorInputDefinition, CreatorInputField } from "../../shared/creatorInputs";
 import { t,useLocale } from "../../shared/i18n";
 import { MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
+import { CreatorNumberInput } from "../../shared/ui/CreatorNumberInput";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Select } from "../../shared/ui/Select";
 import { workflowFieldHint, workflowFieldLabel } from "./workflowFieldPresentation";
@@ -14,17 +15,17 @@ export type RunningHubValue = string | number | boolean;
 export type RunningHubChoice = { id: string; label: string; kind: string; available: boolean };
 const MIN_DURATION_SECONDS = 1;
 const MAX_DURATION_SECONDS = 60;
-export function runningHubUsedVersions(definition: Pick<RunningHubDefinition, "fields">, values: Record<string, RunningHubValue>, prompt: string, seconds: number | null | undefined) {
+export function runningHubUsedVersions(definition: CreatorInputDefinition, values: Record<string, RunningHubValue>, prompt: string, seconds: number | null | undefined) {
   const effective = Object.fromEntries(definition.fields.map((field) => [field.key, runningHubFieldValue(field, values, prompt, seconds)]));
   return new Set(definition.fields.filter((field) => ["IMAGE", "AUDIO", "VIDEO"].includes(field.type)
     && (!field.enabledWhen || effective[field.enabledWhen.field] === field.enabledWhen.value))
     .map((field) => effective[field.key]).filter((value) => typeof value === "string"));
 }
-export function runningHubFieldValue(field: RunningHubField, values: Record<string, RunningHubValue>, prompt: string, seconds: number | null | undefined) {
+export function runningHubFieldValue(field: CreatorInputField, values: Record<string, RunningHubValue>, prompt: string, seconds: number | null | undefined) {
   return field.source === "PROMPT" ? prompt || (field.defaultValue ?? undefined)
     : field.source === "DURATION_SECONDS" ? seconds ?? field.defaultValue ?? undefined : values[field.key] ?? field.defaultValue ?? undefined;
 }
-export function runningHubErrors(definition: Pick<RunningHubDefinition, "fields">, values: Record<string, RunningHubValue>, prompt: string,
+export function runningHubErrors(definition: CreatorInputDefinition, values: Record<string, RunningHubValue>, prompt: string,
   seconds: number | null | undefined, choices: RunningHubChoice[]) {
   const effective = Object.fromEntries(definition.fields.map((field) => [field.key, runningHubFieldValue(field, values, prompt, seconds)]));
   const errors: string[] = [];
@@ -45,7 +46,7 @@ export function runningHubErrors(definition: Pick<RunningHubDefinition, "fields"
   return errors;
 }
 
-function UploadSlot({ field, disabled, onUpload }: { field: RunningHubField; disabled: boolean; onUpload: (field: RunningHubField, file: File) => Promise<void> }) {
+function UploadSlot({ field, disabled, onUpload }: { field: CreatorInputField; disabled: boolean; onUpload: (field: CreatorInputField, file: File) => Promise<void> }) {
   useLocale();
   const inputId = useId();
   const [file, setFile] = useState<File | null>(null);
@@ -67,15 +68,15 @@ function UploadSlot({ field, disabled, onUpload }: { field: RunningHubField; dis
 }
 
 export function RunningHubForm({ definition, values, prompt, durationSeconds, choices, disabled = false, onChange, onUpload }: {
-  definition: RunningHubDefinition; values: Record<string, RunningHubValue>; prompt: string; durationSeconds: number | null | undefined;
+  definition: CreatorInputDefinition; values: Record<string, RunningHubValue>; prompt: string; durationSeconds: number | null | undefined;
   choices: RunningHubChoice[]; disabled?: boolean;
   onChange: (key: string, value: RunningHubValue | undefined) => void;
-  onUpload?: (field: RunningHubField, file: File) => Promise<void>;
+  onUpload?: (field: CreatorInputField, file: File) => Promise<void>;
 }) {
   useLocale();
   const formId = useId();
   const effective = Object.fromEntries(definition.fields.map((field) => [field.key, runningHubFieldValue(field, values, prompt, durationSeconds)]));
-  function control(field: RunningHubField) {
+  function control(field: CreatorInputField) {
     if (field.enabledWhen && effective[field.enabledWhen.field] !== field.enabledWhen.value) return null;
     const value = effective[field.key];
     const isMedia = ["IMAGE", "AUDIO", "VIDEO"].includes(field.type);
@@ -94,10 +95,10 @@ export function RunningHubForm({ definition, values, prompt, durationSeconds, ch
         </Select> : field.type === "BOOLEAN" ? <Select {...controlProps} value={value === undefined ? "" : String(value)} onChange={(event) => onChange(field.key, event.target.value ? event.target.value === "true" : undefined)}>
           <option value="">{t("media.runningHub.useDefault")}</option><option value="true">{t("common.enabled")}</option><option value="false">{t("common.close")}</option>
         </Select> : field.type === "STRING" ? <Textarea {...controlProps} rows={3} maxLength={field.maxLength ?? 20000} value={value === undefined ? "" : String(value)}
-          onChange={(event) => onChange(field.key, event.target.value)} /> : <Input {...controlProps} type="number" value={value === undefined ? "" : Number(value)}
+          onChange={(event) => onChange(field.key, event.target.value)} /> : <CreatorNumberInput {...controlProps} value={value === undefined ? undefined : Number(value)}
           min={field.source === "DURATION_SECONDS" ? Math.max(MIN_DURATION_SECONDS, field.minimum ?? MIN_DURATION_SECONDS) : field.minimum ?? undefined}
-          max={field.source === "DURATION_SECONDS" ? Math.min(MAX_DURATION_SECONDS, field.maximum ?? MAX_DURATION_SECONDS) : field.maximum ?? undefined} step={field.type === "INTEGER" ? 1 : "any"}
-          onChange={(event) => onChange(field.key, event.target.value ? Number(event.target.value) : undefined)} />}
+          max={field.source === "DURATION_SECONDS" ? Math.min(MAX_DURATION_SECONDS, field.maximum ?? MAX_DURATION_SECONDS) : field.maximum ?? undefined} step={field.step ?? (field.type === "INTEGER" ? 1 : "any")}
+          onValueChange={(next) => onChange(field.key, next)} />}
       </Field>
       {isMedia && onUpload ? <UploadSlot field={field} disabled={disabled} onUpload={onUpload} /> : null}
     </FieldGroup>;
