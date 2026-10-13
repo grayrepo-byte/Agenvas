@@ -138,6 +138,73 @@ class SkillRunPostgresIT {
         auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
     }
 
+    @Test void referencedResourcesPageThroughDurableTurnsAndStayFrozenAfterRepublishing() {
+        var scenario = scenario(false);
+        var skill = skills.create(owner.userId(), "Progressive resource test", "Read referenced text selectively");
+        String body = "---\nname: progressive-resource-test\ndescription: Read referenced text selectively\n---\n"
+                + "Read [guide](references/nested/guide.md) in full, then its required reference.";
+        String guide = "😀甲".repeat(2_100) + "\nTAIL_SENTINEL\nRead [checks](../checks.md#required).";
+        var content = new SkillContent.DraftContent(1, body, List.of(Artifact.Kind.TEXT), List.of(), List.of(
+                new SkillContent.Resource("references/nested/guide.md", guide),
+                new SkillContent.Resource("references/checks.md", "NESTED_SENTINEL"),
+                new SkillContent.Resource("references/unused.md", "UNUSED_SENTINEL")), List.of());
+        var draft = skills.saveDraft(owner.userId(), skill.id(), 0, content);
+        var publication = skills.publish(owner.userId(), skill.id(), draft.version(), "publish-paged-resource");
+        assertThat(skills.processNext()).isTrue();
+        UUID version = skills.getOperation(owner.userId(), publication.id()).resultVersionId();
+        var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS,
+                List.of(new SkillRunService.Choice(skill.id(), version, List.of())));
+        AgentRun run = runs.create(owner.userId(), scenario.project().id(), scenario.agent().id(),
+                "Read the guide and its required checks", "progressive-resource-run", 0L, List.of(),
+                null, null, null, null, null, selection).run();
+        gateway.prepare(run.id(), List.of(
+                toolCall("paged-main", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", version))),
+                toolCall("paged-first", "read_skill_resource", mapper.writeValueAsString(Map.of(
+                        "skillVersionId", version, "path", "references/nested/guide.md", "offset", 0, "limit", 4_000))),
+                toolCall("paged-tail", "read_skill_resource", mapper.writeValueAsString(Map.of(
+                        "skillVersionId", version, "path", "references/nested/guide.md", "offset", 4_000))),
+                toolCall("paged-nested", "read_skill_resource", mapper.writeValueAsString(Map.of(
+                        "skillVersionId", version, "path", "references/checks.md"))),
+                new AssistantMessage("TAIL_SENTINEL and NESTED_SENTINEL were read.")));
+
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(mapper.writeValueAsString(gateway.lastMessages))
+                .doesNotContain(body, "TAIL_SENTINEL", "NESTED_SENTINEL", "UNUSED_SENTINEL", "references/nested/guide.md");
+        // Subsequent requests restore durable checkpoints, not a process-local skill cache.
+        skills.saveDraft(owner.userId(), skill.id(), draft.version(), new SkillContent.DraftContent(1, body,
+                List.of(Artifact.Kind.TEXT), List.of(), List.of(new SkillContent.Resource("references/nested/guide.md", "NEW_VERSION")), List.of()));
+        var republish = skills.publish(owner.userId(), skill.id(), draft.version() + 1, "republish-paged-resource");
+        assertThat(skills.processNext()).isTrue();
+        assertThat(skills.getOperation(owner.userId(), republish.id()).status()).isEqualTo(SkillContent.OperationStatus.SUCCEEDED);
+
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        JsonNode main = lastResourceReply();
+        assertThat(main.path("resourceManifest").path(0).path("total").asInt()).isEqualTo(guide.codePointCount(0, guide.length()));
+        assertThat(main.toString()).doesNotContain("TAIL_SENTINEL", "NESTED_SENTINEL", "UNUSED_SENTINEL", "NEW_VERSION");
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        JsonNode firstPage = lastResourceReply();
+        assertThat(firstPage.path("content").asText()).isEqualTo("😀甲".repeat(2_000));
+        assertThat(firstPage.path("nextOffset").asInt()).isEqualTo(4_000);
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        JsonNode lastPage = lastResourceReply();
+        assertThat(firstPage.path("content").asText() + lastPage.path("content").asText()).isEqualTo(guide);
+        assertThat(lastPage.path("nextOffset").isNull()).isTrue();
+        assertThat(lastPage.path("contentHash")).isEqualTo(firstPage.path("contentHash"));
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(lastResourceReply().path("content").asText()).isEqualTo("NESTED_SENTINEL");
+        assertThat(mapper.writeValueAsString(gateway.lastMessages)).doesNotContain("UNUSED_SENTINEL", "NEW_VERSION");
+        assertThat(runs.get(owner.userId(), scenario.project().id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertSameJson(toolExecutions.execute(new TrustedToolContext(owner.userId(), scenario.project().id(), run.id()),
+                2, "paged-tail").path("data"), lastPage);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run")
+                .param("run", run.id()).query(Long.class).single()).isEqualTo(4);
+    }
+
+    private JsonNode lastResourceReply() {
+        var reply = (ToolResponseMessage) gateway.lastMessages.getLast();
+        return mapper.readTree(reply.getResponses().getFirst().responseData()).path("data");
+    }
+
     @Test void multipleSelectionsFreezeTogetherAndOnlyActivatedSkillsEnterApprovalProvenance() throws Exception {
         var scenario = scenario(false);
         var first = publishedSkill(scenario, false, SkillContent.Usage.PROVIDER_REFERENCE, false);

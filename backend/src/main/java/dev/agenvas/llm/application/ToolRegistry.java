@@ -98,6 +98,15 @@ public class ToolRegistry {
                 tool.getToolDefinition().name())).map(tool -> {
                     var current = tool.getToolDefinition();
                     if (policy.path("systemPromptVersion").asInt()
+                            >= InitialModelContextService.SKILL_RESOURCE_PAGING_SYSTEM_PROMPT_VERSION
+                            && "read_skill_resource".equals(current.name()))
+                        return definition(current.name(), "Read one page of a registered text attachment after a successful read_skill reply. "
+                                + "Use the same skillVersionId and exact resourceManifest path (relative to the Skill root). "
+                                + "Resolve nested Markdown links against their source directory and match the manifest; omit heading fragments. "
+                                + "Offsets and totals count Unicode code points. When nextOffset is not null, use it as offset to read the next needed page; "
+                                + "nextOffset=null marks the end. Do not treat partial content as a complete resource.",
+                                PROGRESSIVE_SKILL_RESOURCE_SCHEMA);
+                    if (policy.path("systemPromptVersion").asInt()
                             >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION
                             && ("read_artifacts".equals(current.name()) || "read_skill_asset".equals(current.name())))
                         return definition(current.name(), current.description()

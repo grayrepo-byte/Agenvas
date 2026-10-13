@@ -102,6 +102,18 @@ public class ReadToolService {
         for (String field : List.of("name", "description", "outputKinds", "resourceManifest", "assets", "inputs"))
             data.set(field, skill.path(field).deepCopy());
         if (skill.has("assetDelivery")) data.set("assetDelivery", skill.path("assetDelivery").deepCopy());
+        if (run.policySnapshot().path("systemPromptVersion").asInt()
+                >= InitialModelContextService.SKILL_RESOURCE_PAGING_SYSTEM_PROMPT_VERSION) {
+            // Lengths aid selective paging; attachment bodies remain behind the resource tool.
+            ArrayNode manifest = data.putArray("resourceManifest");
+            for (JsonNode resource : skill.path("resources")) {
+                String text = resource.path("content").asText();
+                manifest.addObject().put("path", resource.path("path").asText())
+                        .put("contentHash", resource.path("contentHash").asText())
+                        .put("total", text.codePointCount(0, text.length()));
+            }
+            data.put("resourcePageLimit", MAX_SKILL_RESOURCE_PAGE);
+        }
         return output;
     }
 

@@ -17,6 +17,33 @@ class RunContextWindowTest {
     private final JsonMapper mapper = new JsonMapper();
     private final LlmProtocolCodec codec = new LlmProtocolCodec(mapper);
 
+    @Test void compactedResourceReadsKeepExactPathsHashesAndContinuationOffsets() {
+        List<Message> history = new ArrayList<>(List.of(new SystemMessage("Protocol"), new UserMessage("Task")));
+        var read = AssistantMessage.builder().content("").toolCalls(List.of(
+                new AssistantMessage.ToolCall("resource", "function", "read_skill_resource", "{}"))).build();
+        history.add(read);
+        history.add(codec.toolResults(read, Map.of("resource", mapper.createObjectNode().put("status", "SUCCEEDED")
+                .set("data", mapper.createObjectNode().put("skillVersionId", "fixed-skill")
+                        .put("path", "references/nested/guide.md").put("contentHash", "fixed-hash")
+                        .put("content", "Omitted old resource text").put("offset", 0).put("endOffset", 4000)
+                        .put("total", 6200).put("nextOffset", 4000)))));
+        for (int index = 0; index < 20; index++) {
+            String id = "later-" + index;
+            var call = AssistantMessage.builder().content("").toolCalls(List.of(
+                    new AssistantMessage.ToolCall(id, "function", "read_project_summary", "{}"))).build();
+            history.add(call);
+            history.add(codec.toolResults(call, Map.of(id, mapper.createObjectNode().put("status", "SUCCEEDED"))));
+        }
+        var projected = RunContextWindow.project(history, mapper);
+        Message memory = projected.stream().filter(message -> message.getMetadata().containsKey(RunContextWindow.MEMORY_KEY))
+                .findFirst().orElseThrow();
+        assertThat(memory.getText()).contains("skillVersionId=fixed-skill", "path=references/nested/guide.md",
+                "contentHash=fixed-hash", "offset=0", "endOffset=4000", "total=6200", "nextOffset=4000")
+                .doesNotContain("Omitted old resource text");
+        assertThat(RunContextWindow.project(codec.requestMessages(codec.request(projected, List.of())), mapper))
+                .isEqualTo(projected);
+    }
+
     @Test void oneHundredActivatedSkillsKeepFullInstructionsWithoutAccumulatingProtocolMessages() {
         List<Message> history = new ArrayList<>(List.of(new SystemMessage("Protocol"), new UserMessage("Task")));
         for (int index = 0; index < 100; index++) {

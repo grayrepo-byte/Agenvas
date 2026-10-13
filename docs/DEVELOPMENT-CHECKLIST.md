@@ -2274,3 +2274,12 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 定向执行 ImageReversePromptDialog、MediaCanvasCard、PromptManagementSection 三个 Vitest 文件，109 个用例全部通过。TypeScript、改动文件 ESLint、主题颜色、四语言 2451 键检查及 Vite 生产构建通过；构建保留既有大 chunk 提示。后端主源码与全部测试源码编译、最终 git diff --check 通过。
 - [x] 发布 PR 的 CI 发现 V24 使原生检查点历史升级测试的迁移数量从 2 变为 3；已在隔离 PostgreSQL 17.11 中定向复现，并将该场景的 V21 → V23 升级边界固定，保留全部旧数据与协议数量约束断言。执行 `./mvnw --batch-mode --no-transfer-progress -Pci-integration -Dit.test=FlywayBaselinePostgresIT verify`，20 项迁移测试全部通过，无失败、错误或跳过；包含最新迁移的新安装检查，未修改生产迁移。
 - [ ] 全量测试、真实视觉模型、浏览器端到端与部署未运行；后端模型为合成网关、图片为合成 PNG，前端请求为 Mock，不能证明具体外部模型支持图片理解或服务方会响应取消。没有修改运行服务或用户数据库；使用时需配置支持图片理解的文字模型，并随同步后端应用 V24 迁移。
+
+## 2026-10-13 Agent Skill 引用资源渐进加载
+
+- [x] 新 Run 使用 6/11/3 策略；主说明激活回复的附件清单增加 Unicode 码点长度与单页上限，不注入附件正文。系统规则与资源工具说明明确后续批次读取、相对 Markdown 引用匹配固定路径、标题片段移除与 `nextOffset` 续读，禁止把部分页冒充全文。历史 1–10 版提示词与主说明回复保持原行为，无公开 API、数据库迁移、依赖或前端交互改动。
+- [x] 复现并修复上下文压缩丢失附件路径、hash 与分页游标的问题；只从成功 `read_skill_resource` 结果保留这些事实，不扩大到任意嵌套路径或原始参数。回归覆盖 Unicode 分页拼接、未读正文隐藏、旧协议、压缩后游标及检查点往返。
+- [x] 执行 `./mvnw --batch-mode --no-transfer-progress -Dtest=ProgressiveSkillTest,RunContextWindowTest,InitialModelContextServiceTest -Dit.test=SkillRunPostgresIT,AgentRunPostgresIT verify`，20 项单元与 18 项真实 PostgreSQL 用例通过，无失败、错误或跳过。新增持久回合用例覆盖长附件两页、二级引用、发布新版本后的旧 Run 固定内容、未读附件隔离及终态工具重放；编译、打包与差异空白检查通过。
+- [x] 更新本地后端并通过浏览器创建独立合成 Skill/项目，确认实际 Run 使用版本 11、一个所选 Skill 与 stored 模型配置；合成包含 5,633 码点长附件、必读二级引用和不应读取的附件。标准 Dockerfile 构建遇到 Docker Hub EOF，现场运行使用现有本地运行镜像加已验证的应用 JAR，不代表标准镜像构建通过。
+- [x] 经用户明确授权，将活动 LLM 配置密文及主密钥临时放入仓库外 0700/0600 私有目录，在宿主机完成一次真实模型 smoke test（1 项通过，无跳过）。使用生产 `StoredChatModelFactory` / Spring AI、版本 11 系统规则、工具定义、`ReadToolService`、协议检查点往返及上下文投影，模型实际激活主说明、分页读到长资料末尾、沿相对链接读取二级资料，最终返回两处只存在于附件内的校验词与路径；未读无关附件，首轮与主说明回复没有泄露附件正文。宿主机 harness 使用合成 Run 快照与内存读取账本；真实数据库、Worker 恢复及冻结版本行为由上述 PostgreSQL 用例覆盖，不能将两类证据合称真实模型数据库端到端。临时密钥副本与临时测试源码/类文件完成后清除，真实配置、回执及原始日志不入库。
+- [ ] 容器侧真实模型端到端尚未通过：浏览器应用请求发生 11 次非 Mock 连接失败（初次加十次重试），终态 `FAILED / LLM_RETRY_EXHAUSTED`，工具读取为零。同一配置端点宿主机无鉴权 HTTPS 返回 404，容器普通/IPv4 HTTPS 均以 curl 35 失败，日志出现 TLS 握手/EOF 信号；未调整容器网络、TLS 验证或出站安全策略。全量测试、真实视觉/媒体模型未运行。

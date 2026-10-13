@@ -29,6 +29,8 @@ final class RunContextWindow {
             "canvasItemId", "targetCanvasItemId", "taskId", "approvalId", "mediaApprovalId", "skillVersionId",
             "alias", "expectedVersion", "kind", "title", "status", "errorCode", "possibleExternalCost",
             "costStatus", "estimatedCost", "actualCost", "currency");
+    private static final List<String> RESOURCE_PROGRESS_FIELDS = List.of("path", "contentHash", "offset",
+            "endOffset", "total", "nextOffset");
 
     private RunContextWindow() {}
 
@@ -99,7 +101,16 @@ final class RunContextWindow {
                     memory.append("Observation: ").append(bounded(message.getText(), 2_000)).append('\n');
                 if (message instanceof ToolResponseMessage replies) for (var reply : replies.getResponses()) {
                     var references = new StringBuilder();
-                    references(mapper.readTree(reply.responseData()), references);
+                    JsonNode result = mapper.readTree(reply.responseData());
+                    references(result, references);
+                    // Keep resource continuation facts even when the old page body leaves the window.
+                    // These fields are scoped to the successful resource tool, never arbitrary nested paths.
+                    if ("read_skill_resource".equals(reply.name())
+                            && ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText()))
+                        for (String field : RESOURCE_PROGRESS_FIELDS) {
+                            JsonNode value = result.path("data").path(field);
+                            if (value.isValueNode()) references.append(field).append('=').append(value.asText()).append(' ');
+                        }
                     memory.append("Action ").append(reply.name()).append(": ")
                             .append(bounded(references.toString(), 4_000)).append('\n');
                 }
