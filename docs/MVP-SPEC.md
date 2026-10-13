@@ -1816,6 +1816,8 @@ UNKNOWN 任务新出现、数据库连接池饱和、事件明显积压、磁盘
 
 自托管：根目录 `docker-compose.yml` 为默认镜像部署入口，直接写明 `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest` 与官方 `postgres:17.11-alpine`。应用设置 `pull_policy: always` 获取最新 latest，PostgreSQL 使用固定版本；不要求镜像地址、namespace 或 tag 环境变量。部署者需要固定应用版本或更换镜像地址时直接编辑 Compose 的 image。`docker-compose.local.yml` 与原 `deploy/compose.yaml` 只从源码构建 server/web，PostgreSQL 直接拉取官方镜像；`deploy/update-local.sh` 使用根目录源码入口，先构建再更新容器。四份文件均完整列出所有运行参数，不依赖其他 Compose 文件或共享 runtime 文件，部署者直接选择和修改参数。
 
+源码更新脚本默认复用基础镜像，可通过 `--pull` 显式刷新，支持 `server` / `web` 指定构建范围并报告构建、健康等待耗时；所有选定构建成功后才更新容器，启动仅拉取缺失镜像。源码 Compose 开启独立 BuildKit Maven 下载缓存，保留跨 POM/源码变化的已有包；不自动挂载宿主机 Maven 目录。部署打包跳过测试编译与执行，测试源码变更不使生产 JAR 构建层失效。CI 默认保留可导出的依赖层缓存及显式深度模型 smoke test，普通构建不自动运行全量测试。
+
 镜像部署和源码构建均使用 `configured`，管理员配置真实 LLM、媒体连接及已发布能力后才可生成。容器首次启动从系统随机源生成数据库密码（32 字节转 64 字符十六进制）和 32 字节 Base64 凭证主密钥，原子保存到 `credentials-data` 持久卷；不要求 `.env` 或手工填写。PostgreSQL 仍为官方镜像，生成逻辑完整列在所选 Compose 的入口中；server 非 root 入口从只读挂载文件读取数据库密码与主密钥，不将值写入 Compose 或日志。密钥目录为 UID 100/GID 101 的 0700，文件 0600，重启/更新复用原值；旧数据库缺少密钥卷时须恢复或显式导入原值，不能自动换密码/主密钥。初始化页面仅输入账号和密码，密钥卷单独加密备份。部署两种入口默认项目名均为 `agenvas`，复用原数据库、素材和密钥卷，Mock 开发版为 `agenvas-dev`，卷按项目名隔离。默认 Web 端口相同，并行运行须显式配置不同项目名和端口；切换启动方式须备份并确保版本兼容。配置分离不代表生产发布验收完成。真实 ComfyUI 与生成模型服务可在另一台机器；主应用镜像不打包生成式大模型，只内置经固定提交、哈希和许可证校验的 27.3 MB Depth Anything V2 Small INT8 深度模型。
 
 Nginx 统一域名处理前端与 `/api`，避免生产跨域鉴权复杂度。SSE 反代禁缓冲。构建基础镜像锁版本与 digest；2026-10-04 用户明确决定默认应用部署使用 latest，PostgreSQL 使用官方固定版本。部署者可以直接在 Compose 中改为指定版本、提交标签或 digest；此前禁止应用镜像 latest 的部署规则由该决定覆盖。

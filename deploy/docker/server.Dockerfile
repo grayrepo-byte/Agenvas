@@ -19,11 +19,28 @@ RUN mkdir -p /workspace/depth-model \
 WORKDIR /workspace/backend
 COPY backend/.mvn .mvn
 COPY backend/mvnw backend/pom.xml ./
-RUN ./mvnw --batch-mode --no-transfer-progress dependency:go-offline
+
+# Local builds retain a Maven download cache across pom.xml changes. CI defaults to the
+# dependency layer: GHA exports layer caches, not the contents of BuildKit cache mounts.
+ARG MAVEN_CACHE_MOUNT=false
+RUN if [ "${MAVEN_CACHE_MOUNT}" = false ]; then \
+      ./mvnw --batch-mode --no-transfer-progress dependency:go-offline; \
+    elif [ "${MAVEN_CACHE_MOUNT}" != true ]; then \
+      echo 'MAVEN_CACHE_MOUNT must be true or false' >&2; exit 1; \
+    fi
+
+COPY backend/src/main src/main
+COPY backend/src/jooq src/jooq
+RUN --mount=type=cache,id=agenvas-maven,target=/root/.m2-cache,sharing=locked \
+    if [ "${MAVEN_CACHE_MOUNT}" = true ]; then export MAVEN_USER_HOME=/root/.m2-cache; fi \
+    && ./mvnw --batch-mode --no-transfer-progress \
+        -Dmaven.repo.local="${MAVEN_USER_HOME:-/root/.m2}/repository" package -Dmaven.test.skip=true
 
 # The runtime filesystem is read-only and its writable tmpfs is intentionally noexec. Extract the
 # architecture-specific JNI libraries into the image so ONNX Runtime never executes from tmpfs.
-RUN case "$(uname -m)" in \
+RUN --mount=type=cache,id=agenvas-maven,target=/root/.m2-cache,sharing=locked \
+    if [ "${MAVEN_CACHE_MOUNT}" = true ]; then export MAVEN_USER_HOME=/root/.m2-cache; fi \
+    && case "$(uname -m)" in \
         x86_64) ort_arch=x64 ;; \
         aarch64|arm64) ort_arch=aarch64 ;; \
         *) echo "Unsupported ONNX Runtime architecture: $(uname -m)" >&2; exit 1 ;; \
@@ -31,21 +48,22 @@ RUN case "$(uname -m)" in \
     && mkdir -p /workspace/onnxruntime-native \
     && cd /workspace/onnxruntime-native \
     && jar --extract \
-        --file "/root/.m2/repository/com/microsoft/onnxruntime/onnxruntime/${ONNXRUNTIME_VERSION}/onnxruntime-${ONNXRUNTIME_VERSION}.jar" \
+        --file "${MAVEN_USER_HOME:-/root/.m2}/repository/com/microsoft/onnxruntime/onnxruntime/${ONNXRUNTIME_VERSION}/onnxruntime-${ONNXRUNTIME_VERSION}.jar" \
         "ai/onnxruntime/native/linux-${ort_arch}/libonnxruntime.so" \
         "ai/onnxruntime/native/linux-${ort_arch}/libonnxruntime4j_jni.so" \
     && mv "ai/onnxruntime/native/linux-${ort_arch}/libonnxruntime.so" \
         "ai/onnxruntime/native/linux-${ort_arch}/libonnxruntime4j_jni.so" . \
     && rm -r ai
 
-COPY backend/src src
-RUN ./mvnw --batch-mode --no-transfer-progress package -DskipTests
-
 # CI retains one native-architecture model/JNI smoke test without rerunning the unit suite.
 # Ordinary source builds only package the application; the full suites belong to CI jobs.
+COPY backend/src/test src/test
 ARG VERIFY_DEPTH_MODEL=false
-RUN if [ "${VERIFY_DEPTH_MODEL}" = true ]; then \
+RUN --mount=type=cache,id=agenvas-maven,target=/root/.m2-cache,sharing=locked \
+    if [ "${VERIFY_DEPTH_MODEL}" = true ]; then \
+      if [ "${MAVEN_CACHE_MOUNT}" = true ]; then export MAVEN_USER_HOME=/root/.m2-cache; fi; \
       ./mvnw --batch-mode --no-transfer-progress test \
+        -Dmaven.repo.local="${MAVEN_USER_HOME:-/root/.m2}/repository" \
         '-Dtest=LocalImageProcessorAdapterTest#runsConfiguredDepthAnythingModel' \
         -Dagenvas.test.depth-model="${DEPTH_MODEL_FILE}" \
         -Donnxruntime.native.path=/workspace/onnxruntime-native; \

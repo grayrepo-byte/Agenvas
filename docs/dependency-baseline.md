@@ -69,6 +69,12 @@ server 和 web 使用非 root 用户、只读根文件系统及受限 tmpfs；Po
 
 Web 运行镜像在固定 Alpine 基础镜像上执行 `apk upgrade --no-cache`；server 使用固定 Ubuntu Noble/Temurin glibc 镜像并执行 `apt-get upgrade`，因为 Maven 发布的 ONNX Runtime Linux 原生库依赖 glibc，不能在 Alpine/musl 上可靠加载。实际 OS 包版本由每次镜像 SBOM 记录，不能仅凭基础镜像 digest 推断。2026-10-04 按用户决定，PostgreSQL 直接使用[官方固定版本镜像](https://hub.docker.com/_/postgres)，移除自建 Dockerfile、su-exec 替换和 gosu 路径扫描排除；CI 直接拉取并扫描官方镜像。旧派生镜像扫描和初始化结果是历史记录，不代表当前官方镜像的安全验收。
 
+## 源码构建缓存与本地更新
+
+不改变 Maven、Java、Node、基础镜像或应用依赖版本。源码 Compose 显式传入 `MAVEN_CACHE_MOUNT=true`，用 BuildKit 的 `agenvas-maven` 缓存保存 Maven wrapper 与依赖包，串行锁保护共享目录；POM 层失效时仍可复用已下载文件，不再预解析部署不使用的 install/site 插件。没有自动复制宿主机 `~/.m2`。首次使用、换 builder 或清理 Docker 缓存后需要重新填充。
+
+普通 Dockerfile 构建默认保留 `dependency:go-offline` 层，供 CI 的 GHA layer cache 继续跨 runner 复用；cache mount 的数据不随该缓存自动导出。所有构建的生产打包改用 `-Dmaven.test.skip=true`，测试源码在其后复制，只有显式 `VERIFY_DEPTH_MODEL=true` 执行原深度模型 smoke test。本地更新脚本默认不强制拉取基础镜像，`--pull` 显式拉取，`server` / `web` 可缩小构建范围。验证范围为脚本故障/命令回归、四种 Compose 配置、实际镜像构建、跨 POM 层失效的离线 Maven 包复用和定向模型 smoke test；实际运行结果与未验证范围见开发清单。
+
 ## 初始基线验证（历史记录）
 
 以下命令结果记录的是建立 M0 基线时的执行快照，不代表当前版本的全量测试计数或最新部署验收；后续行为与回归结果以 开发记录（不随源码公开） 和开发清单为准。

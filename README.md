@@ -195,7 +195,7 @@ docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/c
 docker compose -f docker-compose.local.yml up -d --build --wait
 ```
 
-也可使用 `./deploy/update-local.sh`，先完成全部镜像构建，再更新容器并等待健康检查；后端仅执行 `package -DskipTests`，不自动运行 `mvn verify`，完整测试按需手动执行或由 CI 执行。完成后仅显示容器名、服务、状态和端口，避免完整启动命令撑宽状态表。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
+也可使用 `./deploy/update-local.sh`，先完成镜像构建，再更新容器并等待健康检查，分别显示构建与更新耗时。默认复用基础镜像，`./deploy/update-local.sh --pull` 显式刷新；只改后端或前端时，可运行 `./deploy/update-local.sh server` 或 `./deploy/update-local.sh web`（首次部署先构建两者）。源码 Compose 使用独立的 BuildKit Maven 缓存，即使 `pom.xml` 变化也保留已下载包；首次填充或清理 Docker 缓存后仍需下载。本机 `~/.m2` 不会自动共享给构建容器。后端执行 `package -Dmaven.test.skip=true`，跳过测试编译与执行，不自动运行 `mvn verify`；完整测试按需手动执行或由 CI 执行。完成后仅显示容器名、服务、状态和端口。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
 
 镜像部署和源码构建默认项目名均为 `agenvas`，沿用相同数据库、素材和密钥卷，切换时须备份并保证版本兼容。它们是同一环境的两种启动方式；若要并行运行，需用 `-p` 指定独立项目名并修改端口。
 
