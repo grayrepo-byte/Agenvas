@@ -11,7 +11,7 @@ setLocale("zh");
 const projectId = "studio-preview";
 const now = "2026-10-15T00:00:00Z";
 const project = { id: projectId, name: "海岸来信 · 创作工作室（Mock）", status: "ACTIVE",
-  aspectRatio: "LANDSCAPE_16_9", version: 0, createdAt: now, updatedAt: now };
+  aspectRatio: "LANDSCAPE_16_9", version: 0, createdAt: now, updatedAt: now, archivedAt: null };
 const artifact = (id: string, kind: Artifact["kind"], title: string, text?: string): Artifact => ({
   id, kind, title, projectId, version: 1, createdAt: now, updatedAt: now,
   resourceDefaultVersionId: text !== undefined ? `${id}-v1` : null,
@@ -24,17 +24,14 @@ const artifacts = [
   artifact("video", "VIDEO", "03 / 日落之前 · 镜头草稿"),
 ];
 const agent: Agent = { id: "director", projectId, name: "创作伙伴", instruction: "协助创作海岸短片。",
-  profileKey: "creator", profileVersion: 1, outputGroupId: "preview-outputs", version: 0, createdAt: now, updatedAt: now, bindings: [] };
+  profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
 let items: CanvasItem[] = artifacts.map((subject, index) => ({
   id: subject.id, subjectType: "ARTIFACT", subjectId: subject.id, title: subject.title,
-  artifact: subject, agent: null, x: index === 0 ? 0 : 530, y: index === 2 ? 355 : 0,
+  artifact: subject, x: index === 0 ? 0 : 530, y: index === 2 ? 355 : 0,
   width: index === 0 ? 420 : 520, height: index === 0 ? 310 : 292.5,
   zIndex: index, groupId: null, locked: false, version: 0,
   selectedVersionId: subject.resourceDefaultVersionId, selectedVersion: subject.resourceDefaultVersion,
 }));
-items.push({ id: "director", subjectType: "AGENT", subjectId: agent.id, title: agent.name,
-  artifact: null, agent, x: 1170, y: 0, width: 560, height: 720, zIndex: 4,
-  groupId: null, locked: false, version: 0, selectedVersionId: null, selectedVersion: null });
 if (new URLSearchParams(location.search).has("empty")) items = [];
 const drafts = new Map<string, MediaDraft>();
 const connections = [{ id: "story-image", projectId, sourceCanvasItemId: "brief", targetCanvasItemId: "image",
@@ -67,7 +64,7 @@ window.fetch = async (input, init) => {
       if (command.type === "PLACE_ARTIFACT") {
         const subject = artifacts.find(entry => entry.id === command.artifactId);
         if (subject) items.push({ id: command.itemId ?? crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: subject.id,
-          title: subject.title, artifact: subject, agent: null, x: command.x ?? 0, y: command.y ?? 0,
+          title: subject.title, artifact: subject, x: command.x ?? 0, y: command.y ?? 0,
           width: command.width ?? 420, height: command.height ?? 270, zIndex: command.zIndex ?? 0,
           groupId: null, locked: false, version: 0, selectedVersion: subject.resourceDefaultVersion,
           selectedVersionId: subject.resourceDefaultVersionId });
@@ -108,6 +105,8 @@ window.fetch = async (input, init) => {
     } else value = { items: artifacts, nextCursor: null };
   }
   else if (path.endsWith("/agents")) value = { items: [agent] };
+  else if (path.endsWith("/outputs")) value = { canvasItemIds: [] };
+  else if (path.endsWith("/skill-binding")) value = { agentVersion: 0, skills: [] };
   else if (/\/(run|tasks|text-generations|media-styles|actions|plans)$/.test(path)) value = [];
   else value = { items: [], nextCursor: null };
   return Response.json(value);

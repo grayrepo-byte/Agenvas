@@ -58,7 +58,7 @@ class ShutdownSignalPostgresIT {
         AdminPrincipal owner = identities.setup("signal-admin", "signal-password-123");
         Project project = projects.create(owner.userId(), "Signal smoke",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
         var run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create storyboard", "signal-smoke-run").run();
         Task queued = tasks.create(owner.userId(), project.id(), run.id(),

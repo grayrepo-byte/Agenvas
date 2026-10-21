@@ -68,7 +68,7 @@ class ShutdownGatePostgresIT {
         AdminPrincipal owner = identities.setup("shutdown-admin", "shutdown-password-123");
         Project project = projects.create(owner.userId(), "Shutdown gate",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
         var run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create storyboard", "before-close").run();
         Task image = tasks.create(owner.userId(), project.id(), run.id(),

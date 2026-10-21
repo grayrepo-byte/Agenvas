@@ -33,7 +33,6 @@ const item: CanvasItem = {
   locked: false, selectedVersionId: null, selectedVersion: null,
   version: 3,
   artifact,
-  agent: null,
 };
 
 function showTitle() {

@@ -17,7 +17,7 @@ export function CanvasViewportControls({ hasNodes }: { hasNodes: boolean }) {
   // Read at action time so changes to the OS preference apply without remounting the canvas.
   const motion = () => ({ duration: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 0 : 220 });
   return <TooltipProvider delayDuration={350}>
-    {overviewOpen && hasNodes ? <MiniMap className="canvas-overview" pannable zoomable
+    {overviewOpen && hasNodes ? <MiniMap className="canvas-overview" position="bottom-left" pannable zoomable
       nodeColor="var(--ui-canvas-minimap-node)" nodeStrokeColor="var(--ui-border-strong)"
       maskColor="var(--ui-canvas-minimap-mask)" /> : null}
     <div className="canvas-viewport-dock nodrag nopan nowheel" role="group" aria-label={t("canvas.workspace.viewportControls")}>

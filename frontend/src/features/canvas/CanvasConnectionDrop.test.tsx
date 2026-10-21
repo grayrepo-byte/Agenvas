@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Agent, Artifact, CanvasItem, ProjectSnapshot } from "../../shared/api/client";
+import type { Artifact, CanvasItem, ProjectSnapshot } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 
@@ -39,7 +39,7 @@ function card(id: string, kind: Artifact["kind"], title: string, versionId: stri
   return { id: `${id}-card`, subjectType: "ARTIFACT", subjectId: id, title, x: 0, y: 0,
     width: 260, height: 150, zIndex: 0, groupId: null, locked: false,
     selectedVersionId: kind === "TEXT" ? null : versionId,
-    selectedVersion: kind === "TEXT" ? null : selectedVersion, version: 3, agent: null,
+    selectedVersion: kind === "TEXT" ? null : selectedVersion, version: 3,
     artifact: { id, projectId: "project-1", kind, title, resourceDefaultVersionId: versionId,
       version: 3, createdAt: now, updatedAt: now,
       resourceDefaultVersion: selectedVersion } };
@@ -50,7 +50,7 @@ const items: CanvasItem[] = [
     { sourceType: "UPLOAD", assetId: "asset-id" }),
   { id: "empty-image-id-card", subjectType: "ARTIFACT", subjectId: "empty-image-id",
     title: "空白图片", x: 300, y: 200, width: 260, height: 150, zIndex: 0, groupId: null,
-    locked: false, selectedVersionId: null, selectedVersion: null, version: 1, agent: null,
+    locked: false, selectedVersionId: null, selectedVersion: null, version: 1,
     artifact: { id: "empty-image-id", projectId: "project-1", kind: "IMAGE", title: "空白图片",
       resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 1,
       createdAt: now, updatedAt: now } },
@@ -59,12 +59,7 @@ const items: CanvasItem[] = [
   card("video-id", "VIDEO", "视频", "33333333-3333-4333-8333-333333333333",
     { assetId: "asset-id", prompt: "缓慢推近",
       workflowVersion: "mock-video-v1", parameters: {}, sourceTaskId: "task-id" }),
-  { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
-    title: "Agent",
-    width: 460, height: 600, zIndex: 1, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 4, artifact: null,
-    agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
-      name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,
-      createdAt: now, updatedAt: now, bindings: [] } },
+
 ];
 
 const agentPatches: Array<Record<string, unknown>> = [];
@@ -109,12 +104,12 @@ beforeEach(() => {
         targetCanvasItemId: body.targetCanvasItemId,
         sourceArtifactVersionId: body.sourceVersionId,
         relationType: body.relationType, version: 0, createdAt: now, updatedAt: now,
-      }, draft: null, agent: items[3]!.agent }, { status: 201 });
+      }, draft: null }, { status: 201 });
     }),
     http.patch("/api/v1/projects/:projectId/agents/:agentId", async ({ request }) => {
       const body = await request.json() as Record<string, unknown>;
       agentPatches.push(body);
-      return HttpResponse.json({ ...items[3]!.agent, bindings: body.bindings } as Agent);
+      return HttpResponse.json({});
     }),
     http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions",
       async ({ params }) => {
@@ -165,15 +160,11 @@ describe("canvas connection drop target", () => {
     expect(agentPatches).toHaveLength(0);
   });
 
-  it("persists an exact-version Agent image connection when dropped on an Agent card", async () => {
+  it("ignores a stale pointer hit naming a removed node", async () => {
     await renderFlow();
-    await dropOn("agent-card");
-    await waitFor(() => expect(canvasConnections).toHaveLength(1));
-    expect(canvasConnections[0]).toMatchObject({
-      sourceCanvasItemId: "image-id-card", targetCanvasItemId: "agent-card",
-      sourceVersionId: imageVersionId, relationType: "AGENT_IMAGE_INPUT",
-      expectedTargetAgentVersion: 4,
-    });
+    await dropOn("removed-card");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(canvasConnections).toHaveLength(0);
     expect(agentPatches).toHaveLength(0);
     expect(revisions).toHaveLength(0);
   });

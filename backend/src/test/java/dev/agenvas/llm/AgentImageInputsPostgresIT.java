@@ -97,13 +97,9 @@ class AgentImageInputsPostgresIT {
                 artifact.artifact().id(), artifact.resourceDefaultVersion().id(), "Image reader", "Read bound images");
         var unrequested = artifacts.createTemplateImport(owner.userId(), project.id(), "Unrequested reference", asset.id());
         UUID source = UUID.randomUUID();
-        UUID target = canvas.list(owner.userId(), project.id()).stream().map(CanvasService.CanvasEntry::item)
-                .filter(item -> item.subjectId().equals(agent.id())).findFirst().orElseThrow().id();
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(source,
                 unrequested.artifact().id(), BigDecimal.ZERO, new BigDecimal("300"),
                 new BigDecimal("320"), new BigDecimal("240"), 2, null, false)));
-        connections.connect(owner.userId(), project.id(), source, target, unrequested.resourceDefaultVersion().id(),
-                CanvasConnection.RelationType.AGENT_IMAGE_INPUT, null, agent.version());
         gateway.versionId = artifact.resourceDefaultVersion().id();
         var preview = assets.content(owner.userId(), project.id(), asset.id(), true);
         try (var input = assets.open(preview, 0, preview.size())) { gateway.expectedImage = input.readAllBytes(); }

@@ -249,7 +249,7 @@ class MediaDraftReplacementPostgresIT {
         assertThat(saved.mentions()).hasSize(1);
         var lines = connections.list(owner.userId(), project.id());
         assertThat(lines).singleElement().satisfies(line -> assertThat(line.sourceArtifactVersionId()).isEqualTo(versions.get(kind)));
-        var disconnected = connections.disconnect(owner.userId(), project.id(), lines.getFirst().id(), saved.version(), null).draft();
+        var disconnected = connections.disconnect(owner.userId(), project.id(), lines.getFirst().id(), saved.version()).draft();
         assertThat(disconnected.mediaInputs()).isEmpty();
         assertThat(disconnected.parameters().path("dynamicValues").has("source")).isFalse();
         assertThat(disconnected.mentions()).isEmpty();
@@ -281,7 +281,7 @@ class MediaDraftReplacementPostgresIT {
             UUID sourceItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), source.artifact().id());
             versions.add(source.resourceDefaultVersion().id());
             connections.connect(owner.userId(), project.id(), sourceItem, targetItem, versions.get(index),
-                    CanvasConnection.RelationType.MEDIA_INPUT, index);
+                    CanvasConnection.RelationType.MEDIA_INPUT, (long) index);
         }
         var connection = capabilities.createConnection(UUID.randomUUID().toString(), "Synthetic RunningHub", "RUNNINGHUB",
                 "https://www.runninghub.ai", "fake-runninghub-key");
@@ -338,7 +338,7 @@ class MediaDraftReplacementPostgresIT {
         UUID sourceItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), source.artifact().id());
         UUID targetItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), target.artifact().id());
         connections.connect(owner.userId(), project.id(), sourceItem, targetItem, source.resourceDefaultVersion().id(),
-                CanvasConnection.RelationType.MEDIA_INPUT, 0);
+                CanvasConnection.RelationType.MEDIA_INPUT, 0L);
         var connectedDraft = drafts.get(owner.userId(), project.id(), targetItem);
         drafts.save(owner.userId(), project.id(), targetItem,
                 connectedDraft.version(), "Existing prompt", connectedDraft.parameters(), null,
@@ -394,7 +394,7 @@ class MediaDraftReplacementPostgresIT {
         UUID sourceItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), source.artifact().id());
         UUID targetItem = CanvasMediaFixture.place(canvas, owner.userId(), project.id(), target.artifact().id());
         connections.connect(owner.userId(), project.id(), sourceItem, targetItem, source.resourceDefaultVersion().id(),
-                CanvasConnection.RelationType.MEDIA_INPUT, 0);
+                CanvasConnection.RelationType.MEDIA_INPUT, 0L);
         var before = drafts.get(owner.userId(), project.id(), targetItem);
         int beforeEvents = events(project.id());
 

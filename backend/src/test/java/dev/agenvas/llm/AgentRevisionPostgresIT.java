@@ -90,7 +90,7 @@ class AgentRevisionPostgresIT {
                 Artifact.Kind.TEXT, "Unbound", privateContent);
         gateway.unboundId = unbound.artifact().id();
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
-                "Make and revise a draft", List.of());
+                "Make and revise a draft");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create then revise", "revision-run").run();
 
@@ -167,13 +167,13 @@ class AgentRevisionPostgresIT {
         ArtifactService.ArtifactView bound = artifacts.create(owner.userId(),
                 boundProject.id(), Artifact.Kind.TEXT, "Bound draft", privateContent);
         AgentInstance boundAgent = agents.create(owner.userId(), boundProject.id(),
-                "Bound creator", "Revise the bound draft", List.of(
-                        new AgentInstanceService.BindingInput(bound.artifact().id(),
-                                bound.resourceDefaultVersion().id())));
+                "Bound creator", "Revise the bound draft");
+        canvas.apply(owner.userId(), boundProject.id(), List.of(new CanvasService.PlaceArtifact(UUID.randomUUID(), bound.artifact().id(),
+                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, new java.math.BigDecimal("320"), new java.math.BigDecimal("200"), 0, null, false)));
         AgentRun boundRun = runs.create(owner.userId(), boundProject.id(), boundAgent.id(),
                 "Revise", "bound-revision-run").run();
-        assertThat(boundRun.contextSnapshot().path("bindings").path(0)
-                .path("expectedVersion").longValue()).isZero();
+        assertThat(boundRun.contextSnapshot().path("canvasScope").path("items").path(0)
+                .path("artifactVersion").longValue()).isZero();
         ObjectNode changed = privateContent.deepCopy();
         changed.put("text", "Agent update");
         ArtifactService.ArtifactView boundRevision = artifacts.reviseFromAgent(owner.userId(),

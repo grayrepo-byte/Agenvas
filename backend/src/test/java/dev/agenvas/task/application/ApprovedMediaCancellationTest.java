@@ -17,6 +17,7 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
@@ -104,6 +105,24 @@ class ApprovedMediaCancellationTest {
         when(repository.finish(TASK, "worker", 1, Task.Status.FAILED, null, "PROVIDER_REJECTED", NOW)).thenReturn(true);
         service.fail(running, "worker", "PROVIDER_REJECTED");
         verify(usage).releaseUnsubmittedMediaTask(OWNER, failed);
+        verifyNoInteractions(runs);
+    }
+
+    @Test
+    void relayPreparationFailureBlocksAnUnsubmittedTaskAndReleasesItsReservation() {
+        Task running = task(Task.Status.RUNNING, false, null);
+        Task blocked = task(Task.Status.BLOCKED, false, null);
+        when(repository.ownerId(TASK)).thenReturn(Optional.of(OWNER));
+        when(repository.findById(TASK)).thenReturn(Optional.of(running), Optional.of(blocked));
+        when(repository.blockStaleInput(TASK, "worker", 1,
+                ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED, NOW)).thenReturn(true);
+
+        service.blockPreSubmission(running, "worker", ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED);
+
+        verify(repository).blockStaleInput(TASK, "worker", 1,
+                ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED, NOW);
+        verify(usage).releaseUnsubmittedMediaTask(OWNER, blocked);
+        verify(events).append(eq(OWNER), eq(PROJECT), any());
         verifyNoInteractions(runs);
     }
 

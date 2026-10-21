@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Agent, Artifact, CanvasItem, ProjectSnapshot } from "../../shared/api/client";
+import type { Artifact, CanvasItem, ProjectSnapshot } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { useCanvasStore } from "./canvasStore";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
@@ -28,20 +28,11 @@ function items(linked: boolean): CanvasItem[] {
   return [
     { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id", x: 0, y: 0,
       title: "图片",
-      width: 280, height: 180, zIndex: 0, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 3, agent: null,
+      width: 280, height: 180, zIndex: 0, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 3,
       artifact: image },
-    { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
-      title: "Agent",
-      width: 460, height: 600, zIndex: 1, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 4,
-      artifact: null,
-      agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
-        name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,
-        createdAt: now, updatedAt: now,
-        bindings: linked ? [{ id: "binding-id", artifactId: "image-id",
-          selectedVersionId: imageVersionId }] : [] } },
     { id: "video-card", subjectType: "ARTIFACT", subjectId: "video-id", x: 800, y: 0,
       title: "视频",
-      width: 280, height: 180, zIndex: 2, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 5, agent: null,
+      width: 280, height: 180, zIndex: 2, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 5,
       artifact: artifact("video-id", "VIDEO", "视频", videoVersionId, {
         id: videoVersionId, versionNo: 1, schemaVersion: 1,
         content: { assetId: "asset-id", prompt: "缓慢推近",
@@ -85,13 +76,13 @@ function stubProject(getItems: () => CanvasItem[]) {
     http.patch("/api/v1/projects/:projectId/agents/:agentId", async ({ request }) => {
       const body = await request.json() as Record<string, unknown>;
       agentPatches.push(body);
-      return HttpResponse.json({ ...items(true)[1]!.agent, bindings: body.bindings } as Agent);
+      return HttpResponse.json({});
     }),
     http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions",
       async ({ request, params }) => {
         const body = await request.json() as Record<string, unknown>;
         revisions.push({ artifactId: String(params.artifactId), body });
-        return HttpResponse.json(items(false)[2]!.artifact, { status: 201 });
+        return HttpResponse.json(items(false)[1]!.artifact, { status: 201 });
       }),
   );
 }

@@ -9,7 +9,7 @@ import type {Agent,SaveAgentSkillBindingRequest,SkillSelection} from "../../shar
 import {server} from "../../test/server";
 import {AgentRunSkillControls,AgentSkillSettings,useAgentSkillSelection} from "./AgentSkillControls";
 
-const agent:Agent={id:"agent-1",projectId:"project-1",profileKey:"creator",profileVersion:1,name:"Agent",instruction:"Create",outputGroupId:"group-1",bindings:[],version:3,createdAt:"2026-10-02T00:00:00Z",updatedAt:"2026-10-02T00:00:00Z"};
+const agent:Agent={id:"agent-1",projectId:"project-1",profileKey:"creator",profileVersion:1,name:"Agent",instruction:"Create",version:3,createdAt:"2026-10-02T00:00:00Z",updatedAt:"2026-10-02T00:00:00Z"};
 afterEach(cleanup);
 it("keeps the edit's original CAS baseline when SSE brings a newer Agent configuration",async()=>{
   let liveVersion=agent.version;let submitted:SaveAgentSkillBindingRequest|undefined;const requests:SaveAgentSkillBindingRequest[]=[];
@@ -79,8 +79,8 @@ it("validates required inputs in the modal and keeps their exact bound versions"
   server.use(...publishedSkillHandlers());
   server.use(
     http.get("/api/v1/skills/skill-1/versions/version-1",()=>HttpResponse.json({...skillVersion,inputSlots:[{alias:"subject",kind:"IMAGE",required:true}]})),
-    http.get("/api/v1/projects/project-1/artifacts",()=>HttpResponse.json({items:[{id:"image-1",kind:"IMAGE",title:"主体图片"}]})));
-  showRunPicker({...agent,bindings:[{id:"binding-image-1",artifactId:"image-1",selectedVersionId:"image-version-1"}]});
+    http.get("/api/v1/projects/project-1/canvas/items",()=>HttpResponse.json({items:[{id:"image-node",title:"主体图片",selectedVersionId:"image-version-1",artifact:{id:"image-1",kind:"IMAGE"}}]})));
+  showRunPicker(agent);
   const user=userEvent.setup();await user.click(screen.getByRole("button",{name:"选择 Skill"}));
   const dialog=await screen.findByRole("dialog");
   await user.click(await within(dialog).findByRole("button",{name:"温暖手绘"}));

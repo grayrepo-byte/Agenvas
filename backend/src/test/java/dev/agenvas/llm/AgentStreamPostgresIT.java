@@ -149,7 +149,7 @@ class AgentStreamPostgresIT {
 
     private Task startedTurn() {
         Project project = projects.create(owner, "Synthetic stream project", Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner, project.id(), "Creator", "Write a public answer", List.of());
+        var agent = agents.create(owner, project.id(), "Creator", "Write a public answer");
         var run = runs.create(owner, project.id(), agent.id(), "Write an answer", UUID.randomUUID().toString()).run();
         Task lease = tasks.claimAgentTurns(WORKER, 100).stream().filter(task -> run.id().equals(task.runId()))
                 .findFirst().orElseThrow();

@@ -2995,7 +2995,7 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
     patch:
       operationId: updateAgent
-      summary: 乐观替换 Agent 配置和明确输入绑定
+      summary: 乐观更新项目助手配置
       tags: [Agents]
       requestBody:
         required: true
@@ -3012,6 +3012,26 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/agents/{agentId}/outputs:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: agentId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: listAgentOutputs
+      summary: 按当前选用版本的运行来源查询助手产物节点
+      tags: [Agents]
+      responses:
+        "200":
+          description: 当前画布可定位的真实产物
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentOutputList"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/agents/{agentId}/conversations:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -5987,7 +6007,7 @@ components:
         id: {type: string, format: uuid}
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
-        relationType: {type: string, enum: [MEDIA_INPUT, AGENT_IMAGE_INPUT, MEDIA_DERIVATION]}
+        relationType: {type: string, enum: [MEDIA_INPUT, MEDIA_DERIVATION]}
         sourceArtifactVersionId: {type: string, format: uuid}
         version: {type: integer, format: int64, minimum: 0}
     SetupStatus:
@@ -6382,7 +6402,7 @@ components:
         projectId: {type: string, format: uuid}
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
-        relationType: {type: string, enum: [MEDIA_INPUT, AGENT_IMAGE_INPUT, MEDIA_DERIVATION]}
+        relationType: {type: string, enum: [MEDIA_INPUT, MEDIA_DERIVATION]}
         sourceArtifactVersionId: {type: string, format: uuid}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
@@ -6401,28 +6421,22 @@ components:
         sourceCanvasItemId: {type: string, format: uuid}
         targetCanvasItemId: {type: string, format: uuid}
         sourceVersionId: {type: string, format: uuid}
-        relationType: {type: string, enum: [MEDIA_INPUT, AGENT_IMAGE_INPUT]}
+        relationType: {type: string, const: MEDIA_INPUT}
         expectedTargetDraftVersion: {type: integer, format: int64, minimum: 0}
-        expectedTargetAgentVersion: {type: integer, format: int64, minimum: 0}
     DisconnectCanvasConnectionRequest:
       type: object
       additionalProperties: false
       properties:
         expectedTargetDraftVersion: {type: integer, format: int64, minimum: 0}
-        expectedTargetAgentVersion: {type: integer, format: int64, minimum: 0}
     CanvasConnectionResult:
       type: object
       additionalProperties: false
-      required: [connection, draft, agent]
+      required: [connection, draft]
       properties:
         connection: {$ref: "#/components/schemas/CanvasConnection"}
         draft:
           oneOf:
             - {$ref: "#/components/schemas/MediaDraft"}
-            - {type: "null"}
-        agent:
-          oneOf:
-            - {$ref: "#/components/schemas/Agent"}
             - {type: "null"}
     DuplicateCanvasItemRequest:
       type: object
@@ -6568,13 +6582,6 @@ components:
         items:
           type: array
           items: {$ref: "#/components/schemas/Artifact"}
-    AgentBindingRequest:
-      type: object
-      additionalProperties: false
-      required: [artifactId, selectedVersionId]
-      properties:
-        artifactId: {type: string, format: uuid}
-        selectedVersionId: {type: string, format: uuid}
     PromptDefinition:
       type: object
       required: [id, key, kind, name, description, content, builtIn, version, createdAt, updatedAt]
@@ -6627,39 +6634,22 @@ components:
     CreateAgentRequest:
       type: object
       additionalProperties: false
-      required: [bindings]
       properties:
         promptKey: {type: string, pattern: '^[a-z][a-z0-9._-]{0,119}$', description: 选择 AGENT 提示词条目；省略时使用 agent.director，FUNCTION 不能用于创建 Agent。}
         name: {type: string, minLength: 1, maxLength: 120, description: 省略时在创建事务内复制当前默认名称。}
         instruction: {type: string, minLength: 1, maxLength: 8000, description: 省略时复制当前默认创作系统提示词；不自动运行，已有实例可单独修改。}
-        bindings:
-          type: array
-          maxItems: 40
-          items: {$ref: "#/components/schemas/AgentBindingRequest"}
     UpdateAgentRequest:
       type: object
       additionalProperties: false
-      required: [expectedVersion, name, instruction, bindings]
+      required: [expectedVersion, name, instruction]
       properties:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         name: {type: string, minLength: 1, maxLength: 120}
         instruction: {type: string, minLength: 1, maxLength: 8000}
-        bindings:
-          type: array
-          maxItems: 40
-          items: {$ref: "#/components/schemas/AgentBindingRequest"}
-    AgentBinding:
-      type: object
-      additionalProperties: false
-      required: [id, artifactId, selectedVersionId]
-      properties:
-        id: {type: string, format: uuid}
-        artifactId: {type: string, format: uuid}
-        selectedVersionId: {type: string, format: uuid}
     Agent:
       type: object
       additionalProperties: false
-      required: [id, projectId, profileKey, profileVersion, name, instruction, outputGroupId, version, createdAt, updatedAt, bindings]
+      required: [id, projectId, profileKey, profileVersion, name, instruction, version, createdAt, updatedAt]
       properties:
         id: {type: string, format: uuid}
         projectId: {type: string, format: uuid}
@@ -6667,13 +6657,19 @@ components:
         profileVersion: {type: integer, minimum: 1}
         name: {type: string}
         instruction: {type: string}
-        outputGroupId: {type: string, format: uuid}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
-        bindings:
+    AgentOutputList:
+      type: object
+      additionalProperties: false
+      required: [canvasItemIds]
+      properties:
+        canvasItemIds:
           type: array
-          items: {$ref: "#/components/schemas/AgentBinding"}
+          uniqueItems: true
+          description: 当前画布实际选用版本由该 Agent 的运行产生的节点；依据不可变版本来源，不依赖布局分组。不含尚未归档的审批草稿。
+          items: {type: string, format: uuid}
     AgentList:
       type: object
       additionalProperties: false
@@ -6794,20 +6790,20 @@ components:
         skillSelection: {$ref: "#/components/schemas/SkillSelection"}
         selectedItemIds:
           type: array
-          maxItems: 20
+          maxItems: 1000
           uniqueItems: true
           description: 启动 Run 时选中的同项目画布卡片；仅供上下文指向，不授予工具修改权限
           items: {type: string, format: uuid}
     RunContextSnapshot:
       type: object
       additionalProperties: true
-      required: [agentId, agentVersion, profileKey, profileVersion, outputGroupId, bindings]
+      required: [agentId, agentVersion, profileKey, profileVersion]
       properties:
         agentId: {type: string, format: uuid}
         agentVersion: {type: integer, format: int64, minimum: 0}
         profileKey: {type: string}
         profileVersion: {type: integer, minimum: 1}
-        outputGroupId: {type: string, format: uuid}
+        outputGroupId: {type: string, format: uuid, description: 仅历史运行冻结的布局分组；新运行不再写入或依赖 Agent 输出分组。}
         conversationId:
           type: string
           format: uuid
@@ -6818,6 +6814,8 @@ components:
           minimum: 0
           description: 创建 Run 前已受理的会话消息水位；仅终态历史可进入记忆
         conversationMemory: {$ref: "#/components/schemas/ConversationMemory"}
+        canvasScope:
+          $ref: "#/components/schemas/RunCanvasScope"
         creativeSkills:
           type: array
           maxItems: 100
@@ -6825,21 +6823,51 @@ components:
           items: {type: object, additionalProperties: true}
         bindings:
           type: array
+          description: 本 Run 显式选择的 Skill 输入或仍在画布范围内的会话精确输入；升级前快照可保留历史 Agent 绑定。新 Run 不读取长期素材绑定。
           items: {$ref: "#/components/schemas/RunInputSnapshot"}
         selection:
           type: array
-          maxItems: 20
-          description: 创建 Run 时由服务端核对并固定的画布选择；不扩大工具权限
+          maxItems: 1000
+          description: 创建 Run 时由服务端核对并固定的画布选择；新协议通过 read_selection 分页按需读取，首轮只提供数量；不扩大工具权限
           items:
             type: object
             additionalProperties: false
             required: [itemId, subjectType, subjectId]
             properties:
               itemId: {type: string, format: uuid}
-              subjectType: {type: string, enum: [ARTIFACT, AGENT]}
+              subjectType: {type: string, enum: [ARTIFACT, AGENT], description: 新 Run 固定为 ARTIFACT；AGENT 仅用于读取升级前的不可变选择快照。}
               subjectId: {type: string, format: uuid}
               versionId: {type: string, format: uuid}
               kind: {$ref: "#/components/schemas/ArtifactKind"}
+    RunCanvasScope:
+      type: object
+      additionalProperties: false
+      description: 新 Run 在受理事务冻结的当前画布授权范围；目录按 read_canvas 分页提供，首轮模型仅接收节点数。旧 Run 缺省保留绑定和输出组权限。
+      required: [version, items]
+      properties:
+        version: {type: integer, const: 1}
+        items:
+          type: array
+          description: 当前画布所有 Artifact 节点；没有旧显式绑定40项限制，不包含不可变正文、原图或凭证。
+          items:
+            type: object
+            additionalProperties: false
+            required: [itemId, artifactId, kind, title, itemVersion, artifactVersion, locked, x, y, width, height, zIndex]
+            properties:
+              itemId: {type: string, format: uuid}
+              artifactId: {type: string, format: uuid}
+              kind: {$ref: "#/components/schemas/ArtifactKind"}
+              title: {type: string}
+              selectedVersionId: {type: string, format: uuid}
+              itemVersion: {type: integer, format: int64, minimum: 0}
+              artifactVersion: {type: integer, format: int64, minimum: 0}
+              locked: {type: boolean}
+              x: {type: number}
+              y: {type: number}
+              width: {type: number}
+              height: {type: number}
+              zIndex: {type: integer}
+              mediaDraft: {$ref: "#/components/schemas/MediaDraft"}
     ConversationMemory:
       type: object
       additionalProperties: false
@@ -6869,7 +6897,7 @@ components:
         kind: {$ref: "#/components/schemas/ArtifactKind"}
         title: {type: string}
         expectedVersion: {type: integer, format: int64, minimum: 0}
-        source: {type: string, const: CONVERSATION_OUTPUT}
+        source: {type: string, enum: [CONVERSATION_OUTPUT, SKILL_INPUT]}
         skillVersionId: {type: string, format: uuid, description: Skill reference disclosed only after activation.}
     RunPreflightBinding:
       type: object
@@ -6907,7 +6935,10 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        New policies are schema v6 with systemPromptVersion=10 and toolPolicyVersion=3.
+        New policies are schema v6 with systemPromptVersion=12 and toolPolicyVersion=4.
+        Canvas nodes are authorized by a frozen, paged canvasScope; read_canvas, manage_canvas_node and update_media_draft
+        share project ownership, immutable version checks, locks and optimistic CAS with normal application services.
+        Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval.
         Selected Skills initially disclose only name, description and immutable version ID;
         read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports.
         New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references.
@@ -6915,9 +6946,9 @@ components:
       required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions]
       properties:
         schemaVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6]}
-        toolPolicyVersion: {type: integer, enum: [1, 2, 3]}
+        toolPolicyVersion: {type: integer, enum: [1, 2, 3, 4]}
         allowedTools: {type: array, uniqueItems: true, items: {type: string}}
-        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], description: New v6 snapshots pin version 10; historical rules and creative message roles remain frozen.}
+        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], description: New v6 snapshots pin version 12; historical rules and creative message roles remain frozen.}
         modelConfigSource: {type: string}
         modelConfigVersion: {type: integer, minimum: 1}
         maxModelTurns: {type: [integer, "null"], minimum: 1, description: Null means no model-turn count limit; historical numeric policies remain frozen.}
@@ -7092,11 +7123,11 @@ components:
         textDelta: {type: string, description: 仅 delta 事件提供公开文本增量；completed 后重读已提交终稿。}
     CanvasSubjectType:
       type: string
-      enum: [ARTIFACT, AGENT]
+      const: ARTIFACT
     CanvasItem:
       type: object
       additionalProperties: false
-      required: [id, subjectType, subjectId, title, x, y, width, height, zIndex, locked, selectedVersionId, version, selectedVersion, artifact, agent]
+      required: [id, subjectType, subjectId, title, x, y, width, height, zIndex, locked, selectedVersionId, version, selectedVersion, artifact]
       properties:
         id: {type: string, format: uuid}
         subjectType: {$ref: "#/components/schemas/CanvasSubjectType"}
@@ -7115,14 +7146,7 @@ components:
           oneOf:
             - {$ref: "#/components/schemas/ArtifactVersion"}
             - {type: "null"}
-        artifact:
-          oneOf:
-            - {$ref: "#/components/schemas/Artifact"}
-            - {type: "null"}
-        agent:
-          oneOf:
-            - {$ref: "#/components/schemas/Agent"}
-            - {type: "null"}
+        artifact: {$ref: "#/components/schemas/Artifact"}
     Canvas:
       type: object
       additionalProperties: false
@@ -7185,21 +7209,6 @@ components:
         zIndex: {type: integer, minimum: -1000, maximum: 1000}
         groupId: {type: [string, "null"], format: uuid}
         locked: {type: boolean, default: false}
-    PlaceAgentCommand:
-      type: object
-      additionalProperties: false
-      required: [type, itemId, agentId, x, y, width, height, zIndex]
-      properties:
-        type: {type: string, const: PLACE_AGENT}
-        itemId: {type: string, format: uuid}
-        agentId: {type: string, format: uuid}
-        x: {type: number, minimum: -1000000, maximum: 1000000}
-        y: {type: number, minimum: -1000000, maximum: 1000000}
-        width: {type: number, minimum: 120, maximum: 2000}
-        height: {type: number, minimum: 80, maximum: 2000}
-        zIndex: {type: integer, minimum: -1000, maximum: 1000}
-        groupId: {type: [string, "null"], format: uuid}
-        locked: {type: boolean, default: false}
     UpdateCanvasItemTitleCommand:
       type: object
       additionalProperties: false
@@ -7243,7 +7252,6 @@ components:
     CanvasCommand:
       oneOf:
         - {$ref: "#/components/schemas/PlaceArtifactCommand"}
-        - {$ref: "#/components/schemas/PlaceAgentCommand"}
         - {$ref: "#/components/schemas/UpdateCanvasItemTitleCommand"}
         - {$ref: "#/components/schemas/UpdateLayoutCommand"}
         - {$ref: "#/components/schemas/SetCanvasItemLockedCommand"}
@@ -7252,7 +7260,6 @@ components:
         propertyName: type
         mapping:
           PLACE_ARTIFACT: "#/components/schemas/PlaceArtifactCommand"
-          PLACE_AGENT: "#/components/schemas/PlaceAgentCommand"
           UPDATE_TITLE: "#/components/schemas/UpdateCanvasItemTitleCommand"
           UPDATE_LAYOUT: "#/components/schemas/UpdateLayoutCommand"
           SET_LOCKED: "#/components/schemas/SetCanvasItemLockedCommand"

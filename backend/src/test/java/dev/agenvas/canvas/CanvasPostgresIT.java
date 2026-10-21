@@ -58,8 +58,10 @@ class CanvasPostgresIT {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired private org.springframework.web.context.WebApplicationContext webContext;
+
     @Test
-    void layoutPersistsFailedBatchRollsBackAndRemovingCardKeepsArtifact() {
+    void layoutPersistsFailedBatchRollsBackAndRemovingCardKeepsArtifact() throws Exception {
         AdminPrincipal owner = identityService.setup("canvas-admin", "canvas-password-123");
         Project project = projectService.create(
                 owner.userId(), "Canvas project", Project.AspectRatio.LANDSCAPE_16_9);
@@ -182,6 +184,32 @@ class CanvasPostgresIT {
                         .artifact()
                         .kind())
                 .isEqualTo(Artifact.Kind.TEXT);
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, null,
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+        String canvasPath = "/api/v1/projects/" + project.id() + "/canvas";
+        var retiredCommand = objectMapper.createObjectNode();
+        retiredCommand.putArray("commands").addObject().put("type", "PLACE_AGENT")
+                .put("itemId", UUID.randomUUID().toString()).put("agentId", UUID.randomUUID().toString())
+                .put("x", 0).put("y", 0).put("width", 300).put("height", 300).put("zIndex", 0).put("locked", false);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(canvasPath + "/commands")
+                        .with(auth).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(retiredCommand.toString()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        var retiredConnection = objectMapper.createObjectNode().put("sourceCanvasItemId", secondItemId.toString())
+                .put("targetCanvasItemId", duplicateItemId.toString()).put("sourceVersionId", UUID.randomUUID().toString())
+                .put("relationType", "AGENT_IMAGE_INPUT").put("expectedTargetAgentVersion", 0);
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(canvasPath + "/connections")
+                        .with(auth).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON).content(retiredConnection.toString()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        String visible = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(canvasPath + "/items").with(auth))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(visible).doesNotContain("\"agent\"", "\"AGENT\"");
+        assertThat(canvasService.list(owner.userId(), project.id())).hasSize(2);
     }
 
     private ArtifactService.ArtifactView createText(UUID ownerId, UUID projectId, String text) {

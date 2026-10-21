@@ -8,6 +8,23 @@ MVP 已完成，项目进入持续迭代。本清单保留历史任务与后续�
 
 勾选状态记录对应条目的实际实施与验证范围。阶段完成不批量改变条目状态；未完成或未验证的专项仍保持未勾选，更新时记录实际代码、测试和运行证据。
 
+## 导演聊天窗口与全画布操作（2026-10-20）
+
+本轮采用 [ADR 0047](adr/0047-project-agent-chat-and-canvas-scope.md)。下文历史 Agent 卡片、节点创建和拖线绑定验收描述保留为历史记录，当前入口与权限以本条及规格 §6.4、§8.5、§9.2 为准。
+
+- [x] 取消前端 Agent 节点创建、投影、资源恢复和隐藏端点关系；右下角非模态聊天窗口支持收起/展开、会话、设置、Skill、审批、停止、错误及 UNKNOWN。保留旧 Agent 身份与会话；首次用户打开时恢复或幂等创建导演，打开不调用模型。各 Agent 的草稿、配置和 Skill 隔离，收起和切换可恢复。
+- [x] 新 Run 使用协议 12 / 工具策略 4，固定发送时全画布内容节点范围；目录元数据、完整媒体草稿、正文和图片分别按需读取。选择最多 1000 项并分页提供；节点管理、文本修订、布局和媒体草稿复用业务应用服务，保留项目范围、精确版本、锁定和 CAS。历史 Run 不扩权。
+- [x] 新增 `read_canvas`、`manage_canvas_node`、`update_media_draft`，支持节点重命名、移动、缩放、移除、复制和排列；本 Run 新节点由带类型的工具账本确认。媒体草稿处理结构化提及和引用连线的原子替换。已有图片、视频、音频节点可形成生成审批；批准追加节点版本，拒绝保留既有节点与历史，生成仍不由模型自批。
+- [x] 同步 OpenAPI、生成 TypeScript、领域词汇、规格、对话/媒体设计与依赖基线；新增正式 `@shadcn/react` 0.3.1 及 MessageScroller/Message/Bubble，保留现有依赖主版本。本轮追加 V26 迁移并从隔离空库重新生成 jOOQ：退休旧 Agent 节点、图片绑定线、`agent_binding` 与输出组配置，规范化创建助手回执；历史 Run、会话、Skill、检查点和内容版本不改写。尚未对运行中的应用数据库执行升级。
+- [x] 前一轮聊天与全画布切片的 207 项前端、63 项单元和 38 个真实 PostgreSQL 用例为当时验证记录；后续补齐彻底退休旧拓扑及关联，不将旧计数当作本次验收。
+- [x] 退役路径包含 Agent 创建/配置、画布命令/关系、Skill 输入选择、普通媒体来源放置、精确版本复用、输出归属查询、快照/导出、旧回执与内置预设；新输出查询按当前选用不可变版本的 Run 来源定位，读取错误有可重试状态。V26 连续追加助手与画布失效事件，旧事件历史保留。
+- [x] 本次最终定向验证：前端单次执行 19 个文件、406 项唯一用例通过；后端 11 类、94 项功能单元与 24 类、119 项不同的真实 PostgreSQL 用例通过，无失败、错误或跳过。中间失败已修正后复验，计数不累计重跑。覆盖 V25→V26 默认/定制预设、13 类业务历史表逐行保留、旧拓扑/列/表退役、历史事件保留和连续新游标、幂等原配置、旧 API 拒绝、精确来源与自身图片变体、同轮创建→目录→排列→移动、实时 CAS 与冻结正文读权、offcanvas 会话输入隔离、Skill 显式精确输入、提示词注入防护、媒体审批/版本/取消与 UNKNOWN、输出真实 Run 来源、快照和导出。模型和 Provider 使用 Mock/合成响应，不代表真实调用验证。
+- [x] 最终 TypeScript、完整前端 lint（主题、四语言、ESLint）、生产构建、OpenAPI 重新生成一致性与 `git diff --check` 通过；最新 Workspace Chrome 四视口使用生产 CSS 与合成 HTTP/SSE 验证，输入、操作与收起入口可达。隔离 codegen PostgreSQL 从最终 V26 重建并重新生成 jOOQ，完成后已删除该临时容器及卷，未修改运行中的应用数据库。
+- [x] `test:agent-chat-layout` 在五种视口验证输入区可达、画布交互、展开/收起保留草稿、Escape 焦点恢复、长对话分页锚定和回到最新消息；`test:agent-workspace` 使用真实 Workspace 与生产 CSS，在 1440×900、1280×720、390×844、844×390 验证只投影内容节点、无悬空关系、真实控件无重叠、选择同步、Agent 草稿隔离以及窄屏提示避让。无外部生成请求；截图保存在仓库外私有目录。
+- [x] TypeScript、完整前端 lint（含四语言/主题）、生产构建、OpenAPI 再生成一致性及差异空白检查通过。构建保留大 chunk 提示。
+
+已知检查限制：完整 `MessageCatalogTest` 的默认目录与中文一致性项发现基线已有的 7 条 `remote-storage` 文案差异；本轮新增生产文案引用 AST 检查通过，没有修改无关存储文案。全量测试、真实模型/付费 Provider、部署与应用数据升级未运行。
+
 2026-10-05 能力发布设置删除：非内置能力行增加删除确认，已启用/停用能力及停用连接均可删除；请求等待期间禁止关闭与重复提交，失败保留窗口，冲突后显式载入最新版本再确认。新增管理员 DELETE 接口，要求 CSRF 与 expectedVersion；V11 追加 deleted_at，删除同事务清空关联默认能力及功能绑定、递增各配置版本。能力与不可变版本保留以支持历史任务和引用清理，新运行、编辑及重新绑定拒绝已删除能力。默认选择、功能绑定与删除共用能力行锁。同步 OpenAPI、生成 TypeScript、jOOQ、四语言文案及 [ADR 0034](adr/0034-media-capability-deletion.md)。
 
 验证：MediaSettingsPage 的 34 项前端测试、MediaCapabilityModeTest 的 10 项后端单元测试通过；四类真实 PostgreSQL 定向测试去重 27 项通过，覆盖删除、并发删除仅一次成功、选择等待删除事务、默认与功能绑定清空、其他默认保持、事务回滚、历史快照保留、拒绝复活、管理员/CSRF/参数合约、空库及 V10→V11 保留旧数据升级。TypeScript、相关 ESLint、四语言资源与差异空白检查通过；jOOQ 从隔离空库执行 Flyway 后重新生成。与 develop 合并后复验：34 项页面测试、10 项后端单元测试、8 项 PostgreSQL 删除与设置接口测试，以及 TypeScript、相关 ESLint、四语言资源检查通过；OpenAPI 重新生成与合并产物一致。验证仅使用合成配置，无外部 Provider 调用。未运行全量测试、浏览器整栈验收、完整前端构建或部署；未改动现有部署和业务数据。
@@ -2293,3 +2310,35 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 新增 9 项 fake Docker CLI 回归，覆盖参数、去重、默认/显式 pull、帮助、配置失败、构建失败不更新、健康失败不报成功和计时，修复前 5 项失败，修复后全部通过。Bash 语法、ShellCheck、四种真实 Compose 配置回归及差异空白检查通过；编排测试不启动容器，不可作为运行验收的替代。
 - [x] 实际源码镜像构建通过：已有下载缓存下后端 Maven 打包 42.201 秒，无测试编译；在仓库外副本仅修改 POM 注释，并用 Maven `--offline` 强制重新打包，8.581 秒成功，证明不是仅靠旧 RUN 层命中而是包缓存跨 POM 层复用。`MAVEN_CACHE_MOUNT=true / VERIFY_DEPTH_MODEL=true` 的真实 ARM64 构建内深度模型/JNI 单项测试通过，零失败/错误/跳过。完整更新脚本在缓存已填充后实测 23.08 秒：构建 5 秒，容器更新及健康等待 17 秒，最终三容器健康；持久卷保留。前后样本的缓存状态不同，不据此宣称冷构建提速倍率。
 - [ ] 本轮未运行全量前后端测试、托管 CI/GHA 缓存或 AMD64 镜像构建；CI 默认依赖层模式未在本机重新冷构建。首次下载、换 builder、清理缓存、依赖新增及网络故障仍可能耗时；不自动复用宿主机 Maven 仓库。
+
+## 2026-10-14 OSS 中继下的 GPT 图片编辑排障
+
+- [x] 复现代理 DNS 返回 `198.18.0.0/15` fake-IP 导致公网中继预检拒绝；公网预检限制保留。仅在仓库外诊断进程固定经过公开 DNS 核对的 OSS 公网地址后，生产对象存储客户端、签名器完成真实 PUT、72 小时签名 GET（HTTP 200、字节一致）及本轮临时对象 DELETE。没有更改系统代理、DNS、存储连接或图片中继开关。
+- [x] 使用合成 PNG 实际调用两种已配置第三方连接的同步 Images Edits JSON URL 协议：分别返回 HTTP 500（multipart 解析失败）和 HTTP 400（要求原始图片）；另一次 multipart URL 字段请求返回 HTTP 500（缺少 image）。这些请求均为独立诊断尝试，没有重提现有 Task、自动换协议或证明生成成功。真实回执、日志与素材留在仓库外私有目录，不记录私人 ID、凭据、签名 URL 或部署地址。
+- [x] 真实 PostgreSQL 回归先复现 `MEDIA_RELAY_PREPARATION_FAILED` 被提交前阻断白名单拒绝，随后复现用量释放白名单遗漏同一错误码导致事务回滚。同步修复 TaskService 与 UsageService；OpenAI 图片预检保留具体 `MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED`。预检失败进入 BLOCKED、清除租约、释放一次预留，无 provider_attempt、call_log 或生成请求，不进入 UNKNOWN。
+- [x] 43 项定向单元测试与 1 项真实 PostgreSQL 集成测试通过，无失败、错误或跳过。单元范围为 ApprovedMediaCancellationTest、OpenAiImage2AdapterTest、UsageMediaPricingTest、OpenAiImage2ClientTest、MediaRelayServiceTest；集成范围为 OpenAiImage2PostgresIT，覆盖通用准备失败、公网 DNS 拒绝、事务及用量释放、文件/URL 传输和原有 UNKNOWN 行为。编译、打包及差异空白检查通过。
+- [x] 同步规格与 Provider 接入指南的 URL 协议兼容和部署 DNS 验证边界；没有合约、生成代码、迁移、依赖或前端变更。
+- [ ] 真实中转站 URL 编辑成功、独立异步 URL 协议接入、显式蒙版与多图真实调用、账单核对、全量测试和本地部署未运行或未通过；源码修复未部署，既有 RUNNING 任务未手工修改。当前同步适配器不能据文件编辑成功宣称中转站 URL 编辑可用。
+
+## 2026-10-20 设置工作区视觉与动效重构
+
+- [x] `PageShell` 为设置路由增加 `.app-shell--settings` 作用域、按工作区/模型服务/观测/偏好分组的侧栏、面包屑与页面图标；保留侧栏外全宽布局，手机导航横向滚动，桌面短窗口纵向滚动；路由和语言变化后将活动入口带入可见范围。
+- [x] 新增公共 `SettingsWorkspace.css`，统一设置面板、已保存摘要、表单、表格和 240–480ms 淡入/位移动效；减少动态效果偏好生效时关闭动效，草稿面板继续 `forceMount`。系统分类页签增加图标，语言偏好使用紧凑设置行，局部布局在 `SystemSettingsPage.css` 维护。
+- [x] 功能行增加工具图标并仅在有修改时强调保存按钮；LLM 字段增加明确标签并按连接与凭证分组；媒体页签显示服务端实际连接/能力数量，说明提示移至表格之后。原有草稿保留、CAS、显式载入、密钥清空、诊断费用确认、媒体分区与权限行为保持；画布与其他工作区 token、API、数据库迁移及依赖未变。
+- [x] 最终在 `frontend` 执行 `pnpm exec vitest run --maxWorkers=4 src/shared/ui/PageShell.test.tsx src/app/App.test.tsx src/features/settings/*.test.tsx src/shared/ui/Dialog.test.tsx src/shared/ui/Select.test.tsx src/shared/i18n/i18n.test.tsx`：23 个文件、290 项测试全部通过；最后调整活动导航可见性后单独复跑 PageShell 6 项通过。默认并发的一轮曾出现 App 路由用例 5 秒超时，隔离复跑 4 项通过，随后上述限制并发复验全部通过；没有放宽测试超时或修改断言。
+- [x] 合成 Mock 浏览器检查覆盖七个设置路由的桌面呈现；390px 检查媒体/系统页和添加连接窗口，320px 检查系统日志与日语系统分类页，无文档级横向溢出。实测中英日俄切换、活动导航可见、折叠和语言切换保留 Provider 草稿、显式撤销恢复、菜单与窗口逐层 Esc 关闭并恢复焦点。修复日志筛选排列、窄屏终端行宽与详情按钮裁切；减少动态效果规则已静态核对，未在浏览器模拟该系统偏好。
+- [x] `pnpm -C frontend typecheck`、`pnpm -C frontend lint`、`pnpm -C frontend build` 与 `git diff --check` 通过；构建仍提示现有部分分块超过 500kB。新增可重载的 `e2e/settings-design.html` 合成预览入口，使用真实页面和内存 HTTP 数据；夹具单独 TypeScript/ESLint 检查通过。预览保存只改变内存，重载重置；未覆盖真实认证、网络、工作流导入或素材上传，不能作为真实 Provider 验证。
+- [x] 按后续反馈收紧系统设置全部分类的布局：移除重复分类标题，页签最小高度 34px，面板内边距桌面 18px/小屏 16px，主要表单间距 14px；语言采用按内容宽度按钮的紧凑设置行，诊断、风格和模板区同步缩小留白，保留风险说明、草稿与反馈。调整后定向复跑 `SystemSettingsPage`、`PageShell`、`PromptManagementSection`、`MediaStyleSettingsSection`、`PasswordChangeSection`、`CallLogRetentionSection`、`DebugModeSection` 七个测试文件，43 项全部通过；本次类型检查、lint、生产构建及差异空白检查通过；Mock 浏览器实测桌面语言设置行约 85px 高、按钮 78×36px，390px 手机按钮仍按内容宽度显示且无文档级横向溢出，并检查账户安全与系统诊断的紧凑呈现。
+- [ ] 全量测试、后端测试、真实 Provider 与部署未运行；本轮不修改运行服务或用户数据。规格 §6.1/§19.4 与前端公共样式文档已同步。
+
+## 2026-10-21 模型服务、日志、资产与 Skill 紧凑工作区
+
+- [x] `PageShell` / `SettingsWorkspace.css` 将分组导航、紧凑页头与公共面板扩展到 `.app-shell--studio`，覆盖设置、`/library` 和 `/skills`；系统设置保留 `.app-shell--settings` 局部范围。页面保持全宽、移动导航滚动与减少动态效果支持，公共画布 token、API、依赖和数据库迁移无改动。
+- [x] 模型配置把连接/凭证、协议诊断与媒体状态分区，媒体连接与能力表格保留现有模态编辑；调用日志改为紧凑筛选、记录与计时/标识详情，系统日志整合筛选、自动刷新/跟随和终端状态。保存、CAS、诊断费用确认、权限、后台快照保留和原轮询行为不变。
+- [x] 资产页分层组织视图、用途分类与筛选，使用密集缩略图卡片及双栏详情，上传表单同步收紧。新增页面呈现参数，共享画布/参考选择器保留默认布局；收藏、服务端筛选、精确版本浏览、上传/导入与回收站语义不变。Skill 页新增内置/个人目录分组与紧凑编辑/发布预览，已打开编辑器继续挂载，自动保存、CAS、发布与固定版本试用规则不变。
+- [x] 资产 `LibraryPage`、`ResourceBrowser`、`LibraryReferencePicker`、`SaveToLibraryButton`、`TextAssetSave` 五个定向测试文件共 17 项通过，最后页面相关复测 8 项通过；Skill 的 `SkillsPage`、`AgentSkillControls`、`CreativeSkillSource` 三个定向文件共 20 项通过。上述证据为合成响应测试，不代表真实 Provider 接通。
+- [x] 最终定向执行 `pnpm exec vitest run --maxWorkers=4 src/shared/ui/PageShell.test.tsx src/app/App.test.tsx src/features/settings/*.test.tsx src/features/library/*.test.tsx src/features/skills/*.test.tsx src/shared/ui/Dialog.test.tsx src/shared/ui/Select.test.tsx src/shared/i18n/i18n.test.tsx`，31 个文件、327 项全部通过；手机日志选项宽度修正后单独复跑 `SystemLogsPage` 6 项通过。最终类型检查、完整前端 lint（含主题与四语言检查）、生产构建及差异空白检查通过。构建保留既有 500kB 分块提示，并提示新预览插件导入未带扩展名不兼容未来大版本的 native config loader；当前 Vite 8 配置与构建正常，未为提示升级依赖或关闭检查。
+- [x] 通过真实 React 页面进行合成 Mock 浏览器检查：桌面核对模型、媒体、两类日志、资产与 Skill；390px 检查资产/调用详情和 Skill 编辑，320px 检查六个目标页面及功能设置。中俄两种文案均无文档级横向溢出；修复俄语长按钮撑宽、日志复选文案收缩和 Skill 页签多余纵向滚动条。验证资产空搜索、内置 Skill 与附件、个人草稿自动保存、系统日志关键词筛选/暂停、媒体编辑与调用详情的 Esc 关闭及焦点恢复；最终恢复中文与默认桌面尺寸。截图保存在仓库外私有证据目录。
+- [x] 合成预览增加资产与 Skill 内存 API，保留基本版本检查及完整版本附件复制。仅开发服务器为合成 ID 提供独立生成的 SVG、静音 WAV 和一秒几何 MP4，阻断原生媒体请求穿透 API 代理；隔离 HTTP 检查覆盖真实 ID 旁路、合成未知 ID、只读限制、HEAD/字节范围与媒体格式，生产配置排除该插件，构建产物未包含夹具标识。浏览器图片加载和视频元数据读取通过；这些几何占位与合成日志不能证明真实素材、Provider 或生成接通。真实上传/转存、Agent 试用、认证网络与浏览器减少动态效果模拟未运行；减少动态效果规则仅静态核对。
+- [x] 整合 `develop` 的 `7f85df9`（含项目导演聊天改造）后，保留双方规格、验收记录与四语言文案，Skill 试用沿用最新助手查询。复跑上述 31 个测试文件并增加 `AgentChatDock`、`AgentChatPanel`、`ProjectWorkspacePage`，34 个文件、407 项全部通过；类型、完整 lint、生产构建、两份预览夹具的定向 TypeScript 与差异空白检查通过。本次整合未新增后端、合约、迁移或依赖变更，未重跑浏览器、后端或全量测试；构建提示范围同上。
+- [ ] 全量测试、后端测试、真实 Provider 与部署未运行；本轮不修改运行服务或用户数据。规格 §6.1/§6.14/§6.17/§19.4 与公共样式文档已同步。

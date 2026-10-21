@@ -14,7 +14,7 @@ import org.jooq.impl.UpdatableRecordImpl;
 
 
 /**
- * Agent 卡片配置；请求身份和运行上下文保存在 Run 中
+ * 项目助手配置及会话身份，不作为画布节点或持久素材授权
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord> {
@@ -110,27 +110,11 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
     }
 
     /**
-     * Setter for <code>public.agent_instance.output_group_id</code>. Agent
-     * 输出卡片的画布分组
-     */
-    public void setOutputGroupId(UUID value) {
-        set(6, value);
-    }
-
-    /**
-     * Getter for <code>public.agent_instance.output_group_id</code>. Agent
-     * 输出卡片的画布分组
-     */
-    public UUID getOutputGroupId() {
-        return (UUID) get(6);
-    }
-
-    /**
      * Setter for <code>public.agent_instance.version</code>.
      * 乐观并发控制版本，更新时递增并校验预期值
      */
     public void setVersion(Long value) {
-        set(7, value);
+        set(6, value);
     }
 
     /**
@@ -138,21 +122,21 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
      * 乐观并发控制版本，更新时递增并校验预期值
      */
     public Long getVersion() {
-        return (Long) get(7);
+        return (Long) get(6);
     }
 
     /**
      * Setter for <code>public.agent_instance.created_at</code>. 创建时间（UTC）
      */
     public void setCreatedAt(OffsetDateTime value) {
-        set(8, value);
+        set(7, value);
     }
 
     /**
      * Getter for <code>public.agent_instance.created_at</code>. 创建时间（UTC）
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(8);
+        return (OffsetDateTime) get(7);
     }
 
     /**
@@ -160,7 +144,7 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
      * 最后状态或配置更新时间（UTC）
      */
     public void setUpdatedAt(OffsetDateTime value) {
-        set(9, value);
+        set(8, value);
     }
 
     /**
@@ -168,7 +152,7 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
      * 最后状态或配置更新时间（UTC）
      */
     public OffsetDateTime getUpdatedAt() {
-        return (OffsetDateTime) get(9);
+        return (OffsetDateTime) get(8);
     }
 
     /**
@@ -176,7 +160,7 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
      * 当前会话指针；应用按项目及 Agent 归属校验后切换，不设循环外键
      */
     public void setCurrentConversationId(UUID value) {
-        set(10, value);
+        set(9, value);
     }
 
     /**
@@ -184,7 +168,7 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
      * 当前会话指针；应用按项目及 Agent 归属校验后切换，不设循环外键
      */
     public UUID getCurrentConversationId() {
-        return (UUID) get(10);
+        return (UUID) get(9);
     }
 
     // -------------------------------------------------------------------------
@@ -210,7 +194,7 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
     /**
      * Create a detached, initialised AgentInstanceRecord
      */
-    public AgentInstanceRecord(UUID id, UUID projectId, String profileKey, Integer profileVersion, String name, String instruction, UUID outputGroupId, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID currentConversationId) {
+    public AgentInstanceRecord(UUID id, UUID projectId, String profileKey, Integer profileVersion, String name, String instruction, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID currentConversationId) {
         super(AgentInstance.AGENT_INSTANCE);
 
         setId(id);
@@ -219,7 +203,6 @@ public class AgentInstanceRecord extends UpdatableRecordImpl<AgentInstanceRecord
         setProfileVersion(profileVersion);
         setName(name);
         setInstruction(instruction);
-        setOutputGroupId(outputGroupId);
         setVersion(version);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);

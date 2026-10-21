@@ -32,7 +32,7 @@ const REVISED_IMAGE: Artifact = {
 const ITEM: CanvasItem = {
   id: CANVAS_ITEM_ID, subjectType: "ARTIFACT", subjectId: ARTIFACT_ID, title: "空图片卡片",
   x: 0, y: 0, width: 320, height: 320, zIndex: 0, groupId: null, locked: false,
-  selectedVersionId: null, selectedVersion: null, version: 0, artifact: EMPTY_IMAGE, agent: null,
+  selectedVersionId: null, selectedVersion: null, version: 0, artifact: EMPTY_IMAGE,
 };
 
 function mockUpload(onUpload: () => void) {

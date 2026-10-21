@@ -7,7 +7,7 @@
 .canvas-viewport-dock {
   position: absolute;
   z-index: 10;
-  right: 20px;
+  left: 20px;
   bottom: 20px;
   display: flex;
   align-items: center;
@@ -21,7 +21,8 @@
 .canvas-viewport-dock .canvas-zoom-value { min-width: 60px; padding-inline: 8px; font-variant-numeric: tabular-nums; }
 .canvas-viewport-dock > [data-slot="separator"] { margin-inline: 4px; }
 .workspace-shell .react-flow__minimap.canvas-overview {
-  right: 20px;
+  left: 20px;
+  right: auto;
   bottom: 80px;
   margin: 0;
   overflow: hidden;
@@ -34,7 +35,7 @@
   position: absolute;
   z-index: 4;
   left: 24px;
-  bottom: 26px;
+  bottom: 84px;
   display: flex;
   align-items: center;
   gap: 18px;
@@ -78,14 +79,12 @@
 .workspace-header-actions { padding-left: 12px; }
 .workspace-header-actions > .save-badge { margin-left: 6px; }
 .workspace-editor-content { position: relative; }
-.workspace-shell .react-flow__node.dragging .artifact-canvas-card,
-.workspace-shell .react-flow__node.dragging .agent-chat-card { box-shadow: var(--ui-canvas-shadow-raised); }
-.workspace-shell .react-flow__node.dragging .artifact-canvas-card.is-selected,
-.workspace-shell .react-flow__node.dragging .agent-chat-card--selected { box-shadow: var(--ui-canvas-selection-shadow); }
+.workspace-shell .react-flow__node.dragging .artifact-canvas-card { box-shadow: var(--ui-canvas-shadow-raised); }
+.workspace-shell .react-flow__node.dragging .artifact-canvas-card.is-selected { box-shadow: var(--ui-canvas-selection-shadow); }
 .workspace-shell .react-flow__attribution { background: transparent; color: var(--ui-text-subtle); font-size: 9px; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .workspace-shell :is(.artifact-canvas-card, .agent-chat-card) {
+  .workspace-shell .artifact-canvas-card {
     transition: box-shadow var(--ui-duration) var(--ui-ease-standard), background var(--ui-duration) var(--ui-ease-standard);
   }
   .workspace-shell :is(.artifact-card-title, .artifact-card-title-icon) {
@@ -110,9 +109,7 @@
   .canvas-viewport-dock button { transition: none; }
 }
 
-@media (max-height: 720px) {
-  .canvas-gesture-hints { bottom: 24px; }
-}
+.workspace-canvas:has(.canvas-overview) .canvas-gesture-hints { display: none; }
 @media (max-width: 1279px) {
   .canvas-gesture-hints { display: none; }
 }

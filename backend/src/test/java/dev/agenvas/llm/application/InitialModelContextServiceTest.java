@@ -68,8 +68,11 @@ class InitialModelContextServiceTest {
                 .contains("propose_media_generation").contains("Never poll read_task_status")
                 .contains("one image at a time", "no fixed model-turn or tool-execution count limit",
                         "bounded public observations", "per-request safety limit")
+                .contains("selectedVersionReadable=false", "frozenSelectedVersionId", "node metadata", "new user", "own new outputs remain accessible")
                 .doesNotContain("share the Run limit")
                 .doesNotContain("no image pixels");
+        policy.put("systemPromptVersion", 11);
+        assertThat(InitialModelContextService.systemRules(policy)).doesNotContain("selectedVersionReadable", "frozenSelectedVersionId");
         policy.put("systemPromptVersion", 4);
         assertThat(InitialModelContextService.systemRules(policy)).contains("no image pixels");
     }

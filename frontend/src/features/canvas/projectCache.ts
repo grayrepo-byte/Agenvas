@@ -39,6 +39,8 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         invalidate("snapshot");
         invalidateRunState(event.payload.runId);
       }
+      if (event.type.startsWith("artifact.") || event.type.startsWith("canvas.") || event.type.startsWith("task.")
+          || event.type === "agent.run.changed") invalidate("agent-outputs");
       if (event.type.startsWith("canvas.") || event.type === "task.status.changed") {
         invalidate("canvas-media-versions");
       }
@@ -48,7 +50,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         if (event.type.startsWith("canvas.connection.") || event.type === "canvas.items.changed") {
           invalidate("canvas-connections", "media-draft");
         }
-        if (event.type === "agent.instance.changed") invalidate("snapshot");
+        if (event.type === "agent.instance.changed") invalidate("snapshot", "agents");
         if (event.type.startsWith("artifact.")) invalidate("media-draft");
         if (event.type === "canvas.item.selected_version.changed"
             && typeof event.payload.canvasItemId === "string") {
@@ -88,7 +90,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       // The snapshot contains the current workspace, but not historical panels or lists.
       // A missed event may have changed any of them while the stream was unavailable.
       invalidate(...HISTORY_QUERY_PREFIXES, "run-tasks", "direct-media-tasks", "media-draft",
-        "canvas-media-versions", "project-usage");
+        "canvas-media-versions", "project-usage", "agent-outputs");
     },
   };
 }

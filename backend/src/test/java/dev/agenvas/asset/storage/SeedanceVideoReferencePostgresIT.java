@@ -154,7 +154,7 @@ class SeedanceVideoReferencePostgresIT {
                 libraryDraft.version());
         assertThat(linked.draft().mediaInputs()).hasSize(2).allSatisfy(input ->
                 assertThat(input.role()).isEqualTo(MediaDraft.InputRole.VIDEO_REFERENCE));
-        var disconnected = connections.disconnect(owner.userId(), project, linked.connection().id(), linked.draft().version(), null);
+        var disconnected = connections.disconnect(owner.userId(), project, linked.connection().id(), linked.draft().version());
         assertThat(disconnected.draft().mediaInputs()).hasSize(1);
         assertThat(PUTS).hasValue(0);
         assertThat(CREATES).hasValue(0);

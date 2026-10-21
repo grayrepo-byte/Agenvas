@@ -72,7 +72,7 @@ class AgentConversationPostgresIT {
     void sessionsKeepIndependentHistoryWhileMessagesShareOneProjectSlot() throws Exception {
         AdminPrincipal owner = identities.setup("conversation-admin", "conversation-password-123");
         Project project = projects.create(owner.userId(), "Conversations", Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "制作短片", List.of());
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "制作短片");
         var empty = conversations.list(owner.userId(), project.id(), agent.id(), null, null);
         assertThat(empty.items()).isEmpty();
         assertThat(empty.currentConversationId()).isNull();
@@ -189,7 +189,7 @@ class AgentConversationPostgresIT {
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
 
         UUID otherOwner = UUID.randomUUID();
-        AgentInstance otherAgent = agents.create(owner.userId(), project.id(), "Other", "独立 Agent", List.of());
+        AgentInstance otherAgent = agents.create(owner.userId(), project.id(), "Other", "独立 Agent");
         Project otherProject = projects.create(owner.userId(), "Other project", Project.AspectRatio.LANDSCAPE_16_9);
         assertProblem("RESOURCE_NOT_FOUND", () -> conversations.get(otherOwner, project.id(), agent.id(), firstConversation));
         assertProblem("RESOURCE_NOT_FOUND", () -> conversations.select(owner.userId(), project.id(), otherAgent.id(), firstConversation));

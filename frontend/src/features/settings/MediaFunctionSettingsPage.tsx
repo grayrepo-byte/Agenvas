@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { ArrowClockwise,ArrowsOut,Crop,Cube,Eraser,HighDefinition,ImageSquare,MagicWand,Scissors,SlidersHorizontal,Smiley,SpeakerHigh,Stack,Sun,type Icon } from "../../shared/ui/icons";
 import { Link, Navigate } from "react-router";
 import { HTTP_STATUS, ApiError, getCurrentUser, getMediaFunctions, getMediaSettings, updateMediaFunction,
   type MediaFunctionSetting, type MediaSettings } from "../../shared/api/client";
@@ -16,6 +17,15 @@ import "./MediaFunctionSettingsPage.css";
 
 const FUNCTION_TABS = ["image", "video"] as const;
 type FunctionTab = typeof FUNCTION_TABS[number];
+const FUNCTION_ICONS: Record<MediaFunctionSetting["operation"], Icon> = {
+  IMAGE_SMART_EDIT: MagicWand, IMAGE_RELIGHT: Sun, IMAGE_OUTPAINT: ArrowsOut,
+  IMAGE_THREE_VIEW: Cube, IMAGE_LAYER_SPLIT: Stack, IMAGE_EXPRESSION_EDIT: Smiley,
+  IMAGE_REMOVE_BACKGROUND: Scissors, IMAGE_OBJECT_REMOVE: Eraser, IMAGE_VIEW_ANGLE: Cube,
+  IMAGE_DEPTH_MAP: Stack, IMAGE_UPSCALE: HighDefinition, IMAGE_RESIZE: ArrowsOut,
+  IMAGE_CROP: Crop, IMAGE_ROTATE: ArrowClockwise, IMAGE_FLIP_HORIZONTAL: ImageSquare,
+  IMAGE_FLIP_VERTICAL: ImageSquare, VIDEO_UPSCALE: HighDefinition, VIDEO_DEPTH_MAP: Stack,
+  VIDEO_EXTRACT_AUDIO: SpeakerHigh,
+};
 
 function FunctionRow({ setting, settings }: { setting: MediaFunctionSetting; settings: MediaSettings }) {
   const client = useQueryClient();
@@ -37,12 +47,13 @@ function FunctionRow({ setting, settings }: { setting: MediaFunctionSetting; set
     },
   });
   const label = mediaFunctionLabel(setting.operation);
+  const FunctionIcon = FUNCTION_ICONS[setting.operation] ?? SlidersHorizontal;
   return <section className="media-function-row" aria-label={label}>
-    <div className="media-function-summary"><h3>{label}</h3>
+    <div className="media-function-summary"><span className="media-function-icon" aria-hidden><FunctionIcon weight="duotone" /></span><div><h3>{label}</h3>
       {!setting.operation.startsWith("IMAGE_") ? <p className="ui-muted">{setting.operation === "VIDEO_UPSCALE" ? t("media.functions.upscaleHint")
         : setting.operation === "VIDEO_DEPTH_MAP" ? t("media.functions.depthHint") : t("media.functions.audioHint")}</p> : null}
       {saved ? <p role="status" className="ui-muted">{t("media.functions.saved")}</p> : null}
-    </div>
+    </div></div>
     <FieldGroup className="media-function-controls">
       <Field data-disabled={save.isPending || undefined}>
         <FieldLabel className="sr-only">{t("media.functions.method")}</FieldLabel>
@@ -55,7 +66,7 @@ function FunctionRow({ setting, settings }: { setting: MediaFunctionSetting; set
         {draft.capabilityId && !choices.some(({ capability }) => capability.id === draft.capabilityId)
           ? <option value={draft.capabilityId} disabled>{t("media.functions.unavailable")}</option> : null}
       </Select></Field>
-      <Button type="button" size="sm" disabled={!dirty || stale || save.isPending}
+      <Button variant={dirty ? "default" : "outline"} type="button" size="sm" disabled={!dirty || stale || save.isPending}
         onClick={() => { setSaved(false); save.mutate(); }}>{save.isPending ? t("common.savingProgress") : t("common.saveConfig")}</Button>
     </FieldGroup>
     {save.error || stale ? <div className="media-function-feedback">

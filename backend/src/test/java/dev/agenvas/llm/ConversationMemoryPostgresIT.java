@@ -84,7 +84,7 @@ class ConversationMemoryPostgresIT {
     void publicHistoryIsFrozenIntoRealMessagesAndTruncatedWithoutLeakingPrivateProtocol() {
         AdminPrincipal owner = identities.setup("memory-admin", "memory-password-123");
         Project project = projects.create(owner.userId(), "Memory project", Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "制作短片", List.of());
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "制作短片");
         AgentRun first = runs.create(owner.userId(), project.id(), agent.id(),
                 "最初背景：品牌叫青山，主角是一只狐狸。", "memory-first").run();
         assertThat(worker.runOnce("memory-first-worker")).isEqualTo(1);

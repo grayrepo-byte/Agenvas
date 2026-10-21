@@ -140,7 +140,7 @@ class VideoOperationPostgresIT {
         assertThat(canvas.list(owner.userId(), source.projectId()).stream().filter(entry -> entry.item().id().equals(source.itemId()))
                 .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(source.versionId());
         var line = connections.list(owner.userId(), source.projectId()).getFirst();
-        connections.disconnect(owner.userId(), source.projectId(), line.id(), null, null);
+        connections.disconnect(owner.userId(), source.projectId(), line.id(), null);
         assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(3);
     }
 

@@ -4,7 +4,7 @@ import { displayCanvasRelations } from "./canvasEdgeDisplay";
 import { DEFAULT_CANVAS_DISPLAY_PREFERENCES } from "./useCanvasDisplayPreferences";
 
 const edges: Edge[] = [
-  { id: "upstream", source: "parent", target: "node", className: "relation-edge--input-binding-historical" },
+  { id: "upstream", source: "parent", target: "node", className: "relation-edge--historical" },
   { id: "downstream", source: "node", target: "child", selectable: false, deletable: false },
   { id: "indirect", source: "child", target: "grandchild" },
   { id: "unrelated", source: "other-parent", target: "other-child" },
@@ -16,7 +16,7 @@ describe("canvas relation display", () => {
   it("keeps all relation types and their deletion semantics visible by default", () => {
     const displayed = displayCanvasRelations(edges, [], [], DEFAULT_CANVAS_DISPLAY_PREFERENCES);
     expect(visible(displayed)).toEqual(edges.map((edge) => edge.id));
-    expect(displayed[0]?.className).toBe("relation-edge--input-binding-historical");
+    expect(displayed[0]?.className).toBe("relation-edge--historical");
     expect(displayed[1]).toMatchObject({ source: "node", target: "child", selectable: false, deletable: false });
   });
 

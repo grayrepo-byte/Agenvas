@@ -65,6 +65,7 @@ class ToolAuthorityPostgresIT {
     @Autowired private ArtifactService artifacts;
     @Autowired private AgentInstanceService agents;
     @Autowired private AgentRunService runs;
+    @Autowired private dev.agenvas.canvas.application.CanvasService canvas;
     @Autowired private LlmTurnCheckpointService checkpoints;
     @Autowired private AgentTurnCommitService turnCommits;
     @Autowired private TaskService tasks;
@@ -80,9 +81,9 @@ class ToolAuthorityPostgresIT {
         Project project = projects.create(owner.userId(), "Tool authority project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         ArtifactService.ArtifactView brief = createBrief(owner.userId(), project.id());
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create",
-                List.of(new AgentInstanceService.BindingInput(brief.artifact().id(),
-                        brief.resourceDefaultVersion().id())));
+        canvas.apply(owner.userId(), project.id(), List.of(new dev.agenvas.canvas.application.CanvasService.PlaceArtifact(UUID.randomUUID(), brief.artifact().id(),
+                java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, new java.math.BigDecimal("320"), new java.math.BigDecimal("200"), 0, null, false)));
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                 "Draft one text", "authority-run").run();
         String workerId = "tool-authority-worker";

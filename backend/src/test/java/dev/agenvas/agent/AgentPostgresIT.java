@@ -68,106 +68,56 @@ class AgentPostgresIT {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired private org.springframework.web.context.WebApplicationContext webContext;
+
     @Test
-    void explicitBindingsAreVersionPinnedScopedAndVisibleOnTheCanvas() {
+    void assistantConfigurationIsIndependentOfCanvasAndKeepsItsIdentityAcrossCasEdits() throws Exception {
         AdminPrincipal owner = identityService.setup("agent-admin", "agent-password-123");
-        Project project = projectService.create(
-                owner.userId(), "Agent project", Project.AspectRatio.LANDSCAPE_16_9);
-        Project otherProject = projectService.create(
-                owner.userId(), "Other project", Project.AspectRatio.SQUARE_1_1);
-        ArtifactService.ArtifactView brief = createText(owner.userId(), project.id(), "Brief");
-        ArtifactService.ArtifactView second = createText(owner.userId(), project.id(), "Second");
-        ArtifactService.ArtifactView foreign =
-                createText(owner.userId(), otherProject.id(), "Foreign");
-
-        AgentInstance created = agentService.create(
-                owner.userId(), project.id(), "Creator", "Create three shots", List.of());
-        assertThat(created.bindings()).isEmpty();
+        Project project = projectService.create(owner.userId(), "Assistant project", Project.AspectRatio.LANDSCAPE_16_9);
+        Project other = projectService.create(owner.userId(), "Other project", Project.AspectRatio.SQUARE_1_1);
+        var creation = agentService.createIdempotent(owner.userId(), project.id(), "Creator", "Create three shots", "assistant-create");
+        AgentInstance created = creation.agent();
         assertThat(agentService.list(owner.userId(), project.id())).containsExactly(created);
-
-        AgentInstance updated = agentService.update(
-                owner.userId(),
-                project.id(),
-                created.id(),
-                0,
-                "Storyboard Creator",
-                "Use only the pinned brief",
-                List.of(new AgentInstanceService.BindingInput(
-                        brief.artifact().id(), brief.resourceDefaultVersion().id())));
+        assertThat(canvasService.list(owner.userId(), project.id())).isEmpty();
+        AgentInstance updated = agentService.update(owner.userId(), project.id(), created.id(), 0,
+                "Storyboard Creator", "Use the current canvas");
+        assertThat(updated.id()).isEqualTo(created.id());
         assertThat(updated.version()).isEqualTo(1);
-        assertThat(updated.outputGroupId()).isEqualTo(created.outputGroupId());
-        assertThat(updated.bindings())
-                .extracting(AgentInstance.Binding::selectedVersionId)
-                .containsExactly(brief.resourceDefaultVersion().id());
+        assertThat(updated.createdAt()).isEqualTo(created.createdAt());
+        assertThat(agentService.createIdempotent(owner.userId(), project.id(), "Creator", "Create three shots", "assistant-create").agent())
+                .isEqualTo(created);
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var auth = org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, null, List.of()));
+        String path = "/api/v1/projects/" + project.id() + "/agents";
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(path).with(auth))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].bindings").doesNotExist())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.items[0].outputGroupId").doesNotExist());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(path).with(auth)
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType("application/json")
+                        .content("{\"name\":\"Old client\",\"instruction\":\"Use old bindings\",\"bindings\":[]}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch(path + "/" + created.id()).with(auth)
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                        .contentType("application/json")
+                        .content("{\"expectedVersion\":1,\"name\":\"Old client\",\"instruction\":\"Use old bindings\",\"bindings\":[]}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        assertThat(agentService.get(owner.userId(), project.id(), created.id())).isEqualTo(updated);
+        assertThat(agentService.list(owner.userId(), project.id())).hasSize(1);
 
-        assertProblem(
-                "AGENT_VERSION_CONFLICT",
-                () -> agentService.update(
-                        owner.userId(),
-                        project.id(),
-                        created.id(),
-                        0,
-                        "Stale",
-                        "Must fail",
-                        List.of()));
-        assertProblem(
-                "RESOURCE_NOT_FOUND",
-                () -> agentService.update(
-                        owner.userId(),
-                        project.id(),
-                        created.id(),
-                        1,
-                        updated.name(),
-                        updated.instruction(),
-                        List.of(new AgentInstanceService.BindingInput(
-                                brief.artifact().id(), second.resourceDefaultVersion().id()))));
-        assertProblem(
-                "RESOURCE_NOT_FOUND",
-                () -> agentService.update(
-                        owner.userId(),
-                        project.id(),
-                        created.id(),
-                        1,
-                        updated.name(),
-                        updated.instruction(),
-                        List.of(new AgentInstanceService.BindingInput(
-                                foreign.artifact().id(), foreign.resourceDefaultVersion().id()))));
-        assertProblem(
-                "RESOURCE_NOT_FOUND",
-                () -> agentService.get(UUID.randomUUID(), project.id(), created.id()));
-
-        UUID itemId = UUID.randomUUID();
-        CanvasService.PlaceAgent placement = new CanvasService.PlaceAgent(
-                itemId,
-                created.id(),
-                new BigDecimal("50"),
-                new BigDecimal("60"),
-                new BigDecimal("340"),
-                new BigDecimal("320"),
-                2,
-                null,
-                false);
-        canvasService.apply(owner.userId(), project.id(), List.of(placement));
-        canvasService.apply(owner.userId(), project.id(), List.of(placement));
-        CanvasService.CanvasEntry entry = canvasService.list(owner.userId(), project.id()).getFirst();
-        assertThat(entry.item().id()).isEqualTo(itemId);
-        assertThat(entry.artifact()).isNull();
-        assertThat(entry.agent().id()).isEqualTo(created.id());
-        assertThat(entry.agent().bindings()).hasSize(1);
-
-        List<String> columns = jdbcClient.sql("""
-                        select column_name
-                        from information_schema.columns
-                        where table_schema = 'public' and table_name = 'agent_instance'
-                        """)
-                .query(String.class)
-                .list();
-        assertThat(columns)
-                .doesNotContain("user_id", "thread_id", "current_user_id", "run_context");
+        assertProblem("AGENT_VERSION_CONFLICT", () -> agentService.update(owner.userId(), project.id(), created.id(),
+                0, "Stale", "Must fail"));
+        assertProblem("RESOURCE_NOT_FOUND", () -> agentService.get(UUID.randomUUID(), project.id(), created.id()));
+        assertProblem("RESOURCE_NOT_FOUND", () -> agentService.get(owner.userId(), other.id(), created.id()));
+        assertThat(jdbcClient.sql("select column_name from information_schema.columns where table_schema = 'public' and table_name = 'agent_instance'")
+                .query(String.class).list()).doesNotContain("output_group_id", "user_id", "thread_id", "current_user_id", "run_context");
+        assertThat(jdbcClient.sql("select count(*) from information_schema.tables where table_schema = 'public' and table_name = 'agent_binding'")
+                .query(Long.class).single()).isZero();
         assertThat(jdbcClient.sql("select version from flyway_schema_history order by installed_rank desc limit 1")
-                        .query(String.class)
-                        .single())
-                .isEqualTo(MigrationVersions.latest());
+                .query(String.class).single()).isEqualTo(MigrationVersions.latest());
     }
 
     private ArtifactService.ArtifactView createText(UUID ownerId, UUID projectId, String text) {

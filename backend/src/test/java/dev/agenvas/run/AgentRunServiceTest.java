@@ -95,7 +95,7 @@ class AgentRunServiceTest {
         var project = new Project(projectId, owner, "Synthetic project", Project.AspectRatio.SQUARE_1_1,
                 Project.Status.ACTIVE, 0, 0, NOW, NOW, null);
         var agent = new AgentInstance(agentId, projectId, "creator", 1, "Creator", "Use the reference",
-                UUID.randomUUID(), 0, NOW, NOW, List.of(new AgentInstance.Binding(UUID.randomUUID(), artifactId, versionId, NOW)));
+                0, NOW, NOW);
         var conversation = new AgentConversation(UUID.randomUUID(), projectId, agentId, "", 0, 0, NOW, NOW);
         when(projects.requireActiveProject(owner, projectId)).thenReturn(project);
         when(agents.get(owner, projectId, agentId)).thenReturn(agent);
@@ -136,14 +136,21 @@ class AgentRunServiceTest {
         var textVersion = mock(ArtifactVersion.class);
         when(textVersion.id()).thenReturn(textVersionId);
         var textView = new ArtifactService.ArtifactView(text, textVersion);
-        when(canvas.list(owner, projectId)).thenReturn(List.of(new CanvasService.CanvasEntry(imageNode, view, result, null),
-                new CanvasService.CanvasEntry(emptyNode, view, null, null),
-                new CanvasService.CanvasEntry(textNode, textView, null, null)));
+        when(canvas.list(owner, projectId)).thenReturn(List.of(new CanvasService.CanvasEntry(imageNode, view, result),
+                new CanvasService.CanvasEntry(emptyNode, view, null),
+                new CanvasService.CanvasEntry(textNode, textView, null)));
 
+        var scope = new ObjectMapper().createObjectNode().put("version", 1);
+        var scopeItems = scope.putArray("items");
+        scopeItems.addObject().put("itemId", imageNodeId.toString()).put("artifactId", artifactId.toString())
+                .put("selectedVersionId", versionId.toString());
+        when(canvas.freezeRunScope(owner, projectId)).thenReturn(scope);
         var run = service.create(owner, projectId, agentId, "Use image", "synthetic-request", null,
                 List.of(imageNodeId, emptyNodeId, textNodeId)).run();
-        assertThat(run.contextSnapshot().at("/bindings/0/selectedVersionId").asText()).isEqualTo(versionId.toString());
-        assertThat(run.contextSnapshot().at("/bindings/0").has("expectedVersion")).isFalse();
+        assertThat(run.contextSnapshot().path("bindings")).isEmpty();
+        assertThat(run.contextSnapshot().has("outputGroupId")).isFalse();
+        assertThat(run.contextSnapshot().path("canvasScope")).isEqualTo(scope);
+
         assertThat(run.contextSnapshot().at("/selection/0/versionId").asText()).isEqualTo(versionId.toString());
         assertThat(run.contextSnapshot().at("/selection/1/kind").asText()).isEqualTo("IMAGE");
         assertThat(run.contextSnapshot().at("/selection/1").has("versionId")).isFalse();

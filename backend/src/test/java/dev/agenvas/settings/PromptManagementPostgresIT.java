@@ -95,12 +95,12 @@ class PromptManagementPostgresIT {
         var writer = defaults.create("agent.writer", PromptService.Kind.AGENT, "Synthetic writer", "Text workflow", "Write synthetic drafts");
         var function = defaults.create("feature.summary", PromptService.Kind.FUNCTION, "Synthetic summary", "Summarization", "Summarize synthetic inputs");
         var project = projects.create(owner.userId(), "Synthetic presets", Project.AspectRatio.LANDSCAPE_16_9);
-        String creation = mapper.createObjectNode().put("promptKey", writer.key()).set("bindings", mapper.createArrayNode()).toString();
+        String creation = mapper.createObjectNode().put("promptKey", writer.key()).toString();
         var agent = mapper.readTree(mvc.perform(post("/api/v1/projects/" + project.id() + "/agents").with(authentication(asUser("ROLE_USER"))).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content(creation)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(agent.path("name").asText()).isEqualTo(writer.name());
         assertThat(agent.path("instruction").asText()).isEqualTo(writer.content());
-        assertThatThrownBy(() -> agents.create(owner.userId(), project.id(), null, null, List.of(), function.key())).isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> agents.create(owner.userId(), project.id(), null, null, function.key())).isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> defaults.create(writer.key(), PromptService.Kind.FUNCTION, "duplicate", "", "content"))
                 .isInstanceOf(ApiProblemException.class);
         String presets = mvc.perform(get("/api/v1/agent-presets").with(authentication(asUser("ROLE_USER")))).andExpect(status().isOk())
@@ -140,34 +140,34 @@ class PromptManagementPostgresIT {
         var preset = updateDirector(defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT).version(), "Synthetic director A", "Synthetic workflow A");
         String path = "/api/v1/projects/" + project.id() + "/agents";
         String first = mvc.perform(post(path).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())
-                .header("Idempotency-Key", "synthetic-create-director").contentType(MediaType.APPLICATION_JSON).content("{\"bindings\":[]}"))
+                .header("Idempotency-Key", "synthetic-create-director").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         var original = mapper.readTree(first);
         assertThat(original.path("name").asText()).isEqualTo(preset.name());
         assertThat(original.path("instruction").asText()).isEqualTo(preset.content());
         updateDirector(preset.version(), "Synthetic director B", "Synthetic workflow B");
         String replay = mvc.perform(post(path).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())
-                .header("Idempotency-Key", "synthetic-create-director").contentType(MediaType.APPLICATION_JSON).content("{\"bindings\":[]}"))
+                .header("Idempotency-Key", "synthetic-create-director").contentType(MediaType.APPLICATION_JSON).content("{}"))
                 .andExpect(status().isCreated()).andExpect(header().string("Idempotency-Replayed", "true")).andReturn().getResponse().getContentAsString();
         assertThat(mapper.readTree(replay)).isEqualTo(original);
         assertThat(agents.list(owner.userId(), project.id())).hasSize(1);
         mvc.perform(post(path).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())
                 .header("Idempotency-Key", "synthetic-create-director").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"Changed\",\"bindings\":[]}")).andExpect(status().isConflict());
-        var next = agents.create(owner.userId(), project.id(), null, null, List.of());
+                .content("{\"name\":\"Changed\"}")).andExpect(status().isConflict());
+        var next = agents.create(owner.userId(), project.id(), null, null);
         assertThat(next.instruction()).isEqualTo("Synthetic workflow B");
-        var edited = agents.update(owner.userId(), project.id(), next.id(), next.version(), "Custom director", "Custom card prompt", List.of());
+        var edited = agents.update(owner.userId(), project.id(), next.id(), next.version(), "Custom director", "Custom card prompt");
         updateDirector(defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT).version(), "Synthetic director C", "Synthetic workflow C");
         assertThat(agents.get(owner.userId(), project.id(), edited.id()).instruction()).isEqualTo("Custom card prompt");
-        assertThatThrownBy(() -> agents.createIdempotent(UUID.randomUUID(), project.id(), null, null, List.of(), "synthetic-create-director"))
+        assertThatThrownBy(() -> agents.createIdempotent(UUID.randomUUID(), project.id(), null, null, "synthetic-create-director"))
                 .isInstanceOf(ApiProblemException.class);
     }
 
     @Test void activeRunFreezesItsCardPromptAndUsesVersionedSystemMessage() {
         var project = projects.create(owner.userId(), "Synthetic frozen director", Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Synthetic frozen director", "Original card workflow", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Synthetic frozen director", "Original card workflow");
         var run = runs.create(owner.userId(), project.id(), agent.id(), "Synthetic video request", "synthetic-frozen-director").run();
-        agents.update(owner.userId(), project.id(), agent.id(), agent.version(), agent.name(), "Changed card workflow", List.of());
+        agents.update(owner.userId(), project.id(), agent.id(), agent.version(), agent.name(), "Changed card workflow");
         updateDirector(defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT).version(), "Global director", "Changed global workflow");
         var messages = contexts.assemble(owner.userId(), project.id(), run.id());
         assertThat(messages.get(2)).isInstanceOf(org.springframework.ai.chat.messages.SystemMessage.class);

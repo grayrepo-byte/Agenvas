@@ -102,7 +102,7 @@ class RunningHubPostgresIT {
     @Test void invalidAgentProposalRollsBackDraftsAndReturnsARepairableInputError() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             Fixture fixture = fixture(provider, Artifact.Kind.IMAGE, "AI_APP", false);
-            var agent = agents.create(owner, fixture.project().id(), "Synthetic creator", "Propose an image", List.of());
+            var agent = agents.create(owner, fixture.project().id(), "Synthetic creator", "Propose an image");
             var run = runs.create(owner, fixture.project().id(), agent.id(), "Propose an image", "invalid-proposal-run").run();
             String worker = "proposal-input-test";
             Task lease = tasks.claimAgentTurns(worker, 1).getFirst();

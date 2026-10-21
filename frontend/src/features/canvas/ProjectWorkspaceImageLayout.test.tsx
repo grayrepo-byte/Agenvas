@@ -56,7 +56,7 @@ function mediaItem(id = "image-card", assetId = "landscape", kind: "IMAGE" | "VI
   return { id, subjectType: "ARTIFACT", subjectId: id, x: 10, y: 30,
     title: "图片",
     width: 225, height: 300, version: 0, zIndex: 0, groupId: null, locked: false,
-    selectedVersionId: selectedVersion.id, selectedVersion, agent: null,
+    selectedVersionId: selectedVersion.id, selectedVersion,
     artifact: { id, projectId: "project-1", kind, title: "图片", version: 0,
       resourceDefaultVersionId: `${assetId}-version`, createdAt: NOW, updatedAt: NOW,
       resourceDefaultVersion: selectedVersion } };
@@ -148,7 +148,7 @@ describe("workspace media dimensions", () => {
     { width: 1080, height: 1080, displayWidth: 300, displayHeight: 300 },
   ])("fits a video result to its archived $width × $height pixels even with a different draft ratio", async (size) => {
     items = items.map((item) => ({ ...item,
-      artifact: item.artifact ? { ...item.artifact, kind: "VIDEO" } : null }));
+      artifact: { ...item.artifact, kind: "VIDEO" } }));
     parameters = { aspectRatio: "1:1" };
     server.use(http.get("/api/v1/projects/project-1/assets/:assetId", ({ params }) =>
       HttpResponse.json({ id: params.assetId, width: size.width, height: size.height })));
@@ -476,7 +476,7 @@ describe("workspace media dimensions", () => {
   it.each(["IMAGE", "VIDEO"] as const)("retains stored dimensions when no image exists or metadata is unavailable (%s)", async (kind) => {
     items = [mediaItem("image-card", "landscape", kind)];
     const empty = mediaItem("empty-card", "landscape", kind);
-    empty.artifact = empty.artifact ? { ...empty.artifact, resourceDefaultVersionId: null, resourceDefaultVersion: null } : null;
+    empty.artifact = { ...empty.artifact, resourceDefaultVersionId: null, resourceDefaultVersion: null };
     items = [mediaItem("image-card", "landscape", kind), empty];
     server.use(http.get("/api/v1/projects/project-1/assets/:assetId", () => HttpResponse.json({}, { status: 503 })));
     showWorkspace();

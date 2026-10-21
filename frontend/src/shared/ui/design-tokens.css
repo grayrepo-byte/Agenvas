@@ -31,10 +31,8 @@
   --ui-accent-glow: color-mix(in srgb, var(--ui-accent) 24%, transparent);
   --ui-focus: var(--ui-accent-hover);
   /* Relation types retain separate visual identities; selection uses the brand focus. */
-  --ui-relation-input: var(--ui-accent);
   --ui-relation-derivation: var(--ui-accent-text);
   --ui-relation-reference: #64748b;
-  --ui-relation-agent-output: #059669;
   --ui-status-neutral: #526071;
   /* Light temperature is an image-operation preview, independent of the brand. */
   --ui-light-temperature-cool: #587b89;

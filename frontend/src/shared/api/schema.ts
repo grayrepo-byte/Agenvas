@@ -2360,8 +2360,34 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** 乐观替换 Agent 配置和明确输入绑定 */
+        /** 乐观更新项目助手配置 */
         patch: operations["updateAgent"];
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/agents/{agentId}/outputs": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        /** 按当前选用版本的运行来源查询助手产物节点 */
+        get: operations["listAgentOutputs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{projectId}/agents/{agentId}/conversations": {
@@ -4481,7 +4507,7 @@ export interface components {
             /** Format: uuid */
             targetCanvasItemId: string;
             /** @enum {string} */
-            relationType: "MEDIA_INPUT" | "AGENT_IMAGE_INPUT" | "MEDIA_DERIVATION";
+            relationType: "MEDIA_INPUT" | "MEDIA_DERIVATION";
             /** Format: uuid */
             sourceArtifactVersionId: string;
             /** Format: int64 */
@@ -4807,7 +4833,7 @@ export interface components {
             /** Format: uuid */
             targetCanvasItemId: string;
             /** @enum {string} */
-            relationType: "MEDIA_INPUT" | "AGENT_IMAGE_INPUT" | "MEDIA_DERIVATION";
+            relationType: "MEDIA_INPUT" | "MEDIA_DERIVATION";
             /** Format: uuid */
             sourceArtifactVersionId: string;
             /** Format: int64 */
@@ -4827,23 +4853,18 @@ export interface components {
             targetCanvasItemId: string;
             /** Format: uuid */
             sourceVersionId: string;
-            /** @enum {string} */
-            relationType: "MEDIA_INPUT" | "AGENT_IMAGE_INPUT";
+            /** @constant */
+            relationType: "MEDIA_INPUT";
             /** Format: int64 */
             expectedTargetDraftVersion?: number;
-            /** Format: int64 */
-            expectedTargetAgentVersion?: number;
         };
         DisconnectCanvasConnectionRequest: {
             /** Format: int64 */
             expectedTargetDraftVersion?: number;
-            /** Format: int64 */
-            expectedTargetAgentVersion?: number;
         };
         CanvasConnectionResult: {
             connection: components["schemas"]["CanvasConnection"];
             draft: components["schemas"]["MediaDraft"] | null;
-            agent: components["schemas"]["Agent"] | null;
         };
         DuplicateCanvasItemRequest: {
             /** Format: uuid */
@@ -4967,12 +4988,6 @@ export interface components {
         ArtifactList: {
             items: components["schemas"]["Artifact"][];
         };
-        AgentBindingRequest: {
-            /** Format: uuid */
-            artifactId: string;
-            /** Format: uuid */
-            selectedVersionId: string;
-        };
         PromptDefinition: {
             /** Format: uuid */
             id: string;
@@ -5022,22 +5037,12 @@ export interface components {
             name?: string;
             /** @description 省略时复制当前默认创作系统提示词；不自动运行，已有实例可单独修改。 */
             instruction?: string;
-            bindings: components["schemas"]["AgentBindingRequest"][];
         };
         UpdateAgentRequest: {
             /** Format: int64 */
             expectedVersion: number;
             name: string;
             instruction: string;
-            bindings: components["schemas"]["AgentBindingRequest"][];
-        };
-        AgentBinding: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            artifactId: string;
-            /** Format: uuid */
-            selectedVersionId: string;
         };
         Agent: {
             /** Format: uuid */
@@ -5049,15 +5054,16 @@ export interface components {
             profileVersion: number;
             name: string;
             instruction: string;
-            /** Format: uuid */
-            outputGroupId: string;
             /** Format: int64 */
             version: number;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
-            bindings: components["schemas"]["AgentBinding"][];
+        };
+        AgentOutputList: {
+            /** @description 当前画布实际选用版本由该 Agent 的运行产生的节点；依据不可变版本来源，不依赖布局分组。不含尚未归档的审批草稿。 */
+            canvasItemIds: string[];
         };
         AgentList: {
             items: components["schemas"]["Agent"][];
@@ -5184,8 +5190,11 @@ export interface components {
             agentVersion: number;
             profileKey: string;
             profileVersion: number;
-            /** Format: uuid */
-            outputGroupId: string;
+            /**
+             * Format: uuid
+             * @description 仅历史运行冻结的布局分组；新运行不再写入或依赖 Agent 输出分组。
+             */
+            outputGroupId?: string;
             /**
              * Format: uuid
              * @description 新 Run 冻结的会话作用域；升级前旧快照保持原值，可能没有此字段
@@ -5197,16 +5206,21 @@ export interface components {
              */
             conversationHistoryThroughTurn?: number;
             conversationMemory?: components["schemas"]["ConversationMemory"];
+            canvasScope?: components["schemas"]["RunCanvasScope"];
             /** @description Selected immutable Skill snapshots; complete content is persisted here but only names and descriptions are disclosed initially. Historical Runs may retain creativeSkill instead. */
             creativeSkills?: {
                 [key: string]: unknown;
             }[];
-            bindings: components["schemas"]["RunInputSnapshot"][];
-            /** @description 创建 Run 时由服务端核对并固定的画布选择；不扩大工具权限 */
+            /** @description 本 Run 显式选择的 Skill 输入或仍在画布范围内的会话精确输入；升级前快照可保留历史 Agent 绑定。新 Run 不读取长期素材绑定。 */
+            bindings?: components["schemas"]["RunInputSnapshot"][];
+            /** @description 创建 Run 时由服务端核对并固定的画布选择；新协议通过 read_selection 分页按需读取，首轮只提供数量；不扩大工具权限 */
             selection?: {
                 /** Format: uuid */
                 itemId: string;
-                /** @enum {string} */
+                /**
+                 * @description 新 Run 固定为 ARTIFACT；AGENT 仅用于读取升级前的不可变选择快照。
+                 * @enum {string}
+                 */
                 subjectType: "ARTIFACT" | "AGENT";
                 /** Format: uuid */
                 subjectId: string;
@@ -5216,6 +5230,33 @@ export interface components {
             }[];
         } & {
             [key: string]: unknown;
+        };
+        /** @description 新 Run 在受理事务冻结的当前画布授权范围；目录按 read_canvas 分页提供，首轮模型仅接收节点数。旧 Run 缺省保留绑定和输出组权限。 */
+        RunCanvasScope: {
+            /** @constant */
+            version: 1;
+            /** @description 当前画布所有 Artifact 节点；没有旧显式绑定40项限制，不包含不可变正文、原图或凭证。 */
+            items: {
+                /** Format: uuid */
+                itemId: string;
+                /** Format: uuid */
+                artifactId: string;
+                kind: components["schemas"]["ArtifactKind"];
+                title: string;
+                /** Format: uuid */
+                selectedVersionId?: string;
+                /** Format: int64 */
+                itemVersion: number;
+                /** Format: int64 */
+                artifactVersion: number;
+                locked: boolean;
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+                zIndex: number;
+                mediaDraft?: components["schemas"]["MediaDraft"];
+            }[];
         };
         /** @description 创建 Run 时冻结的公开用户指令、assistant 回复与已提交业务动作摘要；不包含私有推理、原始协议、工具参数或凭证，也不授予额外权限 */
         ConversationMemory: {
@@ -5237,8 +5278,8 @@ export interface components {
             title?: string;
             /** Format: int64 */
             expectedVersion?: number;
-            /** @constant */
-            source?: "CONVERSATION_OUTPUT";
+            /** @enum {string} */
+            source?: "CONVERSATION_OUTPUT" | "SKILL_INPUT";
             /**
              * Format: uuid
              * @description Skill reference disclosed only after activation.
@@ -5277,18 +5318,18 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description New policies are schema v6 with systemPromptVersion=10 and toolPolicyVersion=3. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. Historical numeric policies retain their frozen protocol and limits. */
+        /** @description New policies are schema v6 with systemPromptVersion=12 and toolPolicyVersion=4. Canvas nodes are authorized by a frozen, paged canvasScope; read_canvas, manage_canvas_node and update_media_draft share project ownership, immutable version checks, locks and optimistic CAS with normal application services. Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. Historical numeric policies retain their frozen protocol and limits. */
         RunPolicySnapshot: {
             /** @enum {integer} */
             schemaVersion: 1 | 2 | 3 | 4 | 5 | 6;
             /** @enum {integer} */
-            toolPolicyVersion?: 1 | 2 | 3;
+            toolPolicyVersion?: 1 | 2 | 3 | 4;
             allowedTools?: string[];
             /**
-             * @description New v6 snapshots pin version 10; historical rules and creative message roles remain frozen.
+             * @description New v6 snapshots pin version 12; historical rules and creative message roles remain frozen.
              * @enum {integer}
              */
-            systemPromptVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+            systemPromptVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
             modelConfigSource: string;
             modelConfigVersion: number;
             /** @description Null means no model-turn count limit; historical numeric policies remain frozen. */
@@ -5481,8 +5522,8 @@ export interface components {
             /** @description 仅 delta 事件提供公开文本增量；completed 后重读已提交终稿。 */
             textDelta?: string;
         };
-        /** @enum {string} */
-        CanvasSubjectType: "ARTIFACT" | "AGENT";
+        /** @constant */
+        CanvasSubjectType: "ARTIFACT";
         CanvasItem: {
             /** Format: uuid */
             id: string;
@@ -5503,8 +5544,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             selectedVersion: components["schemas"]["ArtifactVersion"] | null;
-            artifact: components["schemas"]["Artifact"] | null;
-            agent: components["schemas"]["Agent"] | null;
+            artifact: components["schemas"]["Artifact"];
         };
         Canvas: {
             items: components["schemas"]["CanvasItem"][];
@@ -5550,26 +5590,6 @@ export interface components {
             itemId: string;
             /** Format: uuid */
             artifactId: string;
-            x: number;
-            y: number;
-            width: number;
-            height: number;
-            zIndex: number;
-            /** Format: uuid */
-            groupId?: string | null;
-            /** @default false */
-            locked: boolean;
-        };
-        PlaceAgentCommand: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            type: "PLACE_AGENT";
-            /** Format: uuid */
-            itemId: string;
-            /** Format: uuid */
-            agentId: string;
             x: number;
             y: number;
             width: number;
@@ -5633,7 +5653,7 @@ export interface components {
             /** Format: int64 */
             expectedVersion: number;
         };
-        CanvasCommand: components["schemas"]["PlaceArtifactCommand"] | components["schemas"]["PlaceAgentCommand"] | components["schemas"]["UpdateCanvasItemTitleCommand"] | components["schemas"]["UpdateLayoutCommand"] | components["schemas"]["SetCanvasItemLockedCommand"] | components["schemas"]["RemoveCanvasItemCommand"];
+        CanvasCommand: components["schemas"]["PlaceArtifactCommand"] | components["schemas"]["UpdateCanvasItemTitleCommand"] | components["schemas"]["UpdateLayoutCommand"] | components["schemas"]["SetCanvasItemLockedCommand"] | components["schemas"]["RemoveCanvasItemCommand"];
         CanvasCommandBatchRequest: {
             commands: components["schemas"]["CanvasCommand"][];
         };
@@ -10597,6 +10617,37 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listAgentOutputs: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                agentId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前画布可定位的真实产物 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOutputList"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
         };
     };
     listAgentConversations: {

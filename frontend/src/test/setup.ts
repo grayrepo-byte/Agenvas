@@ -18,6 +18,15 @@ HTMLElement.prototype.hasPointerCapture = () => false;
 HTMLElement.prototype.setPointerCapture = () => {};
 HTMLElement.prototype.releasePointerCapture = () => {};
 HTMLElement.prototype.scrollIntoView = () => {};
+HTMLElement.prototype.scrollTo = function (options?: ScrollToOptions | number, y?: number) {
+  if (typeof options === "number") {
+    this.scrollLeft = options;
+    if (y !== undefined) this.scrollTop = y;
+    return;
+  }
+  if (options?.top !== undefined) this.scrollTop = options.top;
+  if (options?.left !== undefined) this.scrollLeft = options.left;
+};
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 beforeEach(() => setLocale(DEFAULT_LOCALE));

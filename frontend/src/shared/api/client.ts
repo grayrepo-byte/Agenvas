@@ -546,7 +546,7 @@ export async function createCanvasConnection(projectId: string,
   );
 }
 
-/** Atomically removes one media or Agent image line and returns the updated target state. */
+/** Atomically removes one media input or derivation relation and returns the updated target state. */
 export async function disconnectCanvasConnection(projectId: string, connectionId: string,
   input: DisconnectCanvasConnectionRequest): Promise<CanvasConnectionResult> {
   return writeJson<CanvasConnectionResult>(
@@ -716,9 +716,14 @@ export async function applyCanvasCommands(
   });
 }
 
-/** Lists persistent Agent card configurations and only their explicitly bound inputs. */
+/** Lists project assistants independently of canvas content. */
 export async function listAgents(projectId: string): Promise<AgentList> {
   return readJson<AgentList>(`/api/v1/projects/${projectId}/agents`, t("api.errors.agentsUnavailable"));
+}
+
+/** Current selected results authored by any Run belonging to this assistant. */
+export async function listAgentOutputs(projectId: string, agentId: string): Promise<operations["listAgentOutputs"]["responses"][200]["content"]["application/json"]> {
+  return readJson(`/api/v1/projects/${projectId}/agents/${agentId}/outputs`, t("api.errors.agentOutputsUnavailable"));
 }
 
 /** Creates an idle Creator Agent; creation does not start a model run. */
@@ -734,7 +739,7 @@ export async function createAgent(
   });
 }
 
-/** Replaces Agent display configuration and exact-version bindings using CAS. */
+/** Replaces project assistant role configuration using CAS. */
 export async function updateAgent(
   projectId: string,
   agentId: string,

@@ -123,8 +123,7 @@ public class ProjectExportManifestService {
         CanvasItem item = entry.item();
         MediaDraftEntry draft = null;
         List<UUID> mediaVersionIds = List.of();
-        if (entry.artifact() != null
-                && entry.artifact().artifact().kind() != Artifact.Kind.TEXT) {
+        if (entry.artifact().artifact().kind() != Artifact.Kind.TEXT) {
             draft = mediaDraftEntry(mediaDrafts.get(ownerId, projectId, item.id()));
             mediaVersionIds = canvas.listMediaVersions(ownerId, projectId, item.id()).stream()
                     .map(ArtifactVersion::id).toList();

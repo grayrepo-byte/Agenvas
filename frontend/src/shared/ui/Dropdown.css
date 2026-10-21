@@ -11,8 +11,9 @@
   background: var(--ui-warning-bg); color: var(--ui-warning); font-size: var(--ui-text-xs); line-height: 1.5; }
 .ui-select-model-menu { width: var(--ui-model-menu-width); max-width: calc(100vw - var(--ui-space-4)); }
 .ui-select-model-menu [data-slot="select-group"] { display: flex; flex-direction: column; gap: var(--ui-space-1); }
-/* Browser submission/validation bridge; the visible control is shadcn SelectTrigger. */
-.ui-select-native { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; clip-path: inset(50%); }
+/* Pin the hidden form bridge to the origin: its static position after a full-height
+   canvas would otherwise add a document scrollbar and offset viewport-sized docks. */
+.ui-select-native { position: absolute; top: 0; left: 0; opacity: 0; width: 1px; height: 1px; pointer-events: none; clip-path: inset(50%); }
 .ui-field > .ui-select { margin-top: var(--ui-space-2); }
 
 /* Resource pickers contain domain-specific editors rather than action menus. */

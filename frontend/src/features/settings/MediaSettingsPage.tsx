@@ -1,5 +1,5 @@
 import { Field, FieldLabel, FieldGroup, FieldSet } from "../../shared/ui/primitives/field";
-import { ImageSquare,MusicNotes,PlugsConnected,Plus,VideoCamera } from "@/shared/ui/icons";
+import { HardDrives,ImageSquare,MusicNotes,PlugsConnected,Plus,VideoCamera } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
 import { useEffect,useId,useRef,useState,type FormEvent } from "react";
@@ -553,7 +553,7 @@ function ConnectionRow({ connection, settings, apply }: {
 
   return <>
     <TableRow>
-      <TableCell><strong>{connection.name}</strong><small>{t("settings.mediaSettings.capabilityCount", { "0": connection.platform, "1": connection.capabilities.length })}</small></TableCell>
+      <TableCell><div className="media-table-name">{systemManaged ? <HardDrives size={18} aria-hidden /> : <PlugsConnected size={18} aria-hidden />}<div><strong>{connection.name}</strong><small>{t("settings.mediaSettings.capabilityCount", { "0": connection.platform, "1": connection.capabilities.length })}</small></div></div></TableCell>
       <TableCell><span className="media-table-endpoint">{connection.origin || (connection.platform === "ARK" ? "https://ark.cn-beijing.volces.com/api/v3" : systemManaged ? t("settings.mediaSettings.builtin") : t("settings.mediaSettings.platformDefaultUrl"))}</span>
         <small>{connection.keyMask ? t("settings.mediaSettings.credentialPrefix", { "0": connection.keyMask }) : ""}{systemManaged ? t("media.functions.localMedia") : t("common.configured")}</small>
         {connection.platform === "GOOGLE" ? <small>{googleImageApiLabel(connection.origin)}</small> : null}</TableCell>
@@ -643,8 +643,6 @@ export function MediaSettingsPage() {
           detail: t("settings.mediaSettings.enabledCapabilities") },
         { label: t("settings.mediaSettings.defaultCapability"), value: t("settings.mediaSettings.fieldCount", { "0": settings.data.defaults.filter((item) => item.capabilityId).length }), detail: t("settings.mediaSettings.defaultsForNewRequests") },
       ]} /> : null}
-      <Notice title={t("settings.mediaSettings.configurationHint")}>
-        {t("settings.mediaSettings.defaultsHint")}</Notice>
       {currentUser.isSuccess && settings.isPending ? <LoadingState label={t("settings.mediaSettings.loading")} /> : null}
       {settings.error instanceof ApiError && settings.error.status === HTTP_STATUS.FORBIDDEN
         ? <Notice tone="warning" title={t("settings.mediaSettings.adminRequired")}>{t("settings.mediaSettings.adminOnly")}</Notice> : null}
@@ -660,13 +658,13 @@ export function MediaSettingsPage() {
           if (tab) setSelectedTab(tab);
         }}>
         <TabsList aria-label={t("settings.mediaSettings.title")}>
-          <TabsTrigger value="connections">{t("settings.mediaSettings.connections")}</TabsTrigger>
-          <TabsTrigger value="capabilities">{t("settings.mediaSettings.publishedCapabilities")}</TabsTrigger>
+        <TabsTrigger value="connections">{t("settings.mediaSettings.connections")}<span className="settings-tab-count" aria-hidden>{settings.data.connections.length}</span></TabsTrigger>
+        <TabsTrigger value="capabilities">{t("settings.mediaSettings.publishedCapabilities")}<span className="settings-tab-count" aria-hidden>{settings.data.connections.reduce((count, connection) => count + connection.capabilities.length, 0)}</span></TabsTrigger>
         </TabsList>
         {/* Keep row drafts and save feedback when switching between settings sections. */}
         <TabsContent value="connections" forceMount hidden={selectedTab !== "connections"} className="min-w-0">
-        <Panel title={t("settings.mediaSettings.connections")} description={t("settings.mediaSettings.publishHint")}
-          actions={<Button variant="default"  type="button" onClick={() => setCreating(true)}><Plus size={15} />{t("settings.mediaSettings.addConnection")}</Button>}>
+        <Panel className="media-services-panel" title={t("settings.mediaSettings.connections")} description={t("settings.mediaSettings.publishHint")}
+          actions={<Button variant="default" size="sm" type="button" onClick={() => setCreating(true)}><Plus data-icon="inline-start" aria-hidden />{t("settings.mediaSettings.addConnection")}</Button>}>
           {settings.data.connections.length === 0 ? <EmptyState icon={<PlugsConnected size={30} />} title={t("settings.mediaSettings.connectionsEmpty")}
             description={t("settings.mediaSettings.connectionsEmptyHint")} /> : <div className="media-table-scroll" tabIndex={0} role="region" aria-label={t("settings.mediaSettings.connectionsTable")}>
             <Table className="media-settings-table" aria-label={t("settings.mediaSettings.connections")}><TableHeader><TableRow>
@@ -677,7 +675,7 @@ export function MediaSettingsPage() {
         </Panel>
         </TabsContent>
         <TabsContent value="capabilities" forceMount hidden={selectedTab !== "capabilities"} className="min-w-0">
-        <Panel title={t("settings.mediaSettings.publishedCapabilities")} description={t("settings.mediaSettings.description")}>
+        <Panel className="media-services-panel" title={t("settings.mediaSettings.publishedCapabilities")} description={t("settings.mediaSettings.description")}>
           {settings.data.connections.every((connection) => connection.capabilities.length === 0) ? <p className="ui-muted">{t("settings.mediaSettings.capabilitiesEmpty")}</p>
             : <div className="media-table-scroll" tabIndex={0} role="region" aria-label={t("settings.mediaSettings.capabilitiesTable")}>
               <Table className="media-settings-table" aria-label={t("settings.mediaSettings.publishedCapabilities")}><TableHeader><TableRow>
@@ -688,6 +686,8 @@ export function MediaSettingsPage() {
         </Panel>
         </TabsContent>
         </Tabs>
+        <Notice title={t("settings.mediaSettings.configurationHint")}>
+          {t("settings.mediaSettings.defaultsHint")}</Notice>
         {creating ? <Dialog title={t("settings.mediaSettings.addConnection")} description={t("settings.mediaSettings.connectionHint")} busy={create.isPending}
           onClose={() => setCreating(false)} onSubmit={(event) => { event.preventDefault(); if (create.isPending) return; setError(""); create.mutate(); }}
           footer={<>
@@ -709,7 +709,7 @@ export function MediaSettingsPage() {
             {error ? <Notice tone="danger">{error}</Notice> : null}
           </div>
         </Dialog> : null}
-      </> : null}
+      </> : <Notice title={t("settings.mediaSettings.configurationHint")}>{t("settings.mediaSettings.defaultsHint")}</Notice>}
     </div>
   </PageShell>;
 }

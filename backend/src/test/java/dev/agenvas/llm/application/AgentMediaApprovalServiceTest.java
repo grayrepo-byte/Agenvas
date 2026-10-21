@@ -131,8 +131,8 @@ class AgentMediaApprovalServiceTest {
         CanvasItem item = mock(CanvasItem.class);
         when(item.id()).thenReturn(canvasItemId);
         when(item.subjectId()).thenReturn(artifactId);
-        when(canvas.placeArtifactsInAgentOutputWithinChange(ownerId, projectId,
-                run.agentInstanceId(), List.of(artifactId)))
+        when(canvas.placeArtifactsWithinChange(ownerId, projectId,
+                List.of(artifactId), null))
                 .thenReturn(new CanvasService.OutputPlacements(List.of(item), List.of()));
         when(capabilities.forDraft(null, Task.Kind.IMAGE_GENERATION)).thenReturn(binding);
         when(drafts.get(ownerId, projectId, canvasItemId)).thenReturn(mock(MediaDraft.class));
@@ -166,8 +166,8 @@ class AgentMediaApprovalServiceTest {
         CanvasItem item = mock(CanvasItem.class);
         when(item.id()).thenReturn(canvasItemId);
         when(item.subjectId()).thenReturn(artifactId);
-        when(canvas.placeArtifactsInAgentOutputWithinChange(ownerId, projectId,
-                run.agentInstanceId(), List.of(artifactId)))
+        when(canvas.placeArtifactsWithinChange(ownerId, projectId,
+                List.of(artifactId), null))
                 .thenReturn(new CanvasService.OutputPlacements(List.of(item), List.of()));
         when(capabilities.forDraft(null, Task.Kind.IMAGE_GENERATION)).thenReturn(binding);
         MediaDraft initial = mock(MediaDraft.class);
@@ -209,8 +209,8 @@ class AgentMediaApprovalServiceTest {
         CanvasItem item = mock(CanvasItem.class);
         when(item.id()).thenReturn(canvasItemId);
         when(item.subjectId()).thenReturn(artifactId);
-        when(canvas.placeArtifactsInAgentOutputWithinChange(ownerId, projectId,
-                run.agentInstanceId(), List.of(artifactId)))
+        when(canvas.placeArtifactsWithinChange(ownerId, projectId,
+                List.of(artifactId), null))
                 .thenReturn(new CanvasService.OutputPlacements(List.of(item), List.of()));
         when(capabilities.forDraft(null, Task.Kind.VIDEO_GENERATION)).thenReturn(binding);
         MediaDraft initial = mock(MediaDraft.class);
@@ -237,16 +237,16 @@ class AgentMediaApprovalServiceTest {
         CanvasItem endCard = mock(CanvasItem.class);
         when(startCard.id()).thenReturn(startCardId);
         when(endCard.id()).thenReturn(endCardId);
-        when(canvas.ensureMediaReferenceWithinChange(ownerId, projectId, run.agentInstanceId(), startArtifact, startFrame)).thenReturn(startCard);
-        when(canvas.ensureMediaReferenceWithinChange(ownerId, projectId, run.agentInstanceId(), endArtifact, endFrame)).thenReturn(endCard);
+        when(canvas.ensureMediaReferenceWithinChange(ownerId, projectId, startArtifact, startFrame, null, canvasItemId)).thenReturn(startCard);
+        when(canvas.ensureMediaReferenceWithinChange(ownerId, projectId, endArtifact, endFrame, null, canvasItemId)).thenReturn(endCard);
         MediaDraft firstConnected = mock(MediaDraft.class);
         MediaDraft finalConnected = mock(MediaDraft.class);
         when(firstConnected.version()).thenReturn(2L);
         when(finalConnected.version()).thenReturn(3L);
         when(connections.connectPreparedMediaInputWithinChange(ownerId, projectId, startCardId, canvasItemId, startFrame, 1))
-                .thenReturn(new CanvasConnectionService.ConnectionResult(null, firstConnected, null));
+                .thenReturn(new CanvasConnectionService.ConnectionResult(null, firstConnected));
         when(connections.connectPreparedMediaInputWithinChange(ownerId, projectId, endCardId, canvasItemId, endFrame, 2))
-                .thenReturn(new CanvasConnectionService.ConnectionResult(null, finalConnected, null));
+                .thenReturn(new CanvasConnectionService.ConnectionResult(null, finalConnected));
         String arguments = "{\"outputs\":[{\"kind\":\"VIDEO\",\"title\":\"Video\",\"prompt\":\"Animate\","
                 + "\"durationSeconds\":5,\"videoInputMode\":\"START_END\",\"mediaInputs\":["
                 + "{\"versionId\":\"" + startFrame + "\",\"role\":\"START_FRAME\"},"
@@ -302,6 +302,48 @@ class AgentMediaApprovalServiceTest {
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         problem -> assertThat(problem.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
         verifyNoInteractions(artifacts, drafts, canvas);
+    }
+
+    @Test
+    void historicalRunsCannotProposeGenerationIntoAnUnboundCanvasDestination() {
+        AgentRun run = run(AgentRun.Status.RUNNING, 1);
+        when(runs.get(ownerId, projectId, runId)).thenReturn(run);
+        String arguments = "{\"outputs\":[{\"kind\":\"IMAGE\",\"title\":\"Image\",\"prompt\":\"Draw\","
+                + "\"canvasItemId\":\"" + canvasItemId + "\",\"expectedItemVersion\":0,\"expectedDraftVersion\":0}]}";
+        assertThatThrownBy(() -> service.propose(new TrustedToolContext(ownerId, projectId, runId), run,
+                UUID.randomUUID(), 1, "call-existing", arguments))
+                .isInstanceOfSatisfying(ApiProblemException.class, problem -> {
+                    assertThat(problem.code()).isEqualTo("INPUT_SCOPE_DENIED");
+                    assertThat(problem.status()).isEqualTo(HttpStatus.FORBIDDEN);
+                });
+        verifyNoInteractions(artifacts, drafts, canvas, mediaTasks);
+        verify(approvals, never()).insert(any());
+    }
+
+    @Test
+    void canvasDestinationsRequireBothLayoutAndDraftCompareAndSetVersions() {
+        AgentRun run = run(AgentRun.Status.RUNNING, 1);
+        ((ObjectNode) run.contextSnapshot()).putObject("canvasScope").put("version", 1)
+                .putArray("items").addObject().put("itemId", canvasItemId.toString());
+        when(runs.get(ownerId, projectId, runId)).thenReturn(run);
+        String arguments = "{\"outputs\":[{\"kind\":\"IMAGE\",\"title\":\"Image\",\"prompt\":\"Draw\","
+                + "\"canvasItemId\":\"" + canvasItemId + "\",\"expectedItemVersion\":0}]}";
+        assertThatThrownBy(() -> service.propose(new TrustedToolContext(ownerId, projectId, runId), run,
+                UUID.randomUUID(), 1, "call-existing", arguments))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
+        verifyNoInteractions(artifacts, drafts, canvas, mediaTasks);
+    }
+
+    @Test
+    void rejectingAnExistingDestinationNeverAttemptsPlaceholderCleanup() {
+        AgentMediaApproval approval = pending(NOW.plusSeconds(60), 1);
+        ((ObjectNode) approval.targets().path("outputs").get(0)).put("createdByProposal", false);
+        when(approvals.findForUpdate(projectId, runId, approvalId)).thenReturn(Optional.of(approval));
+        assertThat(service.decide(ownerId, projectId, runId, approvalId, 0,
+                AgentMediaApprovalService.Decision.REJECT, "reject-existing").status())
+                .isEqualTo(AgentMediaApproval.Status.REJECTED);
+        verifyNoInteractions(canvas, drafts, artifacts, mediaTasks);
     }
 
     @Test
@@ -528,8 +570,10 @@ class AgentMediaApprovalServiceTest {
     }
 
     private AgentRun run(AgentRun.Status status, int nextStep) {
+        var snapshot = mapper.createObjectNode();
+        snapshot.putObject("canvasScope").put("version", 1).putArray("items");
         return new AgentRun(runId, projectId, UUID.randomUUID(), UUID.randomUUID(), 1,
-                ownerId, status, "Generate media", mapper.createObjectNode(), mapper.createObjectNode(),
+                ownerId, status, "Generate media", snapshot, mapper.createObjectNode(),
                 1, nextStep, 0, NOW, NOW, status.terminal() ? NOW : null);
     }
 
