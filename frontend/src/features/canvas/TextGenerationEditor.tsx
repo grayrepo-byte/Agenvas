@@ -14,6 +14,7 @@ import { latestMediaTask,MEDIA_TASK_REFRESH_INTERVAL_MS,occupiesMediaCard } from
 import { taskErrorDetail } from "./taskErrorMessages";
 import "./TextGenerationEditor.css";
 import { hasCurrentVersion } from "./versionedArtifact";
+import { usePromptContentHeight } from "./usePromptContentHeight";
 
 const MAX_PROMPT_LENGTH = 20_000;
 
@@ -30,6 +31,8 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
   const queryClient = useQueryClient();
   const id = useId();
   const [prompt, setPrompt] = useState("");
+  const promptRef = useRef<HTMLTextAreaElement>(null);
+  usePromptContentHeight(promptRef);
   const intent = useRef<Intent | null>(null);
   const observedSuccess = useRef<string | null>(null);
   const settings = useQuery({ queryKey: ["settings", "llm"], queryFn: getLlmSettings,
@@ -96,7 +99,7 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
     </div>
     <div className="media-draft-prompt-shell">
       <label className="media-draft-prompt-label" htmlFor={`${id}-prompt`}>{t("text.generation.prompt")}</label>
-      <Textarea id={`${id}-prompt`} className="media-draft-prompt" maxLength={MAX_PROMPT_LENGTH}
+      <Textarea ref={promptRef} id={`${id}-prompt`} className="media-draft-prompt" rows={1} maxLength={MAX_PROMPT_LENGTH}
         placeholder={t("text.generation.promptPlaceholder")} value={prompt}
         onChange={(event) => {
           intent.current = null;

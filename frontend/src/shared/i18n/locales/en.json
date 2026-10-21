@@ -2454,5 +2454,10 @@
   "settings.storage.password": "Password",
   "settings.storage.smbEndpointHint": "Use smb://host[:port]/share/directory. SMB 2/3 with message signing is required. For domain accounts, use DOMAIN\\username.",
   "settings.storage.webdavEndpointHint": "Enter the HTTPS URL of an existing WebDAV collection, such as https://nas.example.com/dav/media. Use your username and password or app password.",
-  "settings.storage.fileProtocolHint": "This connection archives files. Select a separate OSS/COS/S3 relay when a generation service needs public media links."
+  "settings.storage.fileProtocolHint": "This connection archives files. Select a separate OSS/COS/S3 relay when a generation service needs public media links.",
+  "canvas.viewport.resetZoom": "Reset to 100%",
+  "canvas.viewport.boxSelect": "Box select",
+  "canvas.empty.title": "Start with an idea",
+  "canvas.empty.description": "Connect words, images, and inspiration. Give your next creation room to grow.",
+  "canvas.empty.addFirst": "Create your first node"
 }

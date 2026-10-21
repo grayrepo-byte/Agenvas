@@ -16,13 +16,14 @@ import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 type TestNode = Node<{ onResizeEnd: (id: string, layout: Pick<ResizeParams, "x" | "y" | "width" | "height">) => void }>;
 
 // Exercise the real workspace projection and HTTP save paths without emulating a browser's pointer geometry.
-vi.mock("@xyflow/react", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@xyflow/react")>(),
+vi.mock("@xyflow/react", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@xyflow/react")>();
+  return { ...real,
   Background: () => null,
   MiniMap: () => null,
   Controls: () => null,
   NodeToolbar: ({ children, isVisible }: { children: React.ReactNode; isVisible: boolean }) => isVisible ? children : null,
-  ReactFlow: ({ nodes = [], onNodeDragStop, onNodesChange, onNodeClick, children }: ReactFlowProps<TestNode>) => <div>
+  ReactFlow: ({ nodes = [], onNodeDragStop, onNodesChange, onNodeClick, children }: ReactFlowProps<TestNode>) => <real.ReactFlowProvider><div>
     <button onClick={() => onNodesChange?.(nodes.map((node) =>
       ({ id: node.id, type: "select", selected: false })))}>canvas background</button>
     {nodes.map((node) => <div key={node.id} data-testid={node.id} style={node.style}
@@ -43,8 +44,9 @@ vi.mock("@xyflow/react", async (importOriginal) => ({
         dimensions: { width: 999, height: 999 } }])}>measure {node.id}</button>
     </div>)}
     {children}
-  </div>,
-}));
+  </div></real.ReactFlowProvider>,
+  };
+});
 
 const NOW = "2026-09-26T00:00:00Z";
 function mediaItem(id = "image-card", assetId = "landscape", kind: "IMAGE" | "VIDEO" = "IMAGE"): CanvasItem {

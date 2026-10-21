@@ -1,10 +1,8 @@
-import { AlignLeftSimple,ImageSquare,LinkBreak,LinkSimple,MusicNotes,SelectionAll,Sparkle,TextT,VideoCamera,X,type Icon } from "@/shared/ui/icons";
+import { AlignLeftSimple,ArrowLeft,CheckCircle,CircleNotch,DownloadSimple,FolderSimple,ImageSquare,LinkBreak,LinkSimple,MusicNotes,Plus,SelectionAll,Sparkle,TextT,VideoCamera,WarningCircle,X,type Icon } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import {
 Background,
 ConnectionLineType,
-Controls,
-MiniMap,
 NodeResizer,
 NodeToolbar,
 Position,
@@ -57,15 +55,18 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
 import { Input } from "../../shared/ui/primitives/input";
 import { Separator } from "../../shared/ui/primitives/separator";
+import { Empty,EmptyContent,EmptyDescription,EmptyHeader,EmptyMedia,EmptyTitle } from "../../shared/ui/primitives/empty";
 import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
 import { AGENT_CHAT_HEIGHT,AGENT_CHAT_MIN_HEIGHT,AGENT_CHAT_MIN_WIDTH,AGENT_CHAT_WIDTH,AgentChatCard } from "./AgentChatCard";
 import { CanvasErrorNotice } from "./CanvasErrorNotice";
+import { CanvasEditorOverlay } from "./CanvasEditorOverlay";
 import { CanvasHandle } from "./CanvasHandle";
 import { CanvasPaneMenu } from "./CanvasPaneMenu";
 import { CanvasRelationEdge } from "./CanvasRelationEdge";
 import { CanvasSettingsMenu } from "./CanvasSettingsMenu";
 import { CanvasSelectionCheckbox } from "./CanvasSelectionCheckbox";
 import { CanvasToolMenu } from "./CanvasToolMenu";
+import { CanvasViewportControls } from "./CanvasViewportControls";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 import { MediaCanvasCard } from "./MediaCanvasCard";
 import { MediaDraftEditor } from "./MediaDraftEditor";
@@ -1083,6 +1084,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
   const layoutErrorIds = (Array.isArray(saveLayout.variables) ? saveLayout.variables : saveLayout.variables ? [saveLayout.variables] : []).map(({ item }) => item.id);
   const connectionErrorIds = [connectInput.variables?.source, connectInput.variables?.target].filter((id): id is string => Boolean(id));
+  const openCenteredCreationMenu = () => {
+    const rect = canvasElement.current?.getBoundingClientRect();
+    if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  };
 
   if (currentUser.isError) return <Navigate to="/login" replace />;
 
@@ -1102,17 +1107,18 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         }} />
       <header className="workspace-header" data-sync-state={eventStatus}>
         <div className="workspace-header-identity">
-          <Button asChild variant="ghost" size="sm"><Link to="/projects">{t("common.project")}</Link></Button>
+          <Button asChild variant="ghost" size="sm"><Link to="/projects"><ArrowLeft data-icon="inline-start" />{t("common.project")}</Link></Button>
+          <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
           <h1 className="workspace-project-name" title={project.data?.name}>{project.data?.name ?? t("common.projectLoading")}</h1>
         </div>
         <div className="workspace-header-actions">
           <Button variant="ghost" size="sm" onClick={() => {
             setToolsKind(null); setResourcesOpen(true);
-          }} type="button">{t("canvas.workspace.resources")}</Button>
+          }} type="button"><FolderSimple data-icon="inline-start" />{t("canvas.workspace.resources")}</Button>
           {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
           <Button asChild variant="ghost" size="sm">
             <a download={`agenvas-project-${projectId}.json`}
-              href={projectExportManifestUrl(projectId)}>{t("canvas.workspace.exportManifest")}</a>
+              href={projectExportManifestUrl(projectId)}><DownloadSimple data-icon="inline-start" />{t("canvas.workspace.exportManifest")}</a>
           </Button>
           {eventStatus !== "live" ? <span className="workspace-sync-status" role="status">
             {eventStatus === "failed" ? t("canvas.workspace.syncRetrying") :
@@ -1186,7 +1192,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {canvas.error ? <CanvasErrorNotice error={canvas.error} title={t("canvas.feedback.loadCanvas")} message={workspaceErrorMessage(canvas.error)}>
             <Button variant="ghost" size="xs" type="button" onClick={() => void canvas.refetch()}>{t("common.retryRead")}</Button>
           </CanvasErrorNotice> : null}
-          {canvas.data && canvas.data.items.length === 0 ? <div className="canvas-message">{t("canvas.workspace.emptyHint")}</div> : null}
           {displaySettings.persistenceError ? <CanvasErrorNotice error={displaySettings.persistenceError} title={t("canvas.feedback.saveSettings")} message={displaySettings.persistenceError}>
             <Button variant="ghost" size="xs" type="button" onClick={displaySettings.retrySave}>{t("canvas.settings.retrySave")}</Button>
           </CanvasErrorNotice> : null}
@@ -1227,6 +1232,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           edges={relationEdges}
           edgeTypes={edgeTypes}
           fitView
+          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
           isValidConnection={(connection) => isCanvasConnectionValid(canvas.data?.items ?? [], connection)}
           minZoom={0.25}
           nodes={nodes}
@@ -1303,7 +1309,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                 display: connectGesture ? "none" : undefined,
               }}
               className="workspace-media-toolbar nodrag nowheel nopan">
-              <div className="workspace-media-editor" aria-label={t("canvas.workspace.selectionEditor")}>
+              <CanvasEditorOverlay>
                 <Button variant="ghost" aria-label={t("canvas.workspace.closeEditor")} className="workspace-bottom-close"
                   onClick={() => setSelectedIds([])} type="button"><X size={15} /></Button>
                 {selectedItems[0].artifact.kind === "IMAGE" ||
@@ -1316,12 +1322,23 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                 {selectedItems[0].artifact.kind === "TEXT" ?
                   <TextGenerationEditor key={selectedItems[0].artifact.id}
                     artifact={selectedItems[0].artifact} /> : null}
-              </div>
+              </CanvasEditorOverlay>
             </NodeToolbar> : null}
-          <Background color="var(--ui-border-strong)" gap={20} size={1.1} />
-          <MiniMap pannable zoomable />
-          <Controls position="bottom-right" />
+          <Background color="var(--ui-canvas-dot)" gap={24} size={1} />
+          <CanvasViewportControls hasNodes={nodes.length > 0} />
         </ReactFlow>
+        {canvas.isSuccess && canvas.data.items.length === 0 && !snapshot.isPending && !creationMenu && !paneMenu ?
+          <Empty className="canvas-empty-state">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><Sparkle /></EmptyMedia>
+              <EmptyTitle>{t("canvas.empty.title")}</EmptyTitle>
+              <EmptyDescription>{t("canvas.empty.description")}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button onClick={openCenteredCreationMenu}><Plus data-icon="inline-start" />{t("canvas.empty.addFirst")}</Button>
+              <p className="canvas-empty-hint">{t("canvas.workspace.emptyHint")}</p>
+            </EmptyContent>
+          </Empty> : null}
         <CanvasPaneMenu position={paneMenu} onClose={() => setPaneMenu(null)}
           agentPresets={presets} onAdd={(kind, promptKey) => chooseCreationKind(kind, paneMenu?.point, promptKey)} uploading={uploadMedia.isPending} creatingText={addTextCard.isPending} creatingAgent={addAgentCard.isPending}
           onUpload={() => {
@@ -1333,14 +1350,16 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           arranging={organizeCanvas.isPending || saveLayout.isPending || alignSelected.isPending}
           canArrange={canvas.isSuccess && canvasConnections.isSuccess &&
             nodes.some((node) => !node.data.item.locked)} />
-        <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={() => {
-          const rect = canvasElement.current?.getBoundingClientRect();
-          if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        }}>
+        <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={openCenteredCreationMenu}>
           <CanvasSettingsMenu preferences={displaySettings.preferences} onPreferenceChange={displaySettings.setPreference}
             persistenceError={displaySettings.persistenceError} onRetrySave={displaySettings.retrySave}
             disabled={!displaySettings.ready} />
         </CanvasToolMenu>
+        <div className="canvas-gesture-hints" aria-hidden="true">
+          <span><kbd>V</kbd>{t("canvas.tools.selectionTool")}</span>
+          <span><kbd>Space</kbd>{t("canvas.tools.handTool")}</span>
+          <span><kbd>Shift</kbd>{t("canvas.viewport.boxSelect")}</span>
+        </div>
         {creationMenu ? <Command loop shouldFilter={false} tabIndex={-1} className="workspace-create-menu h-auto"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>
@@ -1427,7 +1446,8 @@ function SaveBadge({ state }: { state: "saved" | "saving" | "failed" | "conflict
   useLocale();
   const labels = { saved: t("common.saved"), saving: t("common.saving"), failed: t("canvas.workspace.saveFailed"),
     conflict: t("canvas.workspace.contentConflict") };
-  return <span className={`save-badge save-badge-${state}`}>{labels[state]}</span>;
+  const StatusIcon = state === "saved" ? CheckCircle : state === "saving" ? CircleNotch : WarningCircle;
+  return <span className={`save-badge save-badge-${state}`} aria-live="polite"><StatusIcon aria-hidden />{labels[state]}</span>;
 }
 
 function WorkspaceError({ error }: { error: Error }) {

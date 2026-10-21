@@ -10,13 +10,17 @@
   height: 100%;
   border: 0;
   padding: 0;
-  border-radius: 14px;
-  background: #262626;
-  color: #ededed;
+  border-radius: var(--ui-canvas-radius);
+  background: var(--ui-canvas-card);
+  color: var(--ui-text);
+  box-shadow: var(--ui-canvas-shadow);
 }
 
 /* An outer shadow follows the card radius without taking space from the preview. */
-.artifact-canvas-card.is-selected { box-shadow: 0 0 0 2px var(--ui-accent); }
+.artifact-canvas-card:hover { box-shadow: var(--ui-canvas-shadow-raised); }
+.artifact-canvas-card.is-selected { box-shadow: var(--ui-canvas-selection-shadow); }
+.artifact-canvas-card.is-selected .artifact-card-title,
+.artifact-canvas-card.is-selected .artifact-card-title-icon { color: var(--ui-accent-text); }
 .artifact-card-title {
   position: absolute;
   z-index: 4;
@@ -91,7 +95,7 @@
 }
 .artifact-card-title-input:disabled { opacity: .7; cursor: progress; }
 
-.artifact-card-toolbar { position: relative; display: flex; align-items: center; gap: 4px; width: max-content; max-width: calc(100vw - 48px); padding: 6px 8px; border: 1px solid #484848; border-radius: 999px; background: #232323; box-shadow: 0 6px 18px #0005; }
+.artifact-card-toolbar { position: relative; display: flex; align-items: center; gap: 4px; width: max-content; max-width: calc(100vw - 48px); padding: 6px 8px; border: 1px solid var(--ui-canvas-border); border-radius: var(--ui-canvas-radius); background: var(--ui-canvas-chrome); box-shadow: var(--ui-canvas-shadow-raised); }
 .react-flow__node-toolbar.artifact-card-toolbar-raised { z-index: 1003 !important; }
 /* Only toolbar actions get pill styling. Nested panels keep their own controls and states. */
 .artifact-card-toolbar > :where(button),

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./shared/ui/design-tokens.css";
 @import "./features/canvas/agentConversation.css";
+@import "./features/canvas/CanvasWorkspace.css";
 
 /* shadcn semantic tokens share the existing application theme, including portals. */
 @theme inline {
@@ -144,7 +145,7 @@ button:disabled {
 .workspace-shell {
   isolation: isolate; /* Keep React Flow toolbars below body-portaled UI primitives. */
   --workspace-header-height: 2.75rem;
-  --canvas: #141414;
+  --canvas: var(--ui-canvas-bg);
   --panel: #202020;
   --ink: #f4f4f5;
   --muted: #a1a1aa;
@@ -174,7 +175,7 @@ button:disabled {
   background: var(--canvas);
   min-height: var(--workspace-header-height);
   gap: 0.75rem;
-  padding: 0.375rem 0.75rem;
+  padding: 0.375rem 1rem;
 }
 
 /* Fade into the dot grid while preserving the canvas bounds and pointer gestures. */
@@ -194,7 +195,7 @@ button:disabled {
   gap: 0.375rem;
 }
 
-.workspace-header-identity { min-width: 0; }
+.workspace-header-identity { min-width: 0; gap: 0.75rem; }
 .workspace-header-actions { flex-shrink: 0; }
 .workspace-header-identity > a { flex-shrink: 0; }
 .workspace-project-name {
@@ -270,25 +271,25 @@ button:disabled {
 .workspace-tool-rail {
   position: absolute;
   z-index: 10;
-  top: 1rem;
-  right: 1rem;
+  top: 1.25rem;
+  right: 1.25rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.3rem;
-  border: 1px solid #383838;
-  border-radius: 1.8rem;
-  background: #171719;
-  box-shadow: 0 8px 24px #0006;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--ui-canvas-border);
+  border-radius: 1.25rem;
+  background: var(--ui-canvas-chrome);
+  box-shadow: var(--ui-canvas-shadow);
 }
 .workspace-add-button {
   display: grid;
   place-items: center;
-  width: 1.9rem;
-  height: 1.9rem;
-  border: 1px solid var(--ui-focus);
-  border-radius: 50%;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 0;
+  border-radius: var(--ui-radius-lg);
   background: var(--accent);
   color: white;
 }
@@ -299,14 +300,14 @@ button:disabled {
   gap: 0;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: auto;
-  padding: 0.4rem 0 0.15rem;
-  border-radius: 1rem;
-  background: #2b2b2e;
-  color: #ededed;
+  width: 2.25rem;
+  height: 2.75rem;
+  padding: 0.35rem 0 0.15rem;
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface-raised);
+  color: var(--ui-text);
 }
-.workspace-tool-trigger:hover { background: #39393d; }
+.workspace-tool-trigger:hover { background: var(--ui-hover); }
 .workspace-tool-menu {    width: 200px; }
 
 .workspace-tool-menu button > span { width: 0.85rem; }
@@ -315,10 +316,10 @@ button:disabled {
 .workspace-settings-trigger {
   display: grid;
   place-items: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  background: var(--ui-surface-raised);
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--ui-radius-lg);
+  background: transparent;
   color: var(--ui-text);
 }
 .workspace-settings-trigger:hover:enabled { background: var(--ui-hover); }
@@ -348,10 +349,10 @@ button:disabled {
   width: max-content;
   max-width: calc(100% - 2rem);
   padding: 6px 8px;
-  border: 1px solid var(--ui-border-strong);
-  border-radius: 999px;
-  background: var(--ui-surface-raised);
-  box-shadow: 0 6px 18px #0005;
+  border: 1px solid var(--ui-canvas-border);
+  border-radius: var(--ui-canvas-radius);
+  background: var(--ui-canvas-chrome);
+  box-shadow: var(--ui-canvas-shadow-raised);
 }
 
 .workspace-selection-count {
@@ -368,21 +369,28 @@ button:disabled {
 .workspace-selection-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px; min-width: 0; }
 
 .workspace-media-editor {
+  --editor-available-width: var(--canvas-editor-available-width, calc(100vw - 2rem));
   position: relative;
-  width: min(1360px, calc(100vw - 2rem));
+  /* Follow the canvas and visible node; cap line length rather than imposing a fixed panel width. */
+  width: min(max(var(--canvas-editor-node-width, 0px), calc(var(--editor-available-width) * var(--ui-canvas-editor-width-share))), var(--ui-canvas-editor-max-width));
+  min-width: min(var(--ui-canvas-editor-min-width), var(--editor-available-width));
+  max-width: var(--editor-available-width);
+  font-size: var(--ui-editor-text-size);
+  container: canvas-editor / inline-size;
   max-height: none;
   overflow: visible;
   padding: 0;
   border: 0;
   background: transparent;
   box-shadow: none;
+  transform: translate(var(--editor-shift-x, 0px), var(--editor-shift-y, 0px));
 }
 
 /* React Flow gives every NodeToolbar the same inline z-index. The editor's upward-opening
    parameter panels must stay above the selected card's action toolbar at narrower widths. */
 .react-flow__node-toolbar.workspace-media-toolbar { z-index: 1002 !important; }
 
-.workspace-media-editor > .workspace-bottom-close { z-index: 2; top: 10px; right: 12px; }
+.workspace-editor-content > .workspace-bottom-close { z-index: 2; top: 10px; right: 12px; }
 
 /* 外层是 React Flow 的几何盒，中心必须留在卡片边框上，尺寸要小——React Flow
    按盒子的外边算连线端点（Position.Right 取 x + width），盒子有多大，线就离卡片多远。
@@ -1039,14 +1047,14 @@ button:disabled {
 }
 
 .save-badge-saving {
-  background: #fff4d8;
-  color: #8b5a0a;
+  background: var(--ui-warning-bg);
+  color: var(--ui-warning);
 }
 
 .save-badge-failed,
 .save-badge-conflict {
-  background: #fff0ed;
-  color: #9b2c2c;
+  background: var(--ui-danger-bg);
+  color: var(--ui-danger);
 }
 
 .node-action {

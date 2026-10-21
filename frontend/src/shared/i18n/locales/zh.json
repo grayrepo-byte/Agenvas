@@ -2454,5 +2454,10 @@
   "settings.storage.password": "密码",
   "settings.storage.smbEndpointHint": "使用 smb://主机[:端口]/共享名/目录。支持 SMB 2/3 并要求消息签名；域账户使用 DOMAIN\\用户名。",
   "settings.storage.webdavEndpointHint": "填写现有 WebDAV 目录的 HTTPS 地址，例如 https://nas.example.com/dav/media。使用用户名和密码或应用密码。",
-  "settings.storage.fileProtocolHint": "此连接用于永久归档；生成服务需要公网素材链接时，请另选 OSS/COS/S3 媒体中继。"
+  "settings.storage.fileProtocolHint": "此连接用于永久归档；生成服务需要公网素材链接时，请另选 OSS/COS/S3 媒体中继。",
+  "canvas.viewport.resetZoom": "回到 100%",
+  "canvas.viewport.boxSelect": "框选",
+  "canvas.empty.title": "从一个想法开始",
+  "canvas.empty.description": "把文字、画面与灵感连接起来，让创作在这里展开。",
+  "canvas.empty.addFirst": "创建第一个节点"
 }

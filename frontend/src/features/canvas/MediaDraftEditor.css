@@ -1,23 +1,19 @@
 .media-draft-editor {
   --draft-text: #eeeeef;
   --draft-muted: #858589;
-  --draft-min-height: calc(var(--draft-prompt-height) + 162px);
-  --draft-max-height: 520px;
-  --draft-viewport-gap: 32px;
-  /* Eight text lines plus vertical padding; keep the header, references and toolbar space. */
-  --draft-prompt-height: calc(var(--ui-editor-text-size) * var(--ui-editor-line-height) * 8 + var(--ui-space-2) * 2);
+  --draft-available-height: var(--canvas-editor-available-height, calc(100dvh - var(--ui-space-8)));
   position: relative;
   display: flex;
-  min-height: min(var(--draft-min-height), calc(100dvh - var(--draft-viewport-gap)));
-  max-height: min(var(--draft-max-height), calc(100dvh - var(--draft-viewport-gap)));
+  min-height: 0;
+  max-height: var(--draft-available-height);
   flex-direction: column;
-  border: 1px solid #343436;
-  border-radius: 20px;
-  padding: 12px 13px 12px;
-  background: #141414;
+  border: 1px solid var(--ui-canvas-border);
+  border-radius: var(--ui-canvas-radius);
+  padding: 10px 11px;
+  background: var(--ui-surface);
   color: var(--draft-text);
   font-size: 13px;
-  box-shadow: 0 16px 38px #0006;
+  box-shadow: var(--ui-canvas-shadow-raised);
   color-scheme: dark;
 }
 
@@ -25,7 +21,7 @@
 
 .media-draft-initial { justify-content: center; align-items: center; }
 .media-draft-header, .media-draft-reference-row, .media-draft-toolbar { flex-shrink: 0; }
-.media-draft-header { display: flex; align-items: center; gap: 18px; min-height: 20px; padding: 0 2px; }
+.media-draft-header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; min-height: 20px; padding: 0 2px; }
 .media-draft-tab { color: var(--ui-text-muted); background: transparent; border: 0; padding: 0; cursor: pointer; white-space: nowrap; }
 .media-draft-tab:hover, .media-draft-tab:focus-visible { color: var(--ui-text); }
 .media-draft-tab:disabled { cursor: wait; opacity: 0.6; }
@@ -33,7 +29,7 @@
 .media-draft-tab-unavailable { color: #7a7a7e; cursor: not-allowed; }
 .media-draft-save-state { margin-left: auto; padding-right: 28px; font-size: 10px; color: #75757a; }
 .media-draft-save-state.is-error { color: #ffb3b9; }
-.media-draft-reference-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.media-draft-reference-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 /* Keep the add button below toolbar popovers; its own menu has a popover layer. */
 .media-draft-reference-row > .media-draft-popover-anchor { flex-shrink: 0; }
 .media-draft-reference-list { display: flex; min-width: 0; min-height: 46px; flex: 1; gap: 8px;
@@ -78,10 +74,15 @@
 .media-draft-reference-remove:hover:enabled { background: #d92e48; }
 .media-draft-reference-remove:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: 1px; }
 .media-draft-prompt-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-/* A content-based flex basis grows with every line and leaves nothing for the editor to scroll. */
-.media-draft-prompt-shell { position: relative; min-height: 0; flex: 1 1 var(--draft-prompt-height); margin: 9px 0 8px; }
+/* Natural text height is measured independently; available space caps growth and preserves controls. */
+.media-draft-prompt-shell {
+  position: relative; min-height: 0;
+  flex: 0 1 var(--prompt-content-height, calc(var(--ui-editor-text-size) * var(--ui-editor-line-height) + var(--ui-space-4)));
+  max-height: min(var(--ui-canvas-editor-prompt-limit), calc(var(--draft-available-height) * 0.5));
+  margin: 7px 0 6px;
+}
 .media-draft-editor .media-draft-prompt {
-  width: 100%; min-height: var(--draft-prompt-height); height: 100%; overflow-y: auto; resize: none;
+  width: 100%; min-height: 0; height: 100%; overflow-y: auto; resize: none;
   field-sizing: fixed; border: 0; border-radius: var(--ui-radius-md);
   background: transparent; color: var(--ui-text-secondary); box-shadow: none; outline: none;
   padding: var(--ui-space-2) var(--ui-space-3); font-size: var(--ui-editor-text-size);
@@ -104,12 +105,12 @@
 .media-draft-mention-menu img, .media-draft-mention-menu button > svg { width: 34px; height: 34px;
   flex-shrink: 0; border-radius: 7px; object-fit: cover; color: #9a9aa1; }
 
-.media-draft-toolbar { display: flex; align-items: center; gap: 9px; min-width: 0; margin-top: auto; }
+.media-draft-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 9px; min-width: 0; margin-top: auto; }
 .media-draft-toolbar-button { display: inline-flex; align-items: center; justify-content: center; gap: 5px;
   height: 32px; min-width: 0; padding: 0 5px; border: 0; border-radius: 7px; color: #e8e8eb; background: transparent; font-size: 12px; white-space: nowrap; }
 .media-draft-toolbar-button:hover, .media-draft-toolbar-button[aria-expanded="true"] { background: #28282a; }
 .media-draft-toolbar-button svg { flex-shrink: 0; }
-.media-draft-model-anchor { min-width: 0; margin-right: auto; }
+.media-draft-model-anchor { flex: 1 1 12ch; min-width: 0; margin-right: auto; }
 .media-draft-mode-anchor { flex-shrink: 0; }
 .media-draft-mode-trigger { max-width: 132px; }
 .media-draft-mode-trigger span { overflow: hidden; text-overflow: ellipsis; }
@@ -222,7 +223,7 @@
 .media-draft-reference-actions button.is-primary { border-color: var(--ui-focus); background: var(--ui-accent); color: var(--ui-accent-foreground); }
 .media-draft-reference-actions button:disabled { opacity: 0.45; }
 .media-draft-feedback { display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
-  flex-shrink: 0; min-width: 0; max-height: min(160px, 30dvh); overflow-y: auto;
+  flex-shrink: 0; min-width: 0; max-height: min(30dvh, calc(var(--draft-available-height) * 0.3)); overflow-y: auto;
   scrollbar-width: thin; color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.65; }
 .media-draft-feedback:empty { display: none; }
 .media-draft-feedback:not(:empty) { border-top: 1px solid #2e2e30; margin-top: 10px; padding-top: 9px; }
@@ -233,7 +234,8 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-@media (max-width: 700px) {
+/* Respond to the panel, including a narrow node in a wide desktop window. */
+@container canvas-editor (max-width: 48rem) {
   .media-draft-toolbar { flex-wrap: wrap; gap: 5px; }
   .media-draft-model-anchor { flex: 1; }
   .media-draft-parameters-anchor { order: 3; flex-basis: 100%; }

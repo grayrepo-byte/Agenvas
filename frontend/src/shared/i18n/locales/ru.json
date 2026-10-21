@@ -2454,5 +2454,10 @@
   "settings.storage.password": "Пароль",
   "settings.storage.smbEndpointHint": "Используйте smb://хост[:порт]/ресурс/каталог. Требуются SMB 2/3 и подпись сообщений. Для доменной учётной записи: DOMAIN\\пользователь.",
   "settings.storage.webdavEndpointHint": "Введите HTTPS-адрес существующего каталога WebDAV, например https://nas.example.com/dav/media. Используйте имя пользователя и пароль или пароль приложения.",
-  "settings.storage.fileProtocolHint": "Подключение используется для постоянного архива. Если сервису генерации нужны публичные ссылки, выберите отдельный ретранслятор OSS/COS/S3."
+  "settings.storage.fileProtocolHint": "Подключение используется для постоянного архива. Если сервису генерации нужны публичные ссылки, выберите отдельный ретранслятор OSS/COS/S3.",
+  "canvas.viewport.resetZoom": "Масштаб 100%",
+  "canvas.viewport.boxSelect": "Выбор рамкой",
+  "canvas.empty.title": "Начните с идеи",
+  "canvas.empty.description": "Соединяйте слова, образы и вдохновение. Дайте вашему замыслу пространство.",
+  "canvas.empty.addFirst": "Создать первый узел"
 }
