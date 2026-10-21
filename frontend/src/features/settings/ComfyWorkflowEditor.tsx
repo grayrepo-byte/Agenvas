@@ -2,11 +2,11 @@ import { useMutation } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { ApiError, previewComfyWorkflow, type ComfyUiGraph, type ComfyUiWorkflowDefinition, type MediaCapability, type RunningHubField } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
-import { Notice } from "../../shared/ui/PagePrimitives";
+import { EmptyState, Notice, StatusBadge } from "../../shared/ui/PagePrimitives";
 import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
-import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../shared/ui/primitives/table";
@@ -52,6 +52,7 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
   const [source, setSource] = useState(() => definition ? editableGraphJson(definition.graph) : "");
   const [sourceEdited, setSourceEdited] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string>(Object.keys(definition?.graph ?? {})[0] ?? "");
+  const [nodeSearch, setNodeSearch] = useState("");
   const [error, setError] = useState("");
   const [parameterErrors, setParameterErrors] = useState<Record<string, boolean>>({});
   const [reading, setReading] = useState(false);
@@ -59,7 +60,7 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
   const problem = comfyWorkflowProblem(definition, video);
   const imported = useMutation({
     mutationFn: () => previewComfyWorkflow(connectionId, source),
-    onSuccess: (graph) => { onChange({ comfyWorkflow: initialDefinition(graph, video), pricing: values.pricing }); setSource(editableGraphJson(graph)); setSourceEdited(false); setSelectedNode(Object.keys(graph)[0] ?? ""); setStep("mapping"); setError(""); setParameterErrors({}); },
+    onSuccess: (graph) => { onChange({ comfyWorkflow: initialDefinition(graph, video), pricing: values.pricing }); setSource(editableGraphJson(graph)); setSourceEdited(false); setSelectedNode(Object.keys(graph)[0] ?? ""); setNodeSearch(""); setStep("mapping"); setError(""); setParameterErrors({}); },
     onError: (cause) => setError(cause instanceof ApiError ? cause.message : t("settings.comfy.importFailed")),
   });
   const invalidParameter = Object.values(parameterErrors).some(Boolean);
@@ -67,6 +68,8 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
   useEffect(() => { onReadyChange(ready); return () => onReadyChange(false); }, [ready, onReadyChange]);
   useEffect(() => () => { readEpoch.current += 1; }, []);
   const node = definition?.graph[selectedNode];
+  const nodes = Object.entries(definition?.graph ?? {});
+  const visibleNodes = nodes.filter(([id, item]) => `${id} ${item._meta?.title ?? ""} ${item.class_type}`.toLocaleLowerCase().includes(nodeSearch.trim().toLocaleLowerCase()));
   function update(patch: Partial<ComfyUiWorkflowDefinition>) {
     if (!definition) return;
     onChange({ ...values, comfyWorkflow: { ...definition, ...patch } });
@@ -125,16 +128,21 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
       }}>{reading || imported.isPending ? t("settings.comfy.parsing") : definition ? t("settings.comfy.replace") : t("settings.comfy.parse")}</Button>
       {definition ? <p className="ui-muted">{t("settings.comfy.replaceHint")}</p> : null}
     </FieldGroup> : null}
-    {step === "mapping" && definition ? <div className="ui-stack">
+    {step === "mapping" && definition ? <div className="ui-stack comfy-mapping-step">
       <p className="ui-muted">{t("settings.comfy.mappingHint")}</p>
       <div className="comfy-node-layout">
-        <div className="comfy-node-list" role="group" aria-label={t("settings.comfy.nodes")}>
-          {Object.entries(definition.graph).map(([id, item]) => <Button key={id} type="button" variant={id === selectedNode ? "secondary" : "ghost"} onClick={() => setSelectedNode(id)} aria-pressed={id === selectedNode}>
-            <span><strong>#{id} · {item._meta?.title ?? item.class_type}</strong><small>{item.class_type}</small></span>
-          </Button>)}
-        </div>
+        <aside className="comfy-node-directory">
+          <FieldGroup><Field><FieldLabel htmlFor={`${fieldId}-search`}>{t("settings.comfy.nodes")}</FieldLabel><Input id={`${fieldId}-search`} type="search" aria-label={t("settings.comfy.searchNodes")} placeholder={t("settings.comfy.searchNodes")} value={nodeSearch} onChange={(event) => setNodeSearch(event.target.value)} /></Field></FieldGroup>
+          <p className="comfy-node-count ui-muted" role="status">{t("settings.comfy.nodeCount", { "0": visibleNodes.length, "1": nodes.length })}</p>
+          <div className="comfy-node-list" role="group" aria-label={t("settings.comfy.nodes")}>
+            {visibleNodes.map(([id, item]) => <Button key={id} type="button" variant={id === selectedNode ? "secondary" : "ghost"} onClick={() => setSelectedNode(id)} aria-pressed={id === selectedNode}>
+              <span><strong>#{id} · {item._meta?.title ?? item.class_type}</strong><small>{item.class_type}</small></span>
+            </Button>)}
+            {!visibleNodes.length ? <EmptyState title={t("settings.comfy.noNodes")} /> : null}
+          </div>
+        </aside>
         <div className="comfy-node-inputs">
-          <h3>{selectedNode ? `#${selectedNode} · ${node?._meta?.title ?? node?.class_type}` : t("settings.comfy.nodes")}</h3>
+          <header className="comfy-node-heading"><h3>{selectedNode ? `#${selectedNode} · ${node?._meta?.title ?? node?.class_type}` : t("settings.comfy.nodes")}</h3>{node ? <code>{node.class_type}</code> : null}</header>
           {node ? Object.entries(node.inputs).map(([inputName, value]) => {
             const binding = definition.bindings.find((item) => item.nodeId === selectedNode && item.inputName === inputName);
             const extended = definition.parameters?.find((item) => item.nodeId === selectedNode && item.fieldName === inputName);
@@ -143,38 +151,42 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
             return <div key={inputName} className="comfy-input-row">
               <code>{inputName}</code>
               {scalar ? <>
-                <Select aria-label={t("settings.comfy.mappingFor", { "0": inputName })} value={extended ? PARAMETER_MAPPING : binding?.source ?? NO_MAPPING} onChange={(event) => mapInput(inputName, event.target.value as ComfyInputMapping)}>
+                <Field><FieldLabel htmlFor={`${fieldId}-mapping-${inputName}`}>{t("settings.comfy.inputSource")}</FieldLabel><Select id={`${fieldId}-mapping-${inputName}`} aria-label={t("settings.comfy.mappingFor", { "0": inputName })} value={extended ? PARAMETER_MAPPING : binding?.source ?? NO_MAPPING} onChange={(event) => mapInput(inputName, event.target.value as ComfyInputMapping)}>
                   <option value={NO_MAPPING}>{t("settings.comfy.fixed")}</option>
                   <option value={PARAMETER_MAPPING} disabled={!extended && (definition.parameters?.length ?? 0) >= LIMITS.parameters}>{t("settings.comfy.extendedParameters")}</option>
                   {choices.map((choice) => <option key={choice} value={choice} disabled={!binding && definition.bindings.length >= LIMITS.bindings}>{t(SOURCE_KEYS[choice])}</option>)}
-                </Select>
+                </Select></Field>
+                <Field><FieldLabel htmlFor={`${fieldId}-literal-${inputName}`}>{t("settings.comfy.currentValue")}</FieldLabel>
                 {binding?.source === "REFERENCE_IMAGE" ? <Input type="number" min={1} max={LIMITS.references} step={1} aria-label={t("settings.comfy.referenceFor", { "0": inputName })} value={(binding.referenceIndex ?? 0) + 1}
+                  id={`${fieldId}-literal-${inputName}`}
                   onChange={(event) => update({ bindings: definition.bindings.map((item) => item === binding ? { ...item, referenceIndex: Number(event.target.value) - 1 } : item) })} />
                   : extended ? <small className="ui-muted">{extended.label}</small>
                     : binding ? <small className="ui-muted">{t(SOURCE_KEYS[binding.source])}</small>
-                    : typeof value === "boolean" ? <Select aria-label={t("settings.comfy.valueFor", { "0": inputName })} value={String(value)} onChange={(event) => literal(inputName, event.target.value === "true")}><option value="true">true</option><option value="false">false</option></Select>
-                      : <Input aria-label={t("settings.comfy.valueFor", { "0": inputName })} type={typeof value === "number" ? "number" : "text"} step="any" value={value} onChange={(event) => literal(inputName, typeof value === "number" ? Number(event.target.value) : event.target.value)} />}
-              </> : <pre className="ui-muted">{JSON.stringify(value)}</pre>}
+                    : typeof value === "boolean" ? <Select id={`${fieldId}-literal-${inputName}`} aria-label={t("settings.comfy.valueFor", { "0": inputName })} value={String(value)} onChange={(event) => literal(inputName, event.target.value === "true")}><option value="true">true</option><option value="false">false</option></Select>
+                      : <Input id={`${fieldId}-literal-${inputName}`} aria-label={t("settings.comfy.valueFor", { "0": inputName })} type={typeof value === "number" ? "number" : "text"} step="any" value={value} onChange={(event) => literal(inputName, typeof value === "number" ? Number(event.target.value) : event.target.value)} />}
+                </Field>
+              </> : <div className="comfy-linked-input"><span className="ui-muted">{t("settings.comfy.linkedInput")}</span><pre>{JSON.stringify(value)}</pre></div>}
             </div>;
           }) : null}
         </div>
       </div>
-      {definition.parameters?.length ? <FieldGroup>
-        <h3>{t("settings.comfy.extendedParameters")}</h3>
-        <p className="ui-muted">{t("settings.comfy.parameterHint")}</p>
-        <Table className="comfy-parameter-table" aria-label={t("settings.comfy.extendedParameters")}>
-          <TableHeader><TableRow>
+      {definition.parameters?.length ? <FieldSet className="comfy-parameter-section">
+        <FieldLegend>{t("settings.comfy.extendedParameters")} <StatusBadge>{definition.parameters.length}</StatusBadge></FieldLegend>
+        <FieldDescription>{t("settings.comfy.parameterHint")}</FieldDescription>
+        <Table role="table" className="comfy-parameter-table" aria-label={t("settings.comfy.extendedParameters")}>
+          <TableHeader className="sr-only"><TableRow>
             <TableHead>{t("settings.comfy.parameterTarget")}</TableHead><TableHead>{t("settings.runningHub.label")}</TableHead>
             <TableHead>{t("settings.runningHub.type")}</TableHead><TableHead>{t("settings.runningHub.defaultValue")}</TableHead>
             <TableHead>{t("settings.comfy.parameterLimits")}</TableHead><TableHead>{t("settings.runningHub.requiredSuffix")}</TableHead>
           </TableRow></TableHeader>
           <TableBody>{definition.parameters.map((field, index) => {
             const literalValue = definition.graph[field.nodeId]?.inputs[field.fieldName];
-            return <TableRow key={field.key} aria-label={`#${field.nodeId}.${field.fieldName}`}>
-              <TableCell><code>#{field.nodeId}.{field.fieldName}</code><small className="ui-muted">{field.key}</small></TableCell>
-              <TableCell><Field><FieldLabel className="sr-only">{t("settings.runningHub.label")}</FieldLabel><Input required maxLength={LIMITS.fieldLabelLength}
+            const parameterId = `${fieldId}-parameter-${field.key}`;
+            return <TableRow key={field.key} role="row" aria-label={`#${field.nodeId}.${field.fieldName}`}>
+              <TableCell className="comfy-parameter-target"><div><span className="ui-muted">{t("settings.comfy.parameterTarget")}</span><code>#{field.nodeId}.{field.fieldName}</code></div><details><summary>{t("settings.comfy.parameterKey")}</summary><code>{field.key}</code></details></TableCell>
+              <TableCell><Field><FieldLabel htmlFor={`${parameterId}-label`}>{t("settings.runningHub.label")}</FieldLabel><Input id={`${parameterId}-label`} required maxLength={LIMITS.fieldLabelLength}
                 value={field.label} onChange={(event) => parameter(index, { label: event.target.value })} aria-label={t("settings.runningHub.label")} /></Field></TableCell>
-              <TableCell><Field><FieldLabel className="sr-only">{t("settings.runningHub.type")}</FieldLabel><Select value={field.type} aria-label={t("settings.runningHub.type")}
+              <TableCell><Field><FieldLabel htmlFor={`${parameterId}-type`}>{t("settings.runningHub.type")}</FieldLabel><Select id={`${parameterId}-type`} value={field.type} aria-label={t("settings.runningHub.type")}
                 onChange={(event) => {
                   const type = event.target.value as RunningHubField["type"];
                   parameter(index, { type, minimum: null, maximum: null, maxLength: null,
@@ -186,26 +198,26 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
                   : type === "INTEGER" ? t("settings.runningHub.integerInput") : type === "NUMBER" ? t("settings.runningHub.numberInput")
                     : type === "BOOLEAN" ? t("settings.runningHub.booleanInput") : t("settings.runningHub.selectInput")}</option>)}
               </Select></Field></TableCell>
-              <TableCell><Field data-invalid={parameterErrors[`${field.key}:default`] || undefined}><FieldLabel className="sr-only">{t("settings.runningHub.defaultValue")}</FieldLabel>
-                {typeof literalValue === "boolean" ? <Select aria-label={t("settings.runningHub.defaultValue")} value={String(field.defaultValue ?? literalValue)}
+              <TableCell><Field data-invalid={parameterErrors[`${field.key}:default`] || undefined}><FieldLabel htmlFor={`${parameterId}-default`}>{t("settings.runningHub.defaultValue")}</FieldLabel>
+                {typeof literalValue === "boolean" ? <Select id={`${parameterId}-default`} aria-label={t("settings.runningHub.defaultValue")} value={String(field.defaultValue ?? literalValue)}
                   onChange={(event) => parameter(index, { defaultValue: event.target.value === "true" })}><option value="true">true</option><option value="false">false</option></Select>
-                  : typeof literalValue === "string" ? <Input aria-label={t("settings.runningHub.defaultValue")} value={String(field.defaultValue ?? literalValue)}
+                  : typeof literalValue === "string" ? <Input id={`${parameterId}-default`} aria-label={t("settings.runningHub.defaultValue")} value={String(field.defaultValue ?? literalValue)}
                     onChange={(event) => parameter(index, { defaultValue: event.target.value })} />
-                    : <Input key={`${field.type}:${JSON.stringify(field.defaultValue)}`} aria-label={t("settings.runningHub.defaultValue")} defaultValue={JSON.stringify(field.defaultValue ?? literalValue)}
+                    : <Input id={`${parameterId}-default`} key={`${field.type}:${JSON.stringify(field.defaultValue)}`} aria-label={t("settings.runningHub.defaultValue")} defaultValue={JSON.stringify(field.defaultValue ?? literalValue)}
                       aria-invalid={parameterErrors[`${field.key}:default`] || undefined} onBlur={(event) => commitParameterJson(event.target, `${field.key}:default`, (value) => {
                         if (value !== null && (typeof value !== "number" || !Number.isFinite(value))) return false;
                         parameter(index, { defaultValue: value }); return true;
                       })} />}
               </Field></TableCell>
               <TableCell><FieldGroup className="comfy-parameter-limits">
-                {field.type === "NUMBER" || field.type === "INTEGER" ? (["minimum", "maximum"] as const).map((bound) => <Field key={bound}><FieldLabel className="sr-only">{t(`settings.runningHub.${bound}`)}</FieldLabel>
-                  <Input type="number" step={field.type === "INTEGER" ? 1 : "any"} aria-label={t(`settings.runningHub.${bound}`)} placeholder={t(`settings.runningHub.${bound}`)} value={field[bound] ?? ""}
+                {field.type === "NUMBER" || field.type === "INTEGER" ? (["minimum", "maximum"] as const).map((bound) => <Field key={bound}><FieldLabel htmlFor={`${parameterId}-${bound}`}>{t(`settings.runningHub.${bound}`)}</FieldLabel>
+                  <Input id={`${parameterId}-${bound}`} type="number" step={field.type === "INTEGER" ? 1 : "any"} aria-label={t(`settings.runningHub.${bound}`)} placeholder={t(`settings.runningHub.${bound}`)} value={field[bound] ?? ""}
                     onChange={(event) => parameter(index, { [bound]: event.target.value ? Number(event.target.value) : null })} /></Field>)
-                  : field.type === "STRING" ? <Field><FieldLabel className="sr-only">{t("settings.runningHub.maxLength")}</FieldLabel><Input type="number" min={1} max={LIMITS.fieldMaxLength}
+                  : field.type === "STRING" ? <Field><FieldLabel htmlFor={`${parameterId}-maxLength`}>{t("settings.runningHub.maxLength")}</FieldLabel><Input id={`${parameterId}-maxLength`} type="number" min={1} max={LIMITS.fieldMaxLength}
                     aria-label={t("settings.runningHub.maxLength")} placeholder={t("settings.runningHub.maxLength")} value={field.maxLength ?? ""}
                     onChange={(event) => parameter(index, { maxLength: event.target.value ? Number(event.target.value) : null })} /></Field>
-                    : field.type === "SELECT" ? <Field data-invalid={parameterErrors[`${field.key}:options`] || undefined}><FieldLabel className="sr-only">{t("settings.comfy.parameterOptions")}</FieldLabel>
-                      <Textarea key={JSON.stringify(field.options)} rows={2} aria-label={t("settings.comfy.parameterOptions")} aria-invalid={parameterErrors[`${field.key}:options`] || undefined}
+                    : field.type === "SELECT" ? <Field data-invalid={parameterErrors[`${field.key}:options`] || undefined}><FieldLabel htmlFor={`${parameterId}-options`}>{t("settings.comfy.parameterOptions")}</FieldLabel>
+                      <Textarea id={`${parameterId}-options`} key={JSON.stringify(field.options)} rows={2} aria-label={t("settings.comfy.parameterOptions")} aria-invalid={parameterErrors[`${field.key}:options`] || undefined}
                         defaultValue={JSON.stringify(field.options?.map((option) => option.value) ?? [])} onBlur={(event) => commitParameterJson(event.target, `${field.key}:options`, (value) => {
                           if (!Array.isArray(value) || !value.length || value.length > LIMITS.options
                               || value.some((option: unknown) => typeof option !== typeof literalValue || typeof option === "number" && !Number.isFinite(option))) return false;
@@ -217,13 +229,13 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
                           parameter(index, { options }); return true;
                         })} /></Field> : null}
               </FieldGroup></TableCell>
-              <TableCell><Checkbox aria-label={t("settings.runningHub.requiredSuffix")} checked={field.required ?? false} onCheckedChange={(checked) => parameter(index, { required: checked === true })} /></TableCell>
+              <TableCell className="comfy-parameter-required"><Field orientation="horizontal"><Checkbox id={`${fieldId}-required-${field.key}`} aria-label={t("settings.runningHub.requiredSuffix")} checked={field.required ?? false} onCheckedChange={(checked) => parameter(index, { required: checked === true })} /><FieldLabel htmlFor={`${fieldId}-required-${field.key}`}>{t("settings.runningHub.requiredSuffix")}</FieldLabel></Field></TableCell>
             </TableRow>;
           })}</TableBody>
         </Table>
         {invalidParameter ? <Notice tone="warning">{t("settings.comfy.parameterInvalid")}</Notice> : null}
-      </FieldGroup> : null}
-      <FieldGroup className="ui-form-grid">
+      </FieldSet> : null}
+      <FieldSet className="comfy-output-section"><FieldLegend>{t("settings.comfy.outputSettings")}</FieldLegend><FieldGroup className="comfy-output-fields">
         <Field><FieldLabel htmlFor={`${fieldId}-output-node`}>{t("settings.comfy.outputNode")}</FieldLabel><Select id={`${fieldId}-output-node`} value={definition.output.nodeId} onChange={(event) => update({ output: { ...definition.output, nodeId: event.target.value } })}>
           <option value="">{t("settings.comfy.chooseOutput")}</option>{Object.entries(definition.graph).map(([id, item]) => <option key={id} value={id}>#{id} · {item._meta?.title ?? item.class_type}</option>)}
         </Select></Field>
@@ -235,15 +247,26 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
           value={definition[key]} onChange={(event) => update({ [key]: Number(event.target.value) })} /></Field>) : null}
       </FieldGroup>
       {video ? <p className="ui-muted">{t("settings.comfy.framesHint")}</p> : null}
+      </FieldSet>
       {problem ? <Notice tone="warning">{problem}</Notice> : null}
-      <Button type="button" disabled={!!problem || invalidParameter} onClick={() => setStep("review")}>{t("settings.comfy.review")}</Button>
+      <div className="comfy-step-actions"><Button type="button" disabled={!!problem || invalidParameter} onClick={() => setStep("review")}>{t("settings.comfy.review")}</Button></div>
     </div> : null}
-    {step === "review" && definition ? <div className="ui-stack">
+    {step === "review" && definition ? <div className="ui-stack comfy-review-step">
+      <p className="ui-muted">{t("settings.comfy.reviewHint")}</p>
       <Notice>{t("settings.comfy.summary", { "0": Object.keys(definition.graph).length, "1": definition.bindings.length, "2": definition.output.nodeId, "3": comfyReferenceCount(definition) })}</Notice>
+      <FieldSet className="comfy-review-section"><FieldLegend>{t("settings.comfy.mappedInputs")}</FieldLegend><FieldDescription>{t("settings.comfy.readOnlyBindings")}</FieldDescription>
       <ul className="comfy-binding-summary">{definition.bindings.map((binding) => <li key={`${binding.nodeId}:${binding.inputName}`}><code>#{binding.nodeId}.{binding.inputName}</code> ← {t(SOURCE_KEYS[binding.source])}{binding.source === "REFERENCE_IMAGE" ? ` #${(binding.referenceIndex ?? 0) + 1}` : ""}</li>)}</ul>
       {definition.parameters?.length ? <ul className="comfy-binding-summary">{definition.parameters.map((field) => <li key={field.key}><code>#{field.nodeId}.{field.fieldName}</code> ← {t("settings.comfy.extendedParameters")} · {field.label}</li>)}</ul> : null}
+      </FieldSet>
+      <FieldSet className="comfy-review-section"><FieldLegend>{t("settings.comfy.outputSettings")}</FieldLegend><dl className="comfy-review-output"><div><dt>{t("settings.comfy.outputNode")}</dt><dd>#{definition.output.nodeId} · {definition.graph[definition.output.nodeId]?._meta?.title ?? definition.graph[definition.output.nodeId]?.class_type}</dd></div><div><dt>{t("settings.comfy.outputField")}</dt><dd><code>{definition.output.field}</code></dd></div>
+        {video ? <><div><dt>{t("settings.comfy.minimumSeconds")}</dt><dd>{definition.minimumSeconds}</dd></div><div><dt>{t("settings.comfy.maximumSeconds")}</dt><dd>{definition.maximumSeconds}</dd></div></> : null}
+      </dl></FieldSet>
+      <FieldSet className="comfy-review-section"><FieldLegend>{t("settings.mediaSettings.defaultParameters")}</FieldLegend>
       <CapabilityConfigurationFields section="defaults" adapterId={adapterId} values={values} onChange={onChange} />
+      </FieldSet>
+      <FieldSet className="comfy-review-section"><FieldLegend>{t("media.pricing.estimated")}</FieldLegend>
       <CapabilityConfigurationFields section="pricing" adapterId={adapterId} values={values} onChange={onChange} />
+      </FieldSet>
       {problem ? <Notice tone="warning">{problem}</Notice> : null}
     </div> : null}
     {error ? <Notice tone="danger">{error}</Notice> : null}

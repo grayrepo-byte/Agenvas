@@ -119,6 +119,8 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio [data-state="active"] > .settings-tab-count { color: var(--ui-text-secondary); }
 
 /* Portal styling follows the mounted studio shell; canvas dialogs keep their own presentation. */
+/* Keep fixed modal chrome outside native anchor/focus scrolling on every settings route. */
+body:has(.app-shell--settings) .ui-dialog.app-page { overflow: clip; }
 body:has(.app-shell--studio) .ui-dialog.app-page { border-radius: 16px; }
 body:has(.app-shell--studio) .ui-dialog-header { padding: 18px 20px; }
 body:has(.app-shell--studio) .ui-dialog-header h2 { font-size: 16px; }

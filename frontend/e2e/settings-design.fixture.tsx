@@ -20,6 +20,8 @@ import type {
 import { setLocale } from "../src/shared/i18n";
 import { mediaFunctionChoices } from "../src/shared/mediaFunctions";
 import { imageFunctionSettings, imageFunctionsFixture, imageWorkflowCapability } from "../src/test/imageFunctionsFixture";
+import { adapterMetadata } from "../src/features/settings/mediaAdapterCatalog";
+import { graph as comfyPreviewGraph, definition as comfyDefinition } from "../src/features/settings/comfyWorkflowFixture";
 import { klingProfiles } from "../src/test/klingProfiles";
 import { nativeProfiles } from "../src/test/nativeProfiles";
 import { videoFunctionCapability, videoFunctionsFixture } from "../src/test/videoFunctionsFixture";
@@ -80,13 +82,24 @@ let media: MediaSettings = {
   }, workflow, {
     id: "synthetic-comfy", name: "ComfyUI · 本地实验室", platform: "COMFYUI", enabled: true,
     version: 1, connectionVersion: 1, origin: "http://comfy.example.test/[configured-path]", keyMask: null,
-    connectivityStatus: "NOT_CHECKED", realGenerationTested: false, capabilities: [],
+    connectivityStatus: "NOT_CHECKED", realGenerationTested: false,
+    capabilities: [videoFunctionCapability({ id: "synthetic-comfy-video", name: "ComfyUI · 镜头实验", adapterId: "COMFY_VIDEO_V1", kind: "VIDEO_GENERATION", settings: { comfyWorkflow: { ...comfyDefinition,
+      parameters: [{ key: "steps", label: "采样步数", type: "INTEGER", nodeId: "14", fieldName: "steps", defaultValue: 20, minimum: 1, maximum: 80, required: false, advanced: false }] } } })],
   }, {
     id: "synthetic-ark", name: "火山引擎 · 备用连接", platform: "ARK", enabled: false,
     version: 3, connectionVersion: 2, origin: null, keyMask: "••••DEMO", connectivityStatus: "NOT_CHECKED", realGenerationTested: false,
     capabilities: [videoFunctionCapability({ id: "synthetic-disabled", name: "Seedream · 备用图片", adapterId: "ARK_SEEDREAM_IMAGE", kind: "IMAGE_GENERATION", enabled: false })],
   }, local],
 };
+// Optional synthetic large catalog for exercising menu scrolling; no external requests.
+if (new URLSearchParams(window.location.search).get("stress") === "nodes") {
+  for (const connection of media.connections) for (const capability of connection.capabilities) {
+    if (capability.settings.runningHub) capability.settings.runningHub = {
+      ...capability.settings.runningHub,
+      nodeOptions: Array.from({ length: 120 }, (_, index) => ({ nodeId: String(index + 1), label: `Synthetic node ${index + 1}` })),
+    };
+  }
+}
 let functions: MediaFunctionSetting[] = [
   ...imageFunctionSettings().map((entry, index) => index === 1 || index === 3 ? { ...entry, capabilityId: null } : entry),
   { operation: "VIDEO_UPSCALE", capabilityId: "upscale-cap", version: 3 },
@@ -291,6 +304,14 @@ window.fetch = async (input, init) => {
     }
     return Response.json(media);
   }
+  if (method === "POST" && path.endsWith("/runninghub/preview")) {
+    const definition = imageWorkflowCapability().settings.runningHub!;
+    return Response.json({ definition: { ...definition, targetId: stringField(body, "targetId", "123"),
+      targetType: body.targetType === "AI_APP" ? "AI_APP" : "WORKFLOW", importSource: body.source ?? null,
+      outputs: definition.outputs.map((output) => ({ ...output, kind: body.kind === "VIDEO_GENERATION" ? "VIDEO" : body.kind === "AUDIO_GENERATION" ? "AUDIO" : "IMAGE" })) },
+      recommendedFieldKeys: definition.fields.map((field) => field.key), warnings: [], targetName: "合成工作流 · 参数演示" });
+  }
+  if (method === "POST" && path.endsWith("/comfyui/preview")) return Response.json(comfyPreviewGraph);
   if (path.startsWith("/api/v1/settings/media-connections/")) {
     const [, , , , , connectionId, section, capabilityId] = path.split("/");
     media = { ...media, connections: media.connections.flatMap((connection) => {
@@ -298,10 +319,13 @@ window.fetch = async (input, init) => {
       if (method === "DELETE" && !section) return [];
       if (section === "capabilities") {
         let capabilities = connection.capabilities;
-        if (method === "POST") capabilities = [...capabilities, videoFunctionCapability({ id: `synthetic-capability-${Date.now()}`, name: stringField(body, "name"), adapterId: stringField(body, "adapterId") })];
+        if (method === "POST") capabilities = [...capabilities, videoFunctionCapability({ id: `synthetic-capability-${Date.now()}`, name: stringField(body, "name"), adapterId: stringField(body, "adapterId"), kind: adapterMetadata(stringField(body, "adapterId"))?.kind ?? "VIDEO_GENERATION", settings: (body.settings ?? {}) as MediaCapability["settings"] })];
         else if (method === "DELETE") capabilities = capabilities.filter((capability) => capability.id !== capabilityId);
         else capabilities = capabilities.map((capability): MediaCapability => capability.id === capabilityId
-          ? { ...capability, name: stringField(body, "name", capability.name), enabled: boolField(body, "enabled", capability.enabled), version: capability.version + 1 } : capability);
+          ? { ...capability, name: stringField(body, "name", capability.name), enabled: boolField(body, "enabled", capability.enabled),
+            adapterId: stringField(body, "adapterId", capability.adapterId),
+            settings: body.settings && typeof body.settings === "object" ? body.settings as MediaCapability["settings"] : capability.settings,
+            version: capability.version + 1 } : capability);
         return [{ ...connection, capabilities, version: connection.version + 1 }];
       }
       return [{ ...connection, name: stringField(body, "name", connection.name), enabled: boolField(body, "enabled", connection.enabled), version: connection.version + 1 }];

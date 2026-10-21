@@ -684,6 +684,10 @@ describe("MediaSettingsPage", () => {
       await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
       await waitFor(() => expect(discovery.requested).toBe(true));
       const name = within(dialog).getByRole("textbox", { name: "新能力名称" });
+      expect(name).toBeEnabled();
+      expect(within(dialog).getByRole("button", { name: "发布能力" })).toBeDisabled();
+      expect(within(dialog).getByRole("button", { name: "关闭窗口" })).toBeDisabled();
+      expect(within(dialog).getByRole("combobox", { name: "主输出类型" })).toBeDisabled();
       await user.type(name, "请求期间手动命名");
       discovery.release();
       await within(dialog).findByRole("row", { name: "创作提示" });
@@ -1513,7 +1517,7 @@ describe("MediaSettingsPage", () => {
     expect(screen.queryByRole("table", { name: "媒体连接" })).not.toBeInTheDocument();
     expect(screen.getByRole("table", { name: "已发布能力" })).toBeInTheDocument();
     const edit = screen.getByRole("button", { name: "编辑能力参数" });
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "能力名称" })).not.toBeInTheDocument();
     await user.click(edit);
     const name = screen.getByRole("textbox", { name: "能力名称" });
     await user.clear(name); await user.type(name, "Unsaved portrait");
@@ -1540,7 +1544,7 @@ describe("MediaSettingsPage", () => {
     await user.keyboard("{Shift>}{Tab}{/Shift}");
     expect(saveButton).toHaveFocus();
     const modelTab = screen.getByRole("tab", { name: "模型配置" });
-    await user.click(modelTab); await user.keyboard("{ArrowRight}");
+    await user.click(modelTab); await user.keyboard("{ArrowDown}");
     expect(screen.getByRole("tab", { name: "默认参数" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "默认参数" })).toHaveFocus();
   });
@@ -1784,4 +1788,65 @@ describe("capability deletion", () => {
     await screen.findByText("Portrait");
     expect(screen.queryByRole("button", { name: "删除能力" })).not.toBeInTheDocument();
   });
+});
+
+describe("MediaSettingsPage catalog workflow", () => {
+  function serveCatalog() {
+    const fixture = settingsFixture();
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+    );
+    return fixture;
+  }
+
+  it("publishes directly from the capability catalog through an explicit connection choice", async () => {
+    serveCatalog(); mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
+    await user.click(screen.getByRole("button", { name: "发布新能力" }));
+    const picker = screen.getByRole("dialog", { name: "选择发布到哪个连接" });
+    await user.click(within(picker).getByRole("button", { name: /OpenAI/ }));
+    const editor = await screen.findByRole("dialog", { name: "发布新能力" });
+    expect(within(editor).getByRole("textbox", { name: "新能力名称" })).toHaveValue("");
+    expect(within(editor).getByRole("button", { name: "发布能力" })).toBeEnabled();
+    expect(within(editor).getByRole("tab", { name: "模型配置" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("searches names and status without discarding a closed capability draft", async () => {
+    serveCatalog(); mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    const editor = screen.getByRole("dialog");
+    const name = within(editor).getByRole("textbox", { name: "能力名称" });
+    await user.clear(name); await user.type(name, "Local unsaved draft");
+    await user.click(within(editor).getByRole("button", { name: "取消" }));
+    const search = screen.getByRole("textbox", { name: "搜索连接与能力" });
+    await user.type(search, "missing model");
+    expect(within(screen.getByRole("tabpanel", { name: "已发布能力" })).getByText("没有匹配的配置")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑能力参数" })).not.toBeInTheDocument();
+    await user.clear(search); await user.type(search, "portrait");
+    expect(screen.getByRole("button", { name: "编辑能力参数" })).toBeInTheDocument();
+    await selectValue(screen.getByRole("combobox", { name: "筛选配置状态" }), "disabled");
+    expect(within(screen.getByRole("tabpanel", { name: "已发布能力" })).getByText("没有匹配的配置")).toBeInTheDocument();
+    await selectValue(screen.getByRole("combobox", { name: "筛选配置状态" }), "all");
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    expect(within(screen.getByRole("dialog")).getByRole("textbox", { name: "能力名称" })).toHaveValue("Local unsaved draft");
+  });
+});
+
+
+it("retains unparsed RunningHub JSON when closing and reopening a publishing session", async () => {
+  const fixture = settingsFixture({ platform: "RUNNINGHUB" });
+  server.use(
+    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+    http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+  );
+  mount(); const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "发布能力" }));
+  await user.click(screen.getByText("导入 / 已保存的 JSON"));
+  await user.type(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), "unfinished JSON draft");
+  await user.click(screen.getByRole("button", { name: "取消" }));
+  await user.click(screen.getByRole("button", { name: "发布能力" }));
+  await user.click(screen.getByText("导入 / 已保存的 JSON"));
+  expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue("unfinished JSON draft");
 });

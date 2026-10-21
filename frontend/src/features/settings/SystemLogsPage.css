@@ -71,3 +71,7 @@
   .app-shell--studio .system-logs-console { min-height: 260px; max-height: 55vh; }
 }
 @media (prefers-reduced-motion: reduce) { .app-shell--studio .system-log-line { transition: none; } }
+
+.system-logs-search-pending { margin: 9px 0 0; font-size: var(--ui-text-sm); line-height: 1.6; }
+.system-logs-toolbar-actions { justify-content: flex-end; flex-wrap: wrap; }
+@media (max-width: 700px) { .app-shell--studio .system-logs-toolbar { flex-wrap: wrap; align-items: flex-start; } .app-shell--studio .system-logs-options[data-slot="field-group"] { flex-basis: 100%; flex-direction: row; } .app-shell--studio .system-logs-toolbar-actions { margin-left: auto; } }

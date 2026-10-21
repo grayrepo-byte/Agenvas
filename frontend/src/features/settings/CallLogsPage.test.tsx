@@ -58,6 +58,27 @@ async function chooseDateTime(label: string, value: string) {
 describe("CallLogsPage", () => {
   beforeEach(() => server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" }))));
 
+  it("browses adjacent records inside the dialog and clears the previous debug body", async () => {
+    const reads: string[] = [];
+    server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page([LOG, { ...LOG, id: "call-2", model: "second-model", traceId: "trace-456" }]))),
+      http.get("/api/v1/call-logs/:id/debug", ({ params }) => { reads.push(String(params.id)); return HttpResponse.json({ id: params.id, captured: false, exchanges: [] }); }));
+    const client = showPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "查看调用详情 call-1" }));
+    const dialog = screen.getByRole("dialog", { name: "调用详情" });
+    await within(dialog).findByText(/本次调用尚无 debug 正文/);
+    expect(within(dialog).getByRole("button", { name: "上一条记录" })).toBeDisabled();
+    await user.click(within(dialog).getByRole("button", { name: "下一条记录" }));
+    expect(await within(dialog).findByText("trace-456")).toBeInTheDocument();
+    expect(within(dialog).queryByText("trace-123")).not.toBeInTheDocument();
+    expect(within(dialog).getByText("本页第 2 / 2 条")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "下一条记录" })).toBeDisabled();
+    await waitFor(() => expect(reads).toEqual(["call-1", "call-2"]));
+    await waitFor(() => expect(client.getQueryData(["call-debug", "call-1"])).toBeUndefined());
+    await user.click(within(dialog).getByRole("button", { name: "关闭" }));
+    expect(screen.getByRole("button", { name: "查看调用详情 call-1" })).toHaveFocus();
+  });
+
   it("fetches raw details only after opening the modal and clears them on close", async () => {
     const reads = vi.fn();
     server.use(http.get("/api/v1/call-logs", () => HttpResponse.json(page())),

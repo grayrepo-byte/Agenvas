@@ -61,9 +61,11 @@ export function CallLogsPage() {
   });
   const forbidden = logs.error instanceof ApiError && logs.error.status === HTTP_STATUS.FORBIDDEN;
   const invalidFilters = logs.error instanceof ApiError && logs.error.status === BAD_REQUEST_STATUS;
-  if (logs.error instanceof ApiError && logs.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
+  if ((logs.error instanceof ApiError && logs.error.status === HTTP_STATUS.UNAUTHORIZED)
+    || (currentUser.error instanceof ApiError && currentUser.error.status === HTTP_STATUS.UNAUTHORIZED)) return <Navigate to="/login" replace />;
   const data = forbidden ? undefined : logs.data;
   const selectedLog = data?.items.find((log) => log.id === selectedId);
+  const selectedIndex = data?.items.findIndex((log) => log.id === selectedId) ?? -1;
   const setPage = (page: number) => {
     setSelectedId(null);
     const next = new URLSearchParams(params);
@@ -78,6 +80,7 @@ export function CallLogsPage() {
   };
 
   return <PageShell title={t("common.callLogs")} description={t("logs.calls.description")}><div className="call-audit-workspace ui-stack">
+    {currentUser.isError ? <Notice tone="danger"><p>{t("settings.shared.sessionHint")}</p><Button variant="outline" type="button" disabled={currentUser.isFetching} onClick={() => { void currentUser.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
     <Panel className="call-audit-filter-panel" title={t("logs.calls.filterRecords")} description={t("logs.calls.filterTimeHint")}>
       <CallLogFilterForm key={params.toString()} filters={filters} onApply={applyFilters} disabled={logs.isFetching || !currentUser.isSuccess} />
     </Panel>
@@ -105,7 +108,9 @@ export function CallLogsPage() {
             onClick={() => setPage(data.page + 1)}>{t("logs.calls.nextPage")}<CaretRight data-icon="inline-end" aria-hidden /></Button></div>
       </nav>
     </Panel> : null}
-    {selectedLog ? <CallLogDetailDialog log={selectedLog} onClose={() => setSelectedId(null)} /> : null}
+    {selectedLog && data ? <CallLogDetailDialog log={selectedLog} index={selectedIndex} count={data.items.length}
+      onAdjacent={(offset) => { const adjacent = data.items[selectedIndex + offset]; if (adjacent) setSelectedId(adjacent.id); }}
+      onClose={() => setSelectedId(null)} /> : null}
   </div></PageShell>;
 }
 
@@ -196,18 +201,21 @@ function CallLogRow({ log, onDetails }: { log: CallLog; onDetails: () => void })
     </TableRow>;
 }
 
-function CallLogDetailDialog({ log, onClose }: { log: CallLog; onClose: () => void }) {
+function CallLogDetailDialog({ log, index, count, onAdjacent, onClose }: { log: CallLog; index: number; count: number; onAdjacent: (offset: number) => void; onClose: () => void }) {
   useLocale();
   return <Dialog title={t("logs.calls.detailsTitle")} description={`${KIND_LABELS[log.kind]} · ${log.model ?? t("logs.calls.modelNotRecorded")}`}
     className="call-log-dialog" onClose={onClose} onSubmit={(event) => event.preventDefault()}
-    footer={<Button variant="outline" type="button"  onClick={onClose}>{t("common.close")}</Button>}>
+    footer={<div className="call-log-detail-footer"><span className="ui-muted" role="status">{t("logs.calls.recordPosition", { "0": index + 1, "1": count })}</span>
+      <div className="ui-form-actions"><Button variant="ghost" size="icon-sm" type="button" disabled={index <= 0} aria-label={t("logs.calls.previousRecord")} onClick={() => onAdjacent(-1)}><CaretLeft data-icon="inline-start" aria-hidden /></Button>
+        <Button variant="ghost" size="icon-sm" type="button" disabled={index + 1 >= count} aria-label={t("logs.calls.nextRecord")} onClick={() => onAdjacent(1)}><CaretRight data-icon="inline-start" aria-hidden /></Button>
+        <Button variant="outline" type="button" onClick={onClose}>{t("common.close")}</Button></div></div>}>
     <div className="call-log-overview">
       <Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}><span>{log.projectTitle}</span><ArrowSquareOut aria-hidden /></Link>
       <div className="call-log-badges"><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge>
         {log.mock ? <StatusBadge>{t("logs.calls.mock")}</StatusBadge> : null}
         {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}</div>
     </div>
-    <CallLogDetails log={log} />
+    <CallLogDetails key={log.id} log={log} />
   </Dialog>;
 }
 

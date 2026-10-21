@@ -26,6 +26,12 @@ const runningHub: RunningHubDefinition = {
 };
 
 describe("media capability settings publication", () => {
+  it("keeps unparsed source drafts out of published API settings", () => {
+    const draft: MediaCapabilityDraft = { runningHub, runningHubSourceDraft: "unfinished source" };
+    expect(buildMediaCapabilitySettings("RUNNINGHUB_IMAGE", draft)).toEqual({ runningHub });
+    expect(draft.runningHubSourceDraft).toBe("unfinished source");
+  });
+
 
   it.each(["KLING_IMAGE", "KLING_VIDEO", "WAN_IMAGE", "WAN_VIDEO", "ARK_SEEDREAM_IMAGE", "GOOGLE_VEO", "GOOGLE_OMNI_VIDEO"])(
     "publishes %s model, operation and defaults while excluding read-only profile metadata", (adapterId) => {

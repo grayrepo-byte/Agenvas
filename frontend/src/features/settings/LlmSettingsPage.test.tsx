@@ -29,12 +29,15 @@ describe("LlmSettingsPage", () => {
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
     const model = await screen.findByRole("textbox", { name: "模型 ID" });
+    expect(screen.getByText("所有修改已保存")).toBeInTheDocument();
     const consent = screen.getByRole("checkbox", { name: "我确认此次诊断可能产生模型费用" });
     await user.click(consent);
     await user.clear(model); await user.type(model, "draft-model");
     const key = screen.getByLabelText("API Key（每次修改均需重新输入）");
     await user.type(key, "unsaved-secret");
     expect(screen.getByText("有未保存的修改")).toBeInTheDocument();
+    expect(screen.getByText("正在编辑 · 基于 v4")).toBeInTheDocument();
+    expect(screen.getByText("model-a")).toBeInTheDocument();
     expect(consent).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "撤销修改" }));
     expect(model).toHaveValue("model-a");
@@ -42,6 +45,7 @@ describe("LlmSettingsPage", () => {
     expect(consent).not.toBeChecked();
     expect(screen.getByRole("button", { name: "执行可能计费的诊断" })).toBeDisabled();
     expect(screen.queryByText("有未保存的修改")).not.toBeInTheDocument();
+    expect(screen.getByText("所有修改已保存")).toBeInTheDocument();
     expect(writes).toEqual([]);
   });
 
@@ -72,6 +76,7 @@ describe("LlmSettingsPage", () => {
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
     await user.type(await screen.findByRole("textbox", { name: "端点地址" }), "https://api.example.com");
+    expect(screen.getByText("保存配置后可验证")).toBeInTheDocument();
     await user.type(screen.getByRole("textbox", { name: "模型 ID" }), "model-a");
     const keyInput = screen.getByLabelText("API Key（每次修改均需重新输入）") as HTMLInputElement;
     await user.type(keyInput, "secret-7890");
@@ -82,6 +87,7 @@ describe("LlmSettingsPage", () => {
     expect(screen.getByText(/密钥 ••••7890/)).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("secret-7890");
     expect(submitted).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com", modelId: "model-a", apiKey: "secret-7890" }]);
+    expect(screen.queryByText("保存配置后可验证")).not.toBeInTheDocument();
     expect(screen.getByText(/已配置模型模式 · 图片已配置 · 视频未配置/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看系统诊断" })).toHaveAttribute("href", "/settings/general?tab=diagnostics");
   });

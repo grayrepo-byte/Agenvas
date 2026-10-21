@@ -1,0 +1,49 @@
+/* Connection management and purpose selection are separate tasks; all controls keep the shared theme. */
+.storage-settings-workspace { display: flex; flex-direction: column; gap: var(--ui-space-5); min-width: 0; }
+.storage-connection-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-4); }
+.storage-connection-card { display: flex; flex-direction: column; min-width: 0; padding: var(--ui-space-4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); background: var(--ui-field); }
+.storage-connection-identity { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3); }
+.storage-connection-symbol { display: grid; flex: none; place-items: center; width: 36px; height: 36px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-surface); color: var(--ui-text-muted); }
+.storage-connection-symbol > svg { width: 20px; height: 20px; }
+.storage-connection-copy { flex: 1; min-width: 140px; }
+.storage-connection-copy h3 { margin: 0; font-size: var(--ui-text-md); font-weight: 550; overflow-wrap: anywhere; }
+.storage-connection-copy p { margin: 5px 0 0; color: var(--ui-text-muted); font-size: var(--ui-text-sm); overflow-wrap: anywhere; line-height: 1.6; }
+.storage-connection-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.storage-connection-endpoint { margin: var(--ui-space-4) 0; color: var(--ui-text-secondary); font-size: var(--ui-text-sm); line-height: 1.7; overflow-wrap: anywhere; }
+.storage-connection-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-3); margin-top: auto; padding-top: var(--ui-space-3); border-top: 1px solid var(--ui-border); }
+.storage-connection-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3); color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.storage-connection-meta > span { display: inline-flex; align-items: center; gap: 6px; }
+.storage-connection-meta svg { width: 14px; height: 14px; flex: none; }
+.storage-connection-actions { display: flex; align-items: center; gap: 4px; }
+.storage-privacy-note { display: flex; align-items: flex-start; gap: 8px; margin: var(--ui-space-4) 0 0; color: var(--ui-text-muted); font-size: var(--ui-text-sm); line-height: 1.8; }
+.storage-privacy-note > svg { width: 16px; height: 16px; flex: none; margin-top: 3px; }
+.storage-purpose-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--ui-space-5); }
+.storage-purpose-panel { min-width: 0; }
+.storage-purpose-panel > .ui-panel-header > .ui-form-actions { color: var(--ui-text-muted); }
+.storage-purpose-panel > .ui-panel-header > .ui-form-actions > svg { width: 20px; height: 20px; }
+.app-shell--studio .storage-current-destination { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-3); padding: 12px 14px; margin-bottom: var(--ui-space-4); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-field); }
+.storage-current-destination strong { min-width: 0; overflow-wrap: anywhere; font-size: var(--ui-text-md); }
+.storage-relay-functions { padding-top: var(--ui-space-4); border-top: 1px solid var(--ui-border); }
+.storage-relay-functions > [data-slot="field-legend"] { margin-bottom: var(--ui-space-3); padding: 0; }
+.storage-relay-functions > [data-slot="field-group"] { gap: var(--ui-space-3); }
+.storage-relay-functions [data-slot="field"] > [data-slot="field-label"] { min-width: 0; line-height: 1.6; }
+.storage-relay-functions [role="switch"] { flex: none; }
+.storage-connection-dialog { --ui-dialog-width: 760px; }
+.storage-form-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.storage-form-section { padding-top: var(--ui-space-5); border-top: 1px solid var(--ui-border); }
+.storage-form-section > [data-slot="field-legend"] { margin-bottom: var(--ui-space-3); padding: 0; font-size: var(--ui-text-md); }
+.storage-dialog-draft-status { margin-right: auto; color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+.storage-dialog-close-hint { margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-sm); line-height: 1.7; }
+@media (max-width: 1180px) {
+  .storage-connection-list, .storage-purpose-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (min-width: 1600px) {
+  .storage-connection-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .storage-form-columns { grid-template-columns: minmax(0, 1fr); }
+  .storage-connection-card { padding: var(--ui-space-3); }
+  .storage-connection-badges { width: 100%; }
+  .storage-dialog-draft-status { flex-basis: 100%; }
+  .storage-connection-actions { margin-left: auto; }
+}

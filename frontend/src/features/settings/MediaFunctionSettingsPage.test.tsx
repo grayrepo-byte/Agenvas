@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -117,5 +117,24 @@ describe("MediaFunctionSettingsPage", () => {
     await clickControl(videoTab);
     expect(within(video).getByRole("combobox")).toHaveTextContent("AI 超分");
     expect(within(video).getByRole("button", { name: "保存配置" })).toBeEnabled();
+  });
+  it("filters saved availability and searches without discarding hidden drafts", async () => {
+    mount();
+    await clickControl(await screen.findByRole("tab", { name: "视频节点工具" }));
+    const row = screen.getByRole("region", { name: "视频高清" });
+    await selectValue(within(row).getByRole("combobox"), "upscale-cap");
+    await clickControl(screen.getByRole("radio", { name: "已可用" }));
+    expect(screen.queryByRole("region", { name: "视频高清" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "音频分离" })).toBeInTheDocument();
+    await clickControl(screen.getByRole("radio", { name: "待配置" }));
+    expect(within(row).getByRole("combobox")).toHaveTextContent("AI 超分");
+    const search = screen.getByRole("searchbox", { name: "搜索工具或能力" });
+    fireEvent.change(search, { target: { value: "missing-function" } });
+    expect(within(screen.getByRole("tabpanel")).getByText("没有匹配的工具")).toBeVisible();
+    expect(screen.queryByRole("region", { name: "视频高清" })).not.toBeInTheDocument();
+    await clickControl(screen.getByRole("button", { name: "重置筛选" }));
+    expect(within(row).getByRole("combobox")).toHaveTextContent("AI 超分");
+    expect(within(row).getByRole("button", { name: "保存配置" })).toBeEnabled();
+    expect(search).toHaveValue("");
   });
 });

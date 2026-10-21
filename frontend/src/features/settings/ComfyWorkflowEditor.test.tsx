@@ -36,6 +36,36 @@ function Harness({ initial, adapterId = "COMFY_VIDEO_V1" }: { initial?: ComfyUiW
 
 describe("ComfyWorkflowEditor", () => {
   beforeEach(() => server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" }))));
+  it("searches node names, IDs and types without changing the inspected node or its fixed values", async () => {
+    render(<Harness initial={definition} />); const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+    await changeControl(screen.getByLabelText("steps 的固定值"), { target: { value: "32" } });
+    const search = screen.getByRole("searchbox", { name: "搜索节点名称、类型或编号" });
+    await user.type(search, "99");
+    expect(screen.queryByRole("button", { name: /#14.*CustomGenerator/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /#99/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("steps 的固定值")).toHaveValue(32);
+    await user.clear(search); await user.type(search, "no-matching-node");
+    expect(screen.getByText("没有匹配的节点")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
+    await user.clear(search); await user.type(search, "CustomGenerator");
+    expect(screen.getByRole("button", { name: /#14.*CustomGenerator/ })).toHaveAttribute("aria-pressed", "true");
+    expect(currentWorkflow().graph["14"]?.inputs.steps).toBe(32);
+  });
+
+  it("keeps technical parameter keys collapsed and reviews output separately from defaults and pricing", async () => {
+    render(<Harness initial={{ ...definition, parameters: [stepsParameter] }} />); const user = userEvent.setup();
+    const row = within(screen.getByRole("table", { name: "扩展参数" })).getByRole("row", { name: "#14.steps" });
+    expect(within(row).getByText("input_14_steps")).not.toBeVisible();
+    await user.click(within(row).getByText("稳定字段键"));
+    expect(within(row).getByText("input_14_steps")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "检查发布配置" }));
+    expect(screen.getByRole("group", { name: "画布输入映射" })).toHaveTextContent("#14.steps");
+    expect(screen.getByRole("group", { name: "结果与运行范围" })).toHaveTextContent("#99");
+    expect(screen.getByRole("group", { name: "默认参数" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "估算价格" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
+  });
   it("imports API JSON, preserves custom nodes and constants, and enables publishing after valid mapping", async () => {
     const requests: unknown[] = [];
     server.use(http.post("/api/v1/settings/media-connections/comfy/comfyui/preview", async ({ request }) => {

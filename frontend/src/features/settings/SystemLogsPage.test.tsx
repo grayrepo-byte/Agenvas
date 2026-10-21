@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act,render,screen,waitFor } from "@testing-library/react";
+import { act,fireEvent,render,screen,waitFor } from "@testing-library/react";
 import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes } from "react-router";
 import { beforeEach,describe,expect,it,vi } from "vitest";
@@ -67,6 +67,40 @@ describe("SystemLogsPage", () => {
       expect(latest?.searchParams.get("search")).toBe("Trace ID");
       expect(latest?.searchParams.get("limit")).toBe("1000");
     });
+  });
+
+  it("distinguishes pending search from applied search and clears it explicitly", async () => {
+    const searches: (string | null)[] = [];
+    server.use(http.get("/api/v1/settings/system-logs", ({ request }) => {
+      const search = new URL(request.url).searchParams.get("search"); searches.push(search);
+      return HttpResponse.json(search ? { ...snapshot, entries: [{ ...snapshot.entries[0], message: "Matched pending search" }] } : snapshot);
+    }));
+    showPage();
+    await screen.findByText("Started AgenvasApplication");
+    await changeControl(screen.getByLabelText("关键词"), { target: { value: "pending" } });
+    expect(screen.getByText("搜索条件已修改，点击搜索后应用。")).toBeVisible();
+    expect(searches).toEqual([null]);
+    await clickControl(screen.getByRole("button", { name: "搜索日志" }));
+    await waitFor(() => expect(searches).toEqual([null, "pending"]));
+    await screen.findByText("Matched pending search");
+    expect(screen.queryByText("搜索条件已修改，点击搜索后应用。")).not.toBeInTheDocument();
+    await clickControl(screen.getByRole("button", { name: "清除搜索" }));
+    expect(screen.getByLabelText("关键词")).toHaveValue("");
+    expect(await screen.findByText("Started AgenvasApplication")).toBeInTheDocument();
+    expect(screen.queryByText("Matched pending search")).not.toBeInTheDocument();
+  });
+
+  it("pauses following when reading earlier output and resumes explicitly", async () => {
+    showPage();
+    await screen.findByText("Started AgenvasApplication");
+    const output = screen.getByRole("region", { name: "系统日志输出" });
+    Object.defineProperties(output, { scrollHeight: { value: 1000, configurable: true }, clientHeight: { value: 300, configurable: true } });
+    output.scrollTop = 100;
+    fireEvent.scroll(output);
+    expect(screen.getByLabelText("跟随最新输出")).not.toBeChecked();
+    await clickControl(screen.getByRole("button", { name: "跳到最新输出" }));
+    expect(screen.getByLabelText("跟随最新输出")).toBeChecked();
+    expect(output.scrollTop).toBe(1000);
   });
 
   it("retains the previous snapshot after a failed refresh and recovers on manual retry", async () => {

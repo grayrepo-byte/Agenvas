@@ -133,3 +133,6 @@ body:has(.app-shell--studio) .call-log-dialog .call-log-body pre { max-height: 3
   body:has(.app-shell--studio) .call-log-dialog .call-log-metadata { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { .app-shell--studio .call-log-table tbody > tr { transition: none; } }
+
+.call-log-detail-footer { display: flex; flex: 1; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; width: 100%; }
+.call-log-detail-footer > span { font-size: var(--ui-text-sm); font-variant-numeric: tabular-nums; }

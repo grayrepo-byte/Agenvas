@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { useSearchParams } from "react-router";
+import { Navigate, useSearchParams } from "react-router";
 import { Cpu, ImagesSquare, ListMagnifyingGlass, LockSimple, PaintBrush, SlidersHorizontal, TextT, Translate, type Icon } from "../../shared/ui/icons";
-import { getCurrentUser } from "../../shared/api/client";
+import { ApiError, HTTP_STATUS, getCurrentUser } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { LanguageSelect } from "../../shared/i18n/LanguageSelect";
 import "../../shared/ui/Dialog.css";
-import { Panel } from "../../shared/ui/PagePrimitives";
+import { Notice, Panel } from "../../shared/ui/PagePrimitives";
+import { Button } from "../../shared/ui/primitives/button";
 import { PageShell } from "../../shared/ui/PageShell";
 import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
 import { CallLogRetentionSection } from "./CallLogRetentionSection";
@@ -41,6 +42,17 @@ function tabLabel(tab: SettingsTab): string {
     case "templates": return t("templates.systemTitle");
   }
 }
+function tabDescription(tab: SettingsTab): string {
+  switch (tab) {
+    case "general": return t("settings.general.languageHint");
+    case "prompts": return t("settings.general.promptsHint");
+    case "styles": return t("settings.general.stylesHint");
+    case "security": return t("settings.general.securityHint");
+    case "logs": return t("settings.general.logsHint");
+    case "diagnostics": return t("settings.general.diagnosticsHint");
+    case "templates": return t("settings.general.templatesHint");
+  }
+}
 
 /** Tab panels remain mounted to preserve unsaved drafts; reads are enabled by category. */
 export function SystemSettingsPage() {
@@ -50,18 +62,23 @@ export function SystemSettingsPage() {
   const selected = TABS.find((tab) => tab === candidate) ?? TABS[FIRST_TAB];
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const choose = (tab: SettingsTab) => { const next = new URLSearchParams(params); next.set("tab", tab); setParams(next); };
+  if (currentUser.error instanceof ApiError && currentUser.error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   return <PageShell title={t("common.systemSettings")} description={t("settings.general.description") }>
-    <Tabs className="system-settings-workspace" value={selected} onValueChange={(value) => { const tab = TABS.find((item) => item === value); if (tab) choose(tab); }}>
+    {currentUser.isError ? <Notice tone="danger"><p>{t("settings.shared.sessionHint")}</p><Button variant="outline" type="button" disabled={currentUser.isFetching} onClick={() => { void currentUser.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
+    <Tabs className="system-settings-workspace" orientation="vertical" value={selected} onValueChange={(value) => { const tab = TABS.find((item) => item === value); if (tab) choose(tab); }}>
     <div className="system-settings-navigation">
+      <div className="system-settings-navigation-intro"><h2>{t("settings.general.categories")}</h2><p>{t("settings.general.navigationHint")}</p></div>
       <TabsList className="system-settings-tabs" variant="line" aria-label={t("settings.general.categories")}>
         {TABS.map((tab) => {
           const CategoryIcon = TAB_ICONS[tab];
-          return <TabsTrigger className="system-settings-tab" key={tab} value={tab}>
-            <CategoryIcon data-icon="inline-start" aria-hidden /><span>{tabLabel(tab)}</span>
+          return <TabsTrigger className="system-settings-tab" key={tab} value={tab} aria-label={tabLabel(tab)}>
+            <CategoryIcon data-icon="inline-start" aria-hidden /><span>{tabLabel(tab)}<small aria-hidden>{tabDescription(tab)}</small></span>
           </TabsTrigger>;
         })}
       </TabsList>
     </div>
+    <div className="system-settings-content">
+    <header className="system-settings-category-heading"><h2>{tabLabel(selected)}</h2><p>{tabDescription(selected)}</p></header>
     {TABS.map((tab) => <TabsContent key={tab} value={tab} forceMount className="system-settings-panel ui-stack" data-category={tab} hidden={selected !== tab}>
       {tab === "general" ? <Panel className="system-settings-language-panel">
         <div className="system-settings-language-intro">
@@ -77,6 +94,7 @@ export function SystemSettingsPage() {
       {tab === "diagnostics" ? <SystemDiagnosticsSection enabled={currentUser.isSuccess && selected === tab} /> : null}
       {tab === "templates" ? <SystemMediaTemplatesSection enabled={currentUser.data?.role === "ADMIN" && selected === tab} /> : null}
     </TabsContent>)}
+    </div>
     </Tabs>
   </PageShell>;
 }

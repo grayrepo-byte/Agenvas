@@ -1,9 +1,9 @@
 import { Field, FieldLabel, FieldGroup, FieldSet } from "../../shared/ui/primitives/field";
-import { HardDrives,ImageSquare,MusicNotes,PlugsConnected,Plus,VideoCamera } from "@/shared/ui/icons";
+import { ArrowLeft,ArrowRight,HardDrives,ImageSquare,MagnifyingGlass,MusicNotes,PlugsConnected,Plus,VideoCamera } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
 import { useEffect,useId,useRef,useState,type FormEvent } from "react";
-import { Link,Navigate } from "react-router";
+import { Navigate } from "react-router";
 import {
 HTTP_STATUS,ApiError,deleteMediaCapability,createMediaCapability,createMediaConnection,getCurrentUser,
 getMediaSettings,getKlingProfiles,getNativeMediaProfiles,setMediaDefault,updateMediaCapability,
@@ -45,6 +45,16 @@ const MODEL_LIMIT = 120;
 const settingsKey = ["settings", "media"] as const;
 const MEDIA_SETTINGS_TABS = ["connections", "capabilities"] as const;
 const NAME_LIMIT = 160;
+const CATALOG_STATUS = ["all", "enabled", "disabled"] as const;
+type CatalogStatus = typeof CATALOG_STATUS[number];
+function matchesCatalog(text: string, enabled: boolean, query: string, status: CatalogStatus) {
+  return text.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
+    && (status === "all" || enabled === (status === "enabled"));
+}
+function capabilityMatches(connection: MediaConnection, capability: MediaCapability, query: string, status: CatalogStatus) {
+  return matchesCatalog(`${connection.name} ${connection.platform} ${capability.name} ${adapterLabel(capability.adapterId)} ${capability.settings.model ?? ""}`,
+    connection.enabled && capability.enabled, query, status);
+}
 const cloudImageFields = [{ key: "model", get label() { return t("settings.mediaSettings.modelName"); } }] as const;
 
 function fixedModelFields(adapterId: string) {
@@ -98,11 +108,12 @@ const EDITOR_TABS = [
 type EditorTab = typeof EDITOR_TABS[number]["id"];
 
 function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, onAdapterChange, availableAdapters,
-  values, onChange, onWorkflowReady, creating = false, disabled }: {
+  values, onChange, onWorkflowReady, onBusyChange, discoveryBusy = false, resetKey = 0, creating = false, disabled }: {
   connectionId: string; name: string; onNameChange: (value: string) => void;
   adapterId: string; onAdapterChange: (value: string) => void; availableAdapters: string[];
   values: AdapterSettings; onChange: (value: AdapterSettings) => void;
   creating?: boolean; disabled: boolean; onWorkflowReady: (ready: boolean) => void;
+  onBusyChange: (busy: boolean) => void; discoveryBusy?: boolean; resetKey?: number;
 }) {
   const locale = useLocale();
   const fieldId = useId();
@@ -156,14 +167,18 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
     </FieldGroup>
     <ComfyWorkflowEditor key={adapterId} connectionId={connectionId} adapterId={adapterId} values={values} onChange={onChange} onReadyChange={onWorkflowReady} />
   </fieldset>;
-  if (adapterId.startsWith("RUNNINGHUB_")) return <div className="ui-stack"><fieldset disabled={disabled} className="ui-stack">
+  if (adapterId.startsWith("RUNNINGHUB_")) return <fieldset disabled={disabled} className="media-settings-fieldset runninghub-editor-fieldset">
+    <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub}
+      onBusyChange={onBusyChange} resetKey={resetKey} sourceDraft={values.runningHubSourceDraft}
+      onSourceDraftChange={(runningHubSourceDraft) => onChange({ ...values, runningHubSourceDraft })} identityFields={<FieldGroup className="ui-form-grid">
     <Field><FieldLabel className="ui-field block">{creating ? t("settings.mediaSettings.newCapabilityName") : t("settings.mediaSettings.capabilityName")}<Input required maxLength={NAME_LIMIT} value={name} onChange={(event) => onNameChange(event.target.value)} /></FieldLabel></Field>
-    <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.primaryOutputKind")}<Select value={adapterId} onChange={(event) => {
+    <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.primaryOutputKind")}<Select disabled={discoveryBusy} value={adapterId} onChange={(event) => {
       const kind = (Object.keys(RUNNINGHUB_OUTPUT_ADAPTERS) as (keyof typeof RUNNINGHUB_OUTPUT_ADAPTERS)[])
         .find((outputKind) => RUNNINGHUB_OUTPUT_ADAPTERS[outputKind] === event.target.value);
       if (kind) changeWorkflowOutput(kind);
     }}>{availableAdapters.map((adapter) => <option key={adapter} value={adapter}>{adapterLabel(adapter)}</option>)}</Select></FieldLabel></Field>
-    <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub}
+    </FieldGroup>}
+      pricingFields={<CapabilityConfigurationFields section="pricing" adapterId={adapterId} values={values} onChange={onChange} />}
       onDiscoveredName={(discoveredName) => {
         // Read the latest draft: the user can type a name while discovery is pending.
         if (!currentName.current.trim()) onNameChange(discoveredName);
@@ -172,8 +187,7 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
       if (primaryKind) changeWorkflowOutput(primaryKind, runningHub, runningHubSelectedNodeIds, runningHubSelectedFieldKeys);
       else onChange({ ...values, runningHub, runningHubSelectedNodeIds, runningHubSelectedFieldKeys });
     }} />
-    <CapabilityConfigurationFields section="pricing" adapterId={adapterId} values={values} onChange={onChange} />
-  </fieldset></div>;
+  </fieldset>;
   return <div className="media-editor ui-stack" onInvalidCapture={(event) => {
     // Reveal the invalid field before native form validation tries to focus it.
     const input = event.target;
@@ -186,11 +200,15 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
       requestAnimationFrame(() => input.focus());
     }
   }}>
-    <Tabs value={tab} onValueChange={(value) => { const next = EDITOR_TABS.find((item) => item.id === value); if (next) setTab(next.id); }}>
-    <TabsList className="w-full" aria-label={t("settings.mediaSettings.configurationSections")}>
-      {EDITOR_TABS.map((item) => <TabsTrigger key={item.id} value={item.id}>{item.label}</TabsTrigger>)}
+    <Tabs className="capability-editor-workspace" orientation="vertical" value={tab} onValueChange={(value) => { const next = EDITOR_TABS.find((item) => item.id === value); if (next) setTab(next.id); }}>
+    <TabsList className="capability-editor-navigation" aria-label={t("settings.mediaSettings.configurationSections")}>
+      {EDITOR_TABS.map((item, index) => <TabsTrigger key={item.id} value={item.id} aria-label={item.label}>
+        <span className="capability-step-number" aria-hidden>{String(index + 1).padStart(2, "0")}</span>
+        <span><strong>{item.label}</strong><small>{t(`settings.editor.${item.id}Hint`)}</small></span>
+      </TabsTrigger>)}
     </TabsList>
-    {EDITOR_TABS.map((item) => <TabsContent key={item.id} value={item.id} data-editor-tab={item.id} forceMount hidden={tab !== item.id}>
+    {EDITOR_TABS.map((item) => <TabsContent key={item.id} value={item.id} data-editor-tab={item.id} className="capability-editor-panel" forceMount hidden={tab !== item.id}>
+      <header className="capability-editor-section-heading"><span className="ui-muted">{t("settings.editor.step", { "0": EDITOR_TABS.findIndex((entry) => entry.id === item.id) + 1, "1": EDITOR_TABS.length })}</span><h3>{item.label}</h3><p>{t(`settings.editor.${item.id}Hint`)}</p></header>
       <FieldSet className="media-settings-fieldset" disabled={disabled}><FieldGroup className="ui-form-grid">
         {item.id === "model" ? <>
           <Field><FieldLabel className="ui-field block">{creating ? t("settings.mediaSettings.newCapabilityName") : t("settings.mediaSettings.capabilityName")}
@@ -216,6 +234,10 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
         </> : <CapabilityConfigurationFields section={item.id} adapterId={adapterId} values={values} onChange={onChange}
           nativeInputLimits={nativeProfile?.inputLimits ?? klingProfile?.inputLimits} />}
       </FieldGroup></FieldSet>
+      <div className="capability-editor-paging">
+        {item.id !== "model" ? <Button variant="ghost" type="button" onClick={() => setTab(EDITOR_TABS[EDITOR_TABS.findIndex((entry) => entry.id === item.id) - 1]!.id)}><ArrowLeft data-icon="inline-start" />{t("settings.editor.previous")}</Button> : <span />}
+        {item.id !== "pricing" ? <Button variant="outline" type="button" onClick={() => setTab(EDITOR_TABS[EDITOR_TABS.findIndex((entry) => entry.id === item.id) + 1]!.id)}>{t("settings.editor.next")}<ArrowRight data-icon="inline-end" /></Button> : <span className="ui-muted">{t("settings.editor.readyToSave")}</span>}
+      </div>
     </TabsContent>)}
     </Tabs>
   </div>;
@@ -271,14 +293,14 @@ function ConfigurationUpdatedNotice({ scope, disabled, onReload }: {
 }
 
 function CapabilityRow({ connectionId, connectionName, capability, isDefault, connectionEnabled,
-  availableAdapters, busy, apply, act }: {
+  availableAdapters, busy, hidden = false, apply, act }: {
   connectionId: string;
   connectionName: string;
   capability: MediaCapability;
   isDefault: boolean;
   connectionEnabled: boolean;
   availableAdapters: string[];
-  busy: boolean;
+  busy: boolean; hidden?: boolean;
   apply: (value: MediaSettings) => void;
   act: (type: "capability" | "default", capability: MediaCapability) => void;
 }) {
@@ -290,6 +312,8 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
   const [modelNames, setModelNames] = useState<AdapterSettings>(capability.settings);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [editorResetKey, setEditorResetKey] = useState(0);
   const [deleting, setDeleting] = useState<MediaCapability | null>(null);
   const [workflowReady, setWorkflowReady] = useState(false);
   const save = useMutation({
@@ -336,17 +360,18 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
   const deleteStale = deleting !== null && deleting.version !== capability.version;
   const sameKindAdapters = capability.adapterId.startsWith("RUNNINGHUB_") ? availableAdapters
     : [...new Set([capability.adapterId, ...availableAdapters.filter((id) => adapterMetadata(id)?.kind === capability.kind)])];
-  const rowBusy = busy || save.isPending || remove.isPending;
+  const rowBusy = busy || save.isPending || remove.isPending || importBusy;
   function loadLatest() {
     acceptBaseline(capability);
     setName(capability.name);
     setAdapterId(capability.adapterId);
     setModelNames(capability.settings);
+    setEditorResetKey((key) => key + 1);
     setError("");
   }
   const CapabilityIcon = capability.kind === "IMAGE_GENERATION" ? ImageSquare : capability.kind === "AUDIO_GENERATION" ? MusicNotes : VideoCamera;
   return <>
-    <TableRow>
+    <TableRow hidden={hidden}>
       <TableCell><div className="media-table-name"><CapabilityIcon size={19} /><div>
         <strong>{capability.name}</strong><small>{connectionName}</small>
       </div></div></TableCell>
@@ -355,7 +380,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       <TableCell><strong>{capability.kind === "VIDEO_GENERATION" ? t("settings.mediaSettings.durationRange", { "0": capability.minimumSeconds, "1": capability.maximumSeconds }) : capability.kind === "AUDIO_GENERATION" ? t("common.audio") : t("common.image")}</strong>
         <small>{t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages })}</small></TableCell>
       <TableCell>{capability.settings.pricing ? <>{capability.settings.pricing.amount} {capability.settings.pricing.currency}
-        <small>{t("settings.mediaSettings.unitPriceEstimate", { "0": capability.settings.pricing.unit === "SECOND" ? t("settings.mediaSettings.seconds") : capability.settings.pricing.unit === "VIDEO" ? t("settings.mediaSettings.videoUnit") : t("settings.mediaSettings.imageUnit") })}</small></> : <span className="ui-muted">{t("common.unset")}</span>}</TableCell>
+        <small>{t("settings.mediaSettings.unitPriceEstimate", { "0": capability.settings.pricing.unit === "SECOND" ? t("settings.mediaSettings.seconds") : capability.settings.pricing.unit === "VIDEO" ? t("settings.mediaSettings.videoUnit") : capability.settings.pricing.unit === "AUDIO" ? t("settings.editor.audioUnit") : t("settings.mediaSettings.imageUnit") })}</small></> : <span className="ui-muted">{t("common.unset")}</span>}</TableCell>
       <TableCell><div className="media-table-badges">
         <StatusBadge tone={capability.enabled && connectionEnabled ? "success" : "warning"}>{capability.enabled && connectionEnabled ? t("settings.mediaSettings.enabled") : t("settings.mediaSettings.disabled")}</StatusBadge>
         {isDefault ? <StatusBadge>{t("settings.mediaSettings.default")}</StatusBadge> : null}
@@ -384,7 +409,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
         onReload={() => { remove.reset(); setDeleting(capability); }} /> : null}
       {remove.isError ? <Notice tone="danger">{errorMessage(remove.error)}</Notice> : null}
     </Dialog> : null}
-    {editing ? <Dialog className={cn(isComfyAdapter(adapterId) && "comfy-capability-dialog", adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.editCapabilityNamed", { "0": capability.name })} description={`${connectionName} · ${adapterLabel(adapterId)}`}
+    {editing ? <Dialog className={cn("media-capability-dialog", isComfyAdapter(adapterId) && "comfy-capability-dialog", adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.editCapabilityNamed", { "0": capability.name })} description={`${connectionName} · ${adapterLabel(adapterId)}`}
       onClose={() => setEditing(false)} busy={rowBusy} onSubmit={(event) => {
         event.preventDefault(); if (isStale || rowBusy || (isComfyAdapter(adapterId) || isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId)) && !workflowReady) return; setError(""); save.mutate();
       }} footer={<>
@@ -395,7 +420,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
         {isStale ? <ConfigurationUpdatedNotice scope={t("settings.mediaSettings.capabilityParameters")} disabled={rowBusy} onReload={loadLatest} /> : null}
         <CapabilityEditorFields connectionId={connectionId} name={name} onNameChange={setName} adapterId={adapterId}
           onAdapterChange={(value) => { setAdapterId(value); setModelNames({}); }} availableAdapters={sameKindAdapters}
-          values={modelNames} onChange={setModelNames} onWorkflowReady={setWorkflowReady} disabled={rowBusy} />
+          values={modelNames} onChange={setModelNames} onWorkflowReady={setWorkflowReady} onBusyChange={setImportBusy} discoveryBusy={importBusy} resetKey={editorResetKey} disabled={busy || save.isPending || remove.isPending} />
         {error ? <Notice tone="danger">{error}</Notice> : null}
       </div>
     </Dialog> : null}
@@ -436,32 +461,33 @@ function useMediaActions(connection: MediaConnection, settings: MediaSettings, a
   });
 }
 
-function ConnectionCapabilities({ connection, settings, apply }: {
-  connection: MediaConnection; settings: MediaSettings; apply: (value: MediaSettings) => void;
+function ConnectionCapabilities({ connection, settings, apply, query, status }: {
+  connection: MediaConnection; settings: MediaSettings; apply: (value: MediaSettings) => void; query: string; status: CatalogStatus;
 }) {
   useLocale();
   const mutate = useMediaActions(connection, settings, apply);
   const systemManaged = connection.platform === "LOCAL";
   const availableAdapters = platformAdapters[connection.platform];
   return <>
-    {connection.capabilities.map((capability) => systemManaged ? <TableRow key={capability.id}>
+    {connection.capabilities.map((capability) => systemManaged ? <TableRow key={capability.id} hidden={!capabilityMatches(connection, capability, query, status)}>
       <TableCell><strong>{capability.name}</strong><small>{connection.name}</small></TableCell>
       <TableCell><strong>{adapterLabel(capability.adapterId)}</strong><small>{t("settings.mediaSettings.builtin")}</small></TableCell>
       <TableCell>{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.imageProcessing") : t("media.functions.videoTools")}<small>{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages }) : t("common.video")}</small></TableCell>
       <TableCell>{t("settings.mediaSettings.localExecution")}</TableCell><TableCell><StatusBadge tone="success">{t("settings.mediaSettings.enabled")}</StatusBadge></TableCell><TableCell className="ui-muted">{t("settings.mediaSettings.administration")}</TableCell>
     </TableRow> : <CapabilityRow key={capability.id} connectionId={connection.id} connectionName={connection.name}
       capability={capability} isDefault={settings.defaults.some((item) => item.kind === capability.kind && item.capabilityId === capability.id)}
-      connectionEnabled={connection.enabled} availableAdapters={availableAdapters} busy={mutate.isPending} apply={apply}
+      connectionEnabled={connection.enabled} availableAdapters={availableAdapters} busy={mutate.isPending} hidden={!capabilityMatches(connection, capability, query, status)} apply={apply}
       act={(type, selected) => mutate.mutate({ type, capability: selected })} />)}
     {mutate.isError ? <TableRow><TableCell colSpan={6}><Notice tone="danger">{errorMessage(mutate.error)}</Notice></TableCell></TableRow> : null}
   </>;
 
 }
 
-function ConnectionRow({ connection, settings, apply }: {
+function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPublish, onPublishClose }: {
   connection: MediaConnection;
   settings: MediaSettings;
   apply: (value: MediaSettings) => void;
+  hidden: boolean; publishOpen: boolean; onPublish: () => void; onPublishClose: () => void;
 }) {
   useLocale();
   const queryClient = useQueryClient();
@@ -474,7 +500,8 @@ function ConnectionRow({ connection, settings, apply }: {
   const [newModelNames, setNewModelNames] = useState<AdapterSettings>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [dialog, setDialog] = useState<"connection" | "capability" | null>(null);
+  const [dialog, setDialog] = useState<"connection" | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
   const [workflowReady, setWorkflowReady] = useState(false);
   const capabilityCreateKey = useRef<{ payload: string; key: string } | null>(null);
   const save = useMutation({
@@ -520,7 +547,7 @@ function ConnectionRow({ connection, settings, apply }: {
       setNewModelNames({});
       setError("");
       setNotice(t("settings.mediaSettings.capabilityPublished"));
-      setDialog(null);
+      onPublishClose();
     },
     onError: (cause) => {
       if (cause instanceof ApiError && cause.status === HTTP_STATUS.CONFLICT) {
@@ -530,7 +557,7 @@ function ConnectionRow({ connection, settings, apply }: {
     },
   });
   const mutate = useMediaActions(connection, settings, apply);
-  const busy = save.isPending || addCapability.isPending || mutate.isPending;
+  const busy = save.isPending || addCapability.isPending || mutate.isPending || importBusy;
   const systemManaged = connection.platform === "LOCAL";
   const availableAdapters = systemManaged ? [] : platformAdapters[connection.platform];
 
@@ -552,7 +579,7 @@ function ConnectionRow({ connection, settings, apply }: {
 
 
   return <>
-    <TableRow>
+    <TableRow hidden={hidden}>
       <TableCell><div className="media-table-name">{systemManaged ? <HardDrives size={18} aria-hidden /> : <PlugsConnected size={18} aria-hidden />}<div><strong>{connection.name}</strong><small>{t("settings.mediaSettings.capabilityCount", { "0": connection.platform, "1": connection.capabilities.length })}</small></div></div></TableCell>
       <TableCell><span className="media-table-endpoint">{connection.origin || (connection.platform === "ARK" ? "https://ark.cn-beijing.volces.com/api/v3" : systemManaged ? t("settings.mediaSettings.builtin") : t("settings.mediaSettings.platformDefaultUrl"))}</span>
         <small>{connection.keyMask ? t("settings.mediaSettings.credentialPrefix", { "0": connection.keyMask }) : ""}{systemManaged ? t("media.functions.localMedia") : t("common.configured")}</small>
@@ -561,12 +588,12 @@ function ConnectionRow({ connection, settings, apply }: {
       <TableCell>{systemManaged ? <span className="ui-muted">{t("settings.mediaSettings.administration")}</span> : <div className="media-table-actions">
         <Button variant="outline"  type="button" disabled={busy} onClick={() => setDialog("connection")}>{t("settings.mediaSettings.editConnection")}</Button>
         <Button variant="outline"  type="button" disabled={busy || !connection.enabled || !availableAdapters.length}
-          onClick={() => setDialog("capability")}>{t("settings.mediaSettings.publishCapability")}</Button>
+          onClick={onPublish}>{t("settings.mediaSettings.publishCapability")}</Button>
         <Button variant="ghost"  type="button" disabled={busy}
           onClick={() => mutate.mutate({ type: "connection" })}>{connection.enabled ? t("settings.mediaSettings.disableConnection") : t("settings.mediaSettings.enableConnection")}</Button>
       </div>}</TableCell>
     </TableRow>
-    {mutate.isError || (error && !dialog) || notice ? <TableRow><TableCell colSpan={4}>{mutate.isError || (error && !dialog) ? <Notice tone="danger">{mutate.isError ? errorMessage(mutate.error) : error}</Notice> : <Notice tone="success">{notice}</Notice>}</TableCell></TableRow> : null}
+    {mutate.isError || (error && !dialog && !publishOpen) || notice ? <TableRow><TableCell colSpan={4}>{mutate.isError || (error && !dialog && !publishOpen) ? <Notice tone="danger">{mutate.isError ? errorMessage(mutate.error) : error}</Notice> : <Notice tone="success">{notice}</Notice>}</TableCell></TableRow> : null}
     {dialog === "connection" ? <Dialog title={t("settings.mediaSettings.editConnectionNamed", { "0": connection.name })} description={t("settings.mediaSettings.connectionTitle", { "0": connection.platform })}
       onClose={() => setDialog(null)} onSubmit={submitConnection} busy={busy} footer={<>
         <Button variant="outline"  type="button" disabled={busy} onClick={() => setDialog(null)}>{t("common.cancel")}</Button>
@@ -581,17 +608,17 @@ function ConnectionRow({ connection, settings, apply }: {
         {error ? <Notice tone="danger">{error}</Notice> : null}
       </div>
     </Dialog> : null}
-    {dialog === "capability" ? <Dialog className={cn(isComfyAdapter(adapterId) && "comfy-capability-dialog", adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.publishNewCapability")} description={`${connection.name} · ${adapterLabel(adapterId)}`}
-      onClose={() => setDialog(null)} busy={busy} onSubmit={(event) => {
+    {publishOpen ? <Dialog className={cn("media-capability-dialog", isComfyAdapter(adapterId) && "comfy-capability-dialog", adapterId === AUTODL_ADAPTER && "autodl-capability-dialog", adapterId.startsWith("RUNNINGHUB_") && "runninghub-capability-dialog")} title={t("settings.mediaSettings.publishNewCapability")} description={`${connection.name} · ${adapterLabel(adapterId)}`}
+      onClose={onPublishClose} busy={busy} onSubmit={(event) => {
         event.preventDefault(); if (busy || !connection.enabled || (isComfyAdapter(adapterId) || isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId)) && !workflowReady) return; setError(""); addCapability.mutate();
       }} footer={<>
-        <Button variant="outline"  type="button" disabled={busy} onClick={() => setDialog(null)}>{t("common.cancel")}</Button>
+        <Button variant="outline"  type="button" disabled={busy} onClick={onPublishClose}>{t("common.cancel")}</Button>
         <Button variant="default"  type="submit" disabled={busy || !connection.enabled || (isComfyAdapter(adapterId) || isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId)) && !workflowReady}>{addCapability.isPending ? t("settings.mediaSettings.publishing") : t("settings.mediaSettings.publishCapability")}</Button>
       </>}>
       <div className="ui-stack">
         <CapabilityEditorFields connectionId={connection.id} name={capabilityName} onNameChange={setCapabilityName} adapterId={adapterId}
           onAdapterChange={(value) => { setAdapterId(value); setNewModelNames({}); }} availableAdapters={availableAdapters}
-          values={newModelNames} onChange={setNewModelNames} onWorkflowReady={setWorkflowReady} creating disabled={busy || !connection.enabled} />
+          values={newModelNames} onChange={setNewModelNames} onWorkflowReady={setWorkflowReady} onBusyChange={setImportBusy} discoveryBusy={importBusy} creating disabled={save.isPending || addCapability.isPending || mutate.isPending || !connection.enabled} />
         {!connection.enabled ? <Notice tone="warning">{t("settings.mediaSettings.enableBeforePublish")}</Notice> : null}
         {error ? <Notice tone="danger">{error}</Notice> : null}
       </div>
@@ -603,6 +630,10 @@ export function MediaSettingsPage() {
   useLocale();
   const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState<typeof MEDIA_SETTINGS_TABS[number]>("connections");
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("all");
+  const [chooseConnection, setChooseConnection] = useState(false);
+  const [publishingConnectionId, setPublishingConnectionId] = useState<string | null>(null);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const settings = useQuery({ queryKey: settingsKey, queryFn: getMediaSettings,
     enabled: currentUser.isSuccess, retry: false });
@@ -634,7 +665,7 @@ export function MediaSettingsPage() {
   }
   return <PageShell title={t("settings.mediaSettings.title")}
     description={t("settings.mediaSettings.managementHint")}
-    actions={<Link className="secondary-button" to="/settings/llm">{t("settings.mediaSettings.llmSettings")}</Link>}>
+    actions={<Button type="button" onClick={() => setCreating(true)}><Plus data-icon="inline-start" />{t("settings.mediaSettings.addConnection")}</Button>}>
     <div className="media-settings-page ui-stack">
       {settings.data ? <SummaryStrip items={[
         { label: t("settings.mediaSettings.connections"), value: t("settings.mediaSettings.itemCount", { "0": settings.data.connections.length }), detail: t("settings.mediaSettings.connectionTypes") },
@@ -653,24 +684,32 @@ export function MediaSettingsPage() {
             disabled={settings.isFetching}>{settings.isFetching ? t("common.retrying") : t("common.refresh")}</Button>
         </Notice> : null}
       {settings.data ? <>
-        <Tabs className="min-w-0" value={selectedTab} onValueChange={(value) => {
+        <Tabs className="min-w-0 media-catalog" value={selectedTab} onValueChange={(value) => {
           const tab = MEDIA_SETTINGS_TABS.find((entry) => entry === value);
           if (tab) setSelectedTab(tab);
         }}>
-        <TabsList aria-label={t("settings.mediaSettings.title")}>
+        <div className="media-catalog-topline"><TabsList aria-label={t("settings.mediaSettings.title")}>
         <TabsTrigger value="connections">{t("settings.mediaSettings.connections")}<span className="settings-tab-count" aria-hidden>{settings.data.connections.length}</span></TabsTrigger>
         <TabsTrigger value="capabilities">{t("settings.mediaSettings.publishedCapabilities")}<span className="settings-tab-count" aria-hidden>{settings.data.connections.reduce((count, connection) => count + connection.capabilities.length, 0)}</span></TabsTrigger>
         </TabsList>
+        <Button variant="outline" type="button" onClick={() => setChooseConnection(true)}><Plus data-icon="inline-start" />{t("settings.mediaSettings.publishNewCapability")}</Button></div>
+        <FieldGroup className="media-catalog-toolbar"><Field className="media-catalog-search"><FieldLabel className="sr-only" htmlFor="media-catalog-search">{t("settings.catalog.search")}</FieldLabel><MagnifyingGlass aria-hidden /><Input id="media-catalog-search" placeholder={t("settings.catalog.searchPlaceholder")} value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} /></Field>
+          <Field><FieldLabel className="sr-only" htmlFor="media-catalog-status">{t("settings.catalog.filterStatus")}</FieldLabel><Select id="media-catalog-status" value={catalogStatus} onChange={(event) => { const status = CATALOG_STATUS.find((entry) => entry === event.target.value); if (status) setCatalogStatus(status); }}><option value="all">{t("logs.calls.allStatuses")}</option><option value="enabled">{t("settings.mediaSettings.enabled")}</option><option value="disabled">{t("settings.mediaSettings.disabled")}</option></Select></Field>
+        </FieldGroup>
         {/* Keep row drafts and save feedback when switching between settings sections. */}
         <TabsContent value="connections" forceMount hidden={selectedTab !== "connections"} className="min-w-0">
         <Panel className="media-services-panel" title={t("settings.mediaSettings.connections")} description={t("settings.mediaSettings.publishHint")}
-          actions={<Button variant="default" size="sm" type="button" onClick={() => setCreating(true)}><Plus data-icon="inline-start" aria-hidden />{t("settings.mediaSettings.addConnection")}</Button>}>
+          >
           {settings.data.connections.length === 0 ? <EmptyState icon={<PlugsConnected size={30} />} title={t("settings.mediaSettings.connectionsEmpty")}
             description={t("settings.mediaSettings.connectionsEmptyHint")} /> : <div className="media-table-scroll" tabIndex={0} role="region" aria-label={t("settings.mediaSettings.connectionsTable")}>
-            <Table className="media-settings-table" aria-label={t("settings.mediaSettings.connections")}><TableHeader><TableRow>
+            <Table className="media-settings-table media-connections-table" aria-label={t("settings.mediaSettings.connections")}><TableHeader><TableRow>
               <TableHead scope="col">{t("settings.mediaSettings.connectionPlatform")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.credentials")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.status")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.operations")}</TableHead>
             </TableRow></TableHeader><TableBody>{settings.data.connections.map((connection) => <ConnectionRow key={connection.id}
-              connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)} />)}</TableBody></Table>
+              connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)}
+              hidden={!matchesCatalog(`${connection.name} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus)}
+              publishOpen={publishingConnectionId === connection.id} onPublish={() => setPublishingConnectionId(connection.id)} onPublishClose={() => setPublishingConnectionId(null)} />)}
+              {!settings.data.connections.some((connection) => matchesCatalog(`${connection.name} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus)) ? <TableRow><TableCell colSpan={4}><EmptyState title={t("settings.catalog.noResults")} description={t("settings.catalog.tryAnotherSearch")} /></TableCell></TableRow> : null}
+              </TableBody></Table>
           </div>}
         </Panel>
         </TabsContent>
@@ -678,16 +717,22 @@ export function MediaSettingsPage() {
         <Panel className="media-services-panel" title={t("settings.mediaSettings.publishedCapabilities")} description={t("settings.mediaSettings.description")}>
           {settings.data.connections.every((connection) => connection.capabilities.length === 0) ? <p className="ui-muted">{t("settings.mediaSettings.capabilitiesEmpty")}</p>
             : <div className="media-table-scroll" tabIndex={0} role="region" aria-label={t("settings.mediaSettings.capabilitiesTable")}>
-              <Table className="media-settings-table" aria-label={t("settings.mediaSettings.publishedCapabilities")}><TableHeader><TableRow>
+              <Table className="media-settings-table media-capabilities-table" aria-label={t("settings.mediaSettings.publishedCapabilities")}><TableHeader><TableRow>
                 <TableHead scope="col">{t("settings.mediaSettings.capabilityConnection")}</TableHead><TableHead scope="col">{t("common.model")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.inputRange")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.price")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.status")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.operations")}</TableHead>
               </TableRow></TableHeader><TableBody>{settings.data.connections.map((connection) => <ConnectionCapabilities key={connection.id}
-                connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)} />)}</TableBody></Table>
+                connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)} query={catalogQuery} status={catalogStatus} />)}
+                {!settings.data.connections.some((connection) => connection.capabilities.some((capability) => capabilityMatches(connection, capability, catalogQuery, catalogStatus))) ? <TableRow><TableCell colSpan={6}><EmptyState title={t("settings.catalog.noResults")} description={t("settings.catalog.tryAnotherSearch")} /></TableCell></TableRow> : null}
+                </TableBody></Table>
             </div>}
         </Panel>
         </TabsContent>
         </Tabs>
         <Notice title={t("settings.mediaSettings.configurationHint")}>
           {t("settings.mediaSettings.defaultsHint")}</Notice>
+        {chooseConnection ? <Dialog compact title={t("settings.catalog.chooseConnection")} description={t("settings.catalog.chooseConnectionHint")} onClose={() => setChooseConnection(false)} onSubmit={(event) => event.preventDefault()}>
+          <div className="media-publish-choices">{settings.data.connections.filter((connection) => connection.enabled && connection.platform !== "LOCAL" && platformAdapters[connection.platform].length > 0).map((connection) => <Button className="media-publish-choice" variant="outline" type="button" key={connection.id} onClick={() => { setChooseConnection(false); setPublishingConnectionId(connection.id); }}><PlugsConnected aria-hidden /><span><strong>{connection.name}</strong><small>{connection.platform}</small></span><ArrowRight aria-hidden /></Button>)}</div>
+          {!settings.data.connections.some((connection) => connection.enabled && connection.platform !== "LOCAL" && platformAdapters[connection.platform].length > 0) ? <EmptyState title={t("settings.catalog.noConnection")} action={<Button type="button" onClick={() => { setChooseConnection(false); setCreating(true); }}>{t("settings.mediaSettings.addConnection")}</Button>} /> : null}
+        </Dialog> : null}
         {creating ? <Dialog title={t("settings.mediaSettings.addConnection")} description={t("settings.mediaSettings.connectionHint")} busy={create.isPending}
           onClose={() => setCreating(false)} onSubmit={(event) => { event.preventDefault(); if (create.isPending) return; setError(""); create.mutate(); }}
           footer={<>
