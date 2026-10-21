@@ -2372,3 +2372,10 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 合成 Mock 浏览器逐页核对全部 13 类页面：初始化、登录、项目、画布、资产、Skill 和七类设置；页面桌面/390px 检查无文档级横向溢出，初始化另查 320px。实测项目创建/搜索/收起导航、画布选中与参数/模板弹窗、导演窗口、资产图片详情/全部资源音频详情、媒体连接编辑；另核对 900px 俄语认证页。Skill 既有浏览器布局专项覆盖 2364/1440/1024/780/390px。首次截图遇到开发资源与入场时序，重新读取布局并在资源就绪后重采集；未把中间帧当作通过证据。截图仅含合成内容，保存在仓库外私有目录。
 - [x] 新增 `e2e/system-design.html` / `.tsx`，真实认证与项目组件使用隔离内存 HTTP 数据，可查看列表/空态/初始化状态并验证本地写入，全部请求拦截且不保存密码；开发预览不进入生产入口。修复 Skill 布局测试按无计数文案匹配的过时选择器，改用既有可访问名称。
 - [ ] 全量测试、后端测试、真实 Provider、真实上传/认证网络、部署及浏览器减少动态效果模拟未运行；减少动态效果规则仅静态核对。
+
+## 2026-10-21 CI 后端测试修复
+
+- [x] 将默认消息目录中 7 条 SMB/WebDAV 文案与中文目录同步，恢复默认中文及四语言目录一致性；历史工具策略 v3 的 Skill 图片测试固定自己的允许列表，避免当前 v4 新增画布工具污染历史协议夹具，保留历史策略的拒绝校验。无 API、数据库迁移或依赖变更。
+- [x] 先定向复现 `MessageCatalogTest` 和 `ProgressiveSkillTest` 的 1 项失败、1 项异常；修复后执行 `./mvnw --batch-mode --no-transfer-progress -Dtest=MessageCatalogTest,ApiI18nTest,SecurityI18nTest,LocalizedResponseTest,ProgressiveSkillTest,RunToolPolicyTest,InitialModelContextServiceTest test`，35 项全部通过，无失败、错误或跳过。差异空白检查通过。
+- [x] 同一轮 CI 的图片反推升级测试仍将 V23 至最新版的迁移数写死为 1；真实 PostgreSQL 定向复现实际执行 3 个迁移后，复用 `MigrationVersions` 动态计算预期数量，保留全部提示词内容与内置标志断言。执行 `./mvnw --batch-mode --no-transfer-progress -Pci-integration -Dit.test=ImagePromptPostgresIT verify`，6 项真实 PostgreSQL 集成测试全部通过，无失败、错误或跳过；使用合成素材与假模型，无真实 Provider 调用。
+- [ ] 全量测试、其余 PostgreSQL 集成测试、真实 Provider 与部署未运行；远端 CI 尚未以本次修复重新验证。

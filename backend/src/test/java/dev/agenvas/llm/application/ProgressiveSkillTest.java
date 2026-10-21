@@ -160,9 +160,10 @@ class ProgressiveSkillTest {
 
     @Test void newImageProtocolIsVersionedWithoutChangingHistoricalProgressiveRules() {
         var policy = mapper.createObjectNode().put("toolPolicyVersion", 3).put("systemPromptVersion", 9);
-        policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.current(true, true, true)));
+        // Pin historical tools rather than inheriting additions to the current policy.
+        policy.putArray("allowedTools").add("read_skill_asset").add("read_skill").add("read_skill_resource");
         assertThat(new ToolRegistry().modelDefinitions(policy).stream().map(tool -> tool.getToolDefinition().name()))
-                .contains("read_skill_asset", "read_skill", "read_skill_resource");
+                .containsExactlyInAnyOrder("read_skill_asset", "read_skill", "read_skill_resource");
         assertThat(RunToolPolicy.current(true, true, false)).doesNotContain("read_skill_asset");
         assertThat(InitialModelContextService.systemRules(policy)).contains("read_skill_asset", "LLM context only")
                 .doesNotContain("required PROVIDER_REFERENCE assets must appear", "GUIDE assets are context only");
