@@ -95,7 +95,7 @@ class ProjectEventStreamPostgresIT {
         Project project = projectService.create(
                 owner.userId(), "Stream project", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agentService.create(
-                owner.userId(), project.id(), "Creator", "Create", List.of());
+                owner.userId(), project.id(), "Creator", "Create");
 
         HttpClient anonymous = HttpClient.newHttpClient();
         assertThat(anonymous.send(eventRequest(project.id(), 0, null),

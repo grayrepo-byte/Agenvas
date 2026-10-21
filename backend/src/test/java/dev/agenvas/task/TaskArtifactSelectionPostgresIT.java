@@ -78,7 +78,7 @@ class TaskArtifactSelectionPostgresIT {
         mediaProjectId = project.id();
         ArtifactService.ArtifactView image = artifacts.create(owner.userId(), project.id(),
                 Artifact.Kind.IMAGE, "Shot image", media(UUID.randomUUID(), "seed"));
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create three shots", "selection-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),

@@ -67,21 +67,17 @@ class AgentRunMediaInputsPostgresIT {
                 mapper.createObjectNode().put("sourceType", "UPLOAD").put("assetId", assetId.toString()), null, null);
         UUID nodeVersion = uploaded.selectedVersion().id();
         assertThat(artifacts.get(owner.userId(), project.id(), media.artifact().id()).resourceDefaultVersion()).isNull();
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Use the bound reference", List.of());
-        UUID agentNode = UUID.randomUUID();
-        canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceAgent(agentNode, agent.id(),
-                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("460"), new BigDecimal("600"), 0, null, false)));
-        agent = connections.connect(owner.userId(), project.id(), imageNode, agentNode, nodeVersion,
-                CanvasConnection.RelationType.AGENT_IMAGE_INPUT, null, agent.version()).agent();
+        var agent = agents.create(owner.userId(), project.id(), "Creator", "Use the bound reference");
         var preflight = runs.preflight(owner.userId(), project.id(), agent.id());
-        assertThat(preflight.bindings()).singleElement().satisfies(binding -> assertThat(binding.selectedVersionId()).isEqualTo(nodeVersion));
+        assertThat(preflight.bindings()).isEmpty();
         var bound = runs.create(owner.userId(), project.id(), agent.id(), "Use the image", "bound-media").run();
-        assertThat(bound.contextSnapshot().at("/bindings/0/selectedVersionId").asText()).isEqualTo(nodeVersion.toString());
-        assertThat(bound.contextSnapshot().at("/bindings/0").has("expectedVersion")).isFalse();
+        assertThat(bound.contextSnapshot().path("bindings")).isEmpty();
+        assertThat(bound.contextSnapshot().path("canvasScope").path("items"))
+                .anySatisfy(item -> assertThat(item.path("selectedVersionId").asText()).isEqualTo(nodeVersion.toString()));
         assertThat(tasks.listByRun(owner.userId(), project.id(), bound.id())).singleElement()
                 .satisfies(task -> assertThat(task.kind()).isEqualTo(Task.Kind.AGENT_TURN));
         runs.cancel(owner.userId(), project.id(), bound.id());
-        var selectionOnly = agents.create(owner.userId(), project.id(), "Selection", "Read the selection", List.of());
+        var selectionOnly = agents.create(owner.userId(), project.id(), "Selection", "Read the selection");
         var selected = runs.create(owner.userId(), project.id(), selectionOnly.id(), "Read selection", "selected-media",
                 null, List.of(imageNode, emptyNode)).run();
         assertThat(selected.contextSnapshot().at("/selection/0/versionId").asText()).isEqualTo(nodeVersion.toString());

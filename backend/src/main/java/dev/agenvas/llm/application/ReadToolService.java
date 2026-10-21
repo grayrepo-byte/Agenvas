@@ -7,6 +7,7 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
@@ -196,21 +197,42 @@ public class ReadToolService {
         throw invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run"));
     }
 
-    /** 返回 Run 创建时记录的界面选择供理解意图；该快照不能作为写入授权。 */
+    /** Selection remains frozen intent. New canvas Runs page large selections; historical replies are unchanged. */
     public JsonNode selection(AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
-        if (!input.isEmpty()) {
+        boolean paged = dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot());
+        if ((!paged && !input.isEmpty()) || (paged && input.propertyNames().stream()
+                .anyMatch(field -> !Set.of("offset", "limit").contains(field)))) {
             throw invalid(ApiMessage.of("api.read-tool-service.read-selection-takes-no-arguments"));
         }
         JsonNode selected = run.contextSnapshot().path("selection");
         if (!selected.isMissingNode() && (!selected.isArray()
-                || selected.size() > 20)) {
+                || selected.size() > (paged ? AgentRunService.MAX_SELECTED_ITEMS : 20))) {
             throw new IllegalStateException("Run selection snapshot is malformed");
         }
         ObjectNode output = result(operationId, "已读取运行开始时选中的画布卡片");
-        output.set("data", selected.isMissingNode()
-                ? mapper.createArrayNode() : selected.deepCopy());
+        if (!paged) {
+            output.set("data", selected.isMissingNode() ? mapper.createArrayNode() : selected.deepCopy());
+            return output;
+        }
+        int offset = pageInteger(input, "offset", 0);
+        int limit = pageInteger(input, "limit", 20);
+        int total = selected.isMissingNode() ? 0 : selected.size();
+        if (limit < 1 || limit > 40 || offset > total) throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        int end = Math.min(total, offset + limit);
+        output.put("offset", offset).put("total", total);
+        if (end < total) output.put("nextOffset", end); else output.putNull("nextOffset");
+        var data = output.putArray("data");
+        for (int index = offset; index < end; index++) data.add(selected.get(index).deepCopy());
         return output;
+    }
+
+    private int pageInteger(ObjectNode input, String field, int fallback) {
+        if (!input.has(field)) return fallback;
+        JsonNode value = input.path(field);
+        if (!value.isIntegralNumber() || !value.canConvertToInt() || value.intValue() < 0)
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        return value.intValue();
     }
 
     /** 仅读取显式绑定或本 Run 创建的版本，并限制完整内联内容的大小。 */
@@ -257,7 +279,9 @@ public class ReadToolService {
                 item.put("title", view.artifact().title());
             }
             boolean mutableInRun = context.runId().equals(version.runId());
-            if (current && (mutableInRun || unchangedBinding(run, version,
+            if (current && (mutableInRun || (view.artifact().kind() == Artifact.Kind.TEXT
+                    && dev.agenvas.run.domain.RunCanvasScope.unchangedText(
+                    run.contextSnapshot(), version.artifactId(), versionId, view.artifact().version())) || unchangedBinding(run, version,
                     view.artifact().version()))) {
                 item.put("expectedVersion", view.artifact().version());
             }

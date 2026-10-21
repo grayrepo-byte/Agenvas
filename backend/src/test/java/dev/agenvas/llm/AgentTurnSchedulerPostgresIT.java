@@ -74,7 +74,7 @@ class AgentTurnSchedulerPostgresIT {
         Project project = projects.create(owner.userId(), "Scheduler project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
-                "Complete this small task", List.of());
+                "Complete this small task");
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                 "Say the task is done", "scheduler-run").run();
 
@@ -97,7 +97,7 @@ class AgentTurnSchedulerPostgresIT {
         Project project = projects.create(owner.userId(), "Bounded scheduler project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
-                "Inspect the project", List.of());
+                "Inspect the project");
         int callsBefore = gateway.calls.get();
         gateway.keepRequestingTools.set(true);
         try {
@@ -132,7 +132,7 @@ class AgentTurnSchedulerPostgresIT {
     void unboundedRunPassesTwelveAndFortyTurnsWithBoundedContextAndCanFinish() throws Exception {
         AdminPrincipal owner = owner();
         Project project = projects.create(owner.userId(), "Long synthetic run", Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Reader", "Keep concise public observations", List.of());
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Reader", "Keep concise public observations");
         int before = gateway.calls.get();
         gateway.stopAfter.set(before + 90);
         try {

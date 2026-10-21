@@ -7,7 +7,8 @@ import tools.jackson.databind.JsonNode;
 /** Pins definitions and execution to the same Run policy, including historical checkpoints. */
 public final class RunToolPolicy {
     public static final int PROGRESSIVE_VERSION = 2;
-    public static final int CURRENT_VERSION = 3;
+    public static final int SKILL_IMAGE_VERSION = 3;
+    public static final int CURRENT_VERSION = 4;
     private static final List<String> LEGACY = List.of("read_project_summary", "read_selection",
             "read_artifacts", "read_task_status", "create_text", "revise_artifact",
             "place_artifacts", "arrange_items");
@@ -18,8 +19,11 @@ public final class RunToolPolicy {
 
     private static final List<String> V2 = java.util.stream.Stream.concat(V1.stream(),
             java.util.stream.Stream.of("read_skill")).toList();
-    public static final List<String> CURRENT = java.util.stream.Stream.concat(V2.stream(),
+    private static final List<String> V3 = java.util.stream.Stream.concat(V2.stream(),
             java.util.stream.Stream.of("read_skill_asset")).toList();
+
+    public static final List<String> CURRENT = java.util.stream.Stream.concat(V3.stream(),
+            java.util.stream.Stream.of("read_canvas", "manage_canvas_node", "update_media_draft")).toList();
 
     private RunToolPolicy() {}
 
@@ -43,13 +47,14 @@ public final class RunToolPolicy {
         }
         JsonNode version = policy.path("toolPolicyVersion");
         JsonNode tools = policy.path("allowedTools");
-        if (!version.isIntegralNumber() || !version.canConvertToInt() || (version.intValue() != 1 && version.intValue() != PROGRESSIVE_VERSION && version.intValue() != CURRENT_VERSION) || !tools.isArray()
+        if (!version.isIntegralNumber() || !version.canConvertToInt() || (version.intValue() != 1 && version.intValue() != PROGRESSIVE_VERSION && version.intValue() != SKILL_IMAGE_VERSION && version.intValue() != CURRENT_VERSION) || !tools.isArray()
                 || tools.isEmpty() || tools.size() > CURRENT.size()) {
             throw new IllegalStateException("Unsupported Run tool policy");
         }
         List<String> supported = switch (version.intValue()) {
             case 1 -> V1;
             case PROGRESSIVE_VERSION -> V2;
+            case SKILL_IMAGE_VERSION -> V3;
             default -> CURRENT;
         };
         LinkedHashSet<String> result = new LinkedHashSet<>();

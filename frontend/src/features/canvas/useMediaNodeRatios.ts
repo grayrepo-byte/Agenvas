@@ -12,7 +12,7 @@ const combineAssets = (results: UseQueryResult<Asset>[]) => results.map((result)
 /** Images preview draft ratios; video results always fit the displayed asset's actual pixels. */
 export function useMediaNodeRatios(items: CanvasItem[] = EMPTY_ITEMS): Record<string, number> {
   const localRatios = useCanvasStore((state) => state.imageRatioDrafts);
-  const mediaItems = useMemo(() => items.flatMap((item) => item.artifact?.kind === "IMAGE" || item.artifact?.kind === "VIDEO"
+  const mediaItems = useMemo(() => items.flatMap((item) => item.artifact.kind === "IMAGE" || item.artifact.kind === "VIDEO"
     ? [{ item, artifact: item.artifact }] : []), [items]);
   const drafts = useQueries({ queries: mediaItems.map(({ item, artifact }) =>
     mediaDraftQueryOptions(artifact.projectId, item.id)),

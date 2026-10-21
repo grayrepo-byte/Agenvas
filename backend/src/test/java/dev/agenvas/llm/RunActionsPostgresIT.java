@@ -89,7 +89,7 @@ class RunActionsPostgresIT {
         Project project = projects.create(owner.userId(), "Actions project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
-                "PRIVATE_AGENT_PROMPT", List.of());
+                "PRIVATE_AGENT_PROMPT");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "PRIVATE_TOOL_ARGUMENT", "actions-run").run();
         MockMvc mvc = webAppContextSetup(webContext).apply(springSecurity()).build();

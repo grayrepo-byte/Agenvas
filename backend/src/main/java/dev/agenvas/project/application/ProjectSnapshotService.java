@@ -31,7 +31,7 @@ public class ProjectSnapshotService {
     private final CanvasService canvas;
     /** 读取与画布项处于同一快照水位的持久化连线。 */
     private final CanvasConnectionService connections;
-    /** 读取项目 Agent 配置和固定输入。 */
+    /** 读取项目助手配置。 */
     private final AgentInstanceService agents;
     /** 按项目锚点读取活动 Run。 */
     private final AgentRunService runs;
@@ -42,7 +42,7 @@ public class ProjectSnapshotService {
      * @param projects 检查项目授权并读取一致性锚点
      * @param projectRepository 获取数据库快照水位
      * @param canvas 读取画布空间项
-     * @param agents 读取卡片与固定绑定
+     * @param agents 读取项目助手配置
      * @param runs 读取活动及历史 Run 状态
      * @param tasks 读取项目任务状态
      */
@@ -113,7 +113,7 @@ public class ProjectSnapshotService {
      * @param project 项目设置及事件序号
      * @param canvas 当前画布展示项
      * @param connections 固定精确来源版本的当前画布连线
-     * @param agents 项目 Agent 卡片及固定输入
+     * @param agents 项目助手及会话身份
      * @param activeRun 当前占用项目槽位的 Run；无活动 Run 时为空
      * @param activeTasks 活动 Run 与用户直接媒体任务
      * @param unknownTasks 结果未知、需要人工处理的未决任务

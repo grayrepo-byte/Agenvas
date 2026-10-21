@@ -11,6 +11,8 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppC
 
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.MediaDraftService;
+import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
@@ -45,6 +47,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -141,6 +144,7 @@ class AgentMediaApprovalPostgresIT {
     @Autowired private AgentMediaApprovalService approvals;
     @Autowired private AgentMediaOutcomeService outcomes;
     @Autowired private MediaDraftService drafts;
+    @Autowired private ArtifactService artifacts;
     @Autowired private MediaCapabilityService capabilities;
     @Autowired private CanvasService canvas;
     @Autowired private CanvasConnectionService connections;
@@ -508,7 +512,7 @@ class AgentMediaApprovalPostgresIT {
         assertThat(card.selectedVersion().frozenInput().at("/images/0/role").asText()).isEqualTo("START_FRAME");
         assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
         assertThat(currentRun(video).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
-        connections.disconnect(owner.userId(), video.project().id(), line.id(), preparedDraft.version(), null);
+        connections.disconnect(owner.userId(), video.project().id(), line.id(), preparedDraft.version());
         assertThat(drafts.get(owner.userId(), video.project().id(), videoCardId).mediaInputs()).isEmpty();
         assertThat(connections.list(owner.userId(), video.project().id())).noneMatch(value -> value.id().equals(line.id()));
         assertThat(canvas.list(owner.userId(), video.project().id()).stream()
@@ -538,7 +542,7 @@ class AgentMediaApprovalPostgresIT {
                 .filter(value -> value.item().id().equals(line.sourceCanvasItemId())).findFirst().orElseThrow();
         assertThat(source.item().selectedVersionId().toString()).isEqualTo(imageVersion);
         assertThat(source.artifact().artifact().resourceDefaultVersionId()).isNull();
-        connections.disconnect(owner.userId(), image.project().id(), line.id(), next.outputs().getFirst().draftVersion(), null);
+        connections.disconnect(owner.userId(), image.project().id(), line.id(), next.outputs().getFirst().draftVersion());
         assertThat(drafts.get(owner.userId(), image.project().id(), targetId).mediaInputs()).isEmpty();
         mvc.perform(post(decisionPath(new Scenario(image.project(), image.run(), next))).with(auth).with(csrf())
                 .header("Idempotency-Key", "removed-reference-approval").contentType("application/json")
@@ -918,9 +922,182 @@ class AgentMediaApprovalPostgresIT {
         finish(capabilityChanged, "REJECTED");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"IMAGE", "VIDEO", "AUDIO"})
+    void rejectionNeverWithdrawsAnExistingCanvasDestination(String kind) throws Exception {
+        Scenario scenario = proposeExisting(kind, false);
+        UUID destination = scenario.approval().outputs().getFirst().canvasItemId();
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).hasSize(1);
+        assertThat(mediaTasks(scenario)).isEmpty();
+
+        decide(scenario, "REJECT", "reject-existing");
+
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).singleElement()
+                .satisfies(entry -> assertThat(entry.item().id()).isEqualTo(destination));
+        assertThat(drafts.get(owner.userId(), scenario.project().id(), destination).prompt())
+                .isEqualTo("Create a labelled synthetic sample");
+        assertThat(mediaTasks(scenario)).isEmpty();
+        finish(scenario, "REJECTED");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"IMAGE", "VIDEO", "AUDIO"})
+    void approvedGenerationUsesTheExistingCanvasDestination(String kind) throws Exception {
+        Scenario scenario = proposeExisting(kind, false);
+        var output = scenario.approval().outputs().getFirst();
+        assertThat(mediaTasks(scenario)).isEmpty();
+        decide(scenario, "APPROVE", "approve-existing");
+        assertThat(mediaTasks(scenario)).singleElement().satisfies(task ->
+                assertThat(task.input().path("canvasItemId").asText()).isEqualTo(output.canvasItemId().toString()));
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).singleElement().satisfies(entry -> {
+            assertThat(entry.item().id()).isEqualTo(output.canvasItemId());
+            assertThat(entry.item().selectedVersionId()).isNotNull();
+        });
+        assertThat(canvas.listMediaVersions(owner.userId(), scenario.project().id(), output.canvasItemId())).hasSize(1);
+        finish(scenario, "SUCCEEDED");
+    }
+
+    @Test
+    void regeneratingAnExistingImageAppendsHistoryAndKeepsItsPreviousResult() throws Exception {
+        Scenario scenario = proposeExisting("IMAGE", true);
+        var output = scenario.approval().outputs().getFirst();
+        UUID previous = canvas.listMediaVersions(owner.userId(), scenario.project().id(), output.canvasItemId())
+                .getFirst().id();
+        decide(scenario, "APPROVE", "regenerate-existing");
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).singleElement().satisfies(entry ->
+                assertThat(entry.item().selectedVersionId()).isNotEqualTo(previous));
+        assertThat(canvas.listMediaVersions(owner.userId(), scenario.project().id(), output.canvasItemId()))
+                .hasSize(2).anySatisfy(version -> assertThat(version.id()).isEqualTo(previous));
+        finish(scenario, "SUCCEEDED");
+    }
+
+    @Test
+    void existingImageCanReferenceItsOwnSelectedResultWithoutCreatingASelfConnection() throws Exception {
+        Scenario seeded = proposeExisting("IMAGE", true);
+        UUID targetId = seeded.approval().outputs().getFirst().canvasItemId();
+        decide(seeded, "REJECT", "finish-seeded-proposal");
+        finish(seeded, "REJECTED");
+        var before = canvas.list(owner.userId(), seeded.project().id()).getFirst().item();
+        UUID previous = before.selectedVersionId();
+        var draft = drafts.get(owner.userId(), seeded.project().id(), targetId);
+        AgentRun run = runs.create(owner.userId(), seeded.project().id(), seeded.run().agentInstanceId(),
+                "Regenerate using this result as the reference", "self-reference-" + UUID.randomUUID()).run();
+        ObjectNode request = outputs("IMAGE");
+        ObjectNode output = (ObjectNode) request.path("outputs").get(0);
+        output.put("canvasItemId", targetId.toString()).put("expectedItemVersion", before.version())
+                .put("expectedDraftVersion", draft.version());
+        output.putArray("mediaInputs").addObject().put("versionId", previous.toString()).put("role", "REFERENCE");
+        gateway.prepare(run.id(), request.toString());
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        Scenario scenario = new Scenario(seeded.project(), run, approvals.list(owner.userId(), seeded.project().id(), run.id()).getFirst());
+        assertThat(scenario.approval().outputs().getFirst().canvasItemId()).isEqualTo(targetId);
+        assertThat(mediaTasks(scenario)).isEmpty();
+        var line = connections.list(owner.userId(), seeded.project().id()).getFirst();
+        assertThat(line.targetCanvasItemId()).isEqualTo(targetId);
+        assertThat(line.sourceCanvasItemId()).isNotEqualTo(targetId);
+        assertThat(line.sourceArtifactVersionId()).isEqualTo(previous);
+        assertThat(canvas.list(owner.userId(), seeded.project().id())).hasSize(2);
+        assertThat(canvas.listMediaVersions(owner.userId(), seeded.project().id(), targetId)).hasSize(1);
+        decide(scenario, "APPROVE", "approve-self-reference");
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        assertThat(canvas.listMediaVersions(owner.userId(), seeded.project().id(), targetId)).hasSize(2)
+                .anySatisfy(version -> assertThat(version.id()).isEqualTo(previous));
+        assertThat(canvas.list(owner.userId(), seeded.project().id()).stream()
+                .filter(entry -> entry.item().id().equals(line.sourceCanvasItemId())))
+                .singleElement().satisfies(entry -> assertThat(entry.item().selectedVersionId()).isEqualTo(previous));
+        finish(scenario, "SUCCEEDED");
+    }
+
+    @Test
+    void lockingAnExistingDestinationInvalidatesApprovalWithoutCreatingATask() throws Exception {
+        Scenario scenario = proposeExisting("IMAGE", false);
+        var item = canvas.list(owner.userId(), scenario.project().id()).getFirst().item();
+        canvas.apply(owner.userId(), scenario.project().id(),
+                List.of(new CanvasService.SetLocked(item.id(), item.version(), true)));
+        mvc.perform(post(decisionPath(scenario)).with(auth).with(csrf())
+                        .header("Idempotency-Key", "existing-target-locked").contentType("application/json")
+                        .content(decision("APPROVE"))).andExpect(status().isConflict());
+        assertThat(mediaTasks(scenario)).isEmpty();
+        decide(scenario, "REJECT", "reject-locked-existing");
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).hasSize(1);
+        finish(scenario, "REJECTED");
+    }
+
+    @Test
+    void existingVideoProposalReplacesConnectionInputsWithoutRemovingEitherExistingNode() throws Exception {
+        Scenario image = propose(outputs("IMAGE"));
+        gateway.plan(image.run().id()).imageToVideo = true;
+        decide(image, "APPROVE", "existing-video-source");
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        ApprovalView videoApproval = approvals.list(owner.userId(), image.project().id(), image.run().id())
+                .stream().filter(value -> value.status() == AgentMediaApproval.Status.PENDING).findFirst().orElseThrow();
+        Scenario video = new Scenario(image.project(), image.run(), videoApproval);
+        decide(video, "APPROVE", "existing-video-result");
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        assertThat(currentRun(video).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        UUID targetId = videoApproval.outputs().getFirst().canvasItemId();
+        var item = canvas.list(owner.userId(), image.project().id()).stream()
+                .filter(entry -> entry.item().id().equals(targetId)).findFirst().orElseThrow().item();
+        var draft = drafts.get(owner.userId(), image.project().id(), targetId);
+        assertThat(draft.mediaInputs()).hasSize(1);
+
+        AgentRun later = runs.create(owner.userId(), image.project().id(), image.run().agentInstanceId(),
+                "Use text only on the existing video node", "existing-text-video-" + UUID.randomUUID()).run();
+        ObjectNode request = outputs("VIDEO");
+        ((ObjectNode) request.path("outputs").get(0)).put("canvasItemId", targetId.toString())
+                .put("expectedItemVersion", item.version()).put("expectedDraftVersion", draft.version())
+                .put("videoInputMode", "TEXT").putArray("mediaInputs");
+        gateway.prepare(later.id(), mapper.writeValueAsString(request));
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        assertThat(runs.get(owner.userId(), image.project().id(), later.id()).status()).isEqualTo(AgentRun.Status.WAITING_TASKS);
+        var proposal = approvals.list(owner.userId(), image.project().id(), later.id()).getFirst();
+        assertThat(drafts.get(owner.userId(), image.project().id(), targetId).mediaInputs()).isEmpty();
+        assertThat(connections.list(owner.userId(), image.project().id()))
+                .noneMatch(connection -> connection.targetCanvasItemId().equals(targetId));
+        Scenario laterScenario = new Scenario(image.project(), later, proposal);
+        decide(laterScenario, "REJECT", "reject-text-existing-video");
+        assertThat(canvas.list(owner.userId(), image.project().id())).hasSize(2);
+        assertThat(canvas.listMediaVersions(owner.userId(), image.project().id(), targetId)).hasSize(1);
+        finish(laterScenario, "REJECTED");
+    }
+
+    private Scenario proposeExisting(String kind, boolean seedResult) {
+        Project project = projects.create(owner.userId(), "Synthetic existing destination", Project.AspectRatio.LANDSCAPE_16_9);
+        var artifact = artifacts.create(owner.userId(), project.id(), Artifact.Kind.valueOf(kind), "Existing sample", null);
+        UUID itemId = UUID.randomUUID();
+        canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(itemId, artifact.artifact().id(),
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.valueOf(640), BigDecimal.valueOf(360), 0, null, false)));
+        var draft = drafts.get(owner.userId(), project.id(), itemId);
+        if (seedResult) {
+            draft = drafts.save(owner.userId(), project.id(), itemId, draft.version(), "First synthetic image",
+                    mapper.createObjectNode(), null, null, null, List.of(), List.of(), null);
+            Task first = directMediaTasks.run(owner.userId(), project.id(), artifact.artifact().id(), itemId,
+                    draft.version(), "seed-existing-" + UUID.randomUUID());
+            assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+            assertThat(tasks.get(owner.userId(), project.id(), first.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+        }
+        var item = canvas.list(owner.userId(), project.id()).getFirst().item();
+        var agent = agents.create(owner.userId(), project.id(), "Synthetic canvas director", "Work with the current canvas");
+        AgentRun run = runs.create(owner.userId(), project.id(), agent.id(), "Generate in the existing node",
+                "synthetic-run-" + UUID.randomUUID()).run();
+        ObjectNode request = outputs(kind);
+        ((ObjectNode) request.path("outputs").get(0)).put("canvasItemId", itemId.toString())
+                .put("expectedItemVersion", item.version()).put("expectedDraftVersion", draft.version());
+        gateway.prepare(run.id(), mapper.writeValueAsString(request));
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.WAITING_TASKS);
+        ApprovalView approval = approvals.list(owner.userId(), project.id(), run.id()).getFirst();
+        assertThat(approval.outputs().getFirst().canvasItemId()).isEqualTo(itemId);
+        return new Scenario(project, run, approval);
+    }
+
     private Scenario propose(ObjectNode outputs) {
         Project project = projects.create(owner.userId(), "Synthetic approval project", Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Synthetic Creator", "Create approved media", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Synthetic Creator", "Create approved media");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(), "Create the requested media",
                 "synthetic-run-" + UUID.randomUUID()).run();
         gateway.prepare(run.id(), mapper.writeValueAsString(outputs));
@@ -1071,10 +1248,10 @@ class AgentMediaApprovalPostgresIT {
             }
             if (plan.readGeneratedOutput && callIndex == 3) {
                 plan.artifactReply = successfulReply(response, "read-generated-" + context.get("runId"), "read_artifacts");
-                ObjectNode arguments = mapper.createObjectNode().put("group", "AGENT_OUTPUT");
+                ObjectNode arguments = mapper.createObjectNode();
                 arguments.putArray("versionIds").add(plan.artifactReply.at("/data/0/versionId").asText());
                 return toolCall("place-generated-" + context.get("runId"), "place_artifacts", arguments,
-                        "Place the verified media in my output group.");
+                        "Place the verified media on the canvas.");
             }
             if (plan.readGeneratedOutput && callIndex == 4) {
                 plan.placementReply = successfulReply(response, "place-generated-" + context.get("runId"), "place_artifacts");

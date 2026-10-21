@@ -4,6 +4,7 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.idempotency.IdempotencyState;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,6 +44,9 @@ public interface AgentRunRepository {
 
     /** 仅在认证所有者及项目范围内读取指定 Run。 */
     Optional<AgentRun> find(UUID ownerId, UUID projectId, UUID runId);
+
+    /** Resolve provenance only for the bounded candidate versions currently shown on the canvas. */
+    Set<UUID> filterAgentRunIds(UUID ownerId, UUID projectId, UUID agentId, Set<UUID> candidateIds);
 
     /** 以创建时间和 Run ID 的稳定键集分页读取同一 Agent 的运行历史。 */
     List<AgentRun> list(UUID ownerId, UUID projectId, UUID agentId,

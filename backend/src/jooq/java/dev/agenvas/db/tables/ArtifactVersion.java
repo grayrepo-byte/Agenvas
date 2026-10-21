@@ -7,7 +7,6 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
-import dev.agenvas.db.tables.AgentBinding.AgentBindingPath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersionReference.ArtifactVersionReferencePath;
 import dev.agenvas.db.tables.CanvasConnection.CanvasConnectionPath;
@@ -250,19 +249,6 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
             _canvasItemMediaVersion = new CanvasItemMediaVersionPath(this, null, Keys.CANVAS_ITEM_MEDIA_VERSION__CANVAS_ITEM_MEDIA_VERSION_PROJECT_ID_ARTIFACT_VERSION_ID_FKEY.getInverseKey());
 
         return _canvasItemMediaVersion;
-    }
-
-    private transient AgentBindingPath _agentBinding;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.agent_binding</code> table
-     */
-    public AgentBindingPath agentBinding() {
-        if (_agentBinding == null)
-            _agentBinding = new AgentBindingPath(this, null, Keys.AGENT_BINDING__FK_AGENT_BINDING_VERSION.getInverseKey());
-
-        return _agentBinding;
     }
 
     private transient ArtifactVersionReferencePath _fkArtifactReferenceSource;

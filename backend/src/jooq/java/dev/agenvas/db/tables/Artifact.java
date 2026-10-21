@@ -7,7 +7,6 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
-import dev.agenvas.db.tables.AgentBinding.AgentBindingPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
@@ -209,19 +208,6 @@ public class Artifact extends TableImpl<ArtifactRecord> {
             _project = new ProjectPath(this, Keys.ARTIFACT__FK_ARTIFACT_PROJECT, null);
 
         return _project;
-    }
-
-    private transient AgentBindingPath _agentBinding;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.agent_binding</code> table
-     */
-    public AgentBindingPath agentBinding() {
-        if (_agentBinding == null)
-            _agentBinding = new AgentBindingPath(this, null, Keys.AGENT_BINDING__FK_AGENT_BINDING_ARTIFACT.getInverseKey());
-
-        return _agentBinding;
     }
 
     private transient ArtifactVersionPath _artifactVersion;

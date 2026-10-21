@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Agent 卡片配置及显式输入绑定的所有者范围持久化边界。 */
+/** 项目助手配置的所有者范围持久化边界。 */
 public interface AgentInstanceRepository {
     /** A create command pins defaults once and can recover a lost HTTP response without a duplicate card. */
     boolean reserveCreateKey(UUID ownerId, String scope, String key, String hash, Instant now, Instant expiresAt);
@@ -14,16 +14,16 @@ public interface AgentInstanceRepository {
     boolean completeCreateKey(UUID ownerId, String scope, String key, String hash, UUID agentId, String response, Instant now);
     record CreateKey(String requestHash, UUID agentId, String responseJson) {}
 
-    /** 插入单个卡片配置，不授予其隐式读取项目全部素材的权限。 */
+    /** 插入单个助手配置；权限由受理 Run 时的固定画布范围决定。 */
     void create(AgentInstance instance);
 
-    /** 按确定的创建顺序列出卡片及其绑定。 */
+    /** 按确定的创建顺序列出助手配置。 */
     List<AgentInstance> list(UUID ownerId, UUID projectId);
 
-    /** 在所有者范围内读取单个卡片。 */
+    /** 在所有者范围内读取单个助手。 */
     Optional<AgentInstance> find(UUID ownerId, UUID projectId, UUID agentId);
 
-    /** 锁定卡片，供完整配置的乐观并发更新使用。 */
+    /** 锁定助手，供完整配置的乐观并发更新使用。 */
     Optional<AgentInstance> findForUpdate(UUID ownerId, UUID projectId, UUID agentId);
 
     /** 预期配置版本匹配时更新可变字段。 */
@@ -33,6 +33,4 @@ public interface AgentInstanceRepository {
             long expectedVersion,
             Instant updatedAt);
 
-    /** 在调用方事务内整体替换显式输入绑定集合。 */
-    void replaceBindings(UUID projectId, UUID agentId, List<AgentInstance.Binding> bindings);
 }

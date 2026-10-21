@@ -33,6 +33,9 @@ const TOOL_LABELS: Record<string, string> = {
   get place_artifacts() { return t("agent.run.placeArtifact"); }, get arrange_items() { return t("agent.run.arrangeCards"); },
   get list_media_capabilities() { return t("agent.trace.listCapabilities"); },
   get propose_media_generation() { return t("agent.trace.proposeMedia"); },
+  get read_canvas() { return t("agent.run.readCanvas"); },
+  get manage_canvas_node() { return t("agent.run.manageCanvasNode"); },
+  get update_media_draft() { return t("agent.run.updateMediaDraft"); },
 };
 const RUNNING_STATUSES: ReadonlySet<AgentRun["status"]> = new Set(["QUEUED", "RUNNING", "WAITING_TASKS", "CANCEL_REQUESTED"]);
 const DEFAULT_STEP_INDEX = 0;

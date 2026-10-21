@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Creator Agent 卡片配置与精确输入版本绑定的 REST 边界。 */
+/** Creator 项目助手配置的 REST 边界。 */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/agents")
 public class AgentInstanceController {
@@ -30,18 +30,18 @@ public class AgentInstanceController {
     /** 执行项目权限、字段校验和配置版本控制。 */
     private final AgentInstanceService agents;
 
-    /** 注入负责项目授权、绑定校验和配置版本控制的用例服务。
-     * @param agents Agent 卡片应用服务
+    /** 注入负责项目授权和配置版本控制的用例服务。
+     * @param agents 项目助手应用服务
      */
     public AgentInstanceController(AgentInstanceService agents) {
         this.agents = agents;
     }
 
-    /** 创建导演 Agent 卡片；只有请求中明确绑定的版本才会进入其输入范围。
+    /** 创建导演 项目助手；运行时固定当前画布范围。
      * @param principal 当前认证用户
-     * @param projectId 卡片所属项目
-     * @param request 卡片名称、指令及明确选择的输入绑定
-     * @return 新建卡片和已固定版本的绑定
+     * @param projectId 助手所属项目
+     * @param request 助手名称与指令
+     * @return 新建助手配置
      */
     @PostMapping
     public ResponseEntity<AgentResponse> create(
@@ -54,15 +54,15 @@ public class AgentInstanceController {
                 projectId,
                 request.name(),
                 request.instruction(),
-                toInputs(request.bindings()), key, request.promptKey());
+                key, request.promptKey());
         return ResponseEntity.status(HttpStatus.CREATED).header("Idempotency-Replayed", Boolean.toString(result.replayed()))
                 .body(AgentResponse.from(result.agent()));
     }
 
-    /** 列出项目内的 Agent 卡片及各自固定的输入版本。
+    /** 列出项目内的 项目助手配置。
      * @param principal 当前认证用户
      * @param projectId 项目 UUID
-     * @return 按服务结果投影的卡片列表
+     * @return 按服务结果投影的助手列表
      */
     @GetMapping
     public AgentListResponse list(
@@ -73,11 +73,11 @@ public class AgentInstanceController {
                 .toList());
     }
 
-    /** 读取项目路径下的单个 Agent 卡片。
+    /** 读取项目路径下的单个 项目助手。
      * @param principal 当前认证用户
-     * @param projectId 卡片所属项目
-     * @param agentId 卡片 UUID
-     * @return 卡片配置及输入绑定
+     * @param projectId 助手所属项目
+     * @param agentId 助手 UUID
+     * @return 助手配置
      */
     @GetMapping("/{agentId}")
     public AgentResponse get(
@@ -87,12 +87,12 @@ public class AgentInstanceController {
         return AgentResponse.from(agents.get(principal.userId(), projectId, agentId));
     }
 
-    /** 整体替换卡片名称、指令和输入绑定；版本冲突由应用服务拒绝。
+    /** 整体替换助手名称和指令；版本冲突由应用服务拒绝。
      * @param principal 当前认证用户
-     * @param projectId 卡片所属项目
-     * @param agentId 要更新的卡片
+     * @param projectId 助手所属项目
+     * @param agentId 要更新的助手
      * @param request 新完整配置及客户端读取到的版本
-     * @return 更新后的卡片快照
+     * @return 更新后的助手快照
      */
     @PatchMapping("/{agentId}")
     public AgentResponse update(
@@ -106,33 +106,24 @@ public class AgentInstanceController {
                 agentId,
                 request.expectedVersion(),
                 request.name(),
-                request.instruction(),
-                toInputs(request.bindings())));
-    }
-
-    /** 将 HTTP DTO 转为应用服务输入；此处不做资源授权。
-     * @param bindings 请求中明确提交的产物与版本
-     * @return 应用服务使用的绑定输入列表
-     */
-    private List<AgentInstanceService.BindingInput> toInputs(List<AgentBindingRequest> bindings) {
-        return bindings.stream()
-                .map(binding -> new AgentInstanceService.BindingInput(
-                        binding.artifactId(), binding.selectedVersionId()))
-                .toList();
+                request.instruction()));
     }
 
     /**
-     * 创建内置 Creator Agent 的完整请求；bindings 不允许省略或超过 40 项。
+     * 创建内置 Creator Agent 的请求。
      *
      * @param name 展示名称，长度为 1 至 120 字符
      * @param instruction 每次运行可见的 Agent 指令，长度不超过 8,000 字符
-     * @param bindings 用户显式选择的输入产物版本列表
      */
     public record CreateAgentRequest(
             @Size(min = 1, max = 120) String name,
             @Size(min = 1, max = 8000) String instruction,
-            @NotNull @Size(max = 40) List<@Valid AgentBindingRequest> bindings,
-            @jakarta.validation.constraints.Pattern(regexp = dev.agenvas.settings.application.PromptService.KEY_PATTERN) String promptKey) {}
+            @jakarta.validation.constraints.Pattern(regexp = dev.agenvas.settings.application.PromptService.KEY_PATTERN) String promptKey) {
+        @com.fasterxml.jackson.annotation.JsonAnySetter
+        public void rejectUnknownField(String field, tools.jackson.databind.JsonNode value) {
+            throw new IllegalArgumentException("Unknown assistant settings field");
+        }
+    }
 
     /**
      * 配置整体替换请求；expectedVersion 用于拒绝覆盖并发编辑。
@@ -140,35 +131,27 @@ public class AgentInstanceController {
      * @param expectedVersion 客户端最近读取到的 Agent 配置版本
      * @param name 替换后的展示名称
      * @param instruction 替换后的 Agent 指令
-     * @param bindings 替换后的完整输入绑定集合，不会与旧集合合并
      */
     public record UpdateAgentRequest(
             @PositiveOrZero long expectedVersion,
             @NotBlank @Size(max = 120) String name,
-            @NotBlank @Size(max = 8000) String instruction,
-            @NotNull @Size(max = 40) List<@Valid AgentBindingRequest> bindings) {}
+            @NotBlank @Size(max = 8000) String instruction) {
+        @com.fasterxml.jackson.annotation.JsonAnySetter
+        public void rejectUnknownField(String field, tools.jackson.databind.JsonNode value) {
+            throw new IllegalArgumentException("Unknown assistant settings field");
+        }
+    }
 
-    /**
-     * 绑定时选定的不可变产物版本，服务层还会重新校验其项目归属。
-     *
-     * @param artifactId 被引用产物 ID
-     * @param selectedVersionId 被选中的不可变版本 ID
-     */
-    public record AgentBindingRequest(
-            @NotNull UUID artifactId, @NotNull UUID selectedVersionId) {}
-
-    /** Agent 卡片公开投影，不包含某次运行的模型对话或 Worker 状态。
-     * @param id 卡片 UUID
+    /** 项目助手公开投影，不包含某次运行的模型对话或 Worker 状态。
+     * @param id 助手 UUID
      * @param projectId 所属项目 UUID
      * @param profileKey 内置 Agent 能力配置键
      * @param profileVersion 能力配置版本
-     * @param name 用户设置的卡片名称
+     * @param name 用户设置的助手名称
      * @param instruction 运行时提供给 Agent 的指令
-     * @param outputGroupId Agent 新产物写入的产物组
-     * @param version 卡片配置并发版本
+     * @param version 助手配置并发版本
      * @param createdAt 创建时间
      * @param updatedAt 最近配置更新时间
-     * @param bindings 明确选择的输入版本
      */
     public record AgentResponse(
             UUID id,
@@ -177,14 +160,12 @@ public class AgentInstanceController {
             int profileVersion,
             String name,
             String instruction,
-            UUID outputGroupId,
             long version,
             Instant createdAt,
-            Instant updatedAt,
-            List<BindingResponse> bindings) {
+            Instant updatedAt) {
 
-        /** 将领域卡片和精确输入绑定映射为 API 响应。
-         * @param instance 已完成项目范围校验的领域卡片
+        /** 将领域助手配置映射为 API 响应。
+         * @param instance 已完成项目范围校验的领域助手
          * @return 公开配置投影
          */
         public static AgentResponse from(AgentInstance instance) {
@@ -195,38 +176,14 @@ public class AgentInstanceController {
                     instance.profileVersion(),
                     instance.name(),
                     instance.instruction(),
-                    instance.outputGroupId(),
                     instance.version(),
                     instance.createdAt(),
-                    instance.updatedAt(),
-                    instance.bindings().stream().map(BindingResponse::from).toList());
-        }
-    }
-
-    /** Agent 输入绑定的公开表示。
-     * @param id 绑定关系 UUID
-     * @param artifactId 被引用产物
-     * @param selectedVersionId 固定的不可变产物版本
-     */
-    public record BindingResponse(
-            UUID id,
-            UUID artifactId,
-            UUID selectedVersionId) {
-
-        /** 复制绑定身份与精确版本。
-         * @param binding 领域绑定关系
-         * @return 公开绑定投影
-         */
-        static BindingResponse from(AgentInstance.Binding binding) {
-            return new BindingResponse(
-                    binding.id(),
-                    binding.artifactId(),
-                    binding.selectedVersionId());
+                    instance.updatedAt());
         }
     }
 
     /** 项目 Agent 列表响应。
-     * @param items 当前项目的卡片
+     * @param items 当前项目的助手
      */
     public record AgentListResponse(List<AgentResponse> items) {}
 }

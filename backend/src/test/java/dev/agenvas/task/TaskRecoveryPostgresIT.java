@@ -77,7 +77,7 @@ class TaskRecoveryPostgresIT {
         AdminPrincipal owner = identities.setup("recovery-admin", "recovery-password-123");
         Project project = projects.create(owner.userId(), "Recovery project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create shots", "recovery-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),

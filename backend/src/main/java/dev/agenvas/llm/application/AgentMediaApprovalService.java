@@ -13,6 +13,7 @@ import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
+import dev.agenvas.run.domain.RunCanvasScope;
 import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
@@ -47,7 +48,8 @@ public class AgentMediaApprovalService {
     private static final int MAX_TOOL_CALL_ID_LENGTH = 200;
     private static final String INPUT_COLOR = "#7C3AED";
     private static final Set<String> OUTPUT_FIELDS = Set.of("kind", "title", "prompt",
-            "capabilityId", "parameters", "durationSeconds", "videoInputMode", "mediaInputs");
+            "capabilityId", "parameters", "durationSeconds", "videoInputMode", "mediaInputs",
+            "canvasItemId", "expectedItemVersion", "expectedDraftVersion");
 
     private final AgentMediaApprovalRepository approvals;
     private final AgentRunService runs;
@@ -120,12 +122,16 @@ public class AgentMediaApprovalService {
                 List<ArtifactService.ArtifactView> created = new ArrayList<>();
                 for (OutputRequest request : requests) {
                     // An empty media identity has no content version or external side effect yet.
-                    created.add(artifacts.create(context.ownerId(), context.projectId(),
-                            request.kind(), request.title(), null));
+                    if (request.canvasItemId() == null) {
+                        created.add(artifacts.create(context.ownerId(), context.projectId(),
+                                request.kind(), request.title(), null));
+                    }
                 }
-                var placed = canvas.placeArtifactsInAgentOutputWithinChange(context.ownerId(),
-                        context.projectId(), run.agentInstanceId(),
-                        created.stream().map(view -> view.artifact().id()).toList());
+                UUID outputGroupId = RunCanvasScope.enabled(run.contextSnapshot()) ? null
+                        : uuid(run.contextSnapshot().path("outputGroupId"));
+                var placed = created.isEmpty() ? new CanvasService.OutputPlacements(List.of(), List.of())
+                        : canvas.placeArtifactsWithinChange(context.ownerId(), context.projectId(),
+                                created.stream().map(view -> view.artifact().id()).toList(), outputGroupId);
                 ObjectNode frozenRequest = mapper.createObjectNode().put("schemaVersion", SCHEMA_VERSION);
                 frozenRequest.put("argumentHash", Sha256.hex(arguments));
                 JsonNode skillSource = freezeSkillSource(run);
@@ -133,21 +139,39 @@ public class AgentMediaApprovalService {
                 var normalizedOutputs = frozenRequest.putArray("outputs");
                 ObjectNode targets = mapper.createObjectNode().put("schemaVersion", SCHEMA_VERSION);
                 var targetOutputs = targets.putArray("outputs");
-                for (int index = 0; index < requests.size(); index++) {
-                    OutputRequest request = requests.get(index);
-                    UUID artifactId = created.get(index).artifact().id();
-                    CanvasItem item = placed.created().stream()
-                            .filter(card -> card.subjectId().equals(artifactId)).findFirst().orElseThrow();
+                int createdIndex = 0;
+                Set<UUID> existingTargets = new java.util.HashSet<>();
+                for (OutputRequest request : requests) {
+                    boolean createdByProposal = request.canvasItemId() == null;
+                    UUID artifactId = createdByProposal ? created.get(createdIndex++).artifact().id() : null;
+                    CanvasItem item;
+                    if (createdByProposal) {
+                        UUID createdArtifactId = artifactId;
+                        item = placed.created().stream().filter(card -> card.subjectId().equals(createdArtifactId))
+                                .findFirst().orElseThrow();
+                    } else {
+                        if (!existingTargets.add(request.canvasItemId())) throw invalid("duplicate-target");
+                        item = requireExistingTarget(context, run, request);
+                        artifactId = item.subjectId();
+                    }
                     Task.Kind taskKind = Task.Kind.valueOf(request.kind().name() + "_GENERATION");
                     UUID capabilityId = capabilities.forDraft(request.capabilityId(), taskKind).capabilityId();
                     MediaDraft initial = drafts.get(context.ownerId(), context.projectId(), item.id());
+                    if (!createdByProposal && initial.version() != request.expectedDraftVersion()) {
+                        throw conflict("AGENT_MEDIA_APPROVAL_STALE", "draft-changed");
+                    }
+                    // A proposal declares a complete input set. Ordinary autosaves preserve
+                    // connection-only inputs, so reconcile existing targets before replacing it.
+                    long draftVersion = createdByProposal ? initial.version()
+                            : connections.clearTargetMediaConnectionsWithinChange(context.ownerId(),
+                                    context.projectId(), item.id(), initial.version());
                     MediaDraft saved = drafts.save(context.ownerId(), context.projectId(), item.id(),
-                            initial.version(), request.prompt(), request.parameters(),
+                            draftVersion, request.prompt(), request.parameters(),
                             request.durationSeconds(), capabilityId, request.videoInputMode(),
-                            request.mediaInputs(), List.of(), null);
+                            request.mediaInputs(), List.of(), createdByProposal ? null : initial.styleId());
                     for (MediaDraft.MediaInput reference : saved.mediaInputs()) {
                         CanvasItem source = canvas.ensureMediaReferenceWithinChange(context.ownerId(),
-                                context.projectId(), run.agentInstanceId(), reference.artifactId(), reference.versionId());
+                                context.projectId(), reference.artifactId(), reference.versionId(), outputGroupId, item.id());
                         saved = connections.connectPreparedMediaInputWithinChange(context.ownerId(),
                                 context.projectId(), source.id(), item.id(), reference.versionId(), saved.version()).draft();
                     }
@@ -160,6 +184,8 @@ public class AgentMediaApprovalService {
                     ObjectNode target = targetOutputs.addObject();
                     target.put("artifactId", artifactId.toString());
                     target.put("canvasItemId", item.id().toString());
+                    target.put("createdByProposal", createdByProposal);
+                    if (!createdByProposal) target.put("itemVersion", item.version());
                     target.put("draftVersion", saved.version());
                     target.put("frozenInputHash", preflight.frozenInputHash());
                     target.set("binding", mapper.valueToTree(preflight.binding()));
@@ -246,6 +272,13 @@ public class AgentMediaApprovalService {
                 // Shared catalog locks pin administrator-controlled capability and connection
                 // versions through both revalidation and the atomic batch Task acceptance.
                 for (JsonNode target : approval.targets().path("outputs")) {
+                    if (!target.path("createdByProposal").asBoolean(true)) {
+                        CanvasItem existing = existingItem(ownerId, projectId, uuid(target.path("canvasItemId")));
+                        if (existing.locked() || existing.version() != target.path("itemVersion").asLong(-1)
+                                || !existing.subjectId().equals(uuid(target.path("artifactId")))) {
+                            throw conflict("AGENT_MEDIA_APPROVAL_STALE", "target-changed");
+                        }
+                    }
                     MediaCapabilityBinding frozenBinding = mapper.treeToValue(target.path("binding"),
                             MediaCapabilityBinding.class);
                     mediaTasks.lockApprovalStyle(ownerId, projectId, uuid(target.path("canvasItemId")));
@@ -283,6 +316,7 @@ public class AgentMediaApprovalService {
                 // Only this proposal's untouched placeholders are withdrawn. Direct generation
                 // is a separate user action, so its destination survives even before a result exists.
                 for (JsonNode target : approval.targets().path("outputs")) {
+                    if (!target.path("createdByProposal").asBoolean(true)) continue;
                     UUID artifactId = uuid(target.path("artifactId"));
                     UUID itemId = uuid(target.path("canvasItemId"));
                     if (canvas.hasArtifactItem(ownerId, projectId, itemId, artifactId)
@@ -312,6 +346,22 @@ public class AgentMediaApprovalService {
         JsonNode parameters = object.has("parameters") ? object.path("parameters") : mapper.createObjectNode();
         if (!parameters.isObject()) throw invalid("parameters");
         UUID capabilityId = object.hasNonNull("capabilityId") ? uuid(object.path("capabilityId")) : null;
+        UUID canvasItemId = object.hasNonNull("canvasItemId") ? uuid(object.path("canvasItemId")) : null;
+        Long expectedItemVersion = null;
+        Long expectedDraftVersion = null;
+        if (canvasItemId != null) {
+            if (!RunCanvasScope.enabled(run.contextSnapshot())
+                    || (!RunCanvasScope.containsItem(run.contextSnapshot(), canvasItemId)
+                        && !toolLedger.hasCreatedCanvasItem(context.projectId(), run.id(), canvasItemId))) {
+                throw new ApiProblemException(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED",
+                        ApiMessage.of("api.agent-media-approval.invalid-title"),
+                        ApiMessage.of("api.agent-media-approval.invalid-detail", "target-outside-canvas"), false);
+            }
+            expectedItemVersion = nonNegativeLong(object, "expectedItemVersion");
+            expectedDraftVersion = nonNegativeLong(object, "expectedDraftVersion");
+        } else if (object.has("expectedItemVersion") || object.has("expectedDraftVersion")) {
+            throw invalid("target-version-without-target");
+        }
         Integer duration = null;
         if (object.hasNonNull("durationSeconds")) {
             JsonNode value = object.path("durationSeconds");
@@ -378,7 +428,35 @@ public class AgentMediaApprovalService {
             }
         }
         return new OutputRequest(kind, title, prompt, parameters, duration, capabilityId, mode,
-                List.copyOf(inputs), object);
+                List.copyOf(inputs), object, canvasItemId, expectedItemVersion, expectedDraftVersion);
+    }
+
+    /** Existing destinations retain their identity, results and history, including on rejection. */
+    private CanvasItem requireExistingTarget(TrustedToolContext context, AgentRun run, OutputRequest request) {
+        if (!RunCanvasScope.containsItem(run.contextSnapshot(), request.canvasItemId())
+                && !toolLedger.hasCreatedCanvasItem(context.projectId(), run.id(), request.canvasItemId())) {
+            throw invalid("target-scope");
+        }
+        CanvasItem item = existingItem(context.ownerId(), context.projectId(), request.canvasItemId());
+        if (item.locked() || item.version() != request.expectedItemVersion()) {
+            throw conflict("AGENT_MEDIA_APPROVAL_STALE", "target-changed");
+        }
+        if (artifacts.get(context.ownerId(), context.projectId(), item.subjectId()).artifact().kind() != request.kind()) {
+            throw invalid("target-kind");
+        }
+        return item;
+    }
+
+    private CanvasItem existingItem(UUID ownerId, UUID projectId, UUID itemId) {
+        return canvas.list(ownerId, projectId).stream().map(CanvasService.CanvasEntry::item)
+                .filter(item -> item.id().equals(itemId) && item.subjectType() == CanvasItem.SubjectType.ARTIFACT)
+                .findFirst().orElseThrow(() -> conflict("AGENT_MEDIA_APPROVAL_STALE", "target-removed"));
+    }
+
+    private long nonNegativeLong(JsonNode object, String field) {
+        JsonNode value = object.path(field);
+        if (!value.isIntegralNumber() || !value.canConvertToLong() || value.longValue() < 0) throw invalid(field);
+        return value.longValue();
     }
 
     private dev.agenvas.task.application.DirectMediaTaskService.MediaPreflight approvedPreflight(UUID owner, UUID project,
@@ -474,11 +552,12 @@ public class AgentMediaApprovalService {
                 .put("approvalId", approval.id().toString()).put("awaitingMedia", true)
                 .put("userVisibleSummary", "媒体生成批次已提出，等待用户统一审批；尚未提交第三方");
         var created = result.putArray("createdIds");
+        var updated = result.putArray("updatedIds");
         for (JsonNode target : approval.targets().path("outputs")) {
-            created.add(target.path("artifactId").asText());
-            created.add(target.path("canvasItemId").asText());
+            var changed = target.path("createdByProposal").asBoolean(true) ? created : updated;
+            changed.add(target.path("artifactId").asText());
+            changed.add(target.path("canvasItemId").asText());
         }
-        result.putArray("updatedIds");
         result.putObject("affectedVersions");
         result.putArray("taskIds");
         result.putNull("errorCode");
@@ -525,7 +604,8 @@ public class AgentMediaApprovalService {
     private record OutputRequest(Artifact.Kind kind, String title, String prompt,
             JsonNode parameters, Integer durationSeconds, UUID capabilityId,
             MediaDraft.VideoInputMode videoInputMode,
-            List<MediaDraftService.SaveMediaInput> mediaInputs, ObjectNode original) {}
+            List<MediaDraftService.SaveMediaInput> mediaInputs, ObjectNode original,
+            UUID canvasItemId, Long expectedItemVersion, Long expectedDraftVersion) {}
 
     public enum Decision { APPROVE, REJECT }
     public record ApprovalOutput(Artifact.Kind kind, String title, UUID artifactId,

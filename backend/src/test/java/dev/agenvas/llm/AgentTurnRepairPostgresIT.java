@@ -71,7 +71,7 @@ class AgentTurnRepairPostgresIT {
         Project project = projects.create(owner.userId(), "Repair project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
-                "Write a short text", List.of());
+                "Write a short text");
         AgentRun recovered = runs.create(owner.userId(), project.id(), agent.id(),
                 "Write", "repair-success-run").run();
 

@@ -79,7 +79,7 @@ class ResourceScopePostgresIT {
                 "Private title", mapper.readTree("{\"format\":\"MARKDOWN\",\"text\":\"SECRET_SCOPE_MARKER\"}"))
                 .artifact().id();
         AgentInstance agent = agents.create(owner.userId(), target.id(),
-                "Creator", "Create", List.of());
+                "Creator", "Create");
         UUID runId = runs.create(owner.userId(), target.id(), agent.id(),
                 "SECRET_SCOPE_MARKER", "resource-scope-run").run().id();
 

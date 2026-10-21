@@ -8,7 +8,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.MediaDraft;
@@ -34,7 +33,7 @@ class CanvasTaskResultSelectionTest {
     private final CanvasItemRepository items = mock(CanvasItemRepository.class);
     private final MediaDraftService drafts = mock(MediaDraftService.class);
     private final CanvasService canvas = new CanvasService(mock(ProjectService.class),
-            mock(ArtifactService.class), drafts, mock(AgentInstanceService.class), items,
+            mock(ArtifactService.class), drafts, items,
             mock(CanvasConnectionService.class), mock(ProjectEventService.class),
             new ObjectMapper(), Clock.systemUTC());
 

@@ -67,7 +67,7 @@ class AgentFailureRecoveryPostgresIT {
     @Test void endsFatalTurnsAndRecoversLegacyBlockersWithoutChangingCheckpointsOrCompletedArtifacts() {
         AdminPrincipal owner = owner();
         var project = projects.create(owner.userId(), "Automatic ending fixture", Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Synthetic creator", "Create one text", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Synthetic creator", "Create one text");
         var run = runs.create(owner.userId(), project.id(), agent.id(), "Create then fail", "fatal-fixture").run();
         assertThat(worker.runOnce("failure-worker")).isEqualTo(1);
         assertThat(worker.runOnce("failure-worker")).isEqualTo(1);
@@ -99,7 +99,7 @@ class AgentFailureRecoveryPostgresIT {
     @Test void queuedAndUnknownMediaKeepTheRunBlockedUntilTheirStateIsSettled() {
         AdminPrincipal owner = owner();
         var project = projects.create(owner.userId(), "Uncertain media fixture", Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Synthetic creator", "Create one text", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Synthetic creator", "Create one text");
         var run = runs.create(owner.userId(), project.id(), agent.id(), "Create then fail", "unknown-fixture").run();
         assertThat(worker.runOnce("failure-worker")).isEqualTo(1);
         var media = tasks.create(owner.userId(), project.id(), run.id(), "synthetic-media", Task.Kind.IMAGE_GENERATION,

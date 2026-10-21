@@ -2007,13 +2007,13 @@ describe("MediaDraftEditor", () => {
       http.get(`/api/v1/projects/${PROJECT_ID}/canvas/items`, () => HttpResponse.json({ items: [
         { id: CANVAS_ITEM_ID, subjectType: "ARTIFACT", subjectId: ARTIFACT_ID, title: "当前图片",
           selectedVersionId: "self-version", selectedVersion: { id: "self-version", versionNo: 1,
-            content: { assetId: "self-asset" } }, artifact, agent: null },
+            content: { assetId: "self-asset" } }, artifact },
         { id: "other-canvas-item", subjectType: "ARTIFACT", subjectId: "other-artifact", title: "其他图片",
           selectedVersionId: "other-version", selectedVersion: { id: "other-version", versionNo: 2,
-            content: { assetId: "other-asset" } }, artifact: otherArtifact, agent: null },
+            content: { assetId: "other-asset" } }, artifact: otherArtifact },
         { id: "text-canvas-item", subjectType: "ARTIFACT", subjectId: "text-artifact", title: "文字卡片",
           selectedVersionId: "text-version", selectedVersion: { id: "text-version", versionNo: 1,
-            content: { text: "hello" } }, artifact: { ...artifact, id: "text-artifact", kind: "TEXT" }, agent: null },
+            content: { text: "hello" } }, artifact: { ...artifact, id: "text-artifact", kind: "TEXT" } },
       ] })),
     ] });
     const user = userEvent.setup();

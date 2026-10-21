@@ -58,7 +58,7 @@ class MockAgentTurnPostgresIT {
         Project project = projects.create(owner.userId(), "Mock turn project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         UUID agent = agents.create(owner.userId(), project.id(), "Creator",
-                "Write a short line", List.of()).id();
+                "Write a short line").id();
         AgentRun run = runs.create(owner.userId(), project.id(), agent,
                 "写一句话", "mock-turn-run").run();
 

@@ -93,7 +93,7 @@ class TaskLeasePostgresIT {
         Project project = projectService.create(
                 owner.userId(), "Task project", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agentService.create(
-                owner.userId(), project.id(), "Creator", "Create", List.of());
+                owner.userId(), project.id(), "Creator", "Create");
         AgentRun run = runService.create(
                         owner.userId(), project.id(), agent.id(), "Create three shots", "task-run")
                 .run();

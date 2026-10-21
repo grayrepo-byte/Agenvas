@@ -3,6 +3,8 @@ import { CaretDown, Check, Clock, MinusCircle, Question, Robot, Sparkle, Wrench,
   User, WarningCircle, type Icon } from "@/shared/ui/icons";
 import { useId, useState, type ReactNode } from "react";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
+import { Message,MessageContent,MessageHeader } from "../../shared/ui/primitives/message";
+import { Bubble,BubbleContent } from "../../shared/ui/primitives/bubble";
 import "./AgentChatPrimitives.css";
 
 /**
@@ -32,14 +34,16 @@ export function AgentChatMessage({ role, children, label, streaming = false }: {
   useLocale();
   const labelId = useId();
   const RoleIcon = role === "user" ? User : Robot;
-  return <article className={`agent-chat-message agent-chat-message--${role}${streaming ? " agent-chat-message--streaming" : ""}`} aria-labelledby={labelId} aria-busy={streaming}>
-    <div className="agent-chat-message__identity">
+  return <Message role="article" align={role === "user" ? "end" : "start"} className={`agent-chat-message agent-chat-message--${role}${streaming ? " agent-chat-message--streaming" : ""}`} aria-labelledby={labelId} aria-busy={streaming}>
+    <MessageContent><MessageHeader className="agent-chat-message__identity">
       <RoleIcon size={CHAT_ICON_SIZE} aria-hidden="true" />
       <span id={labelId}>{label ?? MESSAGE_ROLE_LABELS[role]}</span>
       {streaming ? <span className="agent-chat-stream-label" role="status">{t("agent.trace.streaming")}</span> : null}
-    </div>
-    <div className="agent-chat-message__body">{children}</div>
-  </article>;
+    </MessageHeader>
+    <Bubble variant={role === "user" ? "secondary" : "ghost"} align={role === "user" ? "end" : "start"}>
+      <BubbleContent className="agent-chat-message__body">{children}</BubbleContent>
+    </Bubble></MessageContent>
+  </Message>;
 }
 
 function TaskHeadline({ label, status }: { label: string; status: TaskStatus }) {

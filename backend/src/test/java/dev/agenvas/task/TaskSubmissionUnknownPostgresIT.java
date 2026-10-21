@@ -76,7 +76,7 @@ class TaskSubmissionUnknownPostgresIT {
         // 直连媒体任务固定一张已存在的空图片卡片；提交与判定路径与用户直连生成一致。
         var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Frame card", null);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "生成一张图片", "uncertain-submission-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),
@@ -124,7 +124,7 @@ class TaskSubmissionUnknownPostgresIT {
         Project second = projects.create(owner.userId(), "Expired lease project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance secondAgent = agents.create(owner.userId(), second.id(), "Creator",
-                "Create", List.of());
+                "Create");
         AgentRun secondRun = runs.create(owner.userId(), second.id(), secondAgent.id(),
                 "Make an image", "expired-lease-run").run();
         runs.transition(owner.userId(), second.id(), secondRun.id(), secondRun.version(),

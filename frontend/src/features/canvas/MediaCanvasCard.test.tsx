@@ -27,7 +27,7 @@ function itemFor(shownArtifact: Artifact): CanvasItem {
   return { id: "item-1", subjectType: "ARTIFACT", subjectId: shownArtifact.id,
     title: shownArtifact.title, x: 20, y: 40, width: 280, height: 180, zIndex: 1,
     groupId: null, locked: false, selectedVersionId: shownArtifact.resourceDefaultVersionId,
-    selectedVersion: shownArtifact.resourceDefaultVersion, version: 0, artifact: shownArtifact, agent: null };
+    selectedVersion: shownArtifact.resourceDefaultVersion, version: 0, artifact: shownArtifact };
 }
 
 function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
@@ -619,7 +619,7 @@ describe("MediaCanvasCard", () => {
           id: "reference-artifact", projectId: "project-1", kind: "IMAGE", title: "海边参考",
           resourceDefaultVersionId: "reference-version", resourceDefaultVersion: null,
           version: 0, createdAt: artifact.createdAt, updatedAt: artifact.updatedAt,
-        }, agent: null,
+        },
       }] })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({
         headerName: "X-XSRF-TOKEN", token: "test",

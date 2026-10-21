@@ -9,8 +9,6 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import dev.agenvas.agent.application.AgentInstanceService;
-import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -37,23 +35,19 @@ class CanvasOutputPlacementTest {
     private final UUID sourceId = UUID.randomUUID();
     private final UUID artifactId = UUID.randomUUID();
     private final UUID parent = UUID.randomUUID();
-    private final UUID agentId = UUID.randomUUID();
     private final UUID groupId = UUID.randomUUID();
     private final CanvasItemRepository items = mock(CanvasItemRepository.class);
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final MediaDraftService drafts = mock(MediaDraftService.class);
-    private final AgentInstanceService agents = mock(AgentInstanceService.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final CanvasService canvas = new CanvasService(mock(ProjectService.class), artifacts,
-            drafts, agents, items, mock(CanvasConnectionService.class),
+            drafts, items, mock(CanvasConnectionService.class),
             mock(ProjectEventService.class), mapper, Clock.fixed(NOW, java.time.ZoneOffset.UTC));
 
     @BeforeEach
     void setup() {
         when(items.create(any())).thenReturn(true);
         when(artifacts.get(owner, project, artifactId)).thenReturn(artifactView(artifactId, Artifact.Kind.IMAGE));
-        when(agents.get(owner, project, agentId)).thenReturn(new AgentInstance(agentId, project,
-                "test", 1, "Agent", "", groupId, 0, NOW, NOW, List.of()));
     }
 
     @Test
@@ -102,13 +96,11 @@ class CanvasOutputPlacementTest {
     }
 
     @Test
-    void agentOutputsFallBackFromTheUpperBoundaryAndKeepTheOutputGroup() {
-        CanvasItem agent = new CanvasItem(UUID.randomUUID(), project, CanvasItem.SubjectType.AGENT,
-                agentId, null, "Agent", decimal("999800"), decimal("999800"),
-                decimal("300"), decimal("300"), 1000, null, true, 0, NOW, NOW);
-        when(items.list(owner, project)).thenReturn(List.of(agent));
+    void generatedContentFallsBackFromTheUpperBoundaryAndKeepsAnExplicitLayoutTag() {
+        CanvasItem boundaryContent = artifactCard("999800", "999800", "300", "300", 1000);
+        when(items.list(owner, project)).thenReturn(List.of(boundaryContent));
 
-        CanvasItem output = canvas.placeGeneratedArtifactWithinChange(owner, project, agentId, artifactId);
+        CanvasItem output = canvas.placeGeneratedArtifactWithinChange(owner, project, artifactId, groupId);
 
         assertThat(output.x()).isEqualByComparingTo("80");
         assertThat(output.y()).isEqualByComparingTo("80");
@@ -117,20 +109,20 @@ class CanvasOutputPlacementTest {
     }
 
     @Test
-    void agentOutputsSearchColumnsBeforeAdvancingToTheNextRow() {
+    void generatedContentStartsBesideTheExistingContentBounds() {
         when(items.list(owner, project)).thenReturn(List.of(
                 artifactCard("80", "80", "300", "300", 0),
                 artifactCard("404", "80", "300", "300", 0),
                 artifactCard("728", "80", "300", "300", 0)));
 
-        CanvasItem output = canvas.placeGeneratedArtifactWithinChange(owner, project, agentId, artifactId);
+        CanvasItem output = canvas.placeGeneratedArtifactWithinChange(owner, project, artifactId, groupId);
 
-        assertThat(output.x()).isEqualByComparingTo("80");
-        assertThat(output.y()).isEqualByComparingTo("404");
+        assertThat(output.x()).isEqualByComparingTo("1052");
+        assertThat(output.y()).isEqualByComparingTo("80");
     }
 
     @Test
-    void agentOutputsRejectAnExhaustedGridWithoutCreatingAPartialCard() {
+    void generatedContentRejectsAnExhaustedFallbackGridWithoutCreatingAPartialCard() {
         List<CanvasItem> existing = new ArrayList<>();
         for (int row = 0; row < 100; row++) {
             for (int column = 0; column < 3; column++) {
@@ -138,12 +130,61 @@ class CanvasOutputPlacementTest {
                         Integer.toString(80 + 324 * row), "300", "300", 0));
             }
         }
+        existing.add(artifactCard("999800", "999800", "300", "300", 0));
         when(items.list(owner, project)).thenReturn(existing);
 
-        assertThatThrownBy(() -> canvas.placeGeneratedArtifactWithinChange(owner, project, agentId, artifactId))
+        assertThatThrownBy(() -> canvas.placeGeneratedArtifactWithinChange(owner, project, artifactId, groupId))
                 .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.detail().key())
-                        .isEqualTo("api.canvas-service.there-is-no-canvas-location-available-in-the-agent-output"));
+                        .isEqualTo("api.canvas-service.there-is-no-free-location-for-generated-content"));
         verify(items, never()).create(any());
+    }
+
+    @Test
+    void exactMediaPlacementReusesOnlyTheMatchingSiblingSelection() {
+        UUID first = UUID.randomUUID(), second = UUID.randomUUID();
+        CanvasItem original = new CanvasItem(sourceId, project, CanvasItem.SubjectType.ARTIFACT, artifactId,
+                second, "Source", decimal("0"), decimal("0"), decimal("300"), decimal("300"),
+                0, groupId, false, 0, NOW, NOW);
+        when(items.list(owner, project)).thenReturn(List.of(original));
+        var requested = new CanvasService.ArtifactVersionPlacement(artifactId, first);
+        var result = canvas.placeArtifactVersionsWithinChange(owner, project, List.of(requested), null);
+        assertThat(result.created()).singleElement().satisfies(item -> {
+            assertThat(item.selectedVersionId()).isEqualTo(first);
+            assertThat(item.groupId()).isNull();
+        });
+        assertThat(result.alreadyPresent()).isEmpty();
+        verify(items, never()).selectVersion(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
+    }
+
+    @Test
+    void identityPlacementReusesAnExistingOrdinaryNodeRegardlessOfItsGroup() {
+        CanvasItem original = source("0", "300", "300");
+        when(items.list(owner, project)).thenReturn(List.of(original));
+        var result = canvas.placeArtifactsWithinChange(owner, project, List.of(artifactId), groupId);
+        assertThat(result.created()).isEmpty();
+        assertThat(result.alreadyPresent()).containsExactly(original);
+        verify(items, never()).create(any());
+    }
+
+    @Test
+    void mediaReferencesExcludeTheDestinationAndReuseOnlyAnIndependentExactVersionNode() {
+        CanvasItem destination = source("0", "300", "300");
+        CanvasItem sibling = new CanvasItem(UUID.randomUUID(), project, CanvasItem.SubjectType.ARTIFACT,
+                artifactId, parent, "Reference", decimal("400"), BigDecimal.ZERO,
+                decimal("300"), decimal("300"), 0, null, false, 0, NOW, NOW);
+        when(items.list(owner, project)).thenReturn(List.of(destination, sibling));
+
+        assertThat(canvas.ensureMediaReferenceWithinChange(owner, project, artifactId, parent, null,
+                destination.id())).isEqualTo(sibling);
+        verify(items, never()).create(any());
+
+        when(items.list(owner, project)).thenReturn(List.of(destination));
+        var created = canvas.ensureMediaReferenceWithinChange(owner, project, artifactId, parent, null,
+                destination.id());
+        assertThat(created.id()).isNotEqualTo(destination.id());
+        assertThat(created.selectedVersionId()).isEqualTo(parent);
+        assertThat(created.groupId()).isNull();
+        verify(items).create(created);
     }
 
     @Test

@@ -51,7 +51,7 @@ function imageCard(): CanvasItem {
     id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id",
     title: "Hero",
     x: 20, y: 20, width: 320, height: 240, zIndex: 0, groupId: null,
-    locked: false, selectedVersionId: imageVersionId, version: 0, agent: null,
+    locked: false, selectedVersionId: imageVersionId, version: 0,
     artifact: {
       id: "image-id", projectId: "project-1", kind: "IMAGE", title: "Hero",
       resourceDefaultVersionId: imageVersionId, version: 3, createdAt: now, updatedAt: now,
@@ -72,9 +72,9 @@ function imageCard(): CanvasItem {
 function textCard(): CanvasItem {
   const item = imageCard();
   return { ...item, id: "text-card", subjectId: "text-id", title: "Notes", width: 280, height: 180,
-    artifact: item.artifact ? { ...item.artifact, id: "text-id", kind: "TEXT", title: "Notes",
+    artifact: { ...item.artifact, id: "text-id", kind: "TEXT", title: "Notes",
       resourceDefaultVersionId: "text-v2", resourceDefaultVersion: { ...item.artifact.resourceDefaultVersion!, id: "text-v2",
-        content: { format: "PLAIN_TEXT", text: "直接在节点里写" }, inputReferences: [] } } : null };
+        content: { format: "PLAIN_TEXT", text: "直接在节点里写" }, inputReferences: [] } } };
 }
 
 describe("ProjectWorkspacePage", () => {
@@ -201,111 +201,132 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.queryByText("合成对话错误")).not.toBeInTheDocument();
   });
 
-  it("opens an idle audio conversation bound to the exact selected version and reuses it", async () => {
-    const source = imageCard();
-    const audio: CanvasItem = { ...source, id: "audio-card", title: "Voice",
-      artifact: { ...source.artifact!, kind: "AUDIO", title: "Voice" } };
-    let items = [audio];
-    let agents: Agent[] = [];
-    let creates = 0;
-    let runs = 0;
+  it("opens the project Agent for the selected audio without creating a canvas node or Run", async () => {
+    const audio: CanvasItem = { ...imageCard(), id: "audio-card", title: "Voice",
+      artifact: { ...imageCard().artifact!, kind: "AUDIO", title: "Voice" } };
+    const now = "2026-10-20T00:00:00Z";
+    const agent: Agent = { id: "director", projectId: "project-1", name: "导演 Agent", instruction: "Project director",
+      profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
+    const creates = vi.fn(); const commands = vi.fn(); const runs = vi.fn();
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Audio project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
-      http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: agents })),
-      // Audio retrieval can fail independently without blocking exact-version conversations.
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [audio] })),
+      http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: [agent] })),
       http.get("/api/v1/projects/project-1/assets/asset-id/content", () => HttpResponse.error()),
-      http.post("/api/v1/projects/:projectId/agents", async ({ request }) => {
-        creates++;
-        const input = await request.json() as { name: string; instruction: string; bindings: { artifactId: string; selectedVersionId: string }[] };
-        expect(input.bindings).toEqual([{ artifactId: audio.artifact!.id, selectedVersionId: imageVersionId }]);
-        expect(input.instruction).toContain("不代表你已听到");
-        const now = "2026-09-30T00:00:00Z";
-        const agent: Agent = { ...input, id: "audio-agent", projectId: "project-1", profileKey: "creator", profileVersion: 1,
-          outputGroupId: "audio-output", version: 0, createdAt: now, updatedAt: now,
-          bindings: input.bindings.map((binding) => ({ ...binding, id: "audio-binding" })) };
-        agents = [agent];
-        return HttpResponse.json(agent, { status: 201 });
-      }),
-      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-        const body = await request.json() as { commands: CanvasCommand[] };
-        const command = body.commands[0];
-        if (!command || command.type !== "PLACE_AGENT") throw new Error("Expected idle Agent placement");
-        items = [...items, { id: command.itemId, subjectType: "AGENT", subjectId: command.agentId,
-          title: agents[0]!.name, x: command.x, y: command.y, width: command.width, height: command.height,
-          zIndex: command.zIndex, groupId: null, locked: false, version: 0, selectedVersionId: null, selectedVersion: null,
-          artifact: null, agent: agents[0]! }];
-        return HttpResponse.json({ items });
-      }),
-      http.post("/api/v1/projects/:projectId/runs", () => { runs++; return HttpResponse.json({}); }),
+      http.post("/api/v1/projects/:projectId/agents", () => { creates(); return HttpResponse.json(agent); }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", () => { commands(); return HttpResponse.json({ items: [audio] }); }),
+      http.post("/api/v1/projects/:projectId/runs", () => { runs(); return HttpResponse.json({}); }),
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
     fireEvent.click(await screen.findByRole("article", { name: "Voice · 音频" }));
-    expect(await screen.findByText(/波形暂不可用/)).toBeVisible();
     await user.click(await screen.findByRole("button", { name: "Agent 对话" }));
-    expect(await screen.findByRole("heading", { name: "Voice · 对话" })).toBeVisible();
-    expect(creates).toBe(1);
-    expect(runs).toBe(0);
-    fireEvent.click(screen.getByRole("article", { name: "Voice · 音频" }));
-    await user.click(await screen.findByRole("button", { name: "Agent 对话" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Agent 对话" })).not.toBeInTheDocument());
-    expect(creates).toBe(1);
-    expect(items).toHaveLength(2);
-    expect(runs).toBe(0);
+    expect(await screen.findByRole("heading", { name: agent.name })).toBeVisible();
+    expect(useCanvasStore.getState().selectedIds).toEqual([audio.id]);
+    await waitFor(() => expect(document.querySelectorAll(".react-flow__node")).toHaveLength(1));
+    expect(creates).not.toHaveBeenCalled(); expect(commands).not.toHaveBeenCalled(); expect(runs).not.toHaveBeenCalled();
   });
 
-  it.each([["create", "agent.director"], ["place", "agent.director"], ["place", "agent.writer"]] as const)("creates a Director card immediately and retries a failed %s for %s with the original identity", async (failure, promptKey) => {
-    const now = "2026-10-03T00:00:00Z";
-    const agent: Agent = { id: "director", projectId: "project-1", name: promptKey === "agent.writer" ? "编剧 Agent" : "导演 Agent", instruction: "Synthetic director workflow",
-      profileKey: "creator", profileVersion: 1, outputGroupId: "output", version: 0, bindings: [], createdAt: now, updatedAt: now };
-    let items: CanvasItem[] = []; let creates = 0; let placements = 0;
-    const keys: (string | null)[] = []; const commands: CanvasCommand[] = []; const runs = vi.fn();
+  it("creates the default director only when opened and reuses the idempotency key after failure", async () => {
+    const now = "2026-10-20T00:00:00Z";
+    const agent: Agent = { id: "director", projectId: "project-1", name: "导演 Agent", instruction: "Project director",
+      profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
+    const keys: (string | null)[] = []; const commands = vi.fn(); const runs = vi.fn();
     server.use(
-      http.get("/api/v1/agent-presets", () => HttpResponse.json({ items: [{ key: promptKey, name: agent.name }] })),
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
       http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Director project", status: "ACTIVE" })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
-      http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: creates ? [agent] : [] })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: [] })),
       http.post("/api/v1/projects/:projectId/agents", async ({ request }) => {
-        creates++; keys.push(request.headers.get("Idempotency-Key"));
-        expect(await request.json()).toEqual({ bindings: [], promptKey });
-        if (failure === "create" && creates === 1) return HttpResponse.error();
+        keys.push(request.headers.get("Idempotency-Key"));
+        expect(await request.json()).toEqual({ promptKey: "agent.director" });
+        if (keys.length === 1) return HttpResponse.error();
         return HttpResponse.json(agent, { status: 201 });
       }),
-      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-        placements++; const input = await request.json() as { commands: CanvasCommand[] }; const command = input.commands[0]!;
-        commands.push(command); expect(command).toMatchObject({ type: "PLACE_AGENT", agentId: agent.id,
-          x: 235, y: 165, width: 560, height: 720 });
-        if (failure === "place" && placements === 1) return HttpResponse.error();
-        if (command.type !== "PLACE_AGENT") throw new Error("Missing Agent placement");
-        items = [{ ...imageCard(), id: command.itemId, subjectType: "AGENT", subjectId: agent.id, title: agent.name,
-          artifact: null, agent, selectedVersion: null, selectedVersionId: null,
-          x: command.x, y: command.y, width: command.width, height: command.height }];
-        return HttpResponse.json({ items });
-      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", () => { commands(); return HttpResponse.json({ items: [] }); }),
       http.post("/api/v1/projects/:projectId/runs", () => { runs(); return HttpResponse.json({}); }),
     );
+    const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
-    const user = userEvent.setup(); await screen.findByText("Director project");
-    const pane = screen.getByLabelText("项目画布").querySelector(".react-flow__pane")!;
-    fireEvent.doubleClick(pane, { clientX: 235, clientY: 165 });
-    await user.click(screen.getByRole("option", { name: agent.name }));
-    expect(document.querySelector(".workspace-drawer")).toBeNull();
-    await screen.findByText("创建 Agent 失败");
-    await user.click(screen.getByRole("button", { name: "重试" }));
+    await screen.findByText("Director project"); expect(keys).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "打开创作导演" }));
+    await user.click(await screen.findByRole("button", { name: "重试" }));
     expect(await screen.findByRole("heading", { name: agent.name })).toBeVisible();
-    expect(runs).not.toHaveBeenCalled(); expect(keys[0]).toBeTruthy();
-    if (failure === "create") expect(keys).toEqual([keys[0], keys[0]]);
-    else { expect(creates).toBe(1); expect(commands[1]).toEqual(commands[0]); }
-    expect(document.querySelector(".workspace-drawer")).toBeNull();
+    expect(keys[0]).toBeTruthy(); expect(keys).toEqual([keys[0], keys[0]]);
+    expect(document.querySelector(".react-flow__node")).toBeNull();
+    expect(commands).not.toHaveBeenCalled(); expect(runs).not.toHaveBeenCalled();
+  });
+
+  it("opens project Agent memory by URL without changing canvas selection or layout", async () => {
+    const now = "2026-10-20T00:00:00Z";
+    const agent: Agent = { id: "existing-agent", projectId: "project-1", name: "既有导演", instruction: "Keep my memory",
+      profileKey: "creator", profileVersion: 1, version: 0,
+      createdAt: now, updatedAt: now };
+    const image = imageCard();
+    useCanvasStore.setState({ selectedIds: [image.id] });
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Legacy project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        project: { id: "project-1", name: "Legacy project", status: "ACTIVE" }, canvas: { items: [image] },
+        agents: [agent], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [image] })),
+    );
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1?agentId=existing-agent"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByRole("heading", { name: agent.name })).toBeVisible();
+    await waitFor(() => expect(document.querySelectorAll(".react-flow__node")).toHaveLength(1));
+    expect(document.querySelector(".react-flow__edge")).toBeNull();
+    expect(useCanvasStore.getState().selectedIds).toEqual([image.id]);
+    expect(viewportProbe.center).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("article", { name: "Hero · 图片" }));
+    await screen.findByLabelText("所选卡片编辑区");
+    fireEvent.keyDown(screen.getByLabelText("项目画布"), { key: "Escape" });
+    expect(useCanvasStore.getState().selectedIds).toEqual([]);
+    expect(screen.getByRole("dialog", { name: "创作导演" })).toBeVisible();
+  });
+
+  it("creates another project Agent from a dock preset without placing a node", async () => {
+    const now = "2026-10-20T00:00:00Z";
+    const director: Agent = { id: "director", projectId: "project-1", name: "导演 Agent", instruction: "Project director",
+      profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
+    const writer: Agent = { ...director, id: "writer", name: "编剧 Agent" };
+    const creates = vi.fn(); const commands = vi.fn();
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Preset project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        project: { id: "project-1", name: "Preset project", status: "ACTIVE" }, canvas: { items: [] },
+        agents: [director], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+      })),
+      http.get("/api/v1/agent-presets", () => HttpResponse.json({ items: [{ key: "agent.writer", name: writer.name }] })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.post("/api/v1/projects/:projectId/agents", async ({ request }) => {
+        creates(await request.json()); expect(request.headers.get("Idempotency-Key")).toBeTruthy();
+        return HttpResponse.json(writer, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", () => { commands(); return HttpResponse.json({ items: [] }); }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    await screen.findByText("Preset project");
+    await user.click(screen.getByRole("button", { name: "打开创作导演" }));
+    await user.click(screen.getByRole("button", { name: "从预设新建 Agent" }));
+    await user.click(screen.getByRole("menuitem", { name: writer.name }));
+    expect(await screen.findByRole("heading", { name: writer.name })).toBeVisible();
+    expect(creates).toHaveBeenCalledWith({ promptKey: "agent.writer", });
+    expect(commands).not.toHaveBeenCalled(); expect(document.querySelector(".react-flow__node")).toBeNull();
   });
 
   it.each(["doubleClick", "contextMenu"] as const)("creates and selects empty text at the %s menu's canvas position without a drawer", async (gesture) => {
@@ -363,7 +384,7 @@ describe("ProjectWorkspacePage", () => {
       expect(screen.getByRole("menuitem", { name: "图片" })).toBeVisible();
       expect(screen.getByRole("menuitem", { name: "视频" })).toBeVisible();
       expect(screen.getByRole("menuitem", { name: "音频" })).toBeVisible();
-      expect(screen.getByRole("menuitem", { name: "导演 Agent" })).toBeVisible();
+      expect(screen.queryByRole("menuitem", { name: "导演 Agent" })).not.toBeInTheDocument();
       // jsdom has no Popper geometry for the pointer corridor between parent and submenu.
       await user.keyboard("{ArrowRight}{ArrowDown}{ArrowDown}{Enter}");
     }
@@ -419,7 +440,7 @@ describe("ProjectWorkspacePage", () => {
           id: itemId, subjectType: "ARTIFACT", subjectId: artifactId,
           title: "新图片",
           x: command.x, y: command.y, width: command.width, height: command.height, zIndex: 0, groupId: null,
-          locked: false, selectedVersionId: null, selectedVersion: null, version: 0, agent: null,
+          locked: false, selectedVersionId: null, selectedVersion: null, version: 0,
           artifact: { id: artifactId, projectId: "project-1", kind: "IMAGE",
             title: "新图片", resourceDefaultVersionId: null, resourceDefaultVersion: null,
             version: 0, createdAt: now, updatedAt: now },
@@ -455,7 +476,7 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("option")).toHaveLength(5);
+    expect(screen.getAllByRole("option")).toHaveLength(4);
     expect(screen.getByRole("option", { name: "文字" })).toHaveAttribute("aria-selected", "true");
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("option")).not.toBeInTheDocument();
@@ -601,12 +622,12 @@ describe("ProjectWorkspacePage", () => {
     </QueryClientProvider>);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("option")).toHaveLength(5);
+    expect(screen.getAllByRole("option")).toHaveLength(4);
     await user.click(screen.getByLabelText("项目画布"));
     expect(screen.queryAllByRole("option")).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
-    expect(screen.getAllByRole("option")).toHaveLength(5);
+    expect(screen.getAllByRole("option")).toHaveLength(4);
     screen.getByRole("option", { name: "文字" }).blur();
     await user.keyboard("{Escape}");
     expect(screen.queryAllByRole("option")).toHaveLength(0);
@@ -766,7 +787,7 @@ describe("ProjectWorkspacePage", () => {
       const header = screen.getByRole("banner");
       expect(within(header).queryByText("创作画布")).not.toBeInTheDocument();
       expect(within(header).queryByRole("button", { name: "导入素材" })).not.toBeInTheDocument();
-      expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+      expect(screen.queryByRole("complementary", { name: "创作工具" })).not.toBeInTheDocument();
       expect(within(header).getByRole("link", { name: "项目" })).toHaveAttribute("href", "/projects");
       expect(within(header).getByRole("button", { name: "资源" })).toBeInTheDocument();
       sources[0]?.onopen?.();
@@ -882,7 +903,7 @@ describe("ProjectWorkspacePage", () => {
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
           title: "Product reference",
           x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
-          locked: false, selectedVersionId: versionId, selectedVersion, version: 0, agent: null,
+          locked: false, selectedVersionId: versionId, selectedVersion, version: 0,
           artifact: {
             id: artifactId, projectId: "project-1", kind,
             title: "Product reference", resourceDefaultVersionId: versionId, version: 0,
@@ -961,7 +982,7 @@ describe("ProjectWorkspacePage", () => {
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
           title: "Uploaded video",
           x: 80, y: 80, width: 280, height: 240, zIndex: 0, groupId: null,
-          locked: false, selectedVersionId: versionId, selectedVersion, version: 0, agent: null,
+          locked: false, selectedVersionId: versionId, selectedVersion, version: 0,
           artifact: {
             id: artifactId, projectId: "project-1", kind: "VIDEO",
             title: "Uploaded video", resourceDefaultVersionId: versionId, version: 0,
@@ -1152,7 +1173,7 @@ describe("ProjectWorkspacePage", () => {
     await user.click(screen.getByRole("button", { name: "添加卡片" }));
     await user.click(screen.getByRole("option", { name: "文字" }));
     await screen.findByRole("alert");
-    expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "创作工具" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试创建文字节点" }));
     await waitFor(() => expect(placedItemId).toBeTruthy());
     expect(keys).toHaveLength(stage === "artifact" ? 2 : 1);
@@ -1215,8 +1236,7 @@ describe("ProjectWorkspacePage", () => {
                   createdAt: "2026-09-23T00:00:00Z",
                 },
               },
-              agent: null,
-            },
+                      },
           ],
         }),
       ),
@@ -1330,80 +1350,44 @@ describe("ProjectWorkspacePage", () => {
     },
   );
 
-  it("restores the existing Agent from resources with its original conversation", async () => {
+  it("opens an existing Agent and its conversation in the dock without placing it from resources", async () => {
     const now = "2026-09-26T00:00:00Z";
     const agent: Agent = { id: "original-agent", projectId: "project-1", profileKey: "creator",
       profileVersion: 1, name: "Original creator", instruction: "Keep the existing conversation",
-      outputGroupId: "original-output", version: 0, createdAt: now, updatedAt: now, bindings: [] };
+      version: 0, createdAt: now, updatedAt: now, };
     const activeRun = { id: "original-run", agentInstanceId: agent.id, status: "RUNNING",
       conversationId: `conversation-${agent.id}`, conversationTurn: 1,
       instruction: "Create an image of the garden", createdAt: now };
-    let items: CanvasItem[] = [];
-    let placedCommand: CanvasCommand | undefined;
-    let createdAgents = 0;
+    const commands = vi.fn(); const creates = vi.fn();
     server.use(
-      http.get("/api/v1/auth/me", () => HttpResponse.json({
-        id: "admin", loginName: "admin", role: "ADMIN",
-      })),
-      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
-        project: { id: "project-1", name: "Original project", status: "ACTIVE" },
-        canvas: { items }, agents: [agent], activeRun, activeTasks: [], unknownTasks: [], snapshotSeq: 1,
+        project: { id: "project-1", name: "Original project", status: "ACTIVE" }, canvas: { items: [] },
+        connections: [], agents: [agent], activeRun, activeTasks: [], unknownTasks: [], snapshotSeq: 1,
       })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({
-        id: "project-1", name: "Original project", status: "ACTIVE",
-      })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
-      http.post("/api/v1/projects/:projectId/agents", () => {
-        createdAgents++;
-        return HttpResponse.json(agent, { status: 201 });
-      }),
-      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-        const body = await request.json() as { commands: CanvasCommand[] };
-        placedCommand = body.commands[0];
-        expect(placedCommand).toMatchObject({ type: "PLACE_AGENT", agentId: agent.id,
-          width: 560, height: 720 });
-        items = [{ id: placedCommand!.itemId, subjectType: "AGENT", subjectId: agent.id,
-          title: agent.name,
-          x: 80, y: 80, width: 560, height: 720, zIndex: 0, groupId: null,
-          locked: false, selectedVersionId: null, selectedVersion: null, version: 0, artifact: null, agent }];
-        return HttpResponse.json({ items });
-      }),
-      http.get("/api/v1/projects/:projectId/runs/:runId/tasks", ({ params }) => {
-        expect(params.runId).toBe(activeRun.id);
-        return HttpResponse.json([]);
-      }),
-      http.get("/api/v1/projects/:projectId/runs/:runId/actions", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Original project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.post("/api/v1/projects/:projectId/agents", () => { creates(); return HttpResponse.json(agent); }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", () => { commands(); return HttpResponse.json({ items: [] }); }),
     );
-    render(<QueryClientProvider client={createQueryClient()}>
-      <MemoryRouter initialEntries={["/projects/project-1"]}>
-        <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
-      </MemoryRouter>
-    </QueryClientProvider>);
-    await screen.findByRole("heading", { name: "Original project" });
     const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    await screen.findByRole("heading", { name: "Original project" });
     await user.click(screen.getByRole("button", { name: "资源" }));
-    const resource = (await screen.findByText("Original creator · Agent")).closest("li");
-    expect(resource).not.toBeNull();
-    await user.click(within(resource!).getByRole("button", { name: "放回画布" }));
-
+    expect(screen.queryByText("Original creator · Agent")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "关闭抽屉" }));
+    await user.click(screen.getByRole("button", { name: "打开创作导演" }));
     const conversation = await screen.findByRole("region", { name: "任务对话" });
-    expect(conversation.closest(".agent-chat-card")).toBeInTheDocument();
     expect(conversation).toHaveTextContent(activeRun.instruction);
     expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
-    expect(screen.queryByRole("link", { name: "调用日志" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("complementary", { name: "项目资源" })).not.toBeInTheDocument();
-    expect(placedCommand).toMatchObject({ type: "PLACE_AGENT", agentId: agent.id });
-    expect(createdAgents).toBe(0);
+    expect(document.querySelector(".react-flow__node")).toBeNull();
+    expect(commands).not.toHaveBeenCalled(); expect(creates).not.toHaveBeenCalled();
   });
 
-  it("shows exact Agent bindings and saves editable card configuration", async () => {
+  it("saves project Agent configuration and preflights the current canvas", async () => {
     const agentId = crypto.randomUUID();
-    const itemId = crypto.randomUUID();
-    const artifactId = crypto.randomUUID();
-    const versionId = crypto.randomUUID();
-    const outputGroupId = crypto.randomUUID();
-    const bindingId = crypto.randomUUID();
     let updated = false;
     let activeRun: { id: string; agentInstanceId: string; status: string; conversationId: string; conversationTurn: number; instruction: string; createdAt: string } | null = null;
     let starts = 0;
@@ -1435,8 +1419,6 @@ describe("ProjectWorkspacePage", () => {
           conversationId: `conversation-${agentId}`, conversationVersion: 0,
           conversationTurnCount: 0, inheritedBindingCount: 0, memoryTruncated: false, creativeSkills: [],
           agentInstruction: updated ? "Updated instruction" : "Initial instruction",
-          bindings: [{ artifactId, selectedVersionId: versionId,
-            artifactTitle: "Bound brief", artifactKind: "TEXT" }],
           modelAvailable, providerAdapter: modelAvailable ? "FakeChatModel" : null,
           modelId: modelAvailable ? "fixture-model" : null,
           toolCalling: true,
@@ -1447,7 +1429,7 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/snapshot", ({ params }) =>
         HttpResponse.json({
           project: { id: params.projectId, name: "Agent canvas", status: "ACTIVE" },
-          canvas: { items: [] }, agents: [], activeRun, activeTasks: [], unknownTasks: [],
+          canvas: { items: [] }, agents: [agent(updated)], activeRun, activeTasks: [], unknownTasks: [],
           snapshotSeq: 0,
         }),
       ),
@@ -1493,28 +1475,7 @@ describe("ProjectWorkspacePage", () => {
         updated = body.name === "Agent Beta" && body.instruction === "Updated instruction";
         return HttpResponse.json(agent(updated));
       }),
-      http.get("/api/v1/projects/:projectId/canvas/items", () =>
-        HttpResponse.json({
-          items: [
-            {
-              id: itemId,
-              subjectType: "AGENT",
-              subjectId: agentId,
-              title: "Agent Alpha",
-              x: 10,
-              y: 10,
-              width: 340,
-              height: 320,
-              zIndex: 0,
-              groupId: null,
-              locked: false, selectedVersionId: null, selectedVersion: null,
-              version: 0,
-              artifact: null,
-              agent: agent(updated),
-            },
-          ],
-        }),
-      ),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
     );
     function agent(isUpdated: boolean) {
       return {
@@ -1524,17 +1485,9 @@ describe("ProjectWorkspacePage", () => {
         profileVersion: 1,
         name: isUpdated ? "Agent Beta" : "Agent Alpha",
         instruction: isUpdated ? "Updated instruction" : "Initial instruction",
-        outputGroupId,
         version: isUpdated ? 1 : 0,
         createdAt: "2026-09-23T00:00:00Z",
         updatedAt: "2026-09-23T00:00:00Z",
-        bindings: [
-          {
-            id: bindingId,
-            artifactId,
-            selectedVersionId: versionId,
-          },
-        ],
       };
     }
     render(
@@ -1547,14 +1500,14 @@ describe("ProjectWorkspacePage", () => {
       </QueryClientProvider>,
     );
 
-    const heading = await screen.findByText("Agent Alpha");
+    await screen.findByText("Agent canvas");
+    await userEvent.click(screen.getByRole("button", { name: "打开创作导演" }));
+    const heading = await screen.findByRole("heading", { name: "Agent Alpha" });
     const card = heading.closest("article");
     expect(card).not.toBeNull();
-    expect(card).toHaveClass("agent-chat-card");
+    expect(card).toHaveClass("agent-chat-surface");
+    expect(document.querySelector(".react-flow__node")).toBeNull();
     fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Agent 设置" }));
-    expect(within(card as HTMLElement).getByText(/明确输入（1）/)).toBeInTheDocument();
-    expect(within(card as HTMLElement).getByText(new RegExp(artifactId))).toBeInTheDocument();
-    expect(within(card as HTMLElement).getByText(new RegExp(versionId))).toBeInTheDocument();
     fireEvent.click(heading);
     const editorArea = heading.closest("article") as HTMLElement;
     const name = within(editorArea).getByDisplayValue("Agent Alpha");
@@ -1563,7 +1516,7 @@ describe("ProjectWorkspacePage", () => {
     await changeControl(instruction, { target: { value: "Updated instruction" } });
     fireEvent.submit(name.closest("form") as HTMLFormElement);
 
-    expect(await screen.findByText("Agent Beta")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Agent Beta" })).toBeInTheDocument();
     expect(updated).toBe(true);
 
     const taskInput = within(editorArea).getByLabelText("本次任务");
@@ -1616,7 +1569,7 @@ describe("ProjectWorkspacePage", () => {
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
           title: "Demo still",
           x: 10, y: 10, width: 300, height: 300, zIndex: 0, groupId: crypto.randomUUID(),
-          locked: false, selectedVersionId: versionId, selectedVersion, version: 0, agent: null,
+          locked: false, selectedVersionId: versionId, selectedVersion, version: 0,
           artifact: {
             id: artifactId, projectId: "project-1", kind: "IMAGE",
             title: "Demo still", resourceDefaultVersionId: versionId, version: 0,
@@ -1670,7 +1623,7 @@ describe("ProjectWorkspacePage", () => {
           id: crypto.randomUUID(), subjectType: "ARTIFACT", subjectId: artifactId,
           title: "Demo clip",
           x: 10, y: 10, width: 300, height: 300, zIndex: 0, groupId: null,
-          locked: false, selectedVersionId: versionId, selectedVersion, version: 0, agent: null,
+          locked: false, selectedVersionId: versionId, selectedVersion, version: 0,
           artifact: {
             id: artifactId, projectId: "project-1", kind: "VIDEO",
             title: "Demo clip", resourceDefaultVersionId: versionId, version: 0,
