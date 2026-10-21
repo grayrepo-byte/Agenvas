@@ -338,11 +338,8 @@ class SkillRunPostgresIT {
         var source = artifacts.create(owner.userId(), project.id(), Artifact.Kind.TEXT, "原文 · 两章合成小说",
                 mapper.valueToTree(Map.of("format", "PLAIN_TEXT", "text", original)));
         UUID sourceVersion = source.resourceDefaultVersion().id();
-        var agent = agents.create(owner.userId(), project.id(), "原著分析", "使用卡片保存章节分析与覆盖范围", List.of(
-                new AgentInstanceService.BindingInput(source.artifact().id(), sourceVersion)));
-        canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceAgent(UUID.randomUUID(), agent.id(),
-                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"), new BigDecimal("420"), 0, null, false),
-                new CanvasService.PlaceArtifact(UUID.randomUUID(), source.artifact().id(), new BigDecimal("400"), BigDecimal.ZERO,
+        var agent = agents.create(owner.userId(), project.id(), "原著分析", "使用卡片保存章节分析与覆盖范围");
+        canvas.apply(owner.userId(), project.id(), List.of(                new CanvasService.PlaceArtifact(UUID.randomUUID(), source.artifact().id(), new BigDecimal("400"), BigDecimal.ZERO,
                         new BigDecimal("320"), new BigDecimal("420"), 0, null, false)));
         var skill = skills.list(owner.userId(), "short-drama-novel-analyze", false, null).items().getFirst();
         var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS,
@@ -438,14 +435,34 @@ class SkillRunPostgresIT {
         var binding = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(new SkillRunService.VersionRef(skill.skillId(), skill.versionId())), "agent-binding");
         assertThat(binding.agentVersion()).isEqualTo(scenario.agent().version() + 1);
         assertThat(skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(new SkillRunService.VersionRef(skill.skillId(), skill.versionId())), "agent-binding")).isEqualTo(binding);
-        assertThat(agents.get(owner.userId(), scenario.project().id(), scenario.agent().id()).bindings()).hasSize(1);
+        assertThat(agents.get(owner.userId(), scenario.project().id(), scenario.agent().id()).id()).isEqualTo(scenario.agent().id());
         assertThat(skillRuns.preview(owner.userId(), scenario.project().id(), scenario.agent().id(), null)).singleElement()
                 .satisfies(summary -> assertThat(summary.assets()).hasSize(1));
-        assertNoSkillProjectCopies(scenario, 2);
+        assertNoSkillProjectCopies(scenario, 1);
         assertThat(gateway.calls).hasValue(callsBefore);
         assertThat(runs.list(owner.userId(), scenario.project().id(), scenario.agent().id(), null, null).items()).isEmpty();
         assertThat(tasks.listActiveDirect(owner.userId(), scenario.project().id())).isEmpty();
         assertProblem("AGENT_VERSION_CONFLICT", () -> skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(), "stale-agent-binding"));
+    }
+
+    @Test void explicitlySelectedSkillInputIsFrozenWithoutAnAssistantBindingOrCanvasNode() throws Exception {
+        var scenario = scenario(false);
+        var skill = publishedSkill(scenario, true);
+        var version = scenario.subject().resourceDefaultVersion();
+        var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS,
+                List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(),
+                        List.of(new SkillRunService.Input("subject-image", version.id())))));
+        AgentRun run = createRun(scenario, scenario.agent().version(), "explicit-offcanvas-skill-input", selection).run();
+        assertThat(run.contextSnapshot().path("canvasScope").path("items")).isEmpty();
+        assertThat(run.contextSnapshot().path("bindings")).singleElement().satisfies(input -> {
+            assertThat(input.path("selectedVersionId").asText()).isEqualTo(version.id().toString());
+            assertThat(input.path("source").asText()).isEqualTo("SKILL_INPUT");
+            assertThat(input.has("expectedVersion")).isFalse();
+        });
+        assertThat(artifacts.requireAgentVisibleVersion(owner.userId(), scenario.project().id(), run.id(),
+                version.id(), run.contextSnapshot()).id()).isEqualTo(version.id());
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).isEmpty();
+        runs.cancel(owner.userId(), scenario.project().id(), run.id());
     }
 
     @Test void runChecksRequiredExactInputAndKeepsBodyResourcesAndReferencesAfterNewVersionAndUnbinding() throws Exception {
@@ -455,7 +472,7 @@ class SkillRunPostgresIT {
         var binding = skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(new SkillRunService.VersionRef(skill.skillId(), skill.versionId())), "freeze-binding");
         assertProblem("SKILL_INPUT_REQUIRED", () -> createRun(scenario, binding.agentVersion(), "missing-subject",
                 new SkillRunService.Selection(SkillRunService.SelectionMode.DEFAULT, List.of())));
-        assertProblem("SKILL_INPUT_NOT_BOUND", () -> createRun(scenario, binding.agentVersion(), "forged-subject",
+        assertProblem("RESOURCE_NOT_FOUND", () -> createRun(scenario, binding.agentVersion(), "forged-subject",
                 new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(), List.of(new SkillRunService.Input("subject-image", UUID.randomUUID())))))));
         assertThat(runs.list(owner.userId(), scenario.project().id(), scenario.agent().id(), null, null).items()).isEmpty();
         assertThat(gateway.calls).hasValue(callsBefore);
@@ -473,7 +490,7 @@ class SkillRunPostgresIT {
         assertThat(frozen.path("assets").path(0).has("artifactId")).isFalse();
         assertThat(frozen.path("assets").path(0).has("artifactVersionId")).isFalse();
         assertThat(run.contextSnapshot().path("bindings")).hasSize(1);
-        assertNoSkillProjectCopies(scenario, 2);
+        assertNoSkillProjectCopies(scenario, 1);
         assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), scenario.project().id(), run.id()))
                 .allSatisfy(message -> assertThat(message.getText()).doesNotContain(skill.body(), skill.resourceText()));
@@ -520,7 +537,7 @@ class SkillRunPostgresIT {
             assertThat(frozen.path("assets").size()).isEqualTo(fixedAsset ? 1 : 0);
             assertThat(frozen.path("assetDelivery").asText()).isEqualTo("LLM_CONTEXT");
             assertThat(run.contextSnapshot().path("bindings")).isEmpty();
-            assertNoSkillProjectCopies(scenario, 1);
+            assertNoSkillProjectCopies(scenario, 0);
             assertThat(exports.build(owner.userId(), scenario.project().id()).creativeSkills()).singleElement()
                     .satisfies(export -> {
                         assertThat(export.path("version").path("id").asText()).isEqualTo(skill.versionId().toString());
@@ -537,7 +554,7 @@ class SkillRunPostgresIT {
         assertThat(skillRuns.processNext()).isTrue();
         assertThat(jdbc.sql("select status from skill_install_operation where id=:id").param("id", operationId).query(String.class).single()).isEqualTo("FAILED");
         assertThat(jdbc.sql("select error_code from skill_install_operation where id=:id").param("id", operationId).query(String.class).single()).isEqualTo("SKILL_INSTALL_RETIRED");
-        assertThat(canvas.list(owner.userId(), scenario.project().id())).hasSize(1);
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).isEmpty();
         assertThat(artifacts.listProject(owner.userId(), scenario.project().id())).hasSize(1);
         assertThat(jdbc.sql("select count(*) from asset where project_id=:project").param("project", scenario.project().id()).query(Long.class).single()).isEqualTo(1L);
         assertThat(exports.build(owner.userId(), scenario.project().id()).creativeSkills()).isEmpty();
@@ -562,7 +579,7 @@ class SkillRunPostgresIT {
         assertThat(frozen.path("assetDelivery").asText()).isEqualTo("LLM_CONTEXT");
         assertThat(frozen.path("assets").path(0).has("artifactVersionId")).isFalse();
         assertThat(run.contextSnapshot().path("bindings")).isEmpty();
-        assertThat(canvas.list(owner.userId(), scenario.project().id())).hasSize(1);
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).isEmpty();
         assertThat(exports.build(owner.userId(), scenario.project().id()).creativeSkills()).singleElement()
                 .satisfies(export -> assertSameJson(export.path("mapping"), mapping));
         assertThat(Files.readAllBytes(assets.get(owner.userId(), scenario.project().id(),
@@ -621,7 +638,7 @@ class SkillRunPostgresIT {
         // A rolled-back batch did not hydrate an image in the following request.
         assertModelImages(0, expectedImage);
         JsonNode frozen = runs.get(owner.userId(), scenario.project().id(), run.id()).contextSnapshot().path("creativeSkills").path(0).deepCopy();
-        assertNoSkillProjectCopies(scenario, 1);
+        assertNoSkillProjectCopies(scenario, 0);
 
         var copied = skills.copyVersionToDraft(owner.userId(), skill.skillId(), skill.versionId(), 1);
         var edited = skills.saveDraft(owner.userId(), skill.skillId(), copied.version(),
@@ -644,7 +661,7 @@ class SkillRunPostgresIT {
                 .doesNotContain("data:image", java.util.Base64.getEncoder().encodeToString(expectedImage));
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
         assertModelImages(1, expectedImage);
-        assertNoSkillProjectCopies(scenario, 1);
+        assertNoSkillProjectCopies(scenario, 0);
         assertThat(runs.get(owner.userId(), scenario.project().id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
     }
 
@@ -798,7 +815,7 @@ class SkillRunPostgresIT {
         legacy.put("maxModelTurns", 12).put("maxToolExecutions", 40);
         var allowed = legacy.putArray("allowedTools");
         run.policySnapshot().path("allowedTools").forEach(tool -> {
-            if (!"read_skill_asset".equals(tool.asText())) allowed.add(tool.asText());
+            if (!List.of("read_skill_asset", "read_canvas", "manage_canvas_node", "update_media_draft").contains(tool.asText())) allowed.add(tool.asText());
         });
         jdbc.sql("update agent_run set policy_snapshot_json=cast(:policy as jsonb) where id=:run")
                 .param("policy", mapper.writeValueAsString(legacy)).param("run", run.id()).update();
@@ -889,9 +906,7 @@ class SkillRunPostgresIT {
                     subject.artifact().id(), subject.resourceDefaultVersion().id(), "Skill Creator", "Use the reviewed style");
             return new Scenario(project, bound, subject);
         }
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Skill Creator", "Use the reviewed style", List.of());
-        canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceAgent(UUID.randomUUID(), agent.id(),
-                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"), new BigDecimal("420"), 0, null, false)));
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Skill Creator", "Use the reviewed style");
         return new Scenario(project, agent, subject);
     }
 

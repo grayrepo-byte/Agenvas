@@ -12,12 +12,16 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -54,6 +58,143 @@ class FlywayBaselinePostgresIT {
         flyway.clean();
     }
 
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void retiresOnlyAgentCanvasTopologyAndPreservesFrozenExecutionAndContent(boolean customPrompt) throws Exception {
+        Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("25").load().migrate();
+        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), agent = UUID.randomUUID();
+        UUID conversation = UUID.randomUUID(), run = UUID.randomUUID(), task = UUID.randomUUID(), emptyProject = UUID.randomUUID();
+        UUID source = UUID.randomUUID(), target = UUID.randomUUID(), sourceVersion = UUID.randomUUID(), targetVersion = UUID.randomUUID();
+        UUID sourceCard = UUID.randomUUID(), targetCard = UUID.randomUUID(), agentCard = UUID.randomUUID();
+        UUID skill = UUID.randomUUID(), skillVersion = UUID.randomUUID(), outputGroup = UUID.randomUUID();
+        String customContent = "Synthetic customized prompt keeps AGENT_OUTPUT as user content";
+        Map<String, String> history = new LinkedHashMap<>();
+        String assistantBefore, canvasBefore, oldEventBefore;
+        try (Connection connection = connection()) {
+            insertOwner(connection, owner);
+            insertProject(connection, project, owner);
+            insertProject(connection, emptyProject, owner);
+            execute(connection, "update project set event_seq=1 where id=?", project);
+            execute(connection, """
+                    insert into project_event(project_id,seq,event_id,type,schema_version,aggregate_id,aggregate_version,payload_json,occurred_at)
+                    values (?,1,?,'synthetic.old.event',1,?,0,'{"before":"preserve"}',now())
+                    """, project, UUID.randomUUID(), project);
+            insertAgent(connection, project, agent);
+            execute(connection, "update agent_instance set output_group_id=?,instruction='Synthetic saved AGENT_OUTPUT instruction' where id=?", outputGroup, agent);
+            insertConversation(connection, project, agent, conversation);
+            execute(connection, "update agent_instance set current_conversation_id=? where id=?", conversation, agent);
+            insertArtifact(connection, project, source, "IMAGE");
+            insertArtifact(connection, project, target, "VIDEO");
+            insertVersion(connection, project, source, sourceVersion);
+            var mapper = new ObjectMapper();
+            var context = mapper.createObjectNode().put("outputGroupId", outputGroup.toString());
+            context.putArray("bindings").addObject().put("artifactId", source.toString()).put("selectedVersionId", sourceVersion.toString());
+            context.putArray("selection").addObject().put("itemId", agentCard.toString()).put("subjectType", "AGENT").put("subjectId", agent.toString());
+            execute(connection, """
+                    insert into agent_run(id,project_id,agent_instance_id,user_id,status,instruction,
+                      context_snapshot_json,policy_snapshot_json,profile_version,created_at,updated_at,conversation_id,conversation_turn)
+                    values (?,?,?,?,'WAITING_TASKS','Synthetic frozen historical instruction',?::jsonb,
+                      '{"systemPromptVersion":11,"toolPolicyVersion":3,"allowedTools":["read_artifacts","place_artifacts"]}',1,now(),now(),?,1)
+                    """, run, project, agent, owner, context.toString(), conversation);
+            execute(connection, """
+                    insert into artifact_version(id,project_id,artifact_id,version_no,schema_version,content_json,
+                      input_refs_json,created_by_kind,run_id,created_at)
+                    values (?,?,?,1,1,'{"prompt":"Synthetic archived result"}','[]','TASK',?,now())
+                    """, targetVersion, project, target, run);
+            insertCard(connection, project, source, sourceCard, sourceVersion);
+            insertCard(connection, project, target, targetCard, targetVersion);
+            execute(connection, "update canvas_item set group_id=? where id=?", outputGroup, targetCard);
+            execute(connection, """
+                    insert into canvas_item(id,project_id,subject_type,subject_id,agent_instance_id,title,
+                      x,y,width,height,z_index,created_at,updated_at)
+                    values (?,?,'AGENT',?,?,'Synthetic retired director',50,60,460,600,2,now(),now())
+                    """, agentCard, project, agent, agent);
+            execute(connection, """
+                    insert into agent_binding(id,project_id,agent_instance_id,artifact_id,selected_version_id,created_at)
+                    values (?,?,?,?,?,now())
+                    """, UUID.randomUUID(), project, agent, source, sourceVersion);
+            for (String type : List.of("AGENT_IMAGE_INPUT", "MEDIA_INPUT", "MEDIA_DERIVATION"))
+                execute(connection, """
+                        insert into canvas_connection(id,project_id,source_canvas_item_id,target_canvas_item_id,
+                          relation_type,source_artifact_version_id,created_at,updated_at)
+                        values (?,?,?,?,?,?,now(),now())
+                        """, UUID.randomUUID(), project, sourceCard, type.equals("AGENT_IMAGE_INPUT") ? agentCard : targetCard, type, sourceVersion);
+            execute(connection, "insert into canvas_item_media_version(project_id,canvas_item_id,artifact_version_id,created_at) values (?,?,?,now())",
+                    project, targetCard, targetVersion);
+            execute(connection, "insert into media_draft(project_id,canvas_item_id,prompt,created_at,updated_at) values (?,?,'Synthetic preserved draft',now(),now())", project, targetCard);
+            execute(connection, """
+                    insert into task(id,project_id,run_id,step_key,kind,status,input_json,input_hash,attempt_no,next_action_at,created_at,updated_at)
+                    values (?,?,?,'synthetic-preserved-task','VIDEO_GENERATION','UNKNOWN',?::jsonb,repeat('0',64),1,now(),now(),now())
+                    """, task, project, run, context.toString());
+            execute(connection, """
+                    insert into llm_turn(project_id,run_id,step_index,status,model_config_version,request_json,response_json,created_at,responded_at)
+                    values (?,?,0,'RESPONDED',1,?::jsonb,'{"toolCalls":[{"name":"place_artifacts","arguments":{"group":"AGENT_OUTPUT"}}]}',now(),now())
+                    """, project, run, context.toString());
+            execute(connection, """
+                    insert into tool_execution(id,project_id,run_id,step_index,tool_call_id,tool_name,argument_hash,status,result_json,created_at,completed_at)
+                    values (?,?,?,0,'synthetic-history-call','place_artifacts',repeat('0',64),'COMPLETED','{"status":"SUCCEEDED"}',now(),now())
+                    """, UUID.randomUUID(), project, run);
+            execute(connection, """
+                    insert into agent_media_approval(id,owner_id,project_id,run_id,step_index,tool_call_id,operation_id,
+                      request_json,target_json,status,created_at,expires_at)
+                    values (?,?,?,?,0,'synthetic-approval-call',?,'{"schemaVersion":1,"outputs":[{"kind":"VIDEO"}]}',
+                      '{"schemaVersion":1,"outputs":[{"canvasItemId":"%s"}]}','PENDING',now(),now()+interval '1 day')
+                    """.formatted(targetCard), UUID.randomUUID(), owner, project, run, UUID.randomUUID());
+            execute(connection, "insert into creative_skill(id,owner_id,title,created_at,updated_at) values (?,?,'Synthetic preserved Skill',now(),now())", skill, owner);
+            execute(connection, """
+                    insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at)
+                    values (?,?,?,1,repeat('a',64),'{"schemaVersion":1,"skillMd":"Synthetic immutable Skill body"}',now())
+                    """, skillVersion, owner, skill);
+            execute(connection, "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,updated_at) values (?,?,?,?,?,now())",
+                    agent, project, owner, skill, skillVersion);
+            var receipt = mapper.createObjectNode().put("id", agent.toString()).put("name", "Pinned creation response")
+                    .put("version", 0).put("outputGroupId", outputGroup.toString());
+            receipt.set("bindings", context.path("bindings"));
+            execute(connection, """
+                    insert into idempotency_record(principal_id,scope,idempotency_key,request_hash,state,resource_id,response_json,expires_at,created_at,updated_at)
+                    values (?,?,'synthetic-create-receipt',repeat('b',64),'COMPLETED',?,?::jsonb,now()+interval '1 day',now(),now())
+                    """, owner, "project:" + project + ":create-agent", agent, receipt.toString());
+            if (customPrompt) execute(connection, "update prompt_definition set content=?,version=2 where key='agent.director'", customContent);
+            for (String table : List.of("agent_conversation", "agent_run", "artifact", "artifact_version", "canvas_item_media_version", "media_draft",
+                    "task", "llm_turn", "tool_execution", "agent_media_approval", "creative_skill", "skill_version", "agent_skill_binding"))
+                history.put(table, rowSnapshot(connection, table, "to_jsonb(t)", "true"));
+            oldEventBefore = rowSnapshot(connection, "project_event", "to_jsonb(t)", "seq=1");
+            assistantBefore = rowSnapshot(connection, "agent_instance", "to_jsonb(t)-'output_group_id'", "true");
+            canvasBefore = rowSnapshot(connection, "canvas_item", "to_jsonb(t)-'agent_instance_id'", "subject_type='ARTIFACT'");
+            history.put("canvas_connection", rowSnapshot(connection, "canvas_connection", "to_jsonb(t)", "relation_type<>'AGENT_IMAGE_INPUT'"));
+        }
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 25);
+        try (Connection connection = connection()) {
+            for (var entry : history.entrySet()) assertThat(rowSnapshot(connection, entry.getKey(), "to_jsonb(t)", "true"))
+                    .as("preserved %s", entry.getKey()).isEqualTo(entry.getValue());
+            assertThat(rowSnapshot(connection, "project_event", "to_jsonb(t)", "seq=1")).isEqualTo(oldEventBefore);
+            assertThat(strings(connection, "select seq::text||':'||type from project_event order by seq"))
+                    .containsExactly("1:synthetic.old.event", "2:agent.instance.changed", "3:canvas.items.changed");
+            assertThat(count(connection, "select event_seq from project where id=?", project)).isEqualTo(3);
+            assertThat(count(connection, "select event_seq from project where id=?", emptyProject)).isZero();
+            assertThat(count(connection, "select count(*) from project_event where project_id=?", emptyProject)).isZero();
+            assertThat(rowSnapshot(connection, "agent_instance", "to_jsonb(t)-'output_group_id'", "true")).isEqualTo(assistantBefore);
+            assertThat(rowSnapshot(connection, "canvas_item", "to_jsonb(t)-'agent_instance_id'", "true")).isEqualTo(canvasBefore);
+            assertThat(count(connection, "select count(*) from information_schema.tables where table_schema='public' and table_name='agent_binding'")).isZero();
+            assertThat(count(connection, "select count(*) from information_schema.columns where table_schema='public' and ((table_name='agent_instance' and column_name='output_group_id') or (table_name='canvas_item' and column_name='agent_instance_id'))")).isZero();
+            assertThat(text(connection, "select response_json::text from idempotency_record where idempotency_key='synthetic-create-receipt'"))
+                    .contains("Pinned creation response").doesNotContain("bindings", "outputGroupId");
+            assertRejected(connection, CHECK_VIOLATION, "update canvas_item set subject_type='AGENT' where id=?", targetCard);
+            assertRejected(connection, CHECK_VIOLATION, "update canvas_connection set relation_type='AGENT_IMAGE_INPUT' where relation_type='MEDIA_INPUT'");
+            String director = text(connection, "select content from prompt_definition where key='agent.director'");
+            assertThat(count(connection, "select version from prompt_definition where key='agent.director'")).isEqualTo(2);
+            if (customPrompt) assertThat(director).isEqualTo(customContent);
+            else assertThat(director).contains("读取当前画布", "versionIds").doesNotContain("AGENT_OUTPUT", "读取明确绑定的输入");
+        }
+    }
+
+    private String rowSnapshot(Connection connection, String table, String projection, String filter) throws SQLException {
+        // Table/projection/filter are fixed test constants, never request data.
+        return text(connection, "select coalesce(jsonb_agg(row_json order by row_json::text),'[]'::jsonb)::text from (select "
+                + projection + " as row_json from " + table + " t where " + filter + ") frozen_rows");
+    }
+
     @Test
     void remoteFileStorageUpgradePreservesExistingDestinationsAndAllowsNewProtocols() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword())
@@ -69,7 +210,7 @@ class FlywayBaselinePostgresIT {
             execute(connection,"update storage_settings set active_profile_id=?,relay_profile_id=?,version=9",profile,profile);
             assertRejected(connection,CHECK_VIOLATION,"update storage_profile set provider='SMB' where id=?",profile);
         }
-        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 24);
         try (Connection connection = connection()) {
             assertThat(text(connection,"select provider from storage_profile where id=?",profile)).isEqualTo("S3");
             assertThat(text(connection,"select active_profile_id::text from storage_settings")).isEqualTo(profile.toString());
@@ -798,11 +939,16 @@ class FlywayBaselinePostgresIT {
     }
 
     private void insertAgent(Connection connection, UUID project, UUID agent) throws SQLException {
-        execute(connection, """
+        boolean legacy = count(connection, "select count(*) from information_schema.columns where table_schema='public' and table_name='agent_instance' and column_name='output_group_id'") == 1;
+        if (legacy) execute(connection, """
                 insert into agent_instance(id,project_id,profile_key,profile_version,name,instruction,
                   output_group_id,created_at,updated_at)
                 values (?,?,'creator',1,'Synthetic agent','Create',?,now(),now())
                 """, agent, project, UUID.randomUUID());
+        else execute(connection, """
+                insert into agent_instance(id,project_id,profile_key,profile_version,name,instruction,created_at,updated_at)
+                values (?,?,'creator',1,'Synthetic agent','Create',now(),now())
+                """, agent, project);
     }
 
     private void insertConversation(Connection connection, UUID project, UUID agent, UUID conversation) throws SQLException {

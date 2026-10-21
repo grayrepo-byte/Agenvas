@@ -14,6 +14,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
@@ -25,6 +26,18 @@ import tools.jackson.databind.ObjectMapper;
 /** 负责 Run 与幂等记录的 PostgreSQL 读写；所有资源查询都联结项目校验所有者。 */
 @Repository
 public class JooqAgentRunRepository implements AgentRunRepository {
+
+    @Override
+    public Set<UUID> filterAgentRunIds(UUID ownerId, UUID projectId, UUID agentId, Set<UUID> candidateIds) {
+        if (candidateIds.isEmpty()) return Set.of();
+        return Set.copyOf(dsl.select(AGENT_RUN.ID).from(AGENT_RUN)
+                .join(PROJECT).on(PROJECT.ID.eq(AGENT_RUN.PROJECT_ID))
+                .where(PROJECT.OWNER_ID.eq(ownerId))
+                .and(AGENT_RUN.PROJECT_ID.eq(projectId))
+                .and(AGENT_RUN.AGENT_INSTANCE_ID.eq(agentId))
+                .and(AGENT_RUN.ID.in(candidateIds))
+                .fetch(AGENT_RUN.ID));
+    }
 
     @Override
     public List<BlockedRunCandidate> blockedRecoveryCandidates(UUID afterId, int limit) {

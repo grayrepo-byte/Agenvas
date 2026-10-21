@@ -7,11 +7,9 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
-import dev.agenvas.db.tables.AgentBinding.AgentBindingPath;
 import dev.agenvas.db.tables.AgentConversation.AgentConversationPath;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
 import dev.agenvas.db.tables.AgentSkillBinding.AgentSkillBindingPath;
-import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
 import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
 import dev.agenvas.db.tables.records.AgentInstanceRecord;
@@ -48,7 +46,7 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * Agent 卡片配置；请求身份和运行上下文保存在 Run 中
+ * 项目助手配置及会话身份，不作为画布节点或持久素材授权
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class AgentInstance extends TableImpl<AgentInstanceRecord> {
@@ -101,12 +99,6 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
     public final TableField<AgentInstanceRecord, String> INSTRUCTION = createField(DSL.name("instruction"), SQLDataType.VARCHAR(8000).nullable(false), this, "用户指令或 Agent 系统指令");
 
     /**
-     * The column <code>public.agent_instance.output_group_id</code>. Agent
-     * 输出卡片的画布分组
-     */
-    public final TableField<AgentInstanceRecord, UUID> OUTPUT_GROUP_ID = createField(DSL.name("output_group_id"), SQLDataType.UUID.nullable(false), this, "Agent 输出卡片的画布分组");
-
-    /**
      * The column <code>public.agent_instance.version</code>.
      * 乐观并发控制版本，更新时递增并校验预期值
      */
@@ -134,7 +126,7 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
     }
 
     private AgentInstance(Name alias, Table<AgentInstanceRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("Agent 卡片配置；请求身份和运行上下文保存在 Run 中"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("项目助手配置及会话身份，不作为画布节点或持久素材授权"), TableOptions.table(), where);
     }
 
     /**
@@ -241,19 +233,6 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
         return _agentSkillBinding;
     }
 
-    private transient AgentBindingPath _agentBinding;
-
-    /**
-     * Get the implicit to-many join path to the
-     * <code>public.agent_binding</code> table
-     */
-    public AgentBindingPath agentBinding() {
-        if (_agentBinding == null)
-            _agentBinding = new AgentBindingPath(this, null, Keys.AGENT_BINDING__FK_AGENT_BINDING_AGENT.getInverseKey());
-
-        return _agentBinding;
-    }
-
     private transient AgentRunPath _agentRun;
 
     /**
@@ -265,19 +244,6 @@ public class AgentInstance extends TableImpl<AgentInstanceRecord> {
             _agentRun = new AgentRunPath(this, null, Keys.AGENT_RUN__FK_AGENT_RUN_AGENT.getInverseKey());
 
         return _agentRun;
-    }
-
-    private transient CanvasItemPath _canvasItem;
-
-    /**
-     * Get the implicit to-many join path to the <code>public.canvas_item</code>
-     * table
-     */
-    public CanvasItemPath canvasItem() {
-        if (_canvasItem == null)
-            _canvasItem = new CanvasItemPath(this, null, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_AGENT.getInverseKey());
-
-        return _canvasItem;
     }
 
     private transient AgentConversationPath _agentConversation;

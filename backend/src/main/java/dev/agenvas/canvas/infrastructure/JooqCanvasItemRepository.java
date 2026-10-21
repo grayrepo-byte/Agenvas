@@ -89,15 +89,7 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .set(CANVAS_ITEM.SUBJECT_ID, item.subjectId())
                 .set(CANVAS_ITEM.SELECTED_VERSION_ID, item.selectedVersionId())
                 .set(CANVAS_ITEM.TITLE, item.title())
-                // subject 类型决定填充哪个产物或 Agent 外键，另一个保持 NULL。
-                .set(CANVAS_ITEM.ARTIFACT_ID,
-                        item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                                ? item.subjectId()
-                                : null)
-                .set(CANVAS_ITEM.AGENT_INSTANCE_ID,
-                        item.subjectType() == CanvasItem.SubjectType.AGENT
-                                ? item.subjectId()
-                                : null)
+                .set(CANVAS_ITEM.ARTIFACT_ID, item.subjectId())
                 .set(CANVAS_ITEM.X, item.x())
                 .set(CANVAS_ITEM.Y, item.y())
                 .set(CANVAS_ITEM.WIDTH, item.width())
@@ -207,7 +199,7 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .execute() == 1;
     }
 
-    /** 将画布行映射为展示项，subject 类型决定对应的产物或 Agent 外键。 */
+    /** 将产物布局行映射为展示项。 */
     private static CanvasItem map(CanvasItemRecord row) {
         return new CanvasItem(
                 row.getId(),

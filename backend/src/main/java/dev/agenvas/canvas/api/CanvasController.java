@@ -1,7 +1,6 @@
 package dev.agenvas.canvas.api;
 
 import dev.agenvas.shared.i18n.ApiMessage;
-import dev.agenvas.agent.api.AgentInstanceController.AgentResponse;
 import dev.agenvas.artifact.api.ArtifactController.ArtifactResponse;
 import dev.agenvas.artifact.api.ArtifactController.ArtifactVersionResponse;
 import dev.agenvas.artifact.api.ArtifactController.ArtifactVersionListResponse;
@@ -120,16 +119,6 @@ public class CanvasController {
                     require(request.zIndex(), "zIndex"),
                     request.groupId(),
                     request.locked() != null && request.locked());
-            case PLACE_AGENT -> new CanvasService.PlaceAgent(
-                    request.itemId(),
-                    require(request.agentId(), "agentId"),
-                    require(request.x(), "x"),
-                    require(request.y(), "y"),
-                    require(request.width(), "width"),
-                    require(request.height(), "height"),
-                    require(request.zIndex(), "zIndex"),
-                    request.groupId(),
-                    request.locked() != null && request.locked());
             case UPDATE_TITLE -> new CanvasService.UpdateTitle(
                     request.itemId(),
                     require(request.expectedVersion(), "expectedVersion"),
@@ -179,7 +168,6 @@ public class CanvasController {
      * @param type 命令类别
      * @param itemId 目标或新建画布项 ID
      * @param artifactId PLACE_ARTIFACT 的产物 ID
-     * @param agentId PLACE_AGENT 的 Agent ID
      * @param expectedVersion 更新、锁定或删除时的预期画布项版本
      * @param title UPDATE_TITLE 的新卡片展示标题
      * @param x 放置或更新后的横坐标
@@ -194,7 +182,6 @@ public class CanvasController {
             @NotNull CommandType type,
             @NotNull UUID itemId,
             UUID artifactId,
-            UUID agentId,
             @PositiveOrZero Long expectedVersion,
             @Size(max = 160) String title,
             BigDecimal x,
@@ -209,8 +196,6 @@ public class CanvasController {
     public enum CommandType {
         /** 创建产物卡片。 */
         PLACE_ARTIFACT,
-        /** 创建 Agent 卡片。 */
-        PLACE_AGENT,
         /** 更新单张卡片的展示标题。 */
         UPDATE_TITLE,
         /** 更新位置、尺寸、层级或分组。 */
@@ -235,7 +220,7 @@ public class CanvasController {
     }
 
     /**
-     * 持久化卡片展示状态和当前渲染所需的内容投影；artifact 与 agent 仅一个非空。
+     * 持久化产物卡片展示状态及当前内容投影。
      *
      * @param id 画布项 ID
      * @param subjectType 被展示对象类型
@@ -252,7 +237,6 @@ public class CanvasController {
      * @param version 卡片展示状态的乐观锁版本
      * @param artifact 产物卡片当前版本投影
      * @param selectedVersion 该媒体卡片实际展示的完整版本投影
-     * @param agent Agent 卡片当前配置投影
      */
     public record CanvasItemResponse(
             UUID id,
@@ -269,10 +253,9 @@ public class CanvasController {
             boolean locked,
             long version,
             ArtifactResponse artifact,
-            ArtifactVersionResponse selectedVersion,
-            AgentResponse agent) {
+            ArtifactVersionResponse selectedVersion) {
 
-        /** 按 subjectType 只填充对应的产物或 Agent 投影。 */
+        /** 布局与不可变媒体版本分别投影。 */
         static CanvasItemResponse from(CanvasService.CanvasEntry entry) {
             CanvasItem item = entry.item();
             return new CanvasItemResponse(
@@ -291,8 +274,7 @@ public class CanvasController {
                     item.version(),
                     entry.artifact() == null ? null : ArtifactResponse.from(entry.artifact()),
                     entry.selectedVersion() == null ? null
-                            : ArtifactVersionResponse.from(entry.selectedVersion()),
-                    entry.agent() == null ? null : AgentResponse.from(entry.agent()));
+                            : ArtifactVersionResponse.from(entry.selectedVersion()));
         }
     }
 }

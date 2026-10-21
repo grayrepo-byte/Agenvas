@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-/** Establishes an Agent image binding through the production canvas-connection boundary. */
+/** Places an exact image on the canvas before creating a Run; no assistant node or input edge exists. */
 public final class AgentImageInputFixture {
     private static final BigDecimal SOURCE_X = BigDecimal.ZERO;
     private static final BigDecimal TARGET_X = new BigDecimal("400");
@@ -30,16 +30,15 @@ public final class AgentImageInputFixture {
             UUID imageVersionId,
             String agentName,
             String instruction) {
-        AgentInstance agent = agents.create(ownerId, projectId, agentName, instruction, List.of());
+        AgentInstance agent = agents.create(ownerId, projectId, agentName, instruction);
         UUID sourceItemId = UUID.randomUUID();
-        UUID targetItemId = UUID.randomUUID();
         canvas.apply(ownerId, projectId, List.of(
                 new CanvasService.PlaceArtifact(sourceItemId, imageArtifactId,
-                        SOURCE_X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 0, null, false),
-                new CanvasService.PlaceAgent(targetItemId, agent.id(),
-                        TARGET_X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 1, null, false)));
-        return Objects.requireNonNull(connections.connect(ownerId, projectId,
-                sourceItemId, targetItemId, imageVersionId,
-                CanvasConnection.RelationType.AGENT_IMAGE_INPUT, null, agent.version()).agent());
+                        SOURCE_X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 0, null, false)));
+        var item = canvas.list(ownerId, projectId).stream().map(CanvasService.CanvasEntry::item)
+                .filter(candidate -> candidate.id().equals(sourceItemId)).findFirst().orElseThrow();
+        if (!imageVersionId.equals(item.selectedVersionId()))
+            canvas.selectMediaVersion(ownerId, projectId, sourceItemId, imageVersionId, item.version());
+        return agent;
     }
 }

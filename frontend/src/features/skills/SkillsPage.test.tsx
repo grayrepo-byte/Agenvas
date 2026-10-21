@@ -167,11 +167,11 @@ describe("Skill editing and publishing",()=>{
   it("opens an Agent try selection without submitting a Run",async()=>{
     const run=vi.fn();server.use(http.post("/api/v1/projects/:id/runs",()=>{run();return HttpResponse.json({});}),
       http.get("/api/v1/projects",()=>HttpResponse.json({items:[{id:"project-1",name:"Mock canvas",status:"ACTIVE"}],nextCursor:null})),
-      http.get("/api/v1/projects/project-1/canvas/items",()=>HttpResponse.json({items:[{id:"agent-item",agent:{id:"agent-1",name:"Mock Agent"}}]})));
+      http.get("/api/v1/projects/project-1/agents",()=>HttpResponse.json({items:[{id:"agent-1",name:"Mock Agent"}]})));
     await openEditor();const native=document.querySelector<HTMLSelectElement>('select[aria-hidden="true"]');expect(native).not.toBeNull();fireEvent.change(native!,{target:{value:VERSION_ID}});
     await userEvent.click(await screen.findByRole("button",{name:"在 Agent 中试用"}));
     const project=screen.getByRole("combobox",{name:"项目"});await userEvent.click(project);await userEvent.click(await screen.findByRole("option",{name:"Mock canvas"}));
-    const agent=screen.getByRole("combobox",{name:"Agent 节点"});await waitFor(()=>expect(agent).toBeEnabled());await userEvent.click(agent);await userEvent.click(await screen.findByRole("option",{name:"Mock Agent"}));
+    const agent=screen.getByRole("combobox",{name:/^Agent/});await waitFor(()=>expect(agent).toBeEnabled());await userEvent.click(agent);await userEvent.click(await screen.findByRole("option",{name:"Mock Agent"}));
     await userEvent.click(screen.getByRole("button",{name:"打开 Agent"}));expect(await screen.findByTestId("destination")).toHaveTextContent("agentId=agent-1&skillId=skill-1&skillVersionId=skill-version-1");expect(run).not.toHaveBeenCalled();
   });
 });

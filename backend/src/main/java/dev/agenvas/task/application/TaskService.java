@@ -22,6 +22,7 @@ import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.lifecycle.ShutdownGate;
 import dev.agenvas.usage.application.UsageService;
 import java.nio.charset.StandardCharsets;
@@ -917,6 +918,7 @@ public class TaskService {
                 && !"VIDEO_AUDIO_TRACK_MISSING".equals(errorCode)
                 && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(errorCode)
                 && !"MEDIA_RELAY_REQUIRED".equals(errorCode)
+                && !ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED.equals(errorCode)
                 && !"MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED".equals(errorCode)) {
             throw validation(ApiMessage.of("api.task-service.unsupported-pre-commit-blocking-reason"));
         }

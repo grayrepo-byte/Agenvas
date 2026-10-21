@@ -26,15 +26,6 @@ public class CanvasItemQueryService {
         return item;
     }
 
-    /** Resolves the sole canvas representation of one owned Agent instance. */
-    @Transactional(readOnly = true)
-    public CanvasItem requireAgentItem(UUID ownerId, UUID projectId, UUID canvasItemId) {
-        CanvasItem item = canvasItems.find(ownerId, projectId, canvasItemId)
-                .orElseThrow(this::notFound);
-        if (item.subjectType() != CanvasItem.SubjectType.AGENT) throw notFound();
-        return item;
-    }
-
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
                 ApiMessage.of("api.creative-artifact-tool-service.canvas-card-does-not-exist"), ApiMessage.of("api.canvas-service.the-canvas-card-does-not-exist-or-the-current-user"), false);

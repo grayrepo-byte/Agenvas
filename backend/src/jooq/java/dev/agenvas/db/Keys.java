@@ -4,7 +4,6 @@
 package dev.agenvas.db;
 
 
-import dev.agenvas.db.tables.AgentBinding;
 import dev.agenvas.db.tables.AgentConversation;
 import dev.agenvas.db.tables.AgentInstance;
 import dev.agenvas.db.tables.AgentMediaApproval;
@@ -77,7 +76,6 @@ import dev.agenvas.db.tables.ThirdPartyPromptImport;
 import dev.agenvas.db.tables.ThirdPartyPromptSource;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
-import dev.agenvas.db.tables.records.AgentBindingRecord;
 import dev.agenvas.db.tables.records.AgentConversationRecord;
 import dev.agenvas.db.tables.records.AgentInstanceRecord;
 import dev.agenvas.db.tables.records.AgentMediaApprovalRecord;
@@ -169,8 +167,6 @@ public class Keys {
     // UNIQUE and PRIMARY KEY definitions
     // -------------------------------------------------------------------------
 
-    public static final UniqueKey<AgentBindingRecord> AGENT_BINDING_PKEY = Internal.createUniqueKey(AgentBinding.AGENT_BINDING, DSL.name("agent_binding_pkey"), new TableField[] { AgentBinding.AGENT_BINDING.ID }, true);
-    public static final UniqueKey<AgentBindingRecord> UQ_AGENT_BINDING_ARTIFACT = Internal.createUniqueKey(AgentBinding.AGENT_BINDING, DSL.name("uq_agent_binding_artifact"), new TableField[] { AgentBinding.AGENT_BINDING.AGENT_INSTANCE_ID, AgentBinding.AGENT_BINDING.ARTIFACT_ID }, true);
     public static final UniqueKey<AgentConversationRecord> AGENT_CONVERSATION_PKEY = Internal.createUniqueKey(AgentConversation.AGENT_CONVERSATION, DSL.name("agent_conversation_pkey"), new TableField[] { AgentConversation.AGENT_CONVERSATION.ID }, true);
     public static final UniqueKey<AgentConversationRecord> UQ_CONVERSATION_AGENT_SCOPE = Internal.createUniqueKey(AgentConversation.AGENT_CONVERSATION, DSL.name("uq_conversation_agent_scope"), new TableField[] { AgentConversation.AGENT_CONVERSATION.PROJECT_ID, AgentConversation.AGENT_CONVERSATION.AGENT_INSTANCE_ID, AgentConversation.AGENT_CONVERSATION.ID }, true);
     public static final UniqueKey<AgentInstanceRecord> AGENT_INSTANCE_PKEY = Internal.createUniqueKey(AgentInstance.AGENT_INSTANCE, DSL.name("agent_instance_pkey"), new TableField[] { AgentInstance.AGENT_INSTANCE.ID }, true);
@@ -296,9 +292,6 @@ public class Keys {
     // FOREIGN KEY definitions
     // -------------------------------------------------------------------------
 
-    public static final ForeignKey<AgentBindingRecord, AgentInstanceRecord> AGENT_BINDING__FK_AGENT_BINDING_AGENT = Internal.createForeignKey(AgentBinding.AGENT_BINDING, DSL.name("fk_agent_binding_agent"), new TableField[] { AgentBinding.AGENT_BINDING.PROJECT_ID, AgentBinding.AGENT_BINDING.AGENT_INSTANCE_ID }, Keys.UQ_AGENT_INSTANCE_PROJECT_ID, new TableField[] { AgentInstance.AGENT_INSTANCE.PROJECT_ID, AgentInstance.AGENT_INSTANCE.ID }, true);
-    public static final ForeignKey<AgentBindingRecord, ArtifactRecord> AGENT_BINDING__FK_AGENT_BINDING_ARTIFACT = Internal.createForeignKey(AgentBinding.AGENT_BINDING, DSL.name("fk_agent_binding_artifact"), new TableField[] { AgentBinding.AGENT_BINDING.PROJECT_ID, AgentBinding.AGENT_BINDING.ARTIFACT_ID }, Keys.UQ_ARTIFACT_PROJECT_ID, new TableField[] { Artifact.ARTIFACT.PROJECT_ID, Artifact.ARTIFACT.ID }, true);
-    public static final ForeignKey<AgentBindingRecord, ArtifactVersionRecord> AGENT_BINDING__FK_AGENT_BINDING_VERSION = Internal.createForeignKey(AgentBinding.AGENT_BINDING, DSL.name("fk_agent_binding_version"), new TableField[] { AgentBinding.AGENT_BINDING.PROJECT_ID, AgentBinding.AGENT_BINDING.ARTIFACT_ID, AgentBinding.AGENT_BINDING.SELECTED_VERSION_ID }, Keys.UQ_ARTIFACT_VERSION_PROJECT_ARTIFACT_ID, new TableField[] { ArtifactVersion.ARTIFACT_VERSION.PROJECT_ID, ArtifactVersion.ARTIFACT_VERSION.ARTIFACT_ID, ArtifactVersion.ARTIFACT_VERSION.ID }, true);
     public static final ForeignKey<AgentConversationRecord, AgentInstanceRecord> AGENT_CONVERSATION__FK_CONVERSATION_AGENT = Internal.createForeignKey(AgentConversation.AGENT_CONVERSATION, DSL.name("fk_conversation_agent"), new TableField[] { AgentConversation.AGENT_CONVERSATION.PROJECT_ID, AgentConversation.AGENT_CONVERSATION.AGENT_INSTANCE_ID }, Keys.UQ_AGENT_INSTANCE_PROJECT_ID, new TableField[] { AgentInstance.AGENT_INSTANCE.PROJECT_ID, AgentInstance.AGENT_INSTANCE.ID }, true);
     public static final ForeignKey<AgentInstanceRecord, ProjectRecord> AGENT_INSTANCE__FK_AGENT_INSTANCE_PROJECT = Internal.createForeignKey(AgentInstance.AGENT_INSTANCE, DSL.name("fk_agent_instance_project"), new TableField[] { AgentInstance.AGENT_INSTANCE.PROJECT_ID }, Keys.PROJECT_PKEY, new TableField[] { Project.PROJECT.ID }, true);
     public static final ForeignKey<AgentMediaApprovalRecord, AppUserRecord> AGENT_MEDIA_APPROVAL__FK_AGENT_MEDIA_APPROVAL_OWNER = Internal.createForeignKey(AgentMediaApproval.AGENT_MEDIA_APPROVAL, DSL.name("fk_agent_media_approval_owner"), new TableField[] { AgentMediaApproval.AGENT_MEDIA_APPROVAL.OWNER_ID }, Keys.APP_USER_PKEY, new TableField[] { AppUser.APP_USER.ID }, true);
@@ -320,7 +313,6 @@ public class Keys {
     public static final ForeignKey<CanvasConnectionRecord, CanvasItemRecord> CANVAS_CONNECTION__FK_CANVAS_CONNECTION_SOURCE = Internal.createForeignKey(CanvasConnection.CANVAS_CONNECTION, DSL.name("fk_canvas_connection_source"), new TableField[] { CanvasConnection.CANVAS_CONNECTION.PROJECT_ID, CanvasConnection.CANVAS_CONNECTION.SOURCE_CANVAS_ITEM_ID }, Keys.UQ_CANVAS_ITEM_PROJECT_ID, new TableField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.ID }, true);
     public static final ForeignKey<CanvasConnectionRecord, CanvasItemRecord> CANVAS_CONNECTION__FK_CANVAS_CONNECTION_TARGET = Internal.createForeignKey(CanvasConnection.CANVAS_CONNECTION, DSL.name("fk_canvas_connection_target"), new TableField[] { CanvasConnection.CANVAS_CONNECTION.PROJECT_ID, CanvasConnection.CANVAS_CONNECTION.TARGET_CANVAS_ITEM_ID }, Keys.UQ_CANVAS_ITEM_PROJECT_ID, new TableField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.ID }, true);
     public static final ForeignKey<CanvasConnectionRecord, ArtifactVersionRecord> CANVAS_CONNECTION__FK_CANVAS_CONNECTION_VERSION = Internal.createForeignKey(CanvasConnection.CANVAS_CONNECTION, DSL.name("fk_canvas_connection_version"), new TableField[] { CanvasConnection.CANVAS_CONNECTION.PROJECT_ID, CanvasConnection.CANVAS_CONNECTION.SOURCE_ARTIFACT_VERSION_ID }, Keys.UQ_ARTIFACT_VERSION_PROJECT_ID, new TableField[] { ArtifactVersion.ARTIFACT_VERSION.PROJECT_ID, ArtifactVersion.ARTIFACT_VERSION.ID }, true);
-    public static final ForeignKey<CanvasItemRecord, AgentInstanceRecord> CANVAS_ITEM__FK_CANVAS_ITEM_AGENT = Internal.createForeignKey(CanvasItem.CANVAS_ITEM, DSL.name("fk_canvas_item_agent"), new TableField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.AGENT_INSTANCE_ID }, Keys.UQ_AGENT_INSTANCE_PROJECT_ID, new TableField[] { AgentInstance.AGENT_INSTANCE.PROJECT_ID, AgentInstance.AGENT_INSTANCE.ID }, true);
     public static final ForeignKey<CanvasItemRecord, ArtifactRecord> CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT = Internal.createForeignKey(CanvasItem.CANVAS_ITEM, DSL.name("fk_canvas_item_artifact"), new TableField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.ARTIFACT_ID }, Keys.UQ_ARTIFACT_PROJECT_ID, new TableField[] { Artifact.ARTIFACT.PROJECT_ID, Artifact.ARTIFACT.ID }, true);
     public static final ForeignKey<CanvasItemRecord, ProjectRecord> CANVAS_ITEM__FK_CANVAS_ITEM_PROJECT = Internal.createForeignKey(CanvasItem.CANVAS_ITEM, DSL.name("fk_canvas_item_project"), new TableField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID }, Keys.PROJECT_PKEY, new TableField[] { Project.PROJECT.ID }, true);
     public static final ForeignKey<CanvasItemRecord, ArtifactVersionRecord> CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION = Internal.createForeignKey(CanvasItem.CANVAS_ITEM, DSL.name("fk_canvas_item_selected_version"), new TableField[] { CanvasItem.CANVAS_ITEM.ARTIFACT_ID, CanvasItem.CANVAS_ITEM.SELECTED_VERSION_ID }, Keys.UQ_ARTIFACT_VERSION_ARTIFACT_ID, new TableField[] { ArtifactVersion.ARTIFACT_VERSION.ARTIFACT_ID, ArtifactVersion.ARTIFACT_VERSION.ID }, true);

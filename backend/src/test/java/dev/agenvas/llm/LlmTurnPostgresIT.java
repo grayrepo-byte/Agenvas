@@ -105,8 +105,7 @@ class LlmTurnPostgresIT {
     void responseAndProtocolMetadataAreDurableBeforeToolExecutionAndReplaySkipsModel() {
         Project project = projects.create(owner.userId(), "LLM project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create",
-                List.of());
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                 "Plan three shots", "llm-checkpoint-run").run();
         Task lease = tasks.claimAgentTurns(WORKER, 1).getFirst();
@@ -255,7 +254,7 @@ class LlmTurnPostgresIT {
 
     private Task startedTurn(String title) {
         Project project = projects.create(owner.userId(), title, Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create", List.of());
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(), title,
                 UUID.randomUUID().toString()).run();
         Task lease = tasks.claimAgentTurns(WORKER, 1).getFirst();

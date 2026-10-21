@@ -1,12 +1,11 @@
-import { DotsNine,ImageSquare,MusicNotes,Plus,Sparkle,TextT,UploadSimple,VideoCamera } from "@/shared/ui/icons";
-import type { AgentPreset } from "../../shared/api/client";
+import { DotsNine,ImageSquare,MusicNotes,Plus,TextT,UploadSimple,VideoCamera } from "@/shared/ui/icons";
 import { t,useLocale } from "../../shared/i18n";
 import {
   DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuPortal,
   DropdownMenuSeparator,DropdownMenuSub,DropdownMenuSubContent,DropdownMenuSubTrigger,DropdownMenuTrigger,
 } from "../../shared/ui/primitives/dropdown-menu";
 
-export type PaneCreationKind = "IMAGE" | "VIDEO" | "TEXT" | "AUDIO" | "AGENT";
+export type PaneCreationKind = "IMAGE" | "VIDEO" | "TEXT" | "AUDIO";
 const MENU_COLLISION_PADDING = 12;
 const CREATION_OPTIONS = [
   { kind: "IMAGE", label: "common.image", icon: ImageSquare },
@@ -16,10 +15,10 @@ const CREATION_OPTIONS = [
 ] as const;
 
 /** A controlled menu anchored to the pane pointer; Radix owns focus, nesting and edge collision. */
-export function CanvasPaneMenu({ position, onClose, onAdd, agentPresets, onUpload, onArrange, uploading, creatingText, creatingAgent = false, arranging, canArrange }: {
+export function CanvasPaneMenu({ position, onClose, onAdd, onUpload, onArrange, uploading, creatingText, arranging, canArrange }: {
   position: { x: number; y: number } | null;
-  onClose: () => void; onAdd: (kind: PaneCreationKind, promptKey?: string) => void; agentPresets?: AgentPreset[]; onUpload: () => void; onArrange: () => void;
-  uploading: boolean; creatingText: boolean; creatingAgent?: boolean; arranging: boolean; canArrange: boolean;
+  onClose: () => void; onAdd: (kind: PaneCreationKind) => void; onUpload: () => void; onArrange: () => void;
+  uploading: boolean; creatingText: boolean; arranging: boolean; canArrange: boolean;
 }) {
   useLocale();
   return <DropdownMenu open={position !== null} onOpenChange={(open) => { if (!open) onClose(); }} modal={false}>
@@ -37,9 +36,6 @@ export function CanvasPaneMenu({ position, onClose, onAdd, agentPresets, onUploa
             <DropdownMenuGroup>{CREATION_OPTIONS.map(({ kind, label, icon: Icon }) =>
               <DropdownMenuItem key={kind} className="rounded-xl py-2.5" disabled={kind === "TEXT" && creatingText}
                 onSelect={() => onAdd(kind)}><Icon />{t(label)}</DropdownMenuItem>)}
-              {(agentPresets ?? [{ key: "agent.director", name: t("agent.defaults.director") }]).map((preset) =>
-                <DropdownMenuItem key={preset.key} className="rounded-xl py-2.5" disabled={creatingAgent}
-                  onSelect={() => onAdd("AGENT", preset.key)}><Sparkle />{preset.name}</DropdownMenuItem>)}
             </DropdownMenuGroup>
           </DropdownMenuSubContent></DropdownMenuPortal>
         </DropdownMenuSub>

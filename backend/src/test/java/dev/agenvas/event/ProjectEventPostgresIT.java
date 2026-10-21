@@ -97,7 +97,7 @@ class ProjectEventPostgresIT {
         Project project = projectService.create(
                 owner.userId(), "Event project", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agentService.create(
-                owner.userId(), project.id(), "Creator", "Create", List.of());
+                owner.userId(), project.id(), "Creator", "Create");
 
         installRejectingTrigger();
         assertThatThrownBy(() -> runService.create(
@@ -208,7 +208,7 @@ class ProjectEventPostgresIT {
         Project project = projectService.create(
                 ownerId, "Snapshot race", Project.AspectRatio.SQUARE_1_1);
         AgentInstance agent =
-                agentService.create(ownerId, project.id(), "Race creator", "Create", List.of());
+                agentService.create(ownerId, project.id(), "Race creator", "Create");
         AgentRun initial = runService.create(
                         ownerId, project.id(), agent.id(), "Race", "snapshot-race")
                 .run();

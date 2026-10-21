@@ -344,9 +344,11 @@ class AssetPostgresIT {
         var agent = AgentImageInputFixture.connect(agents, canvasService, connections,
                 owner.userId(), project.id(), artifactId, versionId,
                 "Reference creator", "Use only the selected input");
-        assertThat(agent.bindings()).singleElement().satisfies(binding -> {
-            assertThat(binding.artifactId()).isEqualTo(artifactId);
-            assertThat(binding.selectedVersionId()).isEqualTo(versionId);
+        assertThat(agent.projectId()).isEqualTo(project.id());
+        assertThat(java.util.stream.StreamSupport.stream(canvasService.freezeRunScope(owner.userId(), project.id())
+                .path("items").spliterator(), false)).anySatisfy(item -> {
+            assertThat(item.path("artifactId").asText()).isEqualTo(artifactId.toString());
+            assertThat(item.path("selectedVersionId").asText()).isEqualTo(versionId.toString());
         });
 
         mvc.perform(multipart(path)

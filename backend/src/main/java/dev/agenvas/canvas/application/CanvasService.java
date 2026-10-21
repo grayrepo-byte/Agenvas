@@ -1,8 +1,6 @@
 package dev.agenvas.canvas.application;
 
 import dev.agenvas.shared.i18n.ApiMessage;
-import dev.agenvas.agent.application.AgentInstanceService;
-import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -59,10 +57,9 @@ public class CanvasService {
     /** 自动放置卡片之间保留的最小空隙。 */
     private static final BigDecimal OUTPUT_GAP = new BigDecimal("24");
     private static final int MAX_OUTPUT_PLACEMENT_ATTEMPTS = 100;
-    private static final int MAX_AGENT_OUTPUT_ROWS = 100;
-    private static final int AGENT_OUTPUT_COLUMNS = 3;
+    private static final int MAX_OUTPUT_ROWS = 100;
+    private static final int OUTPUT_COLUMNS = 3;
     private static final BigDecimal DEFAULT_OUTPUT_COORDINATE = new BigDecimal("80");
-    private static final BigDecimal AGENT_OUTPUT_OFFSET = new BigDecimal("64");
     private static final int MAX_Z_INDEX = 1000;
 
     /** 验证项目读取与活动状态。 */
@@ -71,8 +68,6 @@ public class CanvasService {
     private final ArtifactService artifacts;
     /** Creates and reads media working state owned by newly placed cards. */
     private final MediaDraftService mediaDrafts;
-    /** 将 Agent 卡片投影到当前配置。 */
-    private final AgentInstanceService agents;
     /** 保存卡片级标题与布局，不持有产物正文。 */
     private final CanvasItemRepository canvasItems;
     /** Cleans card-owned topology and downstream reference sources before deletion. */
@@ -87,7 +82,6 @@ public class CanvasService {
     /** 组装空间投影、布局并发校验和项目事件写入能力。
      * @param projects 校验项目归属和活动状态
      * @param artifacts 校验画布产物引用
-     * @param agents 校验画布 Agent 卡片引用
      * @param items 读取和批量修改画布布局
      * @param events 将布局变更与项目事件一并提交
      * @param objectMapper 生成事件负载
@@ -97,7 +91,6 @@ public class CanvasService {
             ProjectService projects,
             ArtifactService artifacts,
             MediaDraftService mediaDrafts,
-            AgentInstanceService agents,
             CanvasItemRepository canvasItems,
             CanvasConnectionService connections,
             ProjectEventService events,
@@ -106,7 +99,6 @@ public class CanvasService {
         this.projects = projects;
         this.artifacts = artifacts;
         this.mediaDrafts = mediaDrafts;
-        this.agents = agents;
         this.canvasItems = canvasItems;
         this.connections = connections;
         this.events = events;
@@ -114,13 +106,40 @@ public class CanvasService {
         this.clock = clock;
     }
 
-    /** 读取持久化展示状态，并按卡片类型附加当前产物版本或 Agent 配置。 */
+    /** 读取持久化产物布局和其内容版本。 */
     @Transactional(readOnly = true)
     public List<CanvasEntry> list(UUID ownerId, UUID projectId) {
         projects.get(ownerId, projectId);
         return canvasItems.list(ownerId, projectId).stream()
                 .map(item -> toEntry(ownerId, item))
                 .toList();
+    }
+
+    /** Freeze authorization and exact node selections without copying immutable content or media bytes.
+     * The directory is paged by the Agent tools; it is never inlined into the first model request.
+     */
+    @Transactional(readOnly = true)
+    public ObjectNode freezeRunScope(UUID ownerId, UUID projectId) {
+        ObjectNode scope = objectMapper.createObjectNode().put("version", dev.agenvas.run.domain.RunCanvasScope.VERSION);
+        var items = scope.putArray("items");
+        for (CanvasEntry entry : list(ownerId, projectId)) {
+            if (entry.item().subjectType() != CanvasItem.SubjectType.ARTIFACT) continue;
+            CanvasItem item = entry.item();
+            var artifact = entry.artifact().artifact();
+            var node = items.addObject().put("itemId", item.id().toString())
+                    .put("artifactId", item.subjectId().toString()).put("kind", artifact.kind().name())
+                    .put("title", item.title()).put("itemVersion", item.version())
+                    .put("artifactVersion", artifact.version()).put("locked", item.locked())
+                    .put("x", item.x()).put("y", item.y()).put("width", item.width())
+                    .put("height", item.height()).put("zIndex", item.zIndex());
+            ArtifactVersion selected = artifact.kind() == Artifact.Kind.TEXT
+                    ? entry.artifact().resourceDefaultVersion() : entry.selectedVersion();
+            if (selected != null) node.put("selectedVersionId", selected.id().toString());
+            if (artifact.kind() != Artifact.Kind.TEXT) {
+                node.set("mediaDraft", objectMapper.valueToTree(mediaDrafts.get(ownerId, projectId, item.id())));
+            }
+        }
+        return scope;
     }
 
     /** Reads only the trusted node selections needed to freeze continuation inputs. */
@@ -412,25 +431,24 @@ public class CanvasService {
         return target;
     }
 
-    /**
-     * 在调用方任务事务内将新产物放入 Agent 输出分组；已有卡片包括锁定卡片均不移动、不修改。
-     */
+    /** Place new content beside the persisted content canvas. The optional group is only a layout tag. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem placeGeneratedArtifactWithinChange(UUID ownerId, UUID projectId,
-            UUID agentId, UUID artifactId) {
+            UUID artifactId, UUID groupId) {
         projects.requireActiveProject(ownerId, projectId);
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
-        AgentInstance agent = agents.get(ownerId, projectId, agentId);
+        return placeGeneratedArtifact(ownerId, projectId, artifact, mediaSelection(artifact), groupId);
+    }
+
+    private CanvasItem placeGeneratedArtifact(UUID ownerId, UUID projectId,
+            ArtifactService.ArtifactView artifact, UUID selectedVersionId, UUID groupId) {
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
-        OutputPosition position = findAgentOutputPosition(agentId, existing);
-        int zIndex = nextOutputZIndex(existing);
+        OutputPosition position = findContentOutputPosition(existing);
         CanvasItem placed = placement(UUID.randomUUID(), projectId,
-                CanvasItem.SubjectType.ARTIFACT, artifactId,
-                mediaSelection(artifact), artifact.artifact().title(),
-                position.x(), position.y(), OUTPUT_WIDTH, OUTPUT_HEIGHT, zIndex, agent.outputGroupId(), false);
-        if (!canvasItems.create(placed)) {
-            throw new IllegalStateException("Generated CanvasItem id unexpectedly collided");
-        }
+                CanvasItem.SubjectType.ARTIFACT, artifact.artifact().id(),
+                selectedVersionId, artifact.artifact().title(), position.x(), position.y(),
+                OUTPUT_WIDTH, OUTPUT_HEIGHT, nextOutputZIndex(existing), groupId, false);
+        if (!canvasItems.create(placed)) throw new IllegalStateException("Generated CanvasItem id unexpectedly collided");
         initializeMediaDraft(projectId, placed, artifact);
         ObjectNode payload = objectMapper.createObjectNode();
         payload.putArray("itemIds").add(placed.id().toString());
@@ -439,61 +457,92 @@ public class CanvasService {
         return placed;
     }
 
-    /** Reuses a visible exact-version source; otherwise places a separate card without changing existing selections. */
+    /** Reuse a node displaying this exact media result; otherwise create one independent exact-version node. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem ensureMediaReferenceWithinChange(UUID ownerId, UUID projectId,
-            UUID agentId, UUID artifactId, UUID versionId) {
-        projects.requireActiveProject(ownerId, projectId);
-        ArtifactVersion version = artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
-        CanvasItem existing = canvasItems.list(ownerId, projectId).stream()
-                .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                        && item.subjectId().equals(artifactId)
-                        && versionId.equals(item.selectedVersionId()))
-                .findFirst().orElse(null);
-        if (existing != null) return existing;
-        CanvasItem placed = placeGeneratedArtifactWithinChange(ownerId, projectId, agentId, artifactId);
-        if (versionId.equals(placed.selectedVersionId())) return placed;
-        canvasItems.addMediaVersion(projectId, placed.id(), versionId, version.createdAt());
-        return selectMediaVersion(ownerId, projectId, placed.id(), versionId, placed.version()).item();
+            UUID artifactId, UUID versionId, UUID groupId) {
+        return ensureMediaReferenceWithinChange(ownerId, projectId, artifactId, versionId, groupId, null);
     }
 
-    /** 在 Agent 输出分组内放置 1 至 6 个互异产物；已存在的卡片复用，避免重复展示。 */
+    /** A destination cannot also be its own input source; retain its exact prior result on a sibling node. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public OutputPlacements placeArtifactsInAgentOutputWithinChange(UUID ownerId,
-            UUID projectId, UUID agentId, List<UUID> artifactIds) {
-        if (artifactIds == null || artifactIds.isEmpty() || artifactIds.size() > 6
-                || artifactIds.stream().anyMatch(java.util.Objects::isNull)
-                || new HashSet<>(artifactIds).size() != artifactIds.size()) {
-            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
+    public CanvasItem ensureMediaReferenceWithinChange(UUID ownerId, UUID projectId,
+            UUID artifactId, UUID versionId, UUID groupId, UUID excludeItemId) {
+        projects.requireActiveProject(ownerId, projectId);
+        ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
+        artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
+        if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
+            throw validation(ApiMessage.of("api.canvas-connection-service.canvas-image-input-connections-must-originate-from-the-image-card"));
         }
-        AgentInstance agent = agents.get(ownerId, projectId, agentId);
+        CanvasItem existing = canvasItems.list(ownerId, projectId).stream()
+                .filter(item -> !item.id().equals(excludeItemId)
+                        && item.subjectId().equals(artifactId) && versionId.equals(item.selectedVersionId()))
+                .findFirst().orElse(null);
+        return existing != null ? existing : placeGeneratedArtifact(ownerId, projectId, artifact, versionId, groupId);
+    }
+
+    /** Place up to six artifact identities, reusing their ordinary canvas nodes without changing layout or selection. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public OutputPlacements placeArtifactsWithinChange(UUID ownerId, UUID projectId,
+            List<UUID> artifactIds, UUID groupId) {
+        requireDistinctPlacements(artifactIds);
+        projects.requireActiveProject(ownerId, projectId);
         List<CanvasItem> created = new ArrayList<>();
         List<CanvasItem> alreadyPresent = new ArrayList<>();
         for (UUID artifactId : artifactIds) {
             artifacts.get(ownerId, projectId, artifactId);
             CanvasItem current = canvasItems.list(ownerId, projectId).stream()
-                    .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                            && item.subjectId().equals(artifactId)
-                            && agent.outputGroupId().equals(item.groupId()))
-                    .findFirst().orElse(null);
-            if (current != null) {
-                alreadyPresent.add(current);
-            } else {
-                created.add(placeGeneratedArtifactWithinChange(ownerId, projectId,
-                        agentId, artifactId));
-            }
+                    .filter(item -> item.subjectId().equals(artifactId)).findFirst().orElse(null);
+            if (current != null) alreadyPresent.add(current);
+            else created.add(placeGeneratedArtifactWithinChange(ownerId, projectId, artifactId, groupId));
         }
         return new OutputPlacements(List.copyOf(created), List.copyOf(alreadyPresent));
     }
 
-    /**
-     * 有界输出放置操作的结果。
-     *
-     * @param created 本次新建的画布卡片
-     * @param alreadyPresent 已位于该 Agent 输出分组而被复用的卡片
-     */
-    public record OutputPlacements(List<CanvasItem> created,
-            List<CanvasItem> alreadyPresent) {}
+    /** Select exact versions without confusing sibling nodes that share one artifact identity. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public OutputPlacements placeArtifactVersionsWithinChange(UUID ownerId, UUID projectId,
+            List<ArtifactVersionPlacement> versions, UUID groupId) {
+        if (versions == null || versions.stream().anyMatch(java.util.Objects::isNull)) {
+            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
+        }
+        if (versions.stream().anyMatch(requested -> requested.artifactId() == null)) {
+            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
+        }
+        requireDistinctPlacements(versions.stream().map(ArtifactVersionPlacement::versionId).toList());
+        projects.requireActiveProject(ownerId, projectId);
+        List<CanvasItem> created = new ArrayList<>();
+        List<CanvasItem> alreadyPresent = new ArrayList<>();
+        for (ArtifactVersionPlacement requested : versions) {
+            ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, requested.artifactId());
+            artifacts.requireVersion(ownerId, projectId, requested.artifactId(), requested.versionId());
+            if (artifact.artifact().kind() == Artifact.Kind.TEXT && (artifact.resourceDefaultVersion() == null
+                    || !requested.versionId().equals(artifact.resourceDefaultVersion().id()))) {
+                var message = ApiMessage.of("api.creative-artifact-tool-service.product-version-has-changed");
+                throw new ApiProblemException(HttpStatus.CONFLICT, "ARTIFACT_VERSION_CONFLICT", message, message, false);
+            }
+            CanvasItem current = canvasItems.list(ownerId, projectId).stream()
+                    .filter(item -> item.subjectId().equals(requested.artifactId())
+                            && (artifact.artifact().kind() == Artifact.Kind.TEXT || requested.versionId().equals(item.selectedVersionId())))
+                    .findFirst().orElse(null);
+            if (current != null) alreadyPresent.add(current);
+            else created.add(placeGeneratedArtifact(ownerId, projectId, artifact,
+                    artifact.artifact().kind() == Artifact.Kind.TEXT ? null : requested.versionId(), groupId));
+        }
+        return new OutputPlacements(List.copyOf(created), List.copyOf(alreadyPresent));
+    }
+
+    private void requireDistinctPlacements(List<UUID> ids) {
+        if (ids == null || ids.isEmpty() || ids.size() > 6 || ids.stream().anyMatch(java.util.Objects::isNull)
+                || new HashSet<>(ids).size() != ids.size()) {
+            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
+        }
+    }
+
+    public record ArtifactVersionPlacement(UUID artifactId, UUID versionId) {}
+
+    /** Created nodes and unchanged reused nodes are reported separately for the tool ledger. */
+    public record OutputPlacements(List<CanvasItem> created, List<CanvasItem> alreadyPresent) {}
 
     /** Searches a vertical strip beside the source; callers retain their own failure precedence. */
     private OutputPosition findOutputPositionBeside(CanvasItem source, BigDecimal initialY,
@@ -510,14 +559,11 @@ public class CanvasService {
     }
 
     /** Finds the first free grid cell without moving any existing card or changing its group. */
-    private OutputPosition findAgentOutputPosition(UUID agentId, List<CanvasItem> existing) {
-        CanvasItem agentCard = existing.stream()
-                .filter(item -> item.subjectType() == CanvasItem.SubjectType.AGENT
-                        && item.subjectId().equals(agentId))
-                .findFirst().orElse(null);
-        BigDecimal baseX = agentCard == null ? DEFAULT_OUTPUT_COORDINATE
-                : agentCard.x().add(agentCard.width()).add(AGENT_OUTPUT_OFFSET);
-        BigDecimal baseY = agentCard == null ? DEFAULT_OUTPUT_COORDINATE : agentCard.y();
+    private OutputPosition findContentOutputPosition(List<CanvasItem> existing) {
+        BigDecimal contentRight = existing.stream().map(item -> item.x().add(item.width()))
+                .max(BigDecimal::compareTo).orElse(null);
+        BigDecimal baseX = contentRight == null ? DEFAULT_OUTPUT_COORDINATE : contentRight.add(OUTPUT_GAP);
+        BigDecimal baseY = DEFAULT_OUTPUT_COORDINATE;
         if (baseX.add(OUTPUT_WIDTH).compareTo(MAX_COORDINATE) > 0) {
             baseX = DEFAULT_OUTPUT_COORDINATE;
         }
@@ -525,8 +571,8 @@ public class CanvasService {
             baseY = DEFAULT_OUTPUT_COORDINATE;
         }
         BigDecimal step = OUTPUT_WIDTH.add(OUTPUT_GAP);
-        for (int row = 0; row < MAX_AGENT_OUTPUT_ROWS; row++) {
-            for (int column = 0; column < AGENT_OUTPUT_COLUMNS; column++) {
+        for (int row = 0; row < MAX_OUTPUT_ROWS; row++) {
+            for (int column = 0; column < OUTPUT_COLUMNS; column++) {
                 BigDecimal x = baseX.add(step.multiply(BigDecimal.valueOf(column)));
                 BigDecimal y = baseY.add(step.multiply(BigDecimal.valueOf(row)));
                 if (x.add(OUTPUT_WIDTH).compareTo(MAX_COORDINATE) > 0
@@ -534,7 +580,7 @@ public class CanvasService {
                 if (!overlapsAny(x, y, existing)) return new OutputPosition(x, y);
             }
         }
-        throw validation(ApiMessage.of("api.canvas-service.there-is-no-canvas-location-available-in-the-agent-output"));
+        throw validation(ApiMessage.of("api.canvas-service.there-is-no-free-location-for-generated-content"));
     }
 
     private int nextOutputZIndex(List<CanvasItem> existing) {
@@ -557,7 +603,7 @@ public class CanvasService {
         return existing.stream().anyMatch(item -> overlaps(x, y, width, height, item));
     }
 
-    /** Preserve the established 300x300 collision footprint for media and Agent outputs. */
+    /** Preserve the established 300x300 collision footprint for media and generated content. */
     private boolean overlapsAny(BigDecimal x, BigDecimal y, List<CanvasItem> existing) {
         return overlapsAny(x, y, OUTPUT_WIDTH, OUTPUT_HEIGHT, existing);
     }
@@ -726,7 +772,6 @@ public class CanvasService {
             }
             switch (command) {
                 case PlaceArtifact place -> placeArtifact(ownerId, projectId, place);
-                case PlaceAgent place -> placeAgent(ownerId, projectId, place);
                 case UpdateTitle update -> updateTitle(ownerId, projectId, update);
                 case UpdateLayout update -> updateLayout(ownerId, projectId, update);
                 case SetLocked lock -> setLocked(ownerId, projectId, lock);
@@ -765,32 +810,6 @@ public class CanvasService {
         if (createOrReplay(ownerId, requested)) {
             initializeMediaDraft(projectId, requested, artifact);
         }
-    }
-
-    /** 核验 Agent 权限和坐标后创建卡片；客户端 ID 冲突时比较完整布局字段。 */
-    private void placeAgent(UUID ownerId, UUID projectId, PlaceAgent command) {
-        validateGeometry(
-                command.x(),
-                command.y(),
-                command.width(),
-                command.height(),
-                command.zIndex());
-        AgentInstance agent = agents.get(ownerId, projectId, command.agentId());
-        CanvasItem requested = placement(
-                command.itemId(),
-                projectId,
-                CanvasItem.SubjectType.AGENT,
-                command.agentId(),
-                null,
-                agent.name(),
-                command.x(),
-                command.y(),
-                command.width(),
-                command.height(),
-                command.zIndex(),
-                command.groupId(),
-                command.locked());
-        createOrReplay(ownerId, requested);
     }
 
     /** 为经校验的放置命令构造初始版本为零的纯布局行。 */
@@ -913,7 +932,7 @@ public class CanvasService {
         }
     }
 
-    /** 删除画布展示项，不删除被展示的产物或 Agent；不存在时作为幂等重放处理。 */
+    /** 删除画布展示项，不删除被展示的产物；不存在时作为幂等重放处理。 */
     private void remove(UUID ownerId, UUID projectId, Remove command) {
         CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, command.itemId())
                 .orElse(null);
@@ -933,17 +952,10 @@ public class CanvasService {
         }
     }
 
-    /** 根据 subjectType 读取对应业务对象，画布行本身不作为内容来源。 */
+    /** Layout rows refer only to artifacts; the database remains the source of immutable content. */
     private CanvasEntry toEntry(UUID ownerId, CanvasItem item) {
-        ArtifactService.ArtifactView artifact = item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                ? artifacts.get(ownerId, item.projectId(), item.subjectId())
-                : null;
-        ArtifactVersion selectedVersion = artifact == null ? null
-                : selectedVersion(ownerId, item, artifact);
-        AgentInstance agent = item.subjectType() == CanvasItem.SubjectType.AGENT
-                ? agents.get(ownerId, item.projectId(), item.subjectId())
-                : null;
-        return new CanvasEntry(item, artifact, selectedVersion, agent);
+        ArtifactService.ArtifactView artifact = artifacts.get(ownerId, item.projectId(), item.subjectId());
+        return new CanvasEntry(item, artifact, selectedVersion(ownerId, item, artifact));
     }
 
     private ArtifactVersion selectedVersion(UUID ownerId, CanvasItem item,
@@ -1078,7 +1090,7 @@ public class CanvasService {
 
     /** 画布支持的封闭命令集合；所有命令只修改空间展示状态。 */
     public sealed interface CanvasCommand
-            permits PlaceArtifact, PlaceAgent, UpdateTitle, UpdateLayout, SetLocked, Remove {
+            permits PlaceArtifact, UpdateTitle, UpdateLayout, SetLocked, Remove {
         /** 返回命令明确定位的画布项，供批量操作检测重复目标。
          * @return 目标画布项 UUID
          */
@@ -1101,31 +1113,6 @@ public class CanvasService {
     public record PlaceArtifact(
             UUID itemId,
             UUID artifactId,
-            BigDecimal x,
-            BigDecimal y,
-            BigDecimal width,
-            BigDecimal height,
-            int zIndex,
-            UUID groupId,
-            boolean locked)
-            implements CanvasCommand {}
-
-    /**
-     * 新增 Agent 卡片；目标 Agent 必须属于当前项目。
-     *
-     * @param itemId 客户端生成且用于安全重试的画布项 ID
-     * @param agentId 要展示的 Agent 卡片
-     * @param x 左上角横坐标
-     * @param y 左上角纵坐标
-     * @param width 卡片宽度
-     * @param height 卡片高度
-     * @param zIndex 显示层级
-     * @param groupId 可选画布分组
-     * @param locked 是否创建后锁定布局
-     */
-    public record PlaceAgent(
-            UUID itemId,
-            UUID agentId,
             BigDecimal x,
             BigDecimal y,
             BigDecimal width,
@@ -1179,7 +1166,7 @@ public class CanvasService {
             implements CanvasCommand {}
 
     /**
-     * 删除展示卡片而保留产物和 Agent。
+     * 删除展示卡片而保留产物。
      *
      * @param itemId 要删除的画布项
      * @param expectedVersion 客户端读取到的布局版本
@@ -1190,12 +1177,10 @@ public class CanvasService {
      * 画布布局行及当前卡片类型所需的业务对象投影。
      *
      * @param item 持久化的空间展示状态
-     * @param artifact subjectType 为 ARTIFACT 时的当前产物和版本
-     * @param agent subjectType 为 AGENT 时的当前 Agent 配置
+     * @param artifact 当前产物和版本
      */
     public record CanvasEntry(
             CanvasItem item,
             ArtifactService.ArtifactView artifact,
-            ArtifactVersion selectedVersion,
-            AgentInstance agent) {}
+            ArtifactVersion selectedVersion) {}
 }

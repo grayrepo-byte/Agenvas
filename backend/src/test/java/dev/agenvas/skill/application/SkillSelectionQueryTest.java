@@ -124,7 +124,6 @@ class SkillSelectionQueryTest {
                     mock(ProjectService.class), events, mapper, clock, new ShutdownGate(), transactions);
             when(agent.id()).thenReturn(agentId);
             when(agent.version()).thenReturn(1L);
-            when(agent.bindings()).thenReturn(List.of());
             when(agents.get(owner, project, agentId)).thenReturn(agent);
             AgentInstance changedAgent = mock(AgentInstance.class);
             when(changedAgent.version()).thenReturn(2L);

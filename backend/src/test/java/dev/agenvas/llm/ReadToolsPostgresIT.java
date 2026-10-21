@@ -81,7 +81,7 @@ class ReadToolsPostgresIT {
     @Autowired private ObjectMapper mapper;
 
     @Test
-    void readsOnlyPinnedVersionAndNeverLeaksUnboundProjectContent() {
+    void historicalRunReadsOnlyPinnedVersionAndNeverLeaksUnboundProjectContent() {
         AdminPrincipal owner = identities.setup("reader-admin", "reader-password-123");
         Project project = projects.create(owner.userId(), "Reader project",
                 Project.AspectRatio.LANDSCAPE_16_9);
@@ -102,10 +102,7 @@ class ReadToolsPostgresIT {
         gateway.longBrief = longBrief;
         gateway.unboundVersionId = unbound.resourceDefaultVersion().id();
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Reader",
-                "Read the brief", List.of(new AgentInstanceService.BindingInput(
-                        bound.artifact().id(), bound.resourceDefaultVersion().id()),
-                        new AgentInstanceService.BindingInput(largeBound.artifact().id(),
-                                largeBound.resourceDefaultVersion().id())));
+                "Read the brief");
         UUID selectedItemId = UUID.randomUUID();
         UUID unboundSelectedItemId = UUID.randomUUID();
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(
@@ -119,9 +116,28 @@ class ReadToolsPostgresIT {
                 List.of(UUID.randomUUID()))).isInstanceOf(ApiProblemException.class);
         gateway.selectedItemId = selectedItemId;
         gateway.unboundSelectedItemId = unboundSelectedItemId;
-        AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
+        AgentRun accepted = runs.create(owner.userId(), project.id(), agent.id(),
                 "Summarize the brief", "read-tools-run", null,
                 List.of(selectedItemId, unboundSelectedItemId)).run();
+        // Model a persisted pre-upgrade Run: upgrading must not silently grant its selected nodes new authority.
+        ObjectNode oldContext = (ObjectNode) accepted.contextSnapshot().deepCopy();
+        oldContext.remove("canvasScope");
+        UUID historicalGroup = UUID.randomUUID();
+        oldContext.put("outputGroupId", historicalGroup.toString());
+        var historicalBindings = oldContext.putArray("bindings");
+        for (var input : List.of(bound, largeBound)) historicalBindings.addObject()
+                .put("artifactId", input.artifact().id().toString())
+                .put("selectedVersionId", input.resourceDefaultVersion().id().toString())
+                .put("kind", "TEXT").put("title", input.artifact().title())
+                .put("expectedVersion", input.artifact().version());
+
+        ObjectNode oldPolicy = (ObjectNode) accepted.policySnapshot().deepCopy();
+        oldPolicy.put("toolPolicyVersion", 3).put("systemPromptVersion", 11);
+        oldPolicy.set("allowedTools", mapper.valueToTree(dev.agenvas.llm.application.RunToolPolicy.current(false, false).stream()
+                .filter(name -> !List.of("read_canvas", "manage_canvas_node", "update_media_draft").contains(name)).toList()));
+        jdbc.sql("update agent_run set context_snapshot_json = cast(:context as jsonb), policy_snapshot_json = cast(:policy as jsonb) where id = :id")
+                .param("context", oldContext.toString()).param("policy", oldPolicy.toString()).param("id", accepted.id()).update();
+        AgentRun run = runs.get(owner.userId(), project.id(), accepted.id());
         assertThat(run.contextSnapshot().at("/selection/0/itemId").asText())
                 .isEqualTo(selectedItemId.toString());
         assertThat(run.contextSnapshot().at("/selection/0/versionId").asText())
@@ -168,7 +184,7 @@ class ReadToolsPostgresIT {
                 .isEqualTo("TOOL_ARGUMENT_INVALID");
         assertThat(canvas.list(owner.userId(), project.id()).stream()
                 .filter(entry -> entry.item().subjectId().equals(largeBound.artifact().id()))
-                .filter(entry -> agent.outputGroupId().equals(entry.item().groupId()))
+                .filter(entry -> historicalGroup.equals(entry.item().groupId()))
                 .count()).isEqualTo(1);
 
         assertThat(worker.runOnce("reader-worker")).isEqualTo(1);

@@ -37,6 +37,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -49,7 +50,7 @@ public class AgentRunService {
     /** 单次用户指令的最大字符数，避免无界内容进入模型上下文。 */
     public static final int MAX_INSTRUCTION_LENGTH = 20_000;
     /** 一次运行允许附带的画布选择数量上限。 */
-    public static final int MAX_SELECTED_ITEMS = 20;
+    public static final int MAX_SELECTED_ITEMS = 1000;
     /** 历史列表默认每页条数。 */
     private static final int DEFAULT_PAGE_SIZE = 20;
     /** 历史列表每页最大条数。 */
@@ -60,9 +61,9 @@ public class AgentRunService {
 
     /** 校验项目归属并独占项目的活动 Run 槽位。 */
     private final ProjectService projects;
-    /** 读取 Agent 当前配置及其已授权输入绑定。 */
+    /** 读取项目助手当前配置。 */
     private final AgentInstanceService agents;
-    /** 按所有者重新读取绑定产物及其当前版本。 */
+    /** 按所有者读取精确产物版本。 */
     private final ArtifactService artifacts;
     /** 将用户选择的画布项解析为当前项目内的意图快照。 */
     private final CanvasService canvas;
@@ -183,7 +184,7 @@ public class AgentRunService {
      *
      * @param ownerId 经认证的项目所有者
      * @param projectId 将占用活动 Run 槽位的项目
-     * @param agentId 用户选择的 Agent 卡片
+     * @param agentId 用户选择的项目助手
      * @param requestedInstruction 用户指令，校验长度后固定到 Run
      * @param requestedIdempotencyKey 项目内创建 Run 的客户端幂等键
      * @param expectedAgentVersion 用户预览过的 Agent 版本；为空时不做该版本核对
@@ -306,9 +307,8 @@ public class AgentRunService {
                         throw new ApiProblemException(HttpStatus.CONFLICT, "CONVERSATION_VERSION_CONFLICT",
                                 ApiMessage.of("api.agent-run-service.session-has-changed"), ApiMessage.of("api.agent-run-service.there-is-a-new-message-in-the-conversation-please-recheck"), false);
                     }
-                    ConversationInputs context = conversationInputs(ownerId, projectId, agent, conversation);
-                    ObjectNode snapshot = contextSnapshot(ownerId, agent, project,
-                            selection);
+                    ObjectNode snapshot = contextSnapshot(ownerId, agent, project, selection);
+                    ConversationInputs context = conversationInputs(ownerId, projectId, conversation, snapshot.path("canvasScope"));
                     snapshot.set("conversationMemory", objectMapper.valueToTree(context.memory()));
                     snapshot.put("conversationId", conversation.id().toString());
                     snapshot.put("conversationHistoryThroughTurn", conversation.turnCount());
@@ -453,7 +453,7 @@ public class AgentRunService {
                 .encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** 模型调用前展示当前 Agent 绑定、版本和策略，供用户核对运行范围。 */
+    /** 模型调用前展示助手配置、会话输出版本和策略，供用户核对运行范围。 */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public RunPreflight preflight(UUID ownerId, UUID projectId, UUID agentId) {
         return preflight(ownerId, projectId, agentId, null);
@@ -470,13 +470,8 @@ public class AgentRunService {
         projects.requireRunSlotAvailableSnapshot(ownerId, projectId);
         AgentInstance agent = agents.get(ownerId, projectId, agentId);
         AgentConversation conversation = conversations.resolve(ownerId, projectId, agentId, conversationId);
-        ConversationInputs context = conversationInputs(ownerId, projectId, agent, conversation);
-        List<PreflightBinding> bindings = new ArrayList<>(agent.bindings().stream()
-                .map(binding -> {
-                    Artifact target = artifacts.get(ownerId, projectId, binding.artifactId()).artifact();
-                    return new PreflightBinding(binding.artifactId(), binding.selectedVersionId(),
-                            target.title(), target.kind());
-                }).toList());
+        ConversationInputs context = conversationInputs(ownerId, projectId, conversation, canvas.freezeRunScope(ownerId, projectId));
+        List<PreflightBinding> bindings = new ArrayList<>();
         context.inherited().forEach(binding -> bindings.add(new PreflightBinding(binding.artifactId(),
                 binding.selectedVersionId(), binding.title(), binding.kind())));
         var skill = skills.preview(ownerId, projectId, agentId, selection);
@@ -670,20 +665,25 @@ public class AgentRunService {
 
     /** 从已核验会话的终态 Run 冻结公开记忆和精确输出范围；不以提示词里的 ID 授权。 */
     private ConversationInputs conversationInputs(UUID ownerId, UUID projectId,
-            AgentInstance agent, AgentConversation conversation) {
+            AgentConversation conversation, JsonNode scope) {
         List<UUID> priorIds = conversation == null ? List.of() : runs.contextRunIds(projectId,
                 conversation.id(), conversation.turnCount(), MAX_CONTEXT_RUNS);
         long priorCount = conversation == null ? 0 : runs.contextRunCount(projectId,
                 conversation.id(), conversation.turnCount());
         ConversationMemoryReader.ConversationMemory memory = memoryReader.read(projectId, priorIds);
-        Set<UUID> explicit = agent.bindings().stream().map(AgentInstance.Binding::artifactId)
-                .collect(java.util.stream.Collectors.toSet());
+        Set<UUID> explicit = Set.of();
         List<UUID> selectedMediaVersions = priorIds.isEmpty() ? List.of()
                 : canvas.selectedMediaVersionIds(ownerId, projectId);
         List<ArtifactService.ConversationInput> outputs = artifacts.conversationInputs(ownerId, projectId,
                 priorIds, selectedMediaVersions, explicit);
-        int remaining = Math.max(0, MAX_CONTEXT_BINDINGS - agent.bindings().size());
-        List<ArtifactService.ConversationInput> inherited = outputs.stream().limit(remaining).toList();
+        int remaining = MAX_CONTEXT_BINDINGS;
+        Set<String> visibleVersions = java.util.stream.StreamSupport.stream((scope == null ? objectMapper.createObjectNode() : scope).path("items").spliterator(), false)
+                .filter(item -> item.path("selectedVersionId").isTextual())
+                .map(item -> item.path("artifactId").asText() + ":" + item.path("selectedVersionId").asText())
+                .collect(java.util.stream.Collectors.toSet());
+        List<ArtifactService.ConversationInput> inherited = outputs.stream()
+                .filter(item -> visibleVersions.contains(item.artifactId() + ":" + item.selectedVersionId()))
+                .limit(remaining).toList();
         memory = new ConversationMemoryReader.ConversationMemory(memory.entries(),
                 memory.truncated() || priorCount > priorIds.size() || inherited.size() < outputs.size()
                         || outputs.size() == MAX_CONTEXT_BINDINGS,
@@ -694,6 +694,7 @@ public class AgentRunService {
     private void appendInheritedBindings(ObjectNode snapshot, List<ArtifactService.ConversationInput> inherited) {
         ArrayNode bindings = (ArrayNode) snapshot.path("bindings");
         for (var binding : inherited) {
+            if (!dev.agenvas.run.domain.RunCanvasScope.containsVersion(snapshot, binding.artifactId(), binding.selectedVersionId())) continue;
             ObjectNode item = bindings.addObject();
             item.put("artifactId", binding.artifactId().toString());
             item.put("selectedVersionId", binding.selectedVersionId().toString());
@@ -707,7 +708,7 @@ public class AgentRunService {
     private record ConversationInputs(ConversationMemoryReader.ConversationMemory memory,
             List<ArtifactService.ConversationInput> inherited) {}
 
-    /** 固定 Agent 绑定与用户选择时的版本。 */
+    /** 固定当前画布范围与用户选择时的版本。 */
     private ObjectNode contextSnapshot(UUID ownerId, AgentInstance agent, Project project,
             List<UUID> selectedItemIds) {
         ObjectNode snapshot = objectMapper.createObjectNode();
@@ -719,22 +720,10 @@ public class AgentRunService {
         snapshot.put("profileVersion", agent.profileVersion());
         snapshot.put("agentName", agent.name());
         snapshot.put("agentInstruction", agent.instruction());
-        snapshot.put("outputGroupId", agent.outputGroupId().toString());
-        ArrayNode bindings = snapshot.putArray("bindings");
-        for (AgentInstance.Binding binding : agent.bindings()) {
-            ObjectNode item = bindings.addObject();
-            item.put("artifactId", binding.artifactId().toString());
-            item.put("selectedVersionId", binding.selectedVersionId().toString());
-            ArtifactService.ArtifactView selected = artifacts.get(ownerId, project.id(),
-                    binding.artifactId());
-            item.put("kind", selected.artifact().kind().name());
-            item.put("title", selected.artifact().title());
-            // Node-selected media can have archived bytes while the library default is still unset.
-            if (selected.resourceDefaultVersion() != null
-                    && selected.resourceDefaultVersion().id().equals(binding.selectedVersionId())) {
-                item.put("expectedVersion", selected.artifact().version());
-            }
-        }
+        // Old input topology is retired. Only this conversation's exact outputs are appended below;
+        // current canvas authorization is frozen independently and is never expanded by old bindings.
+        snapshot.putArray("bindings");
+        snapshot.set("canvasScope", canvas.freezeRunScope(ownerId, project.id()));
         ArrayNode selection = snapshot.putArray("selection");
         List<CanvasService.CanvasEntry> items = selectedItemIds.isEmpty()
                 ? List.of() : canvas.list(ownerId, project.id());
@@ -796,7 +785,7 @@ public class AgentRunService {
         if (requested.size() > MAX_SELECTED_ITEMS
                 || requested.stream().anyMatch(Objects::isNull)
                 || new HashSet<>(requested).size() != requested.size()) {
-            throw validation(ApiMessage.of("api.agent-run-service.a-maximum-of-20-cards-can-be-selected-and-they"));
+            throw validation(ApiMessage.of("api.agent-run-service.a-maximum-of-1000-cards-can-be-selected"));
         }
         return List.copyOf(requested);
     }

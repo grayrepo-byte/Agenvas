@@ -15,7 +15,8 @@ const version = (id: string, versionNo: number): ArtifactVersionList["items"][nu
 const item: CanvasItem = { id: "item-1", subjectType: "ARTIFACT", subjectId: "image-1",
   title: "Concept", x: 0, y: 0, width: 280, height: 240, zIndex: 0, locked: false,
   selectedVersionId: "v2", selectedVersion: version("v2", 2), version: 7,
-  artifact: null, agent: null };
+  artifact: { id: "image-1", projectId: "project-1", kind: "IMAGE", title: "Concept", resourceDefaultVersionId: null,
+    resourceDefaultVersion: null, version: 0, createdAt: "2026-09-30T00:00:00Z", updatedAt: "2026-09-30T00:00:00Z" } };
 
 function setup(versions = [version("v2", 2), version("v1", 1)], selectedItem = item,
   historyResponse = () => HttpResponse.json({ items: versions })) {

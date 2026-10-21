@@ -116,18 +116,11 @@ class AgentRunPostgresIT {
                 owner.userId(),
                 project.id(),
                 "Creator",
-                "Create a storyboard",
-                List.of(new AgentInstanceService.BindingInput(
-                        brief.artifact().id(), brief.resourceDefaultVersion().id())));
+                "Create a storyboard");
         AgentRunService.RunPreflight preflight = runService.preflight(owner.userId(),
                 project.id(), agent.id());
         assertThat(preflight.agentVersion()).isZero();
-        assertThat(preflight.bindings()).singleElement()
-                .satisfies(binding -> {
-                    assertThat(binding.selectedVersionId())
-                            .isEqualTo(brief.resourceDefaultVersion().id());
-                    assertThat(binding.artifactTitle()).isEqualTo("Brief");
-                });
+        assertThat(preflight.bindings()).isEmpty();
         assertThat(preflight.modelAvailable()).isFalse();
         assertThat(preflight.policySnapshot().path("maxModelTurns").isNull()).isTrue();
         assertThat(preflight.policySnapshot().path("schemaVersion").asInt()).isEqualTo(6);
@@ -154,8 +147,7 @@ class AgentRunPostgresIT {
         mvc.perform(get(preflightPath).with(authentication(
                         new UsernamePasswordAuthenticationToken(owner, null, List.of()))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.bindings[0].selectedVersionId")
-                        .value(brief.resourceDefaultVersion().id().toString()))
+                .andExpect(jsonPath("$.bindings").isEmpty())
                 .andExpect(jsonPath("$.policySnapshot.modelConfigSource")
                         .value(reviewedModelSource))
                 .andExpect(jsonPath("$.policySnapshot.modelConfigVersion")
@@ -195,31 +187,28 @@ class AgentRunPostgresIT {
                     assertThat(task.stepKey()).isEqualTo("agent-turn-0");
                     assertThat(task.input().path("stepIndex").intValue()).isZero();
                 });
-        assertThat(run.contextSnapshot().get("bindings").get(0).get("selectedVersionId").stringValue())
-                .isEqualTo(brief.resourceDefaultVersion().id().toString());
-        assertThat(run.contextSnapshot().path("bindings").path(0)
-                .path("expectedVersion").longValue()).isEqualTo(0);
+        assertThat(run.contextSnapshot().path("bindings")).isEmpty();
+        assertThat(run.contextSnapshot().has("outputGroupId")).isFalse();
         assertThat(run.policySnapshot().get("maxModelTurns").isNull()).isTrue();
         assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), project.id(), run.id())
                 .getFirst().getText()).contains("image preview attachments", "Inspect only attached images");
 
         agentService.update(owner.userId(), project.id(), agent.id(), 0,
-                agent.name(), "Ignore the original storyboard", List.of());
+                agent.name(), "Ignore the original storyboard");
         assertProblem("AGENT_VERSION_CONFLICT", () -> runService.create(owner.userId(),
                 project.id(), agent.id(), "Create three shots", "stale-reviewed-version", 0L));
         artifactService.revise(owner.userId(), project.id(), brief.artifact().id(),
                 brief.artifact().version(), null,
                 objectMapper.readTree("{\"format\":\"PLAIN_TEXT\",\"text\":\"Changed tea\"}"));
         AgentRun snapshotted = runService.get(owner.userId(), project.id(), run.id());
-        assertThat(snapshotted.contextSnapshot().get("bindings")).hasSize(1);
+        assertThat(snapshotted.contextSnapshot().get("bindings")).isEmpty();
         assertThat(snapshotted.contextSnapshot().path("agentInstruction").asText())
                 .isEqualTo("Create a storyboard");
         assertThat(initialContext.assemble(owner.userId(), project.id(), run.id()))
                 .extracting(message -> message.getText())
                 .anySatisfy(text -> assertThat(text).contains("Create a storyboard"))
-                .anySatisfy(text -> assertThat(text).contains("Coffee")
-                        .contains("expectedVersion=0")
+                .anySatisfy(text -> assertThat(text).contains("read_canvas", "No canvas content")
                         .doesNotContain("Changed tea"));
         assertProblem(
                 "IDEMPOTENCY_CONFLICT",
@@ -343,7 +332,7 @@ class AgentRunPostgresIT {
         Project httpProject = projectService.create(owner.userId(), "HTTP replay project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance httpAgent = agentService.create(owner.userId(), httpProject.id(),
-                "HTTP Creator", "Create", List.of());
+                "HTTP Creator", "Create");
         assertConcurrentHttpCreate(mvc, owner, httpProject.id(), httpAgent.id());
     }
 

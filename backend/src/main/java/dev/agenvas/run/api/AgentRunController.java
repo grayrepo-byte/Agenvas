@@ -115,7 +115,7 @@ public class AgentRunController {
      * 创建 Run 时客户端可提交的指令与预览版本。
      * 身份、执行策略、预算和授权上下文均由服务端构造，不接受客户端提供。
      *
-     * @param agentId 用户选择的 Agent 卡片
+     * @param agentId 用户选择的项目助手
      * @param instruction 本次 Run 指令，最多 20,000 字符
      * @param expectedAgentVersion 用户预览时的 Agent 配置版本
      * @param selectedItemIds 可选画布选择，只作为意图
@@ -139,7 +139,7 @@ public class AgentRunController {
 
     /** 列表摘要省略完整上下文、策略细节和模型原始消息。
      * @param id Run UUID
-     * @param agentInstanceId 发起 Run 的 Agent 卡片
+     * @param agentInstanceId 发起 Run 的项目助手
      * @param conversationId Run 所属持久会话
      * @param conversationTurn 会话内的单调消息序号
      * @param status 当前运行状态

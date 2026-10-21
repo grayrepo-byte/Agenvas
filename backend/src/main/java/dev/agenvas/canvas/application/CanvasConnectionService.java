@@ -1,8 +1,6 @@
 package dev.agenvas.canvas.application;
 
 import dev.agenvas.shared.i18n.ApiMessage;
-import dev.agenvas.agent.application.AgentInstanceService;
-import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -31,7 +29,6 @@ public class CanvasConnectionService {
     private final ProjectService projects;
     private final CanvasItemQueryService canvasItems;
     private final ArtifactService artifacts;
-    private final AgentInstanceService agents;
     private final MediaDraftService drafts;
     private final CanvasConnectionRepository connections;
     private final ProjectEventService events;
@@ -39,13 +36,12 @@ public class CanvasConnectionService {
     private final Clock clock;
 
     public CanvasConnectionService(ProjectService projects, CanvasItemQueryService canvasItems,
-            ArtifactService artifacts, AgentInstanceService agents, MediaDraftService drafts,
+            ArtifactService artifacts, MediaDraftService drafts,
             CanvasConnectionRepository connections, ProjectEventService events,
             ObjectMapper mapper, Clock clock) {
         this.projects = projects;
         this.canvasItems = canvasItems;
         this.artifacts = artifacts;
-        this.agents = agents;
         this.drafts = drafts;
         this.connections = connections;
         this.events = events;
@@ -56,18 +52,9 @@ public class CanvasConnectionService {
     @Transactional
     public ConnectionResult connect(UUID ownerId, UUID projectId, UUID sourceItemId,
             UUID targetItemId, UUID sourceVersionId,
-            CanvasConnection.RelationType relationType, long expectedTargetDraftVersion) {
+            CanvasConnection.RelationType relationType, Long expectedTargetDraftVersion) {
         return connect(ownerId, projectId, sourceItemId, targetItemId, sourceVersionId,
-                relationType, expectedTargetDraftVersion, null);
-    }
-
-    @Transactional
-    public ConnectionResult connect(UUID ownerId, UUID projectId, UUID sourceItemId,
-            UUID targetItemId, UUID sourceVersionId,
-            CanvasConnection.RelationType relationType, Long expectedTargetDraftVersion,
-            Long expectedTargetAgentVersion) {
-        return connect(ownerId, projectId, sourceItemId, targetItemId, sourceVersionId,
-                relationType, expectedTargetDraftVersion, expectedTargetAgentVersion, false, null);
+                relationType, expectedTargetDraftVersion, false, null);
     }
 
     /** Connects a validated proposal input, retaining its role, order and fixed version. */
@@ -79,12 +66,12 @@ public class CanvasConnectionService {
             throw invalid(ApiMessage.of("api.canvas-connection-service.the-image-entry-does-not-exist-in-the-media-draft"));
         }
         return connect(ownerId, projectId, sourceItemId, targetItemId, sourceVersionId,
-                CanvasConnection.RelationType.MEDIA_INPUT, expectedDraftVersion, null, true, null);
+                CanvasConnection.RelationType.MEDIA_INPUT, expectedDraftVersion, true, null);
     }
 
     private ConnectionResult connect(UUID ownerId, UUID projectId, UUID sourceItemId,
             UUID targetItemId, UUID sourceVersionId, CanvasConnection.RelationType relationType,
-            Long expectedTargetDraftVersion, Long expectedTargetAgentVersion, boolean replaceManualSource,
+            Long expectedTargetDraftVersion, boolean replaceManualSource,
             String slotKey) {
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
@@ -120,7 +107,6 @@ public class CanvasConnectionService {
                     sourceItemId, targetItemId, relationType, sourceVersionId, 0, now, now);
             connections.create(connection);
             MediaDraft draft = null;
-            AgentInstance agent = null;
             if (relationType == CanvasConnection.RelationType.MEDIA_INPUT) {
                 CanvasItem target = canvasItems.requireArtifactItem(ownerId, projectId,
                         targetItemId);
@@ -133,18 +119,10 @@ public class CanvasConnectionService {
                 draft = drafts.addConnectionInputWithinChange(ownerId, projectId,
                         targetItemId, expectedTargetDraftVersion, sourceVersionId,
                         connection.id(), replaceManualSource, slotKey);
-            } else if (relationType == CanvasConnection.RelationType.AGENT_IMAGE_INPUT) {
-                CanvasItem target = canvasItems.requireAgentItem(ownerId, projectId, targetItemId);
-                if (expectedTargetAgentVersion == null) {
-                    throw invalid(ApiMessage.of("api.canvas-connection-service.the-agent-image-connection-must-carry-the-target-agent-version"));
-                }
-                agent = agents.addImageBindingWithinChange(ownerId, projectId,
-                        target.subjectId(), expectedTargetAgentVersion,
-                        sourceArtifact.id(), sourceVersionId);
             } else {
                 throw invalid(ApiMessage.of("api.canvas-connection-service.unsupported-canvas-wire-type"));
             }
-            return ProjectEventService.Change.changed(new ConnectionResult(connection, draft, agent),
+            return ProjectEventService.Change.changed(new ConnectionResult(connection, draft),
                     connectionEvent(connection, "canvas.connection.created"));
         }).value();
     }
@@ -181,29 +159,21 @@ public class CanvasConnectionService {
 
     @Transactional
     public ConnectionResult disconnect(UUID ownerId, UUID projectId, UUID connectionId,
-            Long expectedTargetDraftVersion, Long expectedTargetAgentVersion) {
+            Long expectedTargetDraftVersion) {
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             CanvasConnection connection = connections.find(ownerId, projectId, connectionId)
                     .orElseThrow(this::notFound);
             MediaDraft draft = null;
-            AgentInstance agent = null;
             if (connection.relationType() == CanvasConnection.RelationType.MEDIA_INPUT) {
                 if (expectedTargetDraftVersion == null) throw invalid(ApiMessage.of("api.canvas-connection-service.disconnected-media-is-missing-draft-versions"));
                 draft = drafts.removeConnectionInputWithinChange(ownerId, projectId,
                         connection.targetCanvasItemId(), expectedTargetDraftVersion, connectionId);
-            } else if (connection.relationType()
-                    == CanvasConnection.RelationType.AGENT_IMAGE_INPUT) {
-                CanvasItem target = canvasItems.requireAgentItem(ownerId, projectId,
-                        connection.targetCanvasItemId());
-                if (expectedTargetAgentVersion == null) throw invalid(ApiMessage.of("api.canvas-connection-service.disconnecting-agent-missing-agent-version"));
-                agent = removeAgentBindingIfFinal(ownerId, projectId, connection,
-                        target.subjectId(), expectedTargetAgentVersion);
             }
             if (!connections.delete(projectId, connectionId)) {
                 throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
             }
-            return ProjectEventService.Change.changed(new ConnectionResult(connection, draft, agent),
+            return ProjectEventService.Change.changed(new ConnectionResult(connection, draft),
                     connectionEvent(connection, "canvas.connection.deleted"));
         }).value();
     }
@@ -263,30 +233,10 @@ public class CanvasConnectionService {
                 drafts.removeConnectionInputWithinChange(ownerId, projectId,
                         connection.targetCanvasItemId(), target.version(), connection.id());
             }
-            if (connection.relationType() == CanvasConnection.RelationType.AGENT_IMAGE_INPUT) {
-                CanvasItem target = canvasItems.requireAgentItem(ownerId, projectId,
-                        connection.targetCanvasItemId());
-                AgentInstance current = agents.get(ownerId, projectId, target.subjectId());
-                removeAgentBindingIfFinal(ownerId, projectId, connection, target.subjectId(),
-                        current.version());
-            }
             if (!connections.delete(projectId, connection.id())) {
                 throw conflict(ApiMessage.of("api.canvas-connection-service.the-connection-was-deleted-by-another-operation"));
             }
         }
-    }
-
-    private AgentInstance removeAgentBindingIfFinal(UUID ownerId, UUID projectId,
-            CanvasConnection removing, UUID agentId, long expectedAgentVersion) {
-        boolean stillReferenced = connections.list(ownerId, projectId).stream()
-                .anyMatch(candidate -> !candidate.id().equals(removing.id())
-                        && candidate.relationType() == CanvasConnection.RelationType.AGENT_IMAGE_INPUT
-                        && candidate.targetCanvasItemId().equals(removing.targetCanvasItemId())
-                        && candidate.sourceArtifactVersionId().equals(
-                                removing.sourceArtifactVersionId()));
-        return stillReferenced ? agents.get(ownerId, projectId, agentId)
-                : agents.removeImageBindingWithinChange(ownerId, projectId, agentId,
-                        expectedAgentVersion, removing.sourceArtifactVersionId());
     }
 
     /** Clears all editable media lines into a target before a full historical-input restore. */
@@ -360,6 +310,5 @@ public class CanvasConnectionService {
                 ApiMessage.of("api.canvas-connection-service.canvas-connection-conflict"), detail, true);
     }
 
-    public record ConnectionResult(CanvasConnection connection, MediaDraft draft,
-            AgentInstance agent) {}
+    public record ConnectionResult(CanvasConnection connection, MediaDraft draft) {}
 }

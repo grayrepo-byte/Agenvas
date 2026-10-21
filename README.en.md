@@ -30,7 +30,7 @@
 | --- | --- |
 | Creative canvas | Drag, select, connect, arrange, and upload local media |
 | Multimodal generation | Run text, image, video, and audio cards with queues, cancellation, regeneration, and version history |
-| Agent collaboration | Read bound context, edit text, and arrange cards; media proposals require user approval |
+| Agent collaboration | Use director chat in the bottom-right corner to read and work with the current canvas, with persistent conversations and Skills; media proposals require user approval |
 | Reusable materials | Project resources, personal assets, prompt templates, visual styles, and mixed references |
 | Image tools | Annotate, crop, rotate, mirror, resize, extract depth, and use configured AI editing capabilities |
 | Self-hosting | Model settings, local and OSS/COS/S3 storage, task and call records, and project manifest exports |
@@ -99,7 +99,7 @@ Open **<http://127.0.0.1:8088/setup>** locally, or `http://<server-ip>:8088/setu
 - **Text and Agent**: Add an OpenAI-compatible endpoint, model ID, and API key under settings → model settings. An administrator must run the tool-calling diagnostic before using an Agent.
 - **Images, video, and audio**: Create connections, publish capabilities, and choose default models in media settings. The default deployment requires real model configuration before generating media.
 
-Create a project and use the canvas context menu to add cards or upload media. Select a model, enter a prompt and references, check the estimated cost, and run. Preview, select, or regenerate results. Agent cards can bind context and use Skills; approve or reject media proposals as a batch in the conversation.
+Create a project and use the canvas context menu to add cards or upload media. Select a model, enter a prompt and references, check the estimated cost, and run. Preview, select, or regenerate results. Open director chat in the bottom-right corner to use a project assistant that reads and works with the current canvas on demand. Select nodes to highlight the focus of your request. Map required Skill inputs to exact versions of canvas content, then approve or reject media proposals as a batch in the conversation. No Agent canvas node or persistent material binding is needed.
 
 Seedance video references need a publicly accessible media relay. See the [relay guide](docs/media-relay-design.md).
 

@@ -55,6 +55,8 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 2026-10-05 调用日志日期组件新增精确正式版本：[`react-day-picker` 10.0.2](https://daypicker.dev/) 与 [`date-fns` 4.4.0](https://date-fns.org/)，通过 shadcn CLI 加入 Calendar 与 Popover 源码。使用 React DayPicker 单日选择、四语言 locale 与 date-fns 本地时间格式化；沿用现有 Radix、Phosphor、主题及其他依赖版本。验证范围为调用日志 Mock HTTP 组件测试、TypeScript、lint、四语言/主题检查与 Vite 构建；实际结果见开发清单。
 
+2026-10-20 导演聊天窗口使用 shadcn CLI 新增 MessageScroller、Message 与 Bubble 源码，新增正式依赖 `@shadcn/react` 精确版本 0.3.1；沿用现有 Radix、Phosphor 与 React 19，不覆盖既有基础组件。MessageScroller 管理流式跟随、历史锚定和回到最新消息。源码与用法见 [shadcn 聊天组件](https://ui.shadcn.com/docs/components/radix/message-scroller)。验证覆盖聊天、窗口生命周期、画布集成、四语言、类型、lint、生产构建及使用合成数据的浏览器尺寸与交互；实际结果见开发清单，不等于真实模型验收。
+
 ## 容器镜像
 
 | 用途 | 精确镜像 | 多架构 digest |

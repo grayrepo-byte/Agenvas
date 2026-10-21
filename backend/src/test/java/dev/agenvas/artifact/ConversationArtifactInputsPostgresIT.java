@@ -95,7 +95,7 @@ class ConversationArtifactInputsPostgresIT {
     void inheritsSelectedConversationOutputsButNeverForeignOrManuallyReplacedVersions() throws Exception {
         var owner = owner();
         var project = projects.create(owner.userId(), "Conversation inputs", Project.AspectRatio.SQUARE_1_1);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create text", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create text");
         var first = runs.create(owner.userId(), project.id(), agent.id(), "Write a scene", "first").run();
         var editable = artifacts.createFromAgent(owner.userId(), project.id(), first.id(), Artifact.Kind.TEXT,
                 "Scene", mapper.readTree("{\"format\":\"PLAIN_TEXT\",\"text\":\"First draft\"}"));
@@ -104,7 +104,7 @@ class ConversationArtifactInputsPostgresIT {
         var manual = artifacts.create(owner.userId(), project.id(), Artifact.Kind.TEXT, "Private manual input",
                 mapper.readTree("{\"format\":\"PLAIN_TEXT\",\"text\":\"Do not inherit\"}"));
         var foreignProject = projects.create(owner.userId(), "Foreign", Project.AspectRatio.SQUARE_1_1);
-        var foreignAgent = agents.create(owner.userId(), foreignProject.id(), "Foreign", "Create text", List.of());
+        var foreignAgent = agents.create(owner.userId(), foreignProject.id(), "Foreign", "Create text");
         var foreignRun = runs.create(owner.userId(), foreignProject.id(), foreignAgent.id(), "Write", "foreign").run();
         artifacts.createFromAgent(owner.userId(), foreignProject.id(), foreignRun.id(), Artifact.Kind.TEXT,
                 "Foreign", mapper.readTree("{\"format\":\"PLAIN_TEXT\",\"text\":\"Foreign scope\"}"));
@@ -118,8 +118,25 @@ class ConversationArtifactInputsPostgresIT {
         assertThatThrownBy(() -> artifacts.conversationInputs(UUID.randomUUID(), project.id(), List.of(first.id()), List.of(), Set.of()))
                 .isInstanceOf(ApiProblemException.class);
 
+        UUID editableItem = UUID.randomUUID();
+        UUID replacedItem = UUID.randomUUID();
+        UUID removedItem = UUID.randomUUID();
+        var offCanvas = artifacts.createFromAgent(owner.userId(), project.id(), first.id(), Artifact.Kind.TEXT,
+                "Removed historical scene", mapper.readTree("{\"format\":\"PLAIN_TEXT\",\"text\":\"History remains, canvas permission ends\"}"));
+        canvas.apply(owner.userId(), project.id(), List.of(place(editableItem, editable.artifact().id()),
+                place(replacedItem, editedByUser.artifact().id()), place(removedItem, offCanvas.artifact().id())));
+        canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.Remove(removedItem, 0)));
         runs.cancel(owner.userId(), project.id(), first.id());
         var second = runs.create(owner.userId(), project.id(), agent.id(), "Continue that scene", "second").run();
+        assertThat(second.contextSnapshot().path("bindings")).hasSize(2);
+        assertThat(second.contextSnapshot().path("bindings")).allSatisfy(binding ->
+                assertThat(binding.path("artifactId").asText()).isNotEqualTo(offCanvas.artifact().id().toString()));
+        assertThatThrownBy(() -> artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), second.id(),
+                offCanvas.resourceDefaultVersion().id(), second.contextSnapshot())).isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("INPUT_SCOPE_DENIED"));
+        assertThat(artifacts.get(owner.userId(), project.id(), offCanvas.artifact().id()).resourceDefaultVersion().id())
+                .isEqualTo(offCanvas.resourceDefaultVersion().id());
+
         assertThat(artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), second.id(),
                 editable.resourceDefaultVersion().id(), second.contextSnapshot()).id()).isEqualTo(editable.resourceDefaultVersion().id());
         var revised = artifacts.reviseFromAgent(owner.userId(), project.id(), second.id(), second.contextSnapshot(),
@@ -131,7 +148,7 @@ class ConversationArtifactInputsPostgresIT {
                 editedByUser.artifact().version(), "User changed scene",
                 mapper.readTree("{\"format\":\"PLAIN_TEXT\",\"text\":\"User decision\"}"));
         assertThat(artifacts.conversationInputs(owner.userId(), project.id(), List.of(first.id(), second.id()), List.of(), Set.of()))
-                .extracting(ArtifactService.ConversationInput::artifactId).containsExactly(editable.artifact().id());
+                .extracting(ArtifactService.ConversationInput::artifactId).containsExactlyInAnyOrder(editable.artifact().id(), offCanvas.artifact().id());
         assertThatThrownBy(() -> artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), second.id(),
                 userRevision.resourceDefaultVersion().id(), second.contextSnapshot())).isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> artifacts.reviseFromAgent(owner.userId(), project.id(), second.id(), second.contextSnapshot(),
@@ -146,7 +163,7 @@ class ConversationArtifactInputsPostgresIT {
     void nextRunCanReadAllSelectedImageOutputsWithoutSettingResourceDefaults() {
         var owner = owner();
         var project = projects.create(owner.userId(), "Selected media continuation", Project.AspectRatio.SQUARE_1_1);
-        var agent = agents.create(owner.userId(), project.id(), "Director", "Continue with generated references", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Director", "Continue with generated references");
         var first = runs.create(owner.userId(), project.id(), agent.id(), "Create four references", "images-first").run();
         List<UUID> versions = java.util.stream.IntStream.rangeClosed(1, FOUR_IMAGE_REFERENCES)
                 .mapToObj(index -> selectedImage(owner.userId(), project.id(), agent.id(), first.id(), "Reference " + index))
@@ -173,7 +190,7 @@ class ConversationArtifactInputsPostgresIT {
     void freezesDistinctNodeVersionsAndIgnoresIndependentMediaResourceDefaults(Artifact.Kind kind) throws IOException {
         var owner = owner();
         var project = projects.create(owner.userId(), "Distinct " + kind + " outputs", Project.AspectRatio.SQUARE_1_1);
-        var agent = agents.create(owner.userId(), project.id(), "Director", "Read selected results", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Director", "Read selected results");
         var first = runs.create(owner.userId(), project.id(), agent.id(), "Create media", "media-first").run();
         var artifact = artifacts.create(owner.userId(), project.id(), kind, "Shared media identity", null).artifact();
         UUID assetId = syntheticAsset(owner.userId(), project.id(), kind);
@@ -213,10 +230,10 @@ class ConversationArtifactInputsPostgresIT {
     }
 
     @Test
-    void excludesManualSelectionsOtherAgentsOtherConversationsAndOtherProjects() {
+    void currentCanvasGrantsExactSelectionsAcrossConversationsButNeverOldOrForeignVersions() {
         var owner = owner();
         var project = projects.create(owner.userId(), "Private continuation scope", Project.AspectRatio.SQUARE_1_1);
-        var agent = agents.create(owner.userId(), project.id(), "Director", "Continue only this conversation", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Director", "Continue only this conversation");
         var first = runs.create(owner.userId(), project.id(), agent.id(), "Create image", "scope-first").run();
         var artifact = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Replaced by user", null).artifact();
         UUID assetId = ImageAssetFixture.archive(assets, owner.userId(), project.id());
@@ -231,7 +248,7 @@ class ConversationArtifactInputsPostgresIT {
         }).value();
         runs.cancel(owner.userId(), project.id(), first.id());
 
-        var otherAgent = agents.create(owner.userId(), project.id(), "Other Agent", "Separate inputs", List.of());
+        var otherAgent = agents.create(owner.userId(), project.id(), "Other Agent", "Separate inputs");
         var otherRun = runs.create(owner.userId(), project.id(), otherAgent.id(), "Create image", "other-agent").run();
         UUID otherAgentVersion = selectedImage(owner.userId(), project.id(), otherAgent.id(), otherRun.id(), "Other Agent image");
         runs.cancel(owner.userId(), project.id(), otherRun.id());
@@ -243,7 +260,7 @@ class ConversationArtifactInputsPostgresIT {
         runs.cancel(owner.userId(), project.id(), newRun.id());
 
         var foreignProject = projects.create(owner.userId(), "Separate project", Project.AspectRatio.SQUARE_1_1);
-        var foreignAgent = agents.create(owner.userId(), foreignProject.id(), "Foreign", "Separate scope", List.of());
+        var foreignAgent = agents.create(owner.userId(), foreignProject.id(), "Foreign", "Separate scope");
         var foreignRun = runs.create(owner.userId(), foreignProject.id(), foreignAgent.id(), "Create image", "foreign-project").run();
         UUID foreignVersion = selectedImage(owner.userId(), foreignProject.id(), foreignAgent.id(), foreignRun.id(), "Foreign image");
         runs.cancel(owner.userId(), foreignProject.id(), foreignRun.id());
@@ -251,11 +268,12 @@ class ConversationArtifactInputsPostgresIT {
         var resumed = runs.create(owner.userId(), project.id(), agent.id(), "Continue original conversation", "scope-resume",
                 null, List.of(), null, null, null, first.conversationId(), null).run();
         assertThat(resumed.contextSnapshot().path("bindings")).isEmpty();
-        for (UUID denied : List.of(original.versionId(), manualVersion, otherAgentVersion, otherConversationVersion)) {
-            assertThatThrownBy(() -> artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), resumed.id(),
-                    denied, resumed.contextSnapshot())).isInstanceOfSatisfying(ApiProblemException.class,
-                            problem -> assertThat(problem.code()).isEqualTo("INPUT_SCOPE_DENIED"));
-        }
+        assertThatThrownBy(() -> artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), resumed.id(),
+                original.versionId(), resumed.contextSnapshot())).isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("INPUT_SCOPE_DENIED"));
+        for (UUID visible : List.of(manualVersion, otherAgentVersion, otherConversationVersion))
+            assertThat(artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), resumed.id(), visible,
+                    resumed.contextSnapshot()).id()).isEqualTo(visible);
         assertThatThrownBy(() -> artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), resumed.id(),
                 foreignVersion, resumed.contextSnapshot())).isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> canvas.selectedMediaVersionIds(UUID.randomUUID(), project.id()))
@@ -263,10 +281,10 @@ class ConversationArtifactInputsPostgresIT {
     }
 
     @Test
-    void deduplicatesAliasesAndExcludesExplicitArtifactsBeforeTheInputLimit() {
+    void deduplicatesCanvasAliasesAndFreezesOnlyOutputsStillOnCanvasWithinTheInputLimit() {
         var owner = owner();
         var project = projects.create(owner.userId(), "Bounded continuation inputs", Project.AspectRatio.SQUARE_1_1);
-        var agent = agents.create(owner.userId(), project.id(), "Director", "Use exact inputs", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Director", "Use exact inputs");
         var first = runs.create(owner.userId(), project.id(), agent.id(), "Create references", "limit-first").run();
         UUID olderEligibleVersion = selectedImage(owner.userId(), project.id(), agent.id(), first.id(), "Earlier reference");
         var artifact = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Multiple node versions", null).artifact();
@@ -288,18 +306,29 @@ class ConversationArtifactInputsPostgresIT {
         assertThat(second.contextSnapshot().at("/conversationMemory/truncated").asBoolean()).isTrue();
         runs.cancel(owner.userId(), project.id(), second.id());
 
-        var explicit = outputs.getFirst();
-        UUID agentNodeId = UUID.randomUUID();
-        canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceAgent(agentNodeId, agent.id(),
-                BigDecimal.ZERO, BigDecimal.ZERO, AGENT_WIDTH, AGENT_HEIGHT, 0, null, false)));
-        connections.connect(owner.userId(), project.id(), explicit.itemId(), agentNodeId, explicit.versionId(),
-                CanvasConnection.RelationType.AGENT_IMAGE_INPUT, null, agent.version());
-        var third = runs.create(owner.userId(), project.id(), agent.id(), "Use explicit input", "limit-explicit").run();
+        var retained = outputs.getFirst();
+        var removed = canvas.list(owner.userId(), project.id()).stream()
+                .filter(entry -> entry.item().subjectId().equals(artifact.id()) && !entry.item().id().equals(retained.itemId()))
+                .map(entry -> (CanvasService.CanvasCommand) new CanvasService.Remove(entry.item().id(), entry.item().version())).toList();
+        canvas.apply(owner.userId(), project.id(), removed);
+        var third = runs.create(owner.userId(), project.id(), agent.id(), "Use remaining canvas", "limit-retained").run();
         assertThat(third.contextSnapshot().path("bindings")).hasSize(2);
-        assertThat(third.contextSnapshot().at("/bindings/0/selectedVersionId").asText()).isEqualTo(explicit.versionId().toString());
-        assertThat(third.contextSnapshot().at("/bindings/0").has("source")).isFalse();
-        assertThat(third.contextSnapshot().at("/bindings/1/selectedVersionId").asText()).isEqualTo(olderEligibleVersion.toString());
-        assertThat(third.contextSnapshot().at("/bindings/1/source").asText()).isEqualTo("CONVERSATION_OUTPUT");
+        assertThat(java.util.stream.StreamSupport.stream(third.contextSnapshot().path("bindings").spliterator(), false)
+                .map(binding -> binding.path("selectedVersionId").asText()).toList())
+                .containsExactlyInAnyOrder(retained.versionId().toString(), olderEligibleVersion.toString());
+        assertThat(third.contextSnapshot().path("bindings")).allSatisfy(binding ->
+                assertThat(binding.path("source").asText()).isEqualTo("CONVERSATION_OUTPUT"));
+        assertThat(third.contextSnapshot().has("outputGroupId")).isFalse();
+        assertThatThrownBy(() -> artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), third.id(),
+                last.versionId(), third.contextSnapshot())).isInstanceOfSatisfying(ApiProblemException.class,
+                        problem -> assertThat(problem.code()).isEqualTo("INPUT_SCOPE_DENIED"));
+        assertThat(artifacts.requireAgentVisibleVersion(owner.userId(), project.id(), second.id(), last.versionId(),
+                second.contextSnapshot()).id()).isEqualTo(last.versionId());
+    }
+
+    private static CanvasService.PlaceArtifact place(UUID itemId, UUID artifactId) {
+        return new CanvasService.PlaceArtifact(itemId, artifactId, BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("320"), new BigDecimal("200"), 0, null, false);
     }
 
     private UUID selectedImage(UUID ownerId, UUID projectId, UUID agentId, UUID runId, String title) {
@@ -311,7 +340,7 @@ class ConversationArtifactInputsPostgresIT {
     private SelectedOutput selectedOutput(UUID ownerId, UUID projectId, UUID agentId, UUID runId,
             Artifact artifact, UUID assetId) {
         return events.recordChange(ownerId, projectId, () -> {
-            var output = canvas.placeGeneratedArtifactWithinChange(ownerId, projectId, agentId, artifact.id());
+            var output = canvas.placeGeneratedArtifactWithinChange(ownerId, projectId, artifact.id(), null);
             UUID versionId = appendGeneratedVersion(ownerId, projectId, runId, artifact, assetId);
             canvas.recordTaskMediaVersionWithinChange(ownerId, projectId, output.id(), artifact.id(), versionId);
             assertThat(canvas.selectTaskResultWithinChange(ownerId, projectId, output.id(), artifact.id(),

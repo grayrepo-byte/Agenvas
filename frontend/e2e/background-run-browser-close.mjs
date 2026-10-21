@@ -128,7 +128,7 @@ try {
       name: "Browser-close background run", aspectRatio: "LANDSCAPE_16_9",
     });
     const agent = await write(`/api/v1/projects/${project.id}/agents`, {
-      name: "Creator", instruction: "Create a three-shot storyboard", bindings: [],
+      name: "Creator", instruction: "Create a three-shot storyboard",
     });
     const run = await write(`/api/v1/projects/${project.id}/runs`, {
       agentId: agent.id, instruction: "Make three shots",

@@ -126,7 +126,7 @@ class ProjectExportManifestPostgresIT {
                         MediaDraft.InputRole.REFERENCE, "#7C3AED")), List.of(), style.id());
         connections.connect(owner.userId(), project.id(), sourceItemId, targetItemId,
                 revisedImage.resourceDefaultVersion().id(),
-                CanvasConnection.RelationType.MEDIA_INPUT, 1);
+                CanvasConnection.RelationType.MEDIA_INPUT, 1L);
 
         var librarySource = library.source(owner.userId(), project.id(), sourceItemId);
         var libraryCommand = library.save(owner.userId(), project.id(), sourceItemId,
@@ -148,7 +148,7 @@ class ProjectExportManifestPostgresIT {
         UUID skillVersionId = skills.getOperation(owner.userId(), publication.id()).resultVersionId();
         var builtin = skills.list(owner.userId(), "short-drama-write", false, null).items().getFirst();
         var builtinVersion = skills.getVersion(owner.userId(), builtin.id(), builtin.currentVersionId());
-        var agent = agents.create(owner.userId(), project.id(), "Export Creator", "Use the selected method", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Export Creator", "Use the selected method");
         skillRuns.saveBinding(owner.userId(), project.id(), agent.id(), agent.version(), List.of(
                 new SkillRunService.VersionRef(skill.id(), skillVersionId),
                 new SkillRunService.VersionRef(builtin.id(), builtin.currentVersionId())), "manifest-agent-binding");
@@ -160,12 +160,12 @@ class ProjectExportManifestPostgresIT {
         var secondPublication = skills.publish(owner.userId(), skill.id(), secondDraft.version(), "manifest-skill-publish-next");
         assertThat(skills.processNext()).isTrue();
         UUID secondVersionId = skills.getOperation(owner.userId(), secondPublication.id()).resultVersionId();
-        var secondAgent = agents.create(owner.userId(), project.id(), "Future Creator", "Use a different fixed version", List.of());
+        var secondAgent = agents.create(owner.userId(), project.id(), "Future Creator", "Use a different fixed version");
         skillRuns.saveBinding(owner.userId(), project.id(), secondAgent.id(), secondAgent.version(), List.of(new SkillRunService.VersionRef(skill.id(), secondVersionId)), "manifest-second-agent-binding");
         assertThat(skillRuns.preview(owner.userId(), project.id(), agent.id(), null).getFirst().skillVersionId()).isEqualTo(skillVersionId);
         assertThat(skillRuns.preview(owner.userId(), project.id(), secondAgent.id(), null).getFirst().skillVersionId()).isEqualTo(secondVersionId);
         var otherProject = projects.create(owner.userId(), "Other project", Project.AspectRatio.LANDSCAPE_16_9);
-        var otherAgent = agents.create(owner.userId(), otherProject.id(), "Other Creator", "Keep this binding private to the other project", List.of());
+        var otherAgent = agents.create(owner.userId(), otherProject.id(), "Other Creator", "Keep this binding private to the other project");
         skillRuns.saveBinding(owner.userId(), otherProject.id(), otherAgent.id(), otherAgent.version(), List.of(new SkillRunService.VersionRef(skill.id(), secondVersionId)), "other-project-agent-binding");
         ObjectNode skillSource = mapper.createObjectNode().put("schemaVersion", 1)
                 .put("skillId", skill.id().toString()).put("skillVersionId", skillVersionId.toString())

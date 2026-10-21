@@ -4,7 +4,6 @@
 package dev.agenvas.db;
 
 
-import dev.agenvas.db.tables.AgentBinding;
 import dev.agenvas.db.tables.AgentConversation;
 import dev.agenvas.db.tables.AgentInstance;
 import dev.agenvas.db.tables.AgentMediaApproval;
@@ -86,17 +85,12 @@ import dev.agenvas.db.tables.UsageLedger;
 public class Tables {
 
     /**
-     * Agent 显式输入：固定引用不可变产物版本
-     */
-    public static final AgentBinding AGENT_BINDING = AgentBinding.AGENT_BINDING;
-
-    /**
      * Agent 卡片的持久对话，接收每条用户消息后创建独立预算的 Run
      */
     public static final AgentConversation AGENT_CONVERSATION = AgentConversation.AGENT_CONVERSATION;
 
     /**
-     * Agent 卡片配置；请求身份和运行上下文保存在 Run 中
+     * 项目助手配置及会话身份，不作为画布节点或持久素材授权
      */
     public static final AgentInstance AGENT_INSTANCE = AgentInstance.AGENT_INSTANCE;
 

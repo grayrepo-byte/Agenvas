@@ -168,7 +168,7 @@ class ImageOperationDerivationPostgresIT {
         assertThat(drafts.get(owner.userId(), project.id(), sourceCardId)).isEqualTo(sourceDraft);
 
         CanvasConnection lineage = connections.list(owner.userId(), project.id()).getFirst();
-        connections.disconnect(owner.userId(), project.id(), lineage.id(), null, null);
+        connections.disconnect(owner.userId(), project.id(), lineage.id(), null);
         assertThat(connections.list(owner.userId(), project.id())).isEmpty();
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
 

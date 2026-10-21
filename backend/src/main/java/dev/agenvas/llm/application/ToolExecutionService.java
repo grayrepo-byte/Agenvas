@@ -54,6 +54,7 @@ public class ToolExecutionService {
     private final Clock clock;
     private final AgentMediaApprovalService mediaApprovals;
     private final MediaCapabilityService capabilities;
+    private final CanvasAgentToolService canvasTools;
 
     /** 组装工具身份验证、持久化去重、业务应用服务及租约 fencing 边界。
      * @param runs 校验工具调用所属 Run 和项目权限
@@ -72,7 +73,7 @@ public class ToolExecutionService {
             CreativeArtifactToolService creative, ReadToolService reader,
             ProjectEventService events, AgentTurnLeaseGuard leaseGuard,
             ObjectMapper mapper, Clock clock, AgentMediaApprovalService mediaApprovals,
-            MediaCapabilityService capabilities) {
+            MediaCapabilityService capabilities, CanvasAgentToolService canvasTools) {
         this.runs = runs;
         this.turns = turns;
         this.ledger = ledger;
@@ -85,6 +86,7 @@ public class ToolExecutionService {
         this.clock = clock;
         this.mediaApprovals = mediaApprovals;
         this.capabilities = capabilities;
+        this.canvasTools = canvasTools;
     }
 
     /**
@@ -192,7 +194,12 @@ public class ToolExecutionService {
                 stepIndex, toolCallId, toolName, argumentHash, clock.instant())) {
             throw conflict(ApiMessage.of("api.tool-execution-service.tool-call-was-executed-concurrently"));
         }
-        JsonNode result = switch (toolName) {
+        JsonNode result;
+        try {
+            result = switch (toolName) {
+            case "read_canvas" -> canvasTools.readCanvas(context, run, operationId, arguments);
+            case "manage_canvas_node" -> canvasTools.manageNode(context, run, operationId, arguments);
+            case "update_media_draft" -> canvasTools.updateMediaDraft(context, run, operationId, arguments);
             case "read_project_summary" -> reader.projectSummary(context, run,
                     operationId, arguments);
             case "read_skill" -> reader.skill(run, operationId, arguments);
@@ -211,7 +218,15 @@ public class ToolExecutionService {
             case "arrange_items" -> creative.arrangeItems(context, run,
                     operationId, arguments);
             default -> throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
-        };
+            };
+        } catch (ApiProblemException problem) {
+            if (Set.of("read_canvas", "manage_canvas_node", "update_media_draft").contains(toolName)
+                    && (problem.status() == HttpStatus.BAD_REQUEST || problem.status() == HttpStatus.UNPROCESSABLE_ENTITY)
+                    && !"TOOL_ARGUMENT_INVALID".equals(problem.code())) {
+                throw new ApiProblemException(problem.status(), "TOOL_ARGUMENT_INVALID", problem.title(), problem.detail(), false);
+            }
+            throw problem;
+        }
         if (!ledger.complete(operationId, result, clock.instant())) {
             throw new IllegalStateException("Reserved tool result could not be completed");
         }
@@ -293,7 +308,7 @@ public class ToolExecutionService {
         if (created.resourceDefaultVersion().createdByKind() != ArtifactVersion.CreatedByKind.AGENT) {
             throw new IllegalStateException("Agent artifact provenance was not recorded");
         }
-        creative.placeOutputs(context, run, java.util.List.of(created));
+        var placedItems = creative.placeOutputs(context, run, java.util.List.of(created));
         ObjectNode result = mapper.createObjectNode();
         result.put("status", ToolResultStatus.SUCCEEDED.name());
         result.put("operationId", operationId.toString());
@@ -305,6 +320,16 @@ public class ToolExecutionService {
                 .put(created.artifact().id().toString(), created.artifact().version());
         result.putArray("taskIds");
         result.putNull("errorCode");
+        if (dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot())) {
+            var nodes = result.putArray("createdCanvasItemIds");
+            var data = result.putArray("data");
+            for (var item : placedItems) {
+                nodes.add(item.id().toString());
+                data.addObject().put("itemId", item.id().toString()).put("itemVersion", item.version())
+                        .put("artifactId", created.artifact().id().toString())
+                        .put("versionId", created.resourceDefaultVersion().id().toString());
+            }
+        }
         result.put("userVisibleSummary", "已创建文本产物");
         return result;
     }

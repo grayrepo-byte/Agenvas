@@ -7,7 +7,6 @@ package dev.agenvas.db.tables;
 import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
-import dev.agenvas.db.tables.AgentInstance.AgentInstancePath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
 import dev.agenvas.db.tables.CanvasConnection.CanvasConnectionPath;
@@ -81,20 +80,20 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
     public final TableField<CanvasItemRecord, UUID> PROJECT_ID = createField(DSL.name("project_id"), SQLDataType.UUID.nullable(false), this, "所属项目及授权作用域");
 
     /**
-     * The column <code>public.canvas_item.subject_type</code>. 卡片承载 Agent 或
-     * Artifact
+     * The column <code>public.canvas_item.subject_type</code>. 画布主体类型，固定为
+     * ARTIFACT
      */
-    public final TableField<CanvasItemRecord, String> SUBJECT_TYPE = createField(DSL.name("subject_type"), SQLDataType.VARCHAR(32).nullable(false), this, "卡片承载 Agent 或 Artifact");
+    public final TableField<CanvasItemRecord, String> SUBJECT_TYPE = createField(DSL.name("subject_type"), SQLDataType.VARCHAR(32).nullable(false), this, "画布主体类型，固定为 ARTIFACT");
 
     /**
-     * The column <code>public.canvas_item.subject_id</code>. 卡片业务对象身份
+     * The column <code>public.canvas_item.subject_id</code>. 画布内容对应的产物身份
      */
-    public final TableField<CanvasItemRecord, UUID> SUBJECT_ID = createField(DSL.name("subject_id"), SQLDataType.UUID.nullable(false), this, "卡片业务对象身份");
+    public final TableField<CanvasItemRecord, UUID> SUBJECT_ID = createField(DSL.name("subject_id"), SQLDataType.UUID.nullable(false), this, "画布内容对应的产物身份");
 
     /**
-     * The column <code>public.canvas_item.artifact_id</code>. 业务产物身份
+     * The column <code>public.canvas_item.artifact_id</code>. 画布内容对应的非空产物外键
      */
-    public final TableField<CanvasItemRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID, this, "业务产物身份");
+    public final TableField<CanvasItemRecord, UUID> ARTIFACT_ID = createField(DSL.name("artifact_id"), SQLDataType.UUID.nullable(false), this, "画布内容对应的非空产物外键");
 
     /**
      * The column <code>public.canvas_item.x</code>. 画布水平坐标
@@ -145,12 +144,6 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
      * The column <code>public.canvas_item.updated_at</code>. 最后状态或配置更新时间（UTC）
      */
     public final TableField<CanvasItemRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false), this, "最后状态或配置更新时间（UTC）");
-
-    /**
-     * The column <code>public.canvas_item.agent_instance_id</code>. Agent
-     * 卡片配置身份
-     */
-    public final TableField<CanvasItemRecord, UUID> AGENT_INSTANCE_ID = createField(DSL.name("agent_instance_id"), SQLDataType.UUID, this, "Agent 卡片配置身份");
 
     /**
      * The column <code>public.canvas_item.title</code>. Per-card display title
@@ -256,20 +249,7 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
 
     @Override
     public List<ForeignKey<CanvasItemRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.CANVAS_ITEM__FK_CANVAS_ITEM_AGENT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_PROJECT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION);
-    }
-
-    private transient AgentInstancePath _agentInstance;
-
-    /**
-     * Get the implicit join path to the <code>public.agent_instance</code>
-     * table.
-     */
-    public AgentInstancePath agentInstance() {
-        if (_agentInstance == null)
-            _agentInstance = new AgentInstancePath(this, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_AGENT, null);
-
-        return _agentInstance;
+        return Arrays.asList(Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_PROJECT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION);
     }
 
     private transient ArtifactPath _artifact;
@@ -380,9 +360,8 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
     public List<Check<CanvasItemRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_canvas_item_geometry"), "((((x >= ('-1000000'::integer)::numeric) AND (x <= (1000000)::numeric)) AND ((y >= ('-1000000'::integer)::numeric) AND (y <= (1000000)::numeric)) AND ((width >= (120)::numeric) AND (width <= (2000)::numeric)) AND ((height >= (80)::numeric) AND (height <= (2000)::numeric)) AND ((z_index >= '-1000'::integer) AND (z_index <= 1000))))", true),
-            Internal.createCheck(this, DSL.name("ck_canvas_item_selected_version_subject"), "((((subject_type)::text = 'ARTIFACT'::text) OR (selected_version_id IS NULL)))", true),
-            Internal.createCheck(this, DSL.name("ck_canvas_item_subject_mapping"), "(((((subject_type)::text = 'ARTIFACT'::text) AND (artifact_id = subject_id) AND (agent_instance_id IS NULL)) OR (((subject_type)::text = 'AGENT'::text) AND (artifact_id IS NULL) AND (agent_instance_id = subject_id))))", true),
-            Internal.createCheck(this, DSL.name("ck_canvas_item_subject_type"), "(((subject_type)::text = ANY ((ARRAY['ARTIFACT'::character varying, 'AGENT'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_canvas_item_subject_mapping"), "((subject_id = artifact_id))", true),
+            Internal.createCheck(this, DSL.name("ck_canvas_item_subject_type"), "(((subject_type)::text = 'ARTIFACT'::text))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_title"), "(((length(btrim((title)::text)) >= 1) AND (length(btrim((title)::text)) <= 160)))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_version_non_negative"), "((version >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_media_selection_epoch"), "((media_selection_epoch >= 0))", true)

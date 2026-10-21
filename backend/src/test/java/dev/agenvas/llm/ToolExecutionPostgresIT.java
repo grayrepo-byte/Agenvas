@@ -93,8 +93,7 @@ class ToolExecutionPostgresIT {
         AdminPrincipal owner = identities.setup("tool-admin", "tool-password-123");
         Project project = projects.create(owner.userId(), "Tool project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create",
-                List.of());
+        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create a short text", "tool-run").run();
         Task lease = tasks.claimAgentTurns("llm-ledger-worker", 1).getFirst();

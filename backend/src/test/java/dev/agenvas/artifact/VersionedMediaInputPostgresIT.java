@@ -329,46 +329,24 @@ class VersionedMediaInputPostgresIT {
                 .andExpect(status().isBadRequest());
         JsonNode agent = mapper.readTree(mvc.perform(post(base + "/agents")
                         .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"name\":\"Visual agent\",\"instruction\":\"Read images\"," 
-                                + "\"bindings\":[]}"))
+                        .content("{\"name\":\"Visual assistant\",\"instruction\":\"Read the current canvas\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
-        String agentItemId = placeAgent(mvc, auth, base, agent.path("id").asText(), 1600);
-        String secondEndItemId = duplicateMediaItem(mvc, auth, base, end, 1920);
-        JsonNode firstAgentLink = mapper.readTree(mvc.perform(post(base + "/canvas/connections")
+        assertThat(agent.has("bindings")).isFalse();
+        assertThat(agent.has("outputGroupId")).isFalse();
+        rejectRetiredAgentPlacement(mvc, auth, base, agent.path("id").asText(), 1600);
+        mvc.perform(post(base + "/canvas/connections")
                         .with(auth).with(csrf()).contentType("application/json")
                         .content("{\"sourceCanvasItemId\":\"" + end.canvasItemId()
-                                + "\",\"targetCanvasItemId\":\"" + agentItemId
+                                + "\",\"targetCanvasItemId\":\"" + videoItemId
                                 + "\",\"sourceVersionId\":\"" + end.versionId()
-                                + "\",\"relationType\":\"AGENT_IMAGE_INPUT\"," 
-                                + "\"expectedTargetAgentVersion\":0}"))
-                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
-        assertThat(firstAgentLink.path("draft").isNull()).isTrue();
-        assertThat(firstAgentLink.path("agent").path("bindings")).hasSize(1);
-        var secondAgentResult = mvc.perform(post(base + "/canvas/connections")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"sourceCanvasItemId\":\"" + secondEndItemId
-                                + "\",\"targetCanvasItemId\":\"" + agentItemId
-                                + "\",\"sourceVersionId\":\"" + end.versionId()
-                                + "\",\"relationType\":\"AGENT_IMAGE_INPUT\"," 
-                                + "\"expectedTargetAgentVersion\":1}"))
-                .andReturn();
-        assertThat(secondAgentResult.getResponse().getStatus())
-                .as(secondAgentResult.getResponse().getContentAsString()).isEqualTo(201);
-        JsonNode secondAgentLink = mapper.readTree(
-                secondAgentResult.getResponse().getContentAsString());
-        assertThat(secondAgentLink.path("agent").path("bindings")).hasSize(1);
-        JsonNode firstAgentDisconnect = mapper.readTree(mvc.perform(post(base
-                        + "/canvas/connections/" + firstAgentLink.path("connection").path("id").asText()
-                        + "/disconnect").with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedTargetAgentVersion\":1}"))
+                                + "\",\"relationType\":\"AGENT_IMAGE_INPUT\",\"expectedTargetAgentVersion\":0}"))
+                .andExpect(status().isBadRequest());
+        JsonNode contentCanvas = mapper.readTree(mvc.perform(get(base + "/canvas/items").with(auth))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(firstAgentDisconnect.path("agent").path("bindings")).hasSize(1);
-        JsonNode finalAgentDisconnect = mapper.readTree(mvc.perform(post(base
-                        + "/canvas/connections/" + secondAgentLink.path("connection").path("id").asText()
-                        + "/disconnect").with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"expectedTargetAgentVersion\":1}"))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(finalAgentDisconnect.path("agent").path("bindings")).isEmpty();
+        for (JsonNode item : contentCanvas.path("items")) {
+            assertThat(item.path("subjectType").asText()).isEqualTo("ARTIFACT");
+            assertThat(item.has("agent")).isFalse();
+        }
     }
 
     private GeneratedImage generatedImage(MockMvc mvc, RequestPostProcessor auth,
@@ -437,7 +415,7 @@ class VersionedMediaInputPostgresIT {
         return itemId;
     }
 
-    private String placeAgent(MockMvc mvc, RequestPostProcessor auth,
+    private void rejectRetiredAgentPlacement(MockMvc mvc, RequestPostProcessor auth,
             String base, String agentId, int x) throws Exception {
         String itemId = UUID.randomUUID().toString();
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
@@ -446,8 +424,7 @@ class VersionedMediaInputPostgresIT {
                                 + "\"itemId\":\"" + itemId + "\",\"agentId\":\""
                                 + agentId + "\",\"x\":" + x + ",\"y\":0,\"width\":460,"
                                 + "\"height\":600,\"zIndex\":0,\"locked\":false}]}"))
-                .andExpect(status().isOk());
-        return itemId;
+                .andExpect(status().isBadRequest());
     }
 
     private record GeneratedImage(String artifactId, String canvasItemId, String versionId,

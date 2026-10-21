@@ -36,6 +36,29 @@ class RunToolPolicyTest {
         policy.put("toolPolicyVersion",1).putArray("allowedTools").add("run_shell");
         assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
     }
+    @Test void canvasToolsAndExistingMediaTargetsAreOnlyAvailableToTheNewPolicy() {
+        var historical = mapper.createObjectNode().put("systemPromptVersion", 11).put("toolPolicyVersion", 3);
+        historical.putArray("allowedTools").add("propose_media_generation");
+        var oldDefinition = registry.modelDefinitions(historical).getFirst().getToolDefinition();
+        assertThat(oldDefinition.inputSchema()).doesNotContain("canvasItemId");
+        historical.withArray("allowedTools").add("read_canvas");
+        assertThatThrownBy(() -> registry.modelDefinitions(historical)).isInstanceOf(IllegalStateException.class);
+        var current = mapper.createObjectNode().put("systemPromptVersion", 12).put("toolPolicyVersion", 4);
+        current.set("allowedTools", mapper.valueToTree(RunToolPolicy.CURRENT));
+        assertThat(names(current)).contains("read_canvas", "manage_canvas_node", "update_media_draft");
+        for (var callback : registry.modelDefinitions(current)) {
+            var definition = callback.getToolDefinition();
+            assertThat(mapper.readTree(definition.inputSchema()).path("type").asText()).isEqualTo("object");
+            if (definition.name().equals("place_artifacts")) assertThat(definition.inputSchema()).doesNotContain("group", "AGENT_OUTPUT");
+            if (definition.name().equals("propose_media_generation")) assertThat(definition.inputSchema()).contains("canvasItemId", "expectedDraftVersion", "expectedItemVersion");
+        }
+    }
+    @Test void onlyHistoricalPlacementUsesTheRetiredOutputGroupToken() {
+        var historical = mapper.createObjectNode().put("systemPromptVersion", 11).put("toolPolicyVersion", 3);
+        historical.putArray("allowedTools").add("place_artifacts");
+        assertThat(registry.modelDefinitions(historical).getFirst().getToolDefinition().inputSchema())
+                .contains("AGENT_OUTPUT", "group");
+    }
     private List<String> names(tools.jackson.databind.JsonNode policy) {
         return registry.modelDefinitions(policy).stream().map(callback -> callback.getToolDefinition().name()).toList();
     }
