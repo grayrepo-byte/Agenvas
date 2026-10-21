@@ -375,7 +375,7 @@
   "canvas.workspace.toggleInteraction": "Toggle canvas interactivity",
   "canvas.workspace.unsupportedConnection": "Connect an existing media version to a compatible media input.",
   "canvas.workspace.viewportControls": "Canvas view controls",
-  "canvas.workspace.viewportHint": "Canvas editing requires at least 1280px width; currently only a read-only preview is available.",
+  "canvas.workspace.viewportHint": "Canvas editing requires at least 1024px width; currently only a read-only preview is available.",
   "canvas.workspace.zoomIn": "Zoom in",
   "canvas.workspace.zoomOut": "Zoom out",
   "common.adding": "Adding…",

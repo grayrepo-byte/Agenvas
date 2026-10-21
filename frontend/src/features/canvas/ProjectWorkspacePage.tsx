@@ -53,6 +53,7 @@ type ProjectSnapshot,
 import { isAudioFile,isVideoFile,MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
+import { Tooltip,TooltipContent,TooltipProvider,TooltipTrigger } from "../../shared/ui/primitives/tooltip";
 import { Select } from "../../shared/ui/Select";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
@@ -99,7 +100,7 @@ type DrawerKind = "ALIGN";
 type CreationPoint = { x: number; y: number };
 type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
   zIndex: number; assetId?: string; artifactId?: string };
-type CreationMenu = { x: number; y: number; point: CreationPoint };
+type CreationMenu = { x: number; y: number; point: CreationPoint; centerAtPoint: boolean };
 type RestorableResource = { subjectType: "ARTIFACT"; subjectId: string; kind: Artifact["kind"] };
 /** Card under the pointer during a connection gesture; the drop lands on the card, not on an exact port. */
 type ConnectionTarget = { itemId: string; targetHandle: "artifact-input"; valid: boolean };
@@ -190,7 +191,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const creationMenuElement = useRef<HTMLDivElement>(null);
   const creationMenuReturnFocus = useRef<HTMLElement | null>(null);
   const [creationMenu, setCreationMenu] = useState<CreationMenu | null>(null);
-  const [paneMenu, setPaneMenu] = useState<CreationMenu | null>(null);
+  const [paneMenu, setPaneMenu] = useState<Omit<CreationMenu, "centerAtPoint"> | null>(null);
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [agentChatOpen, setAgentChatOpen] = useState(false);
@@ -868,10 +869,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setSelectedIds([]);
     setSelectedEdgeIds([]);
   }, [setSelectedEdgeIds, setSelectedIds]);
-  function openCreationMenu(clientX: number, clientY: number) {
+  function openCreationMenu(clientX: number, clientY: number, placement?: CreationPoint) {
     const rect = canvasElement.current?.getBoundingClientRect();
     if (!rect) return;
-    const point = flow.current?.screenToFlowPosition({ x: clientX, y: clientY })
+    const point = placement ?? flow.current?.screenToFlowPosition({ x: clientX, y: clientY })
       ?? { x: clientX - rect.left, y: clientY - rect.top };
     const x = Math.max(CREATION_MENU_MARGIN, Math.min(clientX - rect.left,
       rect.width - CREATION_MENU_WIDTH - CREATION_MENU_MARGIN));
@@ -880,7 +881,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     creationMenuReturnFocus.current = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
     setPaneMenu(null);
-    setCreationMenu({ x, y, point });
+    setCreationMenu({ x, y, point, centerAtPoint: placement !== undefined });
   }
 
   useEffect(() => {
@@ -920,16 +921,20 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [creationMenu, setSelectedIds]);
 
-  function chooseCreationKind(kind: CreationKind, point = creationMenu?.point) {
+  function chooseCreationKind(kind: CreationKind, point = creationMenu?.point, centerAtPoint = creationMenu?.centerAtPoint ?? false) {
     if (!point) return;
+    // Center toolbar/empty-state creations without moving the viewport. Pointer placements
+    // retain their original top-left anchor so double-clicking remains spatially predictable.
+    const size = DEFAULT_ARTIFACT_CARD_SIZES[kind];
+    const origin = centerAtPoint ? { x: point.x - size.width / 2, y: point.y - size.height / 2 } : point;
     setCreationMenu(null);
     setPaneMenu(null);
     setResourcesOpen(false);
     if (kind === "TEXT") {
       setToolsKind(null);
-      if (!addTextCard.isPending) addTextCard.mutate({ point });
+      if (!addTextCard.isPending) addTextCard.mutate({ point: origin });
     } else if (kind === "IMAGE" || kind === "VIDEO" || kind === "AUDIO") {
-      addBlankMedia.mutate({ kind, point });
+      addBlankMedia.mutate({ kind, point: origin });
     }
   }
 
@@ -967,7 +972,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const connectionErrorIds = [connectInput.variables?.source, connectInput.variables?.target].filter((id): id is string => Boolean(id));
   const openCenteredCreationMenu = () => {
     const rect = canvasElement.current?.getBoundingClientRect();
-    if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2, canvasCenter());
+  };
+  const openDockCreationMenu = () => {
+    const trigger = canvasElement.current?.querySelector(".workspace-add-button")?.getBoundingClientRect();
+    // The menu follows its trigger; the new node still lands in the visible canvas center.
+    if (trigger) openCreationMenu(trigger.right + 12, trigger.top, canvasCenter());
+    else openCenteredCreationMenu();
   };
 
   if (currentUser.isError) return <Navigate to="/login" replace />;
@@ -991,21 +1002,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <Button asChild variant="ghost" size="sm"><Link to="/projects"><ArrowLeft data-icon="inline-start" />{t("common.project")}</Link></Button>
           <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
           <h1 className="workspace-project-name" title={project.data?.name}>{project.data?.name ?? t("common.projectLoading")}</h1>
+          <SaveBadge state={saveState} />
         </div>
         <div className="workspace-header-actions">
           <Button variant="ghost" size="sm" onClick={() => {
             setToolsKind(null); setResourcesOpen(true);
           }} type="button"><FolderSimple data-icon="inline-start" />{t("canvas.workspace.resources")}</Button>
           {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
-          <Button asChild variant="ghost" size="sm">
-            <a download={`agenvas-project-${projectId}.json`}
-              href={projectExportManifestUrl(projectId)}><DownloadSimple data-icon="inline-start" />{t("canvas.workspace.exportManifest")}</a>
-          </Button>
+          <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
+          <TooltipProvider><Tooltip><TooltipTrigger asChild>
+            <Button asChild variant="ghost" size="icon-sm">
+              <a aria-label={t("canvas.workspace.exportManifest")} download={`agenvas-project-${projectId}.json`}
+                href={projectExportManifestUrl(projectId)}><DownloadSimple aria-hidden="true" /></a>
+            </Button>
+          </TooltipTrigger><TooltipContent>{t("canvas.workspace.exportManifest")}</TooltipContent></Tooltip></TooltipProvider>
           {eventStatus !== "live" ? <span className="workspace-sync-status" role="status">
             {eventStatus === "failed" ? t("canvas.workspace.syncRetrying") :
               eventStatus === "recovering" ? t("canvas.workspace.snapshotRestoring") : t("canvas.workspace.streamConnecting")}
           </span> : null}
-          <SaveBadge state={saveState} />
         </div>
       </header>
 
@@ -1206,11 +1220,16 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             </EmptyHeader>
             <EmptyContent>
               <Button onClick={openCenteredCreationMenu}><Plus data-icon="inline-start" />{t("canvas.empty.addFirst")}</Button>
+              <div className="canvas-empty-types" role="group" aria-label={t("canvas.tools.addCard")}>
+                {CREATION_KINDS.map(({ kind, label, icon: CreationIcon }) => <Button key={kind} variant="ghost" size="sm"
+                  disabled={kind === "TEXT" ? addTextCard.isPending : addBlankMedia.isPending}
+                  onClick={() => chooseCreationKind(kind, canvasCenter(), true)}><CreationIcon aria-hidden="true" />{label}</Button>)}
+              </div>
               <p className="canvas-empty-hint">{t("canvas.workspace.emptyHint")}</p>
             </EmptyContent>
           </Empty> : null}
         <CanvasPaneMenu position={paneMenu} onClose={() => setPaneMenu(null)}
-          onAdd={(kind) => chooseCreationKind(kind, paneMenu?.point)} uploading={uploadMedia.isPending} creatingText={addTextCard.isPending}
+          onAdd={(kind) => chooseCreationKind(kind, paneMenu?.point, false)} uploading={uploadMedia.isPending} creatingText={addTextCard.isPending}
           onUpload={() => {
             uploadPoint.current = paneMenu?.point ?? canvasCenter();
             setPaneMenu(null);
@@ -1220,7 +1239,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           arranging={organizeCanvas.isPending || saveLayout.isPending || alignSelected.isPending}
           canArrange={canvas.isSuccess && canvasConnections.isSuccess &&
             nodes.some((node) => !node.data.item.locked)} />
-        <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={openCenteredCreationMenu}>
+        <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={openDockCreationMenu}>
           <CanvasSettingsMenu preferences={displaySettings.preferences} onPreferenceChange={displaySettings.setPreference}
             persistenceError={displaySettings.persistenceError} onRetrySave={displaySettings.retrySave}
             disabled={!displaySettings.ready} />

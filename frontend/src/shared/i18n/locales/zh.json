@@ -375,7 +375,7 @@
   "canvas.workspace.toggleInteraction": "切换画布交互",
   "canvas.workspace.unsupportedConnection": "仅支持将已有媒体版本连到兼容的媒体输入。",
   "canvas.workspace.viewportControls": "画布视图控制",
-  "canvas.workspace.viewportHint": "画布编辑需要至少 1280px 宽度；当前仅提供只读预览。",
+  "canvas.workspace.viewportHint": "画布编辑需要至少 1024px 宽度；当前仅提供只读预览。",
   "canvas.workspace.zoomIn": "放大画布",
   "canvas.workspace.zoomOut": "缩小画布",
   "common.adding": "正在添加…",

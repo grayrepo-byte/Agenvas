@@ -103,7 +103,7 @@ export function AgentChatDock({ data,open,onOpenChange,loading = false,error,onR
         </> : null}
       </> : null}
     </div>
-    <Button ref={launcher} className="agent-chat-launcher" hidden={open} aria-label={t("agent.chat.openDirector")} aria-expanded={open} aria-controls={panelId}
+    <Button ref={launcher} variant="secondary" className="agent-chat-launcher" hidden={open} aria-label={t("agent.chat.openDirector")} aria-expanded={open} aria-controls={panelId}
       onClick={(event) => { event.stopPropagation(); onOpenChange(true); }} type="button">
       <span className="agent-chat-launcher-icon"><Sparkle weight="fill" aria-hidden="true" /></span>
       <span>{t("agent.chat.directorTitle")}</span>{active ? <span className="agent-chat-launcher-status" aria-label={t("tasks.status.running")} /> : null}

@@ -375,7 +375,7 @@
   "canvas.workspace.toggleInteraction": "キャンバスの操作を切り替え",
   "canvas.workspace.unsupportedConnection": "既存のメディアバージョンを対応するメディア入力に接続してください。",
   "canvas.workspace.viewportControls": "キャンバス表示の操作",
-  "canvas.workspace.viewportHint": "キャンバスの編集には少なくとも 1280 ピクセルの幅が必要です。現在、読み取り専用のプレビューのみが利用可能です。",
+  "canvas.workspace.viewportHint": "キャンバスの編集には少なくとも 1024 ピクセルの幅が必要です。現在、読み取り専用のプレビューのみが利用可能です。",
   "canvas.workspace.zoomIn": "拡大",
   "canvas.workspace.zoomOut": "縮小",
   "common.adding": "追加中…",

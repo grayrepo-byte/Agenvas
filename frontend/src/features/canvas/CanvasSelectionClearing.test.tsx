@@ -7,7 +7,6 @@ import { MemoryRouter,Route,Routes } from "react-router";
 import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { CanvasCommand,CanvasItem,ProjectSnapshot } from "../../shared/api/client";
-import { clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
@@ -741,33 +740,37 @@ describe("canvas interaction tools", () => {
     await renderFlow();
     expect(flowProps.panOnDrag).toBe(false);
     expect(flowProps.selectionOnDrag).toBe(true);
+    expect(screen.getByRole("radio", { name: "选择工具" })).toBeChecked();
     fireEvent.keyDown(window, { key: " ", code: "Space" });
     expect(flowProps.panOnDrag).toBe(true);
     expect(flowProps.selectionOnDrag).toBe(false);
     expect(flowProps.nodes?.every((node) => node.draggable === false)).toBe(true);
+    expect(screen.getByRole("radio", { name: "手形工具" })).toBeChecked();
     fireEvent.keyDown(window, { key: " ", code: "Space", repeat: true });
     fireEvent.keyUp(window, { key: " ", code: "Space" });
     expect(flowProps.panOnDrag).toBe(false);
+    expect(screen.getByRole("radio", { name: "选择工具" })).toBeChecked();
     fireEvent.keyDown(window, { key: " ", code: "Space" });
     fireEvent.blur(window);
     expect(flowProps.panOnDrag).toBe(false);
   });
 
-  it("switches tools through the menu and V, preserving hand mode after Space", async () => {
+  it("switches tools directly and with V, preserving hand mode after Space", async () => {
     await renderFlow();
-    await clickControl(screen.getByRole("button", { name: "画布工具" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /手形工具/ }));
+    const tools = screen.getByRole("radiogroup", { name: "画布工具模式" });
+    fireEvent.click(within(tools).getByRole("radio", { name: "手形工具" }));
     expect(flowProps.panOnDrag).toBe(true);
     expect(flowProps.elementsSelectable).toBe(false);
     fireEvent.keyDown(window, { key: " ", code: "Space" });
     fireEvent.keyUp(window, { key: " ", code: "Space" });
     expect(flowProps.panOnDrag).toBe(true);
+    expect(within(tools).getByRole("radio", { name: "手形工具" })).toBeChecked();
     fireEvent.keyDown(window, { key: "v", code: "KeyV" });
     expect(flowProps.panOnDrag).toBe(false);
-    await clickControl(screen.getByRole("button", { name: "画布工具" }));
-    const menu = screen.getByRole("menu", { name: "画布工具模式" });
-    fireEvent.keyDown(menu, { key: "Escape" });
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(within(tools).getByRole("radio", { name: "选择工具" })).toBeChecked();
+    fireEvent.click(within(tools).getByRole("radio", { name: "手形工具" }));
+    fireEvent.click(within(tools).getByRole("radio", { name: "选择工具" }));
+    expect(flowProps.panOnDrag).toBe(false);
   });
 
   it("does not intercept Space or V while editing text", async () => {
@@ -776,8 +779,7 @@ describe("canvas interaction tools", () => {
     document.body.append(input);
     fireEvent.keyDown(input, { key: " ", code: "Space" });
     expect(flowProps.panOnDrag).toBe(false);
-    await clickControl(screen.getByRole("button", { name: "画布工具" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /手形工具/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "手形工具" }));
     fireEvent.keyDown(input, { key: "v", code: "KeyV" });
     expect(flowProps.panOnDrag).toBe(true);
     input.remove();

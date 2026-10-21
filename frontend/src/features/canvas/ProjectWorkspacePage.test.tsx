@@ -77,6 +77,15 @@ function textCard(): CanvasItem {
         content: { format: "PLAIN_TEXT", text: "直接在节点里写" }, inputReferences: [] } } };
 }
 
+function measureCreationCanvas() {
+  const canvas = screen.getByLabelText("项目画布");
+  const bounds = new DOMRect(100, 60, 1000, 700);
+  vi.spyOn(canvas, "getBoundingClientRect").mockReturnValue(bounds);
+  const flow = canvas.querySelector(".react-flow");
+  if (!(flow instanceof HTMLElement)) throw new Error("Missing canvas viewport");
+  vi.spyOn(flow, "getBoundingClientRect").mockReturnValue(bounds);
+}
+
 describe("ProjectWorkspacePage", () => {
   beforeEach(() => {
     viewportProbe.center.mockClear();
@@ -144,6 +153,127 @@ describe("ProjectWorkspacePage", () => {
         }),
       ),
     );
+  });
+
+  it("anchors the dock menu beside its button and creates at the visible canvas center", async () => {
+    const creates = vi.fn();
+    const placements = vi.fn();
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Creation project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        creates(await request.json());
+        return HttpResponse.json({ id: "created-artifact" }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        placements(await request.json());
+        return HttpResponse.json({ items: [] });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    await screen.findByRole("group", { name: "添加卡片" });
+    measureCreationCanvas();
+    const add = screen.getByRole("button", { name: "添加卡片" });
+    vi.spyOn(add, "getBoundingClientRect").mockReturnValue(new DOMRect(124, 300, 36, 36));
+    await waitFor(() => expect(viewportProbe.instance).not.toBeNull());
+    await act(async () => { await viewportProbe.instance?.setViewport({ x: 40, y: 20, zoom: 2 }); });
+    await user.click(add);
+    const menu = screen.getByRole("listbox", { name: "添加卡片" }).closest(".workspace-create-menu");
+    expect(menu).toHaveStyle({ left: "72px", top: "240px" });
+    expect(creates).not.toHaveBeenCalled();
+    expect(placements).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("option", { name: "文字" }));
+    await waitFor(() => expect(placements).toHaveBeenCalledOnce());
+    expect(creates).toHaveBeenCalledExactlyOnceWith({ kind: "TEXT", title: "新文字", content: { format: "PLAIN_TEXT", text: "" } });
+    expect(placements).toHaveBeenCalledWith({ commands: [expect.objectContaining({
+      type: "PLACE_ARTIFACT", artifactId: "created-artifact", x: 20, y: 30,
+    })] });
+    expect(screen.queryByRole("listbox", { name: "添加卡片" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { kind: "TEXT", label: "文字", content: { format: "PLAIN_TEXT", text: "" }, x: 290, y: 215 },
+    { kind: "IMAGE", label: "图片", content: null, x: 180, y: 170 },
+    { kind: "VIDEO", label: "视频", content: null, x: 180, y: 170 },
+    { kind: "AUDIO", label: "音频", content: null, x: 220, y: 200 },
+  ])("creates $kind directly from the empty canvas at its center", async ({ kind, label, content, x, y }) => {
+    const creates = vi.fn();
+    const placements = vi.fn();
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Creation project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        creates(await request.json());
+        return HttpResponse.json({ id: "created-artifact" }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        placements(await request.json());
+        return HttpResponse.json({ items: [] });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    const types = await screen.findByRole("group", { name: "添加卡片" });
+    expect(within(types).getAllByRole("button")).toHaveLength(4);
+    measureCreationCanvas();
+    expect(creates).not.toHaveBeenCalled();
+    expect(placements).not.toHaveBeenCalled();
+    await user.click(within(types).getByRole("button", { name: label }));
+    await waitFor(() => expect(placements).toHaveBeenCalledOnce());
+    expect(creates).toHaveBeenCalledExactlyOnceWith({ kind, title: `新${label}`, content });
+    expect(placements).toHaveBeenCalledWith({ commands: [expect.objectContaining({
+      type: "PLACE_ARTIFACT", artifactId: "created-artifact", x, y,
+    })] });
+    expect(screen.queryByRole("listbox", { name: "添加卡片" })).not.toBeInTheDocument();
+  });
+
+  it("opens a centered empty-canvas menu and waits for a type before creating a centered node", async () => {
+    const writes = vi.fn();
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Creation project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        writes(await request.json());
+        return HttpResponse.json({ id: "created-artifact" }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        writes(await request.json());
+        return HttpResponse.json({ items: [] });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    const add = await screen.findByRole("button", { name: "创建第一个节点" });
+    measureCreationCanvas();
+    await user.click(add);
+    const menu = screen.getByRole("listbox", { name: "添加卡片" });
+    expect(menu.closest(".workspace-create-menu")).toHaveStyle({ left: "500px", top: "350px" });
+    expect(within(menu).getAllByRole("option")).toHaveLength(4);
+    expect(writes).not.toHaveBeenCalled();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("listbox", { name: "添加卡片" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "创建第一个节点" })).toBeVisible();
+    expect(writes).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "创建第一个节点" }));
+    await user.click(screen.getByRole("option", { name: "音频" }));
+    await waitFor(() => expect(writes).toHaveBeenCalledTimes(2));
+    expect(writes).toHaveBeenNthCalledWith(1, { kind: "AUDIO", title: "新音频", content: null });
+    expect(writes).toHaveBeenNthCalledWith(2, { commands: [expect.objectContaining({
+      type: "PLACE_ARTIFACT", artifactId: "created-artifact", x: 220, y: 200,
+    })] });
   });
 
   it("dismisses a failed media creation notice and shows a later failure again", async () => {

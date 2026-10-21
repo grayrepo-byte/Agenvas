@@ -144,21 +144,22 @@ button:disabled {
 
 .workspace-shell {
   isolation: isolate; /* Keep React Flow toolbars below body-portaled UI primitives. */
-  --workspace-header-height: 2.75rem;
+  --workspace-header-height: 4.5rem;
   --canvas: var(--ui-canvas-bg);
-  --panel: #202020;
-  --ink: #f4f4f5;
-  --muted: #a1a1aa;
-  --line: rgba(255, 255, 255, 0.13);
+  --panel: var(--ui-canvas-chrome);
+  --ink: var(--ui-text-secondary);
+  --muted: var(--ui-text-muted);
+  --line: var(--ui-canvas-border);
   --accent: var(--ui-accent);
   --xy-edge-stroke-selected: var(--ui-accent);
+  --xy-background-color: var(--ui-canvas-bg);
   --xy-selection-background-color: transparent;
   --xy-selection-border: 1px solid var(--ui-accent);
   display: flex;
   flex-direction: column;
   position: relative;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: var(--canvas);
   color: var(--ink);
@@ -175,7 +176,7 @@ button:disabled {
   background: var(--canvas);
   min-height: var(--workspace-header-height);
   gap: 0.75rem;
-  padding: 0.375rem 1rem;
+  padding: 16px var(--ui-canvas-gutter) 12px;
 }
 
 /* Fade into the dot grid while preserving the canvas bounds and pointer gestures. */
@@ -183,7 +184,7 @@ button:disabled {
   content: "";
   position: absolute;
   inset: 100% 0 auto;
-  height: 0.75rem;
+  height: 1rem;
   background: linear-gradient(to bottom, var(--canvas), transparent);
   pointer-events: none;
 }
@@ -192,19 +193,28 @@ button:disabled {
 .workspace-header-actions {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 4px;
+  min-height: 40px;
+  padding: 4px;
+  border: 1px solid var(--ui-canvas-border);
+  border-radius: var(--ui-canvas-radius);
+  background: var(--ui-canvas-chrome);
+  box-shadow: var(--ui-canvas-shadow);
 }
 
-.workspace-header-identity { min-width: 0; gap: 0.75rem; }
+.workspace-header-identity { min-width: 0; gap: 10px; }
 .workspace-header-actions { flex-shrink: 0; }
+.workspace-header :is(button, a) { font-size: var(--ui-text-sm); font-weight: 400; }
+.workspace-header :is(button, a):not(:hover) { color: var(--ui-text-secondary); }
 .workspace-header-identity > a { flex-shrink: 0; }
 .workspace-project-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: var(--ui-text-md);
+  font-weight: 500;
+  padding-right: 8px;
 }
 .workspace-sync-status {
   color: var(--muted);
@@ -220,16 +230,16 @@ button:disabled {
 .workspace-drawer {
   position: absolute;
   z-index: 20;
-  top: calc(var(--workspace-header-height) + 0.75rem);
-  right: 1rem;
-  bottom: 1rem;
+  top: calc(var(--workspace-header-height) + 4px);
+  right: var(--ui-canvas-gutter);
+  bottom: 80px;
   width: min(24rem, calc(100vw - 2rem));
   overflow-y: auto;
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: var(--ui-canvas-radius);
   background: var(--panel);
-  padding: 1.25rem;
-  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.48);
+  padding: 18px;
+  box-shadow: var(--ui-canvas-shadow-raised);
 }
 
 .workspace-drawer-heading,
@@ -242,8 +252,8 @@ button:disabled {
 
 .resource-entry {
   border: 1px solid var(--line);
-  border-radius: 0.7rem;
-  padding: 0.65rem;
+  border-radius: var(--ui-radius-md);
+  padding: 12px;
   font-size: 0.82rem;
 }
 
@@ -271,56 +281,49 @@ button:disabled {
 .workspace-tool-rail {
   position: absolute;
   z-index: 10;
-  top: 1.25rem;
-  right: 1.25rem;
+  top: 50%;
+  left: var(--ui-canvas-gutter);
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem;
+  gap: 8px;
+  padding: 6px;
   border: 1px solid var(--ui-canvas-border);
-  border-radius: 1.25rem;
+  border-radius: var(--ui-canvas-radius);
   background: var(--ui-canvas-chrome);
   box-shadow: var(--ui-canvas-shadow);
 }
 .workspace-add-button {
   display: grid;
   place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: var(--ui-canvas-control-size);
+  height: var(--ui-canvas-control-size);
   border: 0;
-  border-radius: var(--ui-radius-lg);
+  border-radius: var(--ui-radius-md);
   background: var(--accent);
-  color: white;
+  color: var(--ui-accent-foreground);
 }
 .workspace-add-button:hover:enabled { background: var(--ui-accent-hover); }
-.workspace-tool-trigger {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 2.75rem;
-  padding: 0.35rem 0 0.15rem;
-  border-radius: var(--ui-radius-lg);
-  background: var(--ui-surface-raised);
-  color: var(--ui-text);
+.workspace-tool-modes { flex-direction: column; gap: 4px; }
+.workspace-tool-modes .workspace-tool-item {
+  flex: none;
+  width: var(--ui-canvas-control-size);
+  height: var(--ui-canvas-control-size);
+  min-width: 0;
+  border-radius: var(--ui-radius-md);
+  color: var(--ui-text-muted);
 }
-.workspace-tool-trigger:hover { background: var(--ui-hover); }
-.workspace-tool-menu {    width: 200px; }
-
-.workspace-tool-menu button > span { width: 0.85rem; }
-.workspace-tool-menu kbd { margin-left: auto; color: #999; font: inherit; }
+.workspace-tool-modes .workspace-tool-item[aria-checked="true"] { background: var(--ui-accent-subtle); color: var(--ui-accent-text); }
 .workspace-settings { position: relative; }
 .workspace-settings-trigger {
   display: grid;
   place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: var(--ui-radius-lg);
+  width: var(--ui-canvas-control-size);
+  height: var(--ui-canvas-control-size);
+  border-radius: var(--ui-radius-md);
   background: transparent;
-  color: var(--ui-text);
+  color: var(--ui-text-muted);
 }
 .workspace-settings-trigger:hover:enabled { background: var(--ui-hover); }
 .workspace-settings-trigger:focus-visible { outline: 1px solid var(--ui-focus); }
@@ -350,7 +353,7 @@ button:disabled {
   max-width: calc(100% - 2rem);
   padding: 6px 8px;
   border: 1px solid var(--ui-canvas-border);
-  border-radius: var(--ui-canvas-radius);
+  border-radius: var(--ui-canvas-toolbar-radius);
   background: var(--ui-canvas-chrome);
   box-shadow: var(--ui-canvas-shadow-raised);
 }
@@ -591,11 +594,11 @@ button:disabled {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 36px;
+  gap: 18px;
   height: 100%;
   padding: 18px;
 }
-.media-empty-icon { color: #606060; }
+.media-empty-icon { color: var(--ui-text-subtle); opacity: .55; }
 .media-upload-button {
   display: inline-flex;
   align-items: center;
@@ -603,15 +606,15 @@ button:disabled {
   gap: 6px;
   min-width: 112px;
   height: 36px;
-  border: 1px solid #454545;
-  border-radius: 999px;
-  background: #333;
-  color: #f3f3f3;
+  border: 1px solid var(--ui-canvas-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-canvas-chrome);
+  color: var(--ui-text-secondary);
   font-size: 12px;
   cursor: pointer;
   transition: background 150ms ease;
 }
-.media-upload-button:hover { background: #424242; }
+.media-upload-button:hover { background: var(--ui-hover); color: var(--ui-text); }
 .media-card-preview { position: relative; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; }
 .media-card-preview > img, .media-card-preview > video { display: block; width: 100%; height: 100%; object-fit: contain; }
 .media-expand-button {
@@ -1069,7 +1072,7 @@ button:disabled {
   display: none;
 }
 
-@media (max-width: 1279px) {
+@media (max-width: 1023px) {
   .workspace-canvas {
     pointer-events: none;
   }

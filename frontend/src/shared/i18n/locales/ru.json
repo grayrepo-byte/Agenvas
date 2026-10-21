@@ -375,7 +375,7 @@
   "canvas.workspace.toggleInteraction": "Переключить взаимодействие с холстом",
   "canvas.workspace.unsupportedConnection": "Соедините существующую медиаверсию с совместимым медиавходом.",
   "canvas.workspace.viewportControls": "Управление видом холста",
-  "canvas.workspace.viewportHint": "Для редактирования холста требуется ширина не менее 1280 пикселей; в настоящее время доступен только предварительный просмотр только для чтения.",
+  "canvas.workspace.viewportHint": "Для редактирования холста требуется ширина не менее 1024 пикселей; в настоящее время доступен только предварительный просмотр только для чтения.",
   "canvas.workspace.zoomIn": "Увеличить",
   "canvas.workspace.zoomOut": "Уменьшить",
   "common.adding": "Добавление…",

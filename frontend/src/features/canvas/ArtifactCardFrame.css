@@ -1,4 +1,4 @@
-/* Shared black surface and contextual actions adapted from Beautiful UI SelectionActions (MIT).
+/* Shared card surface and contextual actions adapted from Beautiful UI SelectionActions (MIT).
    See beautiful-ui-LICENSE.txt. */
 .artifact-canvas-card {
   --artifact-title-font-size: 12px;
@@ -33,7 +33,8 @@
   height: var(--artifact-title-height);
   color: var(--ui-text-secondary);
   font-size: var(--artifact-title-font-size);
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: .01em;
   line-height: var(--artifact-title-height);
 }
 .artifact-card-title-icon { display: flex; flex: none; color: var(--ui-text-subtle); }
@@ -76,10 +77,10 @@
   max-width: 100%;
   margin: 0;
   border: 1px solid var(--ui-focus);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-sm);
   padding: 1px 5px;
-  background: #232323;
-  color: #ededed;
+  background: var(--ui-surface-raised);
+  color: var(--ui-text);
   font: inherit;
   line-height: normal;
   outline: none;
@@ -90,20 +91,20 @@
   box-shadow: 0 0 0 1px var(--ui-focus);
 }
 .artifact-card-title-input.is-error {
-  border-color: #ff5d67;
-  box-shadow: 0 0 0 1px #c83545;
+  border-color: var(--ui-danger);
+  box-shadow: 0 0 0 1px var(--ui-danger-border);
 }
 .artifact-card-title-input:disabled { opacity: .7; cursor: progress; }
 
-.artifact-card-toolbar { position: relative; display: flex; align-items: center; gap: 4px; width: max-content; max-width: calc(100vw - 48px); padding: 6px 8px; border: 1px solid var(--ui-canvas-border); border-radius: var(--ui-canvas-radius); background: var(--ui-canvas-chrome); box-shadow: var(--ui-canvas-shadow-raised); }
+.artifact-card-toolbar { position: relative; display: flex; align-items: center; gap: 2px; width: max-content; max-width: calc(100vw - 48px); padding: 4px; border: 1px solid var(--ui-canvas-border); border-radius: var(--ui-canvas-toolbar-radius); background: var(--ui-canvas-chrome); box-shadow: var(--ui-canvas-shadow); }
 .react-flow__node-toolbar.artifact-card-toolbar-raised { z-index: 1003 !important; }
-/* Only toolbar actions get pill styling. Nested panels keep their own controls and states. */
+/* Direct toolbar actions share compact corners; nested panels retain their own controls. */
 .artifact-card-toolbar > :where(button),
 .artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button),
-.artifact-card-toolbar > a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border: none; border-radius: 999px; color: #eee; background: transparent; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.artifact-card-toolbar > a { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border: none; border-radius: var(--ui-radius-sm); color: var(--ui-text-secondary); background: transparent; font-size: var(--ui-text-sm); font-weight: 400; white-space: nowrap; cursor: pointer; }
 .artifact-card-toolbar > :where(button:hover:not(:disabled), button.is-open, button[aria-expanded="true"]),
 .artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:hover:not(:disabled), button.is-open, button[aria-expanded="true"]),
-.artifact-card-toolbar > a:hover { background: #3a3a3a; }
+.artifact-card-toolbar > a:hover { background: var(--ui-hover); color: var(--ui-text); }
 .artifact-card-toolbar > :where(button:disabled),
 .artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:disabled) { opacity: .48; cursor: not-allowed; }
 .artifact-card-toolbar > :where(button, a):focus-visible,
