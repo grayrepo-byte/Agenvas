@@ -1,63 +1,138 @@
-.call-log-filters[data-slot="field-group"] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--ui-space-4); }
-.call-log-results { overflow: hidden; }
-.call-log-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: var(--ui-text-sm); }
-.call-log-table th { padding: 0 10px 12px; color: var(--muted); font-size: var(--ui-text-xs); font-weight: 500; }
-.call-log-table td { padding: 16px 10px; border-top: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
-.call-log-table .call-log-model-column { width: 18%; }
-.call-log-table .call-log-type-column { width: 13%; }
-.call-log-table .call-log-duration-column { width: 9%; }
-.call-log-table .call-log-result-column { width: 8%; }
-.call-log-table .call-log-details-column { width: 7%; }
-.call-log-table strong { font-weight: 550; }
-.call-log-model { display: block; overflow: hidden; text-overflow: ellipsis; }
-.call-log-project { display: inline-flex; align-items: baseline; gap: 5px; color: var(--ui-text-secondary); text-decoration: none; }
-.call-log-project:hover { text-decoration: underline; text-underline-offset: 3px; }
-.call-log-project svg { flex: none; }
-.call-log-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
-.call-log-badges:empty { display: none; }
-.call-log-table .call-log-toggle { padding-right: 0; }
-.call-log-toggle .ghost-button { padding: 5px; min-height: 30px; }
-.call-log-table tbody > tr:hover { background: var(--ui-field); }
-.call-log-metadata { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--ui-space-4) var(--ui-space-6); margin: var(--ui-space-4) 0 0; }
-.call-log-metadata dt { color: var(--muted); font-size: var(--ui-text-xs); }
-.call-log-metadata dd { margin: 4px 0 0; font-family: ui-monospace, monospace; font-size: var(--ui-text-sm); overflow-wrap: anywhere; }
-.call-log-task { margin-top: var(--ui-space-5); padding-top: 18px; border-top: 1px solid var(--line); }
-.call-log-task h3 { font-size: var(--ui-text-md); font-weight: 550; margin: 0 0 12px; }
-.call-log-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-3); margin-top: var(--ui-space-5); }
+/* Audit composition stays inside the studio shell; body selectors cover its portaled detail dialog. */
+.app-shell--studio .call-audit-workspace { gap: 14px; }
+.app-shell--studio .call-audit-workspace .call-audit-filter-panel { padding: 16px 18px; }
+.app-shell--studio .call-audit-filter-panel .ui-panel-header { margin-bottom: 14px; }
+.app-shell--studio .call-audit-filter-panel .ui-panel-header h2 { font-size: 13px; }
+.app-shell--studio .call-audit-filter-panel .ui-panel-header p { font-size: 11px; }
+.app-shell--studio .call-log-filter-form { gap: 12px; }
+.app-shell--studio .call-log-filters[data-slot="field-group"] { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.app-shell--studio .call-log-filters > [data-slot="field"] { min-width: 0; gap: 7px; }
+.app-shell--studio .call-log-filters > [data-invalid] { grid-column: span 2; }
+.app-shell--studio .call-log-filter-footer { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+.app-shell--studio .call-log-filter-footer > .ui-form-actions { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; min-width: 0; max-width: 100%; }
+.app-shell--studio .call-log-filter-footer > .ui-form-actions > button { max-width: 100%; min-height: 32px; height: auto; white-space: normal; overflow-wrap: anywhere; }
+.app-shell--studio .call-log-applied-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.app-shell--studio .call-log-applied-filters > [role="status"] { margin-right: 3px; font-size: 11px; }
+.app-shell--studio .call-log-applied-filter { max-width: 100%; gap: 6px; font-size: 10px; border-color: var(--settings-rule, var(--ui-border)); background: var(--ui-field); }
+.app-shell--studio .call-log-applied-filter > span:first-child { color: var(--ui-text-subtle); flex: none; }
+.app-shell--studio .call-log-applied-filter > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.app-shell--studio .call-audit-workspace .call-log-results { padding: 0; overflow: hidden; }
+.app-shell--studio .call-log-results > .ui-panel-header { align-items: center; padding: 16px 18px; margin: 0; }
+.app-shell--studio .call-log-results > .ui-panel-header > .ui-form-actions { gap: 10px; }
+.app-shell--studio .call-log-results .ui-empty-state { margin: 0 18px 18px; }
+.app-shell--studio .call-log-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; font-size: 11px; }
+.app-shell--studio .call-log-table th { height: 34px; padding: 8px 10px; border-block: 1px solid var(--settings-rule, var(--ui-border)); background: var(--ui-field); color: var(--ui-text-muted); font-size: 10px; font-weight: 500; }
+.app-shell--studio .call-log-table td { padding: 13px 10px; border-bottom: 1px solid var(--settings-rule, var(--ui-border)); vertical-align: middle; white-space: normal; overflow-wrap: anywhere; }
+.app-shell--studio .call-log-table th:first-child, .app-shell--studio .call-log-table td:first-child { padding-left: 18px; }
+.app-shell--studio .call-log-table th:last-child, .app-shell--studio .call-log-table td:last-child { padding-right: 12px; }
+.app-shell--studio .call-log-table .call-log-model-column { width: 17%; }
+.app-shell--studio .call-log-table .call-log-type-column { width: 18%; }
+.app-shell--studio .call-log-table .call-log-project-column { width: 16%; }
+.app-shell--studio .call-log-table .call-log-time-column { width: 12%; }
+.app-shell--studio .call-log-table .call-log-duration-column { width: 10%; }
+.app-shell--studio .call-log-table .call-log-result-column { width: 10%; }
+.app-shell--studio .call-log-table .call-log-details-column { width: 5%; }
+.app-shell--studio .call-log-table tbody > tr { transition: background-color 150ms; }
+.app-shell--studio .call-log-table tbody > tr:hover { background: var(--ui-field); }
+.app-shell--studio .call-log-table strong { font-weight: 500; }
+.app-shell--studio .call-log-model { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ui-text); font-weight: 500; }
+.app-shell--studio .call-log-kind { display: inline-flex; align-items: center; gap: 6px; color: var(--ui-text-secondary); }
+.app-shell--studio .call-log-kind > svg { flex: none; width: 15px; height: 15px; color: var(--ui-text-muted); }
+.app-shell--studio .call-log-project { display: inline-flex; align-items: baseline; gap: 5px; max-width: 100%; min-width: 0; color: var(--ui-text-muted); text-decoration: none; }
+.app-shell--studio .call-log-project > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell--studio .call-log-project:hover { color: var(--ui-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+.app-shell--studio .call-log-project > svg { width: 12px; height: 12px; flex: none; }
+.app-shell--studio .call-log-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.app-shell--studio .call-log-badges:empty { display: none; }
+.app-shell--studio .call-log-table .call-log-badges .ui-badge { padding: 2px 5px; font-size: 9px; }
+.app-shell--studio .call-log-time { font-variant-numeric: tabular-nums; }
+.app-shell--studio .call-log-time--compact { display: flex; flex-direction: column; gap: 2px; line-height: 1.55; color: var(--ui-text-secondary); }
+.app-shell--studio .call-log-time--compact > span:last-child { color: var(--ui-text-subtle); font-size: 10px; }
+.app-shell--studio .call-log-duration-cell { font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell--studio .call-log-toggle { text-align: right; }
+.app-shell--studio .call-log-toggle > button { color: var(--ui-text-subtle); }
+.app-shell--studio .call-log-table tr:hover .call-log-toggle > button { color: var(--ui-text); }
+.app-shell--studio .call-log-duration-hint { margin: 0; padding: 11px 18px; font-size: 10px; line-height: 1.7; }
+.app-shell--studio .call-log-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--settings-rule, var(--ui-border)); }
+.app-shell--studio .call-log-pagination > span { font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* The details keep local IDs, Provider IDs and actual payloads separate and readable. */
+body:has(.app-shell--studio) .ui-dialog.app-page.call-log-dialog { width: min(1120px, calc(100% - 32px)); max-height: calc(100dvh - 32px); }
+body:has(.app-shell--studio) .call-log-dialog .ui-dialog-header > div { min-width: 0; overflow-wrap: anywhere; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-overview { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-project { display: inline-flex; align-items: baseline; gap: 6px; max-width: 100%; color: var(--ui-text-secondary); text-decoration: none; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-project:hover { text-decoration: underline; text-underline-offset: 3px; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-project > svg { width: 13px; height: 13px; flex: none; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-timing { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 18px; border: 1px solid var(--ui-border); border-radius: 9px; background: var(--ui-field); }
+body:has(.app-shell--studio) .call-log-dialog .call-log-timing > div { min-width: 0; padding: 12px 14px; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-timing > div + div { border-left: 1px solid var(--ui-border); }
+body:has(.app-shell--studio) .call-log-dialog :is(.call-log-timing, .call-log-metadata) dt { color: var(--ui-text-subtle); font-size: 10px; }
+body:has(.app-shell--studio) .call-log-dialog :is(.call-log-timing, .call-log-metadata) dd { margin: 5px 0 0; color: var(--ui-text-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-timing dd { font-family: inherit; font-variant-numeric: tabular-nums; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; margin: 0; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-metadata > div { min-width: 0; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-task { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--ui-border); }
+body:has(.app-shell--studio) .call-log-dialog .call-log-task h3 { font-size: 13px; font-weight: 550; margin: 0 0 12px; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-debug { margin-top: 20px; border-top: 1px solid var(--ui-border); padding-top: 18px; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-debug :is(h3, h4) { margin: 0 0 12px; font-size: 13px; font-weight: 550; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-debug-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-debug-header h3 { margin: 0; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-privacy-hint { margin: 0 0 14px; font-size: 11px; line-height: 1.8; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-http { display: grid; gap: 12px; margin-top: 20px; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-http > h4 { margin: 0; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-exchange > summary > svg { flex: none; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-exchange[open] > summary > svg { transform: rotate(90deg); }
+body:has(.app-shell--studio) .call-log-dialog .call-log-exchange-content { display: grid; gap: 12px; margin-top: 14px; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-exchange-content .call-log-metadata { margin: 0; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-url { margin: 0; font-family: ui-monospace, monospace; font-size: 11px; overflow-wrap: anywhere; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-body { margin-top: 12px; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-body summary { cursor: pointer; }
+body:has(.app-shell--studio) .call-log-dialog .call-log-body pre { max-height: 320px; max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: var(--ui-field); border: 1px solid var(--ui-border); border-radius: 6px; font-size: 11px; }
+
+@media (min-width: 1720px) {
+  .app-shell--studio .call-log-filters[data-slot="field-group"] { grid-template-columns: minmax(120px, 1fr) minmax(110px, .8fr) minmax(110px, .8fr) minmax(150px, 1.2fr) repeat(2, minmax(240px, 1.6fr)); }
+  .app-shell--studio .call-log-filters > [data-invalid] { grid-column: auto; }
+}
 @media (max-width: 1080px) {
-  .call-log-filters[data-slot="field-group"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .call-log-metadata { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .call-log-table, .call-log-table tbody { display: block; }
-  .call-log-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-  .call-log-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--line); padding: 12px 0; }
-  .call-log-table td { display: flex; flex-direction: column; gap: var(--ui-space-1); border: 0; padding: 8px 10px; }
-  .call-log-table td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 10px; }
-  .call-log-table .call-log-toggle { align-items: flex-start; }
+  .app-shell--studio .call-log-table, .app-shell--studio .call-log-table tbody { display: block; }
+  .app-shell--studio .call-log-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .app-shell--studio .call-log-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto 32px; gap: 10px 12px; padding: 14px 18px; border-bottom: 1px solid var(--settings-rule, var(--ui-border)); }
+  .app-shell--studio .call-log-table td, .app-shell--studio .call-log-table td:first-child, .app-shell--studio .call-log-table td:last-child { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; padding: 0; border: 0; }
+  .app-shell--studio .call-log-table td[data-label]::before { content: attr(data-label); color: var(--ui-text-subtle); font-size: 9px; }
+  .app-shell--studio .call-log-table :is(.call-log-model-cell, .call-log-status-cell, .call-log-type-cell)::before { display: none; }
+  .app-shell--studio .call-log-model-cell { grid-column: 1 / 3; grid-row: 1; justify-content: center; }
+  .app-shell--studio .call-log-status-cell { grid-column: 3; grid-row: 1; justify-content: center; }
+  .app-shell--studio .call-log-toggle { grid-column: 4; grid-row: 1; }
+  .app-shell--studio .call-log-type-cell { grid-column: 1 / 3; grid-row: 2; justify-content: center; }
+  .app-shell--studio .call-log-project-cell { grid-column: 3 / 5; grid-row: 2; }
+  .app-shell--studio .call-log-start-cell { grid-column: 1; grid-row: 3; }
+  .app-shell--studio .call-log-response-cell { grid-column: 2; grid-row: 3; }
+  .app-shell--studio .call-log-duration-cell { grid-column: 3 / 5; grid-row: 3; }
+  .app-shell--studio .call-log-table .call-log-model { width: 100%; font-size: 12px; }
+  .app-shell--studio .call-log-badges { margin-top: 2px; }
+}
+@media (max-width: 900px) {
+  .app-shell--studio .call-log-filters[data-slot="field-group"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell--studio .call-log-filters > [data-invalid] { grid-column: auto; }
+  .app-shell--studio .call-log-filter-footer { align-items: flex-start; flex-wrap: wrap; }
+  .app-shell--studio .call-log-filter-footer > .ui-form-actions { margin-left: auto; }
+  body:has(.app-shell--studio) .call-log-dialog .call-log-timing { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body:has(.app-shell--studio) .call-log-dialog .call-log-timing > div:nth-child(3) { border-left: 0; }
+  body:has(.app-shell--studio) .call-log-dialog .call-log-timing > div:nth-child(n+3) { border-top: 1px solid var(--ui-border); }
 }
 @media (max-width: 560px) {
-  .call-log-filters[data-slot="field-group"], .call-log-metadata { grid-template-columns: minmax(0, 1fr); }
+  .app-shell--studio .call-audit-workspace .call-audit-filter-panel { padding: 16px; }
+  .app-shell--studio .call-log-filters[data-slot="field-group"] { grid-template-columns: minmax(0, 1fr); }
+  .app-shell--studio .call-log-results > .ui-panel-header { padding: 14px 16px; gap: 10px; }
+  .app-shell--studio .call-log-table tr { padding: 14px 16px; gap: 10px 8px; }
+  .app-shell--studio .call-log-pagination, .app-shell--studio .call-log-duration-hint { padding-inline: 16px; }
+  .app-shell--studio .call-log-pagination > .ui-form-actions { margin-left: auto; }
+  body:has(.app-shell--studio) .ui-dialog.app-page.call-log-dialog { width: calc(100% - 16px); max-height: calc(100dvh - 16px); }
+  body:has(.app-shell--studio) .call-log-dialog .call-log-metadata { grid-template-columns: minmax(0, 1fr); }
 }
-@media (min-width: 1600px) { .call-log-filters[data-slot="field-group"] { grid-template-columns: repeat(6, minmax(0, 1fr)); } .call-log-metadata { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (prefers-reduced-motion: reduce) { .app-shell--studio .call-log-table tbody > tr { transition: none; } }
 
-.call-log-debug { margin-top: var(--ui-space-5); border-top: 1px solid var(--line); padding-top: var(--ui-space-4); }
-.call-log-debug h3, .call-log-debug h4 { margin: 0 0 var(--ui-space-3); font-weight: 550; }
-.call-log-debug-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ui-space-3); }
-.call-log-debug-header h3 { margin: 0; }
-.call-log-privacy-hint { margin: var(--ui-space-3) 0 var(--ui-space-4); font-size: var(--ui-text-sm); line-height: 1.6; }
-.call-log-http { display: grid; gap: var(--ui-space-3); margin-top: var(--ui-space-5); }
-.call-log-http > h4 { margin: 0; }
-.call-log-exchange > summary > svg { flex: none; }
-.call-log-exchange[open] > summary > svg { transform: rotate(90deg); }
-.call-log-exchange-content { display: grid; gap: var(--ui-space-3); margin-top: var(--ui-space-4); }
-.call-log-exchange-content .call-log-metadata { margin: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.call-log-url { margin: 0; font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
-.call-log-body { margin-top: var(--ui-space-3); }
-.call-log-body summary { cursor: pointer; }
-.call-log-body pre { max-height: 320px; max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--ui-space-3); background: var(--ui-field); border: 1px solid var(--line); border-radius: 6px; font-size: var(--ui-text-xs); }
-
-.ui-dialog.app-page.call-log-dialog { width: min(1120px, calc(100% - var(--ui-space-8))); max-height: calc(100dvh - var(--ui-space-8)); }
-.call-log-dialog .ui-dialog-header > div { min-width: 0; overflow-wrap: anywhere; }
-.call-log-overview { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-3); }
-.call-log-overview .call-log-badges { margin: 0; }
-@media (max-width: 560px) { .ui-dialog.app-page.call-log-dialog { width: calc(100% - var(--ui-space-4)); max-height: calc(100dvh - var(--ui-space-4)); } }
-@media (max-width: 560px) { .call-log-exchange-content .call-log-metadata { grid-template-columns: minmax(0, 1fr); } }
+.call-log-detail-footer { display: flex; flex: 1; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; width: 100%; }
+.call-log-detail-footer > span { font-size: var(--ui-text-sm); font-variant-numeric: tabular-nums; }

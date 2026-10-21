@@ -4,6 +4,7 @@ import type { SaveMediaDraftRequest } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { Command, CommandGroup, CommandItem, CommandList } from "../../shared/ui/primitives/command";
 import { MENTION_MARKER } from "./mediaPrompt";
+import { usePromptContentHeight } from "./usePromptContentHeight";
 
 type DraftFields = Pick<SaveMediaDraftRequest, "mentions">;
 export type PromptReference = SaveMediaDraftRequest["mediaInputs"][number] & {
@@ -100,6 +101,8 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
       presentationRef.current = presentation;
     }
   }, [prompt, mentions, references]);
+
+  usePromptContentHeight(editorRef);
 
   useLayoutEffect(() => {
     if (readOnly) {

@@ -164,7 +164,7 @@ try {
     const editorLayout = await page(() => ({ overflow: document.documentElement.scrollWidth > window.innerWidth,
       escaping: [...document.querySelectorAll(".skills-personal-editor *")].filter(el => el.getBoundingClientRect().right > window.innerWidth).map(el => ({ tag: el.tagName, class: el.className, width: el.getBoundingClientRect().width })) }));
     assert.equal(editorLayout.overflow, false, `Personal editor stays within ${viewport.width}px: ${JSON.stringify(editorLayout.escaping)}`);
-    await page(() => [...document.querySelectorAll('[role="tab"]')].find(tab => tab.textContent === "资源附件").focus());
+    await page(() => [...document.querySelectorAll('[role="tab"]')].find(tab => tab.getAttribute("aria-label") === "资源附件").focus());
     await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter" });
     await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter" });
     await waitFor(() => Boolean(document.querySelector('input[value^="references/"]')));

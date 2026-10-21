@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import type { RunningHubDefinition } from "../../shared/api/client";
 import { clickControl, selectValue } from "../../test/controls";
@@ -539,5 +539,176 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     expect(inputFor("固定值（JSON 标量）")).toBe(fixed);
     expect(fixed).toHaveValue("invalid fixed value");
     expect(fixed).toHaveProperty("validity.valid", false);
+  });
+});
+
+
+describe("RunningHubDefinitionEditor workbench session", () => {
+  it("groups mappings by node and places injected identity and pricing fields in their numbered sections", async () => {
+    render(<QueryClientProvider client={new QueryClient()}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
+      value={initialDefinition} onChange={() => undefined} identityFields={<span>Identity fields</span>} pricingFields={<span>Pricing fields</span>} />
+    </QueryClientProvider>);
+    const navigation = screen.getByRole("navigation", { name: "能力配置步骤" });
+    const links = within(navigation).getAllByRole("link");
+    expect(links.map((link) => link.textContent)).toEqual(["01目标与来源", "02输入与参数", "03输出与运行", "04预览与费用"]);
+    for (const link of links) expect(document.getElementById(link.getAttribute("href")!.slice(1))).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "目标与来源" })).getByText("Identity fields")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "预览与费用" })).getByText("Pricing fields")).toBeInTheDocument();
+    const mappings = screen.getByRole("table", { name: "参数绑定" });
+    expect(within(mappings).getByRole("heading", { name: "节点 1 · 模式" })).toBeInTheDocument();
+    expect(within(mappings).getByRole("heading", { name: "节点 2 · 强度" })).toBeInTheDocument();
+    expect(within(mappings).queryByRole("columnheader")).not.toBeInTheDocument();
+    const summary = within(screen.getByRole("region", { name: "预览与费用" }));
+    expect(summary.getByText("2 个节点")).toBeInTheDocument();
+    expect(summary.getByText("2 个开放参数")).toBeInTheDocument();
+    expect(summary.getByText("1 个固定参数")).toBeInTheDocument();
+    expect(links[0]).toHaveAttribute("aria-current", "step");
+    const scroll = vi.fn();
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    const outputsSection = screen.getByRole("region", { name: "输出与运行" });
+    outputsSection.scrollIntoView = scroll;
+    await clickControl(links[2]!);
+    expect(links[2]).toHaveAttribute("aria-current", "step");
+    expect(links[0]).not.toHaveAttribute("aria-current");
+    expect(scroll).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+
+  it("scrolls section navigation inside the dialog body without moving the dialog ancestors", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    const view = render(<QueryClientProvider client={new QueryClient()}><div className="ui-dialog-body">
+      <RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={initialDefinition} onChange={() => undefined} />
+    </div></QueryClientProvider>);
+    const body = view.container.querySelector<HTMLElement>(".ui-dialog-body")!;
+    const bodyScroll = vi.fn();
+    body.scrollTo = bodyScroll;
+    const section = screen.getByRole("region", { name: "输出与运行" });
+    const ancestorScroll = vi.fn();
+    section.scrollIntoView = ancestorScroll;
+    await clickControl(within(screen.getByRole("navigation", { name: "能力配置步骤" })).getByRole("link", { name: "输出与运行" }));
+    expect(bodyScroll).toHaveBeenCalledWith({ top: -16, behavior: "smooth" });
+    expect(ancestorScroll).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("ignores a discovery response after an explicit reload replaces its editing session", async () => {
+    let finish: (() => void) | undefined;
+    const waiting = new Promise<void>((resolve) => { finish = resolve; });
+    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", async () => {
+        await waiting;
+        return HttpResponse.json({ definition: initialDefinition, warnings: [], recommendedFieldKeys: ["mode", "strength"] });
+      }));
+    const queryClient = new QueryClient();
+    const onChange = vi.fn();
+    const onBusyChange = vi.fn();
+    const view = render(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
+      value={initialDefinition} onChange={onChange} onBusyChange={onBusyChange} resetKey={0} /></QueryClientProvider>);
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(true));
+    view.rerender(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
+      value={{ ...initialDefinition, targetId: "987" }} onChange={onChange} onBusyChange={onBusyChange} resetKey={1} /></QueryClientProvider>);
+    expect(onBusyChange).toHaveBeenLastCalledWith(false);
+    finish?.();
+    await waitFor(() => expect(queryClient.getMutationCache().getAll()[0]?.state.status).toBe("success"));
+    expect(screen.getByRole("textbox", { name: "真实目标 ID" })).toHaveValue("987");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+  it("reports discovery as busy, protects contract controls and releases the parent after discovery", async () => {
+    let finish: (() => void) | undefined;
+    const waiting = new Promise<void>((resolve) => { finish = resolve; });
+    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", async () => {
+        await waiting;
+        return HttpResponse.json({ definition: initialDefinition, warnings: [], recommendedFieldKeys: ["mode", "strength"] });
+      }));
+    function Editor() {
+      const [definition, setDefinition] = useState(initialDefinition);
+      const [busy, setBusy] = useState(false);
+      return <><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={definition}
+        onChange={setDefinition} onBusyChange={setBusy} identityFields={<input aria-label="Capability name" defaultValue="Draft name" />} /><output data-testid="busy">{String(busy)}</output></>;
+    }
+    render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    await waitFor(() => expect(screen.getByTestId("busy")).toHaveTextContent("true"));
+    expect(within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "显示名称" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "选择节点" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "输出节点" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Capability name" })).toBeEnabled();
+    finish?.();
+    await waitFor(() => expect(screen.getByTestId("busy")).toHaveTextContent("false"));
+    expect(screen.getByRole("button", { name: "选择节点" })).toBeEnabled();
+  });
+
+  it("restores unparsed JSON after closing and reopening while an explicit reload accepts the latest saved source", async () => {
+    function EditingSession() {
+      const [open, setOpen] = useState(true);
+      const [sourceDraft, setSourceDraft] = useState<string>();
+      const [definition, setDefinition] = useState<RunningHubDefinition>({ ...initialDefinition, importSource: { saved: true } });
+      const [resetKey, setResetKey] = useState(0);
+      return <>
+        <button type="button" onClick={() => setOpen((current) => !current)}>{open ? "Close editor" : "Reopen editor"}</button>
+        <button type="button" onClick={() => {
+          setSourceDraft(undefined); setDefinition({ ...initialDefinition, importSource: { latest: true } }); setResetKey((current) => current + 1);
+        }}>Accept latest source</button>
+        {open ? <RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={definition} onChange={setDefinition}
+          sourceDraft={sourceDraft} onSourceDraftChange={setSourceDraft} resetKey={resetKey} /> : null}
+      </>;
+    }
+    render(<QueryClientProvider client={new QueryClient()}><EditingSession /></QueryClientProvider>);
+    await clickControl(screen.getByText("导入 / 已保存的 JSON"));
+    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), { target: { value: "unfinished JSON draft" } });
+    await clickControl(screen.getByRole("button", { name: "Close editor" }));
+    await clickControl(screen.getByRole("button", { name: "Reopen editor" }));
+    await clickControl(screen.getByText("导入 / 已保存的 JSON"));
+    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue("unfinished JSON draft");
+    await clickControl(screen.getByRole("button", { name: "Accept latest source" }));
+    await clickControl(screen.getByText("导入 / 已保存的 JSON"));
+    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(JSON.stringify({ latest: true }, null, 2));
+  });
+
+  it("reports source drafts only for user input and keeps import normalization local to the editor", async () => {
+    const normalized = { "1": { inputs: { mode: false } } };
+    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({
+        definition: { ...initialDefinition, importSource: normalized }, warnings: [], recommendedFieldKeys: ["mode", "strength"],
+      })));
+    const sourceChanged = vi.fn();
+    render(<QueryClientProvider client={new QueryClient()}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
+      value={initialDefinition} onChange={() => undefined} sourceDraft="" onSourceDraftChange={sourceChanged} /></QueryClientProvider>);
+    await clickControl(screen.getByText("导入 / 已保存的 JSON"));
+    expect(sourceChanged).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), { target: { value: '{"user":"input"}' } });
+    expect(sourceChanged).toHaveBeenCalledExactlyOnceWith('{"user":"input"}');
+    await clickControl(screen.getByRole("button", { name: "导入 JSON 字段" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(JSON.stringify(normalized, null, 2)));
+    expect(sourceChanged).toHaveBeenCalledExactlyOnceWith('{"user":"input"}');
+  });
+
+  it("resets unparsed JSON, scalar validation and selections only when an explicit reload changes the reset key", async () => {
+    const starting = { ...initialDefinition, importSource: { original: true } };
+    const latest: RunningHubDefinition = { ...initialDefinition, targetId: "987", importSource: { latest: true },
+      fields: [{ ...initialDefinition.fields[0]!, nodeId: "44", label: "最新参数" }], fixedBindings: [] };
+    const queryClient = new QueryClient();
+    const onChange = vi.fn();
+    const view = render(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection"
+      adapterId="RUNNINGHUB_IMAGE" value={starting} onChange={onChange} resetKey={0} /></QueryClientProvider>);
+    await clickControl(screen.getByText("导入 / 已保存的 JSON"));
+    fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), { target: { value: "unfinished JSON draft" } });
+    const scalar = within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "默认值" });
+    fireEvent.change(scalar, { target: { value: "invalid scalar" } }); fireEvent.blur(scalar);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    view.rerender(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection"
+      adapterId="RUNNINGHUB_IMAGE" value={latest} onChange={onChange} resetKey={0} /></QueryClientProvider>);
+    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue("unfinished JSON draft");
+    view.rerender(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection"
+      adapterId="RUNNINGHUB_IMAGE" value={latest} onChange={onChange} resetKey={1} /></QueryClientProvider>);
+    await clickControl(screen.getByText("导入 / 已保存的 JSON"));
+    expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(JSON.stringify(latest.importSource, null, 2));
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 44 · 最新参数");
+    expect(screen.getByRole("textbox", { name: "真实目标 ID" })).toHaveValue("987");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

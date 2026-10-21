@@ -22,7 +22,8 @@ function setup(value: StorageSettings = { llmRelayEnabled: true, imageRelayEnabl
 }
 async function fill() {
   const user = userEvent.setup();
-  await user.type(await screen.findByLabelText("连接名称"), "新连接");
+  await user.click(await screen.findByRole("button", { name: "添加存储连接" }));
+  await user.type(screen.getByLabelText("连接名称"), "新连接");
   await changeControl(screen.getByLabelText("存储类型"), { target: { value: "S3" } });
   await user.type(screen.getByLabelText("Endpoint"), "https://s3.example.com");
   await user.type(screen.getByLabelText("Region"), "us-east-1");
@@ -36,6 +37,27 @@ describe("StorageSettingsPage", () => {
     server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })));
   });
+  it.each(["SMB", "WEBDAV"] as const)("saves %s with username/password and hides object fields", async (provider) => {
+    let body: unknown;
+    const remote = { ...profile, provider, name: "NAS", endpoint: provider === "SMB" ? "smb://nas.example.com/media" : "https://nas.example.com/dav/media", region: "", bucket: "", pathStyle: false };
+    server.use(http.post("/api/v1/settings/storage/profiles", async ({ request }) => {
+      body = await request.json(); return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: 1, activeProfileId: null, relayProfileId: null, profiles: [remote] });
+    }));
+    const client = setup(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "添加存储连接" }));
+    await user.type(screen.getByLabelText("连接名称"), "NAS");
+    await changeControl(screen.getByLabelText("存储类型"), { target: { value: provider } });
+    expect(screen.queryByLabelText("Region")).not.toBeInTheDocument(); expect(screen.queryByLabelText("Bucket")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Endpoint"), remote.endpoint);
+    await user.type(screen.getByLabelText("用户名"), "synthetic-user"); await user.type(screen.getByLabelText("密码"), "synthetic-password");
+    await user.click(screen.getByRole("button", { name: "保存连接" }));
+    await screen.findByRole("button", { name: "编辑：NAS" });
+    expect(body).toMatchObject({ provider, endpoint: remote.endpoint, region: "", bucket: "", pathStyle: false, accessKeyId: "synthetic-user", secretAccessKey: "synthetic-password" });
+    expect(JSON.stringify(client.getQueryData(["settings", "storage"]))).not.toContain("synthetic-password");
+    const relay = screen.getByLabelText("中继连接"); expect(within(relay).queryByRole("option", { name: "NAS" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "编辑：NAS" }));
+    expect(screen.getByLabelText("用户名")).toHaveValue(""); expect(screen.getByLabelText("密码")).toHaveValue("");
+  });
   it("defaults to local and saves cloud settings without switching or retaining credentials", async () => {
     const writes: unknown[] = [];
     server.use(http.post("/api/v1/settings/storage/profiles", async ({ request }) => {
@@ -46,8 +68,8 @@ describe("StorageSettingsPage", () => {
     await user.click(screen.getByRole("checkbox", { name: /使用 Path Style/ }));
     await user.click(screen.getByRole("button", { name: "保存连接" }));
     expect(await screen.findByRole("status")).toHaveTextContent("默认存储未切换");
-    expect(screen.getByLabelText("AccessKey ID")).toHaveValue("");
-    expect(screen.getByLabelText("AccessKey Secret")).toHaveValue("");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("AccessKey Secret")).not.toBeInTheDocument();
     expect(writes).toEqual([{ expectedVersion: 0, name: "新连接", provider: "S3", endpoint: "https://s3.example.com", region: "us-east-1",
       bucket: "test-bucket", keyPrefix: "agenvas", pathStyle: true, accessKeyId: "my-access-id", secretAccessKey: "my-secret-value" }]);
     expect(JSON.stringify(client.getQueryData(["settings", "storage"]))).not.toContain("my-secret-value");
@@ -60,9 +82,9 @@ describe("StorageSettingsPage", () => {
       return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: input.expectedVersion + 1, relayProfileId: null, activeProfileId: input.profileId, profiles: [profile] });
     }));
     setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 3, relayProfileId: null, activeProfileId: null, profiles: [profile] });
-    const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "设为默认：云端一" }));
-    await user.click(await screen.findByRole("button", { name: "切换到本地" }));
+    await changeControl(await screen.findByLabelText("归档目的地"), { target: { value: profile.id } });
+    await screen.findByText("后续资源使用所选存储连接。历史文件位置保持不变。");
+    await changeControl(screen.getByLabelText("归档目的地"), { target: { value: "" } });
     await screen.findByText("后续资源使用本地存储。历史文件位置保持不变。");
     expect(writes).toEqual([{ expectedVersion: 3, profileId: "cloud-one" }, { expectedVersion: 4, profileId: null }]);
   });
@@ -131,10 +153,10 @@ describe("StorageSettingsPage", () => {
     }));
     setup({ version: 3, relayProfileId: profile.id, activeProfileId: null, llmRelayEnabled: true, imageRelayEnabled: true, profiles: [profile] });
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("checkbox", { name: "图片生成参考图与蒙版" }));
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: "图片生成参考图与蒙版" })).not.toBeChecked());
-    expect(screen.getByRole("checkbox", { name: "LLM 图片输入" })).toBeChecked();
-    await user.click(screen.getByRole("checkbox", { name: "LLM 图片输入" }));
+    await user.click(await screen.findByRole("switch", { name: "图片生成参考图与蒙版" }));
+    await waitFor(() => expect(screen.getByRole("switch", { name: "图片生成参考图与蒙版" })).not.toBeChecked());
+    expect(screen.getByRole("switch", { name: "LLM 图片输入" })).toBeChecked();
+    await user.click(screen.getByRole("switch", { name: "LLM 图片输入" }));
     await waitFor(() => expect(writes).toHaveLength(2));
     expect(writes).toEqual([
       { expectedVersion: 3, profileId: profile.id, llmRelayEnabled: true, imageRelayEnabled: false },
@@ -145,10 +167,10 @@ describe("StorageSettingsPage", () => {
   it("preserves failed relay changes for an explicit retry", async () => {
     setup({ version: 3, relayProfileId: profile.id, activeProfileId: null, llmRelayEnabled: true, imageRelayEnabled: false, profiles: [profile] });
     server.use(http.put("/api/v1/settings/storage/relay", () => HttpResponse.json({ detail: "保存失败" }, { status: 500 })));
-    await userEvent.setup().click(await screen.findByRole("checkbox", { name: "LLM 图片输入" }));
+    await userEvent.setup().click(await screen.findByRole("switch", { name: "LLM 图片输入" }));
     await screen.findByRole("alert");
-    expect(screen.getByRole("checkbox", { name: "LLM 图片输入" })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "图片生成参考图与蒙版" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "LLM 图片输入" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "图片生成参考图与蒙版" })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "重试保存中继" })).toBeEnabled();
   });
 
@@ -160,13 +182,13 @@ describe("StorageSettingsPage", () => {
         latest = { ...latest, version: 4, llmRelayEnabled: false };
         return HttpResponse.json({ detail: "配置已变化", code: "STORAGE_VERSION_CONFLICT" }, { status: 409 });
       }));
-    await userEvent.setup().click(await screen.findByRole("checkbox", { name: "图片生成参考图与蒙版" }));
+    await userEvent.setup().click(await screen.findByRole("switch", { name: "图片生成参考图与蒙版" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "重试保存中继" })).toBeDisabled());
-    expect(screen.getByRole("checkbox", { name: "图片生成参考图与蒙版" })).not.toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "LLM 图片输入" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "图片生成参考图与蒙版" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "LLM 图片输入" })).toBeChecked();
     await userEvent.setup().click(screen.getByRole("button", { name: "载入最新配置" }));
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: "图片生成参考图与蒙版" })).toBeChecked());
-    expect(screen.getByRole("checkbox", { name: "LLM 图片输入" })).not.toBeChecked();
+    await waitFor(() => expect(screen.getByRole("switch", { name: "图片生成参考图与蒙版" })).toBeChecked());
+    expect(screen.getByRole("switch", { name: "LLM 图片输入" })).not.toBeChecked();
   });
 
   it("edits a saved OSS region while retaining credentials and default selections", async () => {
@@ -262,6 +284,7 @@ describe("StorageSettingsPage", () => {
     expect(screen.getByLabelText("连接名称")).toBeEnabled();
     expect(screen.getByLabelText("Endpoint")).toBeDisabled(); expect(screen.getByLabelText("Region")).toBeDisabled();
     expect(screen.getByLabelText("Bucket")).toBeDisabled(); expect(screen.getByLabelText("AccessKey ID")).toBeEnabled();
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "关闭" }));
     await user.click(screen.getByRole("button", { name: "删除：云端一" }));
     expect(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" })).toBeDisabled();
     expect(screen.getByRole("dialog")).toHaveTextContent("无法删除");
@@ -303,4 +326,90 @@ describe("StorageSettingsPage", () => {
     expect(within(screen.getByRole("dialog")).getByRole("button", { name: "确认删除" })).toBeDisabled();
   });
 
+  it("keeps separate changed drafts across dialogs while clearing credentials on close", async () => {
+    const second = { ...profile, id: "cloud-two", name: "云端二" };
+    setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 3, relayProfileId: null, activeProfileId: null, profiles: [profile, second] });
+    const user = userEvent.setup();
+    expect(screen.queryByLabelText("连接名称")).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "编辑：云端一" }));
+    await user.clear(screen.getByLabelText("连接名称")); await user.type(screen.getByLabelText("连接名称"), "第一个草稿");
+    await user.type(screen.getByLabelText("AccessKey ID"), "temporary-id");
+    await user.type(screen.getByLabelText("AccessKey Secret"), "temporary-secret");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "关闭" }));
+    expect(screen.getByRole("region", { name: "云端一" })).toHaveTextContent("有未保存的修改");
+    await user.click(screen.getByRole("button", { name: "编辑：云端二" }));
+    expect(screen.getByLabelText("连接名称")).toHaveValue("云端二");
+    await user.clear(screen.getByLabelText("连接名称")); await user.type(screen.getByLabelText("连接名称"), "第二个草稿");
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "编辑：云端一" }));
+    expect(screen.getByLabelText("连接名称")).toHaveValue("第一个草稿");
+    expect(screen.getByLabelText("AccessKey ID")).toHaveValue("");
+    expect(screen.getByLabelText("AccessKey Secret")).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "放弃修改" }));
+    expect(screen.getByRole("region", { name: "云端一" })).not.toHaveTextContent("有未保存的修改");
+    await user.click(screen.getByRole("button", { name: "编辑：云端二" }));
+    expect(screen.getByLabelText("连接名称")).toHaveValue("第二个草稿");
+  });
+
+  it("does not retain an unchanged edit or pin a new empty draft to an old version", async () => {
+    const client = setup({ llmRelayEnabled: true, imageRelayEnabled: true, version: 3, relayProfileId: null, activeProfileId: null, profiles: [profile] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑：云端一" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "关闭" }));
+    expect(screen.getByRole("region", { name: "云端一" })).not.toHaveTextContent("有未保存的修改");
+    await user.click(screen.getByRole("button", { name: "添加存储连接" }));
+    await user.keyboard("{Escape}");
+    client.setQueryData<StorageSettings>(["settings", "storage"], (old) => old && { ...old, version: 4, profiles: [{ ...profile, name: "最新名称" }] });
+    await user.click(screen.getByRole("button", { name: "添加存储连接" }));
+    expect(screen.queryByText("配置版本已更新")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("连接名称")).toHaveValue("");
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "编辑：最新名称" }));
+    expect(screen.getByLabelText("连接名称")).toHaveValue("最新名称");
+  });
+
+  it("preserves a failed credential dialog, clears secrets and requires explicit conflict reload", async () => {
+    let version = 3;
+    let writes = 0;
+    const client = setup({ llmRelayEnabled: true, imageRelayEnabled: true, version, relayProfileId: null, activeProfileId: null, profiles: [profile] });
+    server.use(http.get("/api/v1/settings/storage", () => HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version, relayProfileId: null, activeProfileId: null, profiles: [profile] })),
+      http.put("/api/v1/settings/storage/profiles/cloud-one/credentials", () => {
+        version = 4; writes++;
+        return HttpResponse.json({ detail: "凭证版本已变化", code: "STORAGE_VERSION_CONFLICT" }, { status: 409, headers: { "Content-Type": "application/problem+json" } });
+      }));
+    const user = userEvent.setup(); await user.click(await screen.findByRole("button", { name: "更新凭证：云端一" }));
+    await user.type(screen.getByLabelText("新的 AccessKey ID"), "new-id");
+    await user.type(screen.getByLabelText("新的 AccessKey Secret"), "new-secret");
+    await user.click(screen.getByRole("button", { name: "保存新凭证" }));
+    await screen.findByRole("button", { name: "载入最新配置" });
+    expect(screen.getByRole("dialog")).toHaveTextContent("凭证版本已变化");
+    expect(screen.getByLabelText("新的 AccessKey Secret")).toHaveValue("");
+    expect(screen.getByLabelText("新的 AccessKey ID")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "保存新凭证" })).toBeDisabled();
+    expect(JSON.stringify(client.getQueryData(["settings", "storage"]))).not.toContain("new-secret");
+    await user.click(screen.getByRole("button", { name: "载入最新配置" }));
+    expect(screen.getByRole("button", { name: "保存新凭证" })).toBeEnabled();
+    expect(writes).toBe(1);
+  });
+
+  it("keeps a submitted dialog open and blocks changes, close and duplicate submissions while waiting", async () => {
+    let finish: (() => void) | undefined;
+    let writes = 0;
+    server.use(http.post("/api/v1/settings/storage/profiles", async () => {
+      writes++;
+      await new Promise<void>((resolve) => { finish = resolve; });
+      return HttpResponse.json({ llmRelayEnabled: true, imageRelayEnabled: true, version: 1, relayProfileId: null, activeProfileId: null, profiles: [profile] });
+    }));
+    setup(); const user = await fill();
+    await user.click(screen.getByRole("button", { name: "保存连接" }));
+    await waitFor(() => expect(writes).toBe(1));
+    const dialog = screen.getByRole("dialog");
+    expect(screen.getByLabelText("连接名称")).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "关闭" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "正在保存…" })).toBeDisabled();
+    await user.keyboard("{Escape}"); expect(screen.getByRole("dialog")).toBe(dialog);
+    finish?.();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(writes).toBe(1);
+  });
 });

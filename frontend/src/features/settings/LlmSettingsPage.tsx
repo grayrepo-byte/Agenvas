@@ -1,4 +1,4 @@
-import { Field, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { ArrowUpRight,FloppyDisk,ShieldCheck } from "@/shared/ui/icons";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
 import { useState,type FormEvent } from "react";
@@ -6,7 +6,7 @@ import { Link,Navigate } from "react-router";
 import { HTTP_STATUS,ApiError,diagnoseLlmSettings,getCurrentUser,getLlmSettings,getSystemDiagnostics,replaceLlmSettings,type LlmSettings } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { Notice,Panel,StatusBadge,SummaryStrip } from "../../shared/ui/PagePrimitives";
+import { Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
 import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
@@ -93,28 +93,31 @@ export function LlmSettingsPage() {
     }
   }
 
-  if ((settings.error instanceof ApiError && settings.error.status === HTTP_STATUS.UNAUTHORIZED)
+  if ((currentUser.error instanceof ApiError && currentUser.error.status === HTTP_STATUS.UNAUTHORIZED)
+      || (settings.error instanceof ApiError && settings.error.status === HTTP_STATUS.UNAUTHORIZED)
       || (mediaStatus.error instanceof ApiError && mediaStatus.error.status === HTTP_STATUS.UNAUTHORIZED)) {
     return <Navigate to="/login" replace />;
   }
 
   return <PageShell title={t("settings.providerTitle")} description={t("settings.llm.description")}>
-    {snapshot ? <SummaryStrip items={[
-      { label: t("settings.llm.currentModel"), value: snapshot.modelId ?? t("settings.llm.notConfigured"), detail: t("settings.llm.openAiEndpoint") },
-      { label: t("settings.llm.protocol"), value: snapshot.toolCallingVerified ? t("settings.llm.verified") : t("models.pendingValidation"), detail: t("settings.llm.diagnosticConfigHint") },
-      { label: t("settings.llm.configVersion"), value: `v${snapshot.version}`, detail: snapshot.configured ? t("settings.llm.credentialsEncrypted") : t("settings.llm.setupHint") },
-    ]} /> : null}
-    <div className="settings-page-layout">
+    <div className="llm-workflow-intro"><p>{t("settings.llm.workflowHint")}</p>
+      {snapshot ? <StatusBadge tone={hasUnsavedChanges ? "warning" : "neutral"}>{hasUnsavedChanges ? t("settings.llm.draftVersion", { "0": base?.version }) : t("settings.llm.savedState")}</StatusBadge> : null}
+    </div>
+    <div className="settings-page-layout llm-settings-layout">
       <div className="ui-stack">
-        {settings.isPending ? <LoadingState label={t("settings.llm.loading")} /> : null}
+        {currentUser.isPending || currentUser.isSuccess && settings.isPending ? <LoadingState label={t("settings.llm.loading")} /> : null}
+        {currentUser.isError ? <Notice tone="danger" title={t("settings.llm.loadFailed")}><p>{t("settings.shared.sessionHint")}</p><Button variant="outline" type="button" disabled={currentUser.isFetching} onClick={() => { void currentUser.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
         {settings.isError ? <Notice tone="danger" title={t("settings.llm.loadFailed")}>
           <p>{t("settings.llm.settingsUnavailable")}</p>
           <Button variant="outline"  type="button" disabled={settings.isFetching} onClick={() => { void settings.refetch(); }}>{t("settings.llm.refreshSettings")}</Button>
         </Notice> : null}
         {snapshot ? <>
-          <Panel title={t("settings.llm.llmConfiguration")} description={t("settings.llm.endpointHint")} actions={<StatusBadge tone={snapshot.configured ? "success" : "neutral"}>{snapshot.configured ? t("common.configured") : t("models.unconfigured")}</StatusBadge>}>
-            <form className="ui-form" onSubmit={submit} aria-busy={saving}>
+          <p className="settings-step-label">{t("settings.llm.connectionStep")}</p>
+          <Panel className="llm-editor-panel" title={t("settings.llm.llmConfiguration")} description={t("settings.llm.endpointHint")} actions={<StatusBadge tone={snapshot.configured ? "success" : "neutral"}>{snapshot.configured ? t("common.configured") : t("models.unconfigured")}</StatusBadge>}>
+            <form className="ui-form llm-configuration-form" onSubmit={submit} aria-busy={saving}>
               <div className="settings-config-summary">
+                <span className="ui-muted">{t("settings.llm.savedConnection")}</span>
+                {snapshot.configured ? <strong className="llm-saved-model">{snapshot.modelId}<span>{snapshot.endpoint}</span></strong> : null}
                 <span>{snapshot.configured ? t("settings.llm.savedVersion", { "0": snapshot.version, "1": snapshot.keyMask ?? t("settings.llm.set") }) : t("settings.llm.modelMissing")}</span>
                 <span className="ui-muted">{t("settings.llm.credentialsHint")}</span>
               </div>
@@ -122,15 +125,16 @@ export function LlmSettingsPage() {
                 <p>{t("settings.llm.conflictHint")}</p>
                 <Button variant="outline"  type="button" disabled={busy} onClick={() => { setDraft(null); setApiKey(""); setError(""); setAcknowledgedVersion(null); }}>{t("settings.shared.refreshConfig")}</Button>
               </Notice> : null}
-              <Field><FieldLabel className="ui-field block">{t("settings.llm.endpoint")}<Input autoComplete="off" required type="url" disabled={busy} value={endpoint} onChange={(event) => editDraft("endpoint", event.target.value)} placeholder="https://api.example.com" />
-              </FieldLabel></Field>
-              <Field><FieldLabel className="ui-field block">{t("settings.llm.modelId")}<Input autoComplete="off" required disabled={busy} value={modelId} onChange={(event) => editDraft("modelId", event.target.value)} placeholder="model-name" />
-              </FieldLabel></Field>
-              <Field><FieldLabel className="ui-field block">{t("settings.llm.apiKey")}<Input autoComplete="new-password" required type="password" disabled={busy} value={apiKey} onChange={(event) => {
+              <FieldGroup className="llm-connection-fields">
+              <Field><FieldLabel htmlFor="llm-endpoint">{t("settings.llm.endpoint")}</FieldLabel><Input id="llm-endpoint" autoComplete="off" required type="url" disabled={busy} value={endpoint} onChange={(event) => editDraft("endpoint", event.target.value)} placeholder="https://api.example.com" /></Field>
+              <Field><FieldLabel htmlFor="llm-model">{t("settings.llm.modelId")}</FieldLabel><Input id="llm-model" autoComplete="off" required disabled={busy} value={modelId} onChange={(event) => editDraft("modelId", event.target.value)} placeholder="model-name" /></Field>
+              </FieldGroup>
+              <Field className="llm-credential-field"><FieldLabel htmlFor="llm-api-key">{t("settings.llm.apiKey")}</FieldLabel><Input id="llm-api-key" autoComplete="new-password" required type="password" disabled={busy} value={apiKey} onChange={(event) => {
                   if (base && !draft) setDraft({ base, endpoint, modelId });
                   setApiKey(event.target.value); setSaved(false); setAcknowledgedVersion(null);
-                }} />
-              </FieldLabel></Field>
+                }} aria-describedby="llm-key-description" />
+                <FieldDescription id="llm-key-description">{t("settings.llm.keyEntryHint")}</FieldDescription>
+              </Field>
               {error ? <Notice tone="danger"><p>{error}</p><p>{t("settings.llm.keyClearedHint")}</p></Notice> : null}
               {saved ? <Notice tone="success">{t("settings.llm.saved")}</Notice> : null}
               <div className="ui-form-actions settings-save-bar">
@@ -139,38 +143,39 @@ export function LlmSettingsPage() {
                   {hasUnsavedChanges ? <Button variant="ghost"  type="button" disabled={busy} onClick={() => {
                     setDraft(null); setApiKey(""); setError(""); setSaved(false); setAcknowledgedVersion(null);
                   }}>{t("settings.llm.revert")}</Button> : null}
-                  <Button variant="default"  disabled={busy} type="submit"><FloppyDisk size={16} aria-hidden />{saving ? t("common.savingProgress") : t("common.saveConfig")}</Button>
+                  <Button variant="default"  disabled={busy || !hasUnsavedChanges} type="submit"><FloppyDisk data-icon="inline-start" aria-hidden />{saving ? t("common.savingProgress") : t("common.saveConfig")}</Button>
                 </div>
               </div>
             </form>
           </Panel>
         </> : null}
       </div>
-      <aside className="ui-stack">
-        {snapshot?.configured ? <Panel title={t("settings.llm.protocolDiagnostics")} description={t("settings.llm.savedConfigHint")} actions={<StatusBadge tone={snapshot.toolCallingVerified ? "success" : "warning"}>{snapshot.toolCallingVerified ? t("settings.llm.verified") : t("models.pendingValidation")}</StatusBadge>}>
+      <aside className="ui-stack llm-verification-column">
+        <p className="settings-step-label">{t("settings.llm.validationStep")}</p>
+        {snapshot?.configured ? <Panel className="llm-diagnostics-panel" title={t("settings.llm.protocolDiagnostics")} description={t("settings.llm.savedConfigHint")} actions={<StatusBadge tone={snapshot.toolCallingVerified ? "success" : "warning"}>{snapshot.toolCallingVerified ? t("settings.llm.verified") : t("models.pendingValidation")}</StatusBadge>}>
           <div className="ui-stack">
             <p className="settings-status-line"><ShieldCheck size={20} aria-hidden />{t("settings.llm.versionStatus", { "0": snapshot.version, "1": snapshot.toolCallingVerified ? t("settings.llm.toolRoundtripVerified") : t("settings.llm.toolsUnverified") })}</p>
             <p className="ui-muted">{t("settings.llm.diagnosticScopeHint")}</p>
+            {hasUnsavedChanges || hasRemoteUpdate ? <Notice tone="warning">{t("settings.llm.saveBeforeDiagnostic")}</Notice> : null}
             <label className="settings-consent"><Checkbox  checked={costAcknowledged} disabled={busy || hasUnsavedChanges || hasRemoteUpdate} onCheckedChange={(event) => setAcknowledgedVersion(event === true ? snapshot.version : null)} /><span>{t("settings.llm.confirmDiagnosticCost")}</span></label>
             {diagnosticError ? <Notice tone="danger">{diagnosticError}</Notice> : null}
             {diagnosed ? <Notice tone="success">{t("settings.llm.protocolVerified")}</Notice> : null}
             {diagnosing ? <LoadingState compact label={t("settings.llm.protocolChecking")} /> : null}
-            <div className="ui-form-actions"><span className="ui-muted">{hasUnsavedChanges || hasRemoteUpdate ? t("settings.llm.saveBeforeDiagnostic") : t("settings.llm.costConfirmationHint")}</span><Button variant="outline"  type="button" disabled={busy || !costAcknowledged || hasUnsavedChanges || hasRemoteUpdate} onClick={diagnose}>{diagnosing ? t("settings.llm.diagnosing") : t("settings.llm.runDiagnostic")}</Button></div>
+            <div className="ui-form-actions llm-diagnostic-action"><span className="ui-muted">{t("settings.llm.costConfirmationHint")}</span><Button variant="outline"  type="button" disabled={busy || !costAcknowledged || hasUnsavedChanges || hasRemoteUpdate} onClick={diagnose}>{diagnosing ? t("settings.llm.diagnosing") : t("settings.llm.runDiagnostic")}</Button></div>
           </div>
-        </Panel> : null}
-        <Notice title={t("settings.llm.configurationAndValidation")}>
-          {t("settings.llm.realModelHint")}</Notice>
-        <Panel title={t("settings.llm.mediaConfiguration")} description={t("settings.llm.mediaManagementHint")}>
-          <div className="ui-stack">
+        </Panel> : snapshot ? <Panel className="llm-diagnostics-panel" title={t("settings.llm.waitingConfiguration")} description={t("settings.llm.waitingConfigurationHint")}><ShieldCheck className="llm-waiting-icon" aria-hidden /></Panel> : null}
+        <Notice title={t("settings.llm.configurationAndValidation")}>{t("settings.llm.realModelHint")}</Notice>
+      </aside>
+      <Panel className="llm-media-panel" title={t("settings.llm.mediaConfiguration")} description={t("settings.llm.mediaManagementHint")}>
+          <div className="llm-media-overview">
             <p className="ui-muted">{t("settings.llm.statusHint")}</p>
-            {mediaStatus.isPending ? <LoadingState compact label={t("settings.llm.mediaStatusLoading")} /> : null}
+            {mediaStatus.isPending && !currentUser.isError ? <LoadingState compact label={t("settings.llm.mediaStatusLoading")} /> : null}
             {mediaStatus.isError ? <Notice tone="danger"><p>{t("settings.llm.mediaStatusFailed")}</p><Button variant="outline"  type="button" disabled={mediaStatus.isFetching} onClick={() => { void mediaStatus.refetch(); }}>{t("settings.llm.refreshMediaStatus")}</Button></Notice> : null}
             {mediaStatus.data ? <p className="settings-mode-summary">{t("settings.llm.providerSummary", { "0": mediaStatus.data.mediaMode === "MOCK" ? t("models.mockMode") : t("settings.diagnostics.modelConfigured"), "1": mediaStatus.data.imageConfigured ? t("common.configured") : t("models.unconfigured"), "2": mediaStatus.data.videoConfigured ? t("common.configured") : t("models.unconfigured") })}</p> : null}
             <Link className="settings-nav-link" to="/settings/media">{t("settings.llm.manageMedia")}<ArrowUpRight size={16} aria-hidden /></Link>
             <Link className="settings-nav-link" to="/settings/general?tab=diagnostics">{t("settings.llm.viewDiagnostics")}<ArrowUpRight size={16} aria-hidden /></Link>
           </div>
         </Panel>
-      </aside>
     </div>
   </PageShell>;
 }

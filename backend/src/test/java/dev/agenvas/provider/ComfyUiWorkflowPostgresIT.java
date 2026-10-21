@@ -283,7 +283,7 @@ class ComfyUiWorkflowPostgresIT {
         assertThat(tasks.get(owner.userId(), project.id(), namedTask.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
         assertThat(drafts.get(owner.userId(), project.id(), extendedItem).parameters().at("/dynamicValues/stepCount").asInt()).isEqualTo(22);
 
-        var agent = agents.create(owner.userId(), project.id(), "Catalog reader", "Read the published media inputs", List.of());
+        var agent = agents.create(owner.userId(), project.id(), "Catalog reader", "Read the published media inputs");
         var queuedRun = runs.create(owner.userId(), project.id(), agent.id(), "List media inputs", "comfy-catalog-run").run();
         String modelWorker = "comfy-catalog-worker";
         Task modelLease = tasks.claimAgentTurns(modelWorker, 1).getFirst();

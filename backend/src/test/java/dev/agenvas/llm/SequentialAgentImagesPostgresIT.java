@@ -102,15 +102,10 @@ class SequentialAgentImagesPostgresIT {
         var first = versions.getFirst();
         var agent = AgentImageInputFixture.connect(agents, canvas, connections, owner.userId(), project.id(),
                 first.artifact().id(), first.resourceDefaultVersion().id(), "Image observer", "Record visible continuity anchors");
-        UUID agentId = agent.id();
-        UUID target = canvas.list(owner.userId(), project.id()).stream().map(CanvasService.CanvasEntry::item)
-                .filter(item -> item.subjectId().equals(agentId)).findFirst().orElseThrow().id();
         for (var version : versions.subList(1, versions.size())) {
             UUID source = UUID.randomUUID();
             canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(source,
                     version.artifact().id(), BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"), new BigDecimal("240"), 2, null, false)));
-            agent = connections.connect(owner.userId(), project.id(), source, target, version.resourceDefaultVersion().id(),
-                    CanvasConnection.RelationType.AGENT_IMAGE_INPUT, null, agent.version()).agent();
         }
         var run = runs.create(owner.userId(), project.id(), agent.id(), "Observe each image before reading the next", "sequential-fixture").run();
         for (int index = 0; index < 12; index++) assertThat(worker.runOnce("sequential-worker")).isEqualTo(1);

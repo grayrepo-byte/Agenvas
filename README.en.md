@@ -30,7 +30,7 @@
 | --- | --- |
 | Creative canvas | Drag, select, connect, arrange, and upload local media |
 | Multimodal generation | Run text, image, video, and audio cards with queues, cancellation, regeneration, and version history |
-| Agent collaboration | Read bound context, edit text, and arrange cards; media proposals require user approval |
+| Agent collaboration | Use director chat in the bottom-right corner to read and work with the current canvas, with persistent conversations and Skills; media proposals require user approval |
 | Reusable materials | Project resources, personal assets, prompt templates, visual styles, and mixed references |
 | Image tools | Annotate, crop, rotate, mirror, resize, extract depth, and use configured AI editing capabilities |
 | Self-hosting | Model settings, local and OSS/COS/S3 storage, task and call records, and project manifest exports |
@@ -99,7 +99,7 @@ Open **<http://127.0.0.1:8088/setup>** locally, or `http://<server-ip>:8088/setu
 - **Text and Agent**: Add an OpenAI-compatible endpoint, model ID, and API key under settings → model settings. An administrator must run the tool-calling diagnostic before using an Agent.
 - **Images, video, and audio**: Create connections, publish capabilities, and choose default models in media settings. The default deployment requires real model configuration before generating media.
 
-Create a project and use the canvas context menu to add cards or upload media. Select a model, enter a prompt and references, check the estimated cost, and run. Preview, select, or regenerate results. Agent cards can bind context and use Skills; approve or reject media proposals as a batch in the conversation.
+Create a project and use the canvas context menu to add cards or upload media. Select a model, enter a prompt and references, check the estimated cost, and run. Preview, select, or regenerate results. Open director chat in the bottom-right corner to use a project assistant that reads and works with the current canvas on demand. Select nodes to highlight the focus of your request. Map required Skill inputs to exact versions of canvas content, then approve or reject media proposals as a batch in the conversation. No Agent canvas node or persistent material binding is needed.
 
 Seedance video references need a publicly accessible media relay. See the [relay guide](docs/media-relay-design.md).
 
@@ -192,7 +192,7 @@ From the repository root, compile server and web from the current checkout and s
 docker compose -f docker-compose.local.yml up -d --build --wait
 ```
 
-Alternatively, `./deploy/update-local.sh` builds all images before updating containers and waiting for health checks. The backend runs only `package -DskipTests`, without automatically running `mvn verify`; run the full test suites manually as needed or through CI. Its final status table shows only container names, services, status, and ports so full startup commands cannot stretch the table. Source builds need no Docker Hub login. Text and media still default to `configured`. The existing `deploy/compose.yaml` uses the same source build configuration.
+Alternatively, `./deploy/update-local.sh` builds images before updating containers and waiting for health checks, reporting build and update times separately. It reuses base images by default; use `./deploy/update-local.sh --pull` to refresh them explicitly. Use `./deploy/update-local.sh server` or `./deploy/update-local.sh web` for changes to one application (build both on the first deployment). Source Compose builds retain downloaded packages in a separate BuildKit Maven cache across `pom.xml` changes; a first build or Docker cache cleanup still requires downloads. The host's `~/.m2` is not automatically shared with the build container. The backend runs `package -Dmaven.test.skip=true`, skipping test compilation and execution without automatically running `mvn verify`; run full tests manually or through CI. The final table shows only container names, services, status, and ports. Source builds need no Docker Hub login. Text and media still default to `configured`. The existing `deploy/compose.yaml` uses the same source build configuration.
 
 Image deployment and source builds both default to the `agenvas` project and retain the same database, media, and credential volumes. Back up data and check version compatibility before switching. To run independent environments simultaneously, use distinct project names with `-p` and override the ports.
 

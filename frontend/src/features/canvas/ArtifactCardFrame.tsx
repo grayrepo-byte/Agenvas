@@ -21,7 +21,7 @@ export function ArtifactCardFrame({ title, titleIcon, kindLabel, selected, locke
   useLocale();
   return <>
     {/* Toolbar portals sit outside the node; exclude their gestures from viewport panning. */}
-    <NodeToolbar className={`nopan${toolbarRaised ? " artifact-card-toolbar-raised" : ""}`}
+    <NodeToolbar className={`artifact-actions-toolbar nopan${toolbarRaised ? " artifact-card-toolbar-raised" : ""}`}
       isVisible={selected && toolbarVisible ? undefined : false} position={Position.Top} offset={TOOLBAR_NODE_GAP}>
       <div className="artifact-card-toolbar nodrag nowheel" aria-label={toolbarLabel ?? t("canvas.card.toolbarLabel", { "0": kindLabel })}>
         {toolbar}

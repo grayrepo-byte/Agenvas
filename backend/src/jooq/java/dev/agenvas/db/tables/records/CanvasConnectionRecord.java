@@ -83,8 +83,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Setter for <code>public.canvas_connection.relation_type</code>.
-     * MEDIA_INPUT and AGENT_IMAGE_INPUT are editable inputs; MEDIA_DERIVATION
-     * is removable media lineage.
+     * MEDIA_INPUT 是精确媒体输入，MEDIA_DERIVATION 是可移除来源提示
      */
     public void setRelationType(String value) {
         set(4, value);
@@ -92,8 +91,7 @@ public class CanvasConnectionRecord extends UpdatableRecordImpl<CanvasConnection
 
     /**
      * Getter for <code>public.canvas_connection.relation_type</code>.
-     * MEDIA_INPUT and AGENT_IMAGE_INPUT are editable inputs; MEDIA_DERIVATION
-     * is removable media lineage.
+     * MEDIA_INPUT 是精确媒体输入，MEDIA_DERIVATION 是可移除来源提示
      */
     public String getRelationType() {
         return (String) get(4);

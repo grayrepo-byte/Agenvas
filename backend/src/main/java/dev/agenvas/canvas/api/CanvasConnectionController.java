@@ -1,6 +1,5 @@
 package dev.agenvas.canvas.api;
 
-import dev.agenvas.agent.api.AgentInstanceController.AgentResponse;
 import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.canvas.domain.CanvasConnection;
@@ -46,7 +45,7 @@ public class CanvasConnectionController {
         return ConnectionResult.from(connections.connect(principal.userId(), projectId,
                 request.sourceCanvasItemId(), request.targetCanvasItemId(),
                 request.sourceVersionId(), request.relationType(),
-                request.expectedTargetDraftVersion(), request.expectedTargetAgentVersion()));
+                request.expectedTargetDraftVersion()));
     }
 
     @PostMapping("/{connectionId}/disconnect")
@@ -55,24 +54,19 @@ public class CanvasConnectionController {
             @PathVariable UUID projectId, @PathVariable UUID connectionId,
             @Valid @RequestBody DisconnectRequest request) {
         return ConnectionResult.from(connections.disconnect(principal.userId(), projectId,
-                connectionId, request.expectedTargetDraftVersion(),
-                request.expectedTargetAgentVersion()));
+                connectionId, request.expectedTargetDraftVersion()));
     }
 
     public record ConnectRequest(@NotNull UUID sourceCanvasItemId,
             @NotNull UUID targetCanvasItemId, @NotNull UUID sourceVersionId,
             @NotNull CanvasConnection.RelationType relationType,
-            @PositiveOrZero Long expectedTargetDraftVersion,
-            @PositiveOrZero Long expectedTargetAgentVersion) {}
-    public record DisconnectRequest(@PositiveOrZero Long expectedTargetDraftVersion,
-            @PositiveOrZero Long expectedTargetAgentVersion) {}
+            @PositiveOrZero Long expectedTargetDraftVersion) {}
+    public record DisconnectRequest(@PositiveOrZero Long expectedTargetDraftVersion) {}
     public record ConnectionList(List<ConnectionView> items) {}
-    public record ConnectionResult(ConnectionView connection, MediaDraftView draft,
-            AgentResponse agent) {
+    public record ConnectionResult(ConnectionView connection, MediaDraftView draft) {
         private static ConnectionResult from(CanvasConnectionService.ConnectionResult result) {
             return new ConnectionResult(ConnectionView.from(result.connection()),
-                    MediaDraftView.from(result.draft()), result.agent() == null
-                            ? null : AgentResponse.from(result.agent()));
+                    MediaDraftView.from(result.draft()));
         }
     }
     public record ConnectionView(UUID id, UUID projectId, UUID sourceCanvasItemId,

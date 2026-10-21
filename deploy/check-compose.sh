@@ -101,6 +101,7 @@ for compose_file in docker-compose.local.yml deploy/compose.yaml deploy/compose.
     ([.services.server, .services.web] | all(.[];
       .build.context == $root and .pull_policy == "build")) and
     .services.server.build.dockerfile == "deploy/docker/server.Dockerfile" and
+    .services.server.build.args.MAVEN_CACHE_MOUNT == "true" and
     .services.web.build.dockerfile == "deploy/docker/frontend.Dockerfile"' >/dev/null
 done
 

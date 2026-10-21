@@ -12,6 +12,7 @@ type AutoDlDefinition = NonNullable<Settings["workflowDefinition"]>;
 
 // Publishing projects these choices into the contract; they never become API settings.
 export type MediaCapabilityDraft = Settings & {
+  runningHubSourceDraft?: string;
   runningHubSelectedNodeIds?: string[];
   runningHubSelectedFieldKeys?: string[];
 };

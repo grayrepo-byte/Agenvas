@@ -4,7 +4,6 @@
 package dev.agenvas.db;
 
 
-import dev.agenvas.db.tables.AgentBinding;
 import dev.agenvas.db.tables.AgentConversation;
 import dev.agenvas.db.tables.AgentInstance;
 import dev.agenvas.db.tables.AgentMediaApproval;
@@ -56,7 +55,6 @@ public class Indexes {
     // INDEX definitions
     // -------------------------------------------------------------------------
 
-    public static final Index IX_AGENT_BINDING_AGENT = Internal.createIndex(DSL.name("ix_agent_binding_agent"), AgentBinding.AGENT_BINDING, new OrderField[] { AgentBinding.AGENT_BINDING.PROJECT_ID, AgentBinding.AGENT_BINDING.AGENT_INSTANCE_ID }, false);
     public static final Index IX_AGENT_INSTANCE_PROJECT = Internal.createIndex(DSL.name("ix_agent_instance_project"), AgentInstance.AGENT_INSTANCE, new OrderField[] { AgentInstance.AGENT_INSTANCE.PROJECT_ID, AgentInstance.AGENT_INSTANCE.CREATED_AT, AgentInstance.AGENT_INSTANCE.ID }, false);
     public static final Index IX_AGENT_MEDIA_APPROVAL_OUTSTANDING = Internal.createIndex(DSL.name("ix_agent_media_approval_outstanding"), AgentMediaApproval.AGENT_MEDIA_APPROVAL, new OrderField[] { AgentMediaApproval.AGENT_MEDIA_APPROVAL.ID }, false);
     public static final Index IX_AGENT_MEDIA_APPROVAL_RUN = Internal.createIndex(DSL.name("ix_agent_media_approval_run"), AgentMediaApproval.AGENT_MEDIA_APPROVAL, new OrderField[] { AgentMediaApproval.AGENT_MEDIA_APPROVAL.PROJECT_ID, AgentMediaApproval.AGENT_MEDIA_APPROVAL.RUN_ID, AgentMediaApproval.AGENT_MEDIA_APPROVAL.CREATED_AT, AgentMediaApproval.AGENT_MEDIA_APPROVAL.ID }, false);

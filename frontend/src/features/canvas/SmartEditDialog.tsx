@@ -85,7 +85,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
   const availableReferences = useMemo(() => {
     const candidates: Reference[] = [];
     for (const item of referenceSources.data?.canvasItems ?? []) {
-      if (item.subjectType !== "ARTIFACT" || item.artifact?.kind !== "IMAGE"
+      if (item.artifact.kind !== "IMAGE"
           || !item.selectedVersion || item.selectedVersion.id === sourceVersionId) continue;
       const assetId = readContentText(item.selectedVersion.content, "assetId");
       if (assetId) candidates.push({ versionId: item.selectedVersion.id, label: item.title,

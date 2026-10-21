@@ -7,7 +7,6 @@ import { MemoryRouter,Route,Routes } from "react-router";
 import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { CanvasCommand,CanvasItem,ProjectSnapshot } from "../../shared/api/client";
-import { clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
@@ -67,23 +66,20 @@ const imageVersionId = "11111111-1111-4111-8111-111111111111";
 const items: CanvasItem[] = [
   { id: "image-card", subjectType: "ARTIFACT", subjectId: "image-id", x: 0, y: 0,
     title: "参考图",
-    width: 260, height: 150, zIndex: 0, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 3, agent: null,
+    width: 260, height: 150, zIndex: 0, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 3,
     artifact: { id: "image-id", projectId: "project-1", kind: "IMAGE", title: "参考图",
       resourceDefaultVersionId: imageVersionId, version: 3, createdAt: now, updatedAt: now,
       resourceDefaultVersion: { id: imageVersionId, versionNo: 1, schemaVersion: 1,
         content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
         createdByKind: "USER", runId: null, createdAt: now } } },
-  { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
-    title: "Agent",
-    width: 460, height: 600, zIndex: 1, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 4, artifact: null,
-    agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
-      name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,
-      createdAt: now, updatedAt: now,
-      bindings: [{ id: "binding-id", artifactId: "image-id",
-        selectedVersionId: imageVersionId }] } },
+  { id: "middle-card", subjectType: "ARTIFACT", subjectId: "middle-id", x: 400, y: 0,
+    title: "脚本", width: 460, height: 600, zIndex: 1, groupId: null, locked: false,
+    selectedVersionId: null, selectedVersion: null, version: 4,
+    artifact: { id: "middle-id", projectId: "project-1", kind: "TEXT", title: "脚本",
+      resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 0, createdAt: now, updatedAt: now } },
   { id: "text-card", subjectType: "ARTIFACT", subjectId: "text-id", x: 800, y: 0,
     title: "正文",
-    width: 260, height: 150, zIndex: 2, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 5, agent: null,
+    width: 260, height: 150, zIndex: 2, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 5,
     artifact: { id: "text-id", projectId: "project-1", kind: "TEXT", title: "正文",
       resourceDefaultVersionId: "22222222-2222-4222-8222-222222222222", version: 5,
       createdAt: now, updatedAt: now,
@@ -95,7 +91,9 @@ const items: CanvasItem[] = [
 function snapshot(): ProjectSnapshot {
   return { project: { id: "project-1", name: "选中项目", status: "ACTIVE",
     aspectRatio: "LANDSCAPE_16_9", version: 1, createdAt: now, updatedAt: now },
-    canvas: { items }, connections: [], agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
+    canvas: { items }, connections: [], agents: [{ id: "agent-id", projectId: "project-1", profileKey: "creator",
+      profileVersion: 1, name: "Creator", instruction: "Create", version: 4,
+      createdAt: now, updatedAt: now, }], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
 }
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -122,7 +120,7 @@ beforeEach(() => {
     http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json(snapshot())),
     http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
     http.get("/api/v1/projects/:projectId/artifacts", () => HttpResponse.json({
-      items: items.flatMap((item) => item.artifact ? [item.artifact] : []) })),
+      items: items.map((item) => item.artifact) })),
     http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
     http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
     http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
@@ -152,9 +150,10 @@ const selectChange = (id: string, selected: boolean): SelectionChange =>
 
 describe("canvas selection clearing", () => {
   it("selects all Agent outputs and offers relevant bulk actions with a working close button", async () => {
-    const outputs = items.map((item) => item.artifact ? { ...item, groupId: "group-1" } : item);
+    const outputs = items;
     const commands: CanvasCommand[][] = [];
     server.use(
+      http.get("/api/v1/projects/:projectId/agents/:agentId/outputs", () => HttpResponse.json({ canvasItemIds: ["image-card", "text-card"] })),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: outputs } })),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: outputs })),
       http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
@@ -163,6 +162,7 @@ describe("canvas selection clearing", () => {
       }),
     );
     await renderInteractiveFlow();
+    fireEvent.click(screen.getByRole("button", { name: "打开创作导演" }));
     fireEvent.click(await screen.findByRole("button", { name: "查看产物 · 2" }));
     const toolbar = await screen.findByRole("group", { name: "批量操作" });
     expect(selectedIds()).toEqual(["image-card", "text-card"]);
@@ -175,9 +175,9 @@ describe("canvas selection clearing", () => {
       expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "image-card", x: 0 }),
       expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "text-card", x: 0 }),
     ]);
-    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "text-card", "agent-card"]));
-    expect(within(toolbar).getByRole("button", { name: "绑定到 Agent" })).toBeEnabled();
-    expect(within(toolbar).getByRole("button", { name: "清空 Agent 输入" })).toBeEnabled();
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "text-card", "middle-card"]));
+    expect(within(toolbar).queryByRole("button", { name: "绑定到 Agent" })).not.toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: "清空 Agent 输入" })).not.toBeInTheDocument();
     fireEvent.click(within(toolbar).getByRole("button", { name: "关闭编辑区" }));
     expect(selectedIds()).toEqual([]);
     expect(screen.queryByRole("group", { name: "批量操作" })).not.toBeInTheDocument();
@@ -185,21 +185,26 @@ describe("canvas selection clearing", () => {
 
   it("clears the card selection when React Flow reports a select change", async () => {
     await renderFlow();
-    useCanvasStore.setState({ selectedIds: ["image-card", "agent-card"] });
+    useCanvasStore.setState({ selectedIds: ["image-card", "middle-card"] });
     flowProps.onNodesChange?.([selectChange("image-card", false)]);
-    expect(selectedIds()).toEqual(["agent-card"]);
+    expect(selectedIds()).toEqual(["middle-card"]);
   });
 
   it("drops every card when the pane reports an empty selection", async () => {
     await renderFlow();
-    useCanvasStore.setState({ selectedIds: ["image-card", "agent-card"] });
+    useCanvasStore.setState({ selectedIds: ["image-card", "middle-card"] });
     flowProps.onNodesChange?.([
-      selectChange("image-card", false), selectChange("agent-card", false)]);
+      selectChange("image-card", false), selectChange("middle-card", false)]);
     expect(selectedIds()).toEqual([]);
   });
 
   it("clears cards and relation lines when the user moves the viewport", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/canvas/connections", () => HttpResponse.json({ items: [{
+      id: "media-line", projectId: "project-1", sourceCanvasItemId: "image-card", targetCanvasItemId: "text-card",
+      sourceArtifactVersionId: imageVersionId, relationType: "MEDIA_INPUT", version: 0, createdAt: now, updatedAt: now,
+    }] })));
     await renderFlow();
+    await waitFor(() => expect(flowProps.edges).toHaveLength(1));
     const edgeId = flowProps.edges?.[0]?.id;
     expect(edgeId).toBeTruthy();
     useCanvasStore.setState({ selectedIds: ["image-card"] });
@@ -212,11 +217,11 @@ describe("canvas selection clearing", () => {
 
   it("applies replacement and additive select changes", async () => {
     await renderFlow();
-    useCanvasStore.setState({ selectedIds: ["agent-card"] });
-    flowProps.onNodesChange?.([selectChange("agent-card", false), selectChange("image-card", true)]);
+    useCanvasStore.setState({ selectedIds: ["middle-card"] });
+    flowProps.onNodesChange?.([selectChange("middle-card", false), selectChange("image-card", true)]);
     expect(selectedIds()).toEqual(["image-card"]);
-    flowProps.onNodesChange?.([selectChange("agent-card", true)]);
-    expect(selectedIds()).toEqual(["image-card", "agent-card"]);
+    flowProps.onNodesChange?.([selectChange("middle-card", true)]);
+    expect(selectedIds()).toEqual(["image-card", "middle-card"]);
   });
 
   it("keeps the selection for a programmatic viewport move", async () => {
@@ -523,14 +528,14 @@ describe("node click and drag gestures", () => {
   it("keeps a group highlighted during drag, clears it on release, and saves every moved node together", async () => {
     const saves = observeLayoutSaves();
     await renderInteractiveFlow();
-    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "agent-card"]));
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "middle-card"]));
     expect(await screen.findByLabelText("批量操作")).toBeVisible();
     const node = nodeElement("image-card");
     nodeMouseGesture("mouseDown", node, 0);
     nodeMouseGesture("mouseMove", node, CANVAS_POINTER_THRESHOLD + 1);
     expect(node.querySelector(".artifact-canvas-card")).toHaveClass("is-selected");
-    expect(nodeElement("agent-card").querySelector(".agent-chat-card"))
-      .toHaveClass("agent-chat-card--selected");
+    expect(nodeElement("middle-card").querySelector(".artifact-canvas-card"))
+      .toHaveClass("is-selected");
     expect(screen.queryByLabelText("批量操作")).not.toBeInTheDocument();
     nodeMouseGesture("mouseMove", node, 40);
     nodeMouseGesture("mouseUp", node, 40);
@@ -538,7 +543,7 @@ describe("node click and drag gestures", () => {
     await waitFor(() => expect(saves).toHaveLength(1));
     expect(saves[0]).toEqual([
       expect.objectContaining({ itemId: "image-card", x: 36, y: 0 }),
-      expect.objectContaining({ itemId: "agent-card", x: 436, y: 0 }),
+      expect.objectContaining({ itemId: "middle-card", x: 436, y: 0 }),
     ]);
   });
 
@@ -570,7 +575,7 @@ describe("workspace selection with real React Flow", () => {
     expect(within(toolbar).getByText("1 张卡片已选中")).toBeVisible();
     expect(within(toolbar).getByRole("button", { name: "左对齐" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "选择卡片：参考图" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "选择卡片：Agent" })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "选择卡片：脚本" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "选择卡片：正文" })).not.toBeChecked();
     expect(focusProbe.center).not.toHaveBeenCalled();
     fireEvent.click(nodeElement("image-card"));
@@ -584,9 +589,9 @@ describe("workspace selection with real React Flow", () => {
   it("toggles cards through checkboxes while preserving multi-select at one or zero cards", async () => {
     const saves = observeLayoutSaves();
     await renderInteractiveFlow();
-    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "agent-card"]));
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "middle-card"]));
     const imageCheckbox = screen.getByRole("checkbox", { name: "选择卡片：参考图" });
-    const agentCheckbox = screen.getByRole("checkbox", { name: "选择卡片：Agent" });
+    const agentCheckbox = screen.getByRole("checkbox", { name: "选择卡片：脚本" });
     const textCheckbox = screen.getByRole("checkbox", { name: "选择卡片：正文" });
     expect(imageCheckbox).toBeChecked();
     expect(agentCheckbox).toBeChecked();
@@ -595,7 +600,7 @@ describe("workspace selection with real React Flow", () => {
     nodeMouseGesture("mouseMove", textCheckbox, 40);
     nodeMouseGesture("mouseUp", textCheckbox, 40);
     fireEvent.click(textCheckbox);
-    expect(selectedIds()).toEqual(["image-card", "agent-card", "text-card"]);
+    expect(selectedIds()).toEqual(["image-card", "middle-card", "text-card"]);
     expect(textCheckbox).toBeChecked();
     expect(saves).toHaveLength(0);
     fireEvent.click(agentCheckbox);
@@ -620,7 +625,7 @@ describe("workspace selection with real React Flow", () => {
     { name: "a slight blank-pane movement", endX: 1101, endY: 701, previous: [] },
     { name: "a large empty box", endX: 1200, endY: 800, previous: [] },
     { name: "an empty box after a single selection", endX: 1200, endY: 800, previous: ["image-card"] },
-    { name: "an empty box after a group selection", endX: 1200, endY: 800, previous: ["image-card", "agent-card"] },
+    { name: "an empty box after a group selection", endX: 1200, endY: 800, previous: ["image-card", "middle-card"] },
   ])("does not enter multi-select with $name", async ({ endX, endY, previous }) => {
     await renderInteractiveFlow();
     act(() => useCanvasStore.getState().setSelectedIds(previous));
@@ -669,9 +674,9 @@ describe("workspace selection with real React Flow", () => {
     await renderInteractiveFlow();
     fireEvent.click(nodeElement("image-card"));
     expect(selectedIds()).toEqual(["image-card"]);
-    fireEvent.click(nodeElement("agent-card"));
-    expect(selectedIds()).toEqual(["agent-card"]);
-    await waitFor(() => expect(nodeElement("agent-card")).toHaveClass("selected"));
+    fireEvent.click(nodeElement("middle-card"));
+    expect(selectedIds()).toEqual(["middle-card"]);
+    await waitFor(() => expect(nodeElement("middle-card")).toHaveClass("selected"));
     expect(nodeElement("image-card")).not.toHaveClass("selected");
   });
 
@@ -683,12 +688,12 @@ describe("workspace selection with real React Flow", () => {
     await renderInteractiveFlow();
     fireEvent.click(nodeElement("image-card"));
     fireEvent.keyDown(window, { key, code, ...modifier });
-    fireEvent.click(nodeElement("agent-card"), modifier);
-    expect(selectedIds()).toEqual(["image-card", "agent-card"]);
-    await waitFor(() => expect(nodeElement("agent-card")).toHaveClass("selected"));
+    fireEvent.click(nodeElement("middle-card"), modifier);
+    expect(selectedIds()).toEqual(["image-card", "middle-card"]);
+    await waitFor(() => expect(nodeElement("middle-card")).toHaveClass("selected"));
     fireEvent.click(nodeElement("image-card"), modifier);
-    expect(selectedIds()).toEqual(["agent-card"]);
-    expect(screen.getByRole("checkbox", { name: "选择卡片：Agent" })).toBeChecked();
+    expect(selectedIds()).toEqual(["middle-card"]);
+    expect(screen.getByRole("checkbox", { name: "选择卡片：脚本" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "选择卡片：参考图" })).not.toBeChecked();
     expect(screen.getByRole("group", { name: "批量操作" })).toBeVisible();
     fireEvent.keyUp(window, { key, code });
@@ -696,8 +701,8 @@ describe("workspace selection with real React Flow", () => {
 
   it("collapses a multi-selection when clicking one of its selected nodes", async () => {
     await renderInteractiveFlow();
-    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "agent-card"]));
-    await waitFor(() => expect(nodeElement("agent-card")).toHaveClass("selected"));
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "middle-card"]));
+    await waitFor(() => expect(nodeElement("middle-card")).toHaveClass("selected"));
     fireEvent.click(nodeElement("image-card"));
     expect(selectedIds()).toEqual(["image-card"]);
   });
@@ -707,7 +712,7 @@ describe("workspace selection with real React Flow", () => {
     fireEvent.keyDown(window, { key: "Shift", code: "ShiftLeft", shiftKey: true });
     boxSelectNodes();
     fireEvent.keyUp(window, { key: "Shift", code: "ShiftLeft" });
-    expect(selectedIds()).toEqual(["image-card", "agent-card"]);
+    expect(selectedIds()).toEqual(["image-card", "middle-card"]);
     fireEvent.click(nodeElement("text-card"));
     expect(selectedIds()).toEqual(["text-card"]);
   });
@@ -735,33 +740,37 @@ describe("canvas interaction tools", () => {
     await renderFlow();
     expect(flowProps.panOnDrag).toBe(false);
     expect(flowProps.selectionOnDrag).toBe(true);
+    expect(screen.getByRole("radio", { name: "选择工具" })).toBeChecked();
     fireEvent.keyDown(window, { key: " ", code: "Space" });
     expect(flowProps.panOnDrag).toBe(true);
     expect(flowProps.selectionOnDrag).toBe(false);
     expect(flowProps.nodes?.every((node) => node.draggable === false)).toBe(true);
+    expect(screen.getByRole("radio", { name: "手形工具" })).toBeChecked();
     fireEvent.keyDown(window, { key: " ", code: "Space", repeat: true });
     fireEvent.keyUp(window, { key: " ", code: "Space" });
     expect(flowProps.panOnDrag).toBe(false);
+    expect(screen.getByRole("radio", { name: "选择工具" })).toBeChecked();
     fireEvent.keyDown(window, { key: " ", code: "Space" });
     fireEvent.blur(window);
     expect(flowProps.panOnDrag).toBe(false);
   });
 
-  it("switches tools through the menu and V, preserving hand mode after Space", async () => {
+  it("switches tools directly and with V, preserving hand mode after Space", async () => {
     await renderFlow();
-    await clickControl(screen.getByRole("button", { name: "画布工具" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /手形工具/ }));
+    const tools = screen.getByRole("radiogroup", { name: "画布工具模式" });
+    fireEvent.click(within(tools).getByRole("radio", { name: "手形工具" }));
     expect(flowProps.panOnDrag).toBe(true);
     expect(flowProps.elementsSelectable).toBe(false);
     fireEvent.keyDown(window, { key: " ", code: "Space" });
     fireEvent.keyUp(window, { key: " ", code: "Space" });
     expect(flowProps.panOnDrag).toBe(true);
+    expect(within(tools).getByRole("radio", { name: "手形工具" })).toBeChecked();
     fireEvent.keyDown(window, { key: "v", code: "KeyV" });
     expect(flowProps.panOnDrag).toBe(false);
-    await clickControl(screen.getByRole("button", { name: "画布工具" }));
-    const menu = screen.getByRole("menu", { name: "画布工具模式" });
-    fireEvent.keyDown(menu, { key: "Escape" });
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(within(tools).getByRole("radio", { name: "选择工具" })).toBeChecked();
+    fireEvent.click(within(tools).getByRole("radio", { name: "手形工具" }));
+    fireEvent.click(within(tools).getByRole("radio", { name: "选择工具" }));
+    expect(flowProps.panOnDrag).toBe(false);
   });
 
   it("does not intercept Space or V while editing text", async () => {
@@ -770,8 +779,7 @@ describe("canvas interaction tools", () => {
     document.body.append(input);
     fireEvent.keyDown(input, { key: " ", code: "Space" });
     expect(flowProps.panOnDrag).toBe(false);
-    await clickControl(screen.getByRole("button", { name: "画布工具" }));
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /手形工具/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "手形工具" }));
     fireEvent.keyDown(input, { key: "v", code: "KeyV" });
     expect(flowProps.panOnDrag).toBe(true);
     input.remove();

@@ -64,6 +64,7 @@ export { MagnifyingGlass } from "@phosphor-icons/react/dist/csr/MagnifyingGlass"
 export { MagnifyingGlassMinus } from "@phosphor-icons/react/dist/csr/MagnifyingGlassMinus";
 export { MagnifyingGlassPlus } from "@phosphor-icons/react/dist/csr/MagnifyingGlassPlus";
 export { MinusCircle } from "@phosphor-icons/react/dist/csr/MinusCircle";
+export { Minus } from "@phosphor-icons/react/dist/csr/Minus";
 export { MusicNotes } from "@phosphor-icons/react/dist/csr/MusicNotes";
 export { PaintBrush } from "@phosphor-icons/react/dist/csr/PaintBrush";
 export { Pause } from "@phosphor-icons/react/dist/csr/Pause";

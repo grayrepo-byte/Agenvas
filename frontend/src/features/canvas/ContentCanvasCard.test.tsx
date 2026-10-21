@@ -35,7 +35,7 @@ function artifact(kind: Artifact["kind"], content: NonNullable<Artifact["resourc
 function itemFor(value: Artifact): CanvasItem {
   return { id: "item-hidden-id", subjectType: "ARTIFACT", subjectId: value.id,
     title: value.title, x: 20, y: 40, width: 280, height: 180, zIndex: 1,
-    groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 0, artifact: value, agent: null };
+    groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 0, artifact: value };
 }
 
 function showCard(value: Artifact, selected = true, locked = false) {

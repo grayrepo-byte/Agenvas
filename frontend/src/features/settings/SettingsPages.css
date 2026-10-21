@@ -37,3 +37,41 @@
 }
 
 .call-log-retention-field { max-width: var(--ui-settings-aside-width); }
+
+/* LLM configuration and validation are separate actions, composed as a compact service desk. */
+.app-shell--studio .llm-media-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.app-shell--studio .llm-media-overview > :is(p, [role="alert"], .canvas-loading-state) { grid-column: 1 / -1; margin: 0; }
+.app-shell--studio .llm-media-overview .settings-mode-summary { padding: 10px 12px; border-radius: 8px; background: var(--ui-field); font-size: 12px; }
+.app-shell--studio .llm-media-overview .settings-nav-link { padding: 10px 12px; font-size: 12px; }
+.app-shell--studio .llm-diagnostics-panel .settings-status-line { margin: 0; }
+.app-shell--studio .llm-diagnostics-panel .settings-consent { padding: 10px 12px; }
+.app-shell--studio .llm-editor-panel [data-slot="field"] { gap: 7px; }
+@media (min-width: 1000px) and (max-width: 1180px) {
+  .app-shell--studio .settings-page-layout.llm-settings-layout { grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+}
+@media (max-width: 1180px) {
+  .app-shell--studio .settings-page-layout.llm-settings-layout > aside { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
+}
+@media (min-width: 1440px) {
+  .app-shell--studio .llm-connection-fields { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .app-shell--studio .llm-media-overview { grid-template-columns: minmax(0, 1fr); }
+  .app-shell--studio .llm-diagnostics-panel .ui-form-actions > button { max-width: 100%; height: auto; min-height: 34px; white-space: normal; }
+}
+
+/* Editing and verification follow one reading order; media administration stays below it. */
+.llm-workflow-intro { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 22px; }
+.llm-workflow-intro p { margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-md); line-height: 1.7; }
+.llm-workflow-intro .ui-badge { max-width: 100%; }
+.settings-step-label { margin: 0; color: var(--ui-text-secondary); font-size: var(--ui-text-sm); font-weight: 600; }
+.llm-settings-layout > .llm-media-panel { grid-column: 1 / -1; }
+.llm-saved-model { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 14px; overflow-wrap: anywhere; font-weight: 600; }
+.llm-saved-model > span { color: var(--ui-text-muted); font-size: var(--ui-text-sm); font-weight: 400; }
+.llm-settings-layout .settings-config-summary { padding: 14px 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-field); }
+.llm-diagnostic-action { flex-direction: column; align-items: stretch; gap: 12px; }
+.llm-diagnostic-action > span { font-size: var(--ui-text-sm); line-height: 1.7; }
+.llm-diagnostic-action > button { width: 100%; white-space: normal; height: auto; min-height: var(--ui-control-height); }
+.llm-waiting-icon { width: 40px; height: 40px; color: var(--ui-text-subtle); }
+@media (min-width: 1181px) { .app-shell--studio .settings-page-layout.llm-settings-layout { grid-template-columns: minmax(0, 1.35fr) minmax(320px, .8fr); gap: 24px; } }
+@media (max-width: 560px) { .llm-workflow-intro { margin-bottom: 16px; } .llm-settings-layout .settings-save-bar { align-items: stretch; flex-direction: column; } .llm-settings-layout .settings-save-bar > .ui-form-actions { justify-content: flex-end; } }

@@ -80,6 +80,7 @@ class CanvasMediaVersionsPostgresIT {
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
     @Autowired private WebApplicationContext context;
+    @Autowired private org.springframework.transaction.PlatformTransactionManager transactions;
     private AdminPrincipal owner;
     private Project project;
 
@@ -275,6 +276,62 @@ class CanvasMediaVersionsPostgresIT {
                 .extracting(version -> version.id()).containsExactly(second);
         assertThatThrownBy(() -> canvas.selectMediaVersion(owner.userId(), project.id(), copy,
                 first, 0)).isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test
+    void exactVersionSourcesAndPlacementUseOnlyTheContentCanvasAndKeepSiblingSelections() {
+        UUID originalId = create(Artifact.Kind.IMAGE);
+        UUID first = generate(originalId);
+        UUID second = generate(originalId);
+        var original = card(originalId).item();
+        UUID artifactId = original.subjectId();
+        var defaultBefore = artifacts.get(owner.userId(), project.id(), artifactId).artifact().resourceDefaultVersionId();
+        var template = new org.springframework.transaction.support.TransactionTemplate(transactions);
+        var reference = template.execute(status -> canvas.ensureMediaReferenceWithinChange(owner.userId(), project.id(), artifactId, first, null));
+        assertThat(reference).isNotNull();
+        assertThat(reference.id()).isNotEqualTo(originalId);
+        assertThat(reference.groupId()).isNull();
+        assertThat(reference.x()).isGreaterThan(original.x().add(original.width()));
+        assertThat(reference.selectedVersionId()).isEqualTo(first);
+        assertThat(canvas.listMediaVersions(owner.userId(), project.id(), reference.id()))
+                .extracting(version -> version.id()).containsExactly(first);
+        assertThat(card(originalId).item().selectedVersionId()).isEqualTo(second);
+        assertThat(artifacts.get(owner.userId(), project.id(), artifactId).artifact().resourceDefaultVersionId()).isEqualTo(defaultBefore);
+        var placed = template.execute(status -> canvas.placeArtifactVersionsWithinChange(owner.userId(), project.id(), List.of(
+                new CanvasService.ArtifactVersionPlacement(artifactId, first),
+                new CanvasService.ArtifactVersionPlacement(artifactId, second)), null));
+        assertThat(placed.created()).isEmpty();
+        assertThat(placed.alreadyPresent()).extracting(item -> item.id()).containsExactlyInAnyOrder(reference.id(), originalId);
+        var reused = template.execute(status -> canvas.ensureMediaReferenceWithinChange(owner.userId(), project.id(), artifactId, first, null));
+        assertThat(reused.id()).isEqualTo(reference.id());
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
+    }
+
+    @Test
+    void anExistingMediaDestinationUsesAnIndependentExactVersionSourceForItsOwnReference() {
+        UUID destinationId = create(Artifact.Kind.IMAGE);
+        UUID selected = generate(destinationId);
+        UUID artifactId = card(destinationId).item().subjectId();
+        var template = new org.springframework.transaction.support.TransactionTemplate(transactions);
+
+        var source = template.execute(status -> canvas.ensureMediaReferenceWithinChange(
+                owner.userId(), project.id(), artifactId, selected, null, destinationId));
+
+        assertThat(source).isNotNull();
+        assertThat(source.id()).isNotEqualTo(destinationId);
+        assertThat(source.selectedVersionId()).isEqualTo(selected);
+        assertThat(canvas.listMediaVersions(owner.userId(), project.id(), source.id()))
+                .extracting(version -> version.id()).containsExactly(selected);
+        var connected = connections.connect(owner.userId(), project.id(), source.id(), destinationId,
+                selected, CanvasConnection.RelationType.MEDIA_INPUT,
+                drafts.get(owner.userId(), project.id(), destinationId).version());
+        assertThat(connected.connection().sourceCanvasItemId()).isEqualTo(source.id());
+        assertThat(connected.connection().targetCanvasItemId()).isEqualTo(destinationId);
+        assertThat(card(destinationId).item().selectedVersionId()).isEqualTo(selected);
+        var reused = template.execute(status -> canvas.ensureMediaReferenceWithinChange(
+                owner.userId(), project.id(), artifactId, selected, null, destinationId));
+        assertThat(reused.id()).isEqualTo(source.id());
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);
     }
 
     @Test

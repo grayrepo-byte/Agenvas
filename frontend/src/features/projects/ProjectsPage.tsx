@@ -1,4 +1,4 @@
-import { Field, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Archive,ArrowClockwise,ArrowRight,Folder,MagnifyingGlass,PencilSimple,Plus,X } from "@/shared/ui/icons";
 import { useInfiniteQuery,useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { type FormEvent,useRef,useState } from "react";
@@ -20,6 +20,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Input } from "../../shared/ui/primitives/input";
 import { Select } from "../../shared/ui/Select";
+import { cn } from "../../shared/lib/utils";
 import "./ProjectsPage.css";
 
 const PROJECT_PAGE_SIZE = 100;
@@ -27,7 +28,9 @@ const PROJECT_NAME_MAX_LENGTH = 120;
 const ASPECT_LABELS: Record<Project["aspectRatio"], string> = {
   get LANDSCAPE_16_9() { return t("projects.landscapeRatio"); }, get PORTRAIT_9_16() { return t("projects.portraitRatio"); }, get SQUARE_1_1() { return t("projects.squareRatio"); },
 };
-
+const ASPECT_RATIOS: Record<Project["aspectRatio"], string> = {
+  LANDSCAPE_16_9: "16:9", PORTRAIT_9_16: "9:16", SQUARE_1_1: "1:1",
+};
 
 /** Project discovery and commands remain scoped to the authenticated owner. */
 export function ProjectsPage() {
@@ -65,15 +68,15 @@ export function ProjectsPage() {
   }
 
   return (
-    <PageShell title={t("common.project")} description={t("projects.description")} actions={<Button variant="default"  onClick={() => nameInput.current?.focus()} type="button"><Plus size={16} aria-hidden="true" />{t("projects.newProject")}</Button>}>
+    <PageShell title={t("common.project")} description={t("projects.description")} actions={<Button onClick={() => nameInput.current?.focus()} type="button"><Plus data-icon="inline-start" aria-hidden="true" />{t("projects.newProject")}</Button>}>
       <div className="projects-layout">
         <section className="projects-library" aria-label={t("projects.title")}>
+          <div className="projects-list-heading"><h2>{t("projects.title")}</h2><StatusBadge>{t("projects.loadedCount", { "0": loadedProjects.length })}</StatusBadge>{query ? <span className="ui-muted">{t("projects.matchCount", { "0": visibleProjects.length })}</span> : null}</div>
           <div className="projects-toolbar">
             <label className="projects-search"><MagnifyingGlass size={17} aria-hidden="true" /><Input aria-label={t("projects.search")} placeholder={t("projects.searchPlaceholder")} type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
-            <label className="projects-archive-filter"><Checkbox checked={includeArchived} onCheckedChange={(event) => setIncludeArchived(event === true)}  />{t("projects.showArchived")}</label>
-            <Button variant="ghost"  aria-label={t("projects.refresh")} disabled={projects.isFetching} onClick={() => void projects.refetch()} type="button"><ArrowClockwise size={17} aria-hidden="true" /></Button>
+            <div className="projects-filter-actions"><label className="projects-archive-filter"><Checkbox checked={includeArchived} onCheckedChange={(event) => setIncludeArchived(event === true)} />{t("projects.showArchived")}</label>
+              <Button variant="outline" size="icon" aria-label={t("projects.refresh")} disabled={projects.isFetching} onClick={() => void projects.refetch()} type="button"><ArrowClockwise aria-hidden="true" /></Button></div>
           </div>
-          <div className="projects-list-heading"><h2>{t("projects.title")}</h2><StatusBadge>{t("projects.loadedCount", { "0": loadedProjects.length })}</StatusBadge>{query ? <span className="ui-muted">{t("projects.matchCount", { "0": visibleProjects.length })}</span> : null}</div>
           {projects.isPending ? <LoadingState label={t("common.projectLoading")} /> : null}
           {projects.error ? <Notice title={t("projects.loadFailed")} tone="danger"><p>{errorMessage(projects.error)}</p><Button variant="outline"  disabled={projects.isFetching} onClick={() => void (projects.isFetchNextPageError ? projects.fetchNextPage() : projects.refetch())} type="button">{t("common.retryRead")}</Button></Notice> : null}
           {projects.isSuccess && loadedProjects.length === 0 ? <EmptyState icon={<Folder size={28} aria-hidden="true" />} title={t("projects.emptyTitle")} description={t("projects.emptyHint")} action={<Button variant="outline"  onClick={() => nameInput.current?.focus()} type="button"><Plus size={15} aria-hidden="true" />{t("projects.newProject")}</Button>} /> : null}
@@ -81,12 +84,15 @@ export function ProjectsPage() {
           <div className="projects-grid">{visibleProjects.map((project) => <ProjectCard key={project.id} project={project} />)}</div>
           {projects.hasNextPage ? <div className="projects-load-more"><Button variant="outline"  disabled={projects.isFetching} onClick={() => void projects.fetchNextPage()} type="button">{projects.isFetchingNextPage ? t("projects.loading") : t("projects.loadMore")}</Button></div> : null}
         </section>
-        <Panel className="projects-create" title={t("projects.newProject")} description={t("projects.newProjectHint")}>
+        <Panel className="projects-create" title={t("projects.newProject")} description={t("projects.newProjectHint")} actions={<span className="projects-create-symbol" aria-hidden="true"><Plus size={19} /></span>}>
+          <div className="projects-create-preview"><ProjectFrame aspectRatio={aspectRatio} /><span>{ASPECT_LABELS[aspectRatio]}</span></div>
           <form className="ui-form" onSubmit={submit} aria-busy={create.isPending}>
-            <Field><FieldLabel className="ui-field block"><span>{t("projects.name")}</span><Input ref={nameInput} disabled={create.isPending} maxLength={PROJECT_NAME_MAX_LENGTH} placeholder={t("projects.namePlaceholder")} required value={name} onChange={(event) => setName(event.target.value)} /></FieldLabel></Field>
-            <Field><FieldLabel className="ui-field block"><span>{t("projects.aspectRatio")}</span><Select disabled={create.isPending} value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as Project["aspectRatio"])}>{Object.entries(ASPECT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></FieldLabel></Field>
+            <FieldGroup className="projects-create-fields">
+              <Field><FieldLabel className="ui-field block"><span>{t("projects.name")}</span><Input ref={nameInput} disabled={create.isPending} maxLength={PROJECT_NAME_MAX_LENGTH} placeholder={t("projects.namePlaceholder")} required value={name} onChange={(event) => setName(event.target.value)} /></FieldLabel></Field>
+              <Field><FieldLabel className="ui-field block"><span>{t("projects.aspectRatio")}</span><Select disabled={create.isPending} value={aspectRatio} onChange={(event) => setAspectRatio(event.target.value as Project["aspectRatio"])}>{Object.entries(ASPECT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></FieldLabel></Field>
+            </FieldGroup>
             {create.error ? <Notice tone="danger">{errorMessage(create.error)}</Notice> : null}
-            <Button variant="default"  disabled={create.isPending || !name.trim()} type="submit"><Plus size={16} aria-hidden="true" />{create.isPending ? t("common.creating") : t("projects.create")}</Button>
+            <Button disabled={create.isPending || !name.trim()} type="submit"><Plus data-icon="inline-start" aria-hidden="true" />{create.isPending ? t("common.creating") : t("projects.create")}</Button>
             {create.isSuccess ? <Notice tone="success">{t("projects.created")}</Notice> : null}
           </form>
         </Panel>
@@ -127,21 +133,29 @@ function ProjectCard({ project }: { project: Project }) {
   }
 
   return (
-    <article className="project-card" aria-label={project.name}>
-      <header className="project-card-top"><span className={`project-card-mark project-card-mark-${project.aspectRatio.toLowerCase()}`}><span aria-hidden="true" /></span><StatusBadge tone={archived ? "neutral" : "success"}>{archived ? t("projects.archived") : t("projects.active")}</StatusBadge></header>
+    <article className={cn("project-card", archived && "project-card--archived")} aria-label={project.name}>
+      <header className="project-card-cover" aria-hidden="true"><span className="project-card-folder"><Folder size={17} /></span><ProjectFrame aspectRatio={project.aspectRatio} /></header>
+      <div className="project-card-body">
+        <div className="project-card-status"><span>{ASPECT_LABELS[project.aspectRatio]}</span><StatusBadge tone={archived ? "neutral" : "success"}>{archived ? t("projects.archived") : t("projects.active")}</StatusBadge></div>
       {editing ? (
         <form className="ui-form project-rename" onSubmit={submit} aria-busy={rename.isPending}>
           <Field><FieldLabel className="ui-field block"><span>{t("projects.newName")}</span><Input autoFocus disabled={pending} maxLength={PROJECT_NAME_MAX_LENGTH} required value={name} onChange={(event) => setName(event.target.value)} /></FieldLabel></Field>
           {rename.error ? <Notice tone="danger">{errorMessage(rename.error)}</Notice> : null}
           {project.version !== editVersion ? <Notice tone="warning">{t("projects.conflict")}</Notice> : null}
-          <div className="ui-form-actions"><Button variant="default"  disabled={pending || archived || !name.trim() || project.version !== editVersion} type="submit">{rename.isPending ? t("common.savingProgress") : t("projects.saveName")}</Button><Button variant="ghost"  disabled={pending} onClick={() => setEditing(false)} type="button"><X size={14} aria-hidden="true" />{t("common.cancel")}</Button></div>
+          <div className="ui-form-actions"><Button disabled={pending || archived || !name.trim() || project.version !== editVersion} type="submit">{rename.isPending ? t("common.savingProgress") : t("projects.saveName")}</Button><Button variant="ghost" disabled={pending} onClick={() => setEditing(false)} type="button"><X data-icon="inline-start" aria-hidden="true" />{t("common.cancel")}</Button></div>
         </form>
-      ) : <><h3>{project.name}</h3><p className="project-card-meta">{ASPECT_LABELS[project.aspectRatio]}<span aria-hidden="true">·</span><time dateTime={project.updatedAt}>{t("projects.updated", { "0": formatDate(project.updatedAt, { month: "short", day: "numeric" }) })}</time></p></>}
+      ) : <><h3>{project.name}</h3><p className="project-card-meta"><time dateTime={project.updatedAt}>{t("projects.updated", { "0": formatDate(project.updatedAt, { month: "short", day: "numeric" }) })}</time></p></>}
       {archive.error ? <Notice tone="danger">{errorMessage(archive.error)}</Notice> : null}
-      {!archived && !editing ? <footer className="project-card-actions"><Link className="project-open" to={`/projects/${project.id}`}>{t("projects.openCanvas")}<ArrowRight size={15} aria-hidden="true" /></Link><Button variant="ghost"  aria-label={t("projects.renameNamed", { "0": project.name })} disabled={pending} onClick={startEditing} type="button"><PencilSimple size={16} aria-hidden="true" /></Button><Button variant="ghost"  aria-label={t("projects.archiveNamed", { "0": project.name })} disabled={pending} onClick={() => archive.mutate()} type="button"><Archive size={16} aria-hidden="true" /></Button></footer> : null}
+      {!archived && !editing ? <footer className="project-card-actions"><Button variant="ghost" size="sm" className="project-open" asChild><Link to={`/projects/${project.id}`}>{t("projects.openCanvas")}<ArrowRight data-icon="inline-end" aria-hidden="true" /></Link></Button><Button variant="ghost" size="icon-sm" aria-label={t("projects.renameNamed", { "0": project.name })} disabled={pending} onClick={startEditing} type="button"><PencilSimple aria-hidden="true" /></Button><Button variant="ghost" size="icon-sm" aria-label={t("projects.archiveNamed", { "0": project.name })} disabled={pending} onClick={() => archive.mutate()} type="button"><Archive aria-hidden="true" /></Button></footer> : null}
       {archive.isPending ? <LoadingState label={t("projects.archiving")} compact /> : null}
+      </div>
     </article>
   );
+}
+
+/** A neutral frame study communicates the saved format without inventing project artwork. */
+function ProjectFrame({ aspectRatio }: { aspectRatio: Project["aspectRatio"] }) {
+  return <div className="project-frame-study" data-aspect={aspectRatio} aria-hidden="true"><div className="project-frame-outline"><span className="project-frame-center" /><span className="project-frame-ratio">{ASPECT_RATIOS[aspectRatio]}</span></div></div>;
 }
 
 function errorMessage(error: Error): string {

@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Agent, Artifact, CanvasItem, ProjectSnapshot } from "../../shared/api/client";
+import type { Artifact, CanvasItem, ProjectSnapshot } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 
@@ -42,7 +42,7 @@ const linkedItems: CanvasItem[] = [
     selectedVersion: { id: imageVersionId, versionNo: 1, schemaVersion: 1,
       content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
       createdByKind: "USER", runId: null, createdAt: now },
-    version: 3, agent: null,
+    version: 3,
     artifact: {
       id: "image-id", projectId: "project-1", kind: "IMAGE", title: "参考图",
       resourceDefaultVersionId: imageVersionId, version: 2, createdAt: now, updatedAt: now,
@@ -50,14 +50,6 @@ const linkedItems: CanvasItem[] = [
         content: { sourceType: "UPLOAD", assetId: "asset-id" }, inputReferences: [],
         createdByKind: "USER", runId: null, createdAt: now },
     } },
-  { id: "agent-card", subjectType: "AGENT", subjectId: "agent-id", x: 400, y: 0,
-    title: "Agent",
-    width: 460, height: 600, zIndex: 1, groupId: null, locked: false, selectedVersionId: null, selectedVersion: null, version: 4, artifact: null,
-    agent: { id: "agent-id", projectId: "project-1", profileKey: "creator", profileVersion: 1,
-      name: "Creator", instruction: "Create", outputGroupId: "group-1", version: 4,
-      createdAt: now, updatedAt: now,
-      bindings: [{ id: "binding-id", artifactId: "image-id",
-        selectedVersionId: imageVersionId }] } },
   { id: "video-card", subjectType: "ARTIFACT", subjectId: "video-id", x: 800, y: 0,
     title: "视频",
     width: 280, height: 180, zIndex: 2, groupId: null, locked: false,
@@ -68,7 +60,7 @@ const linkedItems: CanvasItem[] = [
       inputReferences: [{ versionId: imageVersionId, role: "sourceImage",
         order: 0, kind: "IMAGE" }],
       createdByKind: "USER", runId: null, createdAt: now },
-    version: 5, agent: null,
+    version: 5,
     artifact: {
       id: "video-id", projectId: "project-1", kind: "VIDEO", title: "视频",
       resourceDefaultVersionId: videoVersionId, version: 5, createdAt: now, updatedAt: now,
@@ -81,7 +73,7 @@ const linkedItems: CanvasItem[] = [
     } },
   { id: "output-card", subjectType: "ARTIFACT", subjectId: "output-id", x: 1200, y: 0,
     title: "输出",
-    width: 280, height: 180, zIndex: 3, groupId: "group-1", locked: false, selectedVersionId: null, selectedVersion: null, version: 6, agent: null,
+    width: 280, height: 180, zIndex: 3, groupId: "group-1", locked: false, selectedVersionId: null, selectedVersion: null, version: 6,
     artifact: {
       id: "output-id", projectId: "project-1", kind: "IMAGE", title: "Agent 产物",
       resourceDefaultVersionId: null, version: 1, createdAt: now, updatedAt: now, resourceDefaultVersion: null,
@@ -152,7 +144,7 @@ beforeEach(() => {
     http.patch("/api/v1/projects/:projectId/agents/:agentId", async ({ request }) => {
       const body = await request.json() as Record<string, unknown>;
       agentPatches.push(body);
-      return HttpResponse.json({ ...linkedItems[1]!.agent, bindings: body.bindings } as Agent);
+      return HttpResponse.json({});
     }),
     http.post("/api/v1/projects/:projectId/artifacts/:artifactId/revisions",
       async ({ request, params }) => {
@@ -170,7 +162,7 @@ async function renderFlow() {
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter>
   </QueryClientProvider>);
-  await waitFor(() => expect(flowProps.edges).toHaveLength(3));
+  await waitFor(() => expect(flowProps.edges).toHaveLength(1));
 }
 
 function edge(prefix: string): Edge {
@@ -186,29 +178,24 @@ describe("canvas relation deletion", () => {
     expect(await flowProps.onBeforeDelete!({ nodes: [], edges: [] })).toBe(false);
   });
 
-  it("removes the Agent input binding behind the selected input line", async () => {
+  it("projects only persisted media edges without changing assistant configuration", async () => {
     await renderFlow();
-    expect(await flowProps.onBeforeDelete!({ nodes: [], edges: [edge("input:")] })).toBe(false);
-    await waitFor(() => expect(agentPatches).toHaveLength(1));
-    expect(agentPatches[0]).toEqual({ expectedVersion: 4, name: "Creator",
-      instruction: "Create", bindings: [] });
+    expect(flowProps.edges?.some((candidate) => candidate.id.startsWith("input:") || candidate.id.startsWith("output:"))).toBe(false);
+    expect(agentPatches).toHaveLength(0);
     expect(revisions).toHaveLength(0);
     expect(canvasCommands).toHaveLength(0);
   });
 
   it("disconnects persisted media lines but ignores output lines and card-delete cascades", async () => {
     await renderFlow();
-    // 输出组线由 Agent 决定；媒体输入线则映射到服务端持久化关系。
-    expect(edge("output:")).toMatchObject({ deletable: false, selectable: false });
     expect(edge("canvas-connection:").deletable).toBeUndefined();
-    await flowProps.onBeforeDelete!({ nodes: [], edges: [edge("output:")] });
     await flowProps.onBeforeDelete!({ nodes: [], edges: [edge("canvas-connection:")] });
     await waitFor(() => expect(disconnectedConnections).toEqual([{
       id: "connection-id", body: { expectedTargetDraftVersion: 0 },
     }]));
     // 卡片被移除时，挂到它上面的关系线是级联来的，不能顺手删掉绑定或引用。
     await flowProps.onBeforeDelete!({ nodes: [{ id: "image-card",
-      data: { item: linkedItems[0] } } as never], edges: [edge("input:")] });
+      data: { item: linkedItems[0] } } as never], edges: [edge("canvas-connection:")] });
     await waitFor(() => expect(canvasCommands).toHaveLength(1));
     expect(agentPatches).toHaveLength(0);
     expect(revisions).toHaveLength(0);

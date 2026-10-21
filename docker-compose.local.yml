@@ -101,6 +101,8 @@ services:
     build:
       context: .
       dockerfile: deploy/docker/server.Dockerfile
+      args:
+        MAVEN_CACHE_MOUNT: "true"
     image: agenvas-server:local
     pull_policy: build
     environment:

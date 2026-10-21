@@ -73,6 +73,12 @@ public class ToolRegistry {
                "uniqueItems":true,"items":{"type":"string","format":"uuid"}},
                "group":{"type":"string","const":"AGENT_OUTPUT"}}}
             """;
+    private static final String PLACE_CANVAS_ARTIFACTS_SCHEMA = """
+            {"type":"object","additionalProperties":false,
+             "required":["versionIds"],
+             "properties":{"versionIds":{"type":"array","minItems":1,"maxItems":6,
+               "uniqueItems":true,"items":{"type":"string","format":"uuid"}}}}
+            """;
     /** 布局命令须提供画布项、内容版本和布局 CAS 版本。 */
     private static final String ARRANGE_ITEMS_SCHEMA = """
             {"type":"object","additionalProperties":false,
@@ -92,11 +98,72 @@ public class ToolRegistry {
              "path":{"type":"string","maxLength":160},"offset":{"type":"integer","minimum":0},
              "limit":{"type":"integer","minimum":1,"maximum":4000}}}
             """;
+    private static final String PAGED_READ_SCHEMA = """
+            {"type":"object","additionalProperties":false,"properties":{
+             "offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":40}}}
+            """;
+    private static final String READ_CANVAS_SCHEMA = PAGED_READ_SCHEMA.replace("\"properties\":{",
+            "\"properties\":{\"includeDrafts\":{\"type\":\"boolean\"},");
+    private static final String MANAGE_CANVAS_SCHEMA = """
+            {"type":"object","additionalProperties":false,"required":["action","itemId","expectedVersion"],
+             "properties":{"action":{"type":"string","enum":["RENAME","MOVE","RESIZE","REMOVE","DUPLICATE"]},
+             "itemId":{"type":"string","format":"uuid"},"expectedVersion":{"type":"integer","minimum":0},
+             "title":{"type":"string","minLength":1,"maxLength":160},"x":{"type":"number"},"y":{"type":"number"},
+             "width":{"type":"number","minimum":1},"height":{"type":"number","minimum":1},
+             "expectedDraftVersion":{"type":"integer","minimum":0}}}
+            """;
+    private static final String UPDATE_MEDIA_DRAFT_SCHEMA = """
+            {"type":"object","additionalProperties":false,"required":["itemId","expectedVersion"],
+             "properties":{"itemId":{"type":"string","format":"uuid"},"expectedVersion":{"type":"integer","minimum":0},
+             "prompt":{"type":"string","maxLength":20000},"parameters":{"type":"object"},
+             "durationSeconds":{"type":"integer","minimum":1,"maximum":60},"capabilityId":{"type":"string","format":"uuid"},
+             "videoInputMode":{"type":"string","enum":["TEXT","START_END","GENERAL_REFERENCE"]},
+             "mediaInputs":{"type":"array","maxItems":14,"items":{"type":"object","additionalProperties":false,
+               "required":["versionId","role"],"properties":{"versionId":{"type":"string","format":"uuid"},
+               "role":{"type":"string","enum":["REFERENCE","START_FRAME","END_FRAME","AUDIO_REFERENCE","VIDEO_REFERENCE"]}}}},
+             "mentions":{"type":"array","maxItems":1000,"items":{"type":"object","additionalProperties":false,
+               "required":["versionId","role"],"properties":{"versionId":{"type":"string","format":"uuid"},
+               "role":{"type":"string","enum":["REFERENCE","START_FRAME","END_FRAME","AUDIO_REFERENCE","VIDEO_REFERENCE"]}}}}}}
+            """;
+    private static final String PROPOSE_CANVAS_MEDIA_SCHEMA = PROPOSE_MEDIA_SCHEMA.replace(
+            "\"capabilityId\":{", "\"canvasItemId\":{\"type\":\"string\",\"format\":\"uuid\"},"
+                    + "\"expectedItemVersion\":{\"type\":\"integer\",\"minimum\":0},"
+                    + "\"expectedDraftVersion\":{\"type\":\"integer\",\"minimum\":0},\"capabilityId\":{");
+
     public List<ToolCallback> modelDefinitions(tools.jackson.databind.JsonNode policy) {
         var allowed = RunToolPolicy.allowed(policy);
         return modelDefinitions().stream().filter(tool -> allowed.contains(
                 tool.getToolDefinition().name())).map(tool -> {
                     var current = tool.getToolDefinition();
+                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
+                            && "read_selection".equals(current.name()))
+                        return definition(current.name(), "Read a page of the frozen canvas selection that expresses the user's intent. Use nextOffset to continue.", PAGED_READ_SCHEMA);
+                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
+                            && "place_artifacts".equals(current.name()))
+                        return definition(current.name(), "Display one to six exact authorized Artifact versions on the canvas. "
+                                + "Reuse a card displaying that exact version or create an independent display card; "
+                                + "never change another node's selection. Returns itemId and itemVersion for arrangement.",
+                                PLACE_CANVAS_ARTIFACTS_SCHEMA);
+                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
+                            && "arrange_items".equals(current.name()))
+                        return definition(current.name(), "Arrange one to six authorized canvas nodes with layout CAS. "
+                                + "Supply each selected versionId when present; omit it only for an empty media draft. Locked nodes cannot be changed.",
+                                ARRANGE_ITEMS_SCHEMA.replace("\"itemId\",\"versionId\",\"expectedVersion\"", "\"itemId\",\"expectedVersion\""));
+                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
+                            && "propose_media_generation".equals(current.name()))
+                        return definition(current.name(), current.description()
+                                + " Supply canvasItemId, expectedItemVersion and expectedDraftVersion to generate a new immutable result on an existing authorized node. "
+                                + "Omit them to create a new node. Both paths require the user's approval.", PROPOSE_CANVAS_MEDIA_SCHEMA);
+
+                    if (policy.path("systemPromptVersion").asInt()
+                            >= InitialModelContextService.SKILL_RESOURCE_PAGING_SYSTEM_PROMPT_VERSION
+                            && "read_skill_resource".equals(current.name()))
+                        return definition(current.name(), "Read one page of a registered text attachment after a successful read_skill reply. "
+                                + "Use the same skillVersionId and exact resourceManifest path (relative to the Skill root). "
+                                + "Resolve nested Markdown links against their source directory and match the manifest; omit heading fragments. "
+                                + "Offsets and totals count Unicode code points. When nextOffset is not null, use it as offset to read the next needed page; "
+                                + "nextOffset=null marks the end. Do not treat partial content as a complete resource.",
+                                PROGRESSIVE_SKILL_RESOURCE_SCHEMA);
                     if (policy.path("systemPromptVersion").asInt()
                             >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION
                             && ("read_artifacts".equals(current.name()) || "read_skill_asset".equals(current.name())))
@@ -122,6 +189,13 @@ public class ToolRegistry {
     /** 返回当前应用服务确实实现且可在此 Run 策略下开放的工具定义。 */
     private List<ToolCallback> modelDefinitions() {
         return List.of(
+                definition("read_canvas", "Read a page of currently present authorized nodes, including new Run outputs, fresh node CAS, locks, selections and media drafts. "
+                        + "Use nextOffset to continue. Default pages contain only metadata, draft CAS and input counts. Set includeDrafts=true with limit at most 6 to inspect editable media input only when needed. Image pixels and immutable content require read_artifacts. selectedVersionReadable=false means a later user selection is metadata only; frozenSelectedVersionId remains the readable original when present.", READ_CANVAS_SCHEMA),
+                definition("manage_canvas_node", "Rename, move, resize, remove or duplicate an authorized unlocked node. "
+                        + "Use itemVersion as expectedVersion. MOVE needs x/y, RESIZE needs width/height, RENAME needs title. "
+                        + "Media DUPLICATE also needs mediaDraft.version as expectedDraftVersion. REMOVE keeps the underlying artifact and history.", MANAGE_CANVAS_SCHEMA),
+                definition("update_media_draft", "Edit an authorized unlocked IMAGE, VIDEO or AUDIO node's working draft without generating. "
+                        + "Use mediaDraft.version as expectedVersion. Omitted fields retain their existing values; replacing prompt clears old structured mentions unless mentions is supplied. U+FFFC markers require matching mentions. Media references must be exact authorized versions.", UPDATE_MEDIA_DRAFT_SCHEMA),
                 definition("read_project_summary",
                         "Read the current project's bounded metadata and pinned Run limits",
                         READ_PROJECT_SUMMARY_SCHEMA),

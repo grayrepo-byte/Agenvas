@@ -28,6 +28,7 @@ import dev.agenvas.task.api.TaskController;
 import dev.agenvas.task.application.ImagePromptTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.testing.MigrationVersions;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -244,7 +245,7 @@ class ImagePromptPostgresIT {
         }
         var upgraded = Flyway.configure().dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").load().migrate();
-        assertThat(upgraded.migrationsExecuted).isEqualTo(1);
+        assertThat(upgraded.migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 23);
         try (var connection = java.sql.DriverManager.getConnection(url, POSTGRES.getUsername(), POSTGRES.getPassword());
                 var statement = connection.createStatement();
                 var rows = statement.executeQuery("select key,content,built_in from prompt_definition where key in ('text.generate','image.reverse-prompt') order by key")) {

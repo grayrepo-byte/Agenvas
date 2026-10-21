@@ -16,8 +16,6 @@ const NODE_TYPES = {
   handles: () => <>
     <CanvasHandle id="artifact-output" />
     <CanvasHandle id="artifact-input" />
-    <CanvasHandle id="agent-input" />
-    <CanvasHandle id="agent-output" />
   </>,
 };
 
@@ -111,10 +109,9 @@ describe("CanvasHandle hover motion", () => {
     expect(offset(handle)).toEqual({ x: 0, y: 0 });
   });
 
-  it("keeps input targets still and leaves the Agent output anchor without a visible icon", () => {
-    const { container, handle, move } = showHandle(1, ".canvas-handle--in");
+  it("keeps media input targets still", () => {
+    const { handle, move } = showHandle(1, ".canvas-handle--in");
     move(20, 0);
     expect(offset(handle)).toEqual({ x: 0, y: 0 });
-    expect(container.querySelector(".canvas-handle--anchor svg")).toBeNull();
   });
 });

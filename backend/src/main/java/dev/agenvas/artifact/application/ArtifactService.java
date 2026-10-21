@@ -335,7 +335,7 @@ public class ArtifactService {
                 .value();
     }
 
-    /** Agent 只能改写本 Run 显式绑定或本轮创建的产物，引用版本也须处于可见范围。 */
+    /** Agent 只能改写本 Run 冻结画布、显式输入或本轮创建的产物，引用版本也须处于可见范围。 */
     @Transactional
     public ArtifactView reviseFromAgent(UUID ownerId, UUID projectId, UUID runId,
             JsonNode contextSnapshot, UUID artifactId, long expectedArtifactVersion,
@@ -381,6 +381,8 @@ public class ArtifactService {
                         }
                     }
                 }
+                unchangedBinding |= dev.agenvas.run.domain.RunCanvasScope.unchangedText(
+                        contextSnapshot, artifactId, current.resourceDefaultVersionId(), current.version());
                 if (!unchangedBinding) {
                     throw versionConflict();
                 }
@@ -481,6 +483,15 @@ public class ArtifactService {
         return artifacts.findVersion(projectId, target.artifactId(), versionId).orElseThrow(this::notFound);
     }
 
+    /** Resolves a user-selected immutable input within the owned project. The caller must
+     * freeze this explicit choice; this lookup alone never widens a model Run's scope. */
+    @Transactional(readOnly = true)
+    public ArtifactVersion requireVersionById(UUID ownerId, UUID projectId, UUID versionId) {
+        projects.get(ownerId, projectId);
+        var target = artifacts.findVersionTarget(projectId, versionId).orElseThrow(this::notFound);
+        return requireVersion(ownerId, projectId, target.artifactId(), versionId);
+    }
+
     /** 只解析同项目图片版本，供可信媒体任务读取已固定的参考图。 */
     public ArtifactVersion requireImageVersionForTask(UUID ownerId, UUID projectId,
             UUID versionId) {
@@ -510,7 +521,7 @@ public class ArtifactService {
     public record ConversationInput(UUID artifactId, UUID selectedVersionId,
             Artifact.Kind kind, String title, Long expectedVersion) {}
 
-    /** 限制 Agent 只能读取创建 Run 时绑定的精确版本（含会话继承）或本轮输出。 */
+    /** 限制 Agent 只能读取冻结画布、显式 Run 输入（含历史绑定）或本轮输出的精确版本。 */
     @Transactional(readOnly = true)
     public ArtifactVersion requireAgentVisibleVersion(UUID ownerId, UUID projectId,
             UUID runId, UUID versionId, JsonNode contextSnapshot) {
@@ -533,7 +544,9 @@ public class ArtifactService {
                 }
             }
         }
-        if (!createdInRun && !explicitlyBound) {
+        boolean onCanvas = dev.agenvas.run.domain.RunCanvasScope.containsVersion(
+                contextSnapshot, target.artifactId(), versionId);
+        if (!createdInRun && !explicitlyBound && !onCanvas) {
             throw new ApiProblemException(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED",
                     ApiMessage.of("api.artifact-service.input-exceeds-authorization-range"), ApiMessage.of("api.artifact-service.agents-can-only-reference-the-output-of-this-round-or"), false);
         }

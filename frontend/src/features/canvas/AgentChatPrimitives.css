@@ -3,16 +3,16 @@
 .agent-chat-message,
 .agent-chat-task,
 .agent-chat-approval {
-  --agent-chat-ink: #f4f4f5;
-  --agent-chat-muted: #a1a1aa;
-  --agent-chat-faint: #73737a;
-  --agent-chat-surface: #1e1e1e;
-  --agent-chat-field: #292929;
-  --agent-chat-hover: #323232;
+  --agent-chat-ink: var(--ui-text);
+  --agent-chat-muted: var(--ui-text-muted);
+  --agent-chat-faint: var(--ui-text-subtle);
+  --agent-chat-surface: var(--ui-surface);
+  --agent-chat-field: var(--ui-field);
+  --agent-chat-hover: var(--ui-hover);
   --agent-chat-line: rgba(255, 255, 255, 0.12);
-  --agent-chat-success: #a3d9b1;
-  --agent-chat-failure: #f4a2a7;
-  --agent-chat-unknown: #e9c68b;
+  --agent-chat-success: var(--ui-success);
+  --agent-chat-failure: var(--ui-danger);
+  --agent-chat-unknown: var(--ui-warning);
   --agent-chat-focus: var(--ui-focus);
   --agent-chat-control-transition: 160ms;
 

@@ -4,6 +4,7 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.llm.application.LlmTurn;
 import dev.agenvas.llm.application.LlmModeProperties;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.domain.UsageEntry;
 import java.math.BigDecimal;
@@ -227,6 +228,7 @@ public class UsageService {
                                         && !"VIDEO_AUDIO_TRACK_MISSING".equals(task.errorCode())
                                         && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(task.errorCode())
                                         && !"MEDIA_RELAY_REQUIRED".equals(task.errorCode())
+                                        && !ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED.equals(task.errorCode())
                                         && !"MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED".equals(task.errorCode()))))
                 || task.providerRequestId() != null) {
             throw new IllegalArgumentException("Media release requires unsubmitted terminal work");

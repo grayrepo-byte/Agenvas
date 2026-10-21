@@ -82,6 +82,45 @@ class ProgressiveSkillTest {
                 .path("data").path("content").asText()).isEqualTo("😀甲😀乙");
     }
 
+    @Test void currentManifestPlansUnicodePagesWithoutEagerlyLoadingResourceBodies() {
+        AgentRun run = run(3);
+        ((ObjectNode) run.policySnapshot()).put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        String content = "😀".repeat(4_100) + "PAGE_END_SENTINEL";
+        ((ObjectNode) run.contextSnapshot().path("creativeSkills").path(0).path("resources").path(0))
+                .put("content", content);
+        when(ledger.skillReads(any(), any())).thenReturn(List.of());
+        JsonNode main = reader.skill(run, UUID.randomUUID(), "{\"skillVersionId\":\"" + first + "\"}").path("data");
+        assertThat(main.path("resourceManifest").path(0).path("total").asInt()).isEqualTo(4_117);
+        assertThat(main.path("resourcePageLimit").asInt()).isEqualTo(4_000);
+        assertThat(main.toString()).doesNotContain("PAGE_END_SENTINEL", "😀", "SECOND_RESOURCE");
+        when(ledger.skillReads(any(), any())).thenReturn(List.of(main));
+        JsonNode firstPage = reader.skillResource(run, UUID.randomUUID(), resourceArgs(first, 0, 4_000)).path("data");
+        assertThat(firstPage.path("content").asText()).isEqualTo("😀".repeat(4_000));
+        assertThat(firstPage.path("nextOffset").asInt()).isEqualTo(4_000);
+        JsonNode lastPage = reader.skillResource(run, UUID.randomUUID(), resourceArgs(first, firstPage.path("nextOffset").asInt(), 4_000)).path("data");
+        assertThat(firstPage.path("content").asText() + lastPage.path("content").asText()).isEqualTo(content);
+        assertThat(lastPage.path("endOffset").asInt()).isEqualTo(4_117);
+        assertThat(lastPage.path("nextOffset").isNull()).isTrue();
+        assertInvalid(() -> reader.skillResource(run, UUID.randomUUID(), resourceArgs(first, 4_118, 4_000)));
+    }
+
+    @Test void currentPagingGuidanceIsVersionedAndHistoricalManifestsRemainUnchanged() {
+        AgentRun run = run(3);
+        JsonNode historical = reader.skill(run, UUID.randomUUID(), "{\"skillVersionId\":\"" + first + "\"}").path("data");
+        assertThat(historical.path("resourceManifest").path(0).has("total")).isFalse();
+        assertThat(historical.has("resourcePageLimit")).isFalse();
+        var policy = (ObjectNode) run.policySnapshot();
+        policy.putArray("allowedTools").add("read_skill_resource");
+        policy.put("systemPromptVersion", 10);
+        assertThat(InitialModelContextService.systemRules(policy)).doesNotContain("nextOffset", "heading fragment");
+        assertThat(new ToolRegistry().modelDefinitions(policy).getFirst().getToolDefinition().description())
+                .doesNotContain("nextOffset");
+        policy.put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        assertThat(InitialModelContextService.systemRules(policy)).contains("nextOffset=null", "later tool batch", "heading fragment");
+        assertThat(new ToolRegistry().modelDefinitions(policy).getFirst().getToolDefinition().description())
+                .contains("nextOffset", "source directory", "partial content");
+    }
+
     @Test void toolDefinitionsPinBothHistoricalAndProgressiveSchemas() {
         var registry = new ToolRegistry();
         ObjectNode policy = mapper.createObjectNode().put("systemPromptVersion", 7).put("toolPolicyVersion", 1);
@@ -121,9 +160,10 @@ class ProgressiveSkillTest {
 
     @Test void newImageProtocolIsVersionedWithoutChangingHistoricalProgressiveRules() {
         var policy = mapper.createObjectNode().put("toolPolicyVersion", 3).put("systemPromptVersion", 9);
-        policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.current(true, true, true)));
+        // Pin historical tools rather than inheriting additions to the current policy.
+        policy.putArray("allowedTools").add("read_skill_asset").add("read_skill").add("read_skill_resource");
         assertThat(new ToolRegistry().modelDefinitions(policy).stream().map(tool -> tool.getToolDefinition().name()))
-                .contains("read_skill_asset", "read_skill", "read_skill_resource");
+                .containsExactlyInAnyOrder("read_skill_asset", "read_skill", "read_skill_resource");
         assertThat(RunToolPolicy.current(true, true, false)).doesNotContain("read_skill_asset");
         assertThat(InitialModelContextService.systemRules(policy)).contains("read_skill_asset", "LLM context only")
                 .doesNotContain("required PROVIDER_REFERENCE assets must appear", "GUIDE assets are context only");

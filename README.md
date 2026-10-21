@@ -33,7 +33,7 @@
 | --- | --- |
 | 画布创作 | 拖拽、框选、连线与自动整理，支持上传本地媒体 |
 | 多模态生成 | 文字、图片、视频、音频逐卡片运行，支持排队、取消、重新生成与历史版本 |
-| Agent 协作 | 读取绑定上下文、编辑文字、摆放卡片；媒体生成提案经用户批准后执行 |
+| Agent 协作 | 右下角导演聊天按需读取并操作当前画布，支持持久会话与 Skill；媒体生成提案经用户批准后执行 |
 | 素材复用 | 项目资源、个人资产库、提示词模板、媒体风格与混合参考输入 |
 | 图片处理 | 标注、裁剪、旋转、镜像、放大、深度提取，以及配置能力支持的 AI 编辑 |
 | 自托管管理 | 模型配置、本地及 OSS/COS/S3 存储、任务与调用记录、项目清单导出 |
@@ -102,7 +102,7 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 - **文字与 Agent**：在“设置 → 模型配置”中添加 OpenAI 兼容端点、模型 ID 和 API Key。使用 Agent 前，管理员须运行工具调用诊断。
 - **图片、视频与音频**：在“媒体配置”中创建连接、发布能力并设置默认模型。默认部署需完成真实模型配置后才能生成媒体。
 
-创建项目，通过画布右键菜单添加卡片或上传素材。选择模型、填写提示词和参考输入，检查预计费用后运行；完成后可预览、选用结果或重新生成。Agent 卡片可绑定上下文并选择 Skill，媒体提案在对话中统一批准或拒绝。
+创建项目，通过画布右键菜单添加卡片或上传素材。选择模型、填写提示词和参考输入，检查预计费用后运行；完成后可预览、选用结果或重新生成。打开右下角导演聊天即可使用项目助手，按需读取并操作当前画布；选中节点可突出本次任务重点。Skill 的必需输入从画布内容中明确选择并固定精确版本，媒体提案在对话中统一批准或拒绝；无需添加 Agent 节点或绑定素材。
 
 媒体中继可按功能独立控制 OpenAI 兼容 LLM 图片输入与 OpenAI Images 参考图/蒙版；未启用时保持原传输。Seedance 和 MiniMax H3 本地视频参考需要可公网访问的中继，配置见[媒体中继说明](docs/media-relay-design.md)。
 
@@ -195,7 +195,7 @@ docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/c
 docker compose -f docker-compose.local.yml up -d --build --wait
 ```
 
-也可使用 `./deploy/update-local.sh`，先完成全部镜像构建，再更新容器并等待健康检查；后端仅执行 `package -DskipTests`，不自动运行 `mvn verify`，完整测试按需手动执行或由 CI 执行。完成后仅显示容器名、服务、状态和端口，避免完整启动命令撑宽状态表。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
+也可使用 `./deploy/update-local.sh`，先完成镜像构建，再更新容器并等待健康检查，分别显示构建与更新耗时。默认复用基础镜像，`./deploy/update-local.sh --pull` 显式刷新；只改后端或前端时，可运行 `./deploy/update-local.sh server` 或 `./deploy/update-local.sh web`（首次部署先构建两者）。源码 Compose 使用独立的 BuildKit Maven 缓存，即使 `pom.xml` 变化也保留已下载包；首次填充或清理 Docker 缓存后仍需下载。本机 `~/.m2` 不会自动共享给构建容器。后端执行 `package -Dmaven.test.skip=true`，跳过测试编译与执行，不自动运行 `mvn verify`；完整测试按需手动执行或由 CI 执行。完成后仅显示容器名、服务、状态和端口。源码构建无需 Docker Hub 登录；默认文字与媒体仍为 `configured`。原 `deploy/compose.yaml` 使用同一套源码构建配置。
 
 镜像部署和源码构建默认项目名均为 `agenvas`，沿用相同数据库、素材和密钥卷，切换时须备份并保证版本兼容。它们是同一环境的两种启动方式；若要并行运行，需用 `-p` 指定独立项目名并修改端口。
 

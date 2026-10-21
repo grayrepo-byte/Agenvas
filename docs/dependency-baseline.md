@@ -55,6 +55,8 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 2026-10-05 调用日志日期组件新增精确正式版本：[`react-day-picker` 10.0.2](https://daypicker.dev/) 与 [`date-fns` 4.4.0](https://date-fns.org/)，通过 shadcn CLI 加入 Calendar 与 Popover 源码。使用 React DayPicker 单日选择、四语言 locale 与 date-fns 本地时间格式化；沿用现有 Radix、Phosphor、主题及其他依赖版本。验证范围为调用日志 Mock HTTP 组件测试、TypeScript、lint、四语言/主题检查与 Vite 构建；实际结果见开发清单。
 
+2026-10-20 导演聊天窗口使用 shadcn CLI 新增 MessageScroller、Message 与 Bubble 源码，新增正式依赖 `@shadcn/react` 精确版本 0.3.1；沿用现有 Radix、Phosphor 与 React 19，不覆盖既有基础组件。MessageScroller 管理流式跟随、历史锚定和回到最新消息。源码与用法见 [shadcn 聊天组件](https://ui.shadcn.com/docs/components/radix/message-scroller)。验证覆盖聊天、窗口生命周期、画布集成、四语言、类型、lint、生产构建及使用合成数据的浏览器尺寸与交互；实际结果见开发清单，不等于真实模型验收。
+
 ## 容器镜像
 
 | 用途 | 精确镜像 | 多架构 digest |
@@ -68,6 +70,12 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 server 和 web 使用非 root 用户、只读根文件系统及受限 tmpfs；PostgreSQL 在各 Compose 内联入口中首次生成持久密钥后，交由官方入口初始化数据库并以 postgres 用户运行。server 从只读 credentials-data 文件读取数据库密码与凭证主密钥，目录为 0700、文件为 0600，UID 100/GID 101。默认镜像部署仅发布 Web 8088 到 `0.0.0.0`；源码与 Mock Compose 保留三个端口的 `127.0.0.1` 绑定。部署定向测试使用 Python 3 标准库和隔离官方 PostgreSQL，运行服务不需要 Python；8 项通过，详见 T02。
 
 Web 运行镜像在固定 Alpine 基础镜像上执行 `apk upgrade --no-cache`；server 使用固定 Ubuntu Noble/Temurin glibc 镜像并执行 `apt-get upgrade`，因为 Maven 发布的 ONNX Runtime Linux 原生库依赖 glibc，不能在 Alpine/musl 上可靠加载。实际 OS 包版本由每次镜像 SBOM 记录，不能仅凭基础镜像 digest 推断。2026-10-04 按用户决定，PostgreSQL 直接使用[官方固定版本镜像](https://hub.docker.com/_/postgres)，移除自建 Dockerfile、su-exec 替换和 gosu 路径扫描排除；CI 直接拉取并扫描官方镜像。旧派生镜像扫描和初始化结果是历史记录，不代表当前官方镜像的安全验收。
+
+## 源码构建缓存与本地更新
+
+不改变 Maven、Java、Node、基础镜像或应用依赖版本。源码 Compose 显式传入 `MAVEN_CACHE_MOUNT=true`，用 BuildKit 的 `agenvas-maven` 缓存保存 Maven wrapper 与依赖包，串行锁保护共享目录；POM 层失效时仍可复用已下载文件，不再预解析部署不使用的 install/site 插件。没有自动复制宿主机 `~/.m2`。首次使用、换 builder 或清理 Docker 缓存后需要重新填充。
+
+普通 Dockerfile 构建默认保留 `dependency:go-offline` 层，供 CI 的 GHA layer cache 继续跨 runner 复用；cache mount 的数据不随该缓存自动导出。所有构建的生产打包改用 `-Dmaven.test.skip=true`，测试源码在其后复制，只有显式 `VERIFY_DEPTH_MODEL=true` 执行原深度模型 smoke test。本地更新脚本默认不强制拉取基础镜像，`--pull` 显式拉取，`server` / `web` 可缩小构建范围。验证范围为脚本故障/命令回归、四种 Compose 配置、实际镜像构建、跨 POM 层失效的离线 Maven 包复用和定向模型 smoke test；实际运行结果与未验证范围见开发清单。
 
 ## 初始基线验证（历史记录）
 
@@ -143,3 +151,7 @@ CI 的 jOOQ 漂移检查不再占用固定 55432 端口；Docker 自动预留仅
 ## 2026-10-06 GitHub Release Notes
 
 不升级应用依赖、构建镜像或 Docker Actions；新增 Release job 复用 GitHub Ubuntu runner 的 Python 标准库与 GitHub CLI。仅版本标签推送在 CI Gate 和 server/web 双架构 Docker Hub 发布成功后获得 job 级 `contents: write`；其他 job 继续只读。通过 [Release Notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release) 生成 PR/贡献者/变更链接，结合 Git 标签区间实际提交与版本镜像地址构造说明，再用 [gh release create/edit](https://cli.github.com/manual/gh_release_create) 创建或补齐空白说明，不新建/移动标签、不覆盖已有说明或发布草稿。PR、main、普通手动运行不创建 Release，也不重建镜像。脚本核对远端标签与验证提交；预发布和旧稳定版本补发不抢占 Latest。实际检查与尚未验证范围见开发清单。
+
+## SMB / WebDAV 验证范围
+
+SMB 新增固定正式版 [`com.hierynomus:smbj:0.15.0`](https://github.com/hierynomus/smbj/releases/tag/v0.15.0)，使用 SMB2/3、强制签名、关闭 DFS 和带超时的会话。Maven 在 Spring Boot BOM 管理下解析传递依赖；WebDAV 复用 OkHttp 4.12.0，不引入 WebDAV SDK。协议根据 [RFC 4918](https://www.rfc-editor.org/rfc/rfc4918.html) 实现 MKCOL/PUT/MOVE/HEAD/GET/DELETE，发布禁止覆盖并核对 SHA-256。验证涵盖协议单元测试、真实 PostgreSQL 加模拟 WebDAV HTTP、现有对象存储与媒体中继回归，以及前端设置、四语言、类型、lint 和构建。真实 NAS/WebDAV 产品与大文件吞吐未验证；具体执行结果见开发清单。

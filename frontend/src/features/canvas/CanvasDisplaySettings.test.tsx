@@ -22,7 +22,7 @@ const now = "2026-10-01T00:00:00Z";
 const items: CanvasItem[] = ["parent", "node", "child", "other"].map((id, index) => ({
   id, title: id, subjectType: "ARTIFACT", subjectId: `artifact-${id}`, x: index * 300, y: 0,
   width: 280, height: 180, zIndex: index, groupId: null, locked: false, version: 1,
-  selectedVersionId: null, selectedVersion: null, agent: null,
+  selectedVersionId: null, selectedVersion: null,
   artifact: { id: `artifact-${id}`, projectId: "project-1", kind: "TEXT", title: id,
     resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 1, createdAt: now, updatedAt: now },
 }));

@@ -1,5 +1,4 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { ReactFlowProvider } from "@xyflow/react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -7,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Agent, AgentRun, AgentConversation, CreateRunRequest, RunPreflight } from "../../shared/api/client";
 import { server } from "../../test/server";
-import { AgentChatCard, type AgentChatCardData } from "./AgentChatCard";
+import { AgentChatPanel, type AgentChatPanelData } from "./AgentChatPanel";
 import { useCanvasStore } from "./canvasStore";
 import { projectCacheCallbacks } from "./projectCache";
 import { runAssistantStreamKey, type AssistantTurnStream } from "./agentRunStream";
@@ -21,10 +20,8 @@ const CONVERSATIONS_URL = `/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/con
 const NOW = "2026-09-26T10:00:00Z";
 const TASK_TEXT = "规划三个镜头，生成之前先给我检查。";
 const AGENT: Agent = {
-  id: AGENT_ID, projectId: PROJECT_ID, name: "创作助手", instruction: "依据绑定素材提出创作计划。",
-  profileKey: "creator", profileVersion: 1, outputGroupId: "output-group-1",
-  version: AGENT_VERSION, createdAt: NOW, updatedAt: NOW, bindings: [],
-};
+  id: AGENT_ID, projectId: PROJECT_ID, name: "创作助手", instruction: "依据当前画布提出创作计划。",
+  profileKey: "creator", profileVersion: 1, version: AGENT_VERSION, createdAt: NOW, updatedAt: NOW, };
 const PREFLIGHT: RunPreflight = {
   agentId: AGENT_ID, agentVersion: AGENT_VERSION, agentName: AGENT.name,
   agentInstruction: AGENT.instruction, bindings: [], modelAvailable: true,
@@ -39,8 +36,7 @@ function run(overrides: Partial<AgentRun> = {}): AgentRun {
   return { id: "run-current", projectId: PROJECT_ID, agentInstanceId: AGENT_ID,
     conversationId: CONVERSATION_ID, conversationTurn: 1, status: "QUEUED", instruction: TASK_TEXT, contextSnapshot: {
       agentId: AGENT_ID, agentVersion: AGENT_VERSION, profileKey: "creator",
-      profileVersion: 1, outputGroupId: AGENT.outputGroupId, bindings: [],
-    }, policySnapshot: PREFLIGHT.policySnapshot, profileVersion: 1, nextStepIndex: 0,
+      profileVersion: 1, }, policySnapshot: PREFLIGHT.policySnapshot, profileVersion: 1, nextStepIndex: 0,
     version: 1, createdAt: NOW, updatedAt: NOW, ...overrides };
 }
 
@@ -64,21 +60,17 @@ function persistConversation(id = "conversation-new") {
   return HttpResponse.json(created, { status: 201 });
 }
 
-function mountCard(activeRun: AgentRun | null = null, overrides: Partial<AgentChatCardData> = {}, onOuterClick?: () => void) {
+function mountPanel(activeRun: AgentRun | null = null, overrides: Partial<AgentChatPanelData> = {}, onOuterClick?: () => void) {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
-  const data: AgentChatCardData = {
-    item: { id: "agent-item-1", subjectType: "AGENT", subjectId: AGENT_ID,
-      title: AGENT.name,
-      x: 0, y: 0, width: 460, height: 600, zIndex: 0, locked: true, selectedVersionId: null, selectedVersion: null, version: 1,
-      artifact: null, agent: AGENT },
+  const data: AgentChatPanelData = {
+    agent: AGENT, canvasNodeCount: 4, selectedNodeCount: 0,
     projectId: PROJECT_ID, activeRun, outputCount: 0,
-    onShowOutputs: vi.fn(), onResizeEnd: vi.fn(), onRemove: vi.fn(),
-    onToggleLocked: vi.fn(), onUpdateAgent: vi.fn(), updatingAgent: false, ...overrides,
+    onShowOutputs: vi.fn(), onUpdateAgent: vi.fn(), updatingAgent: false, ...overrides,
   };
-  render(<QueryClientProvider client={client}><ReactFlowProvider>
-    <div onClick={onOuterClick}><AgentChatCard data={data} selected /></div>
-  </ReactFlowProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={client}>
+    <div onClick={onOuterClick}><AgentChatPanel data={data} /></div>
+  </QueryClientProvider>);
   return client;
 }
 
@@ -90,7 +82,7 @@ async function readyComposer() {
 
 it("retains unsaved Agent configuration across chat and settings tabs", async () => {
   const onUpdateAgent = vi.fn();
-  mountCard(null, { onUpdateAgent });
+  mountPanel(null, { onUpdateAgent });
   const user = userEvent.setup();
   await readyComposer();
   await user.click(screen.getByRole("button", { name: "Agent 设置" }));
@@ -130,11 +122,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("AgentChatCard", () => {
+describe("AgentChatPanel", () => {
   it("uses a newer blocked Run summary while the project snapshot still says running", async () => {
     const current = run({ status: "RUNNING" });
     storedRuns = [{ ...current, status: "BLOCKED", updatedAt: "2026-09-26T10:00:01Z" }];
-    mountCard(current);
+    mountPanel(current);
     expect(await screen.findByRole("button", { name: "结束本次运行" })).toBeEnabled();
     expect(screen.getByText("需要处理", { selector: ".agent-chat-heading > span" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "停止" })).not.toBeInTheDocument();
@@ -143,7 +135,7 @@ describe("AgentChatCard", () => {
   it("does not regress a newer running snapshot to an older blocked summary", async () => {
     const current = run({ status: "RUNNING", updatedAt: "2026-09-26T10:00:01Z" });
     storedRuns = [run({ status: "BLOCKED" })];
-    mountCard(current);
+    mountPanel(current);
     await readyComposer();
     expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "结束本次运行" })).not.toBeInTheDocument();
@@ -152,7 +144,7 @@ describe("AgentChatCard", () => {
   it("prefers a terminal Run list entry at the same timestamp and retains its history while releasing the send slot", async () => {
     const snapshot = run({ status: "RUNNING" });
     storedRuns = [{ ...snapshot, status: "SUCCEEDED" }];
-    mountCard(snapshot);
+    mountPanel(snapshot);
     await userEvent.setup().type(await readyComposer(), "继续下一次创作");
     await waitFor(() => expect(screen.getByRole("button", { name: "发送" })).toBeEnabled());
     expect(screen.getByRole("article", { name: "你" })).toHaveTextContent(TASK_TEXT);
@@ -170,7 +162,7 @@ describe("AgentChatCard", () => {
       storedRuns = [canceled];
       return HttpResponse.json(canceled);
     }));
-    mountCard(blocked);
+    mountPanel(blocked);
     const user = userEvent.setup();
     await user.type(await readyComposer(), "继续使用已完成图片创作");
     expect(await screen.findByRole("button", { name: "结束本次运行" })).toBeEnabled();
@@ -191,9 +183,9 @@ describe("AgentChatCard", () => {
       outputs: [{ kind: "IMAGE", title: "合成图片", artifactId: "image-1", canvasItemId: "image-item-1",
         draftVersion: 0, preview: { prompt: "合成图片", priceUnknown: true } }] };
     server.use(http.get(`${RUNS_URL}/${active.id}/media-approvals`, () => HttpResponse.json([pending])));
-    const client = mountCard(active);
+    const client = mountPanel(active);
     const review = await screen.findByRole("button", { name: "查看待审批 · 1 项" });
-    const card = screen.getByRole("article", { name: "创作助手 聊天卡片" });
+    const card = screen.getByRole("article", { name: "创作助手 导演对话" });
     const body = card.querySelector<HTMLElement>(".agent-chat-body");
     if (!body) throw new Error("Missing scrolling transcript");
     expect(body).not.toContainElement(review);
@@ -201,69 +193,25 @@ describe("AgentChatCard", () => {
     const scrollTo = vi.fn();
     body.scrollTo = scrollTo;
     await userEvent.setup().click(review);
-    expect(scrollTo).toHaveBeenCalled();
     expect(document.activeElement).toHaveAttribute("data-media-approval-id", pending.id);
     act(() => client.setQueryData(["run-media-approvals", PROJECT_ID, active.id], [{ ...pending, status: "APPROVED" }]));
     await waitFor(() => expect(screen.queryByRole("button", { name: "查看待审批 · 1 项" })).not.toBeInTheDocument());
   });
 
-  it("follows growing streamed content only while the user remains at the bottom, with the composer outside scrolling content", async () => {
-    const observations: { callback: ResizeObserverCallback; observer: ResizeObserver; targets: Set<Element> }[] = [];
-    class ControlledResizeObserver implements ResizeObserver {
-      private readonly targets = new Set<Element>();
-      constructor(callback: ResizeObserverCallback) { observations.push({ callback, observer: this, targets: this.targets }); }
-      observe(target: Element) { this.targets.add(target); }
-      unobserve(target: Element) { this.targets.delete(target); }
-      disconnect() { this.targets.clear(); }
-    }
-    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
-    let contentHeight = 1200;
-    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(() => contentHeight);
-    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(400);
+  it("renders streamed replies through the chat scroller while keeping task controls outside the transcript", async () => {
     const current = run({ status: "RUNNING" });
-    const client = mountCard(current);
+    const client = mountPanel(current);
     await readyComposer();
-    const card = screen.getByRole("article", { name: "创作助手 聊天卡片" });
-    const body = card.querySelector<HTMLElement>(".agent-chat-body");
-    const transcript = card.querySelector<HTMLElement>(".agent-chat-transcript");
-    if (!body || !transcript) throw new Error("Chat scrolling elements are required");
-    await waitFor(() => expect(body.scrollTop).toBe(contentHeight));
-    const observation = observations.find((entry) => entry.targets.has(transcript));
-    if (!observation) throw new Error("Transcript resize observer is required");
-    expect(observation.targets).toEqual(new Set([transcript, body]));
-    const composer = screen.getByRole("form", { name: "发送新任务" });
-    expect(body).not.toContainElement(composer);
-    expect(body.nextElementSibling).toHaveClass("agent-chat-feedback");
-    expect(body.nextElementSibling?.nextElementSibling).toBe(composer);
-
-    const updateReply = (text: string, height: number) => {
-      act(() => {
-        contentHeight = height;
-        client.setQueryData<AssistantTurnStream[]>(runAssistantStreamKey(PROJECT_ID, current.id), [{
-          taskId: "stream-task", stepIndex: 0, streamEpoch: 1, chunkIndex: 1, text, status: "STREAMING",
-        }]);
-        observation.callback([], observation.observer);
-      });
-    };
-    body.scrollTop = contentHeight - body.clientHeight;
-    fireEvent.scroll(body);
-    updateReply("正在收到的第一段回复", 1600);
-    expect(await screen.findByText("正在收到的第一段回复")).toBeInTheDocument();
-    expect(body.scrollTop).toBe(1600);
-
-    body.scrollTop = 300;
-    fireEvent.scroll(body);
-    updateReply("正在收到的第一段回复以及更多内容", 1800);
-    expect(await screen.findByText("正在收到的第一段回复以及更多内容")).toBeInTheDocument();
-    expect(body.scrollTop).toBe(300);
-
-    body.scrollTop = contentHeight - body.clientHeight;
-    fireEvent.scroll(body);
-    updateReply("继续看到最新收到的回复", 2200);
-    expect(await screen.findByText("继续看到最新收到的回复")).toBeInTheDocument();
-    expect(body.scrollTop).toBe(2200);
-    cleanup();
-    expect(observation.targets.size).toBe(0);
+    const panel = screen.getByRole("article", { name: "创作助手 导演对话" });
+    const body = within(panel).getByRole("region", { name: "对话" });
+    expect(body).not.toContainElement(screen.getByRole("form", { name: "发送新任务" }));
+    act(() => client.setQueryData<AssistantTurnStream[]>(runAssistantStreamKey(PROJECT_ID, current.id), [{
+      taskId: "stream-task", stepIndex: 0, streamEpoch: 1, chunkIndex: 1,
+      text: "正在收到的第一段回复", status: "STREAMING",
+    }]));
+    expect(await within(body).findByText("正在收到的第一段回复")).toBeInTheDocument();
+    expect(body.querySelector(`[data-message-id="${current.id}"]`)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
   });
 
   it("preflights and starts a run with one send, without an extra confirmation", async () => {
@@ -282,7 +230,7 @@ describe("AgentChatCard", () => {
       }),
     );
     useCanvasStore.getState().setSelectedIds(["selected-image-1"]);
-    mountCard();
+    mountPanel();
     expect(screen.getByRole("textbox", { name: "本次任务" })).toBeDisabled();
     const user = userEvent.setup();
     await user.type(await readyComposer(), TASK_TEXT);
@@ -310,7 +258,7 @@ describe("AgentChatCard", () => {
       http.post(`${RUNS_URL}/preflight`, () => HttpResponse.json({ ...PREFLIGHT, ...preview })),
       http.post(RUNS_URL, () => { creations++; return persistRun(); }),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     await user.type(await readyComposer(), TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
@@ -328,7 +276,7 @@ describe("AgentChatCard", () => {
       http.post(`${RUNS_URL}/preflight`, async () => { checks++; await gate; return HttpResponse.json(PREFLIGHT); }),
       http.post(RUNS_URL, () => { creations++; return persistRun(); }),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     const input = await readyComposer();
     await user.type(input, TASK_TEXT);
@@ -359,7 +307,7 @@ describe("AgentChatCard", () => {
         return requests.length === 1 ? new HttpResponse(null, { status: 503 }) : saved;
       }),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     await user.type(await readyComposer(), TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
@@ -381,10 +329,10 @@ describe("AgentChatCard", () => {
       http.post(RUNS_URL, () => HttpResponse.json({ code: "INTERNAL_ERROR", detail: "服务端暂时无法完成请求。", retryable: true },
         { status: 500, headers: { "Content-Type": "application/problem+json" } })),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     await user.type(await readyComposer(), TASK_TEXT);
-    const card = screen.getByRole("article", { name: "创作助手 聊天卡片" });
+    const card = screen.getByRole("article", { name: "创作助手 导演对话" });
     const body = card.querySelector<HTMLElement>(".agent-chat-body");
     if (!body) throw new Error("Missing scrolling transcript");
     body.scrollTop = 100;
@@ -405,9 +353,9 @@ describe("AgentChatCard", () => {
       id: "failed-turn", kind: "AGENT_TURN", status: "FAILED", errorCode: "AGENT_TURN_FAILED",
       input: {}, output: {}, attemptNo: 1,
     }])));
-    mountCard();
+    mountPanel();
     await readyComposer();
-    const card = screen.getByRole("article", { name: "创作助手 聊天卡片" });
+    const card = screen.getByRole("article", { name: "创作助手 导演对话" });
     const body = card.querySelector<HTMLElement>(".agent-chat-body");
     if (!body) throw new Error("Missing scrolling transcript");
     body.scrollTop = 100;
@@ -429,7 +377,7 @@ describe("AgentChatCard", () => {
       http.post(`${RUNS_URL}/${blocked.id}/cancel`, () => { cancellations++; return HttpResponse.json(blocked); }),
       http.post(RUNS_URL, () => { submissions++; return persistRun(); }),
     );
-    const client = mountCard(blocked);
+    const client = mountPanel(blocked);
     await userEvent.setup().type(await readyComposer(), "继续使用已完成图片创作");
     expect(await screen.findByRole("button", { name: "结束本次运行" })).toBeEnabled();
     storedRuns = [{ ...blocked, status: "FAILED", version: blocked.version + 1, updatedAt: "2026-09-26T10:00:01Z" }];
@@ -451,7 +399,7 @@ describe("AgentChatCard", () => {
       id: "changing-turn", kind: "AGENT_TURN", status: failed ? "FAILED" : "RUNNING",
       errorCode: failed ? "AGENT_TURN_FAILED" : null, input: {}, output: {}, attemptNo: 1,
     }])));
-    const client = mountCard();
+    const client = mountPanel();
     await screen.findByRole("article", { name: "你" });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     failed = true;
@@ -474,7 +422,7 @@ describe("AgentChatCard", () => {
       http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
       http.post(RUNS_URL, () => { creations++; return persistRun(); }),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     const input = await readyComposer();
     await user.type(input, TASK_TEXT);
@@ -497,7 +445,7 @@ describe("AgentChatCard", () => {
       http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
       http.post(RUNS_URL, () => { creations++; return persistRun(); }),
     );
-    mountCard(run({ id: "other-run", agentInstanceId: "other-agent", status: "RUNNING" }));
+    mountPanel(run({ id: "other-run", agentInstanceId: "other-agent", status: "RUNNING" }));
     const user = userEvent.setup();
     const input = await readyComposer();
     await user.type(input, TASK_TEXT);
@@ -512,7 +460,6 @@ describe("AgentChatCard", () => {
   });
 
   it("restores a persisted conversation and prepends older turns in chronological order", async () => {
-    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(1200);
     const current = run({ id: "run-latest", conversationTurn: 2, status: "SUCCEEDED", instruction: "最新任务内容" });
     const historical = run({ id: "run-old", conversationTurn: 1, status: "SUCCEEDED", instruction: "历史任务内容",
       createdAt: "2026-09-25T10:00:00Z" });
@@ -521,19 +468,13 @@ describe("AgentChatCard", () => {
       return HttpResponse.json(cursor ? { items: [historical], nextCursor: null }
         : { items: [current], nextCursor: "older-page" });
     }));
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     expect(await screen.findByRole("article", { name: "你" })).toHaveTextContent(current.instruction);
-    const body = screen.getByRole("article", { name: "创作助手 聊天卡片" }).querySelector<HTMLElement>(".agent-chat-body");
-    if (!body) throw new Error("Chat body is missing");
-    await waitFor(() => expect(body.scrollTop).toBe(1200));
-    body.scrollTop = 140;
-    fireEvent.scroll(body);
     await user.click(screen.getByRole("button", { name: "加载更早的消息" }));
     await waitFor(() => expect(screen.getAllByRole("article", { name: "你" })).toHaveLength(2));
     expect(screen.getAllByRole("article", { name: "你" })[0]).toHaveTextContent(historical.instruction);
     expect(screen.getAllByRole("article", { name: "你" })[1]).toHaveTextContent(current.instruction);
-    expect(body.scrollTop).toBe(140);
     expect(screen.queryByText(/独立任务/)).not.toBeInTheDocument();
   });
 
@@ -549,7 +490,7 @@ describe("AgentChatCard", () => {
       }),
       http.post(RUNS_URL, () => { creations++; return persistRun(); }),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     const input = await readyComposer();
     await user.type(input, TASK_TEXT);
@@ -579,7 +520,7 @@ describe("AgentChatCard", () => {
         return persistRun();
       }),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     const input = await readyComposer();
     await user.type(input, TASK_TEXT);
@@ -597,10 +538,25 @@ describe("AgentChatCard", () => {
     expect(creations).toBe(1);
   });
 
+  it("waits for output attribution before enabling canvas navigation", () => {
+    mountPanel(null, { outputCount: 2, outputLoading: true });
+    expect(screen.getByRole("button", { name: /查看产物/ })).toBeDisabled();
+  });
+
+  it("retries failed output attribution instead of reporting no generated nodes", async () => {
+    const onRefreshOutputs = vi.fn(); const onShowOutputs = vi.fn();
+    mountPanel(null, { outputCount: 0, outputError: new Error("Synthetic read failure"), onRefreshOutputs, onShowOutputs });
+    const output = screen.getByRole("button", { name: /查看产物/ });
+    expect(output).toBeEnabled();
+    await userEvent.click(output);
+    expect(onRefreshOutputs).toHaveBeenCalledOnce();
+    expect(onShowOutputs).not.toHaveBeenCalled();
+  });
+
   it("shows Agent outputs without bubbling the click into canvas selection", async () => {
     const onShowOutputs = vi.fn();
     const onOuterClick = vi.fn();
-    mountCard(null, { outputCount: 2, onShowOutputs }, onOuterClick);
+    mountPanel(null, { outputCount: 2, onShowOutputs }, onOuterClick);
     const user = userEvent.setup();
 
     await user.click(screen.getByRole("button", { name: /查看产物/ }));
@@ -629,7 +585,7 @@ describe("AgentChatCard", () => {
         return persistRun(run({ conversationId: "conversation-new" }));
       }),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     await user.type(await readyComposer(), TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
@@ -650,14 +606,14 @@ describe("AgentChatCard", () => {
         return persistRun(run({ id: "second-run", conversationTurn: 2, status: "SUCCEEDED", instruction: body.instruction }));
       }),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     expect(await screen.findByRole("article", { name: "你" })).toHaveTextContent(first.instruction);
     await user.type(await readyComposer(), "把刚才的场景改成黄昏。");
     await user.click(screen.getByRole("button", { name: "发送" }));
     await waitFor(() => expect(screen.getAllByRole("article", { name: "你" })).toHaveLength(2));
     cleanup();
-    mountCard();
+    mountPanel();
     await waitFor(() => expect(screen.getAllByRole("article", { name: "你" })).toHaveLength(2));
     const messages = screen.getAllByRole("article", { name: "你" });
     expect(messages[0]).toHaveTextContent(first.instruction);
@@ -681,7 +637,7 @@ describe("AgentChatCard", () => {
       }),
       http.post(RUNS_URL, async ({ request }) => { const body = await request.json() as CreateRunRequest; requests.push(body); return persistRun(run({ conversationId: "conversation-new", instruction: body.instruction })); }),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     const input = await readyComposer();
     await user.type(input, "原来的想法");
@@ -710,7 +666,7 @@ describe("AgentChatCard", () => {
         { status: 503, headers: { "Content-Type": "application/problem+json" } });
       return persistConversation();
     }));
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     await screen.findByRole("article", { name: "你" });
     await user.type(await readyComposer(), "留在原会话的草稿");
@@ -732,7 +688,7 @@ describe("AgentChatCard", () => {
     await user.click(within(screen.getByRole("region", { name: "会话列表" })).getByRole("button", { name: /新会话/ }));
     await waitFor(() => expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue("新会话草稿"));
     cleanup();
-    mountCard();
+    mountPanel();
     expect(await screen.findByText("从一个想法开始")).toBeInTheDocument();
     expect(screen.queryByRole("article", { name: "你" })).not.toBeInTheDocument();
     expect(currentConversationId).toBe("conversation-new");
@@ -746,7 +702,7 @@ describe("AgentChatCard", () => {
       http.post(`${RUNS_URL}/preflight`, () => HttpResponse.json(PREFLIGHT)),
       http.post(RUNS_URL, async () => { started = true; await responseGate; return persistRun(); }),
     );
-    mountCard();
+    mountPanel();
     const user = userEvent.setup();
     await user.type(await readyComposer(), TASK_TEXT);
     await user.click(screen.getByRole("button", { name: "发送" }));
@@ -767,7 +723,7 @@ describe("AgentChatCard", () => {
     const selected = conversation({ id: "conversation-other", title: "另一会话" });
     storedConversations = [selected, conversation()]; currentConversationId = selected.id;
     storedRuns = [active];
-    mountCard(active);
+    mountPanel(active);
     const user = userEvent.setup();
     expect(await screen.findByRole("button", { name: "返回运行会话" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
@@ -787,7 +743,7 @@ describe("Agent Skill submission",()=>{
       http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`,()=>HttpResponse.json(version)),
       http.post(`${RUNS_URL}/preflight`,async({request})=>{preflights.push(await request.json());return HttpResponse.json(PREFLIGHT);}),
       http.post(RUNS_URL,async({request})=>{requests.push(await request.json() as CreateRunRequest);return persistRun();}));
-    mountCard();const user=userEvent.setup();await readyComposer();
+    mountPanel();const user=userEvent.setup();await readyComposer();
     const trigger=screen.getByRole("button",{name:"选择 Skill"});
     expect(trigger.closest(".agent-chat-composer-actions")).not.toBeNull();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -805,7 +761,7 @@ describe("Agent Skill submission",()=>{
         return HttpResponse.json({...PREFLIGHT,creativeSkills:input.skillSelection.mode==="VERSIONS"
           ? [{skillId,skillVersionId,title:"温暖手绘",versionNumber:1,bundleHash:version.bundleHash,inputSlots:[],resources:[],assets:[]}]:[]});}),
       http.post(RUNS_URL,async({request})=>{requests.push(await request.json() as CreateRunRequest);return persistRun();}));
-    mountCard();const user=userEvent.setup();await user.type(await readyComposer(),"创建一段文字");
+    mountPanel();const user=userEvent.setup();await user.type(await readyComposer(),"创建一段文字");
     await user.click(screen.getByRole("button",{name:"选择 Skill"}));const dialog=await screen.findByRole("dialog");
     await user.click(await within(dialog).findByRole("button",{name:"温暖手绘"}));
     await waitFor(()=>expect(within(dialog).getByRole("button",{name:"使用 Skill"})).toBeEnabled());
@@ -830,7 +786,7 @@ describe("Agent Skill submission",()=>{
       http.get(`/api/v1/skills/${skillId}/versions`,()=>HttpResponse.json([{id:skillVersionId,skillId,versionNumber:1,name:"warm-art",description:"Synthetic guide",bundleHash:"synthetic",createdAt:NOW}])),
       http.get(`/api/v1/skills/${skillId}/versions/${skillVersionId}`,()=>HttpResponse.json(version)),
       http.put(`/api/v1/projects/${PROJECT_ID}/agents/${AGENT_ID}/skill-binding`,async({request})=>{bindings.push(await request.json());current={agentVersion:AGENT_VERSION+1,skills:[{skillId,skillVersionId}]};return HttpResponse.json(current);}));
-    mountCard(null,{onUpdateAgent});const user=userEvent.setup();await readyComposer();await user.click(screen.getByRole("button",{name:"Agent 设置"}));
+    mountPanel(null,{onUpdateAgent});const user=userEvent.setup();await readyComposer();await user.click(screen.getByRole("button",{name:"Agent 设置"}));
     await user.click(screen.getByRole("combobox",{name:"选择 Skill"}));await user.click(await screen.findByRole("option",{name:"温暖手绘"}));
     const versions=screen.getByRole("combobox",{name:"发布版本"});await waitFor(()=>expect(versions).toBeEnabled());await user.click(versions);await user.click(await screen.findByRole("option",{name:"版本 1"}));
     await user.click(screen.getByRole("button",{name:"保存默认绑定"}));await waitFor(()=>expect(bindings).toHaveLength(1));expect(bindings[0]).toEqual({expectedAgentVersion:AGENT_VERSION,skills:[{skillId,skillVersionId}]});expect(onUpdateAgent).not.toHaveBeenCalled();
@@ -847,7 +803,7 @@ it("pins retry feedback and restores send after exhausted retries despite a stal
     output: { modelRetry: { schemaVersion: 1, retryCount: 1, maxRetries: 10,
       firstFailureAt: "2026-10-04T01:00:00Z", deadlineAt: "2026-10-04T01:05:00Z", lastErrorCode: "LLM_CALL_TIMEOUT" } },
   }])));
-  const client = mountCard(current);
+  const client = mountPanel(current);
   expect(await screen.findByText(/^下次重试：/)).toBeInTheDocument();
   expect(screen.getByText(/^下次重试：/).closest(".agent-chat-feedback")).not.toBeNull();
   expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
@@ -871,7 +827,7 @@ it("reports a failed active task read in the fixed feedback area", async () => {
   storedRuns = [current];
   server.use(http.get(`${RUNS_URL}/${current.id}/tasks`, () =>
     HttpResponse.json({ code: "SYNTHETIC_READ_FAILED" }, { status: 503 })));
-  mountCard(current);
+  mountPanel(current);
   const message = await screen.findByText("运行状态读取失败，可重新读取。");
   expect(message.closest(".agent-chat-feedback")).not.toBeNull();
   expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();

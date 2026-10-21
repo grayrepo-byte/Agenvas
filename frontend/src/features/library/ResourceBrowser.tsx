@@ -1,4 +1,4 @@
-import { Images,MusicNotes,Video } from "@/shared/ui/icons";
+import { ImageSquare,Images,MusicNotes,Video } from "@/shared/ui/icons";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useId,useState } from "react";
 import { Link } from "react-router";
@@ -47,13 +47,16 @@ export function ResourceBrowser() {
       onClick={() => { if (list.isFetchNextPageError) void list.fetchNextPage(); else void list.refetch(); }}>{t("resources.retry")}</Button></div> : null}
     <div className="library-grid">{items.map((resource) => {
       const assetId = mediaId(resource);
-      return <article className="library-card" key={resource.versionId}>
+      const KindIcon = resource.kind === "AUDIO" ? MusicNotes : resource.kind === "IMAGE" ? ImageSquare : Video;
+      return <article className="library-card" data-kind={resource.kind} key={resource.versionId}>
         <Button variant="ghost" type="button" aria-label={t("resources.view", { "0": resource.title, "1": resource.versionNo })} onClick={() => setSelected(resource)}>
           <div className="library-card-preview">{resource.kind === "AUDIO" ? <MusicNotes size={40} /> : assetId && (resource.kind === "IMAGE" || resource.kind === "VIDEO")
             ? <img loading="lazy" src={assetThumbnailUrl(resource.projectId, assetId)} alt="" />
-            : <Video size={40} />}</div>
-          <strong>{resource.title}</strong><small>{KIND_LABELS[resource.kind]} · v{resource.versionNo}</small>
-          <small>{resource.projectName}</small><time dateTime={resource.createdAt}>{new Date(resource.createdAt).toLocaleString(getFormatLocale())}</time>
+            : <KindIcon size={40} />}<span className="library-card-kind"><KindIcon size={12} aria-hidden />{KIND_LABELS[resource.kind]} · v{resource.versionNo}</span></div>
+          <div className="library-card-copy"><strong title={resource.title}>{resource.title}</strong>
+            <div className="library-card-meta"><span title={resource.projectName}>{resource.projectName}</span></div>
+            <div className="library-card-meta"><time dateTime={resource.createdAt}>{new Date(resource.createdAt).toLocaleString(getFormatLocale())}</time></div>
+          </div>
         </Button>
       </article>;
     })}</div>
@@ -69,11 +72,11 @@ export function ResourceBrowser() {
 function ResourceDetail({ resource, onClose }: { resource: ResourceResult; onClose: () => void }) {
   const assetId = mediaId(resource);
   const contentUrl = assetId ? assetContentUrl(resource.projectId, assetId) : undefined;
-  return <Dialog title={resource.title} description={`${resource.projectName} · ${KIND_LABELS[resource.kind]} · v${resource.versionNo}`}
+  return <Dialog className="library-resource-dialog" title={resource.title} description={`${resource.projectName} · ${KIND_LABELS[resource.kind]} · v${resource.versionNo}`}
     onClose={onClose} onSubmit={(event) => event.preventDefault()}
     footer={<><Button variant="outline" asChild><Link to={`/projects/${resource.projectId}`}>{t("resources.openProject")}</Link></Button>
       <Button asChild><a href={contentUrl} download={resource.title}>{t("resources.download")}</a></Button></>}>
-    {resource.kind === "AUDIO" ? <audio controls preload="none" src={contentUrl} /> : resource.kind === "IMAGE" ? <img className="library-save-preview" src={contentUrl} alt={resource.title} />
-      : <video className="library-save-preview" controls preload="metadata" src={contentUrl} />}
+    <div className="library-detail-media">{resource.kind === "AUDIO" ? <audio className="library-resource-player" controls preload="none" src={contentUrl} /> : resource.kind === "IMAGE" ? <img className="library-save-preview" src={contentUrl} alt={resource.title} />
+      : <video className="library-save-preview" controls preload="metadata" src={contentUrl} />}</div>
   </Dialog>;
 }

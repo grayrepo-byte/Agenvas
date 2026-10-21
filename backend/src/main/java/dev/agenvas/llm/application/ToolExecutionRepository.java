@@ -18,6 +18,9 @@ public interface ToolExecutionRepository {
     /** Returns committed main-file activation and attachment read metadata for frozen approval provenance. */
     List<JsonNode> skillReads(UUID projectId, UUID runId);
 
+    /** Committed node copies are additional Run outputs, never model-supplied authorization. */
+    boolean hasCreatedCanvasItem(UUID projectId, UUID runId, UUID itemId);
+
     /** 仅在项目作用域内读取精确工具调用。 */
     Optional<ToolExecution> find(UUID projectId, UUID runId, int stepIndex, String toolCallId);
 

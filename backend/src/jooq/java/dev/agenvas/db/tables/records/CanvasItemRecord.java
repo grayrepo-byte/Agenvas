@@ -51,44 +51,44 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
     }
 
     /**
-     * Setter for <code>public.canvas_item.subject_type</code>. 卡片承载 Agent 或
-     * Artifact
+     * Setter for <code>public.canvas_item.subject_type</code>. 画布主体类型，固定为
+     * ARTIFACT
      */
     public void setSubjectType(String value) {
         set(2, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.subject_type</code>. 卡片承载 Agent 或
-     * Artifact
+     * Getter for <code>public.canvas_item.subject_type</code>. 画布主体类型，固定为
+     * ARTIFACT
      */
     public String getSubjectType() {
         return (String) get(2);
     }
 
     /**
-     * Setter for <code>public.canvas_item.subject_id</code>. 卡片业务对象身份
+     * Setter for <code>public.canvas_item.subject_id</code>. 画布内容对应的产物身份
      */
     public void setSubjectId(UUID value) {
         set(3, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.subject_id</code>. 卡片业务对象身份
+     * Getter for <code>public.canvas_item.subject_id</code>. 画布内容对应的产物身份
      */
     public UUID getSubjectId() {
         return (UUID) get(3);
     }
 
     /**
-     * Setter for <code>public.canvas_item.artifact_id</code>. 业务产物身份
+     * Setter for <code>public.canvas_item.artifact_id</code>. 画布内容对应的非空产物外键
      */
     public void setArtifactId(UUID value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.canvas_item.artifact_id</code>. 业务产物身份
+     * Getter for <code>public.canvas_item.artifact_id</code>. 画布内容对应的非空产物外键
      */
     public UUID getArtifactId() {
         return (UUID) get(4);
@@ -235,27 +235,11 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
     }
 
     /**
-     * Setter for <code>public.canvas_item.agent_instance_id</code>. Agent
-     * 卡片配置身份
-     */
-    public void setAgentInstanceId(UUID value) {
-        set(15, value);
-    }
-
-    /**
-     * Getter for <code>public.canvas_item.agent_instance_id</code>. Agent
-     * 卡片配置身份
-     */
-    public UUID getAgentInstanceId() {
-        return (UUID) get(15);
-    }
-
-    /**
      * Setter for <code>public.canvas_item.title</code>. Per-card display title
      * initialized from its subject and edited independently afterward.
      */
     public void setTitle(String value) {
-        set(16, value);
+        set(15, value);
     }
 
     /**
@@ -263,7 +247,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
      * initialized from its subject and edited independently afterward.
      */
     public String getTitle() {
-        return (String) get(16);
+        return (String) get(15);
     }
 
     /**
@@ -272,7 +256,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
      * Artifact default.
      */
     public void setSelectedVersionId(UUID value) {
-        set(17, value);
+        set(16, value);
     }
 
     /**
@@ -281,7 +265,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
      * Artifact default.
      */
     public UUID getSelectedVersionId() {
-        return (UUID) get(17);
+        return (UUID) get(16);
     }
 
     /**
@@ -290,7 +274,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
      * replacing user selections.
      */
     public void setMediaSelectionEpoch(Long value) {
-        set(18, value);
+        set(17, value);
     }
 
     /**
@@ -299,7 +283,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
      * replacing user selections.
      */
     public Long getMediaSelectionEpoch() {
-        return (Long) get(18);
+        return (Long) get(17);
     }
 
     // -------------------------------------------------------------------------
@@ -325,7 +309,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
     /**
      * Create a detached, initialised CanvasItemRecord
      */
-    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, UUID agentInstanceId, String title, UUID selectedVersionId, Long mediaSelectionEpoch) {
+    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, String title, UUID selectedVersionId, Long mediaSelectionEpoch) {
         super(CanvasItem.CANVAS_ITEM);
 
         setId(id);
@@ -343,7 +327,6 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         setVersion(version);
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
-        setAgentInstanceId(agentInstanceId);
         setTitle(title);
         setSelectedVersionId(selectedVersionId);
         setMediaSelectionEpoch(mediaSelectionEpoch);

@@ -1,7 +1,7 @@
 import { BookOpen,CaretDown,Check } from "@/shared/ui/icons";
 import { useInfiniteQuery,useMutation,useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState } from "react";
-import { getAgentSkillBinding,getSkillVersion,listArtifacts,listSkills,listSkillVersions,saveAgentSkillBinding,
+import { getAgentSkillBinding,getSkillVersion,listCanvasItems,listSkills,listSkillVersions,saveAgentSkillBinding,
   type Agent,type SkillSelection } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -11,6 +11,7 @@ import { EmptyState,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
 import { Select } from "../../shared/ui/Select";
 import { Button } from "../../shared/ui/primitives/button";
 import { Field,FieldGroup,FieldLabel } from "../../shared/ui/primitives/field";
+import { canvasItemVersionId } from "../canvas/versionedArtifact";
 import { SkillError } from "./SkillsPage";
 import "./Skills.css";
 
@@ -105,7 +106,7 @@ function AgentSkillPickerDialog({projectId,agent,selection,onClose,onSelect}:{pr
   const [search,setSearch]=useState("");
   const skills=useInfiniteQuery({queryKey:["skills","published-picker"],initialPageParam:undefined as string | undefined,
     queryFn:({pageParam})=>listSkills("",pageParam),getNextPageParam:(page)=>page.nextCursor??undefined});
-  const resources=useQuery({queryKey:["artifacts",projectId],queryFn:()=>listArtifacts(projectId),enabled:state.versions.some((query)=>Boolean(query.data?.inputSlots.length))});
+  const resources=useQuery({queryKey:["canvas",projectId],queryFn:()=>listCanvasItems(projectId),enabled:state.versions.some((query)=>Boolean(query.data?.inputSlots.length))});
   const items=(skills.data?.pages.flatMap((page)=>page.items)??[]).filter((skill)=>skill.currentVersionId && !skill.trashed
     && `${skill.title}\n${skill.description}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   function update(choices:Choice[]) {state.setSelection({mode:choices.length ? "VERSIONS":"NONE",skills:choices});}
@@ -137,13 +138,13 @@ function AgentSkillPickerDialog({projectId,agent,selection,onClose,onSelect}:{pr
       </Button>;})}
     </div>
     {skills.hasNextPage ? <Button variant="outline" type="button" disabled={skills.isFetchingNextPage} onClick={()=>void skills.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
-    {state.choices.map((choice,index)=><SkillChoicePanel key={choice.skillId} agent={agent} choice={choice} state={state} index={index}
+    {state.choices.map((choice,index)=><SkillChoicePanel key={choice.skillId} choice={choice} state={state} index={index}
       resources={resources.data} resourcesFetching={resources.isFetching} onChange={(changed)=>update(state.choices.map((item)=>item.skillId===changed.skillId ? changed:item))} />)}
     {error ? <SkillError error={error} onRefresh={()=>{void skills.refetch();state.versions.forEach((query)=>void query.refetch());if(resources.isEnabled)void resources.refetch();}} /> : null}
   </Dialog>;
 }
-function SkillChoicePanel({agent,choice,state,index,resources,resourcesFetching,onChange}:{agent:Agent;choice:Choice;state:AgentSkillState;index:number;
-  resources:Awaited<ReturnType<typeof listArtifacts>> | undefined;resourcesFetching:boolean;onChange:(choice:Choice)=>void}) {
+function SkillChoicePanel({choice,state,index,resources,resourcesFetching,onChange}:{choice:Choice;state:AgentSkillState;index:number;
+  resources:Awaited<ReturnType<typeof listCanvasItems>> | undefined;resourcesFetching:boolean;onChange:(choice:Choice)=>void}) {
   const query=state.versions[index];
   const selected=query?.data;
   const versions=useQuery({queryKey:["skill-versions",choice.skillId],queryFn:()=>listSkillVersions(choice.skillId)});
@@ -160,8 +161,8 @@ function SkillChoicePanel({agent,choice,state,index,resources,resourcesFetching,
         {selected.inputSlots.map((slot)=><Field key={slot.alias}><FieldLabel>{slot.alias}{slot.required ? ` · ${t("skills.required")}`:""}</FieldLabel>
           <Select aria-label={`${slot.alias} · ${t("skills.inputVersion")}`} disabled={resourcesFetching} value={choice.inputs.find((input)=>input.alias===slot.alias)?.artifactVersionId??""}
             onChange={(event)=>{const inputs=choice.inputs.filter((input)=>input.alias!==slot.alias);if(event.target.value)inputs.push({alias:slot.alias,artifactVersionId:event.target.value});onChange({...choice,inputs});}}>
-            <option value="">{t("skills.inputVersion")}</option>{agent.bindings.filter((binding)=>resources?.items.some((artifact)=>artifact.id===binding.artifactId && artifact.kind===slot.kind))
-              .map((binding)=><option key={binding.selectedVersionId} value={binding.selectedVersionId}>{resources?.items.find((artifact)=>artifact.id===binding.artifactId)?.title}</option>)}
+            <option value="">{t("skills.inputVersion")}</option>{resources?.items.filter((item)=>item.artifact.kind===slot.kind && canvasItemVersionId(item))
+              .map((item)=><option key={item.id} value={canvasItemVersionId(item)!}>{item.title}</option>)}
           </Select></Field>)}
       </FieldGroup>
       <details><summary>{t("skills.body")}</summary><pre className="skills-source-preview">{selected.skillMd}</pre></details><p>{t("skills.modelOnly")}</p>

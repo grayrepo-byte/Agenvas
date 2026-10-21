@@ -1,0 +1,128 @@
+/* Canvas chrome stays in screen pixels. Card geometry belongs exclusively to React Flow. */
+.workspace-canvas { isolation: isolate; }
+/* Let node toolbars sit above canvas chrome, while the canvas itself stays below page dialogs.
+   React Flow's nested stacking contexts otherwise put the editor behind the tool dock. */
+.workspace-canvas .react-flow { z-index: auto !important; /* The library sets an unoverrideable inline z-index. */ }
+.workspace-canvas .react-flow__renderer { z-index: auto; }
+.canvas-viewport-dock {
+  position: absolute;
+  z-index: 10;
+  left: var(--ui-canvas-gutter);
+  bottom: var(--ui-canvas-gutter);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--ui-canvas-border);
+  border-radius: var(--ui-canvas-radius);
+  background: var(--ui-canvas-chrome);
+  box-shadow: var(--ui-canvas-shadow);
+}
+.canvas-viewport-dock .canvas-zoom-value { min-width: 56px; padding-inline: 8px; font-size: var(--ui-text-sm); font-weight: 400; font-variant-numeric: tabular-nums; }
+.canvas-viewport-dock button { color: var(--ui-text-secondary); }
+.canvas-viewport-dock > [data-slot="separator"] { margin-inline: 4px; }
+.workspace-shell .react-flow__minimap.canvas-overview {
+  left: 20px;
+  right: auto;
+  bottom: 80px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--ui-canvas-border);
+  border-radius: var(--ui-canvas-radius);
+  background: var(--ui-canvas-chrome);
+  box-shadow: var(--ui-canvas-shadow);
+}
+.canvas-gesture-hints {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: var(--ui-text-subtle);
+  font-size: var(--ui-text-xs);
+  pointer-events: none;
+}
+.canvas-gesture-hints > span { display: inline-flex; align-items: center; gap: 6px; }
+.canvas-gesture-hints kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding-inline: 5px;
+  border: 1px solid var(--ui-canvas-border);
+  border-radius: 5px;
+  font: inherit;
+}
+.canvas-empty-state {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 44%;
+  width: min(560px, calc(100% - 160px));
+  transform: translate(-50%, -50%);
+}
+.canvas-empty-hint { color: var(--ui-text-subtle); font-size: var(--ui-text-sm); }
+.canvas-empty-state [data-slot="empty-icon"] { background: var(--ui-canvas-chrome); color: var(--ui-accent-text); }
+.canvas-empty-state [data-slot="empty-title"] { font-size: 24px; font-weight: 400; letter-spacing: -.025em; }
+.canvas-empty-state [data-slot="empty-description"] { max-width: 32ch; font-size: var(--ui-text-md); line-height: 1.8; }
+.canvas-empty-types { display: flex; align-items: center; gap: 8px; }
+.canvas-empty-types button { min-width: 64px; }
+.canvas-empty-types svg { opacity: .7; }
+.workspace-shell .save-badge {
+  align-items: center;
+  gap: 5px;
+  min-width: 72px;
+  justify-content: center;
+  padding: 5px 9px;
+  font-size: var(--ui-text-xs);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.workspace-shell .save-badge svg { width: 14px; height: 14px; flex: none; }
+.workspace-shell .save-badge-saved { background: transparent; color: var(--ui-text-muted); }
+.workspace-header-identity > .save-badge { flex-shrink: 0; border-left: 1px solid var(--ui-canvas-border); border-radius: 0; padding-inline: 12px 8px; }
+.workspace-editor-content { position: relative; }
+.workspace-shell .react-flow__node.dragging .artifact-canvas-card { box-shadow: var(--ui-canvas-shadow-raised); }
+.workspace-shell .react-flow__node.dragging .artifact-canvas-card.is-selected { box-shadow: var(--ui-canvas-selection-shadow); }
+.workspace-shell .react-flow__attribution { background: transparent; color: var(--ui-text-subtle); font-size: 9px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .workspace-shell .artifact-canvas-card {
+    transition: box-shadow var(--ui-duration) var(--ui-ease-standard), background var(--ui-duration) var(--ui-ease-standard);
+  }
+  .workspace-shell :is(.artifact-card-title, .artifact-card-title-icon) {
+    transition: color var(--ui-duration) var(--ui-ease-standard);
+  }
+  .workspace-shell .artifact-card-toolbar,
+  .workspace-editor-content,
+  .workspace-shell .canvas-overview { animation: canvas-surface-enter var(--ui-motion-enter) var(--ui-ease-out); }
+  .workspace-selection-toolbar { animation: canvas-fade-enter var(--ui-motion-enter) var(--ui-ease-out); }
+  .workspace-drawer { animation: canvas-drawer-enter var(--ui-motion-enter) var(--ui-ease-out); }
+  .save-badge-saving svg { animation: canvas-status-spin 1s linear infinite; }
+  .workspace-tool-rail button { transition: background var(--ui-duration), color var(--ui-duration); }
+}
+@keyframes canvas-surface-enter { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
+@keyframes canvas-fade-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes canvas-drawer-enter { from { opacity: 0; translate: -8px 0; } to { opacity: 1; translate: 0 0; } }
+@keyframes canvas-status-spin { to { rotate: 360deg; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-viewport-dock button { transition: none; }
+}
+
+.workspace-canvas:has(.canvas-overview) .canvas-gesture-hints { display: none; }
+.workspace-canvas:has(.workspace-selection-toolbar) .canvas-gesture-hints { display: none; }
+@media (max-width: 1100px) {
+  .canvas-gesture-hints { display: none; }
+}
+@media (max-width: 600px) {
+  .workspace-shell { --ui-canvas-gutter: 12px; }
+  .workspace-header-identity { flex-basis: 100%; }
+  .workspace-header-identity > .save-badge { margin-left: auto; }
+  .workspace-header-actions { margin-left: auto; }
+  .workspace-project-name { padding-right: 0; }
+}

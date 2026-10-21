@@ -16,12 +16,11 @@ type CanvasHandleConfig = {
   /**
    * out：卡片右侧出口，悬停或选中卡片时显示，是唯一可拖出手势的连接点。
    * in：卡片左侧落点，默认不可见也不可点，落点靠 connectionRadius 的距离判定。
-   * anchor：Agent 输出组锚点，只承接投影连线。
    */
-  role: "out" | "in" | "anchor";
+  role: "out" | "in";
   position: Position;
   direction: "source" | "target";
-  icon: Icon | null;
+  icon: Icon;
   hint: string;
 };
 
@@ -31,10 +30,6 @@ const CANVAS_HANDLES = {
     icon: PlusCircle, get hint() { return t("canvas.connections.connectHint"); } },
   "artifact-input": { role: "in", position: Position.Left, direction: "target",
     icon: PlusCircle, get hint() { return t("canvas.connections.mixedInputHint"); } },
-  "agent-output": { role: "anchor", position: Position.Right, direction: "source",
-    icon: null, get hint() { return t("canvas.connections.agentOutputHint"); } },
-  "agent-input": { role: "in", position: Position.Left, direction: "target",
-    icon: PlusCircle, get hint() { return t("canvas.connections.mediaInputHint"); } },
 } as const satisfies Record<string, CanvasHandleConfig>;
 
 export type CanvasHandleId = keyof typeof CANVAS_HANDLES;
@@ -83,14 +78,12 @@ export function CanvasHandle({ id }: { id: CanvasHandleId }) {
     <Handle className={`canvas-handle canvas-handle--${role}`} id={id}
       onPointerMove={followPointer} onPointerLeave={resetOffset}
       onPointerDown={resetOffset} onPointerCancel={resetOffset}
-      isConnectable={role !== "anchor"} position={position} title={hint} type={direction}>
-      {IconComponent
-        ? <span className="canvas-handle-home" ref={homeRef}>
+      isConnectable position={position} title={hint} type={direction}>
+      <span className="canvas-handle-home" ref={homeRef}>
           <span className="canvas-handle-dot">
             <IconComponent aria-hidden="true" className="canvas-handle-icon" size={HANDLE_ICON_SIZE} weight="light" />
           </span>
         </span>
-        : null}
     </Handle>
   );
 }

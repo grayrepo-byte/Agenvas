@@ -25,7 +25,7 @@ import org.springframework.stereotype.Component;
 
 /** Private object transport: DNS checked at connection time, no redirects or automatic PUT retries. */
 @Component
-public class ObjectStorageClient {
+public class ObjectStorageClient implements RemoteStorageClient {
     private static final int CHECKSUM_BUFFER_BYTES = 8192;
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration IO_TIMEOUT = Duration.ofSeconds(60);
@@ -61,6 +61,7 @@ public class ObjectStorageClient {
         };
     }
     static HttpUrl url(StorageProfile p, String key) {
+        if (!p.provider().supportsRelay()) throw new IllegalArgumentException("File protocols cannot use object-store signing");
         if (!key.matches("[A-Za-z0-9_./-]+") || key.contains("..") || key.startsWith("/"))
             throw new IllegalArgumentException("Invalid object key");
         HttpUrl endpoint = HttpUrl.get(p.endpoint());

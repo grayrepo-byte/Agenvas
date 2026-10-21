@@ -9,7 +9,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -41,7 +40,7 @@ class CanvasMediaDerivationDraftTest {
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final CanvasConnectionService connections = mock(CanvasConnectionService.class);
     private final CanvasService canvas = new CanvasService(mock(ProjectService.class), artifacts,
-            drafts, mock(AgentInstanceService.class), items, connections,
+            drafts, items, connections,
             mock(ProjectEventService.class), new ObjectMapper(), Clock.systemUTC());
 
     @BeforeEach

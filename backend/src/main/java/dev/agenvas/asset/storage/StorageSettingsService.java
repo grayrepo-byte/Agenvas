@@ -37,6 +37,7 @@ public class StorageSettingsService {
                         p.bucket(), p.keyPrefix(), p.pathStyle(), p.accessKeyMask(), p.createdAt(), inUse(p.id()))).toList());
     }
 
+    /** Credential fields carry access keys for objects, or username/password for remote file protocols. */
     @Transactional
     public Status create(int expectedVersion, String name, StorageProfile.Provider provider,
             String endpoint, String region, String bucket, String prefix, boolean pathStyle,
@@ -45,7 +46,7 @@ public class StorageSettingsService {
         var location = normalizeLocation(name, provider, endpoint, region, bucket, prefix, pathStyle);
         validateOssRegion(provider, region);
         UUID id = UUID.randomUUID();
-        var encrypted = cipher.encryptStorage(id, FIRST_CREDENTIAL_VERSION, credentials(accessKeyId, secretAccessKey));
+        var encrypted = cipher.encryptStorage(id, FIRST_CREDENTIAL_VERSION, credentials(provider, accessKeyId, secretAccessKey));
         repository.insertProfile(new StorageProfile(id, location.name(), provider, location.endpoint(), location.region(),
                 location.bucket(), location.prefix(), pathStyle, FIRST_CREDENTIAL_VERSION, encrypted, mask(accessKeyId), clock.instant()));
         repository.advance(expectedVersion, repository.state().activeProfileId());
@@ -63,10 +64,14 @@ public class StorageSettingsService {
                 || !location.prefix().equals(previous.keyPrefix()) || pathStyle != previous.pathStyle();
         if (locationChanged && inUse(id)) throw referenced();
         if (provider != previous.provider() || !location.region().equals(previous.region())) validateOssRegion(provider, region);
+        if (!provider.supportsRelay() && id.equals(repository.state().relayProfileId()))
+            throw invalid(ApiMessage.of("api.remote-storage.relay-unsupported"));
         boolean changeCredentials = accessKeyId != null && !accessKeyId.isBlank()
                 || secretAccessKey != null && !secretAccessKey.isBlank();
+        if (provider != previous.provider() && !changeCredentials)
+            throw invalid(ApiMessage.of("api.remote-storage.protocol-credentials-required"));
         int revision = changeCredentials ? Math.addExact(previous.credentialVersion(), 1) : previous.credentialVersion();
-        var encrypted = changeCredentials ? cipher.encryptStorage(id, revision, credentials(accessKeyId, secretAccessKey))
+        var encrypted = changeCredentials ? cipher.encryptStorage(id, revision, credentials(provider, accessKeyId, secretAccessKey))
                 : previous.credentials();
         repository.updateProfile(new StorageProfile(id, location.name(), provider, location.endpoint(), location.region(),
                 location.bucket(), location.prefix(), pathStyle, revision, encrypted,
@@ -108,10 +113,15 @@ public class StorageSettingsService {
         name = name == null ? "" : name.trim();
         if (name.isEmpty() || name.length() > NAME_MAX_LENGTH) throw invalid(ApiMessage.of("api.storage-settings-service.please-enter-a-connection-name-of-no-more-than-120"));
         if (provider == null) throw invalid(ApiMessage.of("api.storage-settings-service.please-select-a-storage-type"));
-        endpoint = normalizeEndpoint(endpoint);
-        if (region == null || !region.matches("[a-z0-9][a-z0-9-]{0,79}")) throw invalid(ApiMessage.of("api.storage-settings-service.region-format-is-invalid"));
-        if (bucket == null || !bucket.matches("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")
-                || bucket.contains("..") || bucket.matches("[0-9.]+")) throw invalid(ApiMessage.of("api.storage-settings-service.bucket-name-format-is-invalid"));
+        endpoint = provider.supportsRelay() ? normalizeEndpoint(endpoint) : RemoteFileSupport.endpoint(provider, endpoint);
+        if (!provider.supportsRelay()) {
+            if (pathStyle || region != null && !region.isBlank() || bucket != null && !bucket.isBlank())
+                throw invalid(ApiMessage.of("api.remote-storage.no-object-fields"));
+            region = ""; bucket = "";
+        }
+        if (provider.supportsRelay() && (region == null || !region.matches("[a-z0-9][a-z0-9-]{0,79}"))) throw invalid(ApiMessage.of("api.storage-settings-service.region-format-is-invalid"));
+        if (provider.supportsRelay() && (bucket == null || !bucket.matches("[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")
+                || bucket.contains("..") || bucket.matches("[0-9.]+"))) throw invalid(ApiMessage.of("api.storage-settings-service.bucket-name-format-is-invalid"));
         prefix = prefix == null ? "" : prefix.trim().replaceAll("^/+|/+$", "");
         if (prefix.length() > PREFIX_MAX_LENGTH || !prefix.matches("[A-Za-z0-9_/-]*")
                 || prefix.contains("//")) throw invalid(ApiMessage.of("api.storage-settings-service.object-prefixes-only-support-letters-numbers-underscores-dashes-and-directory"));
@@ -136,7 +146,8 @@ public class StorageSettingsService {
     @Transactional
     public Status activateRelay(int expectedVersion, UUID profileId, boolean llmEnabled, boolean imageEnabled) {
         lock(expectedVersion);
-        if (profileId != null) requireProfile(profileId);
+        if (profileId != null && !requireProfile(profileId).provider().supportsRelay())
+            throw invalid(ApiMessage.of("api.remote-storage.relay-unsupported"));
         repository.advanceRelay(expectedVersion, profileId, llmEnabled, imageEnabled);
         return status();
     }
@@ -165,7 +176,7 @@ public class StorageSettingsService {
         lock(expectedVersion);
         StorageProfile profile = requireProfile(profileId);
         int revision = Math.addExact(profile.credentialVersion(), 1);
-        var encrypted = cipher.encryptStorage(profileId, revision, credentials(accessKeyId, secretAccessKey));
+        var encrypted = cipher.encryptStorage(profileId, revision, credentials(profile.provider(), accessKeyId, secretAccessKey));
         repository.rotate(profileId, revision, encrypted, mask(accessKeyId));
         repository.advance(expectedVersion, repository.state().activeProfileId());
         return status();
@@ -196,12 +207,21 @@ public class StorageSettingsService {
         } catch (IllegalArgumentException failure) { throw invalid(ApiMessage.of("api.storage-settings-service.endpoint-format-is-invalid")); }
     }
 
-    private String credentials(String id, String secret) {
+    private String credentials(StorageProfile.Provider provider, String id, String secret) {
+        if (!provider.supportsRelay()) {
+            if (id == null || id.isBlank() || id.length() > 128 || id.matches("(?s).*[\\p{Cntrl}].*")
+                    || provider == StorageProfile.Provider.WEBDAV && id.contains(":")
+                    || secret == null || secret.isEmpty() || secret.length() > 4096 || secret.matches("(?s).*[\\p{Cntrl}].*"))
+                throw invalid(ApiMessage.of("api.remote-storage.invalid-credentials"));
+            if (provider == StorageProfile.Provider.SMB && id.contains("\\") && !id.matches("[^\\\\]+\\\\[^\\\\]+"))
+                throw invalid(ApiMessage.of("api.remote-storage.invalid-credentials"));
+            return id + "\n" + secret;
+        }
         if (id == null || !id.matches("[A-Za-z0-9_-]{4,128}") || secret == null
                 || !secret.matches("[\\x21-\\x7E]{8,4096}")) throw invalid(ApiMessage.of("api.storage-settings-service.please-enter-a-valid-accesskey-id-and-secret"));
         return id + "\n" + secret;
     }
-    private String mask(String id) { return "••••" + id.substring(id.length() - VISIBLE_KEY_SUFFIX_LENGTH); }
+    private String mask(String id) { return "••••" + id.substring(Math.max(0, id.length() - VISIBLE_KEY_SUFFIX_LENGTH)); }
     static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.BAD_REQUEST, "STORAGE_CONFIG_INVALID", ApiMessage.of("api.storage-settings-service.invalid-storage-configuration"), detail, false);
     }

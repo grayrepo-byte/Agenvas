@@ -1,4 +1,4 @@
-/* Dark surfaces, compact rows and status chips adapted from Beautiful UI.
+/* Shared studio surfaces, compact rows and status chips adapted from Beautiful UI.
    Scoped to non-canvas pages; see beautiful-ui-LICENSE.txt. */
 :is(.app-page, .auth-page) {
   --canvas: var(--ui-bg); --panel: var(--ui-surface); --ink: var(--ui-text); --muted: var(--ui-text-muted);

@@ -149,7 +149,7 @@ describe("SystemSettingsPage", () => {
     expect(screen.getByRole("spinbutton")).toHaveValue(77);
     expect(diagnostics).not.toHaveBeenCalled();
     const logTab = screen.getByRole("tab", { name: "调用日志" }); logTab.focus();
-    await user.keyboard("{ArrowRight}");
+    await user.keyboard("{ArrowDown}");
     expect(screen.getByRole("tab", { name: "系统诊断" })).toHaveFocus();
     await waitFor(() => expect(screen.getByRole("tab", { name: "系统诊断" })).toHaveAttribute("aria-selected", "true"));
     await waitFor(() => expect(diagnostics).toHaveBeenCalledTimes(1));

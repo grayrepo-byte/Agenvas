@@ -4,7 +4,6 @@
 package dev.agenvas.db;
 
 
-import dev.agenvas.db.tables.AgentBinding;
 import dev.agenvas.db.tables.AgentConversation;
 import dev.agenvas.db.tables.AgentInstance;
 import dev.agenvas.db.tables.AgentMediaApproval;
@@ -100,17 +99,12 @@ public class Public extends SchemaImpl {
     public static final Public PUBLIC = new Public();
 
     /**
-     * Agent 显式输入：固定引用不可变产物版本
-     */
-    public final AgentBinding AGENT_BINDING = AgentBinding.AGENT_BINDING;
-
-    /**
      * Agent 卡片的持久对话，接收每条用户消息后创建独立预算的 Run
      */
     public final AgentConversation AGENT_CONVERSATION = AgentConversation.AGENT_CONVERSATION;
 
     /**
-     * Agent 卡片配置；请求身份和运行上下文保存在 Run 中
+     * 项目助手配置及会话身份，不作为画布节点或持久素材授权
      */
     public final AgentInstance AGENT_INSTANCE = AgentInstance.AGENT_INSTANCE;
 
@@ -408,7 +402,8 @@ public class Public extends SchemaImpl {
     public final SpringSessionAttributes SPRING_SESSION_ATTRIBUTES = SpringSessionAttributes.SPRING_SESSION_ATTRIBUTES;
 
     /**
-     * 不可变本地或对象存储配置及加密凭据
+     * Pinned archive destinations and encrypted object-store or remote-file
+     * credentials
      */
     public final StorageProfile STORAGE_PROFILE = StorageProfile.STORAGE_PROFILE;
 
@@ -483,7 +478,6 @@ public class Public extends SchemaImpl {
     @Override
     public final List<Table<?>> getTables() {
         return Arrays.asList(
-            AgentBinding.AGENT_BINDING,
             AgentConversation.AGENT_CONVERSATION,
             AgentInstance.AGENT_INSTANCE,
             AgentMediaApproval.AGENT_MEDIA_APPROVAL,

@@ -1,20 +1,77 @@
-.system-logs-filters { display: flex; gap: var(--ui-space-3); align-items: end; flex-wrap: wrap; }
-.system-logs-filters .ui-field { min-width: 160px; }
-.system-logs-keyword { flex: 1; }
-.system-logs-toolbar, .system-logs-summary { display: flex; flex-wrap: wrap; gap: var(--ui-space-4); margin: var(--ui-space-4) 0; }
-.system-logs-toolbar label { display: flex; align-items: center; gap: var(--ui-space-2); font-size: var(--ui-text-md); }
-.system-logs-toolbar input { accent-color: var(--ui-accent); }
-.system-logs-console { max-height: 65vh; overflow: auto; background: var(--ui-field); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-sm); padding: var(--ui-space-3); font: var(--ui-text-sm)/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.system-log-line { display: grid; grid-template-columns: 5ch 10ch 7ch minmax(0, 1fr); gap: var(--ui-space-3); padding: var(--ui-space-1) 0; }
-.system-log-sequence, .system-log-line time { color: var(--ui-text-muted); }
-.system-log-stream { color: var(--ui-info); }
-.system-log-line--stderr .system-log-stream { color: var(--ui-danger); }
-.system-log-message { white-space: pre-wrap; overflow-wrap: anywhere; }
-.system-log-message em { color: var(--ui-warning); font-style: normal; }
-@media (max-width: 640px) {
-  .system-logs-filters { align-items: stretch; }
-  .system-logs-filters .ui-field, .system-logs-filters button { width: 100%; }
-  .system-log-line { grid-template-columns: 10ch 7ch; gap: var(--ui-space-1); }
-  .system-log-sequence { display: none; }
-  .system-log-message { grid-column: 1 / -1; }
+/* One bounded console surface, with query controls and playback state in the same toolbar. */
+.app-shell--studio .system-logs-workspace { gap: 12px; }
+.app-shell--studio .system-logs-workspace .system-logs-panel { overflow: hidden; padding: 0; }
+.app-shell--studio .system-logs-panel > .ui-panel-header { align-items: center; margin: 0; padding: 16px 18px; border-bottom: 1px solid var(--settings-rule, var(--ui-border)); }
+.app-shell--studio .system-logs-panel > .ui-panel-header h2 { font-size: 13px; }
+.app-shell--studio .system-logs-panel > .ui-panel-header p { font-size: 11px; }
+.app-shell--studio .system-logs-state { display: flex; align-items: center; }
+.app-shell--studio .system-logs-state .ui-badge { font-size: 10px; }
+.app-shell--studio .system-logs-controls { padding: 14px 18px 10px; }
+.app-shell--studio .system-logs-filters[data-slot="field-group"] { display: grid; grid-template-columns: 140px minmax(0, 1fr) 150px auto; gap: 12px; align-items: end; }
+.app-shell--studio .system-logs-filters > [data-slot="field"] { min-width: 0; gap: 7px; }
+.app-shell--studio .system-logs-filters .ui-field { min-width: 0; }
+.app-shell--studio .system-logs-filter-form > .system-logs-filters > button { margin-bottom: 1px; }
+.app-shell--studio .system-logs-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; }
+/* FieldGroup is an inline-size container: give it actual flex space instead of intrinsic width. */
+.app-shell--studio .system-logs-options[data-slot="field-group"] { display: flex; flex: 1 1 0; min-width: 0; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 18px; width: auto; }
+.app-shell--studio .system-logs-options > [data-slot="field"] { width: fit-content; max-width: 100%; flex: none; flex-direction: row; gap: 7px; }
+.app-shell--studio .system-logs-options [data-slot="field-label"] { flex: 0 1 auto; min-width: 0; width: auto; font-size: 11px; font-weight: 400; color: var(--ui-text-muted); cursor: pointer; }
+.app-shell--studio .system-logs-toolbar > button { color: var(--ui-text-secondary); }
+.app-shell--studio .system-logs-output { min-width: 0; }
+.app-shell--studio .system-logs-output > :is(.ui-loading, .ui-notice) { margin: 8px 18px 14px; }
+.app-shell--studio .system-logs-output > .ui-empty-state { margin: 0 18px 18px; }
+.app-shell--studio .system-logs-summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; padding: 11px 18px; border-top: 1px solid var(--settings-rule, var(--ui-border)); font-size: 10px; font-variant-numeric: tabular-nums; }
+.app-shell--studio .system-logs-summary > span:first-child { color: var(--ui-text-secondary); }
+.app-shell--studio .system-logs-summary > span:last-child { color: var(--ui-text-subtle); }
+.app-shell--studio .system-logs-summary time { margin-left: 5px; }
+.app-shell--studio .system-logs-retention { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0 18px 11px; color: var(--ui-warning); font-size: 10px; line-height: 1.7; }
+.app-shell--studio .system-logs-console { min-height: 300px; max-height: min(58vh, 720px); overflow: auto; overscroll-behavior: contain; padding: 10px 0; border-block: 1px solid var(--settings-rule, var(--ui-border)); background: color-mix(in srgb, var(--ui-bg) 78%, var(--ui-field)); font: 11px/1.75 ui-monospace, SFMono-Regular, Menlo, monospace; scrollbar-gutter: stable; }
+.app-shell--studio .system-logs-console:focus-visible { outline: 1px solid var(--ui-focus); outline-offset: -1px; }
+.app-shell--studio .system-log-line { display: grid; grid-template-columns: 4ch 12ch 7ch minmax(0, 1fr); gap: 12px; min-height: 25px; padding: 3px 18px; transition: background-color 150ms; }
+.app-shell--studio .system-log-line:hover { background: color-mix(in srgb, var(--ui-hover) 45%, transparent); }
+.app-shell--studio .system-log-sequence { text-align: right; }
+.app-shell--studio .system-log-sequence, .app-shell--studio .system-log-line time { color: var(--ui-text-subtle); font-size: 10px; font-variant-numeric: tabular-nums; }
+.app-shell--studio .system-log-stream { color: var(--ui-text-muted); font-size: 10px; letter-spacing: .03em; }
+.app-shell--studio .system-log-line--stderr .system-log-stream { color: var(--ui-warning); }
+.app-shell--studio .system-log-message { min-width: 0; color: var(--ui-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.app-shell--studio .system-log-message em { color: var(--ui-warning); font-size: 10px; font-style: normal; }
+.app-shell--studio .system-logs-process { display: flex; align-items: flex-start; gap: 7px; padding: 11px 18px; font-size: 10px; line-height: 1.7; color: var(--ui-text-subtle); }
+.app-shell--studio .system-logs-process > svg { width: 13px; height: 13px; flex: none; margin-top: 2px; }
+.app-shell--studio .system-logs-process time { margin-left: 5px; font-variant-numeric: tabular-nums; }
+.app-shell--studio .system-logs-workspace > p { margin: 0; font-size: 10px; line-height: 1.8; }
+@keyframes system-console-reading { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: no-preference) {
+  .app-shell--studio .system-logs-state[data-fetching="true"] .ui-badge > span { animation: system-console-reading 900ms ease-in-out infinite; }
 }
+@media (max-width: 900px) {
+  .app-shell--studio .system-logs-filters[data-slot="field-group"] { grid-template-columns: 120px minmax(0, 1fr) 130px; }
+  .app-shell--studio .system-logs-filter-form > .system-logs-filters > button { grid-column: 3; justify-self: end; margin: 0; }
+  .app-shell--studio .system-logs-options[data-slot="field-group"] { gap: 8px 12px; }
+  .app-shell--studio .system-log-line { grid-template-columns: 3ch 11ch 6ch minmax(0, 1fr); gap: 9px; }
+}
+@media (max-width: 700px) {
+  .app-shell--studio .system-logs-filters[data-slot="field-group"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell--studio .system-logs-filters > [data-slot="field"]:first-child { grid-column: 1; grid-row: 1; }
+  .app-shell--studio .system-logs-filters > [data-slot="field"]:nth-child(3) { grid-column: 2; grid-row: 1; }
+  .app-shell--studio .system-logs-keyword { grid-column: 1 / -1; grid-row: 2; }
+  .app-shell--studio .system-logs-filter-form > .system-logs-filters > button { grid-column: 1 / -1; grid-row: 3; }
+  .app-shell--studio .system-logs-toolbar { align-items: flex-end; }
+  .app-shell--studio .system-logs-options[data-slot="field-group"] { flex-direction: column; align-items: flex-start; }
+  .app-shell--studio .system-logs-options > [data-slot="field"] { width: 100%; }
+}
+@media (max-width: 560px) {
+  .app-shell--studio .system-logs-panel > .ui-panel-header { align-items: flex-start; flex-direction: column; gap: 10px; padding: 14px 16px; }
+  .app-shell--studio .system-logs-controls { padding: 14px 16px 10px; }
+  .app-shell--studio .system-logs-summary, .app-shell--studio .system-logs-process { padding-inline: 16px; }
+  .app-shell--studio .system-logs-retention { padding-inline: 16px; }
+  .app-shell--studio .system-log-line { grid-template-columns: 3ch minmax(0, 1fr) auto; gap: 3px 8px; padding: 7px 16px; }
+  .app-shell--studio .system-log-line time { grid-column: 2; grid-row: 1; }
+  .app-shell--studio .system-log-stream { grid-column: 3; grid-row: 1; }
+  .app-shell--studio .system-log-message { grid-column: 2 / -1; }
+  .app-shell--studio .system-logs-console { min-height: 260px; max-height: 55vh; }
+}
+@media (prefers-reduced-motion: reduce) { .app-shell--studio .system-log-line { transition: none; } }
+
+.system-logs-search-pending { margin: 9px 0 0; font-size: var(--ui-text-sm); line-height: 1.6; }
+.system-logs-toolbar-actions { justify-content: flex-end; flex-wrap: wrap; }
+@media (max-width: 700px) { .app-shell--studio .system-logs-toolbar { flex-wrap: wrap; align-items: flex-start; } .app-shell--studio .system-logs-options[data-slot="field-group"] { flex-basis: 100%; flex-direction: row; } .app-shell--studio .system-logs-toolbar-actions { margin-left: auto; } }

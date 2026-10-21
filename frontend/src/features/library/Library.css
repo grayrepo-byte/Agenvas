@@ -28,3 +28,135 @@
 .library-card { position:relative; }
 .library-card>.library-favorite { position:absolute; right:8px; top:8px; width:32px; height:32px; display:grid; place-items:center; padding:0; background:var(--ui-surface); border:1px solid var(--ui-border); border-radius:50%; }
 .library-favorite[aria-pressed=true] { color:var(--ui-accent); }
+
+/* The asset workspace is compact; picker surfaces above keep their original geometry. */
+.app-shell--studio .library-page { --library-rule:color-mix(in srgb,var(--ui-border) 75%,transparent); min-width:0; }
+.app-shell--studio .library-page .library-workspace { gap:0; min-width:0; }
+.app-shell--studio .library-page .library-navigation { justify-content:space-between; gap:8px 16px; padding-bottom:10px; margin-bottom:14px; border-bottom:1px solid var(--library-rule); }
+.app-shell--studio .library-page .library-workspace .library-navigation>[data-slot=tabs-list] { width:auto; min-height:34px; height:auto; gap:4px; margin:0; padding:0; border:0; border-radius:0; background:transparent; }
+.app-shell--studio .library-page .library-navigation [data-slot=tabs-trigger] { flex:none; gap:7px; min-height:34px; padding:7px 12px; border:0; border-radius:7px; font-size:12px; }
+.app-shell--studio .library-page .library-navigation [data-state=active] { color:var(--ui-accent-text); background:var(--ui-accent-subtle); box-shadow:none; }
+.app-shell--studio .library-page .library-navigation [data-slot=tabs-trigger]::after { display:none; }
+.app-shell--studio .library-page .library-navigation>a { color:var(--ui-text-muted); font-size:11px; }
+.app-shell--studio .library-page .library-controls { padding:14px; margin-bottom:20px; border:1px solid var(--library-rule); border-radius:12px; background:var(--ui-surface); }
+.app-shell--studio .library-page .library-categories { gap:4px; width:100%; margin:0 0 12px; padding-bottom:10px; border-bottom:1px solid var(--library-rule); }
+.app-shell--studio .library-page .library-categories>[data-slot=toggle-group-item] { gap:7px; min-height:30px; height:30px; padding:5px 10px; border:0; border-radius:6px; background:transparent; font-size:11px; color:var(--ui-text-muted); }
+.app-shell--studio .library-page .library-categories>[data-state=on] { color:var(--ui-text); background:var(--ui-selected); }
+.app-shell--studio .library-page .library-categories svg { width:14px; height:14px; }
+.app-shell--studio .library-page .library-category-count { min-width:17px; padding:0 4px; border-radius:4px; background:var(--ui-field); color:var(--ui-text-subtle); font-size:10px; font-variant-numeric:tabular-nums; }
+.app-shell--studio .library-page .library-filters { display:grid; grid-template-columns:minmax(160px,1fr) 128px 138px auto; align-items:end; gap:10px; margin:0; }
+.app-shell--studio .library-page .library-filters [data-slot=field] { gap:6px; width:auto; min-width:0; }
+.app-shell--studio .library-page .library-filters [data-slot=field-label] { color:var(--ui-text-muted); font-size:11px; font-weight:500; }
+.app-shell--studio .library-page .library-filters :is([data-slot=input],[data-slot=select-trigger]) { min-width:0; min-height:34px; height:34px; margin:0; padding:6px 10px; font-size:12px; background:var(--ui-field); }
+.app-shell--studio .library-page .library-filter-actions { gap:7px; flex-wrap:nowrap; }
+.app-shell--studio .library-page .library-filter-actions>[data-slot=button] { height:34px; padding:6px 10px; gap:6px; font-size:11px; }
+.app-shell--studio .library-page .library-filter-actions svg { width:14px; height:14px; }
+.app-shell--studio .library-page .library-filter-actions [aria-pressed=true] { color:var(--ui-accent-text); border-color:var(--ui-accent-ring); }
+.app-shell--studio .library-page .library-browser>.ui-notice { margin-bottom:14px; }
+.app-shell--studio .library-page .library-grid { grid-template-columns:repeat(auto-fill,minmax(196px,1fr)); align-items:start; gap:16px; }
+.app-shell--studio .library-page .library-grid:empty { display:none; }
+.app-shell--studio .library-page .library-card { border-color:var(--library-rule); border-radius:12px; background:var(--ui-surface); transition:border-color 180ms ease,box-shadow 180ms ease; }
+.app-shell--studio .library-page .library-card:hover { border-color:var(--ui-border-strong); box-shadow:var(--ui-panel-shadow); }
+.app-shell--studio .library-page .library-card:focus-within { border-color:var(--ui-accent-ring); }
+.app-shell--studio .library-page .library-card>button:not(.library-favorite) { gap:0; padding:0 0 10px; border-radius:0; background:transparent; }
+.app-shell--studio .library-page .library-card-preview { position:relative; aspect-ratio:4/3; margin-bottom:12px; border-bottom:1px solid var(--library-rule); background:var(--ui-field); color:var(--ui-text-subtle); }
+.app-shell--studio .library-page .library-card-preview>svg { width:34px; height:34px; }
+.app-shell--studio .library-page .library-card-preview img { object-fit:contain; transition:transform 300ms cubic-bezier(.22,1,.36,1); }
+.app-shell--studio .library-page .library-card:hover .library-card-preview img { transform:scale(1.025); }
+.app-shell--studio .library-page .library-card[data-kind=AUDIO] .library-card-preview { background:radial-gradient(ellipse at 50% 50%,var(--ui-accent-subtle),var(--ui-field) 75%); }
+.app-shell--studio .library-page .library-card[data-kind=AUDIO] .library-card-preview>svg { box-sizing:content-box; width:28px; height:28px; padding:17px; border:1px solid var(--ui-accent-ring); border-radius:50%; color:var(--ui-accent-text); background:var(--ui-surface); }
+.app-shell--studio .library-page .library-card-kind { position:absolute; left:9px; top:9px; display:inline-flex; align-items:center; gap:4px; padding:3px 7px; border:1px solid var(--ui-border); border-radius:6px; background:var(--ui-surface); color:var(--ui-text-secondary); font-size:10px; line-height:1.5; }
+.app-shell--studio .library-page .library-card-kind svg { width:12px; height:12px; }
+.app-shell--studio .library-page .library-card-duration { position:absolute; right:9px; bottom:9px; padding:2px 6px; border-radius:5px; background:var(--ui-bg); color:var(--ui-text-secondary); font-size:10px; font-variant-numeric:tabular-nums; }
+.app-shell--studio .library-page .library-card-copy { padding:0 12px 2px; min-width:0; }
+.app-shell--studio .library-page .library-card-copy strong { display:block; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:500; line-height:1.6; }
+.app-shell--studio .library-page .library-card-meta { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:5px; color:var(--ui-text-muted); font-size:11px; line-height:1.6; }
+.app-shell--studio .library-page .library-card-meta>span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.app-shell--studio .library-page .library-card-meta time { flex:none; margin:0; font-size:10px; color:var(--ui-text-subtle); }
+.app-shell--studio .library-page .library-card>.library-favorite { top:8px; right:8px; width:32px; height:32px; border-radius:8px; }
+.app-shell--studio .library-page .library-card>.library-favorite:hover,.app-shell--studio .library-page .library-card>.library-favorite[aria-pressed=true] { opacity:1; background:var(--ui-surface-raised); }
+.app-shell--studio .library-page .library-card>.library-favorite svg { width:14px; height:14px; }
+.app-shell--studio .library-page .library-loading { display:grid; place-items:center; min-height:200px; border:1px dashed var(--library-rule); border-radius:10px; }
+.app-shell--studio .library-page .ui-empty-state { min-height:230px; padding:28px 20px; border:1px dashed var(--library-rule); border-radius:10px; background:var(--ui-surface); }
+.app-shell--studio .library-page .ui-empty-state [data-slot=empty-title] { font-size:14px; }
+.app-shell--studio .library-page .ui-empty-state [data-slot=empty-description] { font-size:12px; }
+.app-shell--studio .library-page .library-load-more { display:flex; margin:16px auto 0; height:32px; font-size:11px; }
+/* All-resources shares the same thumbnail rhythm without changing its exact-version browser. */
+.app-shell--studio .library-page .library-resource-description { padding:0 2px; margin:0 0 14px; color:var(--ui-text-muted); font-size:11px; line-height:1.8; }
+.app-shell--studio .library-page .library-browser:not(.library-browser--page) .library-filters { grid-template-columns:minmax(160px,1fr) 138px auto; padding:12px; margin-bottom:16px; border:1px solid var(--library-rule); border-radius:10px; background:var(--ui-surface); }
+.app-shell--studio .library-page .library-card>button>strong { margin:0 10px 3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:500; }
+.app-shell--studio .library-page .library-card>button>:is(small,time) { margin:0 10px; font-size:10px; line-height:1.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ui-text-subtle); }
+.app-shell--studio .library-page .library-browser>[role=alert] { padding:12px; margin-bottom:14px; border:1px solid var(--ui-danger-border); border-radius:8px; color:var(--ui-danger); background:var(--ui-danger-bg); font-size:12px; }
+.app-shell--studio .library-page .library-browser>[role=alert] button { margin-left:10px; }
+.app-shell--studio .library-page .library-browser>[role=status] { display:flex; align-items:center; justify-content:center; min-height:180px; color:var(--ui-text-muted); font-size:12px; }
+.app-shell--studio .library-page .library-browser>[data-slot=empty] { min-height:230px; border:1px dashed var(--library-rule); border-radius:10px; }
+
+/* These private page dialogs are portaled outside the workspace. */
+body:has(.app-shell--studio .library-page) .library-detail-dialog.ui-dialog.app-page { --ui-dialog-width:900px; max-height:calc(100dvh - 40px); }
+body:has(.app-shell--studio .library-page) .library-resource-dialog.ui-dialog.app-page { --ui-dialog-width:900px; }
+body:has(.app-shell--studio .library-page) :is(.library-detail-dialog,.library-upload-dialog,.library-resource-dialog) .ui-dialog-body { padding:18px; }
+body:has(.app-shell--studio .library-page) .library-detail-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(260px,.75fr); align-items:start; gap:20px; }
+body:has(.app-shell--studio .library-page) .library-detail-preview { min-width:0; }
+body:has(.app-shell--studio .library-page) .library-detail-media { display:grid; place-items:center; min-height:240px; overflow:hidden; border:1px solid var(--ui-border); border-radius:9px; background:var(--ui-field); }
+body:has(.app-shell--studio .library-page) .library-detail-media .library-save-preview { width:100%; min-width:0; max-height:400px; margin:0; border-radius:0; }
+body:has(.app-shell--studio .library-page) .library-detail-media audio { width:calc(100% - 32px); margin:16px; }
+body:has(.app-shell--studio .library-page) .library-resource-dialog .library-save-preview { max-height:min(64dvh,560px); }
+body:has(.app-shell--studio .library-page) .library-detail-source { display:flex; align-items:flex-start; gap:6px; margin:10px 0 0; color:var(--ui-text-subtle); font-size:11px; line-height:1.7; overflow-wrap:anywhere; }
+body:has(.app-shell--studio .library-page) .library-detail-source svg { flex:none; margin-top:2px; }
+body:has(.app-shell--studio .library-page) .library-detail-sidebar { display:flex; flex-direction:column; gap:16px; min-width:0; }
+body:has(.app-shell--studio .library-page) .library-detail-fields { gap:14px; }
+body:has(.app-shell--studio .library-page) :is(.library-detail-dialog,.library-upload-dialog) [data-slot=field] { min-width:0; gap:6px; }
+body:has(.app-shell--studio .library-page) :is(.library-detail-dialog,.library-upload-dialog) [data-slot=field-label] { font-size:11px; color:var(--ui-text-secondary); }
+body:has(.app-shell--studio .library-page) :is(.library-detail-dialog,.library-upload-dialog) :is([data-slot=input],[data-slot=select-trigger]) { min-width:0; height:34px; font-size:12px; }
+body:has(.app-shell--studio .library-page) .library-detail-favorite { gap:8px; }
+body:has(.app-shell--studio .library-page) .library-detail-actions { display:flex; flex-direction:column; gap:12px; }
+body:has(.app-shell--studio .library-page) .library-detail-actions .ui-form-actions { gap:6px; }
+body:has(.app-shell--studio .library-page) .library-detail-actions [data-slot=button] { height:32px; padding-inline:10px; font-size:11px; }
+body:has(.app-shell--studio .library-page) .library-detail-sidebar [role=status] { margin:0; font-size:12px; color:var(--ui-success); }
+body:has(.app-shell--studio .library-page) :is(.library-detail-dialog,.library-upload-dialog) .ui-notice { padding:10px; font-size:11px; }
+body:has(.app-shell--studio .library-page) .library-upload-guidance { display:flex; gap:12px; align-items:center; padding:12px; margin-bottom:16px; border:1px solid var(--ui-border); border-radius:8px; background:var(--ui-field); }
+body:has(.app-shell--studio .library-page) .library-upload-guidance>svg { flex:none; color:var(--ui-text-muted); }
+body:has(.app-shell--studio .library-page) .library-upload-guidance p { margin:0; color:var(--ui-text-muted); font-size:11px; line-height:1.8; }
+body:has(.app-shell--studio .library-page) .library-upload-fields { display:grid; grid-template-columns:minmax(0,1fr) minmax(140px,.65fr); gap:14px; }
+body:has(.app-shell--studio .library-page) .library-upload-file { grid-column:1/-1; }
+body:has(.app-shell--studio .library-page) .library-upload-file input { height:auto; min-height:56px; padding:12px; border-style:dashed; background:var(--ui-field); }
+body:has(.app-shell--studio .library-page) .library-upload-file input::file-selector-button { height:28px; margin-right:12px; padding-inline:10px; border:1px solid var(--ui-border-strong); border-radius:5px; background:var(--ui-surface-raised); font-size:11px; cursor:pointer; }
+body:has(.app-shell--studio .library-page) .library-upload-dialog [role=status] { margin:14px 0 0; font-size:12px; color:var(--ui-success); }
+
+@media(max-width:1100px) {
+  .app-shell--studio .library-page .library-filters { grid-template-columns:minmax(140px,1fr) 125px 135px; }
+  .app-shell--studio .library-page .library-filter-actions { grid-column:1/-1; justify-content:flex-end; }
+  .app-shell--studio .library-page .library-browser:not(.library-browser--page) .library-filter-actions { grid-column:auto; }
+}
+@media(max-width:700px) {
+  .app-shell--studio .library-page .library-grid { grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .app-shell--studio .library-page .library-navigation { align-items:flex-start; }
+  .app-shell--studio .library-page .library-navigation>a { margin-left:auto; }
+  .app-shell--studio .library-page .library-filters,.app-shell--studio .library-page .library-browser:not(.library-browser--page) .library-filters { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .app-shell--studio .library-page .library-search-field { grid-column:1/-1; }
+  /* Long translated actions wrap within the filter grid instead of widening the page. */
+  .app-shell--studio .library-page .library-filter-actions { min-width:0; max-width:100%; flex-wrap:wrap; justify-content:flex-start; }
+  .app-shell--studio .library-page .library-filter-actions>[data-slot=button] { min-width:0; max-width:100%; height:auto; min-height:34px; white-space:normal; }
+  .app-shell--studio .library-page .library-browser:not(.library-browser--page) .library-filter-actions { align-self:end; justify-content:flex-end; }
+  body:has(.app-shell--studio .library-page) .library-detail-layout { grid-template-columns:minmax(0,1fr); gap:16px; }
+  body:has(.app-shell--studio .library-page) .library-detail-media { min-height:160px; }
+  body:has(.app-shell--studio .library-page) .library-detail-media .library-save-preview { max-height:260px; }
+}
+@media(max-width:420px) {
+  .app-shell--studio .library-page .library-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .app-shell--studio .library-page .library-controls { padding:10px; }
+  .app-shell--studio .library-page .library-categories { gap:3px; }
+  .app-shell--studio .library-page .library-categories>[data-slot=toggle-group-item] { padding-inline:8px; }
+  .app-shell--studio .library-page .library-card-kind { left:6px; top:6px; padding-inline:4px; }
+  .app-shell--studio .library-page .library-card-kind svg { display:none; }
+  .app-shell--studio .library-page .library-card-copy { padding-inline:8px; }
+  .app-shell--studio .library-page .library-card-meta { flex-wrap:wrap; gap:1px 6px; }
+  .app-shell--studio .library-page .library-navigation [data-slot=tabs-trigger] { gap:5px; padding-inline:9px; font-size:11px; }
+  .app-shell--studio .library-page .library-navigation [data-slot=tabs-trigger] svg { width:13px; height:13px; }
+  body:has(.app-shell--studio .library-page) .library-upload-fields { grid-template-columns:minmax(0,1fr); }
+  body:has(.app-shell--studio .library-page) .library-upload-file input { max-width:100%; font-size:11px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .app-shell--studio .library-page .library-card,.app-shell--studio .library-page .library-card-preview img { transition:none; }
+  .app-shell--studio .library-page .library-card:hover .library-card-preview img { transform:none; }
+}

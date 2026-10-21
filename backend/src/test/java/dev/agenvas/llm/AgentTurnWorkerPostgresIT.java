@@ -69,7 +69,7 @@ class AgentTurnWorkerPostgresIT {
         Project project = projects.create(owner.userId(), "Worker project",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
-                "Create one text first", List.of());
+                "Create one text first");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create one text", "worker-run").run();
 
@@ -114,7 +114,7 @@ class AgentTurnWorkerPostgresIT {
         Project failedContinuation = projects.create(owner.userId(), "Continuation transaction",
                 Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance rollbackAgent = agents.create(owner.userId(), failedContinuation.id(),
-                "Creator", "Create one text first", List.of());
+                "Creator", "Create one text first");
         AgentRun rollbackRun = runs.create(owner.userId(), failedContinuation.id(), rollbackAgent.id(),
                 "Create one text", "continuation-rollback").run();
         // PostgreSQL rejects the next Task after the current turn was completed. The whole

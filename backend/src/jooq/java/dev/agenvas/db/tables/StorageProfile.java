@@ -42,7 +42,8 @@ import org.jooq.impl.TableImpl;
 
 
 /**
- * 不可变本地或对象存储配置及加密凭据
+ * Pinned archive destinations and encrypted object-store or remote-file
+ * credentials
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class StorageProfile extends TableImpl<StorageProfileRecord> {
@@ -78,19 +79,23 @@ public class StorageProfile extends TableImpl<StorageProfileRecord> {
     public final TableField<StorageProfileRecord, String> PROVIDER = createField(DSL.name("provider"), SQLDataType.VARCHAR(20).nullable(false), this, "Provider 或存储实现类型");
 
     /**
-     * The column <code>public.storage_profile.endpoint</code>. 管理员配置的连接地址
+     * The column <code>public.storage_profile.endpoint</code>. Object service
+     * origin, HTTPS WebDAV collection, or smb://host/share/base directory; no
+     * embedded credentials
      */
-    public final TableField<StorageProfileRecord, String> ENDPOINT = createField(DSL.name("endpoint"), SQLDataType.VARCHAR(512).nullable(false), this, "管理员配置的连接地址");
+    public final TableField<StorageProfileRecord, String> ENDPOINT = createField(DSL.name("endpoint"), SQLDataType.VARCHAR(512).nullable(false), this, "Object service origin, HTTPS WebDAV collection, or smb://host/share/base directory; no embedded credentials");
 
     /**
-     * The column <code>public.storage_profile.region</code>. 对象存储区域
+     * The column <code>public.storage_profile.region</code>. Object-store
+     * region; empty for SMB and WebDAV
      */
-    public final TableField<StorageProfileRecord, String> REGION = createField(DSL.name("region"), SQLDataType.VARCHAR(80).nullable(false), this, "对象存储区域");
+    public final TableField<StorageProfileRecord, String> REGION = createField(DSL.name("region"), SQLDataType.VARCHAR(80).nullable(false), this, "Object-store region; empty for SMB and WebDAV");
 
     /**
-     * The column <code>public.storage_profile.bucket</code>. 对象存储桶
+     * The column <code>public.storage_profile.bucket</code>. Object-store
+     * bucket; empty for SMB and WebDAV
      */
-    public final TableField<StorageProfileRecord, String> BUCKET = createField(DSL.name("bucket"), SQLDataType.VARCHAR(63).nullable(false), this, "对象存储桶");
+    public final TableField<StorageProfileRecord, String> BUCKET = createField(DSL.name("bucket"), SQLDataType.VARCHAR(63).nullable(false), this, "Object-store bucket; empty for SMB and WebDAV");
 
     /**
      * The column <code>public.storage_profile.key_prefix</code>. 对象存储相对键前缀
@@ -126,10 +131,10 @@ public class StorageProfile extends TableImpl<StorageProfileRecord> {
     public final TableField<StorageProfileRecord, Integer> CREDENTIAL_KEY_VERSION = createField(DSL.name("credential_key_version"), SQLDataType.INTEGER.nullable(false), this, "凭据加密主密钥版本");
 
     /**
-     * The column <code>public.storage_profile.access_key_mask</code>.
-     * 对象存储访问密钥掩码
+     * The column <code>public.storage_profile.access_key_mask</code>. Masked
+     * access key ID or remote-file username; never a password
      */
-    public final TableField<StorageProfileRecord, String> ACCESS_KEY_MASK = createField(DSL.name("access_key_mask"), SQLDataType.VARCHAR(16).nullable(false), this, "对象存储访问密钥掩码");
+    public final TableField<StorageProfileRecord, String> ACCESS_KEY_MASK = createField(DSL.name("access_key_mask"), SQLDataType.VARCHAR(16).nullable(false), this, "Masked access key ID or remote-file username; never a password");
 
     /**
      * The column <code>public.storage_profile.created_at</code>. 创建时间（UTC）
@@ -141,7 +146,7 @@ public class StorageProfile extends TableImpl<StorageProfileRecord> {
     }
 
     private StorageProfile(Name alias, Table<StorageProfileRecord> aliased, Field<?>[] parameters, Condition where) {
-        super(alias, null, aliased, parameters, DSL.comment("不可变本地或对象存储配置及加密凭据"), TableOptions.table(), where);
+        super(alias, null, aliased, parameters, DSL.comment("Pinned archive destinations and encrypted object-store or remote-file credentials"), TableOptions.table(), where);
     }
 
     /**
@@ -268,7 +273,7 @@ public class StorageProfile extends TableImpl<StorageProfileRecord> {
             Internal.createCheck(this, DSL.name("storage_profile_credential_key_version_check"), "((credential_key_version > 0))", true),
             Internal.createCheck(this, DSL.name("storage_profile_credential_nonce_check"), "((octet_length(credential_nonce) = 12))", true),
             Internal.createCheck(this, DSL.name("storage_profile_credential_version_check"), "((credential_version > 0))", true),
-            Internal.createCheck(this, DSL.name("storage_profile_provider_check"), "(((provider)::text = ANY ((ARRAY['ALIYUN_OSS'::character varying, 'TENCENT_COS'::character varying, 'S3'::character varying])::text[])))", true)
+            Internal.createCheck(this, DSL.name("storage_profile_provider_check"), "(((provider)::text = ANY ((ARRAY['ALIYUN_OSS'::character varying, 'TENCENT_COS'::character varying, 'S3'::character varying, 'SMB'::character varying, 'WEBDAV'::character varying])::text[])))", true)
         );
     }
 

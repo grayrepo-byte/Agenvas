@@ -7,5 +7,5 @@ import java.util.UUID;
 public record CanvasConnection(UUID id, UUID projectId, UUID sourceCanvasItemId,
         UUID targetCanvasItemId, RelationType relationType, UUID sourceArtifactVersionId,
         long version, Instant createdAt, Instant updatedAt) {
-    public enum RelationType { MEDIA_INPUT, AGENT_IMAGE_INPUT, MEDIA_DERIVATION }
+    public enum RelationType { MEDIA_INPUT, MEDIA_DERIVATION }
 }
