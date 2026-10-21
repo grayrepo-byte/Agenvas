@@ -2454,5 +2454,10 @@
   "settings.storage.password": "Пароль",
   "settings.storage.smbEndpointHint": "Используйте smb://хост[:порт]/ресурс/каталог. Требуются SMB 2/3 и подпись сообщений. Для доменной учётной записи: DOMAIN\\пользователь.",
   "settings.storage.webdavEndpointHint": "Введите HTTPS-адрес существующего каталога WebDAV, например https://nas.example.com/dav/media. Используйте имя пользователя и пароль или пароль приложения.",
-  "settings.storage.fileProtocolHint": "Подключение используется для постоянного архива. Если сервису генерации нужны публичные ссылки, выберите отдельный ретранслятор OSS/COS/S3."
+  "settings.storage.fileProtocolHint": "Подключение используется для постоянного архива. Если сервису генерации нужны публичные ссылки, выберите отдельный ретранслятор OSS/COS/S3.",
+  "settings.workspace.configuration": "Модели и сервисы",
+  "settings.workspace.observability": "Активность и журналы",
+  "settings.workspace.preferences": "Настройки",
+  "settings.workspace.selfHosted": "Собственное размещение",
+  "settings.workspace.eyebrow": "НАСТРОЙКИ ПРОСТРАНСТВА"
 }

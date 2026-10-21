@@ -2293,3 +2293,25 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 新增 9 项 fake Docker CLI 回归，覆盖参数、去重、默认/显式 pull、帮助、配置失败、构建失败不更新、健康失败不报成功和计时，修复前 5 项失败，修复后全部通过。Bash 语法、ShellCheck、四种真实 Compose 配置回归及差异空白检查通过；编排测试不启动容器，不可作为运行验收的替代。
 - [x] 实际源码镜像构建通过：已有下载缓存下后端 Maven 打包 42.201 秒，无测试编译；在仓库外副本仅修改 POM 注释，并用 Maven `--offline` 强制重新打包，8.581 秒成功，证明不是仅靠旧 RUN 层命中而是包缓存跨 POM 层复用。`MAVEN_CACHE_MOUNT=true / VERIFY_DEPTH_MODEL=true` 的真实 ARM64 构建内深度模型/JNI 单项测试通过，零失败/错误/跳过。完整更新脚本在缓存已填充后实测 23.08 秒：构建 5 秒，容器更新及健康等待 17 秒，最终三容器健康；持久卷保留。前后样本的缓存状态不同，不据此宣称冷构建提速倍率。
 - [ ] 本轮未运行全量前后端测试、托管 CI/GHA 缓存或 AMD64 镜像构建；CI 默认依赖层模式未在本机重新冷构建。首次下载、换 builder、清理缓存、依赖新增及网络故障仍可能耗时；不自动复用宿主机 Maven 仓库。
+
+## 2026-10-20 设置工作区视觉与动效重构
+
+- [x] `PageShell` 为设置路由增加 `.app-shell--settings` 作用域、按工作区/模型服务/观测/偏好分组的侧栏、面包屑与页面图标；保留侧栏外全宽布局，手机导航横向滚动，桌面短窗口纵向滚动；路由和语言变化后将活动入口带入可见范围。
+- [x] 新增公共 `SettingsWorkspace.css`，统一设置面板、已保存摘要、表单、表格和 240–480ms 淡入/位移动效；减少动态效果偏好生效时关闭动效，草稿面板继续 `forceMount`。系统分类页签增加图标，语言偏好使用紧凑设置行，局部布局在 `SystemSettingsPage.css` 维护。
+- [x] 功能行增加工具图标并仅在有修改时强调保存按钮；LLM 字段增加明确标签并按连接与凭证分组；媒体页签显示服务端实际连接/能力数量，说明提示移至表格之后。原有草稿保留、CAS、显式载入、密钥清空、诊断费用确认、媒体分区与权限行为保持；画布与其他工作区 token、API、数据库迁移及依赖未变。
+- [x] 最终在 `frontend` 执行 `pnpm exec vitest run --maxWorkers=4 src/shared/ui/PageShell.test.tsx src/app/App.test.tsx src/features/settings/*.test.tsx src/shared/ui/Dialog.test.tsx src/shared/ui/Select.test.tsx src/shared/i18n/i18n.test.tsx`：23 个文件、290 项测试全部通过；最后调整活动导航可见性后单独复跑 PageShell 6 项通过。默认并发的一轮曾出现 App 路由用例 5 秒超时，隔离复跑 4 项通过，随后上述限制并发复验全部通过；没有放宽测试超时或修改断言。
+- [x] 合成 Mock 浏览器检查覆盖七个设置路由的桌面呈现；390px 检查媒体/系统页和添加连接窗口，320px 检查系统日志与日语系统分类页，无文档级横向溢出。实测中英日俄切换、活动导航可见、折叠和语言切换保留 Provider 草稿、显式撤销恢复、菜单与窗口逐层 Esc 关闭并恢复焦点。修复日志筛选排列、窄屏终端行宽与详情按钮裁切；减少动态效果规则已静态核对，未在浏览器模拟该系统偏好。
+- [x] `pnpm -C frontend typecheck`、`pnpm -C frontend lint`、`pnpm -C frontend build` 与 `git diff --check` 通过；构建仍提示现有部分分块超过 500kB。新增可重载的 `e2e/settings-design.html` 合成预览入口，使用真实页面和内存 HTTP 数据；夹具单独 TypeScript/ESLint 检查通过。预览保存只改变内存，重载重置；未覆盖真实认证、网络、工作流导入或素材上传，不能作为真实 Provider 验证。
+- [x] 按后续反馈收紧系统设置全部分类的布局：移除重复分类标题，页签最小高度 34px，面板内边距桌面 18px/小屏 16px，主要表单间距 14px；语言采用按内容宽度按钮的紧凑设置行，诊断、风格和模板区同步缩小留白，保留风险说明、草稿与反馈。调整后定向复跑 `SystemSettingsPage`、`PageShell`、`PromptManagementSection`、`MediaStyleSettingsSection`、`PasswordChangeSection`、`CallLogRetentionSection`、`DebugModeSection` 七个测试文件，43 项全部通过；本次类型检查、lint、生产构建及差异空白检查通过；Mock 浏览器实测桌面语言设置行约 85px 高、按钮 78×36px，390px 手机按钮仍按内容宽度显示且无文档级横向溢出，并检查账户安全与系统诊断的紧凑呈现。
+- [ ] 全量测试、后端测试、真实 Provider 与部署未运行；本轮不修改运行服务或用户数据。规格 §6.1/§19.4 与前端公共样式文档已同步。
+
+## 2026-10-21 模型服务、日志、资产与 Skill 紧凑工作区
+
+- [x] `PageShell` / `SettingsWorkspace.css` 将分组导航、紧凑页头与公共面板扩展到 `.app-shell--studio`，覆盖设置、`/library` 和 `/skills`；系统设置保留 `.app-shell--settings` 局部范围。页面保持全宽、移动导航滚动与减少动态效果支持，公共画布 token、API、依赖和数据库迁移无改动。
+- [x] 模型配置把连接/凭证、协议诊断与媒体状态分区，媒体连接与能力表格保留现有模态编辑；调用日志改为紧凑筛选、记录与计时/标识详情，系统日志整合筛选、自动刷新/跟随和终端状态。保存、CAS、诊断费用确认、权限、后台快照保留和原轮询行为不变。
+- [x] 资产页分层组织视图、用途分类与筛选，使用密集缩略图卡片及双栏详情，上传表单同步收紧。新增页面呈现参数，共享画布/参考选择器保留默认布局；收藏、服务端筛选、精确版本浏览、上传/导入与回收站语义不变。Skill 页新增内置/个人目录分组与紧凑编辑/发布预览，已打开编辑器继续挂载，自动保存、CAS、发布与固定版本试用规则不变。
+- [x] 资产 `LibraryPage`、`ResourceBrowser`、`LibraryReferencePicker`、`SaveToLibraryButton`、`TextAssetSave` 五个定向测试文件共 17 项通过，最后页面相关复测 8 项通过；Skill 的 `SkillsPage`、`AgentSkillControls`、`CreativeSkillSource` 三个定向文件共 20 项通过。上述证据为合成响应测试，不代表真实 Provider 接通。
+- [x] 最终定向执行 `pnpm exec vitest run --maxWorkers=4 src/shared/ui/PageShell.test.tsx src/app/App.test.tsx src/features/settings/*.test.tsx src/features/library/*.test.tsx src/features/skills/*.test.tsx src/shared/ui/Dialog.test.tsx src/shared/ui/Select.test.tsx src/shared/i18n/i18n.test.tsx`，31 个文件、327 项全部通过；手机日志选项宽度修正后单独复跑 `SystemLogsPage` 6 项通过。最终类型检查、完整前端 lint（含主题与四语言检查）、生产构建及差异空白检查通过。构建保留既有 500kB 分块提示，并提示新预览插件导入未带扩展名不兼容未来大版本的 native config loader；当前 Vite 8 配置与构建正常，未为提示升级依赖或关闭检查。
+- [x] 通过真实 React 页面进行合成 Mock 浏览器检查：桌面核对模型、媒体、两类日志、资产与 Skill；390px 检查资产/调用详情和 Skill 编辑，320px 检查六个目标页面及功能设置。中俄两种文案均无文档级横向溢出；修复俄语长按钮撑宽、日志复选文案收缩和 Skill 页签多余纵向滚动条。验证资产空搜索、内置 Skill 与附件、个人草稿自动保存、系统日志关键词筛选/暂停、媒体编辑与调用详情的 Esc 关闭及焦点恢复；最终恢复中文与默认桌面尺寸。截图保存在仓库外私有证据目录。
+- [x] 合成预览增加资产与 Skill 内存 API，保留基本版本检查及完整版本附件复制。仅开发服务器为合成 ID 提供独立生成的 SVG、静音 WAV 和一秒几何 MP4，阻断原生媒体请求穿透 API 代理；隔离 HTTP 检查覆盖真实 ID 旁路、合成未知 ID、只读限制、HEAD/字节范围与媒体格式，生产配置排除该插件，构建产物未包含夹具标识。浏览器图片加载和视频元数据读取通过；这些几何占位与合成日志不能证明真实素材、Provider 或生成接通。真实上传/转存、Agent 试用、认证网络与浏览器减少动态效果模拟未运行；减少动态效果规则仅静态核对。
+- [ ] 全量测试、后端测试、真实 Provider 与部署未运行；本轮不修改运行服务或用户数据。规格 §6.1/§6.14/§6.17/§19.4 与公共样式文档已同步。

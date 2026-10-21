@@ -1,0 +1,74 @@
+/* System settings use a compact density without changing other settings routes or portals. */
+.app-shell--settings:has(.system-settings-workspace) .settings-workspace-topbar { min-height: 56px; }
+.app-shell--settings:has(.system-settings-workspace) .app-page-header { padding: 22px 0 18px; margin-bottom: 4px; gap: 16px; }
+.app-shell--settings:has(.system-settings-workspace) .settings-page-heading { gap: 12px; }
+.app-shell--settings:has(.system-settings-workspace) .settings-page-icon { width: 42px; height: 42px; border-radius: 12px; margin-top: 1px; }
+.app-shell--settings:has(.system-settings-workspace) .settings-page-icon > svg { width: 23px; height: 23px; }
+.app-shell--settings:has(.system-settings-workspace) .app-page-header h1 { font-size: 26px; }
+.app-shell--settings:has(.system-settings-workspace) .app-page-eyebrow { margin-bottom: 4px; }
+.app-shell--settings:has(.system-settings-workspace) .app-page-description { margin-top: 6px; font-size: 12px; line-height: 1.7; }
+
+.app-shell--settings .system-settings-workspace { gap: 0; min-width: 0; }
+.app-shell--settings .system-settings-navigation { min-width: 0; margin-bottom: 16px; padding-bottom: 2px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--ui-border-strong) transparent; }
+.app-shell--settings .system-settings-tabs { justify-content: flex-start; gap: 4px; width: max-content; min-width: 100%; max-width: none; height: auto; margin: 0; padding: 0 0 8px; border-bottom: 1px solid var(--ui-border); border-radius: 0; }
+.app-shell--settings .system-settings-tab { flex: 0 0 auto; gap: 7px; min-height: 34px; padding: 7px 11px; border-radius: 7px; font-size: 12px; transition: background-color 180ms ease, color 180ms ease; }
+.app-shell--settings .system-settings-tab:hover { background: var(--ui-surface-raised); }
+.app-shell--settings .system-settings-tab[data-state="active"] { background: var(--ui-accent-subtle); color: var(--ui-accent-text); }
+.app-shell--settings .system-settings-tab::after { display: none; }
+.app-shell--settings .system-settings-panel { min-width: 0; }
+.app-shell--settings .system-settings-panel[hidden] { display: none; }
+
+/* Keep content and safety copy fully visible; compact the space surrounding it. */
+.app-shell--settings .system-settings-panel .ui-panel { padding: 18px; border-radius: 10px; }
+.app-shell--settings .system-settings-panel .ui-panel-header { margin-bottom: 14px; gap: 12px; }
+.app-shell--settings .system-settings-panel .ui-panel-header h2 { font-size: 14px; }
+.app-shell--settings .system-settings-panel .ui-panel-header p { margin-top: 4px; line-height: 1.7; }
+.app-shell--settings .system-settings-panel.ui-stack,
+.app-shell--settings .system-settings-panel :is(.ui-stack, .ui-form, [data-slot="field-group"], [data-slot="field-set"]) { gap: 14px; }
+.app-shell--settings .system-settings-panel [data-slot="field"][data-orientation="vertical"] { gap: 7px; }
+.app-shell--settings .system-settings-panel .ui-form-grid { gap: 12px; }
+.app-shell--settings .system-settings-panel > .grid { gap: 16px; }
+.app-shell--settings .system-settings-panel .ui-notice { padding: 10px 12px; line-height: 1.7; }
+.app-shell--settings .system-settings-panel .ui-empty-state { padding: 24px 18px; gap: 10px; }
+.app-shell--settings .system-settings-panel .diagnostics-stats { gap: 12px; }
+.app-shell--settings .system-settings-panel .diagnostics-stat-heading { gap: 8px; }
+.app-shell--settings .system-settings-panel .ui-icon-tile { width: 30px; height: 30px; border-radius: 7px; }
+.app-shell--settings .system-settings-panel .diagnostics-errors li { padding-block: 10px; }
+.app-shell--settings .system-settings-panel .media-style-settings-grid { gap: 12px; }
+.app-shell--settings .system-settings-panel .media-style-settings-card-body { padding: 10px; gap: 6px; }
+.app-shell--settings .system-settings-panel .media-template-card { height: 166px; }
+.app-shell--settings .system-settings-panel .media-template-card-label { padding: 10px; }
+.app-shell--settings .system-settings-panel textarea { field-sizing: fixed; height: 220px; min-height: 120px; resize: vertical; }
+
+.app-shell--settings .system-settings-panel .system-settings-language-panel { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px 24px; padding: 18px 20px; }
+.app-shell--settings .system-settings-language-intro { display: flex; align-items: center; gap: 12px; flex: 1 1 240px; min-width: 0; }
+.app-shell--settings .system-settings-language-symbol { display: grid; flex: none; place-items: center; width: 34px; height: 34px; border: 1px solid var(--ui-border); border-radius: 9px; background: var(--ui-field); color: var(--ui-text-muted); }
+.app-shell--settings .system-settings-language-symbol svg { width: 19px; height: 19px; }
+.app-shell--settings .system-settings-language-intro > div { min-width: 0; }
+.app-shell--settings .system-settings-language-intro h2 { margin: 0 0 4px; font-size: 14px; font-weight: 550; }
+.app-shell--settings .system-settings-language-intro p { margin: 0; color: var(--ui-text-muted); font-size: 12px; line-height: 1.7; }
+.app-shell--settings .system-settings-language-control { flex: none; }
+.app-shell--settings .system-settings-language-control .language-select { width: max-content; max-width: 160px; }
+
+@media (min-width: 1100px) {
+  .app-shell--settings .system-settings-panel[data-category="logs"]:not([hidden]) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+}
+@media (min-width: 1440px) {
+  .app-shell--settings .system-settings-panel .diagnostics-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .app-shell--settings:has(.system-settings-workspace) .settings-workspace-topbar { min-height: 44px; }
+  .app-shell--settings:has(.system-settings-workspace) .app-page-header { padding: 18px 0 16px; }
+  .app-shell--settings:has(.system-settings-workspace) .app-page-header h1 { font-size: 23px; }
+  .app-shell--settings .system-settings-navigation { margin-bottom: 12px; }
+  .app-shell--settings .system-settings-tab { padding-inline: 10px; }
+  .app-shell--settings .system-settings-panel .ui-panel { padding: 16px; }
+  .app-shell--settings .system-settings-panel .system-settings-language-panel { padding: 16px; }
+}
+@media (max-width: 560px) {
+  .app-shell--settings .system-settings-tabs { flex-wrap: nowrap; }
+  .app-shell--settings .system-settings-tabs > button { flex-basis: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell--settings .system-settings-tab { transition: none; }
+}

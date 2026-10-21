@@ -2454,5 +2454,10 @@
   "settings.storage.password": "パスワード",
   "settings.storage.smbEndpointHint": "smb://ホスト[:ポート]/共有名/ディレクトリ を使用します。SMB 2/3 とメッセージ署名が必要です。ドメインアカウントは DOMAIN\\ユーザー名 を使用します。",
   "settings.storage.webdavEndpointHint": "既存の WebDAV ディレクトリの HTTPS URL を入力してください。例：https://nas.example.com/dav/media。ユーザー名とパスワードまたはアプリパスワードを使用します。",
-  "settings.storage.fileProtocolHint": "この接続は永続保存に使用します。生成サービスに公開メディアリンクが必要な場合は、別途 OSS/COS/S3 中継を選択してください。"
+  "settings.storage.fileProtocolHint": "この接続は永続保存に使用します。生成サービスに公開メディアリンクが必要な場合は、別途 OSS/COS/S3 中継を選択してください。",
+  "settings.workspace.configuration": "モデルとサービス",
+  "settings.workspace.observability": "実行とログ",
+  "settings.workspace.preferences": "環境と管理",
+  "settings.workspace.selfHosted": "セルフホストワークスペース",
+  "settings.workspace.eyebrow": "ワークスペース設定"
 }

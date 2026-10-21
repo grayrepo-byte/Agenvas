@@ -37,3 +37,25 @@
 }
 
 .call-log-retention-field { max-width: var(--ui-settings-aside-width); }
+
+/* LLM configuration and validation are separate actions, composed as a compact service desk. */
+.app-shell--studio .llm-media-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.app-shell--studio .llm-media-overview > :is(p, [role="alert"], .canvas-loading-state) { grid-column: 1 / -1; margin: 0; }
+.app-shell--studio .llm-media-overview .settings-mode-summary { padding: 10px 12px; border-radius: 8px; background: var(--ui-field); font-size: 12px; }
+.app-shell--studio .llm-media-overview .settings-nav-link { padding: 10px 12px; font-size: 12px; }
+.app-shell--studio .llm-diagnostics-panel .settings-status-line { margin: 0; }
+.app-shell--studio .llm-diagnostics-panel .settings-consent { padding: 10px 12px; }
+.app-shell--studio .llm-editor-panel [data-slot="field"] { gap: 7px; }
+@media (min-width: 1000px) and (max-width: 1180px) {
+  .app-shell--studio .settings-page-layout.llm-settings-layout { grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+}
+@media (max-width: 1180px) {
+  .app-shell--studio .settings-page-layout.llm-settings-layout > aside { display: flex; flex-direction: column; align-items: stretch; min-width: 0; }
+}
+@media (min-width: 1440px) {
+  .app-shell--studio .llm-connection-fields { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .app-shell--studio .llm-media-overview { grid-template-columns: minmax(0, 1fr); }
+  .app-shell--studio .llm-diagnostics-panel .ui-form-actions > button { max-width: 100%; height: auto; min-height: 34px; white-space: normal; }
+}

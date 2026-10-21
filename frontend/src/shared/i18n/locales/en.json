@@ -2454,5 +2454,10 @@
   "settings.storage.password": "Password",
   "settings.storage.smbEndpointHint": "Use smb://host[:port]/share/directory. SMB 2/3 with message signing is required. For domain accounts, use DOMAIN\\username.",
   "settings.storage.webdavEndpointHint": "Enter the HTTPS URL of an existing WebDAV collection, such as https://nas.example.com/dav/media. Use your username and password or app password.",
-  "settings.storage.fileProtocolHint": "This connection archives files. Select a separate OSS/COS/S3 relay when a generation service needs public media links."
+  "settings.storage.fileProtocolHint": "This connection archives files. Select a separate OSS/COS/S3 relay when a generation service needs public media links.",
+  "settings.workspace.configuration": "Models & services",
+  "settings.workspace.observability": "Activity & logs",
+  "settings.workspace.preferences": "Preferences",
+  "settings.workspace.selfHosted": "Self-hosted workspace",
+  "settings.workspace.eyebrow": "WORKSPACE SETTINGS"
 }
