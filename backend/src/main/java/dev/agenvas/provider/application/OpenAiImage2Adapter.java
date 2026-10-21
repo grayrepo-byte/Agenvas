@@ -7,6 +7,7 @@ import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.storage.MediaRelayService;
 import dev.agenvas.shared.error.ProviderFailureCodes;
+import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.MediaAdapter;
@@ -82,6 +83,10 @@ public class OpenAiImage2Adapter implements MediaAdapter {
                 relay.preflightImage(relayProfile(context));
             return null;
         } catch (RuntimeException unavailable) {
+            // Keep the actionable public-endpoint failure; other preparation errors stay generic.
+            if (unavailable instanceof ApiProblemException problem
+                    && "MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED".equals(problem.code()))
+                return problem.code();
             return ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED;
         }
     }

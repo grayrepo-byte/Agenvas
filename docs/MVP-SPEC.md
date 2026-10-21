@@ -1417,7 +1417,7 @@ springdoc 作为后端实现说明与比对工具，不允许它与手写合约�
 
 媒体中继与永久存储分开配置，复用管理员加密连接目录但各自有独立选择项。`PUT /api/v1/settings/storage/relay` 使用 `expectedVersion`/CAS；选择或关闭中继不改变默认存储，不移动历史资源。参考任务在受理时固定本地视频所需的中继连接。桶可保持私有，但最终对象端点必须为公网 HTTPS；私网桶不能直接提供给外部生成服务。连接需要上传、签名读取与删除临时副本的权限。
 
-2026-10-09 图片中继扩展：存储设置增加 `llmRelayEnabled`、`imageRelayEnabled`，与中继连接一起通过 CAS 保存，可设置 LLM 开启、图片生成关闭。已选择中继且相应开关开启时，OpenAI 兼容 LLM 的已授权图片预览使用 HTTPS `image_url`；普通与流式共用，输入范围与缩略图约束保持。OpenAI Images 编辑使用 JSON `images[].image_url` 与 `mask.image_url`，上传与文件模式相同的缩放参考 PNG/alpha 蒙版；其他未支持 URL 协议的适配器继续原方式。图片任务受理时固定连接与传输选择，旧任务无该字段时保持文件上传；LLM 每次调用读取开关。V17 两个开关默认开启，已有中继安装升级后启用图片中继，没有中继连接仍用原方式。永久归档与视频中继规则保留。上传前短事务登记临时副本，网络不持事务；准备失败不提交生成，不进入 UNKNOWN、不自动换协议重提。签名继续 72 小时、副本 7 天清理。见 [ADR 0041](adr/0041-image-relay-by-function.md)。
+2026-10-09 图片中继扩展：存储设置增加 `llmRelayEnabled`、`imageRelayEnabled`，与中继连接一起通过 CAS 保存，可设置 LLM 开启、图片生成关闭。已选择中继且相应开关开启时，OpenAI 兼容 LLM 的已授权图片预览使用 HTTPS `image_url`；普通与流式共用，输入范围与缩略图约束保持。OpenAI Images 编辑使用 JSON `images[].image_url` 与 `mask.image_url`，上传与文件模式相同的缩放参考 PNG/alpha 蒙版；其他未支持 URL 协议的适配器继续原方式。图片任务受理时固定连接与传输选择，旧任务无该字段时保持文件上传；LLM 每次调用读取开关。V17 两个开关默认开启，已有中继安装升级后启用图片中继，没有中继连接仍用原方式。永久归档与视频中继规则保留。OpenAI 兼容中转站必须实测此 JSON URL 协议，multipart 文件编辑成功不代表 URL 编辑可用；独立异步 URL 接口需要对应提交、查询与结果解析协议。中继公网预检继续拒绝私网及代理 fake-IP，部署侧应让对象存储域名返回真实公网地址。上传前短事务登记临时副本，网络不持事务；检查点前预检失败进入 BLOCKED 并释放用量预留，公网地址失败保留 `MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED`，其他中继准备失败使用 `MEDIA_RELAY_PREPARATION_FAILED`。准备失败不提交生成，不进入 UNKNOWN、不自动换协议重提。签名继续 72 小时、副本 7 天清理。见 [ADR 0041](adr/0041-image-relay-by-function.md)。
 
 本地视频只上传到中继的 `media-relay/` 临时对象键，上传前持久登记清理记录；副本保留 7 天，默认每小时按有界批次清理，删除失败保留记录以后重试。清理不删除原 Asset，也不再次提交生成。上传或签名失败且未调用 Ark create 时为明确失败，只有 Ark 提交是否被受理不明才进入 UNKNOWN。追加 V4 与生成 jOOQ；未配置中继的安装默认关闭，永久存储及历史资源保留。
 

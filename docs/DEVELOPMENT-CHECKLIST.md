@@ -2310,3 +2310,12 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 新增 9 项 fake Docker CLI 回归，覆盖参数、去重、默认/显式 pull、帮助、配置失败、构建失败不更新、健康失败不报成功和计时，修复前 5 项失败，修复后全部通过。Bash 语法、ShellCheck、四种真实 Compose 配置回归及差异空白检查通过；编排测试不启动容器，不可作为运行验收的替代。
 - [x] 实际源码镜像构建通过：已有下载缓存下后端 Maven 打包 42.201 秒，无测试编译；在仓库外副本仅修改 POM 注释，并用 Maven `--offline` 强制重新打包，8.581 秒成功，证明不是仅靠旧 RUN 层命中而是包缓存跨 POM 层复用。`MAVEN_CACHE_MOUNT=true / VERIFY_DEPTH_MODEL=true` 的真实 ARM64 构建内深度模型/JNI 单项测试通过，零失败/错误/跳过。完整更新脚本在缓存已填充后实测 23.08 秒：构建 5 秒，容器更新及健康等待 17 秒，最终三容器健康；持久卷保留。前后样本的缓存状态不同，不据此宣称冷构建提速倍率。
 - [ ] 本轮未运行全量前后端测试、托管 CI/GHA 缓存或 AMD64 镜像构建；CI 默认依赖层模式未在本机重新冷构建。首次下载、换 builder、清理缓存、依赖新增及网络故障仍可能耗时；不自动复用宿主机 Maven 仓库。
+
+## 2026-10-14 OSS 中继下的 GPT 图片编辑排障
+
+- [x] 复现代理 DNS 返回 `198.18.0.0/15` fake-IP 导致公网中继预检拒绝；公网预检限制保留。仅在仓库外诊断进程固定经过公开 DNS 核对的 OSS 公网地址后，生产对象存储客户端、签名器完成真实 PUT、72 小时签名 GET（HTTP 200、字节一致）及本轮临时对象 DELETE。没有更改系统代理、DNS、存储连接或图片中继开关。
+- [x] 使用合成 PNG 实际调用两种已配置第三方连接的同步 Images Edits JSON URL 协议：分别返回 HTTP 500（multipart 解析失败）和 HTTP 400（要求原始图片）；另一次 multipart URL 字段请求返回 HTTP 500（缺少 image）。这些请求均为独立诊断尝试，没有重提现有 Task、自动换协议或证明生成成功。真实回执、日志与素材留在仓库外私有目录，不记录私人 ID、凭据、签名 URL 或部署地址。
+- [x] 真实 PostgreSQL 回归先复现 `MEDIA_RELAY_PREPARATION_FAILED` 被提交前阻断白名单拒绝，随后复现用量释放白名单遗漏同一错误码导致事务回滚。同步修复 TaskService 与 UsageService；OpenAI 图片预检保留具体 `MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED`。预检失败进入 BLOCKED、清除租约、释放一次预留，无 provider_attempt、call_log 或生成请求，不进入 UNKNOWN。
+- [x] 43 项定向单元测试与 1 项真实 PostgreSQL 集成测试通过，无失败、错误或跳过。单元范围为 ApprovedMediaCancellationTest、OpenAiImage2AdapterTest、UsageMediaPricingTest、OpenAiImage2ClientTest、MediaRelayServiceTest；集成范围为 OpenAiImage2PostgresIT，覆盖通用准备失败、公网 DNS 拒绝、事务及用量释放、文件/URL 传输和原有 UNKNOWN 行为。编译、打包及差异空白检查通过。
+- [x] 同步规格与 Provider 接入指南的 URL 协议兼容和部署 DNS 验证边界；没有合约、生成代码、迁移、依赖或前端变更。
+- [ ] 真实中转站 URL 编辑成功、独立异步 URL 协议接入、显式蒙版与多图真实调用、账单核对、全量测试和本地部署未运行或未通过；源码修复未部署，既有 RUNNING 任务未手工修改。当前同步适配器不能据文件编辑成功宣称中转站 URL 编辑可用。

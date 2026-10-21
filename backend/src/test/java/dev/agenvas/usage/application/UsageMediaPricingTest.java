@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.llm.application.LlmModeProperties;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.domain.UsageEntry;
 import java.time.Clock;
@@ -58,6 +59,28 @@ class UsageMediaPricingTest {
             assertThat(entry.actualCost()).isNull();
             assertThat(entry.costStatus()).isEqualTo(UsageEntry.CostStatus.UNKNOWN);
         });
+    }
+
+    @Test
+    void relayPreparationFailureReleasesTheOriginalReservationWithoutSettlement() {
+        UsageService service = service();
+        UUID owner = UUID.randomUUID();
+        Task original = task(Task.Kind.IMAGE_GENERATION, null);
+        service.reserveMediaTask(owner, original, "PROVIDER_UNPRICED", 7);
+        when(ledger.findByOperationKey("media:" + original.id() + ":settle"))
+                .thenReturn(Optional.empty());
+        Task blocked = new Task(original.id(), original.projectId(), null, original.stepKey(),
+                original.kind(), Task.Status.BLOCKED, false, original.input(), original.inputHash(),
+                null, null, original.attemptNo(), NOW, null, null, original.leaseEpoch(),
+                original.version() + 1, ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED,
+                original.createdAt(), NOW, null);
+
+        service.releaseUnsubmittedMediaTask(owner, blocked);
+
+        assertThat(entries).extracting(UsageEntry::entryType)
+                .containsExactly(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.RELEASE);
+        assertThat(entries.getLast().operationKey()).isEqualTo("media:" + original.id() + ":release");
+        assertThat(entries.getLast().costStatus()).isEqualTo(UsageEntry.CostStatus.UNKNOWN);
     }
 
     @Test
