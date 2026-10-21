@@ -42,7 +42,7 @@
 .agent-chat-pending-approval > span { min-width: 0; overflow-wrap: anywhere; }
 .agent-chat-pending-approval > button { flex: none; }
 .agent-chat-composer { flex: none; padding: 9px 11px 7px; margin: 0 12px 12px; background: var(--chat-surface); border: 1px solid var(--ui-border-strong); border-radius: 14px; transition: border-color var(--ui-duration), box-shadow var(--ui-duration); }
-.agent-chat-composer:focus-within { border-color: var(--ui-accent); box-shadow: 0 0 0 3px var(--ui-accent-ring); }
+.agent-chat-composer:has(textarea:focus-visible) { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .agent-chat-surface .agent-chat-composer textarea { background: transparent; border: 0; padding: 6px 2px; min-height: 62px; max-height: 150px; resize: vertical; outline: none; box-shadow: none; font-size: 13px; line-height: 1.65; }
 .agent-chat-composer-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 5px; }
 .agent-chat-composer-actions { display: flex; align-items: center; gap: 6px; min-width: 0; }

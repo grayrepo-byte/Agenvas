@@ -6,8 +6,9 @@ import { Notice } from "../../shared/ui/PagePrimitives";
 import { BrandLogo } from "../../shared/ui/BrandLogo";
 import "./AuthPages.css";
 import { LanguageSelect } from "../../shared/i18n/LanguageSelect";
+import { FilmStrip, ImageSquare, MusicNotes, ShieldCheck, Sparkle, TextT } from "../../shared/ui/icons";
 
-/** Public entry screens share the same compact, dark application surface. */
+/** Public entry screens introduce the studio while keeping credentials in one compact panel. */
 export function AuthLayout({ title, description, children }: {
   title: string;
   description: string;
@@ -16,13 +17,28 @@ export function AuthLayout({ title, description, children }: {
   useLocale();
   return (
     <main className="auth-page app-theme">
-      <div className="auth-brand"><BrandLogo /></div>
-      <LanguageSelect />
-      <section className="auth-card" aria-labelledby="auth-title">
-        <header className="auth-card-heading"><span className="auth-eyebrow">AGENT CANVAS</span><h1 id="auth-title">{title}</h1><p>{description}</p></header>
-        {children}
-      </section>
-      <p className="auth-footnote">{t("auth.shared.selfHostedHint")}</p>
+      <header className="auth-topbar">
+        <div className="auth-brand"><BrandLogo /></div>
+        <LanguageSelect />
+      </header>
+      <div className="auth-layout">
+        <section className="auth-introduction" aria-labelledby="auth-introduction-title">
+          <span className="auth-eyebrow"><span aria-hidden="true" />AGENT CANVAS</span>
+          <h2 id="auth-introduction-title">{t("auth.shared.studioTitle")}</h2>
+          <p>{t("projects.emptyHint")}</p>
+          <ul className="auth-capabilities">
+            <li><TextT size={21} weight="duotone" aria-hidden="true" /><span>{t("common.text")}</span></li>
+            <li><ImageSquare size={21} weight="duotone" aria-hidden="true" /><span>{t("common.image")}</span></li>
+            <li><FilmStrip size={21} weight="duotone" aria-hidden="true" /><span>{t("common.video")}</span></li>
+            <li><MusicNotes size={21} weight="duotone" aria-hidden="true" /><span>{t("common.audio")}</span></li>
+          </ul>
+        </section>
+        <section className="auth-card" aria-labelledby="auth-title">
+          <header className="auth-card-heading"><span className="auth-card-symbol" aria-hidden="true"><Sparkle size={24} weight="duotone" /></span><h1 id="auth-title">{title}</h1><p>{description}</p></header>
+          {children}
+        </section>
+      </div>
+      <footer className="auth-footnote"><ShieldCheck size={15} aria-hidden="true" /><p>{t("auth.shared.selfHostedHint")}</p></footer>
     </main>
   );
 }

@@ -1,6 +1,14 @@
 # 前端公共组件与样式
 
-2026-09-30 按用户确认统一，视觉参考 [Beautiful UI](https://www.beautifului.dev/) 的深灰表面、细边框、紧凑选项、柔和悬停态与层次清晰的字体。
+当前采用「蓝调创作工作室」呈现：保留既有蓝色 Logo 与 `#3D9AFF` 主色，以冷调深色背景、分层面板、细边框及清晰文字承载创作内容。早期公共组件参考 [Beautiful UI](https://www.beautifului.dev/)；当前视觉以本文件与公共 token 为准。
+
+## 全系统视觉
+
+登录和初始化采用品牌介绍与独立凭证面板的双栏构图，窄屏恢复单列；介绍覆盖文字、图片、视频和音频，标题通过四语言资源维护。项目、资产、Skill 和全部设置页共用分组导航、面包屑与图标页头，项目页不再使用独立导航样式。项目卡片用真实保存的画幅示意代替虚构作品封面，新建表单展示当前所选画幅。
+
+画布保留空间工作区、节点锚定、固定屏幕尺寸工具与编辑器，使用同一套冷调表面。媒体参数、智能编辑、裁剪、标注与导演反馈消费公共语义色；图片遮罩、画笔颜色、裁剪手柄与打光温度继续表达媒体操作本身。资产缩略图完整展示比例，全部资源标注精确内容版本，详情提供有界完整预览；Skill 目录、资源与正文采用可读的独立滚动区。
+
+主色上的文字使用深色 `--ui-accent-foreground`；危险操作的实色填充与危险提示文字分开管理，Button 与 Badge 共用 `--ui-danger-fill` / `--ui-danger-foreground`。键盘焦点使用单层 2px 轮廓与 2px 偏移。颜色统一覆盖 body Portal，不按页面另建配色。主色按钮与危险按钮的默认文字配色均超过 4.5:1；这项颜色计算不代替完整可访问性审计。全系统保持深色主题，本次不增加主题切换、API、迁移或依赖。
 
 ## 唯一入口
 
@@ -15,7 +23,8 @@
 | 动作、模型、版本、输入模式与引用菜单 | `frontend/src/shared/ui/primitives/dropdown-menu.tsx`、`command.tsx` |
 | 页面表单、面板、提示、状态、摘要与图标容器 | `PagePrimitives.tsx`、`PageTheme.css` |
 | 导航与页面框架 | `PageShell.tsx`、`PageShell.css` |
-| 设置、资产与 Skill 页的导航、面板、摘要、表单及入场动效 | `SettingsWorkspace.css`，限定在 `.app-shell--studio` 内；系统设置局部规则继续限定 `.app-shell--settings` |
+| 项目、设置、资产与 Skill 页的导航、面板、摘要、表单及入场动效 | `SettingsWorkspace.css`，限定在 `.app-shell--studio` 内；系统设置局部规则继续限定 `.app-shell--settings` |
+| 登录、初始化与项目卡片/新建表单 | `features/auth/AuthPages.css`、`features/projects/ProjectsPage.css`，消费公共 token |
 | 资产页分类工具栏、缩略图卡片与详情布局 | `features/library/Library.css`，限定在 `.app-shell--studio .library-page`；共享选择器保留默认呈现 |
 | Skill 目录、编辑器与发布版本预览布局 | `features/skills/Skills.css`，页面规则限定在 `.app-shell--studio` 内 |
 | 语言入口与四语言选择窗口 | `shared/i18n/LanguageSelect.tsx`，复用 `Dialog.tsx` 与 `PageTheme.css` |
@@ -63,7 +72,7 @@ ComfyUI 保留导入、节点映射、检查发布的三步结构；`ComfyWorkfl
 存储目录、归档和中继用途使用 `StorageSettingsPage.css` 的独立布局；连接和凭证表单复用公共 Dialog。LLM 配置保存、已保存状态及协议验证形成明确两步。系统分类采用带描述的侧栏与内容面板，窄屏转分类网格；提示词主从编辑器按自身容器宽度重排，防止嵌套侧栏挤压。页面及分类不为动画重挂载，搜索隐藏编辑器而不丢弃草稿；减少动态效果偏好继续生效。
 
 
-设置路由、`/library` 与 `/skills` 共用 `PageShell` 的 `.app-shell--studio` 紧凑工作区；设置路由同时保留 `.app-shell--settings`，供系统分类等局部样式限定范围。侧栏按工作区、模型服务、观测与偏好分组，页面顶部提供面包屑与页面图标；折叠侧栏保留当前路由与可访问名称。小屏导航改为横向滚动，并将活动入口滚动到可见范围。画布继续使用独立的工作区框架，公共画布 token 不变。
+设置路由、`/projects`、`/library` 与 `/skills` 共用 `PageShell` 的 `.app-shell--studio` 紧凑工作区；设置路由同时保留 `.app-shell--settings`，供系统分类等局部样式限定范围。侧栏按工作区、模型服务、观测与偏好分组，页面顶部提供面包屑与页面图标；折叠侧栏保留当前路由与可访问名称。小屏导航改为横向滚动，并将活动入口滚动到可见范围。画布继续使用独立的工作区框架，配色与页面共用公共 token。
 
 `SettingsWorkspace.css` 集中维护工作区内的面板、摘要、表单、表格及动效，继续消费公共颜色与控件变量。页面图标以 42px 为基准，标题使用 24–28px，常规面板默认内边距 18px、表单间距 16px，小屏收为 16px 内边距与 14px 间距；保留侧栏外的全部可用宽度。Provider 和媒体配置使用 `SummaryStrip` 展示真实已读取的配置摘要，未保存输入不改变摘要。LLM 连接与凭证表单、协议诊断及媒体状态分区排列；媒体连接与已发布能力页签展示实际数量，说明提示放在对应表格之后。系统设置以带图标的分类页签组织内容，语言偏好采用紧凑设置行，说明与按内容宽度的选择按钮并排，小屏换行；相关局部布局维护在 `SystemSettingsPage.css`。
 
@@ -110,7 +119,7 @@ shadcn/Radix Dialog 隔离背景，打开时锁定背景滚动，Tab/Shift+Tab �
 
 ## 焦点效果（2026-10-02）
 
-公共控件使用单层 1px 焦点轮廓、2px 偏移，由 `--ui-focus-width` 和 `--ui-focus-offset` 集中维护。shadcn primitives 通过 `ui-focusable` 在 `:focus-visible` 时显示轮廓，不再叠加 3px ring、焦点边框和旧页面外圈。原生控件与链接沿用同一宽度；键盘定位与关闭后的焦点恢复逻辑不变。
+公共控件当前使用单层 2px 焦点轮廓、2px 偏移，由 `--ui-focus-width` 和 `--ui-focus-offset` 集中维护。shadcn primitives 通过 `ui-focusable` 在 `:focus-visible` 时显示轮廓，不再叠加 3px ring、焦点边框和旧页面外圈。原生控件与链接沿用同一宽度；键盘定位与关闭后的焦点恢复逻辑不变。
 
 14 项相关测试、lint 与生产构建通过；侧栏 Mock 浏览器证据及范围见 焦点样式验证（开发记录不随源码公开）。
 

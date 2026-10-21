@@ -1,20 +1,21 @@
-/* Compact studio composition for settings, assets and skills; the canvas keeps its own shell. */
+/* One studio composition for projects, settings, assets and skills.
+   Canvas keeps its spatial shell and consumes the same palette. */
 body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio {
-  --sidebar-width: 216px;
+  --sidebar-width: 224px;
   --ui-settings-aside-width: 360px;
-  --settings-rule: color-mix(in srgb, var(--ui-border) 70%, transparent);
-  --settings-surface: color-mix(in srgb, var(--ui-surface) 80%, var(--ui-bg));
+  --settings-rule: color-mix(in srgb, var(--ui-border) 88%, transparent);
+  --settings-surface: var(--ui-surface);
   --settings-ease: cubic-bezier(.22, 1, .36, 1);
   background: var(--ui-bg);
 }
 .app-shell--studio.app-shell--collapsed { --sidebar-width: 72px; }
-.app-shell--studio .app-sidebar { padding: 20px 12px 14px; background: var(--settings-surface); border-color: var(--settings-rule); }
-.app-shell--studio .app-sidebar-brand { margin: 0 4px 22px; }
+.app-shell--studio .app-sidebar { padding: 24px 12px 14px; background: color-mix(in srgb, var(--ui-surface) 52%, var(--ui-bg)); border-color: var(--settings-rule); }
+.app-shell--studio .app-sidebar-brand { margin: 0 4px 28px; }
 .app-shell--studio .app-brand-horizontal { max-width: 148px; }
 .app-shell--studio .app-sidebar nav { gap: 17px; padding-bottom: 16px; }
 .settings-nav-group { display: flex; flex-direction: column; gap: 4px; }
-.app-shell--studio .app-sidebar-section { margin: 0 12px 6px; font-size: 10px; font-weight: 600; letter-spacing: .09em; }
+.app-shell--studio .app-sidebar-section { margin: 0 12px 6px; font-size: 11px; font-weight: 500; letter-spacing: .06em; }
 .app-shell--studio .app-nav-item { min-height: 36px; height: auto; padding: 8px 11px; border-radius: 9px; font-size: 13px; line-height: 1.5; transition: background-color 180ms, color 180ms, transform 220ms var(--settings-ease); }
 .app-shell--studio .app-nav-item > svg:first-child { transition: transform 220ms var(--settings-ease); }
 .app-shell--studio .app-nav-item:hover > svg:first-child { transform: translateY(-1px); }
@@ -34,19 +35,19 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio.app-shell--collapsed .app-sidebar nav { gap: 14px; }
 
 .app-shell--studio .app-page-main { padding: 0 clamp(24px, 2.5vw, 40px) 32px; }
-.settings-workspace-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 52px; border-bottom: 1px solid var(--settings-rule); }
+.settings-workspace-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 58px; border-bottom: 1px solid var(--settings-rule); }
 .settings-breadcrumb { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--ui-text-subtle); font-size: 12px; }
 .settings-breadcrumb > svg { flex: none; }
 .settings-breadcrumb > span:last-child { color: var(--ui-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.settings-workspace-trust { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--ui-text-muted); font-size: 10px; }
+.settings-workspace-trust { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--ui-text-muted); font-size: 11px; }
 .settings-workspace-trust > svg { color: var(--ui-text-subtle); }
-.app-shell--studio .app-page-header { padding: 22px 0 18px; margin-bottom: 8px; border-bottom: 0; align-items: center; }
+.app-shell--studio .app-page-header { padding: 28px 0 24px; margin-bottom: 8px; border-bottom: 0; align-items: center; }
 .settings-page-heading { display: flex; align-items: flex-start; gap: 12px; }
-.settings-page-icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; margin-top: 1px; border: 1px solid var(--settings-rule); border-radius: 12px; background: var(--ui-surface); color: var(--ui-accent-text); box-shadow: var(--ui-inset-highlight); }
+.settings-page-icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; margin-top: 1px; border: 1px solid var(--ui-accent-ring); border-radius: 12px; background: var(--ui-accent-subtle); color: var(--ui-accent-text); box-shadow: var(--ui-inset-highlight); }
 .app-shell--studio .settings-page-icon > svg { width: 23px; height: 23px; }
-.app-shell--studio .app-page-eyebrow { margin-bottom: 4px; font-size: 10px; letter-spacing: .12em; color: var(--ui-text-subtle); }
+.app-shell--studio .app-page-eyebrow { margin-bottom: 5px; font-size: 11px; letter-spacing: .07em; color: var(--ui-text-muted); }
 .app-shell--studio .app-page-header h1 { font-size: clamp(24px, 2.1vw, 28px); font-weight: 600; line-height: 1.25; letter-spacing: -.035em; }
-.app-shell--studio .app-page-description { max-width: 76ch; font-size: 12px; margin-top: 7px; line-height: 1.75; }
+.app-shell--studio .app-page-description { max-width: 76ch; font-size: 13px; margin-top: 8px; line-height: 1.75; }
 .app-shell--studio .app-page-header > .ui-form-actions { flex-shrink: 0; }
 .app-shell--studio .app-page-content { display: flex; flex-direction: column; gap: 0; }
 .app-shell--studio .app-page-content > :is(.ui-stack, [data-slot="tabs"], .settings-page-layout) { min-width: 0; }
@@ -59,9 +60,9 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio .ui-summary-strip dt { font-size: 11px; letter-spacing: .04em; }
 .app-shell--studio .ui-summary-strip dd:not(.ui-summary-detail) { font-size: 16px; font-weight: 550; margin-top: 6px; line-height: 1.4; letter-spacing: -.02em; }
 .app-shell--studio .ui-summary-strip .ui-summary-detail { margin-top: 6px; font-size: 11px; line-height: 1.6; }
-.app-shell--studio .ui-panel { border-color: var(--settings-rule); border-radius: 12px; background: var(--settings-surface); box-shadow: none; padding: 18px; }
+.app-shell--studio .ui-panel { border-color: var(--settings-rule); border-radius: 14px; background: var(--settings-surface); box-shadow: var(--ui-panel-shadow); padding: 18px; }
 .app-shell--studio .ui-panel-header { margin: 0 0 14px; gap: 12px; }
-.app-shell--studio .ui-panel-header h2 { font-size: 14px; font-weight: 550; letter-spacing: -.02em; }
+.app-shell--studio .ui-panel-header h2 { font-size: 15px; font-weight: 550; letter-spacing: -.02em; }
 .app-shell--studio .ui-panel-header p { font-size: 12px; line-height: 1.7; margin-top: 5px; }
 .app-shell--studio .ui-stack { gap: 16px; }
 .app-shell--studio .ui-form { gap: 16px; }
@@ -82,6 +83,7 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio .ui-badge { border-radius: 6px; padding: 3px 8px; font-size: 10px; line-height: 1.6; }
 .app-shell--studio .ui-badge--neutral { border-color: var(--settings-rule); }
 .app-shell--studio .ui-empty-state { border-color: var(--settings-rule); border-radius: 12px; padding: 52px 24px; background: var(--ui-field); }
+.app-shell--studio .ui-field { font-size: 13px; }
 .app-shell--studio .ui-field small { line-height: 1.8; }
 
 /* Tables have a quiet header, generous primary rows and a visible local scroll boundary. */
@@ -191,9 +193,9 @@ body:has(.app-shell--studio) .ui-dialog-footer { padding: 14px 20px; background:
   .settings-page-heading { gap: 13px; }
   .settings-page-icon { width: 42px; height: 42px; margin-top: 3px; border-radius: 12px; }
   .settings-page-icon > svg { width: 23px; height: 23px; }
-  .app-shell--studio .app-page-eyebrow { font-size: 9px; margin-bottom: 6px; }
+  .app-shell--studio .app-page-eyebrow { font-size: 10px; margin-bottom: 6px; }
   .app-shell--studio .app-page-header h1 { font-size: 24px; }
-  .app-shell--studio .app-page-description { font-size: 11px; margin-top: 8px; }
+  .app-shell--studio .app-page-description { font-size: 12px; margin-top: 8px; }
   .app-shell--studio .ui-summary-strip { margin-bottom: 16px; }
   .app-shell--studio .ui-panel { padding: 16px; border-radius: 10px; }
   .app-shell--studio .ui-panel-header { margin-bottom: 20px; flex-wrap: wrap; }

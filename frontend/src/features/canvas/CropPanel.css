@@ -5,7 +5,7 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: #090909b8;
+  background: color-mix(in srgb, var(--ui-bg) 78%, transparent);
   backdrop-filter: blur(3px);
 }
 
@@ -14,7 +14,7 @@
   place-items: center;
   gap: 16px;
   max-width: calc(100vw - 48px);
-  color: #f4f4f4;
+  color: var(--ui-text);
   outline: none;
 }
 
@@ -24,7 +24,7 @@
   max-width: 100%;
   overflow: hidden;
   border-radius: 14px;
-  background: #181818;
+  background: var(--ui-field);
   box-shadow: 0 24px 72px #000b;
   line-height: 0;
   touch-action: none;
@@ -114,10 +114,10 @@
   align-items: center;
   gap: 7px;
   min-height: 50px;
-  border: 1px solid #444;
+  border: 1px solid var(--ui-border);
   border-radius: 999px;
   padding: 6px 8px;
-  background: #242424f5;
+  background: var(--ui-surface);
   box-shadow: 0 14px 34px #0008;
 }
 
@@ -130,17 +130,17 @@
   height: 38px;
   border: 0;
   border-radius: 999px;
-  color: #ededed;
+  color: var(--ui-text);
   background: transparent;
   font: inherit;
   font-size: 13px;
 }
 
 .crop-toolbar button { padding: 0 14px; cursor: pointer; }
-.crop-toolbar button:hover:not(:disabled) { background: #343434; }
+.crop-toolbar button:hover:not(:disabled) { background: var(--ui-hover); }
 .crop-toolbar button:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .crop-toolbar button:disabled { opacity: .56; cursor: progress; }
-.crop-toolbar-divider { width: 1px; height: 22px; background: #4b4b4b; }
+.crop-toolbar-divider { width: 1px; height: 22px; background: var(--ui-border); }
 .crop-ratio-control { padding: 0 8px 0 12px; }
 
 .crop-toolbar .crop-confirm { min-width: 86px; background: var(--ui-accent); color: var(--ui-accent-foreground); font-weight: 650; }
@@ -150,8 +150,8 @@
   margin: -6px 0 0;
   border-radius: 9px;
   padding: 8px 12px;
-  background: #3a1f24;
-  color: #ffb3ba;
+  background: var(--ui-danger-bg);
+  color: var(--ui-danger);
   font-size: 12px;
 }
 

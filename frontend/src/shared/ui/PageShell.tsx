@@ -46,7 +46,7 @@ export function PageShell({ title, description, actions, children }: {
   const navigation = useRef<HTMLElement>(null);
   const activePath = location.pathname === "/settings/llm" ? "/settings/providers" : location.pathname;
   const isSettings = activePath.startsWith("/settings/");
-  const isStudio = isSettings || activePath === "/library" || activePath === "/skills";
+  const isStudio = isSettings || activePath === "/projects" || activePath === "/library" || activePath === "/skills";
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const session = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });

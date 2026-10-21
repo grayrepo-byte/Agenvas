@@ -287,6 +287,7 @@
   "auth.setup.username": "管理员登录名",
   "auth.shared.requestFailed": "请求未完成，请稍后重试。",
   "auth.shared.selfHostedHint": "自托管模式 · Provider 状态登录后可查看",
+  "auth.shared.studioTitle": "让灵感成形，\n让创作发生。",
   "canvas.context.title": "画布菜单",
   "canvas.context.add": "添加",
   "canvas.context.upload": "上传",
