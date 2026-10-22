@@ -171,6 +171,71 @@ class VideoOperationServiceTest {
         verify(tasks, never()).create(any());
     }
 
+    @Test
+    void localAudioFreezesExplicitMp3AndTrackForALongArchivedVideo() {
+        localAudio(600_000);
+        var requested = mapper.createObjectNode().put("format", "MP3").put("trackIndex", 1);
+
+        Task task = runAudio(requested);
+
+        assertThat(task.input().path("sourceDurationMs").asInt()).isEqualTo(600_000);
+        assertThat(task.input().at("/mediaInput/parameters")).isEqualTo(requested);
+        assertThat(task.input().path("silentVideoTarget").isObject()).isTrue();
+        verify(tasks).create(task);
+    }
+
+    @Test
+    void localAudioPreservesDefaultWavAndFirstTrack() {
+        localAudio(30_000);
+
+        Task task = runAudio(mapper.createObjectNode());
+
+        assertThat(task.input().at("/mediaInput/parameters/format").asText()).isEqualTo("WAV");
+        assertThat(task.input().at("/mediaInput/parameters/trackIndex").asInt(-1)).isZero();
+    }
+
+    @Test
+    void rejectsOversizedWavBeforeCreatingOutputNodesAndSuggestsMp3() {
+        localAudio(600_000);
+
+        assertThatThrownBy(() -> runAudio(mapper.createObjectNode()))
+                .isInstanceOfSatisfying(ApiProblemException.class, failure -> {
+                    assertThat(failure.code()).isEqualTo("LOCAL_VIDEO_AUDIO_OUTPUT_TOO_LARGE");
+                    assertThat(failure.detail().key()).isEqualTo("api.media-function.local-audio-output-too-large");
+                });
+        verifyNoInteractions(canvas);
+        verify(tasks, never()).create(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"{\"format\":\"AAC\"}", "{\"format\":null}", "{\"trackIndex\":-1}",
+            "{\"trackIndex\":32}", "{\"trackIndex\":0.5}", "{\"trackIndex\":\"1\"}", "{\"filter\":\"unsafe\"}"})
+    void rejectsInvalidLocalAudioParametersBeforeCreatingOutputNodes(String requested) {
+        localAudio(1000);
+        assertThatThrownBy(() -> runAudio(mapper.readTree(requested)))
+                .isInstanceOfSatisfying(ApiProblemException.class,
+                        failure -> assertThat(failure.code()).isEqualTo("VALIDATION_ERROR"));
+        verifyNoInteractions(canvas);
+        verify(tasks, never()).create(any());
+    }
+
+    private void localAudio(int durationMs) {
+        when(functions.resolve(MediaFunction.VIDEO_EXTRACT_AUDIO, 0))
+                .thenReturn(binding(MediaAdapterRegistry.LOCAL_VIDEO_AUDIO_EXTRACTOR));
+        when(assets.metadata(owner, project, assetId)).thenReturn(new Asset(assetId, project,
+                Asset.MediaKind.VIDEO, "private/test.mp4", "video/mp4", 1024, "test",
+                640, 480, durationMs, null, null, null, NOW));
+        when(canvas.forkAudioDerivationWithinChange(eq(owner), eq(project), eq(itemId), any()))
+                .thenReturn(card(outputId));
+        when(canvas.forkMediaDerivationWithinChange(eq(owner), eq(project), eq(itemId),
+                any(), eq(7L), eq(1), any())).thenReturn(card(outputId));
+    }
+
+    private Task runAudio(JsonNode parameters) {
+        return service.run(owner, project, artifactId, itemId, sourceVersionId, 0,
+                VideoOperation.EXTRACT_AUDIO, 0, 1, "", parameters, "command");
+    }
+
     private void runningHub() {
         MediaCapabilityBinding binding = binding("RUNNINGHUB_VIDEO");
         when(functions.resolve(MediaFunction.VIDEO_UPSCALE, 0)).thenReturn(binding);

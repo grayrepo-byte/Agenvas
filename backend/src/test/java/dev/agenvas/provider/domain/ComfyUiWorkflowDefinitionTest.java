@@ -192,4 +192,50 @@ class ComfyUiWorkflowDefinitionTest {
         assertThatThrownBy(() -> workflow.values(mapper, explicitlyCleared, "prompt", null, List.of(image, second), true))
                 .isInstanceOf(ApiProblemException.class);
     }
+
+    @Test void publishesTypedVideoAndAudioSlotsWithIndependentContiguousIndices() {
+        var raw = definition(true, true);
+        raw.withObject("graph").putObject("23").put("class_type", "LoadVideo").putObject("inputs").put("file", "fixed.mp4");
+        raw.withObject("graph").putObject("24").put("class_type", "LoadAudio").putObject("inputs").put("file", "fixed.wav");
+        raw.withObject("graph").withObject("14").withObject("inputs").putArray("video").add("23").add(0);
+        raw.withObject("graph").withObject("14").withObject("inputs").putArray("audio").add("24").add(0);
+        raw.withArray("bindings").addObject().put("nodeId", "23").put("inputName", "file").put("source", "REFERENCE_VIDEO").put("referenceIndex", 0);
+        raw.withArray("bindings").addObject().put("nodeId", "24").put("inputName", "file").put("source", "REFERENCE_AUDIO").put("referenceIndex", 0);
+        var workflow = ComfyUiWorkflowDefinition.parse(mapper, raw, Task.Kind.VIDEO_GENERATION);
+        assertThat(workflow.inputs().stream().filter(RunningHubDefinition.Field::media).map(field -> field.key() + ":" + field.type()))
+                .containsExactly("reference_0:IMAGE", "video_reference_0:VIDEO", "audio_reference_0:AUDIO");
+        assertThat(workflow.declaration(Task.Kind.VIDEO_GENERATION).maxReferenceImages()).isEqualTo(1);
+        assertThat(workflow.declaration(Task.Kind.VIDEO_GENERATION).maxReferenceVideos()).isEqualTo(1);
+        assertThat(workflow.declaration(Task.Kind.VIDEO_GENERATION).maxReferenceAudios()).isEqualTo(1);
+        var parameters = mapper.createObjectNode();
+        parameters.putObject("dynamicValues").put("reference_0", UUID.randomUUID().toString())
+                .put("video_reference_0", UUID.randomUUID().toString()).put("audio_reference_0", UUID.randomUUID().toString());
+        var values = workflow.values(mapper, parameters, "typed media", 4, List.of(), true);
+        var rendered = workflow.render(mapper, "typed media", "", 4, workflow.dimensions("16:9"), 4,
+                List.of("image.png"), List.of("video.mp4"), List.of("audio.wav"), values);
+        assertThat(rendered.at("/13/inputs/image").asText()).isEqualTo("image.png");
+        assertThat(rendered.at("/23/inputs/file").asText()).isEqualTo("video.mp4");
+        assertThat(rendered.at("/24/inputs/file").asText()).isEqualTo("audio.wav");
+        assertThat(workflow.graph().at("/23/inputs/file").asText()).isEqualTo("fixed.mp4");
+        assertThatThrownBy(() -> workflow.render(mapper, "typed media", "", 4, workflow.dimensions("AUTO"), 4,
+                List.of("image.png"), List.of(), List.of("audio.wav"), values)).isInstanceOf(ApiProblemException.class);
+        ((ObjectNode) raw.withArray("bindings").get(raw.withArray("bindings").size() - 1)).put("referenceIndex", 1);
+        assertThatThrownBy(() -> ComfyUiWorkflowDefinition.parse(mapper, raw, Task.Kind.VIDEO_GENERATION))
+                .isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test void rejectsMoreThanFourteenTotalSlotsAcrossMediaTypes() {
+        var raw = definition(true, false);
+        for (String source : List.of("REFERENCE_IMAGE", "REFERENCE_VIDEO", "REFERENCE_AUDIO")) {
+            for (int index = 0; index < 5; index++) {
+                String node = Integer.toString(200 + raw.withArray("bindings").size());
+                raw.withObject("graph").putObject(node).put("class_type", "LoadMedia").putObject("inputs").put("file", "fixed");
+                raw.withObject("graph").withObject("14").withObject("inputs").putArray("media_" + node).add(node).add(0);
+                raw.withArray("bindings").addObject().put("nodeId", node).put("inputName", "file")
+                        .put("source", source).put("referenceIndex", index);
+            }
+        }
+        assertThatThrownBy(() -> ComfyUiWorkflowDefinition.parse(mapper, raw, Task.Kind.VIDEO_GENERATION))
+                .isInstanceOf(ApiProblemException.class);
+    }
 }

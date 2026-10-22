@@ -1,3 +1,4 @@
+import { VideoEditDialog } from "./VideoEditDialog";
 import { AlignLeftSimple,ArrowLeft,CheckCircle,CircleNotch,DownloadSimple,FolderSimple,ImageSquare,MusicNotes,Plus,SelectionAll,Sparkle,TextT,VideoCamera,WarningCircle,X,type Icon } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import {
@@ -57,6 +58,7 @@ import { Separator } from "../../shared/ui/primitives/separator";
 import { Empty,EmptyContent,EmptyDescription,EmptyHeader,EmptyMedia,EmptyTitle } from "../../shared/ui/primitives/empty";
 import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
 import { AgentChatDock } from "./AgentChatDock";
+import type { AgentChatRunRequest } from "./AgentChatPanel";
 import { CanvasErrorNotice } from "./CanvasErrorNotice";
 import { CanvasEditorOverlay } from "./CanvasEditorOverlay";
 import { calculateCanvasEditorViewport } from "./canvasEditorViewport";
@@ -148,6 +150,9 @@ type CanvasNodeData = {
   onToggleLocked: (item: CanvasItem) => void;
   onDuplicate: (item: CanvasItem) => void;
   onMakeMV: (item: CanvasItem) => void;
+  onComposeVideo: (item: CanvasItem) => void;
+  onEditVideo: (item: CanvasItem) => void;
+  compositionDisabledReason: string | null;
   mediaAspectRatio: number | undefined;
   dragging: boolean;
   toolbarVisible: boolean;
@@ -238,6 +243,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [agentChatOpen, setAgentChatOpen] = useState(false);
+  const [videoEditIds, setVideoEditIds] = useState<string[] | null>(null);
+  const [agentRunRequest, setAgentRunRequest] = useState<AgentChatRunRequest | null>(null);
   const [resourceTab, setResourceTab] = useState<"PROJECT" | "LIBRARY">("PROJECT");
   const [resourceSearch, setResourceSearch] = useState("");
   const mediaProgress = useRef<{ fingerprint: string; createKey: string;
@@ -499,12 +506,25 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     mutationFn: () => ensureProjectDirector(projectId),
     onSuccess: rememberDirector,
   });
-  function openAgentChat(open: boolean) {
+  const ensureDirectorMutate = ensureDirector.mutate;
+  const ensureDirectorPending = ensureDirector.isPending;
+  const openAgentChat = useCallback((open: boolean) => {
     setAgentChatOpen(open);
-    if (open && !director && !snapshot.isError && !ensureDirector.isPending) {
-      ensureDirector.mutate();
+    if (open && !director && !snapshot.isError && !ensureDirectorPending) {
+      ensureDirectorMutate();
     }
-  }
+  }, [director, snapshot.isError, ensureDirectorPending, ensureDirectorMutate]);
+  const compositionDisabledReason = snapshot.data?.activeRun
+    && !["SUCCEEDED", "FAILED", "CANCELED"].includes(snapshot.data.activeRun.status)
+    ? t("canvas.workspace.compositionBusy")
+    : agentRunRequest ? t("canvas.workspace.compositionPending") : null;
+  const requestVideoComposition = useCallback((items: readonly CanvasItem[]) => {
+    if (compositionDisabledReason || !items.some((item) => item.artifact.kind === "VIDEO")
+      || items.some((item) => !item.selectedVersionId)) return;
+    setAgentRunRequest({ id: crypto.randomUUID(), instruction: t("agent.chat.compositionInstruction"),
+      selectedItemIds: items.map((item) => item.id) });
+    openAgentChat(true);
+  }, [compositionDisabledReason, openAgentChat]);
   const openAudioConversation = useMutation({
     mutationFn: async (source: CanvasItem) => {
       if (source.artifact.kind !== "AUDIO" || !source.selectedVersionId)
@@ -757,6 +777,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onToggleLocked: handleToggleLocked,
               onDuplicate: handleDuplicate,
               onMakeMV: (item) => makeMV.mutate(item),
+              onComposeVideo: (item) => requestVideoComposition([item]),
+              onEditVideo: (item) => setVideoEditIds([item.id]),
+              compositionDisabledReason,
               mediaAspectRatio: mediaRatios[item.id],
               dragging: draggingIds.includes(item.id),
               toolbarVisible: nodeActionsVisible && !multiSelecting,
@@ -774,6 +797,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       draggingIds,
       nodeActionsVisible,
       multiSelecting,
+      requestVideoComposition,
+      compositionDisabledReason,
       handleToggleSelection,
       effectiveNodeSize,
       handleRemove,
@@ -953,6 +978,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }
 
   const selectedItems = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
+  const selectedVideos = selectedItems.filter((item) => item.artifact.kind === "VIDEO");
+  const compositionUnavailable = !selectedVideos.length ? t("canvas.workspace.compositionVideoRequired")
+    : selectedItems.some((item) => !item.selectedVersionId) ? t("canvas.workspace.compositionResultRequired")
+    : compositionDisabledReason;
   useEffect(() => {
     const params = new URLSearchParams(tryLocation.search);
     const skillId = params.get("skillId"), skillVersionId = params.get("skillVersionId");
@@ -1279,6 +1308,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <span className="workspace-selection-count"><SelectionAll aria-hidden />{t("canvas.selection.count", { "0": selectedItems.length })}</span>
           <Separator orientation="vertical" className="data-[orientation=vertical]:h-5" />
           <div className="workspace-selection-actions">
+            <Button variant="ghost" size="sm" className="rounded-full" disabled={Boolean(compositionUnavailable)}
+              title={compositionUnavailable ?? t("canvas.workspace.compositionHint")}
+              onClick={() => requestVideoComposition(selectedItems)} type="button"><Sparkle data-icon="inline-start" />{t("canvas.workspace.composeVideo")}</Button>
+            <Button variant="ghost" size="sm" disabled={!selectedVideos.length || selectedVideos.some((item) => !item.selectedVersionId)}
+              onClick={() => setVideoEditIds(selectedVideos.map((item) => item.id))} type="button">{t("video.edit.title")}</Button>
             <Button variant="ghost" size="sm" className="rounded-full" disabled={selectedItems.length < 2 || alignSelected.isPending}
               onClick={() => alignSelected.mutate()} type="button"><AlignLeftSimple data-icon="inline-start" />{t("canvas.workspace.alignLeft")}</Button>
           </div>
@@ -1289,6 +1323,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         <AgentChatDock open={agentChatOpen} onOpenChange={openAgentChat}
           data={director ? { agent: director, projectId, activeRun: snapshot.data?.activeRun ?? null,
             canvasNodeCount: nodes.length, selectedNodeCount: selectedItems.length,
+            runRequest: agentRunRequest,
+            onRunRequestHandled: (id) => setAgentRunRequest((request) => request?.id === id ? null : request),
             onUpdateAgent: handleUpdateAgent,
             updatingAgent: editAgent.isPending,
             updateAgentError: editAgent.variables?.agent.id === director.id ? editAgent.error : null } : null}
@@ -1296,6 +1332,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           error={ensureDirector.error ?? snapshot.error}
           onRetry={() => { if (snapshot.isError) void snapshot.refetch(); else ensureDirector.mutate(); }} />
       </section>
+      {videoEditIds ? <VideoEditDialog projectId={projectId} items={canvas.data?.items ?? []} initialIds={videoEditIds} onClose={() => setVideoEditIds(null)} /> : null}
       <div className="workspace-narrow-warning">{t("canvas.workspace.viewportHint")}</div>
     </main>
   );
@@ -1328,7 +1365,8 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
       {selectionControl}
       {artifact.kind === "IMAGE" || artifact.kind === "VIDEO" || artifact.kind === "AUDIO"
         ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor}
-          onDuplicate={() => data.onDuplicate(data.item)} onMakeMV={() => data.onMakeMV(data.item)} />
+          onDuplicate={() => data.onDuplicate(data.item)} onMakeMV={() => data.onMakeMV(data.item)}
+          onComposeVideo={() => data.onComposeVideo(data.item)} onEditVideo={() => data.onEditVideo(data.item)} compositionDisabledReason={data.compositionDisabledReason} />
         : <ContentCanvasCard {...cardProps} />}
     </>
   );

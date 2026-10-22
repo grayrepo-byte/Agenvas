@@ -18,6 +18,7 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
+import dev.agenvas.task.domain.AudioExtractionParameters;
 import dev.agenvas.provider.domain.MediaFunction;
 import dev.agenvas.usage.application.UsageService;
 import java.time.Clock;
@@ -100,7 +101,7 @@ public class VideoOperationService {
                 throw problem(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CHANGED", ApiMessage.of("api.media-function.conflict"));
             }
             PreparedOperation prepared = prepareOperation(binding, asset, sourceVersionId,
-                    instruction, parameters);
+                    instruction, parameters, operation);
             var sourceDraft = drafts.get(ownerId, projectId, itemId);
             var output = operation == VideoOperation.EXTRACT_AUDIO
                     ? canvas.forkAudioDerivationWithinChange(ownerId, projectId, itemId, operation.resultLabel())
@@ -154,13 +155,19 @@ public class VideoOperationService {
 
     /** Validates operation-specific parameters before any output node is created. */
     private PreparedOperation prepareOperation(MediaCapabilityBinding binding, Asset asset,
-            UUID sourceVersionId, String instruction, JsonNode parameters) {
+            UUID sourceVersionId, String instruction, JsonNode parameters, VideoOperation operation) {
         boolean local = MediaAdapterRegistry.localProcessor(binding.adapterId());
         ObjectNode frozenParameters = mapper.createObjectNode();
         RunningHubDefinition definition = catalog.runningHubDefinition(binding);
         if (local) {
-            if (!parameters.isEmpty()) throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
-            LocalVideoOperationBounds.require(asset);
+            LocalVideoOperationBounds.require(asset, operation);
+            if (operation == VideoOperation.EXTRACT_AUDIO) {
+                var audio = AudioExtractionParameters.parse(parameters);
+                LocalVideoOperationBounds.requireAudioOutput(asset, audio);
+                frozenParameters = audio.toJson(mapper);
+            } else if (!parameters.isEmpty()) {
+                throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
+            }
             int seconds = (asset.durationMs() + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND;
             return new PreparedOperation(true, definition, frozenParameters, seconds);
         }

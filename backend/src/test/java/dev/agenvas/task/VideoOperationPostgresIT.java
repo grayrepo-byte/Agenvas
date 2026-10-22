@@ -144,6 +144,31 @@ class VideoOperationPostgresIT {
         assertThat(canvas.list(owner.userId(), source.projectId())).hasSize(3);
     }
 
+    @Test void archivesLongMp3AndSilentVideoThroughThePersistentTaskWithoutChangingTheSource() throws Exception {
+        var source = source(true, 61);
+        long version = functions.list().stream().filter(setting -> setting.operation() == MediaFunction.VIDEO_EXTRACT_AUDIO)
+                .findFirst().orElseThrow().version();
+        var parameters = mapper.createObjectNode().put("format", "MP3").put("trackIndex", 0);
+        var accepted = operations.run(owner.userId(), source.projectId(), source.artifactId(), source.itemId(), source.versionId(),
+                0, VideoOperation.EXTRACT_AUDIO, version, 1, "", parameters, "long-mp3-extraction");
+        worker.submitOnce("long-mp3-extraction-test");
+        var completed = tasks.get(owner.userId(), source.projectId(), accepted.id());
+        assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+        var audioVersion = artifacts.requireMediaVersionForTask(owner.userId(), source.projectId(),
+                UUID.fromString(completed.output().path("artifactVersionId").asText()), Artifact.Kind.AUDIO);
+        var audio = assets.metadata(owner.userId(), source.projectId(), UUID.fromString(audioVersion.content().path("assetId").asText()));
+        assertThat(audio.contentType()).isEqualTo("audio/mpeg");
+        assertThat(audio.durationMs()).isBetween(61_000, 61_100);
+        assertThat(audioVersion.content().at("/parameters/format").asText()).isEqualTo("MP3");
+        var silent = completed.output().path("additionalResults").get(0);
+        var silentVersion = artifacts.requireMediaVersionForTask(owner.userId(), source.projectId(),
+                UUID.fromString(silent.path("artifactVersionId").asText()), Artifact.Kind.VIDEO);
+        var silentAsset = assets.metadata(owner.userId(), source.projectId(), UUID.fromString(silentVersion.content().path("assetId").asText()));
+        assertThat(silentAsset.durationMs()).isEqualTo(61_000);
+        assertThat(canvas.list(owner.userId(), source.projectId()).stream().filter(entry -> entry.item().id().equals(source.itemId()))
+                .findFirst().orElseThrow().item().selectedVersionId()).isEqualTo(source.versionId());
+    }
+
     @Test void removingSilentVideoTargetDoesNotRecreateItOrPreventAudioSelection() throws Exception {
         var source = source(true);
         var task = run(source, VideoOperation.EXTRACT_AUDIO, "removed-silent-target");
@@ -297,12 +322,16 @@ class VideoOperationPostgresIT {
     }
 
     private Source source(boolean audio) throws Exception {
+        return source(audio, 1);
+    }
+
+    private Source source(boolean audio, int durationSeconds) throws Exception {
         var project = projects.create(owner.userId(), "Synthetic video tool", Project.AspectRatio.LANDSCAPE_16_9);
         Path video = temp.resolve(UUID.randomUUID() + ".mp4");
         var command = new java.util.ArrayList<>(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
                 "-f", "lavfi", "-i", "testsrc2=s=160x90:r=12"));
         if (audio) command.addAll(List.of("-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000"));
-        command.addAll(List.of("-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p"));
+        command.addAll(List.of("-t", Integer.toString(durationSeconds), "-c:v", "libx264", "-pix_fmt", "yuv420p"));
         if (audio) command.addAll(List.of("-c:a", "aac"));
         command.addAll(List.of("-y", video.toString()));
         tools.ffmpeg(command);

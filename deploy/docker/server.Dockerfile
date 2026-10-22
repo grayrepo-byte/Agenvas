@@ -76,7 +76,7 @@ FROM eclipse-temurin:21.0.9_10-jre-noble@sha256:d3eb69add1874bc785382d6282db53a6
 RUN sed -i 's|http://ports.ubuntu.com|https://ports.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources \
     && apt-get -o Acquire::Retries=5 -o APT::Update::Error-Mode=any update \
     && apt-get upgrade --yes \
-    && apt-get install --yes --no-install-recommends ffmpeg \
+    && apt-get install --yes --no-install-recommends ffmpeg fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 101 agenvas \
     && useradd --system --uid 100 --gid agenvas --home-dir /opt/agenvas \

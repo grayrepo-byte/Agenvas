@@ -31,7 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Invocation-local capture, installed once in transports; disabled calls never copy bodies.
- * Only allowlisted response correlation IDs are stored separately; other headers are omitted. LLM bodies retain content except structured image bytes and invocation-registered relay signatures;
+ * Only allowlisted response correlation IDs are stored separately; other headers are omitted. LLM bodies retain content except structured image/audio bytes and invocation-registered relay signatures;
  * media bodies retain their credential/reasoning filtering policy.
  */
 public final class DebugHttpCapture implements AutoCloseable {
@@ -157,6 +157,7 @@ public final class DebugHttpCapture implements AutoCloseable {
         // Omit images before credential replacement: a secret occurring in Base64 would insert
         // [REDACTED], break the image match, and leave the rest of the payload in the log.
         value = value.replaceAll("(?i)data:image/[a-z0-9.+-]+;base64,[a-z0-9+/=]+", IMAGE_BYTES_OMITTED);
+        value = value.replaceAll("(?s)(\"input_audio\"\\s*:\\s*\\{[^}]*?\"data\"\\s*:\\s*\")[^\"]*", "$1[audio bytes omitted]");
         for (String secret : secrets.stream().sorted((left, right) -> Integer.compare(right.length(), left.length())).toList()) {
             value = value.replace(secret, REDACTED);
         }
@@ -197,6 +198,9 @@ public final class DebugHttpCapture implements AutoCloseable {
     private JsonNode omitLlmImages(JsonNode node) {
         if (node.isObject()) {
             ObjectNode object = (ObjectNode) node;
+            JsonNode audio = object.get("input_audio");
+            if (audio != null && audio.isObject() && audio.path("data").isTextual())
+                ((ObjectNode) audio).put("data", "[audio bytes omitted]");
             JsonNode image = object.get(IMAGE_URL_FIELD);
             if (image != null && image.isTextual() && imageDataUri(image.asText())) {
                 object.put(IMAGE_URL_FIELD, IMAGE_BYTES_OMITTED);

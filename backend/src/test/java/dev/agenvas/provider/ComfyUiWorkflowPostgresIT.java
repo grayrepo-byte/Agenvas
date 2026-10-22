@@ -19,6 +19,7 @@ import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.IdentityService;
@@ -39,6 +40,7 @@ import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.testing.ImageAssetFixture;
+import dev.agenvas.testing.AudioAssetFixture;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -86,6 +88,7 @@ class ComfyUiWorkflowPostgresIT {
     private static final AtomicInteger SUBMISSIONS = new AtomicInteger();
     private static final AtomicInteger QUERIES = new AtomicInteger();
     private static final AtomicInteger UPLOADS = new AtomicInteger();
+    private static final ConcurrentHashMap<String, byte[]> MEDIA_UPLOADS = new ConcurrentHashMap<>();
     private static final HttpServer SERVER = server();
     private static final Path STORAGE = storage();
 
@@ -108,6 +111,7 @@ class ComfyUiWorkflowPostgresIT {
     @Autowired ProjectService projects;
     @Autowired ArtifactService artifacts;
     @Autowired AssetService assets;
+    @Autowired MediaToolRunner mediaTools;
     @Autowired CanvasService canvas;
     @Autowired MediaDraftService drafts;
     @Autowired DirectMediaTaskService direct;
@@ -310,6 +314,78 @@ class ComfyUiWorkflowPostgresIT {
                 .doesNotContain("filename_prefix").doesNotContain("127.0.0.1");
         assertThat(toolExecutor.execute(trusted, 0, "comfy-catalog-call")).isEqualTo(toolResult);
         assertThat(jdbc.sql("select count(*) from task").query(Long.class).single()).isEqualTo(taskCountBeforeTool);
+        assertMixedMediaInputs(owner.userId(), project.id(), connection.id(), reference.resourceDefaultVersion().id());
+    }
+
+    private void assertMixedMediaInputs(UUID ownerId, UUID projectId, UUID connectionId, UUID imageVersion) throws Exception {
+        jdbc.sql("update task set next_action_at=now() + interval '1 hour' where project_id=:project and status='WAITING_PROVIDER'")
+                .param("project", projectId).update();
+        var settings = ComfyWorkflowFixture.settings(mapper, false, true);
+        var workflow = settings.withObject("comfyWorkflow");
+        var graph = workflow.withObject("graph");
+        graph.putObject("23").put("class_type", "LoadVideo").putObject("inputs").put("file", "fixed.mp4");
+        graph.putObject("24").put("class_type", "LoadAudio").putObject("inputs").put("file", "fixed.wav");
+        graph.withObject("14").withObject("inputs").putArray("video").add("23").add(0);
+        graph.withObject("14").withObject("inputs").putArray("audio").add("24").add(0);
+        workflow.withArray("bindings").addObject().put("nodeId", "23").put("inputName", "file").put("source", "REFERENCE_VIDEO").put("referenceIndex", 0);
+        workflow.withArray("bindings").addObject().put("nodeId", "24").put("inputName", "file").put("source", "REFERENCE_AUDIO").put("referenceIndex", 0);
+        var capability = catalog.publishCapability(connectionId, "Mixed media to image", "COMFY_IMAGE_V1", settings);
+        Path video = Files.createTempFile(STORAGE, "comfy-source-", ".mp4");
+        UUID videoAsset;
+        byte[] videoBytes;
+        try {
+            mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i",
+                    "color=c=blue:s=64x64:r=24", "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", video.toString()));
+            videoBytes = Files.readAllBytes(video);
+            try (var input = Files.newInputStream(video)) { videoAsset = assets.archiveVideo(ownerId, projectId, input).id(); }
+        } finally { Files.deleteIfExists(video); }
+        UUID audioAsset = AudioAssetFixture.archive(assets, mediaTools, ownerId, projectId);
+        var audioFile = assets.get(ownerId, projectId, audioAsset);
+        byte[] audioBytes = Files.readAllBytes(audioFile.path());
+        var videoReference = artifacts.create(ownerId, projectId, Artifact.Kind.VIDEO, "Source video",
+                mapper.createObjectNode().put("assetId", videoAsset.toString()).put("sourceType", "UPLOAD"));
+        var audioReference = artifacts.create(ownerId, projectId, Artifact.Kind.AUDIO, "Source audio",
+                mapper.createObjectNode().put("assetId", audioAsset.toString()).put("sourceType", "UPLOAD"));
+        UUID videoVersion = videoReference.resourceDefaultVersion().id(), audioVersion = audioReference.resourceDefaultVersion().id();
+        var card = artifacts.create(ownerId, projectId, Artifact.Kind.IMAGE, "Media extraction", null);
+        UUID item = CanvasMediaFixture.place(canvas, ownerId, projectId, card.artifact().id());
+        var parameters = mapper.createObjectNode();
+        parameters.putObject("dynamicValues").put("reference_0", imageVersion.toString())
+                .put("video_reference_0", videoVersion.toString()).put("audio_reference_0", audioVersion.toString());
+        var media = List.of(new MediaDraftService.SaveMediaInput(audioVersion, MediaDraft.InputRole.AUDIO_REFERENCE, "#7C3AED"),
+                new MediaDraftService.SaveMediaInput(videoVersion, MediaDraft.InputRole.VIDEO_REFERENCE, "#0EA5E9"),
+                new MediaDraftService.SaveMediaInput(imageVersion, MediaDraft.InputRole.REFERENCE, "#22C55E"));
+        var draft = drafts.save(ownerId, projectId, item, 0, "Use exact media", parameters, null, capability.id(), null, media, List.of(), null);
+        var task = direct.run(ownerId, projectId, card.artifact().id(), item, draft.version(), "comfy-mixed-run");
+        assertThat(task.input().at("/mediaInput/videos/0/versionId").asText()).isEqualTo(videoVersion.toString());
+        assertThat(task.input().at("/mediaInput/audios/0/versionId").asText()).isEqualTo(audioVersion.toString());
+        int beforeUploads = UPLOADS.get(), beforeSubmissions = SUBMISSIONS.get();
+        assertThat(worker.submitOnce("comfy-mixed-submit")).isEqualTo(1);
+        var submitted = tasks.get(ownerId, projectId, task.id());
+        assertThat(submitted.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
+        var submittedGraph = GRAPHS.get(submitted.providerRequestId());
+        assertThat(submittedGraph.at("/23/inputs/file").asText()).endsWith(".mp4");
+        assertThat(submittedGraph.at("/24/inputs/file").asText()).endsWith(".wav");
+        assertThat(MEDIA_UPLOADS.get("video/mp4")).isEqualTo(videoBytes);
+        assertThat(MEDIA_UPLOADS.get("audio/wav")).isEqualTo(audioBytes);
+        assertThat(UPLOADS.get() - beforeUploads).isEqualTo(3);
+        assertThat(SUBMISSIONS.get() - beforeSubmissions).isEqualTo(1);
+        due(task.id());
+        assertThat(worker.pollOnce("comfy-mixed-poll")).isEqualTo(1);
+        assertThat(tasks.get(ownerId, projectId, task.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
+
+        // A changed archive must fail before any reference upload or generation POST.
+        var tampered = direct.run(ownerId, projectId, card.artifact().id(), item, draft.version(), "comfy-mixed-tampered");
+        int uploadsBeforeTamper = UPLOADS.get(), submissionsBeforeTamper = SUBMISSIONS.get();
+        try {
+            Files.write(audioFile.path(), new byte[] {0}, java.nio.file.StandardOpenOption.APPEND);
+            assertThat(worker.submitOnce("comfy-mixed-tamper-submit")).isEqualTo(1);
+            var blocked = tasks.get(ownerId, projectId, tampered.id());
+            assertThat(blocked.status()).isEqualTo(Task.Status.BLOCKED);
+            assertThat(blocked.errorCode()).isEqualTo("PROVIDER_UNSUPPORTED_INPUT");
+            assertThat(UPLOADS).hasValue(uploadsBeforeTamper);
+            assertThat(SUBMISSIONS).hasValue(submissionsBeforeTamper);
+        } finally { Files.write(audioFile.path(), audioBytes); }
     }
 
     private void due(UUID taskId) {
@@ -324,7 +400,15 @@ class ComfyUiWorkflowPostgresIT {
     private static HttpServer server() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext(PROXY_PREFIX + "/upload/image", exchange -> { int index = UPLOADS.incrementAndGet(); exchange.getRequestBody().readAllBytes(); respond(exchange, "{\"name\":\"uploaded-" + index + ".png\",\"type\":\"input\",\"subfolder\":\"\"}"); });
+            server.createContext(PROXY_PREFIX + "/upload/image", exchange -> {
+                int index = UPLOADS.incrementAndGet();
+                byte[] bytes = exchange.getRequestBody().readAllBytes();
+                String body = new String(bytes, StandardCharsets.ISO_8859_1);
+                String type = body.contains("Content-Type: video/mp4") ? "video/mp4" : body.contains("Content-Type: audio/wav") ? "audio/wav" : "image/png";
+                if (!"image/png".equals(type)) MEDIA_UPLOADS.put(type, java.util.Arrays.copyOfRange(bytes, body.indexOf("\r\n\r\n") + 4, body.lastIndexOf("\r\n--")));
+                String extension = "video/mp4".equals(type) ? "mp4" : "audio/wav".equals(type) ? "wav" : "png";
+                respond(exchange, "{\"name\":\"uploaded-" + index + "." + extension + "\",\"type\":\"input\",\"subfolder\":\"\"}");
+            });
             server.createContext(PROXY_PREFIX + "/prompt", exchange -> {
                 exchange.getResponseHeaders().add("Location", "/submit/prompt");
                 exchange.sendResponseHeaders(307, -1);

@@ -205,7 +205,7 @@ class McpRealServiceIT {
             check(Boolean.FALSE.equals(tool.inputSchema().get("additionalProperties")),
                     "Tool input schemas must reject extra fields");
         }
-        check(tools.size() == 12 && names.equals(ALL_TOOLS), "Full credential must expose exactly twelve tools");
+        check(tools.size() == 13 && names.containsAll(ALL_TOOLS) && names.contains("compose_video"), "Full credential must expose thirteen tools");
     }
 
     private void verifyProjectListed(McpSyncClient client) {

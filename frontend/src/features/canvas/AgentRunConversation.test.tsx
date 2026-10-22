@@ -54,6 +54,25 @@ function taskSummary(label: string, index = 0) {
 }
 
 describe("AgentRunConversation", () => {
+  it("shows a local composition task and its committed summary without a media approval", async () => {
+    mockConversation([
+      task({ kind: "VIDEO_GENERATION", status: "FAILED", input: { videoComposition: { clips: [] } },
+        errorCode: "VIDEO_COMPOSITION_AUDIO_OVERFLOW" }),
+    ], [action({ toolName: "compose_video", summary: "已提交三段镜头的本地配音合成" })]);
+    mountConversation("FAILED", true);
+    expect(await screen.findByText("已提交三段镜头的本地配音合成")).toBeInTheDocument();
+    expect(await screen.findAllByText("本地配音合成")).not.toHaveLength(0);
+    expect(await screen.findByText(/配音超出镜头可用时长/)).toBeInTheDocument();
+    expect(screen.queryByText(/批准媒体生成/)).not.toBeInTheDocument();
+    expect(screen.queryByText("生成视频")).not.toBeInTheDocument();
+  });
+
+  it("explains that stopping the director does not cancel an independently accepted composition", async () => {
+    mockConversation([], [action({ toolName: "compose_video", summary: "已提交本地合成任务" })]);
+    mountConversation("CANCELED");
+    expect(await screen.findByText("停止导演不会取消已受理的本地合成；请在成片节点查看进度或取消。")).toBeInTheDocument();
+  });
+
   it("places media approvals after the reply that proposed them and before later replies", async () => {
     mockConversation([
       task({ id: "proposal-turn", completedAt: "2026-09-26T00:01:01Z",

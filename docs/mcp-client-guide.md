@@ -54,7 +54,7 @@ MCP 是 Agenvas 的附加创作入口。外部客户端负责自己的对话和�
 
 连接后先执行工具发现，再调用 `list_projects`。工具列表按令牌权限过滤；服务器在执行时还会重新鉴权。客户端自己的工具确认或工作区信任提示由客户端控制，Agenvas 不增加每次媒体调用的收费审批。
 
-## 首批 12 个工具
+## 当前 13 个工具
 
 工具输入、输出的权威 Schema 是 [`contracts/mcp/tools.json`](../contracts/mcp/tools.json)，运行时通过 MCP 工具发现获取。除 `list_projects` 外均必填 `projectId`；所有写工具都必填稳定的 `commandId`。
 
@@ -71,6 +71,7 @@ MCP 是 Agenvas 的附加创作入口。外部客户端负责自己的对话和�
 | `update_media_draft` | `CONTENT_WRITE` | 输入 `canvasItemId`、当前 `expectedDraftVersion` 和 `patch`，保存提示词、能力、参数及精确素材引用 |
 | `list_media_capabilities` | `READ` | 按 `kind` 和分页发现已发布能力及支持参数；不返回 Provider 地址、密钥或原始工作流 |
 | `run_media` | `MEDIA_GENERATE` | 按节点和当前草稿版本直接受理 Task，返回本次受理的全部 Task |
+| `compose_video` | `MEDIA_GENERATE` | 根据分镜/台词匹配有序视频与配音精确版本，后台利用声音活动窗口自动排布并本地合成；返回 Task |
 | `read_task_status` | `READ` | 按 `taskIds` 查询同项目任务及精确结果版本；不启动生成 |
 
 不要猜测 ID、能力参数或版本号。先读取当前项目，再使用返回的 ID 和 CAS 版本。文字内容使用产物的 `expectedVersion`，布局使用节点的 `expectedVersion`，媒体草稿使用 `mediaDraft.version`；三者是独立的并发边界。
@@ -178,6 +179,23 @@ docker compose -f docker-compose.yml up -d --no-deps server
   -Dagenvas.mcp.real-config-file=/private/path/mcp-real-config.json verify
 ```
 
-用例验证全部 12 工具、只读权限和输出 Schema，只对同一生成 `commandId` 重放，并查询至结果归档、实际解码返回图片。遇到 UNKNOWN、BLOCKED、FAILED、取消或超时即失败，不创建新生成命令。失败后先核对已受理 Task；重跑整个用例需要另一个明确授权的新操作及专用空项目，不能将重新运行测试当作对未知受理结果的安全重试。
+该用例验证原有 12 工具、只读权限和输出 Schema；新增 `compose_video` 由配音合成专项另行验证。用例只对同一生成 `commandId` 重放，并查询至结果归档、实际解码返回图片。遇到 UNKNOWN、BLOCKED、FAILED、取消或超时即失败，不创建新生成命令。失败后先核对已受理 Task；重跑整个用例需要另一个明确授权的新操作及专用空项目，不能将重新运行测试当作对未知受理结果的安全重试。
 
 若已有测试部署仍处旧迁移版本，应先核对升级影响。使用配置副本验收时，必须清除副本的旧 Task、个人/项目后台队列与远端清理记录，禁用旧同步/发布/LLM 调度，使用新归档目录；不能直接启动含旧 READY/UNKNOWN/清理任务的完整副本。
+
+
+## 智能配音合成
+
+先用 `read_artifacts` 读取剧本和固定媒体版本；音视频返回实际时长及 `generationPrompt`，作为镜头/台词匹配依据。客户端 Agent 判断镜头顺序和每镜的配音顺序，再调用 `compose_video(projectId, commandId, composition)`。`composition` 与 OpenAPI `VideoCompositionRequest` 一致；`shots` 中每项指定 `videoVersionId`、可选 `sourceStartMs/durationMs` 和 `lines[{audioVersionId,startMs?}]`。不要从文件名或画布位置臆造剧情对应关系。
+
+省略 `startMs` 时后台利用原片声音活动和配音时长自动定位；明确的镜内剧情锚点优先。原片没有声音或活动窗口不足时回退时长排布并记录警告。声音能量不是语音识别，音乐/音效可能干扰判断。默认 `MUTE`，`BACKGROUND` 保留 15% 原声，原对白也会被保留。配音最多 1.15 倍变速，无法完整容纳时失败；最多 12 镜、30 句、60 秒，输出 1280×720/30fps。每镜实际时长向下对齐视频整帧。
+
+返回成功仅表示排队。查询原 Task，成功后读取精确结果版本的 `composition`，可见实际落点、配音裁切/速度、声音活动窗口和回退警告。这是已有素材的本地合成，不调用云媒体模型，也不增加审批。内置导演同样提供此工具；停止导演不取消已受理合成，在成片节点单独取消。
+
+### 视频后期扩展
+
+`compose_video` 继续接受精确版本，现支持空 `lines` 的纯视频剪辑、每镜 `speed`（0.5–2）及 `fadeMs`（0–500），`originalAudioMode=KEEP` 保留原声；`MUTE` 和15%原声的 `BACKGROUND` 保持。单源最长10分钟，成片仍最多12镜、30句、60秒，向下对齐30fps完整帧。
+
+可选 `output={resolution:"1080P",aspectRatio:"9:16"}`（另支持720P及16:9/1:1）、`music={audioVersionId,sourceStartMs,volume}` 和 `subtitles=[{text,startMs,endMs}]`。音乐同样授权和冻结为精确版本，可自然结束或在成片末尾结束；配音仍不得被静默截断。字幕为最终成片烧录文本；ASS控制符显示为全角字面字符。完整限制以 OpenAPI `VideoCompositionRequest` 为准。输出始终是后台Task和独立结果节点，查询归档成功后才能称为已完成；原素材和源节点选用保持。
+
+内置导演另有 `read_media_sample` 按需读取实际画面和短音频；MCP的 `read_artifacts` 仍返回音视频版本及元数据，不把这些元数据描述成客户端已经观看或听过媒体。

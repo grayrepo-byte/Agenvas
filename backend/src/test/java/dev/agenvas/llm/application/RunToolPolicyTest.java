@@ -61,6 +61,24 @@ class RunToolPolicyTest {
             if (definition.name().equals("read_skill_resource")) assertThat(definition.inputSchema()).contains("skillVersionId");
         }
     }
+    @Test void compositionSchemaUsesExactInputsAndDoesNotGrantExistingRunsNewPermissions() {
+        var policy = policy();
+        policy.putArray("allowedTools").add("read_artifacts");
+        assertThat(names(policy)).doesNotContain("compose_video");
+        policy.withArray("allowedTools").add("compose_video");
+        var definition = registry.modelDefinitions(policy).stream()
+                .map(callback -> callback.getToolDefinition()).filter(tool -> tool.name().equals("compose_video"))
+                .findFirst().orElseThrow();
+        var schema = mapper.readTree(definition.inputSchema());
+        assertThat(schema.path("additionalProperties").asBoolean()).isFalse();
+        assertThat(schema.at("/properties/title/maxLength").asInt()).isEqualTo(160);
+        assertThat(schema.at("/properties/shots/maxItems").asInt()).isEqualTo(12);
+        assertThat(schema.at("/properties/shots/items/properties/lines/items/required").toString())
+                .contains("audioVersionId").doesNotContain("startMs");
+        assertThat(definition.inputSchema()).contains("videoVersionId", "audioVersionId", "rationale", "BACKGROUND")
+                .doesNotContain("ownerId", "projectId", "runId", "url", "ffmpeg");
+        assertThat(definition.description()).contains("queuing only", "do not poll", "1.15x");
+    }
     private tools.jackson.databind.node.ObjectNode policy() {
         return mapper.createObjectNode().put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
                 .put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION)

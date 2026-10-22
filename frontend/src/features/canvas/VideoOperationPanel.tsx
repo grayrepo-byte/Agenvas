@@ -1,6 +1,9 @@
+import { Input } from "../../shared/ui/primitives/input";
+import { Select } from "../../shared/ui/Select";
+import { Field, FieldError, FieldLabel } from "../../shared/ui/primitives/field";
 import { X } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { getMediaFunctions, getMediaSettings, type RunVideoOperationRequest, type VideoOperation } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { MEDIA_FUNCTIONS_QUERY_KEY, videoOperationLabel, videoFunctionChoices, videoFunction } from "../../shared/mediaFunctions";
@@ -42,6 +45,10 @@ function ConfiguredOperation({ operation, sourceVersionId, sourceTitle, settingV
   onSubmit: (input: SubmissionInput) => void;
 }) {
   const [values, setValues] = useState<Record<string, WorkflowValue>>({});
+  const [format, setFormat] = useState<"WAV" | "MP3">("WAV");
+  const [trackIndex, setTrackIndex] = useState(0);
+  const id = useId();
+  const invalidTrack = !Number.isInteger(trackIndex) || trackIndex < 0 || trackIndex > 31;
   const definition = configured.capability.settings.runningHub;
   const videoField = definition?.fields.find((field) => field.type === "VIDEO");
   const fixedValues = videoField ? { ...values, [videoField.key]: sourceVersionId } : values;
@@ -57,6 +64,17 @@ function ConfiguredOperation({ operation, sourceVersionId, sourceTitle, settingV
   return <>
     <p className="video-operation-method" title={configured.label}>{configured.capability.name}</p>
     {!definition ? <p>{operation === "DEPTH_MAP" ? t("media.video.depthHint") : t("media.video.audioHint")}</p> : null}
+    {!definition && operation === "EXTRACT_AUDIO" ? <>
+      <Field><FieldLabel htmlFor={`${id}-format`}>{t("video.edit.audioFormat")}</FieldLabel>
+        <Select id={`${id}-format`} value={format} disabled={busy} onChange={(event) => setFormat(event.target.value === "MP3" ? "MP3" : "WAV")}>
+          <option value="WAV">WAV</option><option value="MP3">MP3</option>
+        </Select></Field>
+      <Field data-invalid={invalidTrack}><FieldLabel htmlFor={`${id}-track`}>{t("video.edit.audioTrack")}</FieldLabel>
+        <Input id={`${id}-track`} type="number" min={0} max={31} step={1} value={Number.isFinite(trackIndex) ? trackIndex : ""} disabled={busy} aria-invalid={invalidTrack}
+          onChange={(event) => setTrackIndex(event.target.valueAsNumber)} /></Field>
+      {invalidTrack ? <FieldError>{t("video.edit.audioTrackInvalid")}</FieldError> : null}
+      <p>{t("video.edit.audioFormatHint")}</p>
+    </> : null}
     {formDefinition ? <div className="video-operation-fields"><RunningHubForm definition={formDefinition} values={values} prompt="" durationSeconds={null}
       choices={choices} disabled={busy} onChange={(key, value) => setValues((current) => {
         const next = { ...current }; if (value === undefined) delete next[key]; else next[key] = value; return next;
@@ -65,10 +83,10 @@ function ConfiguredOperation({ operation, sourceVersionId, sourceTitle, settingV
     {error ? <p role="alert">{error.message}</p> : null}
     {errors.length ? <p role="status">{errors[0]}</p> : null}
     <footer><p className="video-operation-cost">{definition ? estimatedMediaCost(configured.capability, 1, typeof durationValue === "number" ? durationValue : null) : t("media.video.localCost")}</p>
-      <Button variant="ghost" type="button" className="is-primary" disabled={busy || errors.length > 0}
+      <Button variant="ghost" type="button" className="is-primary" disabled={busy || errors.length > 0 || invalidTrack}
       onClick={() => {
         onSubmit({ expectedFunctionVersion: settingVersion, expectedCapabilityVersion: configured.capability.capabilityVersion, prompt: typeof prompt === "string" ? prompt : "",
-          parameters: definition ? { dynamicValues: fixedValues } : {} });
+          parameters: definition ? { dynamicValues: fixedValues } : operation === "EXTRACT_AUDIO" ? { format, trackIndex } : {} });
       }}>{busy ? t("media.video.submitting") : t("media.video.start")}</Button></footer>
   </>;
 }

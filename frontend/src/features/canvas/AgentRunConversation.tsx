@@ -11,6 +11,7 @@ import { useRunAssistantStream } from "./agentRunStream";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { taskErrorMessage } from "./taskErrorMessages";
+import { isVideoCompositionTask } from "./mediaTaskState";
 
 export const RUN_STATUS_LABELS: Record<AgentRun["status"], string> = {
   get QUEUED() { return t("agent.run.pending"); }, get RUNNING() { return t("agent.run.processing"); },
@@ -36,6 +37,7 @@ const TOOL_LABELS: Record<string, string> = {
   get read_canvas() { return t("agent.run.readCanvas"); },
   get manage_canvas_node() { return t("agent.run.manageCanvasNode"); },
   get update_media_draft() { return t("agent.run.updateMediaDraft"); },
+  get compose_video() { return t("agent.run.composeVideo"); },
 };
 const RUNNING_STATUSES: ReadonlySet<AgentRun["status"]> = new Set(["QUEUED", "RUNNING", "WAITING_TASKS", "CANCEL_REQUESTED"]);
 const DEFAULT_STEP_INDEX = 0;
@@ -72,6 +74,10 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
   const streams = useRunAssistantStream(projectId, run.id, tasks.data);
   const turns = (tasks.data ?? []).filter((task) => task.kind === "AGENT_TURN" && task.status === "SUCCEEDED");
   const visibleTasks = tasks.data ?? [];
+  const mediaTasks = visibleTasks.filter((task) => task.kind !== "AGENT_TURN" && task.kind !== "TEXT_GENERATION");
+  const localCompositionOnly = (mediaTasks.some(isVideoCompositionTask)
+    || (actions.data ?? []).some((action) => action.toolName === "compose_video"))
+    && mediaTasks.every(isVideoCompositionTask);
   // Normal model rounds are already represented by public replies and the Run status.
   // Keep exceptional/retried rounds visible without counting every model call as work.
   const traceTasks = visibleTasks.filter((task) => task.kind !== "AGENT_TURN"
@@ -126,7 +132,7 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
             toolLabel={TOOL_LABELS[action.toolName] ?? action.toolName}
             detail={`${TOOL_LABELS[action.toolName] ?? action.toolName} · ${new Date(action.completedAt).toLocaleString(getFormatLocale())}`} />)}
         {traceTasks.filter((task) => stepIndex(task) === step).map((task) =>
-          <AgentChatTaskRow key={task.id} label={TASK_LABELS[task.kind]}
+          <AgentChatTaskRow key={task.id} label={isVideoCompositionTask(task) ? t("agent.run.composeVideo") : TASK_LABELS[task.kind]}
             status={TASK_STATUS[task.status]} detail={taskDetail(task)} />)}
       </div>)}
     </AgentExecutionTrace> : null}
@@ -147,7 +153,7 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
     <div className="agent-chat-run-status" role="status">
       {active && waitingApproval && run.status === "WAITING_TASKS" ? t("agent.trace.waitingApproval")
         : active && RUNNING_STATUSES.has(run.status) ? <CanvasLoadingState compact label={RUN_STATUS_LABELS[run.status]} /> : RUN_STATUS_LABELS[run.status]}
-      {run.status === "CANCELED" || run.status === "CANCEL_REQUESTED" ? <p>{t("agent.run.cancelHint")}</p> : null}
+      {run.status === "CANCELED" || run.status === "CANCEL_REQUESTED" ? <p>{t(localCompositionOnly ? "agent.run.compositionCancelHint" : "agent.run.cancelHint")}</p> : null}
     </div>
   </section>;
 }

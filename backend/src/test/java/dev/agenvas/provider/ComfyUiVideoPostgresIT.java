@@ -161,6 +161,7 @@ class ComfyUiVideoPostgresIT {
                 videoDraft.version(), "comfy-video-run");
         assertThat(videoTask.input().path("schemaVersion").asInt()).isEqualTo(6);
         assertThat(videoTask.input().path("durationSeconds").asInt()).isEqualTo(5);
+        assertThat(videoTask.input().at("/mediaInput/providerParameters/aspectRatio").asText()).isEqualTo("16:9");
         assertThat(videoTask.input().path("mediaInput").path("images").get(0)
                 .path("versionId").asText())
                 .isEqualTo(imageVersion.toString());
@@ -169,6 +170,10 @@ class ComfyUiVideoPostgresIT {
                         + "where task_id = :taskId and entry_type = 'RESERVATION'")
                 .param("taskId", videoTask.id()).query(String.class).single()).isEqualTo("5");
         VIDEO_BYTES.set(realMp4());
+        // Both the normalized keyframe and graph dimensions must use the accepted AUTO ratio.
+        Project beforeEdit = projects.get(owner.userId(), project.id());
+        projects.update(owner.userId(), project.id(), beforeEdit.version(), null,
+                Project.AspectRatio.PORTRAIT_9_16);
         assertThat(mediaWorker.submitOnce("video-submitter")).isEqualTo(1);
         assertThat(VIDEO_SUBMISSIONS).hasValue(1);
         JsonNode graph = VIDEO_GRAPH.get();
@@ -177,6 +182,8 @@ class ComfyUiVideoPostgresIT {
         assertThat(graph.path("9").path("inputs").path("start_image").get(0).asText())
                 .isEqualTo("1");
         assertThat(graph.path("9").path("inputs").path("length").asInt()).isEqualTo(81);
+        assertThat(graph.path("9").path("inputs").path("width").asInt()).isEqualTo(832);
+        assertThat(graph.path("9").path("inputs").path("height").asInt()).isEqualTo(480);
         assertThat(UPLOADS).hasValue(2);
         BufferedImage uploadedKeyframe = uploadedPng(KEYFRAME_UPLOAD.get());
         assertThat(uploadedKeyframe.getWidth()).isEqualTo(832);

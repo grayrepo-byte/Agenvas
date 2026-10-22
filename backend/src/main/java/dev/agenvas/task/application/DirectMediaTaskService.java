@@ -264,6 +264,8 @@ public class DirectMediaTaskService {
                 ObjectNode frozen = input.putObject("mediaInput");
                 var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
                 if (comfyDimensions != null) frozen.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
+                var fixedVideoParameters = fixedVideoProviderParameters(ownerId, projectId, prepared);
+                if (fixedVideoParameters != null) frozen.set("providerParameters", fixedVideoParameters);
                 if (kling != null) frozen.set("providerParameters", klingProviderParameters(prepared));
                 if (nativeProfile != null) frozen.set("providerParameters", nativeProviderParameters(prepared));
                 if (MiniMaxH3Protocol.ADAPTER_ID.equals(binding.adapterId())) {
@@ -504,7 +506,7 @@ public class DirectMediaTaskService {
             if (kind == Task.Kind.VIDEO_GENERATION && !KlingModels.motion(kling)
                     && (duration == null || duration < limits.minimumSeconds() || duration > limits.maximumSeconds()))
                 throw KlingProtocol.invalid();
-        } else validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding,
+        } else if (comfy == null) validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding,
                 comfy == null ? draft.parameters() : ComfyUiWorkflowDefinition.standardParameters(draft.parameters())));
         if (capabilities.inputPolicy(binding).platform() == dev.agenvas.provider.domain.MediaPlatform.COMFYUI
                 && renderedPrompt.length() > MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH) {
@@ -515,7 +517,8 @@ public class DirectMediaTaskService {
         ObjectNode comfyValues = null;
         if (comfy != null) {
             comfyValues = comfy.values(mapper, draft.parameters(), renderedPrompt, duration,
-                    draft.mediaInputs().stream().map(MediaDraft.MediaInput::versionId).toList(), true);
+                    draft.mediaInputs().stream().filter(input -> input.role() == MediaDraft.InputRole.REFERENCE)
+                            .map(MediaDraft.MediaInput::versionId).toList(), true);
             ObjectNode slotParameters = mapper.createObjectNode();
             slotParameters.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, comfyValues);
             MediaDraftService.validateSlots(comfy.inputs(), slotParameters, draft.mediaInputs(), true);
@@ -658,6 +661,21 @@ public class DirectMediaTaskService {
         return effective;
     }
 
+    /** Resolve project-dependent AUTO before queueing; workers must not read a later project edit. */
+    private ObjectNode fixedVideoProviderParameters(UUID ownerId, UUID projectId, PreparedMedia prepared) {
+        String adapter = prepared.binding().adapterId();
+        if (!MediaAdapterRegistry.SEEDANCE_2.equals(adapter)
+                && !("COMFY_VIDEO_V1".equals(adapter)
+                    && !ComfyUiWorkflowDefinition.configured(prepared.configuredSettings()))) return null;
+        String ratio = prepared.videoParameters().aspectRatio();
+        if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio)) ratio = switch (projects.get(ownerId, projectId).aspectRatio()) {
+            case LANDSCAPE_16_9 -> VideoGenerationParameters.LANDSCAPE_ASPECT_RATIO;
+            case PORTRAIT_9_16 -> VideoGenerationParameters.PORTRAIT_ASPECT_RATIO;
+            case SQUARE_1_1 -> VideoGenerationParameters.SQUARE_ASPECT_RATIO;
+        };
+        return mapper.createObjectNode().put("aspectRatio", ratio);
+    }
+
     private ObjectNode comfyProviderParameters(PreparedMedia prepared, ComfyUiWorkflowDefinition.Dimensions dimensions) {
         ObjectNode frozen = (ObjectNode) mapper.valueToTree(dimensions);
         frozen.set(dev.agenvas.provider.domain.RunningHubDefinition.VALUES_PROPERTY, prepared.comfyValues());
@@ -725,6 +743,8 @@ public class DirectMediaTaskService {
         snapshot.set("parameters", effectiveParameters);
         var comfyDimensions = comfyDimensions(ownerId, projectId, prepared);
         if (comfyDimensions != null) snapshot.set("providerParameters", comfyProviderParameters(prepared, comfyDimensions));
+        var fixedVideoParameters = fixedVideoProviderParameters(ownerId, projectId, prepared);
+        if (fixedVideoParameters != null) snapshot.set("providerParameters", fixedVideoParameters);
         if (prepared.kling() != null) snapshot.set("providerParameters", klingProviderParameters(prepared));
         if (prepared.nativeProfile() != null) {
             snapshot.set("providerParameters", nativeProviderParameters(prepared));
@@ -1196,7 +1216,7 @@ public class DirectMediaTaskService {
         throw invalid(ApiMessage.of("api.direct-media-task-service.there-is-no-corresponding-image-input-for-the-prompt-word"));
     }
 
-    /** Only queued direct work is guaranteed never to have reached the provider. */
+    /** External generation stops only while queued; local composition can additionally signal its current renderer. */
     @Transactional
     public Task cancelQueued(UUID ownerId, UUID projectId, UUID taskId) {
         return events.recordChange(ownerId, projectId, () -> {
@@ -1209,14 +1229,21 @@ public class DirectMediaTaskService {
             if (current.status() == Task.Status.CANCELED) {
                 return ProjectEventService.Change.unchanged(current);
             }
-            if (!tasks.cancelQueuedDirect(projectId, taskId, clock.instant())) {
+            if (current.isVideoComposition() && current.cancelRequested()) {
+                return ProjectEventService.Change.unchanged(current);
+            }
+            boolean changed = current.isVideoComposition()
+                    ? tasks.cancelVideoComposition(current, clock.instant())
+                    : tasks.cancelQueuedDirect(projectId, taskId, clock.instant());
+            if (!changed) {
                 throw conflict(ApiMessage.of("api.direct-media-task-service.the-task-submission-has-started-please-check-the-cancellation-option"));
             }
             Task canceled = tasks.find(ownerId, projectId, taskId).orElseThrow();
-            usage.releaseUnsubmittedMediaTask(ownerId, canceled);
+            if (canceled.status() == Task.Status.CANCELED) usage.releaseUnsubmittedMediaTask(ownerId, canceled);
             ObjectNode payload = mapper.createObjectNode();
             payload.put("taskId", taskId.toString());
             payload.put("status", canceled.status().name());
+            payload.put("cancelRequested", canceled.cancelRequested());
             events.append(ownerId, projectId,
                     new ProjectEventService.EventDraft("task.status.changed", 1,
                             taskId, canceled.version(), payload));
@@ -1275,7 +1302,7 @@ public class DirectMediaTaskService {
         } else if (comfy != null) {
             ObjectNode values = mapper.createObjectNode();
             values.set(RunningHubDefinition.VALUES_PROPERTY, comfy.values(mapper, draft.parameters(),
-                    draft.prompt(), draft.durationSeconds(), draft.mediaInputs().stream()
+                    draft.prompt(), draft.durationSeconds(), draft.mediaInputs().stream().filter(input -> input.role() == MediaDraft.InputRole.REFERENCE)
                             .map(MediaDraft.MediaInput::versionId).toList(), false));
             MediaDraftService.validateSlots(comfy.inputs(), values, draft.mediaInputs(), false);
         } else if (nativeProfile != null) {
@@ -1335,6 +1362,16 @@ public class DirectMediaTaskService {
             MediaCapabilityBinding binding) {
         boolean seed = MediaAdapterRegistry.SEED_AUDIO_1.equals(binding.adapterId());
         boolean ark = MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId());
+        if (capabilities.comfyWorkflowDefinition(binding) != null) {
+            for (var input : draft.mediaInputs()) {
+                var kind = MediaDraftService.mediaKind(input.role());
+                var version = artifacts.requireMediaVersionForTask(ownerId, projectId, input.versionId(), kind);
+                var asset = assets.requireReadyMedia(ownerId, projectId,
+                        UUID.fromString(version.content().path("assetId").asText()), Asset.MediaKind.valueOf(kind.name()));
+                ComfyUiWorkflowDefinition.validateMediaAsset(asset);
+            }
+            return;
+        }
         if (MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())) {
             for (var input : draft.mediaInputs()) {
                 var version = artifacts.requireMediaVersionForTask(ownerId, projectId, input.versionId(), dev.agenvas.artifact.application.MediaDraftService.mediaKind(input.role()));

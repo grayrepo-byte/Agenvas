@@ -7,6 +7,7 @@ import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
@@ -147,10 +148,17 @@ public class ManualUnknownRetryService {
             replacementInput.remove("mcpTokenId");
             replacementInput.remove("mcpOperationId");
         }
+        if (original.isVideoComposition()) {
+            // A website retry is the user's new delegation, independent of the original Director or MCP token.
+            // The immutable replacement relation retains the complete original provenance.
+            replacementInput.put("initiator", Task.Initiator.USER_DIRECT.name());
+            replacementInput.remove("compositionRunId");
+            replacementInput.putObject("compositionOrigin").putNull("runId").putNull("tokenId").putNull("operationId");
+        }
         Task replacement = new Task(UUID.randomUUID(), projectId, null,
                 "retry." + original.id() + "." + (original.attemptNo() + 1),
                 original.kind(), Task.Status.READY, false, replacementInput,
-                original.initiator() == Task.Initiator.EXTERNAL_MCP
+                !replacementInput.equals(original.input())
                         ? dev.agenvas.shared.crypto.Sha256.hex(replacementInput.toString()) : original.inputHash(), null, null,
                 original.attemptNo() + 1, now, null, null, 0, 0, null, now, now, null);
         repository.create(replacement);
@@ -158,22 +166,25 @@ public class ManualUnknownRetryService {
         repository.createArtifactTarget(new TaskRepository.ArtifactTarget(replacement.id(),
                 projectId, target.artifactId(), target.expectedCurrentVersionId(),
                 target.expectedArtifactVersion(), target.canvasItemId()));
-        usage.reserveMediaTask(ownerId, replacement, "PROVIDER_UNPRICED", binding.connectionVersion());
+        boolean localProcessing = MediaAdapterRegistry.localProcessor(binding.adapterId());
+        usage.reserveMediaTask(ownerId, replacement, localProcessing
+                ? "LOCAL_NO_COST" : "PROVIDER_UNPRICED", binding.connectionVersion());
         repository.createManualReplacement(new TaskRepository.ManualReplacement(projectId,
                 original.id(), replacement.id(), ownerId, expectedTaskVersion,
                 idempotencyKey, now));
-        events.append(ownerId, projectId, statusEvent(original, replacement.id()));
-        events.append(ownerId, projectId, statusEvent(replacement, null));
+        events.append(ownerId, projectId, statusEvent(original, replacement.id(), localProcessing));
+        events.append(ownerId, projectId, statusEvent(replacement, null, localProcessing));
         return replacement;
     }
 
     /** 对原任务与替代任务沿用状态事件，促使客户端刷新两者。 */
-    private ProjectEventService.EventDraft statusEvent(Task task, UUID replacementId) {
+    private ProjectEventService.EventDraft statusEvent(Task task, UUID replacementId, boolean localProcessing) {
         ObjectNode payload = mapper.createObjectNode();
         payload.put("taskId", task.id().toString());
         payload.put("status", task.status().name());
         payload.put("cancelRequested", task.cancelRequested());
-        payload.put("possibleExternalCost", task.status() == Task.Status.UNKNOWN || task.providerRequestId() != null);
+        payload.put("possibleExternalCost", !localProcessing
+                && (task.status() == Task.Status.UNKNOWN || task.providerRequestId() != null));
         if (replacementId != null) payload.put("replacementTaskId", replacementId.toString());
         return new ProjectEventService.EventDraft("task.status.changed", 1,
                 task.id(), task.version(), payload);

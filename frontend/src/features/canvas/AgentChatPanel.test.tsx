@@ -5,8 +5,9 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Agent, AgentRun, AgentConversation, CreateRunRequest, RunPreflight } from "../../shared/api/client";
+import * as api from "../../shared/api/client";
 import { server } from "../../test/server";
-import { AgentChatPanel, type AgentChatPanelData } from "./AgentChatPanel";
+import { AgentChatPanel, type AgentChatPanelData, type AgentChatRunRequest } from "./AgentChatPanel";
 import { useCanvasStore } from "./canvasStore";
 import { projectCacheCallbacks } from "./projectCache";
 import { runAssistantStreamKey, type AssistantTurnStream } from "./agentRunStream";
@@ -157,6 +158,152 @@ afterEach(() => {
 });
 
 describe("AgentChatPanel", () => {
+  it.each(["unmount", "project-change"])("does not create a composition Run when its preflight becomes invalid through %s", async (navigation) => {
+    let release!: (value: RunPreflight) => void;
+    const preflight = vi.spyOn(api, "getRunPreflight").mockImplementation(() => new Promise<RunPreflight>((resolve) => { release = resolve; }));
+    const create = vi.spyOn(api, "createRun").mockResolvedValue(run());
+    server.use(http.get("/api/v1/projects/project-2/agents/agent-1/conversations", () =>
+      HttpResponse.json({ items: [], currentConversationId: null, nextCursor: null })));
+    const client = createQueryClient();
+    const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: null,
+      canvasNodeCount: 2, selectedNodeCount: 1, onUpdateAgent: vi.fn(), updatingAgent: false,
+      runRequest: { id: "leaving-composition", instruction: "自动配音合成", selectedItemIds: ["video"] } };
+    const view = render(<QueryClientProvider client={client}><AgentChatPanel data={data} /></QueryClientProvider>);
+    await waitFor(() => expect(preflight).toHaveBeenCalledOnce());
+    if (navigation === "unmount") view.unmount();
+    else view.rerender(<QueryClientProvider client={client}>
+      <AgentChatPanel data={{ ...data, projectId: "project-2", runRequest: null }} />
+    </QueryClientProvider>);
+    await act(async () => { release(PREFLIGHT); });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("sends a workspace composition action once with its captured selection and preserves the chat draft", async () => {
+    const requests: CreateRunRequest[] = [];
+    let finishPreflight: (() => void) | undefined;
+    let checks = 0;
+    const onRunRequestHandled = vi.fn();
+    server.use(
+      http.post(`${RUNS_URL}/preflight`, async () => {
+        checks++;
+        await new Promise<void>((resolve) => { finishPreflight = resolve; });
+        return HttpResponse.json(PREFLIGHT);
+      }),
+      http.post(RUNS_URL, async ({ request }) => {
+        const input = await request.json() as CreateRunRequest;
+        requests.push(input);
+        return persistRun(run({ instruction: input.instruction }));
+      }),
+    );
+    const client = createQueryClient();
+    const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: null,
+      canvasNodeCount: 4, selectedNodeCount: 2, onUpdateAgent: vi.fn(), updatingAgent: false, onRunRequestHandled };
+    const renderPanel = (request?: AgentChatRunRequest) => <QueryClientProvider client={client}>
+      <AgentChatPanel data={{ ...data, runRequest: request }} />
+    </QueryClientProvider>;
+    const view = render(renderPanel());
+    await userEvent.setup().type(await readyComposer(), "原先还没发送的想法");
+    const request = { id: "composition-click", instruction: "根据分镜和台词自动配音合成", selectedItemIds: ["shot-two", "script", "voice-one"] };
+    view.rerender(renderPanel(request));
+    await waitFor(() => expect(finishPreflight).toBeTypeOf("function"));
+    act(() => useCanvasStore.getState().setSelectedIds(["later-selection"]));
+    view.rerender(renderPanel({ ...request }));
+    finishPreflight!();
+    await waitFor(() => expect(onRunRequestHandled).toHaveBeenCalledWith(request.id));
+    expect(checks).toBe(1);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ instruction: request.instruction, selectedItemIds: request.selectedItemIds });
+    expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue("原先还没发送的想法");
+    expect(await screen.findByRole("article", { name: "你" })).toHaveTextContent(request.instruction);
+  });
+
+  it("retains a failed composition action for explicit retry with the same request and idempotency key", async () => {
+    const requests: { key: string | null; input: CreateRunRequest }[] = [];
+    let checks = 0;
+    const handled = vi.fn();
+    server.use(
+      http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
+      http.post(RUNS_URL, async ({ request }) => {
+        const input = await request.json() as CreateRunRequest;
+        requests.push({ key: request.headers.get("Idempotency-Key"), input });
+        return requests.length === 1 ? HttpResponse.error() : persistRun(run({ instruction: input.instruction }));
+      }),
+    );
+    mountPanel(null, { runRequest: { id: "retry-composition", instruction: "自动配音合成", selectedItemIds: ["video"] },
+      onRunRequestHandled: handled });
+    const retry = await screen.findByRole("button", { name: "发送配音合成任务" });
+    await waitFor(() => expect(requests).toHaveLength(1));
+    await waitFor(() => expect(retry).toBeEnabled());
+    expect(handled).not.toHaveBeenCalled();
+    act(() => useCanvasStore.getState().setSelectedIds(["changed"]));
+    await userEvent.setup().click(retry);
+    await waitFor(() => expect(handled).toHaveBeenCalledWith("retry-composition"));
+    expect(checks).toBe(1);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+  });
+
+  it("dismisses a lost-response notice without canceling the accepted Run or discarding its original retry key", async () => {
+    const requests: { key: string | null; input: CreateRunRequest }[] = [];
+    const cancels = vi.fn();
+    const handled = vi.fn();
+    let checks = 0;
+    server.use(
+      http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
+      http.post(RUNS_URL, async ({ request }) => {
+        const input = await request.json() as CreateRunRequest;
+        requests.push({ key: request.headers.get("Idempotency-Key"), input });
+        const saved = persistRun(run({ instruction: input.instruction }));
+        return requests.length === 1 ? HttpResponse.error() : saved;
+      }),
+      http.post(`${RUNS_URL}/:runId/cancel`, () => { cancels(); return HttpResponse.json(run({ status: "CANCELED" })); }),
+    );
+    const client = createQueryClient();
+    const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: null,
+      canvasNodeCount: 2, selectedNodeCount: 1, onUpdateAgent: vi.fn(), updatingAgent: false, onRunRequestHandled: handled };
+    const request = { id: "lost-composition", instruction: "自动配音合成", selectedItemIds: ["video"] };
+    const panel = (runRequest?: AgentChatRunRequest) => <QueryClientProvider client={client}>
+      <AgentChatPanel data={{ ...data, runRequest }} />
+    </QueryClientProvider>;
+    const view = render(panel(request));
+    expect(await screen.findByText(/关闭提示不会撤回已受理的任务/)).toBeVisible();
+    await userEvent.setup().click(screen.getByRole("button", { name: "关闭提示" }));
+    expect(handled).toHaveBeenCalledWith(request.id);
+    view.rerender(panel());
+    expect(cancels).not.toHaveBeenCalled();
+    expect(storedRuns).toHaveLength(1);
+    // Restoring the same request only restores its notice; recovery is still an explicit send.
+    view.rerender(panel(request));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "发送配音合成任务" }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(checks).toBe(1);
+    expect(requests[1]).toEqual(requests[0]);
+    expect(storedRuns).toHaveLength(1);
+    expect(cancels).not.toHaveBeenCalled();
+  });
+
+  it("does not queue a composition action behind an active Run and allows dismissing it", async () => {
+    const checks = vi.fn();
+    const handled = vi.fn();
+    server.use(http.post(`${RUNS_URL}/preflight`, () => { checks(); return HttpResponse.json(PREFLIGHT); }));
+    const client = createQueryClient();
+    const data: AgentChatPanelData = { agent: AGENT, projectId: PROJECT_ID, activeRun: run(), canvasNodeCount: 2,
+      selectedNodeCount: 1, onUpdateAgent: vi.fn(), updatingAgent: false,
+      runRequest: { id: "busy-composition", instruction: "自动配音合成", selectedItemIds: ["video"] }, onRunRequestHandled: handled };
+    const renderPanel = (activeRun: AgentRun | null) => <QueryClientProvider client={client}>
+      <AgentChatPanel data={{ ...data, activeRun }} />
+    </QueryClientProvider>;
+    const view = render(renderPanel(data.activeRun));
+    await readyComposer();
+    expect(await screen.findByRole("button", { name: "发送配音合成任务" })).toBeDisabled();
+    await screen.findByText("导演正在执行任务，请等待当前任务结束后再发送。");
+    view.rerender(renderPanel(null));
+    await waitFor(() => expect(screen.getByRole("button", { name: "发送配音合成任务" })).toBeEnabled());
+    expect(checks).not.toHaveBeenCalled();
+    await userEvent.setup().click(screen.getByRole("button", { name: "关闭提示" }));
+    expect(handled).toHaveBeenCalledWith("busy-composition");
+  });
+
   it("uses a newer blocked Run summary while the project snapshot still says running", async () => {
     const current = run({ status: "RUNNING" });
     storedRuns = [{ ...current, status: "BLOCKED", updatedAt: "2026-09-26T10:00:01Z" }];

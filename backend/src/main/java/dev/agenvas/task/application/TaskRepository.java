@@ -77,6 +77,9 @@ public interface TaskRepository {
     /** Cancel an unsubmitted direct task; submitted work requires provider reconciliation. */
     boolean cancelQueuedDirect(UUID projectId, UUID taskId, Instant now);
 
+    /** Cancel only a local composition: fence pre-submit work, or signal the current renderer without losing late-result history. */
+    boolean cancelVideoComposition(Task current, Instant now);
+
     /** 按所有者和项目共同限定任务读取。 */
     Optional<Task> find(UUID ownerId, UUID projectId, UUID taskId);
 

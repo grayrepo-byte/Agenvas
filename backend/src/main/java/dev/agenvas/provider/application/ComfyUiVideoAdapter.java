@@ -62,6 +62,11 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
                 && input.durationSeconds() >= 1 && input.durationSeconds() <= ComfyUiWorkflowDefinition.MAX_SECONDS;
     }
 
+    @Override public String preflightFailure(AttemptContext context) {
+        var settings = mapper.readTree(catalog.pinnedSnapshot(context.binding()).specJson()).path("settings");
+        return ComfyUiWorkflowDefinition.configured(settings) ? published.preflightFailure(context) : null;
+    }
+
     @Override public Submission submit(AttemptContext context) {
         Snapshot snapshot = catalog.pinnedSnapshot(context.binding());
         ComfyUiClient client = clients.create(snapshot.connectionVersion());
@@ -106,8 +111,13 @@ public class ComfyUiVideoAdapter implements MediaAdapter {
     }
 
     private Project.AspectRatio ratio(AttemptContext context) {
-        String requested = VideoGenerationParameters.parse(context.lease().input()
-                .path("mediaInput").path("parameters")).aspectRatio();
+        var frozen = context.lease().input().path("mediaInput").path("providerParameters").path("aspectRatio");
+        // Only historical tasks may fall back to project state; new tasks pin the resolved value.
+        if (!frozen.isMissingNode() && (!frozen.isTextual()
+                || !java.util.Set.of("16:9", "9:16", "1:1").contains(frozen.asText())))
+            throw new IllegalStateException("Pinned ComfyUI aspect ratio is invalid");
+        String requested = frozen.isMissingNode() ? VideoGenerationParameters.parse(context.lease().input()
+                .path("mediaInput").path("parameters")).aspectRatio() : frozen.asText();
         if (VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(requested)) {
             return projects.get(context.ownerId(), context.lease().projectId()).aspectRatio();
         }

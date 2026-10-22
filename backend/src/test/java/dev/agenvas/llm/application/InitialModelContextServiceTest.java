@@ -69,6 +69,20 @@ class InitialModelContextServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unsupported");
     }
+
+    @Test
+    void compositionGuidanceRequiresItsFrozenToolPermissionAndDoesNotClaimAudiovisualUnderstanding() {
+        var policy = mapper.createObjectNode().put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        policy.putArray("allowedTools").add("read_artifacts");
+        String olderRun = InitialModelContextService.systemRules(policy);
+        assertThat(olderRun).doesNotContain("compose_video");
+        policy.withArray("allowedTools").add("compose_video");
+        assertThat(InitialModelContextService.systemRules(policy)).startsWith(olderRun)
+                .contains("mediaMetadata.durationMs", "Match clips and speech", "exact audio versions",
+                        "waveform/silence placement", "1.15x", "queued, not a completed film", "Do not poll",
+                        "does not\nperform ASR", "authenticated approval", "public editing choice",
+                        "Stopping the Director does not cancel accepted composition");
+    }
     @Test
     void restoresOnlyFrozenUserAndAssistantTextAndKeepsNewRequestLast() {
         ObjectNode memory = mapper.createObjectNode().put("truncated", true).put("priorRunCount", 5);

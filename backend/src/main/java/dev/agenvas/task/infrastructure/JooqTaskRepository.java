@@ -523,6 +523,30 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .execute() == 1;
     }
 
+    @Override
+    public boolean cancelVideoComposition(Task current, Instant now) {
+        if (!current.isVideoComposition() || current.runId() != null || current.providerRequestId() != null
+                || !List.of(Task.Status.READY, Task.Status.RUNNING, Task.Status.SUBMITTING).contains(current.status())) return false;
+        var update = dsl.update(TASK).set(TASK.CANCEL_REQUESTED, true)
+                .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1));
+        if (current.status() != Task.Status.SUBMITTING) {
+            // No render may start after cancellation. A claimed pre-submit worker loses its fencing epoch.
+            update = update.set(TASK.STATUS, Task.Status.CANCELED.name()).set(TASK.COMPLETED_AT, utc(now))
+                    .setNull(TASK.LEASE_OWNER).setNull(TASK.LEASE_UNTIL)
+                    .set(TASK.LEASE_EPOCH, TASK.LEASE_EPOCH.plus(1));
+        }
+        // A submitting renderer keeps its epoch so a completion racing cancellation can be archived as history.
+        return update.where(TASK.ID.eq(current.id())).and(TASK.PROJECT_ID.eq(current.projectId()))
+                .and(TASK.VERSION.eq(current.version())).and(TASK.STATUS.eq(current.status().name()))
+                .and(TASK.RUN_ID.isNull()).and(TASK.PROVIDER_REQUEST_ID.isNull())
+                .and(videoCompositionCondition()).execute() == 1;
+    }
+
+    private Condition videoCompositionCondition() {
+        return TASK.KIND.eq(Task.Kind.VIDEO_GENERATION.name())
+                .and(DSL.condition("jsonb_typeof({0}->'videoComposition') = 'object'", TASK.INPUT_JSON));
+    }
+
     /** 按所有者、项目和任务 ID 读取，避免暴露其他项目资源。 */
     @Override
     public Optional<Task> find(UUID ownerId, UUID projectId, UUID taskId) {
@@ -1060,15 +1084,14 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         return true;
     }
 
-    /** 查找已请求取消且 RUNNING 租约过期的本地任务，不推断 Provider 已取消。 */
+    /** Local composition submission is also safe to stop; ordinary Provider UNKNOWN remains untouched. */
     @Override
     public List<ExpiredSubmission> findExpiredCanceledRunning(Instant now, int limit) {
         return dsl.select(TASK.ID, TASK.PROJECT_ID, PROJECT.OWNER_ID)
                 .from(TASK)
                 .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
-                .where(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .where(expiredCanceledWork(now))
                 .and(TASK.CANCEL_REQUESTED.isTrue())
-                .and(TASK.LEASE_UNTIL.le(utc(now)))
                 .orderBy(TASK.LEASE_UNTIL, TASK.ID)
                 .limit(limit)
                 .fetch(record -> new ExpiredSubmission(
@@ -1088,10 +1111,17 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(TASK.ID.eq(taskId))
-                .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .and(expiredCanceledWork(now))
                 .and(TASK.CANCEL_REQUESTED.isTrue())
-                .and(TASK.LEASE_UNTIL.le(utc(now)))
                 .execute() == 1;
+    }
+
+    private Condition expiredCanceledWork(Instant now) {
+        Condition composition = videoCompositionCondition().and(TASK.RUN_ID.isNull()).and(TASK.PROVIDER_REQUEST_ID.isNull());
+        return TASK.STATUS.eq(Task.Status.RUNNING.name()).and(TASK.LEASE_UNTIL.le(utc(now)))
+                .or(composition.and(TASK.STATUS.eq(Task.Status.SUBMITTING.name())).and(TASK.LEASE_UNTIL.le(utc(now))))
+                // The submission recovery scan may win first and clear the expired local lease.
+                .or(composition.and(TASK.STATUS.eq(Task.Status.UNKNOWN.name())).and(TASK.LEASE_UNTIL.isNull()));
     }
 
     /** 将晚到输出按 taskId 与 epoch 唯一保存到旁路历史，不覆盖主任务输出。 */

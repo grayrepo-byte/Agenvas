@@ -58,6 +58,12 @@ export function cancelImagePrompt(projectId: string, artifactId: string, taskId:
     method: "POST",
   }, t("image.reversePrompt.cancelFailed"));
 }
+export type VideoCompositionRequest = components["schemas"]["VideoCompositionRequest"];
+export function composeVideo(projectId: string, input: VideoCompositionRequest, commandKey: string): Promise<Task> {
+  return writeJson(`/api/v1/projects/${projectId}/video-compositions`, {
+    method: "POST", headers: { "Idempotency-Key": commandKey }, body: JSON.stringify(input),
+  }, t("video.edit.failed"));
+}
 export type VideoOperation = components["schemas"]["VideoOperation"];
 export type MediaFunction = components["schemas"]["MediaFunction"];
 export type MediaFunctionSetting = components["schemas"]["MediaFunctionSetting"];

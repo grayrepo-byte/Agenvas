@@ -251,6 +251,28 @@ class ComfyUiClientTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void streamsVideoAndAudioThroughTheGenericUploadRouteUsingOriginalBytes() throws IOException {
+        var file = java.nio.file.Files.createTempFile("agenvas-comfy-upload-", ".media");
+        byte[] original = new byte[] {1, 5, 7, 0, 12};
+        java.nio.file.Files.write(file, original);
+        var bodies = new java.util.ArrayList<String>();
+        server.createContext("/upload/image", exchange -> {
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.ISO_8859_1);
+            bodies.add(body);
+            assertThat(body).contains("name=\"image\"", new String(original, StandardCharsets.ISO_8859_1));
+            respond(exchange, 200, "{\"name\":\"input." + (body.contains("video/mp4") ? "mp4" : "wav") + "\",\"type\":\"input\",\"subfolder\":\"\"}");
+        });
+        try {
+            assertThat(client.uploadMedia(UUID.randomUUID(), file, "video/mp4")).isEqualTo("input.mp4");
+            assertThat(client.uploadMedia(UUID.randomUUID(), file, "audio/wav")).isEqualTo("input.wav");
+            assertThat(bodies).hasSize(2);
+            assertThat(bodies.get(0)).contains("Content-Type: video/mp4");
+            assertThat(bodies.get(1)).contains("Content-Type: audio/wav");
+            assertThatThrownBy(() -> client.uploadMedia(UUID.randomUUID(), file, "application/octet-stream"))
+                    .isInstanceOf(IllegalArgumentException.class);
+        } finally { java.nio.file.Files.deleteIfExists(file); }
+    }
+
     @Test
     void downloadsOutputRedirectOnceWithoutForwardingCredentials() throws IOException {
         client = new ComfyUiClient(new ComfyUiProperties(

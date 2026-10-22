@@ -22,8 +22,8 @@ public class McpToolPolicy {
         try (var input = new ClassPathResource("mcp/tools.json").getInputStream()) {
             definitions = mapper.readTree(input).path("tools").valueStream().toList();
         } catch (IOException failure) { throw new IllegalStateException("MCP tool contract is missing", failure); }
-        if (definitions.size() != 12 || definitions.stream().map(n -> n.path("name").asText()).distinct().count() != 12)
-            throw new IllegalStateException("MCP tool catalog must contain the twelve reviewed tools");
+        if (definitions.size() != 13 || definitions.stream().map(n -> n.path("name").asText()).distinct().count() != 13)
+            throw new IllegalStateException("MCP tool catalog must contain the thirteen reviewed tools");
     }
     public List<JsonNode> definitions() { return definitions.stream().map(JsonNode::deepCopy).toList(); }
     public JsonNode definition(String name) {

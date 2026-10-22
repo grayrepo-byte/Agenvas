@@ -10,6 +10,8 @@ import java.net.URI;
 import java.net.URLEncoder;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
@@ -22,6 +24,7 @@ import java.util.regex.Pattern;
 import okhttp3.Dns;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -153,6 +156,34 @@ public class ComfyUiClient {
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .post(RequestBody.create(payload, MediaType.get("multipart/form-data; boundary=" + boundary))).build();
         JsonNode response = readJson(send(request), MAX_JSON_BYTES);
+        return uploadedName(response);
+    }
+
+    /** ComfyUI's generic /upload/image route stores audio/video from the same image form field. */
+    public String uploadMedia(UUID requestId, Path verifiedFile, String contentType) {
+        if (requestId == null || verifiedFile == null) throw new IllegalArgumentException("Verified project media required");
+        String extension = switch (contentType) {
+            case "video/mp4" -> "mp4";
+            case "audio/mpeg" -> "mp3";
+            case "audio/wav", "audio/x-wav", "audio/wave" -> "wav";
+            default -> throw new IllegalArgumentException("Unsupported ComfyUI input media type");
+        };
+        long maximum = "mp4".equals(extension)
+                ? dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.MAX_VIDEO_INPUT_BYTES
+                : dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.MAX_AUDIO_INPUT_BYTES;
+        try {
+            long size = Files.size(verifiedFile);
+            if (size < 1 || size > maximum) throw new IllegalArgumentException("ComfyUI input media exceeds upload bounds");
+        } catch (IOException failure) { throw new IllegalStateException("Cannot read verified ComfyUI input", failure); }
+        // A file-backed request avoids copying a potentially large video into a multipart byte array.
+        var payload = new MultipartBody.Builder().setType(MultipartBody.FORM)
+                .addFormDataPart("image", "agenvas-" + requestId + "." + extension,
+                        RequestBody.create(verifiedFile.toFile(), MediaType.get(contentType)))
+                .build();
+        return uploadedName(readJson(send(request("/upload/image").post(payload).build()), MAX_JSON_BYTES));
+    }
+
+    private String uploadedName(JsonNode response) {
         String returned = response.path("name").asText();
         if (!safeFilename(returned) || !"input".equals(response.path("type").asText())
                 || !response.path("subfolder").asText("").isEmpty()) {

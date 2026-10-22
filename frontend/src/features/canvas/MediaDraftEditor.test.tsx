@@ -2182,6 +2182,54 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
 
+  it.each(["READY", "RUNNING", "SUBMITTING"] as const)("cancels local composition in %s and waits for the task to confirm", async (status) => {
+    const composition: Task = { ...task(status), kind: "VIDEO_GENERATION", input: { videoComposition: { clips: [] } } };
+    const cancelRequests = vi.fn();
+    const queueRequests = vi.fn();
+    const state = setup({ kind: "VIDEO", tasks: [composition], handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/queue`, () => {
+        queueRequests(); return HttpResponse.json({});
+      }),
+      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/cancel-queued`, () => {
+        cancelRequests();
+        const canceling = { ...composition, cancelRequested: true };
+        state.setTasks([canceling]);
+        return HttpResponse.json(canceling);
+      }),
+    ] });
+    await userEvent.setup().click(await screen.findByRole("button", { name: "取消本地合成" }));
+    expect(await screen.findByText("已请求停止本地合成，等待任务确认。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "正在停止合成…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    expect(cancelRequests).toHaveBeenCalledOnce();
+    expect(queueRequests).not.toHaveBeenCalled();
+    expect(state.saves).toHaveLength(0);
+    act(() => state.client.setQueryData(["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID], [{ ...composition, status: "CANCELED" }]));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "正在停止合成…" })).not.toBeInTheDocument());
+  });
+
+  it("keeps local composition status and its cancel action after a failed cancel request", async () => {
+    const requests = vi.fn();
+    setup({ kind: "VIDEO", tasks: [{ ...task("RUNNING"), kind: "VIDEO_GENERATION", input: { videoComposition: {} } }], handlers: [
+      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/cancel-queued`, () => {
+        requests(); return HttpResponse.error();
+      }),
+    ] });
+    await userEvent.setup().click(await screen.findByRole("button", { name: "取消本地合成" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "取消本地合成" })).toBeEnabled());
+    expect(screen.getByText("正在本地合成配音视频")).toBeVisible();
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    expect(requests).toHaveBeenCalledOnce();
+  });
+
+  it.each(["RUNNING", "SUBMITTING"] as const)("does not expose cancellation for external generation in %s", async (status) => {
+    setup({ kind: "VIDEO", tasks: [{ ...task(status), kind: "VIDEO_GENERATION" }] });
+    await screen.findByLabelText("视频提示词");
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeDisabled());
+    expect(screen.queryByRole("button", { name: "取消本地合成" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "取消排队" })).not.toBeInTheDocument();
+  });
+
   it("pins ordered start/end versions and saves their stable colors with whole-second duration", async () => {
     const { saves } = setup({ kind: "VIDEO", handlers: [
       http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,

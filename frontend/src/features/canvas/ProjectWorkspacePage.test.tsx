@@ -6,7 +6,7 @@ import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes } from "react-router";
 import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Agent,CanvasCommand,CanvasItem,ProjectSnapshot } from "../../shared/api/client";
+import type { Agent,CanvasCommand,CanvasItem,CreateRunRequest,ProjectSnapshot } from "../../shared/api/client";
 import { changeControl } from "../../test/controls";
 import { imageFunctionSettings } from "../../test/imageFunctionsFixture";
 import { server } from "../../test/server";
@@ -328,6 +328,86 @@ describe("ProjectWorkspacePage", () => {
     expect(useCanvasStore.getState().selectedIds).toEqual([audio.id]);
     await user.click(within(notice).getByRole("button", { name: "关闭提示" }));
     expect(screen.queryByText("合成对话错误")).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])("starts smart composition through the director without manual mapping (single video: %s)", async (singleVideo) => {
+    const video: CanvasItem = { ...imageCard(), id: "video-card", title: "Shot",
+      artifact: { ...imageCard().artifact, kind: "VIDEO", title: "Shot" } };
+    const script = textCard();
+    const items = [video, script];
+    const now = "2026-10-20T00:00:00Z";
+    const agent: Agent = { id: "director", projectId: "project-1", name: "导演 Agent", instruction: "Project director",
+      profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
+    const creates = vi.fn();
+    const requests: CreateRunRequest[] = [];
+    const policy = { schemaVersion: 7, toolPolicyVersion: 5, systemPromptVersion: 13, allowedTools: ["compose_video"],
+      modelConfigSource: "mock", modelConfigVersion: 1, maxModelTurns: null, maxToolExecutions: null };
+    const selectedItemIds = singleVideo ? [video.id] : [script.id, video.id];
+    useCanvasStore.setState({ selectedIds: selectedItemIds,
+      selectionMode: singleVideo ? CANVAS_SELECTION_MODE.SINGLE : CANVAS_SELECTION_MODE.MULTIPLE });
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Composition project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        project: { id: "project-1", name: "Composition project", status: "ACTIVE" }, canvas: { items },
+        connections: [], director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      http.put("/api/v1/projects/:projectId/director", () => { creates(); return HttpResponse.json(agent); }),
+      http.post("/api/v1/projects/:projectId/runs/preflight", () => HttpResponse.json({
+        agentId: agent.id, agentVersion: agent.version, agentName: agent.name, agentInstruction: agent.instruction,
+        conversationId: "conversation-director", conversationVersion: 0, conversationTurnCount: 0,
+        modelAvailable: true, toolCalling: true, creativeSkills: [], memoryTruncated: false, policySnapshot: policy,
+      })),
+      http.post("/api/v1/projects/:projectId/runs", async ({ request }) => {
+        const input = await request.json() as CreateRunRequest;
+        requests.push(input);
+        return HttpResponse.json({ id: "composition-run", projectId: "project-1", agentInstanceId: agent.id,
+          conversationId: input.conversationId, conversationTurn: 1, instruction: input.instruction, status: "QUEUED",
+          contextSnapshot: {}, policySnapshot: policy, profileVersion: 1, nextStepIndex: 0, version: 1, createdAt: now, updatedAt: now });
+      }),
+    );
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "智能配音合成" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(creates).toHaveBeenCalledOnce();
+    expect(new Set(requests[0]?.selectedItemIds)).toEqual(new Set(selectedItemIds));
+    expect(requests[0]?.instruction).toContain("分镜、台词");
+    expect(requests[0]?.instruction).toContain("不要把选中数组顺序");
+    expect(requests[0]?.instruction).toContain("compose_video");
+    expect(requests[0]?.instruction).toContain("波形活动窗口");
+    expect(screen.getByRole("dialog", { name: "创作导演" })).toBeVisible();
+  });
+
+  it.each([
+    { state: "no-video", hint: "请至少选择一个视频，可同时选择分镜文字和配音。" },
+    { state: "no-result", hint: "所选素材中有尚未选用结果的节点，请先选用结果。" },
+    { state: "busy", hint: "导演正在执行任务，请等待当前任务结束后再发送。" },
+  ])("disables composition for $state with a reason", async ({ state, hint }) => {
+    const video: CanvasItem = { ...imageCard(), id: "video-card", title: "Shot",
+      selectedVersionId: state === "no-result" ? null : imageVersionId,
+      artifact: { ...imageCard().artifact, kind: state === "no-video" ? "IMAGE" : "VIDEO", title: "Shot" } };
+    const items = [video, textCard()];
+    useCanvasStore.setState({ selectedIds: items.map((item) => item.id), selectionMode: CANVAS_SELECTION_MODE.MULTIPLE });
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Composition project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        project: { id: "project-1", name: "Composition project", status: "ACTIVE" }, canvas: { items },
+        connections: [], director: null, activeRun: state === "busy" ? { id: "busy-run", status: "RUNNING" } : null,
+        activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+    );
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    const button = await screen.findByRole("button", { name: "智能配音合成" });
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(button).toHaveAttribute("title", hint);
   });
 
   it("opens the project Agent for the selected audio without creating a canvas node or Run", async () => {

@@ -110,6 +110,11 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get LOCAL_VIDEO_PROCESSING_TIMEOUT() { return t("tasks.errors.localVideoTimeout"); },
   get LOCAL_VIDEO_LIMIT_EXCEEDED() { return t("tasks.errors.localVideoLimits"); },
   get LOCAL_VIDEO_PROCESSING_CANCELED() { return t("tasks.errors.localVideoCanceled"); },
+  get VIDEO_COMPOSITION_INVALID() { return t("tasks.errors.compositionInvalid"); },
+  get VIDEO_COMPOSITION_AUDIO_OVERFLOW() { return t("tasks.errors.compositionAudioOverflow"); },
+  get LOCAL_VIDEO_COMPOSITION_FAILED() { return t("tasks.errors.compositionFailed"); },
+  get LOCAL_VIDEO_COMPOSITION_TIMEOUT() { return t("tasks.errors.compositionTimeout"); },
+  get LOCAL_VIDEO_COMPOSITION_CANCELED() { return t("tasks.errors.compositionCanceled"); },
   get LOCAL_IMAGE_PROCESSING_FAILED() { return t("tasks.errors.localProcessingFailed"); },
   get LOCAL_IMAGE_ENCODING_FAILED() { return t("tasks.errors.localEncodingFailed"); },
 };

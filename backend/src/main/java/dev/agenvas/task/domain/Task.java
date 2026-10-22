@@ -56,6 +56,17 @@ public record Task(
     public static final String APPROVAL_INPUT_PROPERTY = "agentApprovalId";
     public static final String IMAGE_PROMPT_PURPOSE = "IMAGE_REVERSE_PROMPT";
 
+    public boolean isVideoComposition() {
+        return kind == Kind.VIDEO_GENERATION && input.path("videoComposition").isObject();
+    }
+
+    /** Local composition runs independently after acceptance; this is its trusted initiating conversation. */
+    public UUID compositionRunId() {
+        if (!isVideoComposition() || !input.path("compositionRunId").isString()) return null;
+        try { return UUID.fromString(input.path("compositionRunId").asText()); }
+        catch (IllegalArgumentException invalid) { return null; }
+    }
+
     /** Image analysis produces text in the Task result without mutating a media draft or Artifact. */
     public boolean isImagePrompt() {
         return kind == Kind.TEXT_GENERATION && IMAGE_PROMPT_PURPOSE.equals(input.path("purpose").asText());
@@ -78,7 +89,7 @@ public record Task(
         if (Initiator.EXTERNAL_MCP.name().equals(input.path("initiator").asText())
                 && runId == null && input.path("mcpOperationId").isString()
                 && input.path("mcpTokenId").isString()) return Initiator.EXTERNAL_MCP;
-        return runId == null ? Initiator.USER_DIRECT : Initiator.BUILTIN_AGENT;
+        return runId == null && compositionRunId() == null ? Initiator.USER_DIRECT : Initiator.BUILTIN_AGENT;
     }
 
     /** Worker 可以认领的受限任务类别。 */

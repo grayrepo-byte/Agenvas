@@ -29,6 +29,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.util.MimeTypeUtils;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Checkpoints contain exact version references; authorized image bytes exist only during dispatch. */
 @Service
@@ -44,14 +45,16 @@ public class AgentImageInputService {
     private final ObjectMapper mapper;
     private final SkillService skills;
     private final ToolExecutionRepository ledger;
+    private final AgentMediaSampleService samples;
 
     public AgentImageInputService(ArtifactService artifacts, AssetService assets, ObjectMapper mapper,
-            SkillService skills, ToolExecutionRepository ledger) {
+            SkillService skills, ToolExecutionRepository ledger, AgentMediaSampleService samples) {
         this.artifacts = artifacts;
         this.assets = assets;
         this.mapper = mapper;
         this.skills = skills;
         this.ledger = ledger;
+        this.samples = samples;
     }
 
     /** Only successful committed reads add references; checkpoint messages never contain image bytes or storage keys. */
@@ -61,6 +64,7 @@ public class AgentImageInputService {
         var existingSkills = new LinkedHashSet<SkillInput>();
         List<Input> added = new ArrayList<>();
         List<SkillInput> addedSkills = new ArrayList<>();
+        List<AgentMediaSampleService.Sample> addedSamples = new ArrayList<>();
         for (var call : assistant.getToolCalls()) {
             JsonNode result = results.get(call.id());
             if (result == null || !ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText())) continue;
@@ -70,6 +74,11 @@ public class AgentImageInputService {
                 Input input = projectInput(item);
                 if (existing.add(input)) added.add(input);
             }
+            if ("read_media_sample".equals(call.name()) && result.path("data").path("sampleRequested").asBoolean()) {
+                ObjectNode sample = ((ObjectNode) result.path("data")).deepCopy();
+                sample.remove(List.of("kind", "sampleRequested", "notice"));
+                addedSamples.add(AgentMediaSampleService.parse(sample));
+            }
             if ("read_skill_asset".equals(call.name())) {
                 JsonNode item = result.path("data");
                 if (!"IMAGE".equals(item.path("kind").asText())
@@ -78,12 +87,18 @@ public class AgentImageInputService {
                 if (existingSkills.add(input)) addedSkills.add(input);
             }
         }
-        if (!added.isEmpty() || !addedSkills.isEmpty()) {
+        if (addedSamples.size() > 1 || !addedSamples.isEmpty() && (!added.isEmpty() || !addedSkills.isEmpty()))
+            throw invalid();
+        if (!added.isEmpty() || !addedSkills.isEmpty() || !addedSamples.isEmpty()) {
             // Public observations and exact tool references remain; pixels follow only the latest read.
             history.removeIf(message -> message instanceof UserMessage
                     && (message.getMetadata().containsKey(METADATA_KEY)
-                            || message.getMetadata().containsKey(SKILL_METADATA_KEY)));
+                            || message.getMetadata().containsKey(SKILL_METADATA_KEY)
+                            || message.getMetadata().containsKey(AgentMediaSampleService.METADATA_KEY)));
         }
+        if (!addedSamples.isEmpty()) history.add(UserMessage.builder()
+                .text("Requested exact media sample: " + addedSamples + ". Inspect only these timestamps/audio intervals. Earlier pixels/audio are no longer attached. Record public observations with exact timestamps. Audio requires input_audio support; do not invent dialogue from metadata.")
+                .metadata(Map.of(AgentMediaSampleService.METADATA_KEY, List.copyOf(addedSamples))).build());
         if (!added.isEmpty()) history.add(UserMessage.builder()
                 .text("Image previews requested by read_artifacts (exact immutable versions): " + added
                         + sequentialContextNote())
@@ -117,6 +132,7 @@ public class AgentImageInputService {
     public List<Message> hydrate(UUID owner, UUID project, UUID run, JsonNode snapshot, List<Message> messages) {
         if (TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("Agent image dispatch cannot hold a database transaction");
+        messages = hydrateSamples(owner, project, snapshot, messages);
         List<Input> requested = new ArrayList<>();
         List<SkillInput> requestedSkills = new ArrayList<>();
         for (Message message : messages) {
@@ -206,6 +222,24 @@ public class AgentImageInputService {
             hydrated.add(UserMessage.builder().text(text).metadata(metadata).media(attachments).build());
         }
         return List.copyOf(hydrated);
+    }
+
+    private List<Message> hydrateSamples(UUID owner, UUID project, JsonNode snapshot, List<Message> messages) {
+        List<Message> result = new ArrayList<>();
+        int count = 0;
+        for (Message message : messages) {
+            if (!(message instanceof UserMessage user) || !message.getMetadata().containsKey(AgentMediaSampleService.METADATA_KEY)) {
+                result.add(message); continue;
+            }
+            JsonNode manifest = mapper.valueToTree(message.getMetadata().get(AgentMediaSampleService.METADATA_KEY));
+            if (!manifest.isArray() || manifest.size() != 1 || ++count > 1) throw invalid();
+            var sample = AgentMediaSampleService.parse(manifest.get(0));
+            Map<String, Object> metadata = new LinkedHashMap<>(user.getMetadata());
+            metadata.remove(AgentMediaSampleService.METADATA_KEY);
+            result.add(UserMessage.builder().text(user.getText()).metadata(metadata)
+                    .media(samples.hydrate(owner, project, snapshot, sample)).build());
+        }
+        return List.copyOf(result);
     }
 
     /** Check frozen selection, committed activation/read, and the account-owned immutable publication. */

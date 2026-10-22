@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { PROVIDER_FAILURE_CODES, taskErrorDetail, taskErrorMessage } from "./taskErrorMessages";
+import { getLocale, setLocale, SUPPORTED_LOCALES } from "../../shared/i18n";
 
 describe("taskErrorMessages", () => {
+  it("explains composition validation, overflow and local execution failures in every locale", () => {
+    const previous = getLocale();
+    try {
+      for (const locale of SUPPORTED_LOCALES) {
+        setLocale(locale);
+        for (const code of ["VIDEO_COMPOSITION_INVALID", "VIDEO_COMPOSITION_AUDIO_OVERFLOW", "LOCAL_VIDEO_COMPOSITION_FAILED",
+          "LOCAL_VIDEO_COMPOSITION_TIMEOUT", "LOCAL_VIDEO_COMPOSITION_CANCELED"]) {
+          expect(taskErrorMessage(code), `${locale}: ${code}`).toBeTruthy();
+          expect(taskErrorMessage(code)).not.toContain(code);
+        }
+      }
+    } finally { setLocale(previous); }
+  });
+
   it("explains result collection exhaustion and the new-task retry", () => {
     expect(taskErrorMessage("PROVIDER_POLL_RETRY_EXHAUSTED")).toContain("创建新任务");
   });

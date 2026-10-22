@@ -55,6 +55,7 @@ public class ToolExecutionService {
     private final AgentMediaApprovalService mediaApprovals;
     private final MediaCapabilityService capabilities;
     private final CanvasAgentToolService canvasTools;
+    private final AgentVideoCompositionToolService videoCompositions;
 
     /** 组装工具身份验证、持久化去重、业务应用服务及租约 fencing 边界。
      * @param runs 校验工具调用所属 Run 和项目权限
@@ -73,7 +74,8 @@ public class ToolExecutionService {
             CreativeArtifactToolService creative, ReadToolService reader,
             ProjectEventService events, AgentTurnLeaseGuard leaseGuard,
             ObjectMapper mapper, Clock clock, AgentMediaApprovalService mediaApprovals,
-            MediaCapabilityService capabilities, CanvasAgentToolService canvasTools) {
+            MediaCapabilityService capabilities, CanvasAgentToolService canvasTools,
+            AgentVideoCompositionToolService videoCompositions) {
         this.runs = runs;
         this.turns = turns;
         this.ledger = ledger;
@@ -87,6 +89,7 @@ public class ToolExecutionService {
         this.mediaApprovals = mediaApprovals;
         this.capabilities = capabilities;
         this.canvasTools = canvasTools;
+        this.videoCompositions = videoCompositions;
     }
 
     /**
@@ -196,6 +199,7 @@ public class ToolExecutionService {
             case "read_canvas" -> canvasTools.readCanvas(context, run, operationId, arguments);
             case "manage_canvas_node" -> canvasTools.manageNode(context, run, operationId, arguments);
             case "update_media_draft" -> canvasTools.updateMediaDraft(context, run, operationId, arguments);
+            case "compose_video" -> videoCompositions.compose(context, run, operationId, arguments);
             case "read_project_summary" -> reader.projectSummary(context, run,
                     operationId, arguments);
             case "read_skill" -> reader.skill(run, operationId, arguments);
@@ -203,6 +207,7 @@ public class ToolExecutionService {
             case "read_skill_resource" -> reader.skillResource(run, operationId, arguments);
             case "read_selection" -> reader.selection(run, operationId, arguments);
             case "read_artifacts" -> reader.artifacts(context, run, operationId, arguments);
+            case "read_media_sample" -> reader.mediaSample(context, run, operationId, arguments);
             case "read_task_status" -> reader.taskStatus(context, operationId, arguments);
             case "list_media_capabilities" -> mediaCapabilities(operationId, arguments);
             case "propose_media_generation" -> mediaApprovals.propose(context, run,
@@ -214,7 +219,7 @@ public class ToolExecutionService {
             default -> throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
             };
         } catch (ApiProblemException problem) {
-            if (Set.of("read_canvas", "manage_canvas_node", "update_media_draft").contains(toolName)
+            if (Set.of("read_canvas", "manage_canvas_node", "update_media_draft", "compose_video").contains(toolName)
                     && (problem.status() == HttpStatus.BAD_REQUEST || problem.status() == HttpStatus.UNPROCESSABLE_ENTITY)
                     && !"TOOL_ARGUMENT_INVALID".equals(problem.code())) {
                 throw new ApiProblemException(problem.status(), "TOOL_ARGUMENT_INVALID", problem.title(), problem.detail(), false);

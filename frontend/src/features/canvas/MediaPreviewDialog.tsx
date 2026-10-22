@@ -6,6 +6,7 @@ import Video from "yet-another-react-lightbox/plugins/video";
 import Zoom from "yet-another-react-lightbox/plugins/zoom";
 import { t,useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
+import { VideoReviewControls } from "./VideoReviewControls";
 import "yet-another-react-lightbox/styles.css";
 import "./MediaPreviewDialog.css";
 
@@ -34,8 +35,8 @@ function containPreviewKeyboard(event: KeyboardEvent<HTMLDivElement>) {
   event.stopPropagation();
   if (event.key !== "Tab") return;
   const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
-    "button:not(:disabled), video[controls], [tabindex='0']",
-  )).filter((element) => !element.closest("[hidden]"));
+    "button:not(:disabled), video[controls], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex='0']",
+  )).filter((element) => element.tabIndex >= 0 && !element.closest("[hidden], [aria-hidden='true']"));
   const first = controls[0];
   const last = controls[controls.length - 1];
   if (event.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement as HTMLElement))) {
@@ -64,15 +65,16 @@ function PreviewSlideContainer({ kind,children,onRetry }: {
 }) {
   const [status, setStatus] = useState<"LOADING" | "READY" | "FAILED">("LOADING");
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [reviewVideo, setReviewVideo] = useState<HTMLVideoElement | null>(null);
   const handleContainerRef = useCallback((node: HTMLDivElement | null) => {
     // Closing or retrying removes the native player; stop any active playback first.
     if (!node && videoRef.current && !videoRef.current.paused) videoRef.current.pause();
   }, []);
   function ready(event: SyntheticEvent<HTMLDivElement>) {
-    if (event.target instanceof HTMLVideoElement) videoRef.current = event.target;
+    if (event.target instanceof HTMLVideoElement) { videoRef.current = event.target; setReviewVideo(event.target); }
     setStatus("READY");
   }
-  return <div className="media-preview-slide" ref={handleContainerRef} onErrorCapture={kind === "video" ? (event) => {
+  return <div className={kind === "video" ? "media-preview-slide media-preview-slide--video" : "media-preview-slide"} ref={handleContainerRef} onErrorCapture={kind === "video" ? (event) => {
     const video = event.currentTarget.querySelector("video");
     if (video && !video.paused) video.pause();
     setStatus("FAILED");
@@ -81,6 +83,7 @@ function PreviewSlideContainer({ kind,children,onRetry }: {
     onPlayingCapture={kind === "video" ? ready : undefined}
     onPlayCapture={kind === "video" ? ready : undefined}>
     <div className="media-preview-content" hidden={kind === "video" && status === "FAILED"}>{children}</div>
+    {kind === "video" && status === "READY" ? <div className="media-preview-review"><VideoReviewControls video={reviewVideo} /></div> : null}
     {kind === "video" && status === "FAILED" ? <PreviewLoadError onRetry={onRetry} /> : null}
     {kind === "video" && status === "LOADING" ? <div className="media-preview-loading">
       <LoadingState compact label={t("media.preview.loading")} />

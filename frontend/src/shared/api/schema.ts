@@ -2036,6 +2036,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/video-compositions": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 按分镜和台词对应关系智能排布配音并本地合成
+         * @description 固定有序视频片段与配音精确版本，后台分析原片和配音的声音能量/静音区间并自动适配。声音活动不等于语音识别；无可靠窗口时回退时长排布并记录警告。最多12镜、30句、总时长60秒，素材总大小1GiB，单个音视频最多10分钟。最多1.15倍保音高加速，无法完整容纳时失败，不截断配音。输出720p/1080p、16:9/9:16/1:1、30fps的新视频节点，逐镜向下对齐整帧（少于34ms）并记录实际时间表；支持零配音、取源裁切、0.5–2倍视频速度、首尾淡黑、定时字幕与背景音乐；默认去除原声，KEEP保留完整原声，BACKGROUND保留15%原声（包括原对白）。本地处理无Provider费用，复用Task查询/取消/显式重试；同键异参冲突。
+         */
+        post: operations["composeVideo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/video-operations": {
         parameters: {
             query?: never;
@@ -2134,7 +2162,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 取消尚未提交到 Provider 的直接媒体任务并释放预留 */
+        /**
+         * 取消排队的直接媒体任务，或请求停止本地配音合成
+         * @description 外部媒体生成仅允许排队状态取消；本地配音合成允许READY/RUNNING立即取消，SUBMITTING设置cancelRequested并由后台停止。取消后晚到的本地成片只保留历史，不自动选用。
+         */
         post: operations["cancelQueuedDirectMediaTask"];
         delete?: never;
         options?: never;
@@ -3930,8 +3961,8 @@ export interface components {
                 nodeId: string;
                 inputName: string;
                 /** @enum {string} */
-                source: "PROMPT" | "NEGATIVE_PROMPT" | "SEED" | "WIDTH" | "HEIGHT" | "REFERENCE_IMAGE" | "DURATION_SECONDS" | "FRAME_COUNT" | "FPS" | "BATCH_SIZE";
-                /** @description Required for REFERENCE_IMAGE; zero-based contiguous indices of frozen project image inputs. All mapped images are required. */
+                source: "PROMPT" | "NEGATIVE_PROMPT" | "SEED" | "WIDTH" | "HEIGHT" | "REFERENCE_IMAGE" | "REFERENCE_VIDEO" | "REFERENCE_AUDIO" | "DURATION_SECONDS" | "FRAME_COUNT" | "FPS" | "BATCH_SIZE";
+                /** @description Required for REFERENCE_IMAGE/REFERENCE_VIDEO/REFERENCE_AUDIO; zero-based contiguous indices within each media type. All mapped media are required; at most 14 media slots in total. */
                 referenceIndex?: number | null;
             }[];
             /** @description Optional administrator-declared scalar inputs exposed in the creator extended-parameters table. Supports STRING/NUMBER/INTEGER/BOOLEAN/SELECT with PARAMETER source and native encoding only. Targets must be existing scalar inputs on the selected output ancestry and cannot overlap bindings. Missing defaults derive from the published graph literal. Keys prompt, durationSeconds and reference_* are reserved. Existing schemaVersion=1 definitions without parameters remain valid. */
@@ -4467,7 +4498,7 @@ export interface components {
             sha256: string;
             width?: number | null;
             height?: number | null;
-            /** @description Verified media duration: videos up to 60000ms; audio up to 600000ms. */
+            /** @description Verified media duration: videos up to 600000ms; audio up to 600000ms. */
             durationMs: number | null;
             thumbnailSha256?: string | null;
             /** Format: date-time */
@@ -4642,7 +4673,7 @@ export interface components {
             sha256: string;
             width: number | null;
             height: number | null;
-            /** @description Verified media duration: videos up to 60000ms; audio up to 600000ms. */
+            /** @description Verified media duration: videos up to 600000ms; audio up to 600000ms. */
             durationMs: number | null;
             /** Format: date-time */
             createdAt: string;
@@ -4703,6 +4734,62 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        VideoCompositionRequest: {
+            title: string;
+            /** @description 面向用户的简短编排依据，不保存模型私有推理 */
+            rationale?: string;
+            /**
+             * @default MUTE
+             * @enum {string}
+             */
+            originalAudioMode: "MUTE" | "BACKGROUND" | "KEEP";
+            output?: {
+                /**
+                 * @default 720P
+                 * @enum {string}
+                 */
+                resolution: "720P" | "1080P";
+                /**
+                 * @default 16:9
+                 * @enum {string}
+                 */
+                aspectRatio: "16:9" | "9:16" | "1:1";
+            };
+            music?: {
+                /** Format: uuid */
+                audioVersionId: string;
+                /** @default 0 */
+                sourceStartMs: number;
+                /** @default 0.2 */
+                volume: number;
+            };
+            subtitles?: {
+                text: string;
+                startMs: number;
+                endMs: number;
+            }[];
+            shots: {
+                /** Format: uuid */
+                videoVersionId: string;
+                /** @default 0 */
+                sourceStartMs: number;
+                /** @description 取源时长；省略时取素材剩余长度；成片时长按速度换算并受60秒总限约束 */
+                durationMs?: number;
+                /** @default 1 */
+                speed: number;
+                /**
+                 * @description 每镜开头及结尾的淡黑时长，不重叠镜头
+                 * @default 0
+                 */
+                fadeMs: number;
+                lines: {
+                    /** Format: uuid */
+                    audioVersionId: string;
+                    /** @description 可选镜内锚点；省略时依声音活动自动排布 */
+                    startMs?: number;
+                }[];
+            }[];
+        };
         RunVideoOperationRequest: {
             /** Format: uuid */
             canvasItemId: string;
@@ -4716,6 +4803,13 @@ export interface components {
             expectedCapabilityVersion: number;
             prompt?: string | null;
             parameters: {
+                /**
+                 * @description 仅本地音频提取；缺省WAV，长素材可显式选MP3
+                 * @enum {string}
+                 */
+                format?: "WAV" | "MP3";
+                /** @description 仅本地音频提取，音轨索引从0开始 */
+                trackIndex?: number;
                 dynamicValues?: {
                     [key: string]: string | number | boolean;
                 };
@@ -10106,6 +10200,44 @@ export interface operations {
             422: components["responses"]["ValidationError"];
         };
     };
+    composeVideo: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoCompositionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理或重放的本地合成任务，不代表合成完成 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     runVideoOperation: {
         parameters: {
             query?: never;
@@ -10234,7 +10366,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 已取消的任务 */
+            /** @description 任务状态；本地合成可能正在等待后台确认cancelRequested */
             200: {
                 headers: {
                     [name: string]: unknown;

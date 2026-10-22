@@ -1,14 +1,16 @@
-import { CaretDown,Stack } from "@/shared/ui/icons";
+import { CaretDown,FilmStrip,Stack } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useRef,useState } from "react";
 import {
-ApiError,selectCanvasMediaVersion,
+ApiError,assetThumbnailUrl,selectCanvasMediaVersion,
 type CanvasItem
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { mediaVersionsQueryOptions } from "./mediaDisplay";
+import { readContentText } from "./artifactContent";
+import { VideoComparisonDialog } from "./VideoComparisonDialog";
 
 const MIN_SELECTABLE_VERSION_COUNT = 1;
 const FIRST_NODE_VERSION_NO = 1;
@@ -17,6 +19,7 @@ const FIRST_NODE_VERSION_NO = 1;
 export function MediaVersionPicker({ projectId, item }: { projectId: string; item: CanvasItem }) {
   useLocale();
   const [open, setOpen] = useState(false);
+  const [comparing, setComparing] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const client = useQueryClient();
@@ -48,7 +51,8 @@ export function MediaVersionPicker({ projectId, item }: { projectId: string; ite
       onClick={() => void history.refetch()}>{t("common.retryRead")}</Button>
   </div> : null;
 
-  return <DropdownMenu open={menuOpen} onOpenChange={setOpen} modal={false}><div className="media-version-picker" ref={anchor}
+  const video = item.artifact.kind === "VIDEO";
+  return <><DropdownMenu open={menuOpen} onOpenChange={setOpen} modal={false}><div className="media-version-picker" ref={anchor}
     onKeyDown={(event) => {
       if (event.key === "Escape") { event.stopPropagation(); setOpen(false); toggle.current?.focus(); }
     }}>
@@ -60,9 +64,12 @@ export function MediaVersionPicker({ projectId, item }: { projectId: string; ite
       <p>{history.data ? t("media.versions.versionCount", { "0": history.data.items.length }) : t("media.versions.history")}</p>
       {history.isPending ? <p role="status">{t("common.versionLoading")}</p> : null}
       {history.error ? <div role="alert">{t("media.versions.loadFailed")}<Button variant="ghost" type="button" onClick={() => void history.refetch()}>{t("common.retryRead")}</Button></div> : null}
-      {versions.map(({ version, nodeVersionNo }) => <DropdownMenuItem role="menuitem" disabled={select.isPending} aria-label={`v${nodeVersionNo} ${version.id === item.selectedVersionId ? t("artifacts.versions.selected") : t("artifacts.versions.select")}`} aria-current={version.id === item.selectedVersionId ? "true" : undefined} key={version.id} onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }}>
-        <span>v{nodeVersionNo}</span>
-        <small>{version.id === item.selectedVersionId ? t("artifacts.versions.selected") : t("artifacts.versions.select")}</small>
+      {video ? <DropdownMenuItem onSelect={() => { setOpen(false); setComparing(true); }}><FilmStrip data-icon="inline-start" />{t("video.review.compare")}</DropdownMenuItem> : null}
+      {versions.map(({ version, nodeVersionNo }) => <DropdownMenuItem className={video ? "media-version-video-row" : undefined} role="menuitem" disabled={select.isPending} aria-label={`v${nodeVersionNo} ${version.id === item.selectedVersionId ? t("artifacts.versions.selected") : t("artifacts.versions.select")}`} aria-current={version.id === item.selectedVersionId ? "true" : undefined} key={version.id} onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }}>
+        {video && readContentText(version.content, "assetId") ? <img loading="lazy" alt="" src={assetThumbnailUrl(projectId, readContentText(version.content, "assetId"))} /> : null}
+        <span className={video ? "media-version-video-copy" : undefined}><span>v{nodeVersionNo}</span>
+          <small>{version.id === item.selectedVersionId ? t("artifacts.versions.selected") : t("artifacts.versions.select")}</small>
+          {video ? <small title={readContentText(version.content, "prompt")}>{readContentText(version.content, "prompt") || t("video.review.noPrompt")}</small> : null}</span>
       </DropdownMenuItem>)}
       {select.isPending ? <p role="status">{t("media.versions.selecting")}</p> : null}
       {select.error ? <div role="alert">{select.error instanceof ApiError
@@ -73,5 +80,8 @@ export function MediaVersionPicker({ projectId, item }: { projectId: string; ite
         }}>{t("media.versions.refresh")}</Button></div> : null}
       <p>{t("media.versions.selectionHint")}</p>
     </DropdownMenuGroup></DropdownMenuContent> : null}
-  </div></DropdownMenu>;
+  </div></DropdownMenu>
+    {comparing ? <VideoComparisonDialog projectId={projectId} title={item.title} versions={versions}
+      selectedVersionId={item.selectedVersionId} onClose={() => { setComparing(false); toggle.current?.focus(); }} /> : null}
+  </>;
 }

@@ -91,9 +91,12 @@ const EXTENSIONS = [
 
 /** The media surface contains only the preview; editing and history live outside its bounds. */
 export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, locked, onEdit,
-  onDuplicate, onMakeMV, children }: {
+  onDuplicate, onMakeMV, onComposeVideo, onEditVideo, compositionDisabledReason, children }: {
   artifact: Artifact; item: CanvasItem; selected: boolean; toolbarVisible?: boolean; locked: boolean; onEdit: () => void;
   onDuplicate?: () => void;
+  onComposeVideo?: () => void;
+  onEditVideo?: () => void;
+  compositionDisabledReason?: string | null;
   onMakeMV?: () => void; children: ReactNode;
 }) {
   useLocale();
@@ -298,6 +301,10 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             </ImageFunctionConfiguration> : null}
         </> : null}
         {isVideo ? <>
+          {onComposeVideo ? <Button variant="ghost" type="button"
+            disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending || Boolean(compositionDisabledReason)}
+            title={compositionDisabledReason ?? (!item.selectedVersionId ? t("canvas.workspace.compositionResultRequired") : t("canvas.workspace.compositionHint"))}
+            onClick={onComposeVideo}><MusicNotes data-icon="inline-start" />{t("canvas.workspace.composeVideo")}</Button> : null}
           <span className="media-toolbar-divider" aria-hidden="true" />
           <Button variant="ghost" type="button" disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending}
             onClick={() => { videoOperation.reset(); setVideoOperationOpen("UPSCALE"); }}><HighDefinition size={17} />{t("media.video.upscale")}</Button>
@@ -308,6 +315,8 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
             <DropdownMenuTrigger asChild><Button variant="ghost" type="button"><MagicWand size={17} />{t("media.video.edit")}<CaretDown size={14} /></Button></DropdownMenuTrigger>
             <DropdownMenuContent aria-label={t("media.video.editTools")} className="w-max p-2 nodrag nowheel nopan"><DropdownMenuGroup>
+              {onEditVideo ? <DropdownMenuItem disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending}
+                onSelect={() => { setMenuOpen(false); onEditVideo(); }}>{t("video.edit.title")}</DropdownMenuItem> : null}
               <DropdownMenuItem className="py-2" disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending}
                 onSelect={() => { setMenuOpen(false); videoOperation.reset(); setVideoOperationOpen("EXTRACT_AUDIO"); }}>
                 <MusicNotes size={17} /><span>{t("media.video.extractAudio")}</span>

@@ -84,7 +84,7 @@ class McpHttpPostgresIT {
             assertThat(initialized.capabilities().tools()).isNotNull();
             assertThat(initialized.capabilities().resources()).isNull();
             var definitions = client.listTools().tools();
-            assertThat(definitions).hasSize(12);
+            assertThat(definitions).hasSize(13);
             assertThat(definitions).allSatisfy(tool -> {
                 assertThat(McpJsonDefaults.getSchemaValidator().validateSchema(tool.outputSchema()).valid()).isTrue();
                 assertThat(tool.inputSchema().get("additionalProperties")).isEqualTo(false);
@@ -164,7 +164,7 @@ class McpHttpPostgresIT {
         assertThat(version.statusCode()).isEqualTo(400);
         try (var client = client(credential.token())) {
             client.initialize();
-            assertThat(client.listTools().tools()).hasSize(12);
+            assertThat(client.listTools().tools()).hasSize(13);
             tokens.revoke(user, credential.credential().id(), 0);
             assertThat(request(credential.token(), null, "{}").statusCode()).isEqualTo(401);
         }

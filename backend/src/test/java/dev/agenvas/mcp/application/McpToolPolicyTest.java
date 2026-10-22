@@ -14,11 +14,22 @@ class McpToolPolicyTest {
     private final String project = UUID.randomUUID().toString();
 
     @Test void catalogKeepsWriteAndGenerationGrantsIndependent() {
-        assertThat(policy.definitions()).hasSize(12);
+        assertThat(policy.definitions()).hasSize(13);
         assertThat(policy.requiredScope("run_media")).isEqualTo(McpScope.MEDIA_GENERATE);
+        assertThat(policy.requiredScope("compose_video")).isEqualTo(McpScope.MEDIA_GENERATE);
         assertThat(policy.requiredScope("update_media_draft")).isEqualTo(McpScope.CONTENT_WRITE);
         assertThat(policy.requiredScope("list_projects")).isEqualTo(McpScope.READ);
         assertThatThrownBy(() -> policy.requiredScope("approve_media_batch")).isInstanceOf(ApiProblemException.class);
+    }
+    @Test void compositionContractBoundsSourcesAndAllowsCompleteFrozenReferenceSummary() {
+        var definition = policy.definition("compose_video");
+        assertThat(definition.at("/outputSchema/properties/tasks/items/properties/inputSummary/properties/inputVersionIds/maxItems").asInt()).isEqualTo(42);
+        String composition = "{\"title\":\"Scene\",\"shots\":[{\"videoVersionId\":\"" + project
+                + "\",\"lines\":[{\"audioVersionId\":\"" + project + "\"}]}]}";
+        String request = "{\"projectId\":\"" + project + "\",\"commandId\":\"compose\",\"composition\":" + composition + "}";
+        policy.validate("compose_video", mapper.readTree(request));
+        invalid("compose_video", request.replace("\"title\":\"Scene\"", "\"title\":\"" + "x".repeat(161) + "\""));
+        invalid("compose_video", request.replace("\"lines\":", "\"url\":\"file:///private/input\",\"lines\":"));
     }
     @Test void rejectsIdentitySpoofingUnknownFieldsWrongTypesAndUnboundedBatches() {
         invalid("read_project_summary", "{\"projectId\":\"" + project + "\",\"userId\":\"spoof\"}");

@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.llm.application.ReadToolService;
 import dev.agenvas.llm.application.TrustedToolContext;
 import dev.agenvas.project.application.ProjectService;
@@ -28,9 +30,10 @@ class ReadToolServiceTest {
 
     private final TaskService tasks = mock(TaskService.class);
     private final ArtifactService artifacts = mock(ArtifactService.class);
+    private final AssetService assets = mock(AssetService.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final ReadToolService reader = new ReadToolService(
-            mock(ProjectService.class), artifacts, tasks, mapper, mock(dev.agenvas.llm.application.ToolExecutionRepository.class));
+            mock(ProjectService.class), artifacts, assets, tasks, mapper, mock(dev.agenvas.llm.application.ToolExecutionRepository.class), mock(dev.agenvas.llm.application.AgentMediaSampleService.class));
     private final TrustedToolContext context = new TrustedToolContext(
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
 
@@ -45,12 +48,18 @@ class ReadToolServiceTest {
         ArtifactVersion version = mock(ArtifactVersion.class);
         UUID artifactId = UUID.randomUUID();
         UUID versionId = UUID.randomUUID();
-        JsonNode content = mapper.createObjectNode().put("assetId", UUID.randomUUID().toString());
+        UUID assetId = UUID.randomUUID();
+        JsonNode content = mapper.createObjectNode().put("assetId", assetId.toString()).put("prompt", "镜头 02：小李说‘等一下’");
         when(version.id()).thenReturn(versionId);
         when(version.artifactId()).thenReturn(artifactId);
         when(version.runId()).thenReturn(context.runId());
         when(version.content()).thenReturn(content);
         when(artifact.kind()).thenReturn(kind);
+        when(assets.metadata(context.ownerId(), context.projectId(), assetId)).thenReturn(new Asset(
+                assetId, context.projectId(), Asset.MediaKind.valueOf(kind.name()), "PRIVATE_STORAGE_KEY",
+                kind == Artifact.Kind.AUDIO ? "audio/wav" : "video/mp4", 1234, "PRIVATE_HASH",
+                kind == Artifact.Kind.VIDEO ? 1920 : null, kind == Artifact.Kind.VIDEO ? 1080 : null,
+                kind == Artifact.Kind.IMAGE ? null : 9876, null, null, null, java.time.Instant.EPOCH));
         when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, versionId)).thenReturn(version);
         when(artifacts.get(context.ownerId(), context.projectId(), artifactId))
                 .thenReturn(new ArtifactService.ArtifactView(artifact, null));
@@ -67,6 +76,11 @@ class ReadToolServiceTest {
         assertThat(item.path("contentTruncated").asBoolean()).isFalse();
         assertThat(item.has("title")).isFalse();
         assertThat(item.has("expectedVersion")).isFalse();
+        if (kind != Artifact.Kind.IMAGE) {
+            assertThat(item.at("/mediaMetadata/durationMs").asInt()).isEqualTo(9876);
+            assertThat(item.at("/content/prompt").asText()).contains("小李", "等一下");
+            assertThat(item.toString()).doesNotContain("PRIVATE_STORAGE_KEY", "PRIVATE_HASH", "objectKey");
+        }
     }
 
     @Test
@@ -106,5 +120,47 @@ class ReadToolServiceTest {
                 "{\"taskIds\":[\"" + oneId + "\"" + thirteen + "]}"))
                 .isInstanceOf(ApiProblemException.class);
         verifyNoInteractions(tasks);
+    }
+
+    @Test
+    void readsOnlyLocalCompositionsInitiatedByThisRunAndExposesArchivedResultIdentity() {
+        UUID taskId = UUID.randomUUID();
+        Task composition = mock(Task.class);
+        when(tasks.get(context.ownerId(), context.projectId(), taskId)).thenReturn(composition);
+        when(composition.id()).thenReturn(taskId);
+        when(composition.isVideoComposition()).thenReturn(true);
+        when(composition.compositionRunId()).thenReturn(context.runId());
+        when(composition.kind()).thenReturn(Task.Kind.VIDEO_GENERATION);
+        when(composition.status()).thenReturn(Task.Status.SUCCEEDED);
+        when(composition.updatedAt()).thenReturn(java.time.Instant.EPOCH);
+        when(composition.output()).thenReturn(mapper.createObjectNode()
+                .put("artifactId", "result-artifact").put("artifactVersionId", "result-version")
+                .put("selected", true).put("privateDiagnostic", "DO_NOT_DISCLOSE"));
+        String arguments = "{\"taskIds\":[\"" + taskId + "\"]}";
+
+        JsonNode reply = reader.taskStatus(context, UUID.randomUUID(), arguments);
+        assertThat(reply.at("/data/0/artifactVersionId").asText()).isEqualTo("result-version");
+        assertThat(reply.toString()).doesNotContain("DO_NOT_DISCLOSE");
+
+        when(composition.compositionRunId()).thenReturn(UUID.randomUUID());
+        assertThatThrownBy(() -> reader.taskStatus(context, UUID.randomUUID(), arguments))
+                .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("TASK_NOT_FOUND");
+        when(composition.compositionRunId()).thenReturn(context.runId());
+        when(composition.isVideoComposition()).thenReturn(false);
+        assertThatThrownBy(() -> reader.taskStatus(context, UUID.randomUUID(), arguments))
+                .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("TASK_NOT_FOUND");
+    }
+
+    @Test
+    void inaccessibleVersionCannotRevealAssetMetadata() {
+        AgentRun run = mock(AgentRun.class);
+        JsonNode snapshot = mapper.createObjectNode();
+        when(run.contextSnapshot()).thenReturn(snapshot);
+        UUID versionId = UUID.randomUUID();
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, versionId))
+                .thenThrow(new IllegalStateException("denied"));
+        assertThatThrownBy(() -> reader.artifacts(context, run, UUID.randomUUID(),
+                "{\"versionIds\":[\"" + versionId + "\"]}")).hasMessage("denied");
+        verifyNoInteractions(assets);
     }
 }

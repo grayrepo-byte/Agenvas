@@ -40,8 +40,9 @@ class AgentImageInputServiceTest {
     private final AssetService assets = mock(AssetService.class);
     private final dev.agenvas.skill.application.SkillService skills = mock(dev.agenvas.skill.application.SkillService.class);
     private final ToolExecutionRepository ledger = mock(ToolExecutionRepository.class);
+    private final AgentMediaSampleService samples = mock(AgentMediaSampleService.class);
     private final ObjectMapper mapper = new ObjectMapper();
-    private final AgentImageInputService service = new AgentImageInputService(artifacts, assets, mapper, skills, ledger);
+    private final AgentImageInputService service = new AgentImageInputService(artifacts, assets, mapper, skills, ledger, samples);
     private final AgentImageInputService.Input input = new AgentImageInputService.Input(artifact, version);
 
     private tools.jackson.databind.node.ObjectNode snapshot() {
@@ -267,5 +268,47 @@ class AgentImageInputServiceTest {
         when(assets.open(content, 0, PNG.length)).thenThrow(new IOException("Synthetic failure"));
         assertThatThrownBy(() -> service.hydrate(owner, project, run, snapshot(), List.of(message())))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Agent image preview could not be read");
+    }
+
+    @Test void committedSampleManifestSurvivesCheckpointWithoutMediaAndIsReplacedByTheNextRead() {
+        List<Message> history = new ArrayList<>(List.of(message()));
+        var result = mapper.createObjectNode().put("status", "SUCCEEDED");
+        result.putObject("data").put("artifactId", artifact.toString()).put("versionId", version.toString())
+                .put("kind", "VIDEO").put("sampleRequested", true).put("notice", "Bounded sample")
+                .put("audioStartMs", 0).put("audioDurationMs", 500).putArray("timestampsMs").add(0).add(1000);
+        service.appendReadPreviews(history, readCall("read_media_sample"), Map.of("read", result));
+        assertThat(history).hasSize(1);
+        var codec = new LlmProtocolCodec(mapper);
+        var checkpoint = codec.request(history, List.of());
+        assertThat(checkpoint.toString()).contains(AgentMediaSampleService.METADATA_KEY, version.toString(), "timestampsMs")
+                .doesNotContain(AgentImageInputService.METADATA_KEY, "base64", "image_url");
+        var sample = AgentMediaSampleService.parse(mapper.valueToTree(history.getFirst().getMetadata()
+                .get(AgentMediaSampleService.METADATA_KEY)).get(0));
+        var media = new org.springframework.ai.content.Media(org.springframework.util.MimeTypeUtils.IMAGE_PNG,
+                new org.springframework.core.io.ByteArrayResource(PNG));
+        when(samples.hydrate(owner, project, snapshot(), sample)).thenReturn(List.of(media));
+        var dispatched = (UserMessage) service.hydrate(owner, project, run, snapshot(), codec.requestMessages(checkpoint)).getFirst();
+        assertThat(dispatched.getMedia()).containsExactly(media);
+        assertThat(dispatched.getMetadata()).doesNotContainKey(AgentMediaSampleService.METADATA_KEY);
+        assertThat(checkpoint.toString()).doesNotContain(Base64.getEncoder().encodeToString(PNG));
+        verify(samples).hydrate(owner, project, snapshot(), sample);
+        service.appendReadPreviews(history, readCall("read_artifacts"), Map.of("read", readResult("SUCCEEDED")));
+        assertThat(history).hasSize(1);
+        assertThat(history.getFirst().getMetadata()).containsKey(AgentImageInputService.METADATA_KEY)
+                .doesNotContainKey(AgentMediaSampleService.METADATA_KEY);
+    }
+
+    @Test void failedReadsNeverAttachSamplesAndDuplicateSampleManifestsFailBeforeDispatch() {
+        var failed = mapper.createObjectNode().put("status", "FAILED");
+        failed.putObject("data").put("sampleRequested", true);
+        List<Message> history = new ArrayList<>();
+        service.appendReadPreviews(history, readCall("read_media_sample"), Map.of("read", failed));
+        assertThat(history).isEmpty();
+        var sample = new AgentMediaSampleService.Sample(artifact, version, List.of(0), null, null);
+        var duplicate = UserMessage.builder().text("invalid duplicate sample")
+                .metadata(Map.of(AgentMediaSampleService.METADATA_KEY, List.of(sample, sample))).build();
+        assertThatThrownBy(() -> service.hydrate(owner, project, run, snapshot(), List.of(duplicate)))
+                .isInstanceOf(ApiProblemException.class);
+        verifyNoInteractions(samples, assets, artifacts);
     }
 }

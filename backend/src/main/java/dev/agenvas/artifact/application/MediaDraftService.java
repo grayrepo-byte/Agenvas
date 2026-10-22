@@ -102,7 +102,7 @@ public class MediaDraftService {
         var comfy = binding == null ? null : capabilities.comfyWorkflowDefinition(binding);
         var nativeProfile = binding == null ? null : capabilities.nativeProfile(binding);
         var kling = binding == null ? null : capabilities.klingProfile(binding);
-        boolean dynamic = definition != null || kling != null || nativeProfile != null;
+        boolean dynamic = definition != null || comfy != null || kling != null || nativeProfile != null;
         JsonNode standardParameters = comfy == null ? normalizedParameters : dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.standardParameters(normalizedParameters);
         if (definition != null) definition.values(mapper, normalizedParameters, prompt, durationSeconds, false);
         else if (nativeProfile != null) dev.agenvas.provider.domain.NativeMediaProfiles.effectiveValues(nativeProfile,
@@ -176,7 +176,8 @@ public class MediaDraftService {
         if (comfy != null) {
             ObjectNode values = mapper.createObjectNode();
             values.set(RunningHubDefinition.VALUES_PROPERTY, comfy.values(mapper, normalizedParameters, prompt, durationSeconds,
-                    inputs.stream().map(MediaDraft.MediaInput::versionId).toList(), false));
+                    inputs.stream().filter(input -> input.role() == MediaDraft.InputRole.REFERENCE)
+                            .map(MediaDraft.MediaInput::versionId).toList(), false));
             validateSlots(comfy.inputs(), values, inputs, false);
         }
         for (MediaDraft.PromptMention mention : mentions) {

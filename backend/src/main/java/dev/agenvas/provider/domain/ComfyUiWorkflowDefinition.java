@@ -3,10 +3,13 @@ package dev.agenvas.provider.domain;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.asset.domain.Asset;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -23,6 +26,8 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
     public static final String PROMPT_KEY = "prompt";
     public static final String DURATION_KEY = "durationSeconds";
     public static final String REFERENCE_KEY_PREFIX = "reference_";
+    public static final String VIDEO_REFERENCE_KEY_PREFIX = "video_reference_";
+    public static final String AUDIO_REFERENCE_KEY_PREFIX = "audio_reference_";
     public static final int SCHEMA_VERSION = 1;
     public static final int MAX_JSON_BYTES = 256 * 1024;
     public static final int MAX_NODES = 256;
@@ -30,6 +35,9 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
     public static final int MAX_REFERENCES = 14;
     public static final int MAX_SECONDS = 30;
     public static final int MAX_SIDE = 4096;
+    public static final long MAX_IMAGE_INPUT_BYTES = 30L * 1024 * 1024;
+    public static final long MAX_VIDEO_INPUT_BYTES = 500L * 1024 * 1024;
+    public static final long MAX_AUDIO_INPUT_BYTES = 50L * 1024 * 1024;
     private static final int MAX_INPUTS = 128;
     private static final int MAX_DEPTH = 16;
     private static final int MAX_FPS = 120;
@@ -41,8 +49,9 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
     private static final Set<String> FIELDS = java.util.stream.Stream.concat(REQUIRED_FIELDS.stream(),
             java.util.stream.Stream.of("parameters")).collect(java.util.stream.Collectors.toUnmodifiableSet());
 
-    public enum Source { PROMPT, NEGATIVE_PROMPT, SEED, WIDTH, HEIGHT, REFERENCE_IMAGE,
+    public enum Source { PROMPT, NEGATIVE_PROMPT, SEED, WIDTH, HEIGHT, REFERENCE_IMAGE, REFERENCE_VIDEO, REFERENCE_AUDIO,
         DURATION_SECONDS, FRAME_COUNT, FPS, BATCH_SIZE }
+    private static final List<Source> MEDIA_SOURCES = List.of(Source.REFERENCE_IMAGE, Source.REFERENCE_VIDEO, Source.REFERENCE_AUDIO);
     public record Binding(String nodeId, String inputName, Source source, Integer referenceIndex) {}
     public record Output(String nodeId, String field) {}
     public record Dimensions(int width, int height) {}
@@ -78,7 +87,8 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
         if (!rawBindings.isArray() || rawBindings.size() > MAX_BINDINGS) throw invalid("bindings");
         List<Binding> bindings = new ArrayList<>();
         Set<String> targets = new HashSet<>();
-        Set<Integer> references = new HashSet<>();
+        Map<Source, Set<Integer>> references = new EnumMap<>(Source.class);
+        for (Source mediaSource : MEDIA_SOURCES) references.put(mediaSource, new HashSet<>());
         Set<Source> sources = new HashSet<>();
         for (JsonNode raw : rawBindings) {
             if (!raw.isObject() || !Set.of("nodeId", "inputName", "source", "referenceIndex").containsAll(raw.propertyNames())
@@ -90,13 +100,13 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
             try { bindingSource = Source.valueOf(raw.path("source").asText()); }
             catch (IllegalArgumentException unknown) { throw invalid("bindings"); }
             JsonNode input = graph.path(nodeId).path("inputs").get(inputName);
-            boolean text = Set.of(Source.PROMPT, Source.NEGATIVE_PROMPT, Source.REFERENCE_IMAGE).contains(bindingSource);
+            boolean text = Set.of(Source.PROMPT, Source.NEGATIVE_PROMPT).contains(bindingSource) || MEDIA_SOURCES.contains(bindingSource);
             if (input == null || (text ? !input.isTextual() : !input.isNumber())
                     || !ancestors.contains(nodeId) || !targets.add(nodeId + ":" + inputName)) throw invalid("bindings");
             Integer index = null;
-            if (bindingSource == Source.REFERENCE_IMAGE) {
+            if (MEDIA_SOURCES.contains(bindingSource)) {
                 index = integer(raw, "referenceIndex", 0, MAX_REFERENCES - 1);
-                references.add(index);
+                references.get(bindingSource).add(index);
             } else if (raw.hasNonNull("referenceIndex")) throw invalid("bindings");
             if (kind == Task.Kind.IMAGE_GENERATION && Set.of(Source.DURATION_SECONDS, Source.FRAME_COUNT, Source.FPS).contains(bindingSource)) throw invalid("bindings");
             bindings.add(new Binding(nodeId, inputName, bindingSource, index));
@@ -104,7 +114,9 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
         }
         if (sources.contains(Source.WIDTH) != sources.contains(Source.HEIGHT)) throw invalid("bindings");
         List<RunningHubDefinition.Field> parameters = parseParameters(mapper, source.get("parameters"), graph, ancestors, targets);
-        for (int index = 0; index < references.size(); index++) if (!references.contains(index)) throw invalid("references");
+        if (references.values().stream().mapToInt(Set::size).sum() > MAX_REFERENCES) throw invalid("references");
+        for (Set<Integer> group : references.values())
+            for (int index = 0; index < group.size(); index++) if (!group.contains(index)) throw invalid("references");
         int minimum = integer(source, "minimumSeconds", kind == Task.Kind.VIDEO_GENERATION ? 1 : 0, MAX_SECONDS);
         int maximum = integer(source, "maximumSeconds", minimum, kind == Task.Kind.VIDEO_GENERATION ? MAX_SECONDS : 0);
         if (kind == Task.Kind.VIDEO_GENERATION && !sources.contains(Source.DURATION_SECONDS) && !sources.contains(Source.FRAME_COUNT)) throw invalid("duration");
@@ -131,7 +143,7 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
             if (field.media() || field.effectiveSource() != RunningHubDefinition.Source.PARAMETER
                     || field.effectiveEncoding() != RunningHubDefinition.Encoding.NATIVE || field.resourceFormat() != null
                     || field.key() == null || Set.of(PROMPT_KEY, DURATION_KEY).contains(field.key())
-                    || field.key().startsWith(REFERENCE_KEY_PREFIX)
+                    || MEDIA_SOURCES.stream().anyMatch(source -> field.key().startsWith(referenceKeyPrefix(source)))
                     || !ancestors.contains(field.nodeId()) || target == null || !scalarCompatible(field.type(), target)
                     || !targets.add(field.nodeId() + ":" + field.fieldName())) throw invalid("parameters");
             JsonNode defaultValue = field.defaultValue() == null || field.defaultValue().isNull() ? target.deepCopy() : field.defaultValue();
@@ -212,8 +224,22 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
     }
 
     public int referenceCount() {
-        return bindings.stream().filter(binding -> binding.source() == Source.REFERENCE_IMAGE)
+        return referenceCount(Source.REFERENCE_IMAGE);
+    }
+
+    public int referenceCount(Source source) {
+        if (!MEDIA_SOURCES.contains(source)) throw invalid("references");
+        return bindings.stream().filter(binding -> binding.source() == source)
                 .mapToInt(binding -> binding.referenceIndex() + 1).max().orElse(0);
+    }
+
+    public static String referenceKeyPrefix(Source source) {
+        return switch (source) {
+            case REFERENCE_IMAGE -> REFERENCE_KEY_PREFIX;
+            case REFERENCE_VIDEO -> VIDEO_REFERENCE_KEY_PREFIX;
+            case REFERENCE_AUDIO -> AUDIO_REFERENCE_KEY_PREFIX;
+            default -> throw invalid("references");
+        };
     }
 
     public void requireReferences(int count) {
@@ -222,18 +248,44 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
 
     public boolean maps(Source source) { return bindings.stream().anyMatch(binding -> binding.source() == source); }
 
+    /** Local upload bounds are independent of the administrator's custom nodes or model limits. */
+    public static void validateMediaAsset(Asset asset) {
+        if (asset == null || asset.byteSize() < 1) throw invalid("references");
+        long maximum = switch (asset.mediaKind()) {
+            case IMAGE -> MAX_IMAGE_INPUT_BYTES;
+            case VIDEO -> MAX_VIDEO_INPUT_BYTES;
+            case AUDIO -> MAX_AUDIO_INPUT_BYTES;
+        };
+        Set<String> types = switch (asset.mediaKind()) {
+            case IMAGE -> Set.of("image/png", "image/jpeg", "image/webp");
+            case VIDEO -> Set.of("video/mp4");
+            case AUDIO -> Set.of("audio/mpeg", "audio/wav", "audio/x-wav", "audio/wave");
+        };
+        if (asset.byteSize() > maximum || !types.contains(asset.contentType())
+                || asset.mediaKind() != Asset.MediaKind.AUDIO && (asset.width() == null || asset.width() < 1 || asset.height() == null || asset.height() < 1)
+                || asset.mediaKind() != Asset.MediaKind.IMAGE && (asset.durationMs() == null || asset.durationMs() < 1)) throw invalid("references");
+    }
+
     /** Public metadata contains declared defaults only, never graph literals or fixed model inputs. */
     public List<RunningHubDefinition.Field> inputs() {
         List<RunningHubDefinition.Field> result = new ArrayList<>(parameters);
         bindings.stream().filter(binding -> binding.source() == Source.PROMPT).findFirst().ifPresent(binding ->
                 result.add(input(PROMPT_KEY, binding, RunningHubDefinition.FieldType.STRING,
                         RunningHubDefinition.Source.PROMPT, null, null, MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH)));
-        for (int index = 0; index < referenceCount(); index++) {
-            int referenceIndex = index;
-            Binding binding = bindings.stream().filter(candidate -> candidate.source() == Source.REFERENCE_IMAGE
-                    && candidate.referenceIndex() == referenceIndex).findFirst().orElseThrow();
-            result.add(input(REFERENCE_KEY_PREFIX + index, binding, RunningHubDefinition.FieldType.IMAGE,
-                    RunningHubDefinition.Source.PARAMETER, null, null, null));
+        for (Source mediaSource : MEDIA_SOURCES) {
+            RunningHubDefinition.FieldType type = switch (mediaSource) {
+                case REFERENCE_IMAGE -> RunningHubDefinition.FieldType.IMAGE;
+                case REFERENCE_VIDEO -> RunningHubDefinition.FieldType.VIDEO;
+                case REFERENCE_AUDIO -> RunningHubDefinition.FieldType.AUDIO;
+                default -> throw invalid("references");
+            };
+            for (int index = 0; index < referenceCount(mediaSource); index++) {
+                int referenceIndex = index;
+                Binding binding = bindings.stream().filter(candidate -> candidate.source() == mediaSource
+                        && candidate.referenceIndex() == referenceIndex).findFirst().orElseThrow();
+                result.add(input(referenceKeyPrefix(mediaSource) + index, binding, type,
+                        RunningHubDefinition.Source.PARAMETER, null, null, null));
+            }
         }
         bindings.stream().filter(binding -> Set.of(Source.DURATION_SECONDS, Source.FRAME_COUNT).contains(binding.source()))
                 .findFirst().ifPresent(binding -> result.add(input(DURATION_KEY, binding, RunningHubDefinition.FieldType.INTEGER,
@@ -279,11 +331,13 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
 
     public MediaAdapterRegistry.Declaration declaration(Task.Kind kind) {
         boolean video = kind == Task.Kind.VIDEO_GENERATION;
-        Set<String> modes = video ? Set.of(referenceCount() == 0 ? "TEXT" : "GENERAL_REFERENCE") : Set.of();
+        int mediaCount = MEDIA_SOURCES.stream().mapToInt(this::referenceCount).sum();
+        Set<String> modes = video ? Set.of(mediaCount == 0 ? "TEXT" : "GENERAL_REFERENCE") : Set.of();
         return new MediaAdapterRegistry.Declaration(MediaPlatform.COMFYUI, kind, minimumSeconds, maximumSeconds,
                 true, referenceCount(), modes, video ? modes.iterator().next() : null, false,
                 !video ? maps(Source.WIDTH) ? Set.of("AUTO", "1:1", "9:16", "16:9") : Set.of("AUTO") : Set.of(),
-                !video ? Set.of("1K") : Set.of(), Set.of(), false, false, 0, 0);
+                !video ? Set.of("1K") : Set.of(), Set.of(), false, false,
+                referenceCount(Source.REFERENCE_AUDIO), referenceCount(Source.REFERENCE_VIDEO));
     }
 
     /** Preserve the configured pixel scale while applying an explicitly frozen aspect ratio. */
@@ -308,7 +362,15 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
 
     public ObjectNode render(ObjectMapper mapper, String prompt, String negativePrompt, long seed,
             Dimensions dimensions, int seconds, List<String> uploadedImages, JsonNode frozenValues) {
+        return render(mapper, prompt, negativePrompt, seed, dimensions, seconds, uploadedImages, List.of(), List.of(), frozenValues);
+    }
+
+    public ObjectNode render(ObjectMapper mapper, String prompt, String negativePrompt, long seed,
+            Dimensions dimensions, int seconds, List<String> uploadedImages, List<String> uploadedVideos,
+            List<String> uploadedAudios, JsonNode frozenValues) {
         requireReferences(uploadedImages.size());
+        if (uploadedVideos.size() != referenceCount(Source.REFERENCE_VIDEO)
+                || uploadedAudios.size() != referenceCount(Source.REFERENCE_AUDIO)) throw invalid("references");
         if (maximumSeconds > 0 && (seconds < minimumSeconds || seconds > maximumSeconds)) throw invalid("duration");
         ObjectNode rendered = (ObjectNode) graph.deepCopy();
         for (Binding binding : bindings) {
@@ -320,6 +382,8 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
                 case WIDTH -> mapper.valueToTree(dimensions.width());
                 case HEIGHT -> mapper.valueToTree(dimensions.height());
                 case REFERENCE_IMAGE -> mapper.valueToTree(uploadedImages.get(binding.referenceIndex()));
+                case REFERENCE_VIDEO -> mapper.valueToTree(uploadedVideos.get(binding.referenceIndex()));
+                case REFERENCE_AUDIO -> mapper.valueToTree(uploadedAudios.get(binding.referenceIndex()));
                 case DURATION_SECONDS -> mapper.valueToTree(seconds);
                 case FRAME_COUNT -> mapper.valueToTree(seconds * fps / frameMultiple * frameMultiple + frameOffset);
                 case FPS -> mapper.valueToTree(fps);

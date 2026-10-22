@@ -1,0 +1,8 @@
+.video-edit-dialog { width: min(920px, calc(100vw - 24px)); max-width: 920px; max-height: calc(100dvh - 24px); display: flex; flex-direction: column; gap: 14px; }
+.video-edit-body { overflow-y: auto; min-height: 0; padding: 2px 6px; }
+.video-edit-shot, .video-edit-caption { display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); }
+.video-edit-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.video-edit-row strong { margin-right: auto; }
+.video-edit-row > .ui-select { flex: 1; min-width: 160px; }
+.video-edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px; }
+@media (max-width: 500px) { .video-edit-shot, .video-edit-caption { padding: 10px; } }

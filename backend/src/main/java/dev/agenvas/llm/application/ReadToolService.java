@@ -4,6 +4,8 @@ import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.domain.AgentRun;
@@ -43,20 +45,24 @@ public class ReadToolService {
     private final ProjectService projects;
     /** 只读取当前 Run 获准访问的 Artifact 与版本。 */
     private final ArtifactService artifacts;
+    private final AssetService assets;
     /** 查询任务时同时核验用户和项目作用域。 */
     private final TaskService tasks;
     /** 构造具有稳定结果结构的 JSON 工具响应。 */
     private final ObjectMapper mapper;
     private final ToolExecutionRepository ledger;
+    private final AgentMediaSampleService samples;
 
     /** 组装项目元数据、产物版本和任务状态三类受限读取能力。 */
-    public ReadToolService(ProjectService projects, ArtifactService artifacts, TaskService tasks,
-            ObjectMapper mapper, ToolExecutionRepository ledger) {
+    public ReadToolService(ProjectService projects, ArtifactService artifacts, AssetService assets, TaskService tasks,
+            ObjectMapper mapper, ToolExecutionRepository ledger, AgentMediaSampleService samples) {
         this.projects = projects;
         this.artifacts = artifacts;
+        this.assets = assets;
         this.tasks = tasks;
         this.mapper = mapper;
         this.ledger = ledger;
+        this.samples = samples;
     }
 
     /** 读取项目公开元数据与服务端固定限制，不读取凭证，也不枚举所有画布项。 */
@@ -238,6 +244,19 @@ public class ReadToolService {
             item.put("artifactId", version.artifactId().toString());
             item.put("versionId", version.id().toString());
             item.put("kind", view.artifact().kind().name());
+            if (view.artifact().kind() == Artifact.Kind.VIDEO || view.artifact().kind() == Artifact.Kind.AUDIO) {
+                // Only verified metadata is projected: storage keys, URLs and Provider settings never enter model context.
+                Asset asset = assets.metadata(context.ownerId(), context.projectId(), uuid(version.content().path("assetId")));
+                if (!asset.mediaKind().name().equals(view.artifact().kind().name()))
+                    throw new IllegalStateException("Media version kind does not match its archived asset");
+                ObjectNode metadata = item.putObject("mediaMetadata");
+                if (asset.durationMs() != null) metadata.put("durationMs", asset.durationMs());
+                if (asset.width() != null) metadata.put("width", asset.width());
+                if (asset.height() != null) metadata.put("height", asset.height());
+                metadata.put("contentType", asset.contentType());
+                if (version.createdByKind() != null) item.put("createdByKind", version.createdByKind().name());
+                item.set("inputReferences", mapper.valueToTree(version.inputReferences()));
+            }
             if (view.artifact().kind() == Artifact.Kind.IMAGE) {
                 // Pixel hydration happens after commit; each model turn receives one image.
                 if (++imageCount > 1) throw oneImageAtATime();
@@ -271,6 +290,26 @@ public class ReadToolService {
         return output;
     }
 
+    /** Record exact requested sample times without decoding while the tool ledger transaction is open. */
+    public JsonNode mediaSample(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
+        ObjectNode input = parseObject(arguments);
+        if (!Set.of("versionId", "timestampsMs", "audioStartMs", "audioDurationMs").containsAll(input.propertyNames()))
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        UUID versionId;
+        try { versionId = UUID.fromString(input.path("versionId").asText()); }
+        catch (IllegalArgumentException malformed) { throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid")); }
+        var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), versionId);
+        input.put("artifactId", version.artifactId().toString());
+        var sample = AgentMediaSampleService.parse(input);
+        var asset = samples.authorize(context.ownerId(), context.projectId(), run.contextSnapshot(), sample);
+        ObjectNode output = result(operationId, "已请求精确时间点的媒体样本");
+        ObjectNode data = output.putObject("data");
+        data.setAll(input);
+        data.put("kind", asset.mediaKind().name()).put("sampleRequested", true)
+                .put("notice", "Only the requested sampled frames/audio are supplied on the next model call; sparse samples do not prove full-video continuity. Audio requires a model supporting input_audio; metadata is not speech recognition.");
+        return output;
+    }
+
     /** Also used by the atomic batch boundary to cover separate project and Skill reads. */
     static ApiProblemException oneImageAtATime() {
         var message = ApiMessage.of("api.read-tool-service.images-must-be-read-one-at-a-time");
@@ -293,7 +332,8 @@ public class ReadToolService {
         ArrayNode items = output.putArray("data");
         for (UUID taskId : taskIds) {
             Task task = tasks.get(context.ownerId(), context.projectId(), taskId);
-            if (!context.runId().equals(task.runId())) {
+            boolean compositionFromRun = task.isVideoComposition() && context.runId().equals(task.compositionRunId());
+            if (!context.runId().equals(task.runId()) && !compositionFromRun) {
                 throw new ApiProblemException(HttpStatus.NOT_FOUND, "TASK_NOT_FOUND",
                         ApiMessage.of("api.read-tool-service.task-does-not-exist"), ApiMessage.of("api.read-tool-service.task-is-not-accessible-to-this-run"), false);
             }
@@ -309,6 +349,11 @@ public class ReadToolService {
             item.put("updatedAt", task.updatedAt().toString());
             if (task.completedAt() != null) {
                 item.put("completedAt", task.completedAt().toString());
+            }
+            if (compositionFromRun && task.output() != null) {
+                for (String field : List.of("artifactId", "artifactVersionId", "selected")) {
+                    if (task.output().has(field)) item.set(field, task.output().get(field));
+                }
             }
         }
         return output;

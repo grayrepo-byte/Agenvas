@@ -23,6 +23,7 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
+import dev.agenvas.task.application.VideoCompositionService;
 import dev.agenvas.task.domain.Task;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -60,6 +61,7 @@ public class McpToolService {
     private final MediaDraftRestoreService draftWrites;
     private final DirectMediaTaskService media;
     private final TaskService tasks;
+    private final VideoCompositionService compositions;
     private final MediaCapabilityService capabilities;
     private final AssetService assets;
     private final ObjectMapper mapper;
@@ -70,12 +72,13 @@ public class McpToolService {
             ProjectService projects, ProjectEventService events, ArtifactService artifacts,
             CanvasService canvas, CanvasItemQueryService canvasItems, MediaDraftService drafts,
             MediaDraftRestoreService draftWrites, DirectMediaTaskService media, TaskService tasks,
-            MediaCapabilityService capabilities, AssetService assets, ObjectMapper mapper, Clock clock,
+            MediaCapabilityService capabilities, AssetService assets, VideoCompositionService compositions, ObjectMapper mapper, Clock clock,
             @Value("${agenvas.recovery-mode:false}") boolean recoveryMode) {
         this.policy = policy; this.tokens = tokens; this.operations = operations; this.projects = projects;
         this.events = events; this.artifacts = artifacts; this.canvas = canvas; this.canvasItems = canvasItems;
         this.drafts = drafts; this.draftWrites = draftWrites; this.media = media; this.tasks = tasks;
         this.capabilities = capabilities; this.assets = assets; this.mapper = mapper; this.clock = clock;
+        this.compositions = compositions;
         this.recoveryMode = recoveryMode;
     }
 
@@ -292,6 +295,12 @@ public class McpToolService {
                 }
                 yield output;
             }
+            case "compose_video" -> {
+                Task accepted = compositions.runExternal(owner, project, input.path("composition"), principal.tokenId(), operation);
+                operations.linkTask(operation, accepted.id(), 0);
+                ObjectNode output = mapper.createObjectNode(); output.putArray("tasks").add(task(accepted));
+                yield output;
+            }
             default -> throw McpToolPolicy.invalid();
         };
     }
@@ -303,6 +312,14 @@ public class McpToolService {
                 .put("createdByKind", version.createdByKind().name()).put("contentTruncated", false);
         if (version.id().equals(view.artifact().resourceDefaultVersionId())) result.put("expectedVersion", view.artifact().version());
         if (view.artifact().kind() == Artifact.Kind.TEXT) result.set("content", version.content().deepCopy());
+        else {
+            // Only immutable creative text and our local render plan are exposed, never provider settings/URLs.
+            String prompt = version.content().path("prompt").asText("");
+            result.put("generationPrompt", prompt.substring(0, Math.min(prompt.length(), 20000)));
+            if (prompt.length() > 20000) result.put("contentTruncated", true);
+            JsonNode composition = version.content().path("parameters").path("videoComposition");
+            if (composition.isObject()) result.set("composition", composition.deepCopy());
+        }
         return result;
     }
     private ObjectNode node(UUID owner, UUID project, CanvasItem item, ArtifactService.ArtifactView view, boolean fullDraft) {

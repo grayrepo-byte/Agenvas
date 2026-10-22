@@ -2718,6 +2718,36 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "422": {$ref: "#/components/responses/ValidationError"}
+  /api/v1/projects/{projectId}/video-compositions:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+    post:
+      operationId: composeVideo
+      summary: 按分镜和台词对应关系智能排布配音并本地合成
+      description: 固定有序视频片段与配音精确版本，后台分析原片和配音的声音能量/静音区间并自动适配。声音活动不等于语音识别；无可靠窗口时回退时长排布并记录警告。最多12镜、30句、总时长60秒，素材总大小1GiB，单个音视频最多10分钟。最多1.15倍保音高加速，无法完整容纳时失败，不截断配音。输出720p/1080p、16:9/9:16/1:1、30fps的新视频节点，逐镜向下对齐整帧（少于34ms）并记录实际时间表；支持零配音、取源裁切、0.5–2倍视频速度、首尾淡黑、定时字幕与背景音乐；默认去除原声，KEEP保留完整原声，BACKGROUND保留15%原声（包括原对白）。本地处理无Provider费用，复用Task查询/取消/显式重试；同键异参冲突。
+      tags: [Tasks]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 160}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/VideoCompositionRequest"}
+      responses:
+        "200":
+          description: 已受理或重放的本地合成任务，不代表合成完成
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/artifacts/{artifactId}/video-operations:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -2809,11 +2839,12 @@ paths:
         schema: {type: string, format: uuid}
     post:
       operationId: cancelQueuedDirectMediaTask
-      summary: 取消尚未提交到 Provider 的直接媒体任务并释放预留
+      summary: 取消排队的直接媒体任务，或请求停止本地配音合成
+      description: 外部媒体生成仅允许排队状态取消；本地配音合成允许READY/RUNNING立即取消，SUBMITTING设置cancelRequested并由后台停止。取消后晚到的本地成片只保留历史，不自动选用。
       tags: [Tasks]
       responses:
         "200":
-          description: 已取消的任务
+          description: 任务状态；本地合成可能正在等待后台确认cancelRequested
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Task"}
@@ -5301,8 +5332,8 @@ components:
             properties:
               nodeId: {type: string, pattern: '^[0-9]{1,8}$'}
               inputName: {type: string, minLength: 1, maxLength: 160}
-              source: {type: string, enum: [PROMPT, NEGATIVE_PROMPT, SEED, WIDTH, HEIGHT, REFERENCE_IMAGE, DURATION_SECONDS, FRAME_COUNT, FPS, BATCH_SIZE]}
-              referenceIndex: {type: [integer, "null"], minimum: 0, maximum: 13, description: Required for REFERENCE_IMAGE; zero-based contiguous indices of frozen project image inputs. All mapped images are required.}
+              source: {type: string, enum: [PROMPT, NEGATIVE_PROMPT, SEED, WIDTH, HEIGHT, REFERENCE_IMAGE, REFERENCE_VIDEO, REFERENCE_AUDIO, DURATION_SECONDS, FRAME_COUNT, FPS, BATCH_SIZE]}
+              referenceIndex: {type: [integer, "null"], minimum: 0, maximum: 13, description: Required for REFERENCE_IMAGE/REFERENCE_VIDEO/REFERENCE_AUDIO; zero-based contiguous indices within each media type. All mapped media are required; at most 14 media slots in total.}
         parameters:
           type: [array, "null"]
           maxItems: 64
@@ -5939,7 +5970,7 @@ components:
         sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         width: {type: [integer, "null"]}
         height: {type: [integer, "null"]}
-        durationMs: {type: [integer, "null"], minimum: 1, maximum: 600000, description: "Verified media duration: videos up to 60000ms; audio up to 600000ms."}
+        durationMs: {type: [integer, "null"], minimum: 1, maximum: 600000, description: "Verified media duration: videos up to 600000ms; audio up to 600000ms."}
         thumbnailSha256: {type: [string, "null"]}
         createdAt: {type: string, format: date-time}
     ManifestCanvasItem:
@@ -6165,7 +6196,7 @@ components:
         sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         width: {type: [integer, "null"], minimum: 1}
         height: {type: [integer, "null"], minimum: 1}
-        durationMs: {type: [integer, "null"], minimum: 1, maximum: 600000, description: "Verified media duration: videos up to 60000ms; audio up to 600000ms."}
+        durationMs: {type: [integer, "null"], minimum: 1, maximum: 600000, description: "Verified media duration: videos up to 600000ms; audio up to 600000ms."}
         createdAt: {type: string, format: date-time}
     ArtifactKind:
       type: string
@@ -6250,6 +6281,67 @@ components:
         operation: {$ref: "#/components/schemas/MediaFunction"}
         capabilityId: {type: [string, "null"], format: uuid}
         version: {type: integer, format: int64, minimum: 0}
+    VideoCompositionRequest:
+      type: object
+      additionalProperties: false
+      required: [title, shots]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 160}
+        rationale: {type: string, maxLength: 2000, description: 面向用户的简短编排依据，不保存模型私有推理}
+        originalAudioMode: {type: string, enum: [MUTE, BACKGROUND, KEEP], default: MUTE}
+        output:
+          type: object
+          additionalProperties: false
+          properties:
+            resolution: {type: string, enum: [720P, 1080P], default: 720P}
+            aspectRatio: {type: string, enum: ['16:9', '9:16', '1:1'], default: '16:9'}
+        music:
+          type: object
+          additionalProperties: false
+          required: [audioVersionId]
+          properties:
+            audioVersionId: {type: string, format: uuid}
+            sourceStartMs: {type: integer, minimum: 0, maximum: 599999, default: 0}
+            volume: {type: number, minimum: 0, maximum: 1, default: 0.2}
+        subtitles:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            required: [text, startMs, endMs]
+            properties:
+              text: {type: string, minLength: 1, maxLength: 500}
+              startMs: {type: integer, minimum: 0, maximum: 59999}
+              endMs: {type: integer, minimum: 1, maximum: 60000}
+        shots:
+          type: array
+          minItems: 1
+          maxItems: 12
+          items:
+            type: object
+            additionalProperties: false
+            required: [videoVersionId, lines]
+            properties:
+              videoVersionId: {type: string, format: uuid}
+              sourceStartMs: {type: integer, minimum: 0, maximum: 599999, default: 0}
+              durationMs:
+                type: integer
+                minimum: 100
+                maximum: 600000
+                description: 取源时长；省略时取素材剩余长度；成片时长按速度换算并受60秒总限约束
+              speed: {type: number, minimum: 0.5, maximum: 2, default: 1}
+              fadeMs: {type: integer, minimum: 0, maximum: 500, default: 0, description: 每镜开头及结尾的淡黑时长，不重叠镜头}
+              lines:
+                type: array
+                maxItems: 30
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [audioVersionId]
+                  properties:
+                    audioVersionId: {type: string, format: uuid}
+                    startMs: {type: integer, minimum: 0, maximum: 59999, description: 可选镜内锚点；省略时依声音活动自动排布}
     RunVideoOperationRequest:
       type: object
       additionalProperties: false
@@ -6266,6 +6358,8 @@ components:
           type: object
           additionalProperties: false
           properties:
+            format: {type: string, enum: [WAV, MP3], description: 仅本地音频提取；缺省WAV，长素材可显式选MP3}
+            trackIndex: {type: integer, minimum: 0, maximum: 31, description: 仅本地音频提取，音轨索引从0开始}
             dynamicValues:
               type: object
               additionalProperties: {type: [string, number, boolean]}

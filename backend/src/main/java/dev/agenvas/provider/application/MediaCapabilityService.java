@@ -442,7 +442,9 @@ public class MediaCapabilityService {
         }
         if (comfyWorkflow != null) {
             ComfyUiWorkflowDefinition.requireDefinitionSize(settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY));
-            if (policy.maxReferenceImages() != comfyWorkflow.referenceCount())
+            if (policy.maxReferenceImages() != comfyWorkflow.referenceCount()
+                    || policy.maxReferenceVideos() != comfyWorkflow.referenceCount(ComfyUiWorkflowDefinition.Source.REFERENCE_VIDEO)
+                    || policy.maxReferenceAudios() != comfyWorkflow.referenceCount(ComfyUiWorkflowDefinition.Source.REFERENCE_AUDIO))
                 throw invalid(ApiMessage.of("api.comfy-workflow.invalid", "references"));
         }
         putInputLimits(normalized, policy);

@@ -724,7 +724,8 @@ public class TaskService {
         boolean activeOrUnknown = current.status() == Task.Status.RUNNING
                 || current.status() == Task.Status.SUBMITTING
                 || current.status() == Task.Status.WAITING_PROVIDER
-                || current.status() == Task.Status.UNKNOWN;
+                || current.status() == Task.Status.UNKNOWN
+                || current.status() == Task.Status.CANCELED && current.isVideoComposition() && current.cancelRequested();
         boolean acknowledgedPoll = current.status() == Task.Status.RUNNING
                 && current.providerRequestId() != null
                 && current.providerRequestId().equals(lease.providerRequestId());
@@ -741,7 +742,8 @@ public class TaskService {
     private ArtifactService.TaskVersionResult archivePrimaryResult(UUID ownerId, Task lease,
             TaskRepository.ArtifactTarget target, JsonNode content, boolean selectResult) {
         ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
-                ownerId, lease.projectId(), target.artifactId(), lease.runId(),
+                ownerId, lease.projectId(), target.artifactId(),
+                lease.compositionRunId() == null ? lease.runId() : lease.compositionRunId(),
                 target.expectedCurrentVersionId(), target.expectedArtifactVersion(), content,
                 lease.input().has("mediaInput") ? lease.input().path("mediaInput") : null,
                 selectResult && target.canvasItemId() == null);
@@ -958,6 +960,8 @@ public class TaskService {
                 throw leaseLost();
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            if (updated.isVideoComposition() && updated.status() == Task.Status.CANCELED)
+                usage.releaseUnsubmittedMediaTask(ownerId, updated);
             events.append(ownerId, lease.projectId(), taskEvent(updated, true));
             blockWaitingRunForMedia(ownerId, updated);
             return ProjectEventService.Change.unchanged(null);
@@ -1269,6 +1273,20 @@ public class TaskService {
      */
     private boolean pinnedMediaInputsCurrent(UUID ownerId, Task task) {
         JsonNode input = task.input();
+        if (task.isVideoComposition()) {
+            try {
+                for (String field : List.of("videos", "audios")) {
+                    var kind = field.equals("videos") ? Artifact.Kind.VIDEO : Artifact.Kind.AUDIO;
+                    for (JsonNode source : input.path("mediaInput").path(field)) {
+                        var version = artifacts.requireMediaVersionForTask(ownerId, task.projectId(),
+                                UUID.fromString(source.path("versionId").asText()), kind);
+                        if (artifacts.get(ownerId, task.projectId(), version.artifactId()).artifact().archivedAt() != null)
+                            return false;
+                    }
+                }
+                return true;
+            } catch (ApiProblemException | IllegalArgumentException unavailable) { return false; }
+        }
         if (input.has("videoOperation")) {
             try {
                 artifacts.requireMediaVersionForTask(ownerId, task.projectId(), UUID.fromString(

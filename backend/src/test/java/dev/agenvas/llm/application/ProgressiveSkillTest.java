@@ -26,7 +26,8 @@ class ProgressiveSkillTest {
     private final UUID first = UUID.randomUUID(), second = UUID.randomUUID();
     private final ToolExecutionRepository ledger = mock(ToolExecutionRepository.class);
     private final ReadToolService reader = new ReadToolService(mock(ProjectService.class), mock(ArtifactService.class),
-            mock(TaskService.class), mapper, ledger);
+            mock(dev.agenvas.asset.application.AssetService.class),
+            mock(TaskService.class), mapper, ledger, mock(AgentMediaSampleService.class));
 
     @Test void firstRequestDisclosesOnlyNamesDescriptionsAndVersionIds() {
         AgentRun run = run();

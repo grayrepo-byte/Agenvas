@@ -111,6 +111,9 @@ public class ToolRegistry {
             "\"capabilityId\":{", "\"canvasItemId\":{\"type\":\"string\",\"format\":\"uuid\"},"
                     + "\"expectedItemVersion\":{\"type\":\"integer\",\"minimum\":0},"
                     + "\"expectedDraftVersion\":{\"type\":\"integer\",\"minimum\":0},\"capabilityId\":{");
+    private static final String COMPOSE_VIDEO_SCHEMA = """
+            {"type":"object","additionalProperties":false,"required":["title","shots"],"properties":{"title":{"type":"string","minLength":1,"maxLength":160},"rationale":{"type":"string","maxLength":2000,"description":"面向用户的简短编排依据，不保存模型私有推理"},"originalAudioMode":{"type":"string","enum":["MUTE","BACKGROUND","KEEP"],"default":"MUTE"},"output":{"type":"object","additionalProperties":false,"properties":{"resolution":{"type":"string","enum":["720P","1080P"],"default":"720P"},"aspectRatio":{"type":"string","enum":["16:9","9:16","1:1"],"default":"16:9"}}},"music":{"type":"object","additionalProperties":false,"required":["audioVersionId"],"properties":{"audioVersionId":{"type":"string","format":"uuid"},"sourceStartMs":{"type":"integer","minimum":0,"maximum":599999,"default":0},"volume":{"type":"number","minimum":0,"maximum":1,"default":0.2}}},"subtitles":{"type":"array","maxItems":100,"items":{"type":"object","additionalProperties":false,"required":["text","startMs","endMs"],"properties":{"text":{"type":"string","minLength":1,"maxLength":500},"startMs":{"type":"integer","minimum":0,"maximum":59999},"endMs":{"type":"integer","minimum":1,"maximum":60000}}}},"shots":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"object","additionalProperties":false,"required":["videoVersionId","lines"],"properties":{"videoVersionId":{"type":"string","format":"uuid"},"sourceStartMs":{"type":"integer","minimum":0,"maximum":599999,"default":0},"durationMs":{"type":"integer","minimum":100,"maximum":600000,"description":"取源时长；省略时取素材剩余长度；成片时长按速度换算并受60秒总限约束"},"speed":{"type":"number","minimum":0.5,"maximum":2,"default":1},"fadeMs":{"type":"integer","minimum":0,"maximum":500,"default":0,"description":"每镜开头及结尾的淡黑时长，不重叠镜头"},"lines":{"type":"array","maxItems":30,"items":{"type":"object","additionalProperties":false,"required":["audioVersionId"],"properties":{"audioVersionId":{"type":"string","format":"uuid"},"startMs":{"type":"integer","minimum":0,"maximum":59999,"description":"可选镜内锚点；省略时依声音活动自动排布"}}}}}}}}}
+            """;
 
     public List<ToolCallback> modelDefinitions(tools.jackson.databind.JsonNode policy) {
         var allowed = RunToolPolicy.allowed(policy);
@@ -128,6 +131,15 @@ public class ToolRegistry {
                         + "Media DUPLICATE also needs mediaDraft.version as expectedDraftVersion. REMOVE keeps the underlying artifact and history.", MANAGE_CANVAS_SCHEMA),
                 definition("update_media_draft", "Edit an authorized unlocked IMAGE, VIDEO or AUDIO node's working draft without generating. "
                         + "Use mediaDraft.version as expectedVersion. Omitted fields retain their existing values; replacing prompt clears old structured mentions unless mentions is supplied. U+FFFC markers require matching mentions. Media references must be exact authorized versions.", UPDATE_MEDIA_DRAFT_SCHEMA),
+                definition("compose_video", "Queue local video trimming, joining and dubbing from authorized exact VIDEO/AUDIO versions. Zero dialogue is allowed. Optional shot speed/fades, KEEP original sound, music, timed subtitles and output shape are supported. "
+                        + "First read storyboard/script text and immutable media prompts plus mediaMetadata.durationMs; infer shot order and match each spoken line from that evidence. "
+                        + "rationale is a short public edit summary, never private reasoning. shots are playback order; lines are spoken order. "
+                        + "sourceStartMs defaults to zero and omitted durationMs uses the remaining source video. startMs is optional, relative to the selected shot, only for an evidenced story anchor; "
+                        + "omit it for automatic waveform/silence placement. At most 12 shots, 30 total lines and 60000 ms total. "
+                        + "MUTE replaces original sound; BACKGROUND keeps it quietly beneath dialogue. The local renderer allows at most 1.15x dialogue speed and fails rather than cutting speech. "
+                        + "No external media generation or media approval occurs. The receipt confirms queuing only: processing continues independently in the background. "
+                        + "Stopping the Director does not cancel an accepted composition; the user can cancel it from the new output node. "
+                        + "Report queued status and do not poll or claim completion, semantic audio understanding or lip synchronization.", COMPOSE_VIDEO_SCHEMA),
                 definition("read_project_summary",
                         "Read the current project's bounded metadata and pinned Run limits",
                         READ_PROJECT_SUMMARY_SCHEMA),
@@ -140,6 +152,14 @@ public class ToolRegistry {
                                 + "large content is explicitly truncated. For images read one per tool batch; the committed reply attaches pixels. "
                                 + "Record public observations before requesting another image; only the latest image remains attached",
                         READ_ARTIFACTS_SCHEMA),
+                definition("read_media_sample", "Inspect one authorized exact VIDEO/AUDIO version. Request up to four unique frame timestamps in milliseconds, and/or an audioStartMs/audioDurationMs pair (max 15 seconds). Next model call attaches a timestamped contact sheet and/or WAV sample; no bytes in the tool ledger. Read one sample per batch. Inspect only attached content; sparse frames cannot verify every intervening action. Audio requires an audio-capable model; do not infer speech from metadata.",
+                        """
+                        {"type":"object","additionalProperties":false,"required":["versionId"],"properties":{
+                          "versionId":{"type":"string","format":"uuid"},
+                          "timestampsMs":{"type":"array","maxItems":4,"uniqueItems":true,"items":{"type":"integer","minimum":0,"maximum":599999}},
+                          "audioStartMs":{"type":"integer","minimum":0,"maximum":599999},
+                          "audioDurationMs":{"type":"integer","minimum":1,"maximum":15000}}}
+                        """),
                 definition("read_task_status",
                         "Read status only for up to twelve tasks in this Run; ordinary progress "
                                 + "arrives through the scheduler, so do not repeatedly poll",
