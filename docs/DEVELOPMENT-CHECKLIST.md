@@ -2483,3 +2483,15 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 隔离 Chrome 与真实工作区内存 Mock 在 1280×720、1440×900、1280×600、1310×678，分别检查默认文字节点及屏高 400px 的大文字节点，覆盖空、长、删除回短句共 24 个采样。修改前 24 个采样均不能完整显示四行；修改后全部通过，文字输入区实际可见高度至少 114px，面板约 207px，节点、上方操作栏、运行及关闭按钮完整可达。重复点击不持续缩小；900px 高视口保留原缩放，低视口仅在必要时缩小。媒体三种窗口尺寸复验通过，继续保留原缩放和几何居中。截图仅含合成内容并保存在仓库外私有临时目录。
 - [x] 同步规格 §6.2/§19.3、ADR 0005 与画布预览说明；本次仅修改前端及行为资料，无 API、合约、数据库迁移、生成文件或依赖变更，保留同目录其他任务的并行修改。
 - [ ] 全量测试、后端测试、真实 Provider 与部署未运行；Mock 浏览器未修改真实账号或项目。
+
+
+## 2026-10-22 本地 3D 导演台
+
+- [x] 调研 Open Canvas、infinite-canvas、影策及 StoryAI 导演台的一手源码和许可，区分真实三维场景与图片角度提示。结论与固定来源快照见 [调研记录](research/3d-director-workbench.md)；本地实现使用原创程序化人偶与几何体，不捆绑第三方人物或模型。
+- [x] 画布工具栏和图片节点增加 3D 导演台入口；支持最多 32 个人物/方体/球体/圆柱的位置、朝向、缩放、颜色，相机轨道/平移、焦距、目标与四种画幅，场景 JSON 导入导出。拍摄输出不含三分线和留边的 PNG；保存后重新打开可恢复场景。工具栏隐藏不销毁导演台编辑会话，未保存关闭需明确放弃。
+- [x] 上传合约增加 `DIRECTOR_3D` 和严格受限的 `directorScene`；空图片首次填充自身，已有图片固定来源版本与 CAS 派生独立节点。PNG 和场景随不可变 USER 版本归档，响应丢失重试复用同一素材/目标/场景，不创建生成 Task。OpenAPI、Java、生成 TypeScript、规格 §6.18、ADR 0051 与依赖基线同步，无数据库迁移。
+- [x] 图片角度模式展示二维参考，把当前相机转换成方向提示，经已有 `VIEW_ANGLE` 配置、费用与显式提交路径生成；不声称恢复真实背面，不将未上传的 3D 预览声称为模型附件。
+- [x] `pnpm exec vitest run src/features/canvas/DirectorWorkbench.test.tsx src/features/canvas/directorScene.test.ts src/features/canvas/MediaCanvasCard.test.tsx src/features/canvas/ProjectWorkspacePage.test.tsx src/features/canvas/CanvasSelectionClearing.test.tsx`：5 个文件、243 项通过，覆盖场景边界、固定来源、保存重试、冲突保留、空节点首拍、入口和窗口生命周期、合成角度请求。`pnpm typecheck`、完整 `pnpm lint`、`pnpm build` 及差异空白检查通过；保留 Vite 大分块和未来配置加载提示。
+- [x] 后端 `./mvnw -Dtest=DirectorSceneValidatorTest,CanvasMediaDerivationDraftTest,MessageCatalogTest test`：11 项通过；`./mvnw -Dtest=CanvasMediaContextPostgresIT test`：真实 PostgreSQL 综合用例通过，覆盖 scene 回读、空节点/派生、相同请求重放、异场景拒绝、来源 CAS、认证/项目隔离、非图片拒绝及无 Task；素材与请求使用合成数据。
+- [x] `pnpm test:director-workbench` 在生产构建的真实 Chrome 中通过，另跑开发构建。覆盖 1440×900、390×844、844×390，全部可用控件滚动可达、相机鼠标同步、WebGL 上下文丢失后禁拍与保留场景重试，四种 PNG 实际解码尺寸/多色像素、场景上传元数据及唯一一次显式角度任务请求。截图与实际 PNG 已视觉检查，保存于仓库外私有临时目录；HTTP 为内存合成接口，未修改真实项目。
+- [ ] 全量测试、真实 Provider 的视角重绘效果、独立部署和其他浏览器/GPU 兼容验证未运行。连续运镜、骨骼姿势、模型导入与视频导出未实现。

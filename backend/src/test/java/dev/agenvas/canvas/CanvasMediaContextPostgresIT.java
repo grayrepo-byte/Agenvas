@@ -268,6 +268,132 @@ class CanvasMediaContextPostgresIT {
                                 + "\"operation\":\"BRUSH_MARKUP\",\"parameters\":{}}"))
                 .andExpect(status().isBadRequest());
 
+        // The director archives a local render and editable geometry without submitting a model Task.
+        var directorScene = mapper.readTree("""
+                {"schemaVersion":1,"aspectRatio":"16:9","camera":{
+                  "azimuth":30,"elevation":15,"distance":8,"focalLength":50,
+                  "target":{"x":0,"y":1,"z":0}},"objects":[{
+                  "id":"actor-1","name":"Actor","kind":"ACTOR",
+                  "position":{"x":0,"y":0,"z":0},"rotation":0,"scale":1,"color":"#aabbcc"}]}
+                """);
+        UUID directorTarget = UUID.randomUUID();
+        var directorRequest = mapper.createObjectNode().put("targetItemId", directorTarget.toString())
+                .put("expectedVersion", 0).put("purpose", "DIRECTOR_3D")
+                .put("sourceVersionId", firstVersion.toString());
+        directorRequest.set("directorScene", directorScene);
+        directorRequest.set("content", mapper.createObjectNode().put("sourceType", "UPLOAD")
+                .put("assetId", uploadAssetId.toString()));
+        String directorUrl = base + "/canvas-items/" + firstCard + "/upload-version";
+        JsonNode directed = mapper.readTree(mvc.perform(post(directorUrl)
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content(directorRequest.toString()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(directed.path("title").asText()).isEqualTo("Shared image · 3D 导演台");
+        assertThat(directed.path("selectedVersion").path("createdByKind").asText()).isEqualTo("USER");
+        assertThat(directed.path("selectedVersion").path("baseVersionId").asText())
+                .isEqualTo(firstVersion.toString());
+        assertThat(directed.path("selectedVersion").path("frozenInput").path("operation").asText())
+                .isEqualTo("DIRECTOR_3D");
+        assertThat(directed.path("selectedVersion").path("frozenInput").path("sourceCanvasItemId").asText())
+                .isEqualTo(firstCard.toString());
+        assertThat(directed.path("selectedVersion").path("frozenInput").path("directorScene"))
+                .isEqualTo(directorScene);
+        JsonNode directorReplay = mapper.readTree(mvc.perform(post(directorUrl)
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content(directorRequest.toString()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(directorReplay.path("selectedVersionId")).isEqualTo(directed.path("selectedVersionId"));
+        var changedDirector = directorRequest.deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) changedDirector.path("directorScene").path("camera"))
+                .put("azimuth", 45);
+        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
+                        .content(changedDirector.toString()))
+                .andExpect(status().isConflict());
+        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
+                        .content(directorRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString())
+                                .put("expectedVersion", 99).toString()))
+                .andExpect(status().isConflict());
+        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
+                        .content(directorRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString())
+                                .put("sourceVersionId", secondVersion.toString()).toString()))
+                .andExpect(status().isConflict());
+        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
+                        .content(directorRequest.deepCopy().put("targetItemId", firstCard.toString()).toString()))
+                .andExpect(status().isBadRequest());
+        var outsider = authentication(new UsernamePasswordAuthenticationToken(
+                new AdminPrincipal(UUID.randomUUID(), "director-outsider"), null, List.of()));
+        mvc.perform(post(directorUrl).with(outsider).with(csrf()).contentType("application/json")
+                        .content(directorRequest.toString()))
+                .andExpect(status().isNotFound());
+        mvc.perform(post(directorUrl).with(csrf()).contentType("application/json")
+                        .content(directorRequest.toString()))
+                .andExpect(status().isUnauthorized());
+        JsonNode savedDirector = read(mvc, auth, base + "/canvas/items");
+        assertThat(selectedVersion(savedDirector, firstCard)).isEqualTo(firstVersion.toString());
+        JsonNode directorNode = null;
+        for (JsonNode node : savedDirector.path("items")) {
+            if (node.path("id").asText().equals(directorTarget.toString())) directorNode = node;
+        }
+        assertThat(directorNode).isNotNull();
+        assertThat(directorNode.path("selectedVersion").path("frozenInput").path("directorScene"))
+                .isEqualTo(directorScene);
+        JsonNode directorDraft = read(mvc, auth, base + "/canvas-items/" + directorTarget + "/media-draft");
+        assertThat(directorDraft.path("prompt").asText()).isEmpty();
+        assertThat(directorDraft.path("mediaInputs").size()).isZero();
+        assertThat(read(mvc, auth, firstDraft)).isEqualTo(sourceBeforeUpload);
+        assertThat(jdbc.sql("select source_artifact_version_id from canvas_connection where project_id=:projectId "
+                        + "and relation_type='MEDIA_DERIVATION' and target_canvas_item_id=:target")
+                .param("projectId", project.id()).param("target", directorTarget)
+                .query(UUID.class).single()).isEqualTo(firstVersion);
+
+        JsonNode directorResource = mapper.readTree(mvc.perform(post(base + "/artifacts")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .header("Idempotency-Key", "empty-director-image")
+                        .content("{\"kind\":\"IMAGE\",\"title\":\"New scene\",\"content\":null}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        UUID directorArtifactId = UUID.fromString(directorResource.path("id").asText());
+        UUID emptyDirector = UUID.randomUUID();
+        place(mvc, auth, base, emptyDirector, directorArtifactId, 4);
+        var emptyDirectorRequest = directorRequest.deepCopy().put("targetItemId", emptyDirector.toString());
+        emptyDirectorRequest.putNull("sourceVersionId");
+        String emptyDirectorUrl = base + "/canvas-items/" + emptyDirector + "/upload-version";
+        JsonNode filledDirector = mapper.readTree(mvc.perform(post(emptyDirectorUrl)
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content(emptyDirectorRequest.toString()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(filledDirector.path("id").asText()).isEqualTo(emptyDirector.toString());
+        assertThat(filledDirector.path("title").asText()).isEqualTo("New scene");
+        assertThat(filledDirector.path("selectedVersion").path("baseVersionId").isNull()).isTrue();
+        assertThat(filledDirector.path("selectedVersion").path("frozenInput").path("directorScene"))
+                .isEqualTo(directorScene);
+        JsonNode emptyDirectorReplay = mapper.readTree(mvc.perform(post(emptyDirectorUrl)
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content(emptyDirectorRequest.toString()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(emptyDirectorReplay.path("selectedVersionId")).isEqualTo(filledDirector.path("selectedVersionId"));
+        assertThat(jdbc.sql("select count(*) from canvas_item where project_id=:projectId and subject_id=:id")
+                .param("projectId", project.id()).param("id", directorArtifactId)
+                .query(Integer.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from task where project_id=:id")
+                .param("id", project.id()).query(Integer.class).single()).isEqualTo(taskCount);
+        assertThat(jdbc.sql("select count(*) from canvas_connection where project_id=:projectId "
+                        + "and relation_type='MEDIA_DERIVATION' and source_canvas_item_id=:itemId")
+                .param("projectId", project.id()).param("itemId", emptyDirector)
+                .query(Integer.class).single()).isZero();
+
+        JsonNode videoResource = mapper.readTree(mvc.perform(post(base + "/artifacts")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .header("Idempotency-Key", "director-reject-video")
+                        .content("{\"kind\":\"VIDEO\",\"title\":\"Video\",\"content\":null}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        UUID videoCard = UUID.randomUUID();
+        place(mvc, auth, base, videoCard, UUID.fromString(videoResource.path("id").asText()), 5);
+        mvc.perform(post(base + "/canvas-items/" + videoCard + "/upload-version")
+                        .with(auth).with(csrf()).contentType("application/json")
+                        .content(emptyDirectorRequest.deepCopy().put("targetItemId", videoCard.toString()).toString()))
+                .andExpect(status().isBadRequest());
+        assertThat(selectedVersion(read(mvc, auth, base + "/canvas/items"), videoCard)).isEmpty();
+
         mvc.perform(post(base + "/canvas/commands").with(auth).with(csrf())
                         .contentType("application/json")
                         .content("{\"commands\":[{\"type\":\"REMOVE\",\"itemId\":\""

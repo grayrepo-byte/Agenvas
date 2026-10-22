@@ -71,6 +71,21 @@ class CanvasMediaDerivationDraftTest {
     }
 
     @Test
+    void directorRequiresASceneAndOtherUploadsRejectDirectorMetadataBeforeAnyWrite() {
+        var scene = new ObjectMapper().createObjectNode();
+        assertThatThrownBy(() -> canvas.uploadVersion(owner, project, source, target, 0,
+                scene, MediaUploadPurpose.DIRECTOR_3D, parent, null))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> canvas.uploadVersion(owner, project, source, target, 0,
+                scene, MediaUploadPurpose.UPLOAD, null, scene))
+                .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> canvas.uploadVersion(owner, project, source, target, 0,
+                scene, MediaUploadPurpose.BRUSH_MARKUP, parent, scene))
+                .isInstanceOf(ApiProblemException.class);
+        verify(items, never()).create(any());
+    }
+
+    @Test
     void editingCreatesAFreshDraftAndKeepsOnlyTheLineageReference() {
         CanvasItem result = canvas.forkMediaDerivationWithinChange(owner, project, source,
                 target, 5, 0, "深度图");

@@ -13,6 +13,12 @@ import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 
+vi.mock("./DirectorWorkbench", () => ({ DirectorWorkbench: ({ canvasItemId,sourceVersionId,onClose }: {
+  canvasItemId: string; sourceVersionId: string | null; onClose: () => void;
+}) => <div role="dialog" aria-label="3D 导演台" data-item={canvasItemId} data-source={sourceVersionId ?? ""}>
+  <button onClick={onClose}>Close director</button>
+</div> }));
+
 const viewportProbe = vi.hoisted(() => ({ center: vi.fn<ReactFlowInstance["setCenter"]>(),
   instance: null as ReactFlowInstance | null }));
 
@@ -194,6 +200,42 @@ describe("ProjectWorkspacePage", () => {
       type: "PLACE_ARTIFACT", artifactId: "created-artifact", x: 20, y: 30,
     })] });
     expect(screen.queryByRole("listbox", { name: "添加卡片" })).not.toBeInTheDocument();
+  });
+
+  it("opens the director from the canvas rail after creating and placing its blank image", async () => {
+    let placed: CanvasItem | null = null;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Director project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: placed ? [placed] : [] })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        expect(await request.json()).toEqual({ kind: "IMAGE", title: "3D 导演台", content: null });
+        return HttpResponse.json({ id: "director-artifact" }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = await request.json() as { commands: CanvasCommand[] };
+        const command = body.commands[0];
+        if (!command || command.type !== "PLACE_ARTIFACT") throw new Error("Missing placement");
+        placed = { ...imageCard(), id: command.itemId, subjectId: "director-artifact", title: "3D 导演台",
+          selectedVersionId: null, selectedVersion: null,
+          x: command.x, y: command.y, width: command.width, height: command.height,
+          artifact: { ...imageCard().artifact, id: "director-artifact", title: "3D 导演台", resourceDefaultVersion: null, resourceDefaultVersionId: null } };
+        return HttpResponse.json({ items: [placed] });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    await screen.findByText("Director project");
+    await user.click(screen.getByRole("button", { name: "3D 导演台" }));
+    const dialog = await screen.findByRole("dialog", { name: "3D 导演台" });
+    expect(dialog.getAttribute("data-item")).toBeTruthy();
+    expect(dialog).toHaveAttribute("data-source", "");
+    expect(placed).not.toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Close director" }));
+    expect(screen.queryByRole("dialog", { name: "3D 导演台" })).not.toBeInTheDocument();
   });
 
   it.each([

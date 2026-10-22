@@ -36,6 +36,7 @@ import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText } from "./artifactContent";
 import { AudioPlayer } from "./AudioPlayer";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
+import { DirectorWorkbench } from "./DirectorWorkbench";
 import { ImageResizePanel } from "./ImageResizePanel";
 import { ImageReversePromptDialog } from "./ImageReversePromptDialog";
 import { CropPanel } from "./CropPanel";
@@ -108,6 +109,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const videoCommand = useRef<{ payload: string; key: string; input: RunVideoOperationRequest } | null>(null);
   const [threeViewType, setThreeViewType] = useState<ThreeViewType | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [directorOpen, setDirectorOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -225,11 +227,13 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     titleIcon={isImage ? <ImageIcon size={16} /> : isAudio ? <MusicNotes size={16} /> : <VideoCamera size={16} />}
     className={isAudio && assetId ? "audio-canvas-card" : undefined}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible}
-    toolbarRaised={menuOpen || operationOpen !== null || videoOperationOpen !== null || Boolean(reversePrompt?.open)}
+    toolbarRaised={directorOpen || menuOpen || operationOpen !== null || videoOperationOpen !== null || Boolean(reversePrompt?.open)}
     editableTitle={{ projectId: artifact.projectId, item }}
     toolbarLabel={t("media.card.toolbarLabel")} toolbar={<>
         <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={!assetId} />
         {isImage ? <>
+          <Button variant="ghost" type="button" disabled={locked || Boolean(busy) || operation.isPending}
+            onClick={() => setDirectorOpen(true)}><Cube data-icon="inline-start" />{t("director.title")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || !item.selectedVersionId}
             onClick={() => { if (assetId && item.selectedVersionId) setReversePrompt({ assetId,
               sourceVersionId: item.selectedVersionId, expectedCanvasItemVersion: item.version, open: true }); }}>
@@ -339,6 +343,11 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           aria-label={isImage ? t("media.card.downloadImage") : isAudio ? t("media.card.downloadAudio") : t("media.card.downloadVideo")}><DownloadSimple size={19} /></a> : null}
     </>}>
       {children}
+      {/* A modal editing session outlives toolbar visibility and selection changes. */}
+      {isImage && directorOpen ? <DirectorWorkbench key={item.id} projectId={artifact.projectId} artifactId={artifact.id}
+        canvasItemId={item.id} expectedVersion={item.version} sourceVersionId={item.selectedVersionId}
+        sourceTitle={item.title} sourceUrl={assetId ? assetContentUrl(artifact.projectId, assetId) : undefined}
+        initialScene={item.selectedVersion?.frozenInput?.directorScene} onClose={() => setDirectorOpen(false)} /> : null}
       {(isImage || isAudio) && !assetId ? <Input ref={uploadInput} className="sr-only nodrag" type="file"
         aria-label={isAudio ? t("media.card.chooseAudioUpload") : t("media.card.chooseImageUpload")} accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
         onClick={(event) => event.stopPropagation()}

@@ -1,0 +1,81 @@
+.director-viewport {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  gap: 8px;
+}
+
+.director-viewport__stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  min-height: 220px;
+  overflow: hidden;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-canvas-bg);
+}
+
+.director-viewport__frame {
+  position: relative;
+  flex: none;
+  overflow: hidden;
+}
+
+.director-viewport__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline-offset: -3px;
+  touch-action: none;
+  cursor: grab;
+}
+
+.director-viewport__canvas:active {
+  cursor: grabbing;
+}
+
+.director-viewport__canvas[aria-disabled="true"] {
+  cursor: default;
+}
+
+.director-viewport__thirds {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to right, transparent calc(33.333% - 0.5px), var(--ui-border-strong) calc(33.333% - 0.5px), var(--ui-border-strong) calc(33.333% + 0.5px), transparent calc(33.333% + 0.5px)),
+    linear-gradient(to right, transparent calc(66.667% - 0.5px), var(--ui-border-strong) calc(66.667% - 0.5px), var(--ui-border-strong) calc(66.667% + 0.5px), transparent calc(66.667% + 0.5px)),
+    linear-gradient(to bottom, transparent calc(33.333% - 0.5px), var(--ui-border-strong) calc(33.333% - 0.5px), var(--ui-border-strong) calc(33.333% + 0.5px), transparent calc(33.333% + 0.5px)),
+    linear-gradient(to bottom, transparent calc(66.667% - 0.5px), var(--ui-border-strong) calc(66.667% - 0.5px), var(--ui-border-strong) calc(66.667% + 0.5px), transparent calc(66.667% + 0.5px));
+  opacity: 0.55;
+}
+
+.director-viewport__loading {
+  position: absolute;
+  color: var(--ui-text-muted);
+}
+
+.director-viewport__failure {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--ui-surface);
+}
+
+.director-viewport__hint {
+  margin: 0;
+  color: var(--ui-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}

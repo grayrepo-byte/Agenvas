@@ -1,0 +1,122 @@
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { t, useLocale } from "../../shared/i18n";
+import { Alert, AlertDescription } from "../../shared/ui/primitives/alert";
+import { Button } from "../../shared/ui/primitives/button";
+import { directorFrameSize, type DirectorScene } from "./directorScene";
+import type { DirectorRenderer } from "./directorRenderer";
+import "./DirectorViewport.css";
+
+export interface DirectorViewportProps {
+  scene: DirectorScene;
+  onCameraChange: (camera: DirectorScene["camera"]) => void;
+  onCaptureReady: (capture: (() => Promise<File>) | null) => void;
+  onError: (message: string | null) => void;
+  disabled?: boolean;
+  onSelectObject?: (id: string) => void;
+}
+
+/** Mount only inside the opened director dialog; Three.js itself is loaded on mount. */
+export function DirectorViewport(props: DirectorViewportProps) {
+  useLocale();
+  const stageRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<DirectorRenderer | null>(null);
+  const latest = useRef(props);
+  const hintId = useId();
+  const [attempt, setAttempt] = useState(0);
+  const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+
+  useLayoutEffect(() => {
+    latest.current = props;
+    rendererRef.current?.update(props.scene);
+    rendererRef.current?.setDisabled(props.disabled ?? false);
+    const stage = stageRef.current;
+    const frame = frameRef.current;
+    if (stage && frame) {
+      const size = directorFrameSize(stage.clientWidth, stage.clientHeight, props.scene.aspectRatio);
+      frame.style.width = `${size.width}px`;
+      frame.style.height = `${size.height}px`;
+      rendererRef.current?.resize(size.width, size.height);
+    }
+  });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const stage = stageRef.current;
+    const frame = frameRef.current;
+    if (!canvas || !stage || !frame) return;
+    let active = true;
+    let renderer: DirectorRenderer | null = null;
+    const unavailable = () => {
+      if (!active) return;
+      setStatus("unavailable");
+      latest.current.onCaptureReady(null);
+      latest.current.onError(t("director.viewportUnavailable"));
+    };
+    const resize = () => {
+      const size = directorFrameSize(stage.clientWidth, stage.clientHeight, latest.current.scene.aspectRatio);
+      frame.style.width = `${size.width}px`;
+      frame.style.height = `${size.height}px`;
+      renderer?.resize(size.width, size.height);
+    };
+    setStatus("loading");
+    latest.current.onCaptureReady(null);
+    latest.current.onError(null);
+    const observer = new ResizeObserver(resize);
+    observer.observe(stage);
+    window.addEventListener("resize", resize);
+    void import("./directorRenderer").then(({ createDirectorRenderer }) => {
+      if (!active) return;
+      renderer = createDirectorRenderer(canvas, latest.current.scene, {
+        onCameraChange: (camera) => latest.current.onCameraChange(camera),
+        onSelectObject: (id) => latest.current.onSelectObject?.(id),
+        onUnavailable: unavailable,
+      });
+      rendererRef.current = renderer;
+      renderer.setDisabled(latest.current.disabled ?? false);
+      resize();
+      setStatus("ready");
+      latest.current.onCaptureReady(async () => {
+        if (!active || !renderer) throw new Error(t("director.viewportUnavailable"));
+        try {
+          const file = await renderer.capture();
+          latest.current.onError(null);
+          return file;
+        } catch {
+          const message = t("director.captureFailed");
+          if (active) latest.current.onError(message);
+          throw new Error(message);
+        }
+      });
+    }).catch(unavailable);
+    return () => {
+      active = false;
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+      latest.current.onCaptureReady(null);
+      rendererRef.current = null;
+      renderer?.dispose();
+    };
+  }, [attempt]);
+
+  return <div className="director-viewport">
+    <div ref={stageRef} className="director-viewport__stage" aria-busy={status === "loading"}>
+      <div ref={frameRef} className="director-viewport__frame" aria-hidden={status !== "ready"}>
+        <canvas key={attempt} ref={canvasRef} tabIndex={status === "ready" && !props.disabled ? 0 : -1}
+          aria-label={t("director.viewportLabel")} aria-describedby={hintId}
+          aria-disabled={props.disabled} className="director-viewport__canvas" />
+        {status === "ready" && <div className="director-viewport__thirds" aria-hidden="true" />}
+      </div>
+      {status === "loading" && <p className="director-viewport__loading" role="status">{t("common.loading")}</p>}
+      {status === "unavailable" && <div className="director-viewport__failure">
+        <Alert variant="destructive"><AlertDescription>{t("director.viewportUnavailable")}</AlertDescription></Alert>
+        <Button type="button" variant="outline" disabled={props.disabled}
+          onClick={() => setAttempt((current) => current + 1)}>{t("director.retryViewport")}</Button>
+      </div>}
+    </div>
+    <p id={hintId} className="director-viewport__hint">{t("director.orbitHint")}</p>
+  </div>;
+}
+
+export default DirectorViewport;

@@ -2297,7 +2297,7 @@ export interface paths {
         put?: never;
         /**
          * 向空媒体节点上传首个结果，或从已有结果派生新节点
-         * @description 从已有结果派生的新节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入，标题为来源节点当前标题加「 · 上传」；超长时截短来源部分以保留后缀。首次填充空节点保留原标题，重放不重新命名。BRUSH_MARKUP 用途从来源当前图片同步创建「 · 画笔标注」派生节点，保存为 USER 版本并记录 baseVersionId 与 frozenInput，不创建 AI Task。来源版本或 expectedVersion 不匹配返回 409，相同目标 ID 与内容、用途和来源安全重放。
+         * @description 从已有结果派生的新节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入，标题为来源节点当前标题加「 · 上传」；超长时截短来源部分以保留后缀。首次填充空节点保留原标题，重放不重新命名。BRUSH_MARKUP 用途创建「 · 画笔标注」派生节点；DIRECTOR_3D 将场景截图与可编辑 directorScene 保存为 USER 版本，已有图片派生「 · 3D 导演台」节点，空图片首次填充自身，不创建 AI Task。来源版本或 expectedVersion 不匹配返回 409，相同目标 ID 与内容、用途、来源和场景安全重放。
          */
         post: operations["uploadCanvasItemVersion"];
         delete?: never;
@@ -5053,16 +5053,46 @@ export interface components {
             /** Format: int64 */
             expectedVersion: number;
             /**
-             * @description 不传时为 UPLOAD。BRUSH_MARKUP 直接保存客户端合成图片，不调用模型或创建生成任务；必须固定来源图片版本并派生独立节点。
+             * @description 不传时为 UPLOAD。BRUSH_MARKUP 和 DIRECTOR_3D 直接保存客户端合成图片，不调用模型或创建生成任务。前者必须固定来源图片版本并派生独立节点；后者可首次填充空图片节点，否则固定来源版本并派生独立节点。
              * @enum {string}
              */
-            purpose?: "UPLOAD" | "BRUSH_MARKUP";
+            purpose?: "UPLOAD" | "BRUSH_MARKUP" | "DIRECTOR_3D";
             /**
              * Format: uuid
-             * @description BRUSH_MARKUP 必填，必须等于来源节点当前选用图片版本；普通上传不传。
+             * @description BRUSH_MARKUP 必填；DIRECTOR_3D 在空图片节点首次填充时为空，已有图片时必填。必须等于来源节点当前选用图片版本；普通上传不传。
              */
             sourceVersionId?: string | null;
+            /** @description 仅 DIRECTOR_3D 必填；保存到结果版本的 frozenInput.directorScene，用于重新打开导演台。 */
+            directorScene?: components["schemas"]["DirectorScene"];
             content: components["schemas"]["WritableArtifactContent"];
+        };
+        DirectorScene: {
+            /** @enum {integer} */
+            schemaVersion: 1;
+            /** @enum {string} */
+            aspectRatio: "16:9" | "9:16" | "1:1" | "4:3";
+            camera: {
+                azimuth: number;
+                elevation: number;
+                distance: number;
+                target: components["schemas"]["DirectorVector3"];
+                focalLength: number;
+            };
+            objects: {
+                id: string;
+                name: string;
+                /** @enum {string} */
+                kind: "ACTOR" | "BOX" | "SPHERE" | "CYLINDER";
+                position: components["schemas"]["DirectorVector3"];
+                rotation: number;
+                scale: number;
+                color: string;
+            }[];
+        };
+        DirectorVector3: {
+            x: number;
+            y: number;
+            z: number;
         };
         ArtifactInputReference: {
             /** Format: uuid */

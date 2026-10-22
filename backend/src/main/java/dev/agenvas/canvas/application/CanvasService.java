@@ -576,20 +576,40 @@ public class CanvasService {
     public CanvasEntry uploadVersion(UUID ownerId, UUID projectId, UUID itemId,
             UUID targetItemId, long expectedVersion, JsonNode content,
             MediaUploadPurpose purpose, UUID sourceVersionId) {
+        return uploadVersion(ownerId, projectId, itemId, targetItemId, expectedVersion,
+                content, purpose, sourceVersionId, null);
+    }
+
+    /** Archives a local director render and its bounded editable scene as one immutable version. */
+    @Transactional
+    public CanvasEntry uploadVersion(UUID ownerId, UUID projectId, UUID itemId,
+            UUID targetItemId, long expectedVersion, JsonNode content,
+            MediaUploadPurpose purpose, UUID sourceVersionId, JsonNode directorScene) {
         MediaUploadPurpose uploadPurpose = purpose == null ? MediaUploadPurpose.UPLOAD : purpose;
         boolean markup = uploadPurpose == MediaUploadPurpose.BRUSH_MARKUP;
+        boolean director = uploadPurpose == MediaUploadPurpose.DIRECTOR_3D;
+        if (director) {
+            DirectorSceneValidator.validate(directorScene);
+            // Filling an empty image has no parent; every later render derives a separate node.
+            if ((sourceVersionId == null) != targetItemId.equals(itemId)) {
+                throw validation(ApiMessage.of("api.canvas-service.director-source-required"));
+            }
+        } else if (directorScene != null) {
+            throw validation(ApiMessage.of("api.canvas-service.director-scene-purpose-required"));
+        }
         if (markup && (sourceVersionId == null || targetItemId.equals(itemId))) {
             throw validation(ApiMessage.of("api.canvas-service.brush-annotations-must-be-fixed-to-the-source-image-version"));
         }
-        if (!markup && sourceVersionId != null) {
+        if (!markup && !director && sourceVersionId != null) {
             throw validation(ApiMessage.of("api.canvas-service.ordinary-uploads-do-not-accept-source-versions"));
         }
-        ObjectNode frozenInput = markup ? objectMapper.createObjectNode() : null;
-        if (markup) {
+        ObjectNode frozenInput = markup || director ? objectMapper.createObjectNode() : null;
+        if (markup || director) {
             frozenInput.put("schemaVersion", 1);
             frozenInput.put("operation", uploadPurpose.name());
             frozenInput.put("sourceCanvasItemId", itemId.toString());
-            frozenInput.put("parentVersionId", sourceVersionId.toString());
+            if (sourceVersionId != null) frozenInput.put("parentVersionId", sourceVersionId.toString());
+            if (director) frozenInput.set("directorScene", directorScene.deepCopy());
         }
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
@@ -614,6 +634,9 @@ public class CanvasService {
             if (replay != null && !fillsCurrent) throw conflict();
             if (current.version() != expectedVersion) throw conflict();
             if (markup && !sourceVersionId.equals(current.selectedVersionId())) throw conflict();
+            if (director && !java.util.Objects.equals(sourceVersionId, current.selectedVersionId())) {
+                throw conflict();
+            }
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     current.subjectId());
             if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
@@ -621,6 +644,9 @@ public class CanvasService {
             }
             if (markup && artifact.artifact().kind() != Artifact.Kind.IMAGE) {
                 throw validation(ApiMessage.of("api.canvas-service.brush-annotation-only-supports-images"));
+            }
+            if (director && artifact.artifact().kind() != Artifact.Kind.IMAGE) {
+                throw validation(ApiMessage.of("api.canvas-service.director-only-supports-images"));
             }
             CanvasItem target;
             if (fillsCurrent) {

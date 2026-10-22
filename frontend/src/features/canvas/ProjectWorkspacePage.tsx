@@ -1,5 +1,5 @@
 import { VideoEditDialog } from "./VideoEditDialog";
-import { AlignLeftSimple,ArrowLeft,CheckCircle,CircleNotch,DownloadSimple,FolderSimple,ImageSquare,MusicNotes,Plus,SelectionAll,Sparkle,TextT,VideoCamera,WarningCircle,X,type Icon } from "@/shared/ui/icons";
+import { AlignLeftSimple,ArrowLeft,CheckCircle,CircleNotch,Cube,DownloadSimple,FolderSimple,ImageSquare,MusicNotes,Plus,SelectionAll,Sparkle,TextT,VideoCamera,WarningCircle,X,type Icon } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import {
 Background,
@@ -71,6 +71,7 @@ import { CanvasToolMenu } from "./CanvasToolMenu";
 import { CanvasViewportControls } from "./CanvasViewportControls";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 import { MediaCanvasCard } from "./MediaCanvasCard";
+import { DirectorWorkbench } from "./DirectorWorkbench";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
 import { displayCanvasRelations } from "./canvasEdgeDisplay";
@@ -240,6 +241,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const creationMenuReturnFocus = useRef<HTMLElement | null>(null);
   const [creationMenu, setCreationMenu] = useState<CreationMenu | null>(null);
   const [paneMenu, setPaneMenu] = useState<Omit<CreationMenu, "centerAtPoint"> | null>(null);
+  const [directorItem, setDirectorItem] = useState<CanvasItem | null>(null);
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [agentChatOpen, setAgentChatOpen] = useState(false);
@@ -452,8 +454,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
   });
   const addBlankMedia = useMutation({
-    mutationFn: async ({ kind, point }: { kind: "IMAGE" | "VIDEO" | "AUDIO"; point: CreationPoint }) => {
-      const fingerprint = JSON.stringify({ projectId, kind, point });
+    mutationFn: async ({ kind, point, director = false }: { kind: "IMAGE" | "VIDEO" | "AUDIO"; point: CreationPoint; director?: boolean }) => {
+      const fingerprint = JSON.stringify({ projectId, kind, point, director });
       if (mediaProgress.current?.fingerprint !== fingerprint) {
         mediaProgress.current = { fingerprint, createKey: crypto.randomUUID(),
           itemId: crypto.randomUUID() };
@@ -461,7 +463,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const pending = mediaProgress.current;
       if (!pending.artifactId) {
         const artifact = await createArtifact(projectId, { kind,
-          title: t("canvas.workspace.newMediaTitle", { "0": ARTIFACT_LABELS[kind] }), content: null }, pending.createKey);
+          title: director ? t("director.title") : t("canvas.workspace.newMediaTitle", { "0": ARTIFACT_LABELS[kind] }), content: null }, pending.createKey);
         pending.artifactId = artifact.id;
       }
       const index = canvas.data?.items.length ?? 0;
@@ -469,13 +471,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         type: "PLACE_ARTIFACT", itemId: pending.itemId, artifactId: pending.artifactId,
         x: point.x, y: point.y, ...DEFAULT_ARTIFACT_CARD_SIZES[kind], zIndex: index, locked: false,
       }]);
-      return { saved, itemId: pending.itemId };
+      return { saved, itemId: pending.itemId, director };
     },
     ...canvasMutationFeedback,
-    onSuccess: ({ saved, itemId }) => {
+    onSuccess: ({ saved, itemId, director }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
       setSelectedIds([itemId]);
+      if (director) setDirectorItem(saved.items.find((item) => item.id === itemId) ?? null);
       mediaProgress.current = null;
       setSaveState("saved");
     },
@@ -1285,10 +1288,20 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           canArrange={canvas.isSuccess && canvasConnections.isSuccess &&
             nodes.some((node) => !node.data.item.locked)} />
         <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={openDockCreationMenu}>
+          <Button variant="ghost" size="icon-sm" aria-label={t("director.title")} title={t("director.title")}
+            disabled={addBlankMedia.isPending || !canvas.isSuccess} onClick={() => {
+              const center = canvasCenter();
+              addBlankMedia.mutate({ kind: "IMAGE", point: { x: center.x - VISUAL_MEDIA_CARD_WIDTH / 2,
+                y: center.y - VISUAL_MEDIA_CARD_HEIGHT / 2 }, director: true });
+            }}><Cube /></Button>
           <CanvasSettingsMenu preferences={displaySettings.preferences} onPreferenceChange={displaySettings.setPreference}
             persistenceError={displaySettings.persistenceError} onRetrySave={displaySettings.retrySave}
             disabled={!displaySettings.ready} />
         </CanvasToolMenu>
+        {directorItem ? <DirectorWorkbench key={directorItem.id} projectId={projectId} artifactId={directorItem.artifact.id}
+          canvasItemId={directorItem.id} expectedVersion={directorItem.version} sourceVersionId={directorItem.selectedVersionId}
+          sourceTitle={directorItem.title} initialScene={directorItem.selectedVersion?.frozenInput?.directorScene}
+          onClose={() => setDirectorItem(null)} /> : null}
         <div className="canvas-gesture-hints" aria-hidden="true">
           <span><kbd>V</kbd>{t("canvas.tools.selectionTool")}</span>
           <span><kbd>Space</kbd>{t("canvas.tools.handTool")}</span>

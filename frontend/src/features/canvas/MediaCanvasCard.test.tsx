@@ -13,6 +13,12 @@ import { MediaCanvasCard } from "./MediaCanvasCard";
 import { imageFunctionSettings, imageFunctionsFixture, imageWorkflowCapability } from "../../test/imageFunctionsFixture";
 import { videoFunctionsFixture } from "../../test/videoFunctionsFixture";
 
+vi.mock("./DirectorWorkbench", () => ({ DirectorWorkbench: ({ canvasItemId,sourceVersionId,initialScene,onClose }: {
+  canvasItemId: string; sourceVersionId: string | null; initialScene?: unknown; onClose: () => void;
+}) => <div role="dialog" aria-label="3D 导演台" data-item={canvasItemId} data-source={sourceVersionId ?? ""}>
+  <output aria-label="saved-director-scene">{JSON.stringify(initialScene)}</output><button onClick={onClose}>Close director</button>
+</div> }));
+
 // React Flow positions the toolbar; this component test exercises its actual controls and media state.
 vi.mock("@xyflow/react", () => ({ Position: { Top: "top" },
   NodeToolbar: ({ children, isVisible, className }: {
@@ -264,6 +270,17 @@ describe("MediaCanvasCard", () => {
         reopenToolbar: () => card.setToolbarState(true),
       };
     }
+
+    it("keeps the director session mounted until it explicitly closes, including its saved scene", async () => {
+      const { closeToolbar,reopenToolbar } = showResultCard();
+      await clickControl(screen.getByRole("button", { name: "3D 导演台" }));
+      expect(screen.getByRole("dialog", { name: "3D 导演台" })).toHaveAttribute("data-source", "image-version");
+      closeToolbar();
+      expect(screen.getByRole("dialog", { name: "3D 导演台" })).toBeInTheDocument();
+      reopenToolbar();
+      await clickControl(screen.getByRole("button", { name: "Close director" }));
+      expect(screen.queryByRole("dialog", { name: "3D 导演台" })).not.toBeInTheDocument();
+    });
 
     it.each([
       ["表情调整", "表情调整"], ["图层分离", "图层分离"], ["画笔标注", "画笔标注"],

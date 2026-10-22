@@ -58,6 +58,8 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 2026-10-20 导演聊天窗口使用 shadcn CLI 新增 MessageScroller、Message 与 Bubble 源码，新增正式依赖 `@shadcn/react` 精确版本 0.3.1；沿用现有 Radix、Phosphor 与 React 19，不覆盖既有基础组件。MessageScroller 管理流式跟随、历史锚定和回到最新消息。源码与用法见 [shadcn 聊天组件](https://ui.shadcn.com/docs/components/radix/message-scroller)。验证覆盖聊天、窗口生命周期、画布集成、四语言、类型、lint、生产构建及使用合成数据的浏览器尺寸与交互；实际结果见开发清单，不等于真实模型验收。
 
+2026-10-22 本地 3D 导演台新增精确正式依赖 `three` 0.186.1 与开发期类型 `@types/three` 0.186.0，版本已写入 `frontend/package.json` 和锁文件。采用 Three.js 原生接口按需加载视口，沿用 React 19，不引入 React Three Fiber；人偶与道具为本地程序化几何体，不新增外部模型资产或远程运行服务。Three.js 使用 [MIT 许可证](https://github.com/mrdoob/three.js/blob/dev/LICENSE)。依赖解析、类型、243 项定向前端测试、完整 lint（含主题与四语言目录）、生产构建及真实 Chrome WebGL 验证通过。浏览器覆盖 1440×900、390×844、844×390，四种精确 PNG 尺寸、非空场景像素、控件可达、机位同步、上下文丢失后恢复与合成换视角受理；使用合成 API，未验证真实 Provider。Three.js 渲染代码保持独立动态分块，构建保留大分块与 Vite 未来配置加载提示。行为边界见 [ADR 0051](adr/0051-local-3d-director-workbench.md)。
+
 ## 容器镜像
 
 | 用途 | 精确镜像 | 多架构 digest |
