@@ -92,15 +92,6 @@ public interface ArtifactRepository {
     record ResourceResult(UUID versionId, UUID artifactId, UUID projectId, String projectName,
             String title, Artifact.Kind kind, int versionNo, JsonNode content, Instant createdAt) {}
 
-    /** 返回已授权历史 Run 仍被当前选用的非人工输出，供同会话下一轮冻结精确输入。 */
-    List<SelectedRunOutput> listSelectedRunOutputs(UUID ownerId, UUID projectId,
-            List<UUID> authorizedRunIds, List<UUID> selectedMediaVersionIds,
-            Set<UUID> explicitlyBoundArtifactIds, int limit);
-
-    /** Text uses its resource default and CAS; media retains each independently selected node version. */
-    record SelectedRunOutput(UUID artifactId, UUID selectedVersionId, Artifact.Kind kind,
-            String title, Long expectedVersion) {}
-
     /** 一次读取项目全部不可变版本，避免逐版本查询引用产生 N+1。 */
     List<ArtifactVersion> listProjectVersions(UUID projectId);
 

@@ -4,6 +4,7 @@ import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.UUID;
+import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,14 @@ public class CanvasItemQueryService {
                 .orElseThrow(this::notFound);
         if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
         return item;
+    }
+
+    /** Current display identities only, without loading Artifact bodies or media drafts. */
+    @Transactional(readOnly = true)
+    public List<CanvasItem> artifactItems(UUID ownerId, UUID projectId, UUID artifactId) {
+        return canvasItems.list(ownerId, projectId).stream()
+                .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
+                        && item.subjectId().equals(artifactId)).toList();
     }
 
     private ApiProblemException notFound() {

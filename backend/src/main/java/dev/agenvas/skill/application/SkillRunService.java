@@ -160,11 +160,11 @@ public class SkillRunService {
         if (choices.isEmpty()) return;
         Set<VersionRef> retained = retainedVersions(owner, project, agent.id());
         for (var choice : choices) {
-            frozen.add(freezeSkill(owner, project, agent, runId, choice, retained, context));
+            frozen.add(freezeSkill(owner, project, runId, choice, retained));
         }
     }
 
-    private ObjectNode freezeSkill(UUID owner, UUID project, AgentInstance agent, UUID runId, Choice choice, Set<VersionRef> retained, ObjectNode context) {
+    private ObjectNode freezeSkill(UUID owner, UUID project, UUID runId, Choice choice, Set<VersionRef> retained) {
         var version = selectedVersion(owner, choice, retained);
         ObjectNode snapshot=mapper.createObjectNode().put("schemaVersion",SkillContent.SCHEMA_VERSION);
         // Fixed images are private Skill references, never project versions or write permissions.
@@ -187,22 +187,13 @@ public class SkillRunService {
         for(var slot:version.bundle().inputSlots()) {
             Input input=requested.stream().filter(item -> item.alias().equals(slot.alias())).findFirst().orElse(null);
             if(input==null) { if(slot.required()) throw problem("SKILL_INPUT_REQUIRED",HttpStatus.UNPROCESSABLE_ENTITY,ApiMessage.of("api.skill-run.skill-input-required")); else continue; }
-            // The human-selected input is an exact project version, independent of retired
-            // assistant bindings. Only explicitly submitted Skill inputs extend this Run's reads.
+            // Keep the exact user mapping inside this Skill's frozen input catalogue.
+            // It is source material, not an assistant-owned artifact collection.
             var selected = artifacts.requireVersionById(owner, project, input.artifactVersionId());
             UUID artifactId = selected.artifactId();
             var view = artifacts.get(owner,project,artifactId);
             var artifact = view.artifact();
             if(artifact.kind()!=slot.kind()) throw problem("SKILL_INPUT_KIND_MISMATCH",HttpStatus.UNPROCESSABLE_ENTITY,ApiMessage.of("api.skill-run.skill-input-kind-mismatch"));
-            ArrayNode runInputs = (ArrayNode) context.path("bindings");
-            boolean alreadyFrozen = java.util.stream.StreamSupport.stream(runInputs.spliterator(), false)
-                    .anyMatch(item -> artifactId.toString().equals(item.path("artifactId").asText())
-                            && input.artifactVersionId().toString().equals(item.path("selectedVersionId").asText()));
-            if (!alreadyFrozen) {
-                runInputs.addObject().put("artifactId", artifactId.toString())
-                        .put("selectedVersionId", input.artifactVersionId().toString())
-                        .put("kind", artifact.kind().name()).put("title", artifact.title()).put("source", "SKILL_INPUT").put("skillVersionId", choice.skillVersionId().toString());
-            }
             inputs.addObject().put("alias",slot.alias()).put("artifactId",artifactId.toString())
                     .put("artifactVersionId",input.artifactVersionId().toString()).put("kind",slot.kind().name()).put("required",slot.required());
         }
@@ -227,8 +218,7 @@ public class SkillRunService {
         for (var binding : skills.getProjectBindings(owner,project)) {
             ObjectNode entry = versions.computeIfAbsent(binding.skillVersionId(),
                     ignored -> exportVersion(owner, binding.skillId(), binding.skillVersionId()));
-            ((ArrayNode) entry.path("agentBindings")).addObject()
-                    .put("agentId", binding.agentId().toString()).put("skillId", binding.skillId().toString())
+            entry.putObject("directorBinding").put("skillId", binding.skillId().toString())
                     .put("skillVersionId", binding.skillVersionId().toString()).put("position", binding.position());
         }
         return versions.values().stream().map(entry -> (JsonNode) entry).toList();
@@ -237,7 +227,7 @@ public class SkillRunService {
         ObjectNode safe = mapper.createObjectNode();
         safe.set("version", mapper.valueToTree(skills.getVersion(owner,skill,version)));
         safe.putObject("mapping").put("schemaVersion", SkillContent.SCHEMA_VERSION).putArray("assets");
-        safe.putArray("agentBindings");
+        safe.putNull("directorBinding");
         // Account-serving URLs are regenerated on import, never persisted in a backup.
         for (JsonNode item : safe.path("version").path("assets")) {
             if (item instanceof ObjectNode asset) { asset.remove("contentUrl"); asset.remove("thumbnailUrl"); }

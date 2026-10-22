@@ -42,7 +42,7 @@ public class ProjectSnapshotController {
                 ProjectResponse.from(snapshot.project()),
                 CanvasResponse.from(snapshot.canvas()),
                 snapshot.connections().stream().map(ConnectionView::from).toList(),
-                snapshot.agents().stream().map(AgentResponse::from).toList(),
+                snapshot.director() == null ? null : AgentResponse.from(snapshot.director()),
                 snapshot.activeRun() == null ? null : RunResponse.from(snapshot.activeRun()),
                 snapshot.activeTasks().stream().map(TaskResponse::from).toList(),
                 snapshot.unknownTasks().stream().map(TaskResponse::from).toList(),
@@ -55,7 +55,7 @@ public class ProjectSnapshotController {
      * @param project 项目设置与版本
      * @param canvas 画布内容投影
      * @param connections 固定精确图片版本的持久化画布连线
-     * @param agents Agent 配置投影
+     * @param director 项目唯一导演配置；未初始化时为空
      * @param activeRun 当前活动 Run；空值表示空闲
      * @param activeTasks 活动 Run 的任务状态
      * @param unknownTasks 未决外部提交任务
@@ -65,7 +65,7 @@ public class ProjectSnapshotController {
             ProjectResponse project,
             CanvasResponse canvas,
             List<ConnectionView> connections,
-            List<AgentResponse> agents,
+            AgentResponse director,
             RunResponse activeRun,
             List<TaskResponse> activeTasks,
             List<TaskResponse> unknownTasks,

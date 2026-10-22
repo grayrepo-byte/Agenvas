@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup,fireEvent,render,screen,waitFor } from "@testing-library/react";
+import { cleanup,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes,useLocation } from "react-router";
@@ -37,8 +37,8 @@ it("shows builtin content read-only with attribution and permits trying its fixe
   expect(screen.queryByRole("button",{name:"移入回收站"})).not.toBeInTheDocument();
   expect(screen.queryByRole("textbox",{name:"Skill 正文"})).not.toBeInTheDocument();
   expect(draftReads).toBe(0);
-  await userEvent.click(screen.getByRole("button",{name:"在 Agent 中试用"}));
-  expect(await screen.findByRole("dialog",{name:"在 Agent 中试用"})).toBeVisible();
+  await userEvent.click(screen.getByRole("button",{name:"在导演中试用"}));
+  expect(await screen.findByRole("dialog",{name:"在导演中试用"})).toBeVisible();
 });
 async function openEditor(){mount();await userEvent.click(await screen.findByRole("button",{name:"温暖手绘"}));return screen.findByRole("textbox",{name:"Skill 正文"});}
 describe("Skill editing and publishing",()=>{
@@ -70,7 +70,7 @@ describe("Skill editing and publishing",()=>{
     await screen.findByText("此 Skill 已在回收站。恢复后才能编辑、发布或试用；历史运行保留固定版本。");
     expect(body).toHaveValue(INITIAL.skillMd);expect(body).toHaveAttribute("readonly");
     expect(screen.queryByRole("button",{name:"发布版本"})).not.toBeInTheDocument();
-    expect(screen.queryByRole("button",{name:"在 Agent 中试用"})).not.toBeInTheDocument();
+    expect(screen.queryByRole("button",{name:"在导演中试用"})).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("radio",{name:"回收站"}));
     expect(await screen.findByRole("button",{name:"温暖手绘"})).toHaveAttribute("aria-pressed","true");
     await userEvent.click(screen.getByRole("button",{name:"恢复 Skill"}));
@@ -164,14 +164,13 @@ describe("Skill editing and publishing",()=>{
     await openEditor();await userEvent.click(screen.getByRole("button",{name:"发布版本"}));await screen.findByText("版本已发布");
     expect(publish).toHaveBeenCalledWith(expect.objectContaining({expectedDraftVersion:1,commandKey:expect.any(String)}));expect(queries).toBeGreaterThan(0);expect(run).not.toHaveBeenCalled();expect(await screen.findByText("这是不可变发布版本；编辑不会改变它。")).toBeInTheDocument();
   });
-  it("opens an Agent try selection without submitting a Run",async()=>{
+  it("opens the project director with a fixed Skill version without selecting an Agent or submitting a Run",async()=>{
     const run=vi.fn();server.use(http.post("/api/v1/projects/:id/runs",()=>{run();return HttpResponse.json({});}),
-      http.get("/api/v1/projects",()=>HttpResponse.json({items:[{id:"project-1",name:"Mock canvas",status:"ACTIVE"}],nextCursor:null})),
-      http.get("/api/v1/projects/project-1/agents",()=>HttpResponse.json({items:[{id:"agent-1",name:"Mock Agent"}]})));
+      http.get("/api/v1/projects",()=>HttpResponse.json({items:[{id:"project-1",name:"Mock canvas",status:"ACTIVE"}],nextCursor:null})));
     await openEditor();const native=document.querySelector<HTMLSelectElement>('select[aria-hidden="true"]');expect(native).not.toBeNull();fireEvent.change(native!,{target:{value:VERSION_ID}});
-    await userEvent.click(await screen.findByRole("button",{name:"在 Agent 中试用"}));
+    await userEvent.click(await screen.findByRole("button",{name:"在导演中试用"}));
     const project=screen.getByRole("combobox",{name:"项目"});await userEvent.click(project);await userEvent.click(await screen.findByRole("option",{name:"Mock canvas"}));
-    const agent=screen.getByRole("combobox",{name:/^Agent/});await waitFor(()=>expect(agent).toBeEnabled());await userEvent.click(agent);await userEvent.click(await screen.findByRole("option",{name:"Mock Agent"}));
-    await userEvent.click(screen.getByRole("button",{name:"打开 Agent"}));expect(await screen.findByTestId("destination")).toHaveTextContent("agentId=agent-1&skillId=skill-1&skillVersionId=skill-version-1");expect(run).not.toHaveBeenCalled();
+    expect(within(screen.getByRole("dialog",{name:"在导演中试用"})).getAllByRole("combobox")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button",{name:"打开创作导演"}));expect(await screen.findByTestId("destination")).toHaveTextContent("skillId=skill-1&skillVersionId=skill-version-1");expect(run).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.event.application.ProjectEventService;
+import dev.agenvas.canvas.application.CanvasItemQueryService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.idempotency.IdempotencyState;
@@ -34,9 +35,6 @@ public class ArtifactService {
     /** 手工创建产物的幂等命令保留时长。 */
     private static final Duration CREATE_KEY_RETENTION = Duration.ofHours(24);
 
-    /** 与每次 Run 的精确输入上限一致；显式输入在合并时优先。 */
-    private static final int MAX_CONVERSATION_INPUTS = 40;
-
     /** 确认项目归属、活跃状态和资源可见性。 */
     private final ProjectService projects;
     /** 保存稳定产物身份、版本和当前选择。 */
@@ -51,6 +49,7 @@ public class ArtifactService {
     private final ObjectMapper objectMapper;
     /** 生成版本创建及幂等过期时间。 */
     private final Clock clock;
+    private final CanvasItemQueryService canvasItems;
 
     /** 组装产物校验、媒体引用鉴权、不可变版本写入与事件事务。
      * @param projects 校验所有者和项目状态
@@ -68,7 +67,7 @@ public class ArtifactService {
             AssetService assets,
             ProjectEventService events,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock, CanvasItemQueryService canvasItems) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.contentValidator = contentValidator;
@@ -76,6 +75,7 @@ public class ArtifactService {
         this.events = events;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.canvasItems = canvasItems;
     }
 
     /**
@@ -328,28 +328,28 @@ public class ArtifactService {
                             artifactId,
                             expectedArtifactVersion,
                             requestedTitle,
-                            content, ArtifactVersion.CreatedByKind.USER, null, null);
+                            content, ArtifactVersion.CreatedByKind.USER, null);
                     return ProjectEventService.Change.changed(
                             revised, artifactEvent("artifact.version.created", revised));
                 })
                 .value();
     }
 
-    /** Agent 只能改写本 Run 冻结画布、显式输入或本轮创建的产物，引用版本也须处于可见范围。 */
+    /** 导演可修订当前画布任意文字节点，原子核对最新内容 CAS，不覆盖用户并发修改。 */
     @Transactional
     public ArtifactView reviseFromAgent(UUID ownerId, UUID projectId, UUID runId,
-            JsonNode contextSnapshot, UUID artifactId, long expectedArtifactVersion,
+            UUID artifactId, long expectedArtifactVersion,
             String requestedTitle, JsonNode content) {
         return events.recordChange(ownerId, projectId, () -> {
             ArtifactView revised = reviseLocked(ownerId, projectId, artifactId,
                     expectedArtifactVersion, requestedTitle, content,
-                    ArtifactVersion.CreatedByKind.AGENT, runId, contextSnapshot);
+                    ArtifactVersion.CreatedByKind.AGENT, runId);
             return ProjectEventService.Change.changed(revised,
                     artifactEvent("artifact.version.created", revised));
         }).value();
     }
 
-    /** 追加版本前核对 Run 可见范围、人工媒体选择和预期产物版本。 */
+    /** 追加版本前核对当前画布、节点锁定和预期产物版本。 */
     private ArtifactView reviseLocked(
             UUID ownerId,
             UUID projectId,
@@ -357,39 +357,21 @@ public class ArtifactService {
             long expectedArtifactVersion,
             String requestedTitle,
             JsonNode content, ArtifactVersion.CreatedByKind author,
-            UUID runId, JsonNode contextSnapshot) {
+            UUID runId) {
         projects.requireActiveProject(ownerId, projectId);
         Artifact current = artifacts.findForUpdate(ownerId, projectId, artifactId)
                 .orElseThrow(this::notFound);
         if (author == ArtifactVersion.CreatedByKind.AGENT) {
-            ArtifactVersion visible = requireAgentVisibleVersion(ownerId, projectId, runId,
-                    current.resourceDefaultVersionId(), contextSnapshot);
-            if (!runId.equals(visible.runId())) {
-                boolean unchangedBinding = false;
-                JsonNode bindings = contextSnapshot == null ? null
-                        : contextSnapshot.path("bindings");
-                if (bindings != null && bindings.isArray()) {
-                    for (JsonNode binding : bindings) {
-                        if (artifactId.toString().equals(binding.path("artifactId").asText())
-                                && current.resourceDefaultVersionId().toString().equals(
-                                        binding.path("selectedVersionId").asText())
-                                && binding.path("expectedVersion").canConvertToLong()
-                                && binding.path("expectedVersion").longValue()
-                                        == current.version()) {
-                            unchangedBinding = true;
-                            break;
-                        }
-                    }
-                }
-                unchangedBinding |= dev.agenvas.run.domain.RunCanvasScope.unchangedText(
-                        contextSnapshot, artifactId, current.resourceDefaultVersionId(), current.version());
-                if (!unchangedBinding) {
-                    throw versionConflict();
-                }
-            }
             if (current.kind() != Artifact.Kind.TEXT) {
                 throw new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
-                        ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"), ApiMessage.of("api.artifact-service.agents-cannot-modify-archived-media-content"), false);
+                        ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"),
+                        ApiMessage.of("api.artifact-service.agents-cannot-modify-archived-media-content"), false);
+            }
+            requireCanvasVersion(ownerId, projectId, current.resourceDefaultVersionId());
+            if (canvasItems.artifactItems(ownerId, projectId, artifactId).stream().anyMatch(item -> item.locked())) {
+                throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
+                        ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
+                        ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"), false);
             }
         }
         requireEditable(current);
@@ -403,8 +385,7 @@ public class ArtifactService {
         validateReferences(projectId, references);
         if (author == ArtifactVersion.CreatedByKind.AGENT) {
             for (ArtifactVersion.InputReference reference : references) {
-                requireAgentVisibleVersion(ownerId, projectId, runId,
-                        reference.versionId(), contextSnapshot);
+                requireCanvasVersion(ownerId, projectId, reference.versionId());
             }
         }
         validateMediaAsset(ownerId, projectId, current.kind(), content);
@@ -464,7 +445,7 @@ public class ArtifactService {
     public record ProjectExportVersions(List<Artifact> artifacts,
             List<ArtifactVersion> versions) {}
 
-    /** 解析所有者可访问的精确历史版本，供 Agent 绑定和任务输入快照使用。 */
+    /** 解析所有者可访问的精确历史版本，供显式输入和任务快照使用。 */
     @Transactional(readOnly = true)
     public ArtifactVersion requireVersion(
             UUID ownerId, UUID projectId, UUID artifactId, UUID versionId) {
@@ -498,59 +479,51 @@ public class ArtifactService {
         return requireMediaVersionForTask(ownerId, projectId, versionId, Artifact.Kind.IMAGE);
     }
 
-    /**
-     * 将同会话已终结 Run 的当前选用输出投影为下一轮的精确输入。
-     * 调用方须先按会话筛选历史 Run；此方法不接受来自模型或客户端的 Run 集合。
-     * 媒体选用版本由画布应用边界提供，不跟随资源默认版本；文字仍固定默认版本和 CAS。
-     * 文字后续人工修订仍由既有版本/CAS 校验检查；历史消息本身不授予修改权。
-     */
+    /** 当前画布节点的当前精确内容可读；不按来源、旧会话或受理时的节点名单授权。 */
     @Transactional(readOnly = true)
-    public List<ConversationInput> conversationInputs(UUID ownerId, UUID projectId,
-            List<UUID> authorizedPriorRunIds, List<UUID> selectedMediaVersionIds,
-            Set<UUID> explicitlyBoundArtifactIds) {
-        projects.get(ownerId, projectId);
-        return artifacts.listSelectedRunOutputs(ownerId, projectId,
-                authorizedPriorRunIds, selectedMediaVersionIds, explicitlyBoundArtifactIds,
-                MAX_CONVERSATION_INPUTS).stream()
-                .map(output -> new ConversationInput(output.artifactId(), output.selectedVersionId(),
-                        output.kind(), output.title(), output.expectedVersion()))
-                .toList();
+    public ArtifactVersion requireCanvasVersion(UUID ownerId, UUID projectId, UUID versionId) {
+        ArtifactVersion version = requireVersionById(ownerId, projectId, versionId);
+        if (!currentCanvasVersion(ownerId, projectId, version)) throw inputScopeDenied();
+        return version;
     }
 
-    /** 会话继承的不可变版本及文字冻结时的 CAS；媒体不提供产物修订 CAS，也不包含字节。 */
-    public record ConversationInput(UUID artifactId, UUID selectedVersionId,
-            Artifact.Kind kind, String title, Long expectedVersion) {}
-
-    /** 限制 Agent 只能读取冻结画布、显式 Run 输入（含历史绑定）或本轮输出的精确版本。 */
+    /** 当前画布是执行时权限来源；显式 Skill 输入只额外授予该精确版本的读取权限。 */
     @Transactional(readOnly = true)
-    public ArtifactVersion requireAgentVisibleVersion(UUID ownerId, UUID projectId,
-            UUID runId, UUID versionId, JsonNode contextSnapshot) {
-        projects.get(ownerId, projectId);
-        ArtifactRepository.VersionTarget target = artifacts.findVersionTarget(projectId, versionId)
-                .orElseThrow(this::notFound);
-        ArtifactVersion version = artifacts.findVersion(projectId, target.artifactId(), versionId)
-                .orElseThrow(this::notFound);
-        boolean createdInRun = runId.equals(version.runId())
-                && version.createdByKind() != ArtifactVersion.CreatedByKind.USER;
-        JsonNode bindings = contextSnapshot == null ? null : contextSnapshot.get("bindings");
-        boolean explicitlyBound = false;
-        if (bindings != null && bindings.isArray()) {
-            for (JsonNode binding : bindings) {
-                if (versionId.toString().equals(binding.path("selectedVersionId").asText())
-                        && target.artifactId().toString()
-                                .equals(binding.path("artifactId").asText())) {
-                    explicitlyBound = true;
-                    break;
+    public ArtifactVersion requireAgentReadableVersion(UUID ownerId, UUID projectId,
+            JsonNode runSnapshot, UUID versionId) {
+        ArtifactVersion version = requireVersionById(ownerId, projectId, versionId);
+        if (currentCanvasVersion(ownerId, projectId, version)) return version;
+        for (JsonNode skill : runSnapshot.path("creativeSkills")) {
+            for (JsonNode input : skill.path("inputs")) {
+                if (version.artifactId().toString().equals(input.path("artifactId").asText())
+                        && versionId.toString().equals(input.path("artifactVersionId").asText())) {
+                    return version;
                 }
             }
         }
-        boolean onCanvas = dev.agenvas.run.domain.RunCanvasScope.containsVersion(
-                contextSnapshot, target.artifactId(), versionId);
-        if (!createdInRun && !explicitlyBound && !onCanvas) {
-            throw new ApiProblemException(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED",
-                    ApiMessage.of("api.artifact-service.input-exceeds-authorization-range"), ApiMessage.of("api.artifact-service.agents-can-only-reference-the-output-of-this-round-or"), false);
-        }
-        return version;
+        throw inputScopeDenied();
+    }
+
+    /** 可用于编辑令牌和模型图像续接的当前画布精确版本判定，不接受 Skill 只读输入。 */
+    @Transactional(readOnly = true)
+    public boolean isCurrentCanvasVersion(UUID ownerId, UUID projectId, UUID versionId) {
+        return currentCanvasVersion(ownerId, projectId, requireVersionById(ownerId, projectId, versionId));
+    }
+
+    private boolean currentCanvasVersion(UUID ownerId, UUID projectId, ArtifactVersion version) {
+        UUID versionId = version.id();
+        Artifact artifact = requireArtifact(ownerId, projectId, version.artifactId());
+        boolean currentText = artifact.kind() == Artifact.Kind.TEXT
+                && versionId.equals(artifact.resourceDefaultVersionId());
+        return canvasItems.artifactItems(ownerId, projectId, artifact.id()).stream()
+                .anyMatch(item -> currentText || (artifact.kind() != Artifact.Kind.TEXT
+                        && versionId.equals(item.selectedVersionId())));
+    }
+
+    private ApiProblemException inputScopeDenied() {
+        return new ApiProblemException(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED",
+                ApiMessage.of("api.artifact-service.input-exceeds-authorization-range"),
+                ApiMessage.of("api.artifact-service.input-exceeds-authorization-range"), false);
     }
 
     /** 明确选择资源库默认版本；CanvasItem 的局部选择不经过此入口。 */

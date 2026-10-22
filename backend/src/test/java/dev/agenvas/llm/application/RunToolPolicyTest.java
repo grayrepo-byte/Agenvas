@@ -4,62 +4,69 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Model-facing schemas are observable public policy behavior, including old Run recovery. */
+/** Model definitions and durable execution share one explicit current allowlist. */
 class RunToolPolicyTest {
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final ToolRegistry registry = new ToolRegistry();
     @Test void ordinaryReadToolsStayAvailableWithoutSkillResources() {
         assertThat(RunToolPolicy.current(false, false)).contains("read_project_summary", "read_selection", "read_artifacts")
-                .doesNotContain("read_skill_resource");
-        assertThat(RunToolPolicy.current(true, true)).contains("read_skill_resource");
+                .doesNotContain("read_skill", "read_skill_resource", "read_skill_asset");
+        assertThat(RunToolPolicy.current(true, true, true)).contains("read_skill", "read_skill_resource", "read_skill_asset");
     }
-    @Test void historicalRunsKeepTheirOriginalTools() {
-        assertThat(names(mapper.createObjectNode().put("systemPromptVersion",2)))
-                .contains("create_text","read_artifacts")
-                .doesNotContain("read_skill_resource","propose_media_generation");
-        assertThat(names(mapper.createObjectNode().put("systemPromptVersion",3)))
-                .contains("propose_media_generation").doesNotContain("read_skill_resource");
+    @Test void retiredAndMissingPoliciesFailClosed() {
+        var policy = mapper.createObjectNode().put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
+                .put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        policy.putArray("allowedTools").add("read_artifacts");
+        assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
+        for (int version = 1; version < RunToolPolicy.CURRENT_VERSION; version++) {
+            policy.put("toolPolicyVersion", version);
+            assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
+        }
+    }
+    @Test void mismatchedSnapshotAndPromptProtocolsCannotReuseCurrentToolPermissions() {
+        var policy = policy();
+        policy.putArray("allowedTools").add("read_artifacts");
+        policy.put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION - 1);
+        assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
+        policy.put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
+                .put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION - 1);
+        assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
     }
     @Test void pinnedAllowlistIsSharedWithDefinitionsAndCallbacksCannotExecute() {
-        var policy=mapper.createObjectNode().put("systemPromptVersion",4).put("toolPolicyVersion",1);
+        var policy = policy();
         policy.putArray("allowedTools").add("read_skill_resource");
         assertThat(names(policy)).containsExactly("read_skill_resource");
         assertThat(RunToolPolicy.allowed(policy)).containsExactly("read_skill_resource");
         assertThatThrownBy(() -> registry.modelDefinitions(policy).getFirst().call("{}"))
                 .isInstanceOf(IllegalStateException.class);
-    }
-    @Test void unsupportedOrUnpinnedPoliciesFailClosed() {
-        var policy=mapper.createObjectNode().put("systemPromptVersion",4);
+        policy.withArray("allowedTools").add("read_skill_resource");
         assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
-        policy.put("toolPolicyVersion",1).putArray("allowedTools").add("run_shell");
+        policy.putArray("allowedTools").add("run_shell");
         assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
     }
-    @Test void canvasToolsAndExistingMediaTargetsAreOnlyAvailableToTheNewPolicy() {
-        var historical = mapper.createObjectNode().put("systemPromptVersion", 11).put("toolPolicyVersion", 3);
-        historical.putArray("allowedTools").add("propose_media_generation");
-        var oldDefinition = registry.modelDefinitions(historical).getFirst().getToolDefinition();
-        assertThat(oldDefinition.inputSchema()).doesNotContain("canvasItemId");
-        historical.withArray("allowedTools").add("read_canvas");
-        assertThatThrownBy(() -> registry.modelDefinitions(historical)).isInstanceOf(IllegalStateException.class);
-        var current = mapper.createObjectNode().put("systemPromptVersion", 12).put("toolPolicyVersion", 4);
-        current.set("allowedTools", mapper.valueToTree(RunToolPolicy.CURRENT));
-        assertThat(names(current)).contains("read_canvas", "manage_canvas_node", "update_media_draft");
-        for (var callback : registry.modelDefinitions(current)) {
+    @Test void currentSchemasHaveCanvasTargetsAndNoAgentOutputGroups() {
+        var policy = policy();
+        policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.CURRENT));
+        assertThat(names(policy)).contains("read_canvas", "manage_canvas_node", "update_media_draft")
+                .doesNotContain("place_artifacts");
+        for (var callback : registry.modelDefinitions(policy)) {
             var definition = callback.getToolDefinition();
             assertThat(mapper.readTree(definition.inputSchema()).path("type").asText()).isEqualTo("object");
-            if (definition.name().equals("place_artifacts")) assertThat(definition.inputSchema()).doesNotContain("group", "AGENT_OUTPUT");
+            assertThat(definition.inputSchema()).doesNotContain("AGENT_OUTPUT");
+            assertThat(definition.description()).doesNotContain("frozenSelectedVersionId", "bound to this Run");
             if (definition.name().equals("propose_media_generation")) assertThat(definition.inputSchema()).contains("canvasItemId", "expectedDraftVersion", "expectedItemVersion");
+            if (definition.name().equals("read_skill_resource")) assertThat(definition.inputSchema()).contains("skillVersionId");
         }
     }
-    @Test void onlyHistoricalPlacementUsesTheRetiredOutputGroupToken() {
-        var historical = mapper.createObjectNode().put("systemPromptVersion", 11).put("toolPolicyVersion", 3);
-        historical.putArray("allowedTools").add("place_artifacts");
-        assertThat(registry.modelDefinitions(historical).getFirst().getToolDefinition().inputSchema())
-                .contains("AGENT_OUTPUT", "group");
+    private tools.jackson.databind.node.ObjectNode policy() {
+        return mapper.createObjectNode().put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
+                .put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION)
+                .put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
     }
-    private List<String> names(tools.jackson.databind.JsonNode policy) {
+    private List<String> names(JsonNode policy) {
         return registry.modelDefinitions(policy).stream().map(callback -> callback.getToolDefinition().name()).toList();
     }
 }

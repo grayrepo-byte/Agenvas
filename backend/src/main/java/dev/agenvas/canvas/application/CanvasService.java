@@ -115,40 +115,6 @@ public class CanvasService {
                 .toList();
     }
 
-    /** Freeze authorization and exact node selections without copying immutable content or media bytes.
-     * The directory is paged by the Agent tools; it is never inlined into the first model request.
-     */
-    @Transactional(readOnly = true)
-    public ObjectNode freezeRunScope(UUID ownerId, UUID projectId) {
-        ObjectNode scope = objectMapper.createObjectNode().put("version", dev.agenvas.run.domain.RunCanvasScope.VERSION);
-        var items = scope.putArray("items");
-        for (CanvasEntry entry : list(ownerId, projectId)) {
-            if (entry.item().subjectType() != CanvasItem.SubjectType.ARTIFACT) continue;
-            CanvasItem item = entry.item();
-            var artifact = entry.artifact().artifact();
-            var node = items.addObject().put("itemId", item.id().toString())
-                    .put("artifactId", item.subjectId().toString()).put("kind", artifact.kind().name())
-                    .put("title", item.title()).put("itemVersion", item.version())
-                    .put("artifactVersion", artifact.version()).put("locked", item.locked())
-                    .put("x", item.x()).put("y", item.y()).put("width", item.width())
-                    .put("height", item.height()).put("zIndex", item.zIndex());
-            ArtifactVersion selected = artifact.kind() == Artifact.Kind.TEXT
-                    ? entry.artifact().resourceDefaultVersion() : entry.selectedVersion();
-            if (selected != null) node.put("selectedVersionId", selected.id().toString());
-            if (artifact.kind() != Artifact.Kind.TEXT) {
-                node.set("mediaDraft", objectMapper.valueToTree(mediaDrafts.get(ownerId, projectId, item.id())));
-            }
-        }
-        return scope;
-    }
-
-    /** Reads only the trusted node selections needed to freeze continuation inputs. */
-    @Transactional(readOnly = true)
-    public List<UUID> selectedMediaVersionIds(UUID ownerId, UUID projectId) {
-        projects.get(ownerId, projectId);
-        return canvasItems.selectedMediaVersionIds(ownerId, projectId);
-    }
-
     /** Creates an independent media work branch from one fully persisted source card. */
     @Transactional
     public DuplicateResult duplicate(UUID ownerId, UUID projectId, UUID sourceItemId,
@@ -499,47 +465,12 @@ public class CanvasService {
         return new OutputPlacements(List.copyOf(created), List.copyOf(alreadyPresent));
     }
 
-    /** Select exact versions without confusing sibling nodes that share one artifact identity. */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public OutputPlacements placeArtifactVersionsWithinChange(UUID ownerId, UUID projectId,
-            List<ArtifactVersionPlacement> versions, UUID groupId) {
-        if (versions == null || versions.stream().anyMatch(java.util.Objects::isNull)) {
-            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
-        }
-        if (versions.stream().anyMatch(requested -> requested.artifactId() == null)) {
-            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
-        }
-        requireDistinctPlacements(versions.stream().map(ArtifactVersionPlacement::versionId).toList());
-        projects.requireActiveProject(ownerId, projectId);
-        List<CanvasItem> created = new ArrayList<>();
-        List<CanvasItem> alreadyPresent = new ArrayList<>();
-        for (ArtifactVersionPlacement requested : versions) {
-            ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, requested.artifactId());
-            artifacts.requireVersion(ownerId, projectId, requested.artifactId(), requested.versionId());
-            if (artifact.artifact().kind() == Artifact.Kind.TEXT && (artifact.resourceDefaultVersion() == null
-                    || !requested.versionId().equals(artifact.resourceDefaultVersion().id()))) {
-                var message = ApiMessage.of("api.creative-artifact-tool-service.product-version-has-changed");
-                throw new ApiProblemException(HttpStatus.CONFLICT, "ARTIFACT_VERSION_CONFLICT", message, message, false);
-            }
-            CanvasItem current = canvasItems.list(ownerId, projectId).stream()
-                    .filter(item -> item.subjectId().equals(requested.artifactId())
-                            && (artifact.artifact().kind() == Artifact.Kind.TEXT || requested.versionId().equals(item.selectedVersionId())))
-                    .findFirst().orElse(null);
-            if (current != null) alreadyPresent.add(current);
-            else created.add(placeGeneratedArtifact(ownerId, projectId, artifact,
-                    artifact.artifact().kind() == Artifact.Kind.TEXT ? null : requested.versionId(), groupId));
-        }
-        return new OutputPlacements(List.copyOf(created), List.copyOf(alreadyPresent));
-    }
-
     private void requireDistinctPlacements(List<UUID> ids) {
         if (ids == null || ids.isEmpty() || ids.size() > 6 || ids.stream().anyMatch(java.util.Objects::isNull)
                 || new HashSet<>(ids).size() != ids.size()) {
-            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
+            throw validation(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         }
     }
-
-    public record ArtifactVersionPlacement(UUID artifactId, UUID versionId) {}
 
     /** Created nodes and unchanged reused nodes are reported separately for the tool ledger. */
     public record OutputPlacements(List<CanvasItem> created, List<CanvasItem> alreadyPresent) {}

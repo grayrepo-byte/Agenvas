@@ -12,14 +12,13 @@ import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 
 const SETTINGS_KEY = ["settings", "prompts"] as const;
-const PRESETS_KEY = ["agent-presets"] as const;
 const NEW_PROMPT = "new";
 const MAX_NAME_LENGTH = 120;
 const MAX_DESCRIPTION_LENGTH = 1000;
 const MAX_CONTENT_LENGTH = 8000;
 const KEY_PATTERN = "[a-z][a-z0-9._-]{0,119}";
 type Draft = Pick<PromptDefinition, "key" | "kind" | "name" | "description" | "content" | "version">;
-const blankDraft: Draft = { key: "", kind: "AGENT", name: "", description: "", content: "", version: 1 };
+const blankDraft: Draft = { key: "", kind: "FUNCTION", name: "", description: "", content: "", version: 1 };
 
 export function PromptManagementSection({ enabled }: { enabled: boolean }) {
   useLocale(); const id = useId(); const client = useQueryClient();
@@ -35,20 +34,20 @@ export function PromptManagementSection({ enabled }: { enabled: boolean }) {
   const value = draft ?? record;
   const isNew = selection === NEW_PROMPT;
   const save = useMutation({ mutationFn: ({ selection, draft }: { selection: string; draft: Draft }) => {
-    const { key, kind, name, description, content, version } = draft;
-    return selection === NEW_PROMPT ? createPrompt({ key, kind, name, description, content })
+    const { key, name, description, content, version } = draft;
+    return selection === NEW_PROMPT ? createPrompt({ key, name, description, content })
       : updatePrompt(selection, { name, description, content, expectedVersion: version });
   }, onSuccess: (saved, input) => {
     client.setQueryData(SETTINGS_KEY, { items: input.selection === NEW_PROMPT
       ? [...(settings.data?.items ?? []), saved] : (settings.data?.items ?? []).map((row) => row.id === saved.id ? saved : row) });
     setDrafts((old) => { const next = { ...old }; delete next[input.selection]; return next; });
-    setSelectedId(saved.id); void client.invalidateQueries({ queryKey: PRESETS_KEY });
+    setSelectedId(saved.id);
   } });
   const remove = useMutation({ mutationFn: ({ id, version }: { id: string; version: number }) => deletePrompt(id, version),
     onSuccess: (_, input) => {
       client.setQueryData(SETTINGS_KEY, { items: (settings.data?.items ?? []).filter((row) => row.id !== input.id) });
       setDrafts((old) => { const next = { ...old }; delete next[input.id]; return next; });
-      setSelectedId(null); setConfirmDelete(false); void client.invalidateQueries({ queryKey: PRESETS_KEY });
+      setSelectedId(null); setConfirmDelete(false);
     } });
   const error = save.error ?? remove.error ?? settings.error;
   if (error instanceof ApiError && error.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
@@ -93,9 +92,7 @@ export function PromptManagementSection({ enabled }: { enabled: boolean }) {
             <Input id={`${id}-key`} required maxLength={MAX_NAME_LENGTH} pattern={KEY_PATTERN} disabled={disabled || !isNew} value={value.key} onChange={(event) => change({ key: event.target.value })} />
             <FieldDescription>{t("prompts.keyHint")}</FieldDescription></Field>
           <Field><FieldLabel htmlFor={`${id}-kind`}>{t("prompts.kind")}</FieldLabel>
-            <Select id={`${id}-kind`} disabled={disabled || !isNew} value={value.kind} onChange={(event) => { const kind = event.target.value; if (kind === "AGENT" || kind === "FUNCTION") change({ kind }); }}>
-              <option value="AGENT">{t("prompts.agent")}</option><option value="FUNCTION">{t("prompts.function")}</option>
-            </Select></Field>
+            <Input id={`${id}-kind`} readOnly value={value.kind === "AGENT" ? t("prompts.agent") : t("prompts.function")} /></Field>
           <Field><FieldLabel htmlFor={`${id}-name`}>{t("prompts.name")}</FieldLabel>
             <Input id={`${id}-name`} required maxLength={MAX_NAME_LENGTH} disabled={disabled} value={value.name} onChange={(event) => change({ name: event.target.value })} /></Field>
           <Field className="prompt-management-field-wide"><FieldLabel htmlFor={`${id}-description`}>{t("prompts.description")}</FieldLabel>

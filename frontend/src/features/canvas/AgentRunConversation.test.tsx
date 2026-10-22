@@ -249,7 +249,7 @@ describe("AgentRunConversation", () => {
 
   it("keeps failed, canceled, unknown and queued task outcomes distinct", async () => {
     mockConversation([
-      task({ id: "failed-planning", kind: "AGENT_TURN", stepKey: "planning-failed", status: "FAILED", errorCode: "MODEL_TURN_LIMIT_REACHED" }),
+      task({ id: "failed-planning", kind: "AGENT_TURN", stepKey: "planning-failed", status: "FAILED", errorCode: "MODEL_OUTPUT_INVALID" }),
       task({ id: "failed-image", kind: "IMAGE_GENERATION", stepKey: "shot-failed", status: "FAILED", errorCode: "PROVIDER_TIMEOUT" }),
       task({ id: "canceled-video", kind: "VIDEO_GENERATION", stepKey: "shot-canceled", status: "CANCELED", cancelRequested: true }),
       task({ id: "unknown-image", kind: "IMAGE_GENERATION", stepKey: "shot-unknown", status: "UNKNOWN" }),
@@ -259,7 +259,7 @@ describe("AgentRunConversation", () => {
 
     expect(await screen.findAllByText("生成图片")).toHaveLength(2);
     expect(taskSummary("模型调用").getByText("失败")).toBeInTheDocument();
-    expect(screen.getByText(/MODEL_TURN_LIMIT_REACHED/)).toBeInTheDocument();
+    expect(screen.getByText(/MODEL_OUTPUT_INVALID/)).toBeInTheDocument();
     expect(taskSummary("生成图片").getByText("失败")).toBeInTheDocument();
     expect(taskSummary("生成视频").getByText("已取消")).toBeInTheDocument();
     expect(taskSummary("生成图片", 1).getByText("未知")).toBeInTheDocument();

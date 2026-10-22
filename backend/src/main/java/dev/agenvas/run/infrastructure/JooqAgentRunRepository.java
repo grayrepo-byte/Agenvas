@@ -14,7 +14,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
@@ -26,18 +25,6 @@ import tools.jackson.databind.ObjectMapper;
 /** 负责 Run 与幂等记录的 PostgreSQL 读写；所有资源查询都联结项目校验所有者。 */
 @Repository
 public class JooqAgentRunRepository implements AgentRunRepository {
-
-    @Override
-    public Set<UUID> filterAgentRunIds(UUID ownerId, UUID projectId, UUID agentId, Set<UUID> candidateIds) {
-        if (candidateIds.isEmpty()) return Set.of();
-        return Set.copyOf(dsl.select(AGENT_RUN.ID).from(AGENT_RUN)
-                .join(PROJECT).on(PROJECT.ID.eq(AGENT_RUN.PROJECT_ID))
-                .where(PROJECT.OWNER_ID.eq(ownerId))
-                .and(AGENT_RUN.PROJECT_ID.eq(projectId))
-                .and(AGENT_RUN.AGENT_INSTANCE_ID.eq(agentId))
-                .and(AGENT_RUN.ID.in(candidateIds))
-                .fetch(AGENT_RUN.ID));
-    }
 
     @Override
     public List<BlockedRunCandidate> blockedRecoveryCandidates(UUID afterId, int limit) {
@@ -169,26 +156,6 @@ public class JooqAgentRunRepository implements AgentRunRepository {
     @Override
     public Optional<AgentRun> find(UUID ownerId, UUID projectId, UUID runId) {
         return find(ownerId, projectId, runId, false);
-    }
-
-    /** 按创建时间与 ID 组成稳定游标倒序分页，避免同时间记录被跳过。 */
-    @Override
-    public List<AgentRun> list(UUID ownerId, UUID projectId, UUID agentId,
-            Instant beforeCreatedAt, UUID beforeId, int limit) {
-        Condition boundary = PROJECT.OWNER_ID.eq(ownerId)
-                .and(AGENT_RUN.PROJECT_ID.eq(projectId))
-                .and(AGENT_RUN.AGENT_INSTANCE_ID.eq(agentId));
-        if (beforeCreatedAt != null) {
-            boundary = boundary.and(DSL.row(AGENT_RUN.CREATED_AT, AGENT_RUN.ID)
-                    .lt(utc(beforeCreatedAt), beforeId));
-        }
-        return dsl.select(AGENT_RUN.fields())
-                .from(AGENT_RUN)
-                .join(PROJECT).on(PROJECT.ID.eq(AGENT_RUN.PROJECT_ID))
-                .where(boundary)
-                .orderBy(AGENT_RUN.CREATED_AT.desc(), AGENT_RUN.ID.desc())
-                .limit(limit)
-                .fetch(record -> map(record.into(AGENT_RUN)));
     }
 
     @Override

@@ -20,9 +20,9 @@ class ToolBatchExecutionServiceTest {
         var context = new TrustedToolContext(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         var lease = mock(Task.class);
         var project = mapper.createObjectNode().put("status", "SUCCEEDED");
-        project.putArray("data").addObject().put(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY, true);
+        project.putArray("data").addObject().put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
         var skill = mapper.createObjectNode().put("status", "SUCCEEDED");
-        skill.putObject("data").put(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY, true);
+        skill.putObject("data").put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
         when(tools.executeLeased(context, 0, "project", lease, "worker")).thenReturn(project);
         when(tools.executeLeased(context, 0, "skill", lease, "worker")).thenReturn(skill);
         assertThatThrownBy(() -> new ToolBatchExecutionService(tools).executeLeased(context, 0,

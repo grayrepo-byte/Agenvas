@@ -21,15 +21,15 @@ function snapshot(activeRunId: string | null = null): ProjectSnapshot {
   return {
     project: { id: projectId, name: "Recovered", aspectRatio: "LANDSCAPE_16_9",
       status: "ACTIVE", version: 0, createdAt, updatedAt: createdAt },
-    canvas: { items: [] }, connections: [], agents: [], activeTasks: [], unknownTasks: [], snapshotSeq: 42,
+    canvas: { items: [] }, connections: [], director: null, activeTasks: [], unknownTasks: [], snapshotSeq: 42,
     activeRun: activeRunId ? {
       id: activeRunId, projectId, agentInstanceId: "agent-1", conversationId: "conversation-1",
       conversationTurn: 1, status: "RUNNING", instruction: "Create", profileVersion: 1,
       nextStepIndex: 0, version: 0, createdAt, updatedAt: createdAt,
       contextSnapshot: { agentId: "agent-1", agentVersion: 0, profileKey: "creator",
         profileVersion: 1,  },
-      policySnapshot: { schemaVersion: 2, modelConfigSource: "MOCK", modelConfigVersion: 0,
-        maxModelTurns: 1, maxToolExecutions: 1 },
+      policySnapshot: { schemaVersion: 7, toolPolicyVersion: 5, systemPromptVersion: 13, allowedTools: ["read_canvas"], modelConfigSource: "MOCK", modelConfigVersion: 0,
+        maxModelTurns: null, maxToolExecutions: null },
     } : null,
   };
 }
@@ -68,19 +68,19 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("project cache callbacks", () => {
   it.each([
-    { type: "artifact.created", beforeRead: ["agent-outputs", "canvas", "media-draft"], afterRead: [] },
-    { type: "artifact.version.created", beforeRead: ["agent-outputs", "canvas", "media-draft"], afterRead: [] },
-    { type: "artifact.resource_default_version.changed", beforeRead: ["agent-outputs", "canvas", "media-draft"], afterRead: [] },
-    { type: "canvas.items.changed", beforeRead: ["agent-outputs", "canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: [] },
-    { type: "canvas.connection.created", beforeRead: ["agent-outputs", "canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: [] },
-    { type: "canvas.connection.deleted", beforeRead: ["agent-outputs", "canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: [] },
-    { type: "agent.instance.changed", beforeRead: ["canvas", "snapshot", "agents"], afterRead: [] },
+    { type: "artifact.created", beforeRead: ["canvas", "media-draft"], afterRead: [] },
+    { type: "artifact.version.created", beforeRead: ["canvas", "media-draft"], afterRead: [] },
+    { type: "artifact.resource_default_version.changed", beforeRead: ["canvas", "media-draft"], afterRead: [] },
+    { type: "canvas.items.changed", beforeRead: ["canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: [] },
+    { type: "canvas.connection.created", beforeRead: ["canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: [] },
+    { type: "canvas.connection.deleted", beforeRead: ["canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: [] },
+    { type: "agent.instance.changed", beforeRead: ["canvas", "snapshot"], afterRead: [] },
     { type: "agent.conversation.changed", beforeRead: ["snapshot", ...historyPrefixes], afterRead: [] },
-    { type: "agent.run.changed", beforeRead: ["agent-outputs", "snapshot", ...historyPrefixes], afterRead: [] },
+    { type: "agent.run.changed", beforeRead: ["snapshot", ...historyPrefixes], afterRead: [] },
     { type: "project.changed", beforeRead: ["projects"], afterRead: [] },
     { type: "media.draft.changed", beforeRead: [], afterRead: ["media-draft", "canvas-connections"] },
     { type: "usage.changed", beforeRead: [], afterRead: ["project-usage"] },
-    { type: "task.changed", beforeRead: ["agent-outputs"], afterRead: [] },
+    { type: "task.changed", beforeRead: [], afterRead: [] },
     { type: "asset.ready", beforeRead: [], afterRead: [] },
     { type: "llm.turn.requested", beforeRead: ["snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
     { type: "llm.turn.recorded", beforeRead: ["snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
@@ -113,7 +113,7 @@ describe("project cache callbacks", () => {
     tracked.clear();
     tracked.callbacks.onChange(event("canvas.item.selected_version.changed", payload));
     expect(tracked.calls()).toEqual([
-      ...invalidations("agent-outputs", "canvas-media-versions", "canvas"),
+      ...invalidations("canvas-media-versions", "canvas"),
       ...scopedKeys.map((key): CacheCall => ["invalidate", key]), readSnapshot,
     ]);
     expect(tracked.queryClient.getQueryState(cardDraftKey)?.isInvalidated).toBe(scopedKeys.length > 0);
@@ -130,7 +130,7 @@ describe("project cache callbacks", () => {
     const tracked = trackCache(activeRunId);
     tracked.callbacks.onChange(event("task.status.changed", { artifactId, runId: "other-run" }));
     expect(tracked.calls()).toEqual([
-      ...invalidations("agent-outputs", "canvas-media-versions", "snapshot", ...historyPrefixes), readSnapshot,
+      ...invalidations("canvas-media-versions", "snapshot", ...historyPrefixes), readSnapshot,
       ...invalidations(...(artifactId ? ["canvas", "media-draft"] : [])),
       ...(activeRunId ? [["invalidate", ["run-tasks", projectId, activeRunId]]] : []),
       ...invalidations("direct-media-tasks", "direct-media-queue"),
@@ -140,13 +140,13 @@ describe("project cache callbacks", () => {
   it("refreshes task details for the cached active Run without status-only views", () => {
     const tracked = trackCache("active-run");
     tracked.callbacks.onChange(event("task.changed", { artifactId: "artifact-1", runId: "other-run" }));
-    expect(tracked.calls()).toEqual([...invalidations("agent-outputs"), readSnapshot, ["invalidate", ["run-tasks", projectId, "active-run"]]]);
+    expect(tracked.calls()).toEqual([readSnapshot, ["invalidate", ["run-tasks", projectId, "active-run"]]]);
   });
 
   it("writes the four snapshot projections before refreshing missing history and auxiliary views", () => {
     const tracked = trackCache("old-run");
     const refreshedPrefixes = [
-      ...historyPrefixes, "run-tasks", "direct-media-tasks", "media-draft", "canvas-media-versions", "project-usage", "agent-outputs",
+      ...historyPrefixes, "run-tasks", "direct-media-tasks", "media-draft", "canvas-media-versions", "project-usage",
     ];
     const refreshedKeys = refreshedPrefixes.map((prefix) => [prefix, projectId, "scope-1"]);
     const unchangedKeys = [

@@ -13,7 +13,6 @@ import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.domain.AgentRun;
-import dev.agenvas.run.domain.RunCanvasScope;
 import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
@@ -92,7 +91,7 @@ public class AgentMediaApprovalService {
             int stepIndex, String toolCallId, String arguments) {
         if (!run.id().equals(context.runId()) || !run.projectId().equals(context.projectId())
                 || !run.userId().equals(context.ownerId()) || stepIndex < 0
-                || run.modelTurnLimitReached(stepIndex + 1) || operationId == null
+                || operationId == null
                 || toolCallId == null || toolCallId.isBlank()
                 || toolCallId.length() > MAX_TOOL_CALL_ID_LENGTH) {
             throw invalid("proposal-scope");
@@ -127,11 +126,9 @@ public class AgentMediaApprovalService {
                                 request.kind(), request.title(), null));
                     }
                 }
-                UUID outputGroupId = RunCanvasScope.enabled(run.contextSnapshot()) ? null
-                        : uuid(run.contextSnapshot().path("outputGroupId"));
                 var placed = created.isEmpty() ? new CanvasService.OutputPlacements(List.of(), List.of())
                         : canvas.placeArtifactsWithinChange(context.ownerId(), context.projectId(),
-                                created.stream().map(view -> view.artifact().id()).toList(), outputGroupId);
+                                created.stream().map(view -> view.artifact().id()).toList(), null);
                 ObjectNode frozenRequest = mapper.createObjectNode().put("schemaVersion", SCHEMA_VERSION);
                 frozenRequest.put("argumentHash", Sha256.hex(arguments));
                 JsonNode skillSource = freezeSkillSource(run);
@@ -171,7 +168,7 @@ public class AgentMediaApprovalService {
                             request.mediaInputs(), List.of(), createdByProposal ? null : initial.styleId());
                     for (MediaDraft.MediaInput reference : saved.mediaInputs()) {
                         CanvasItem source = canvas.ensureMediaReferenceWithinChange(context.ownerId(),
-                                context.projectId(), reference.artifactId(), reference.versionId(), outputGroupId, item.id());
+                                context.projectId(), reference.artifactId(), reference.versionId(), null, item.id());
                         saved = connections.connectPreparedMediaInputWithinChange(context.ownerId(),
                                 context.projectId(), source.id(), item.id(), reference.versionId(), saved.version()).draft();
                     }
@@ -350,13 +347,6 @@ public class AgentMediaApprovalService {
         Long expectedItemVersion = null;
         Long expectedDraftVersion = null;
         if (canvasItemId != null) {
-            if (!RunCanvasScope.enabled(run.contextSnapshot())
-                    || (!RunCanvasScope.containsItem(run.contextSnapshot(), canvasItemId)
-                        && !toolLedger.hasCreatedCanvasItem(context.projectId(), run.id(), canvasItemId))) {
-                throw new ApiProblemException(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED",
-                        ApiMessage.of("api.agent-media-approval.invalid-title"),
-                        ApiMessage.of("api.agent-media-approval.invalid-detail", "target-outside-canvas"), false);
-            }
             expectedItemVersion = nonNegativeLong(object, "expectedItemVersion");
             expectedDraftVersion = nonNegativeLong(object, "expectedDraftVersion");
         } else if (object.has("expectedItemVersion") || object.has("expectedDraftVersion")) {
@@ -389,18 +379,12 @@ public class AgentMediaApprovalService {
                 try { role = MediaDraft.InputRole.valueOf(text(reference, "role", MAX_TITLE_LENGTH, false)); }
                 catch (IllegalArgumentException failure) { throw invalid("role"); }
                 // Model-selected IDs never widen the Run's explicit exact-version context.
-                artifacts.requireAgentVisibleVersion(context.ownerId(), context.projectId(),
-                        context.runId(), versionId, run.contextSnapshot());
+                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(),
+                        run.contextSnapshot(), versionId);
                 inputs.add(new MediaDraftService.SaveMediaInput(versionId, role, INPUT_COLOR));
             }
         }
         var activeSkills = RunSkills.activated(run, toolLedger.skillReads(run.projectId(), run.id()));
-        // GUIDE restrictions apply across selected Skills, even before activation.
-        for (JsonNode selected : RunSkills.available(run)) for (JsonNode reference : selected.path("assets")) {
-            boolean present = inputs.stream().anyMatch(media -> media.versionId().toString().equals(reference.path("artifactVersionId").asText()));
-            boolean activated = activeSkills.stream().anyMatch(skill -> skill.path("skillVersionId").equals(selected.path("skillVersionId")));
-            if (present && ("GUIDE".equals(reference.path("usage").asText()) || !activated)) throw invalid("skill-reference-input");
-        }
         if (!activeSkills.isEmpty() && activeSkills.stream().noneMatch(skill ->
                 java.util.stream.StreamSupport.stream(skill.path("outputKinds").spliterator(), false)
                         .anyMatch(allowed -> kind.name().equals(allowed.asText())))) throw invalid("skill-output-kind");
@@ -408,17 +392,7 @@ public class AgentMediaApprovalService {
             boolean outputAllowed = false;
             for (JsonNode allowed : skill.path("outputKinds")) if (kind.name().equals(allowed.asText())) outputAllowed = true;
             if (!outputAllowed) {
-                if (run.policySnapshot().path("toolPolicyVersion").asInt(1) < RunToolPolicy.PROGRESSIVE_VERSION) throw invalid("skill-output-kind");
                 continue; // A combined catalogue can contain Skills for different output kinds.
-            }
-            for (JsonNode reference : skill.path("assets")) {
-                // New fixed Skill images are LLM context, not Provider inputs; user input slots below still apply.
-                if (dev.agenvas.skill.domain.SkillContent.AssetDelivery.LLM_CONTEXT.name().equals(skill.path("assetDelivery").asText())) continue;
-                boolean present = inputs.stream().anyMatch(media -> media.versionId().toString().equals(reference.path("artifactVersionId").asText()));
-                if (("GUIDE".equals(reference.path("usage").asText()) && present)
-                        || ("PROVIDER_REFERENCE".equals(reference.path("usage").asText()) && reference.path("required").asBoolean() && !present)) {
-                    throw invalid("skill-reference-input");
-                }
             }
             for (JsonNode required : skill.path("inputs")) {
                 if (required.path("required").asBoolean() && "IMAGE".equals(required.path("kind").asText())
@@ -433,10 +407,6 @@ public class AgentMediaApprovalService {
 
     /** Existing destinations retain their identity, results and history, including on rejection. */
     private CanvasItem requireExistingTarget(TrustedToolContext context, AgentRun run, OutputRequest request) {
-        if (!RunCanvasScope.containsItem(run.contextSnapshot(), request.canvasItemId())
-                && !toolLedger.hasCreatedCanvasItem(context.projectId(), run.id(), request.canvasItemId())) {
-            throw invalid("target-scope");
-        }
         CanvasItem item = existingItem(context.ownerId(), context.projectId(), request.canvasItemId());
         if (item.locked() || item.version() != request.expectedItemVersion()) {
             throw conflict("AGENT_MEDIA_APPROVAL_STALE", "target-changed");
@@ -499,8 +469,6 @@ public class AgentMediaApprovalService {
             for (JsonNode resource : source.path("resources")) if (used.contains(resource.path("path").asText())) resources.add(resource.deepCopy());
             sources.add(frozen);
         }
-        // Preserve the persisted single-Skill representation for historical Run recovery.
-        if (run.policySnapshot().path("toolPolicyVersion").asInt(1) < RunToolPolicy.PROGRESSIVE_VERSION) return sources.get(0);
         ObjectNode result = mapper.createObjectNode().put("schemaVersion", 2);
         result.set("skills", sources);
         return result;

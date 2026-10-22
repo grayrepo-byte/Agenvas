@@ -98,7 +98,8 @@ class AgentMediaApprovalServiceTest {
                 .put("bundleHash", "synthetic-bundle-hash").put("skillMd", "x".repeat(32 * 1024));
         skill.putArray("resources").addObject().put("path", "guide.md").put("content", "PRIVATE_RESOURCE_BODY");
         for (var target : approval.targets().path("outputs")) {
-            ((ObjectNode) target.path("preview")).set("creativeSkill", skill.deepCopy());
+            var source = mapper.createObjectNode().put("schemaVersion", 2); source.putArray("skills").add(skill.deepCopy());
+            ((ObjectNode) target.path("preview")).set("creativeSkill", source);
         }
         when(approvals.findByToolCall(projectId, runId, 1, "call-media")).thenReturn(Optional.of(approval));
         when(approvals.find(projectId, runId, approvalId)).thenReturn(Optional.of(approval));
@@ -114,7 +115,7 @@ class AgentMediaApprovalServiceTest {
         assertThat(result.at("/data/outputs/0/artifactId").asText()).isEqualTo(artifactId.toString());
         assertThat(result.path("awaitingMedia").asBoolean()).isTrue();
         assertThat(service.get(ownerId, projectId, runId, approvalId).outputs())
-                .allSatisfy(output -> assertThat(output.preview().path("creativeSkill")).isEqualTo(skill));
+                .allSatisfy(output -> assertThat(output.preview().at("/creativeSkill/skills/0")).isEqualTo(skill));
         verifyNoInteractions(mediaTasks, artifacts, drafts, canvas);
     }
 
@@ -305,26 +306,8 @@ class AgentMediaApprovalServiceTest {
     }
 
     @Test
-    void historicalRunsCannotProposeGenerationIntoAnUnboundCanvasDestination() {
-        AgentRun run = run(AgentRun.Status.RUNNING, 1);
-        when(runs.get(ownerId, projectId, runId)).thenReturn(run);
-        String arguments = "{\"outputs\":[{\"kind\":\"IMAGE\",\"title\":\"Image\",\"prompt\":\"Draw\","
-                + "\"canvasItemId\":\"" + canvasItemId + "\",\"expectedItemVersion\":0,\"expectedDraftVersion\":0}]}";
-        assertThatThrownBy(() -> service.propose(new TrustedToolContext(ownerId, projectId, runId), run,
-                UUID.randomUUID(), 1, "call-existing", arguments))
-                .isInstanceOfSatisfying(ApiProblemException.class, problem -> {
-                    assertThat(problem.code()).isEqualTo("INPUT_SCOPE_DENIED");
-                    assertThat(problem.status()).isEqualTo(HttpStatus.FORBIDDEN);
-                });
-        verifyNoInteractions(artifacts, drafts, canvas, mediaTasks);
-        verify(approvals, never()).insert(any());
-    }
-
-    @Test
     void canvasDestinationsRequireBothLayoutAndDraftCompareAndSetVersions() {
         AgentRun run = run(AgentRun.Status.RUNNING, 1);
-        ((ObjectNode) run.contextSnapshot()).putObject("canvasScope").put("version", 1)
-                .putArray("items").addObject().put("itemId", canvasItemId.toString());
         when(runs.get(ownerId, projectId, runId)).thenReturn(run);
         String arguments = "{\"outputs\":[{\"kind\":\"IMAGE\",\"title\":\"Image\",\"prompt\":\"Draw\","
                 + "\"canvasItemId\":\"" + canvasItemId + "\",\"expectedItemVersion\":0}]}";
@@ -541,8 +524,7 @@ class AgentMediaApprovalServiceTest {
         when(runs.get(ownerId, projectId, runId)).thenReturn(run);
         when(approvals.findByToolCall(projectId, runId, 1, "call-media"))
                 .thenReturn(Optional.empty());
-        when(artifacts.requireAgentVisibleVersion(ownerId, projectId, runId, referenceId,
-                run.contextSnapshot())).thenThrow(new ApiProblemException(HttpStatus.FORBIDDEN,
+        when(artifacts.requireAgentReadableVersion(ownerId, projectId, run.contextSnapshot(), referenceId)).thenThrow(new ApiProblemException(HttpStatus.FORBIDDEN,
                         "INPUT_SCOPE_DENIED", ApiMessage.of("api.agent-media-approval.invalid-title"),
                         ApiMessage.of("api.agent-media-approval.invalid-detail", "reference"), false));
 
@@ -571,7 +553,6 @@ class AgentMediaApprovalServiceTest {
 
     private AgentRun run(AgentRun.Status status, int nextStep) {
         var snapshot = mapper.createObjectNode();
-        snapshot.putObject("canvasScope").put("version", 1).putArray("items");
         return new AgentRun(runId, projectId, UUID.randomUUID(), UUID.randomUUID(), 1,
                 ownerId, status, "Generate media", snapshot, mapper.createObjectNode(),
                 1, nextStep, 0, NOW, NOW, status.terminal() ? NOW : null);

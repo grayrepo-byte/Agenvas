@@ -3,7 +3,7 @@ import { ArrowCounterClockwise,ArrowUpRight,BookOpen,CaretRight,Copy,FileText,Fl
 import { useEffect,useRef,useState,type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { ApiError,HTTP_STATUS,copySkill,copySkillVersion,createSkill,getSkill,getSkillDraft,getSkillOperation,getSkillVersion,
-  listAgents,listProjects,listSkills,listSkillVersions,publishSkillVersion,retrySkillOperation,saveSkillDraft,skillAssetThumbnailUrl,updateSkill,
+  listProjects,listSkills,listSkillVersions,publishSkillVersion,retrySkillOperation,saveSkillDraft,skillAssetThumbnailUrl,updateSkill,
   type CreativeSkill,type LibraryEntry,type SaveSkillDraftRequest,type SkillDraft,type SkillOperation,type SkillVersion } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -218,16 +218,14 @@ function SkillEditorForm({skill,initial,onSkillChanged}:{skill:CreativeSkill;ini
 function TrySkillDialog({version,onClose}:{version:SkillVersion;onClose:()=>void}) {
   const navigate = useNavigate();
   const [projectId,setProjectId] = useState("");
-  const [agentId,setAgentId] = useState("");
   const projects = useInfiniteQuery({queryKey:["projects","skill-try"],initialPageParam:undefined as string | undefined,queryFn:({pageParam})=>listProjects({cursor:pageParam}),getNextPageParam:(page)=>page.nextCursor??undefined});
-  const agents = useQuery({queryKey:["agents",projectId],queryFn:()=>listAgents(projectId),enabled:Boolean(projectId)});
   return <Dialog title={t("skills.try")} description={t("skills.tryHint")} className="skills-dialog skills-try-dialog" onClose={onClose} onSubmit={(event)=>{
-    event.preventDefault();if (!projectId || !agentId)return;
-    const params=new URLSearchParams({agentId,skillId:version.skillId,skillVersionId:version.id});navigate(`/projects/${projectId}?${params}`);
-  }} footer={<Button type="submit" disabled={!projectId || !agentId}>{t("skills.openAgent")}</Button>}>
-    <FieldGroup><Field><FieldLabel htmlFor="skill-try-project">{t("skills.project")}</FieldLabel><Select id="skill-try-project" value={projectId} onChange={(event)=>{setProjectId(event.target.value);setAgentId("");}}><option value="">{t("skills.project")}</option>{projects.data?.pages.flatMap((page)=>page.items).filter((project)=>project.status==="ACTIVE").map((project)=><option key={project.id} value={project.id}>{project.name}</option>)}</Select></Field><Field><FieldLabel htmlFor="skill-try-agent">{t("skills.agent")}</FieldLabel><Select id="skill-try-agent" disabled={!projectId || agents.isPending} value={agentId} onChange={(event)=>setAgentId(event.target.value)}><option value="">{t("skills.agent")}</option>{agents.data?.items.map((agent)=><option key={agent.id} value={agent.id}>{agent.name}</option>)}</Select></Field></FieldGroup>
+    event.preventDefault();if (!projectId)return;
+    const params=new URLSearchParams({skillId:version.skillId,skillVersionId:version.id});navigate(`/projects/${projectId}?${params}`);
+  }} footer={<Button type="submit" disabled={!projectId}>{t("skills.openAgent")}</Button>}>
+    <FieldGroup><Field><FieldLabel htmlFor="skill-try-project">{t("skills.project")}</FieldLabel><Select id="skill-try-project" value={projectId} onChange={(event)=>setProjectId(event.target.value)}><option value="">{t("skills.project")}</option>{projects.data?.pages.flatMap((page)=>page.items).filter((project)=>project.status==="ACTIVE").map((project)=><option key={project.id} value={project.id}>{project.name}</option>)}</Select></Field></FieldGroup>
     {projects.hasNextPage ? <Button onClick={()=>void projects.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
-    {projects.error || agents.error ? <SkillError error={(projects.error ?? agents.error)!} onRefresh={()=>{void projects.refetch();if(projectId)void agents.refetch();}} /> : null}
+    {projects.error ? <SkillError error={projects.error} onRefresh={()=>void projects.refetch()} /> : null}
     <p>{t("skills.fees")}</p>
   </Dialog>;
 }

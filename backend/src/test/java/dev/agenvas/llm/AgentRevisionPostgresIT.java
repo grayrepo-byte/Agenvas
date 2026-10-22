@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -10,7 +12,6 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
-import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
@@ -69,7 +70,6 @@ class AgentRevisionPostgresIT {
     @Autowired private ProjectService projects;
     @Autowired private AgentInstanceService agents;
     @Autowired private CanvasService canvas;
-    @Autowired private CanvasConnectionService connections;
     @Autowired private AgentRunService runs;
     @Autowired private ArtifactService artifacts;
     @Autowired private AssetService assets;
@@ -89,7 +89,7 @@ class AgentRevisionPostgresIT {
         ArtifactService.ArtifactView unbound = artifacts.create(owner.userId(), project.id(),
                 Artifact.Kind.TEXT, "Unbound", privateContent);
         gateway.unboundId = unbound.artifact().id();
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
                 "Make and revise a draft");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create then revise", "revision-run").run();
@@ -108,12 +108,12 @@ class AgentRevisionPostgresIT {
         assertThat(artifacts.listVersions(owner.userId(), project.id(), createdId))
                 .hasSize(2);
         assertThatThrownBy(() -> artifacts.reviseFromAgent(owner.userId(), project.id(),
-                run.id(), run.contextSnapshot(), createdId, 0, null, privateContent))
+                run.id(), createdId, 0, null, privateContent))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(failure -> ((ApiProblemException) failure).code())
                 .isEqualTo("ARTIFACT_VERSION_CONFLICT");
         assertThatThrownBy(() -> artifacts.reviseFromAgent(owner.userId(), project.id(),
-                run.id(), run.contextSnapshot(), unbound.artifact().id(), 100,
+                run.id(), unbound.artifact().id(), 100,
                 null, privateContent))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(failure -> ((ApiProblemException) failure).code())
@@ -126,7 +126,7 @@ class AgentRevisionPostgresIT {
                 "Bound frame prompt");
         ArtifactService.ArtifactView image = artifacts.create(owner.userId(),
                 mediaProject.id(), Artifact.Kind.IMAGE, "Bound frame", mediaContent);
-        AgentInstance mediaAgent = AgentImageInputFixture.connect(agents, canvas, connections,
+        AgentInstance mediaAgent = AgentImageInputFixture.withCanvasImage(agents, canvas,
                 owner.userId(), mediaProject.id(), image.artifact().id(),
                 image.resourceDefaultVersion().id(), "Media creator", "Revise the bound frame");
         AgentRun mediaRun = runs.create(owner.userId(), mediaProject.id(), mediaAgent.id(),
@@ -136,7 +136,7 @@ class AgentRevisionPostgresIT {
                 UUID.fromString(mediaContent.path("assetId").asText()),
                 "Stolen rewrite of the archived frame");
         assertThatThrownBy(() -> artifacts.reviseFromAgent(owner.userId(), mediaProject.id(),
-                mediaRun.id(), mediaRun.contextSnapshot(), image.artifact().id(), 0,
+                mediaRun.id(), image.artifact().id(), 0,
                 null, mediaRewrite))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(failure -> ((ApiProblemException) failure).code())
@@ -166,30 +166,24 @@ class AgentRevisionPostgresIT {
                 Project.AspectRatio.LANDSCAPE_16_9);
         ArtifactService.ArtifactView bound = artifacts.create(owner.userId(),
                 boundProject.id(), Artifact.Kind.TEXT, "Bound draft", privateContent);
-        AgentInstance boundAgent = agents.create(owner.userId(), boundProject.id(),
+        AgentInstance boundAgent = configureDirector(agents, owner.userId(), boundProject.id(),
                 "Bound creator", "Revise the bound draft");
         canvas.apply(owner.userId(), boundProject.id(), List.of(new CanvasService.PlaceArtifact(UUID.randomUUID(), bound.artifact().id(),
                 java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, new java.math.BigDecimal("320"), new java.math.BigDecimal("200"), 0, null, false)));
         AgentRun boundRun = runs.create(owner.userId(), boundProject.id(), boundAgent.id(),
                 "Revise", "bound-revision-run").run();
-        assertThat(boundRun.contextSnapshot().path("canvasScope").path("items").path(0)
-                .path("artifactVersion").longValue()).isZero();
         ObjectNode changed = privateContent.deepCopy();
         changed.put("text", "Agent update");
         ArtifactService.ArtifactView boundRevision = artifacts.reviseFromAgent(owner.userId(),
-                boundProject.id(), boundRun.id(), boundRun.contextSnapshot(),
+                boundProject.id(), boundRun.id(),
                 bound.artifact().id(), 0, null, changed);
         assertThat(boundRevision.resourceDefaultVersion().runId()).isEqualTo(boundRun.id());
         assertThat(boundRevision.artifact().version()).isEqualTo(1);
         changed.put("text", "User update");
         artifacts.revise(owner.userId(), boundProject.id(), bound.artifact().id(),
                 1, null, changed);
-        assertThatThrownBy(() -> artifacts.reviseFromAgent(owner.userId(),
-                boundProject.id(), boundRun.id(), boundRun.contextSnapshot(),
-                bound.artifact().id(), 2, null, privateContent))
-                .isInstanceOf(ApiProblemException.class)
-                .extracting(failure -> ((ApiProblemException) failure).code())
-                .isEqualTo("INPUT_SCOPE_DENIED");
+        assertThat(artifacts.reviseFromAgent(owner.userId(), boundProject.id(), boundRun.id(),
+                bound.artifact().id(), 2, null, privateContent).artifact().version()).isEqualTo(3);
     }
 
     /** 一张已归档图片产物的完整生成型正文；Agent 只能读取，不能改写。 */

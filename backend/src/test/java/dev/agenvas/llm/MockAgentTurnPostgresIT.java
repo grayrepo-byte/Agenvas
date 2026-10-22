@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.agenvas.agent.application.AgentInstanceService;
@@ -57,7 +59,7 @@ class MockAgentTurnPostgresIT {
         AdminPrincipal owner = identities.setup("mock-turn-admin", "mock-turn-password-123");
         Project project = projects.create(owner.userId(), "Mock turn project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        UUID agent = agents.create(owner.userId(), project.id(), "Creator",
+        UUID agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
                 "Write a short line").id();
         AgentRun run = runs.create(owner.userId(), project.id(), agent,
                 "写一句话", "mock-turn-run").run();

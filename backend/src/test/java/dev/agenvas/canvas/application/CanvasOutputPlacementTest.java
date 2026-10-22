@@ -140,23 +140,6 @@ class CanvasOutputPlacementTest {
     }
 
     @Test
-    void exactMediaPlacementReusesOnlyTheMatchingSiblingSelection() {
-        UUID first = UUID.randomUUID(), second = UUID.randomUUID();
-        CanvasItem original = new CanvasItem(sourceId, project, CanvasItem.SubjectType.ARTIFACT, artifactId,
-                second, "Source", decimal("0"), decimal("0"), decimal("300"), decimal("300"),
-                0, groupId, false, 0, NOW, NOW);
-        when(items.list(owner, project)).thenReturn(List.of(original));
-        var requested = new CanvasService.ArtifactVersionPlacement(artifactId, first);
-        var result = canvas.placeArtifactVersionsWithinChange(owner, project, List.of(requested), null);
-        assertThat(result.created()).singleElement().satisfies(item -> {
-            assertThat(item.selectedVersionId()).isEqualTo(first);
-            assertThat(item.groupId()).isNull();
-        });
-        assertThat(result.alreadyPresent()).isEmpty();
-        verify(items, never()).selectVersion(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
-    }
-
-    @Test
     void identityPlacementReusesAnExistingOrdinaryNodeRegardlessOfItsGroup() {
         CanvasItem original = source("0", "300", "300");
         when(items.list(owner, project)).thenReturn(List.of(original));

@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -84,7 +86,7 @@ class ConversationMemoryPostgresIT {
     void publicHistoryIsFrozenIntoRealMessagesAndTruncatedWithoutLeakingPrivateProtocol() {
         AdminPrincipal owner = identities.setup("memory-admin", "memory-password-123");
         Project project = projects.create(owner.userId(), "Memory project", Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "制作短片");
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "制作短片");
         AgentRun first = runs.create(owner.userId(), project.id(), agent.id(),
                 "最初背景：品牌叫青山，主角是一只狐狸。", "memory-first").run();
         assertThat(worker.runOnce("memory-first-worker")).isEqualTo(1);
@@ -134,6 +136,9 @@ class ConversationMemoryPostgresIT {
 
         AgentRun second = runs.create(owner.userId(), project.id(), agent.id(),
                 "把刚才的背景改成夜晚。", "memory-second").run();
+        assertThat(second.contextSnapshot().has("bindings")).isFalse();
+        assertThat(second.contextSnapshot().has("canvasScope")).isFalse();
+        assertThat(second.contextSnapshot().has("outputGroupId")).isFalse();
         assertThat(second.contextSnapshot().path("conversationMemory"))
                 .isEqualTo(mapper.valueToTree(memory));
         List<Message> request = initialContext.assemble(owner.userId(), project.id(), second.id());

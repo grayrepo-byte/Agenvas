@@ -12,6 +12,8 @@ export type PromptReference = SaveMediaDraftRequest["mediaInputs"][number] & {
 };
 const MENTION_MENU_MIN_TOP = 30;
 const MENTION_MENU_OFFSET = 8;
+const MENTION_MENU_MARGIN = 16;
+const MENTION_MENU_HEIGHT_LIMIT = 300;
 const MENTION_ICON_SIZE = 28;
 const PROMPT_DELIMITERS = new RegExp(`(${MENTION_MARKER}|\n)`, "u");
 
@@ -87,7 +89,9 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
   const editorRef = useRef<HTMLDivElement>(null);
   const triggerRange = useRef<Range | null>(null);
   const presentationRef = useRef("");
-  const [menu, setMenu] = useState<{ left: number; top: number; selected: number } | null>(null);
+  const [menu, setMenu] = useState<{
+    left: number; top: number; selected: number; upward?: boolean; maxHeight?: number;
+  } | null>(null);
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -127,11 +131,29 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
     if (references.length && range?.collapsed && container?.nodeType === Node.TEXT_NODE
         && (container.textContent ?? "").slice(offset - 1, offset) === "@") {
       triggerRange.current = range.cloneRange();
-      const bounds = editor.getBoundingClientRect();
+      // Workspace menus escape the scrolling editor into its screen-sized overlay.
+      const overlay = editor.closest(".workspace-media-editor");
+      const editorBounds = editor.getBoundingClientRect();
+      const bounds = overlay?.getBoundingClientRect() ?? editorBounds;
       const caret = typeof range.getBoundingClientRect === "function"
-        ? range.getBoundingClientRect() : bounds;
+        ? range.getBoundingClientRect() : editorBounds;
+      let top = Math.max(MENTION_MENU_MIN_TOP, caret.bottom - bounds.top + MENTION_MENU_OFFSET);
+      let upward = false;
+      let maxHeight: number | undefined;
+      if (overlay) {
+        const canvas = editor.closest(".react-flow")?.getBoundingClientRect();
+        const viewportTop = canvas?.height ? canvas.top : 0;
+        const viewportBottom = canvas?.height ? canvas.bottom : window.innerHeight;
+        const below = Math.max(0, viewportBottom - MENTION_MENU_MARGIN - caret.bottom - MENTION_MENU_OFFSET);
+        const above = Math.max(0, caret.top - viewportTop - MENTION_MENU_MARGIN - MENTION_MENU_OFFSET);
+        // Only the suggestion menu changes direction; the editor stays anchored below the node.
+        upward = below < MENTION_MENU_HEIGHT_LIMIT && above > below;
+        maxHeight = Math.min(MENTION_MENU_HEIGHT_LIMIT, upward ? above : below);
+        top = upward ? caret.top - bounds.top - MENTION_MENU_OFFSET
+          : caret.bottom - bounds.top + MENTION_MENU_OFFSET;
+      }
       setMenu({ left: Math.max(0, caret.left - bounds.left),
-        top: Math.max(MENTION_MENU_MIN_TOP, caret.bottom - bounds.top + MENTION_MENU_OFFSET), selected: 0 });
+        top, selected: 0, upward, maxHeight });
     } else {
       triggerRange.current = null;
       setMenu(null);
@@ -189,7 +211,8 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
       aria-label={label} aria-multiline="true" aria-readonly={readOnly} contentEditable={!readOnly} suppressContentEditableWarning
       data-placeholder={placeholder} onInput={update} onKeyDown={onKeyDown} />
     {menu && !readOnly ? <Command shouldFilter={false} value={references[menu.selected]?.versionId ?? ""} className="media-draft-mention-menu" aria-label={t("media.mentions.imageReferences")}
-      style={{ left: menu.left, top: menu.top }}>
+      style={{ left: menu.left, top: menu.top, maxHeight: menu.maxHeight,
+        transform: menu.upward ? "translateY(-100%)" : undefined }}>
       <CommandList label={t("media.mentions.imageReferences")}><CommandGroup heading="Image">
       {references.map((reference, index) => <CommandItem key={reference.versionId} value={reference.versionId}
         role="option" aria-selected={index === menu.selected}

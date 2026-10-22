@@ -104,7 +104,7 @@ public class Public extends SchemaImpl {
     public final AgentConversation AGENT_CONVERSATION = AgentConversation.AGENT_CONVERSATION;
 
     /**
-     * 项目助手配置及会话身份，不作为画布节点或持久素材授权
+     * 项目唯一导演配置；会话、Run 和 Skill 通过稳定身份关联，配置修改使用 CAS
      */
     public final AgentInstance AGENT_INSTANCE = AgentInstance.AGENT_INSTANCE;
 

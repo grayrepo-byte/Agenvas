@@ -150,7 +150,9 @@ class SpringAiStreamingHttpTest {
                     .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
                     .apiKey("synthetic-unusable-key").model(MODEL_ID).maxRetries(0)
                     .timeout(Duration.ofSeconds(TIMEOUT_SECONDS)).build()).build();
-            var policy = mapper.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
+            var policy = mapper.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION)
+                    .put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
+                    .put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
             policy.set("allowedTools", mapper.valueToTree(RunToolPolicy.current(false, false)));
             UserMessage user = UserMessage.builder().text("Inspect the synthetic image")
                     .media(new Media(MimeTypeUtils.IMAGE_PNG, new ByteArrayResource(png))).build();

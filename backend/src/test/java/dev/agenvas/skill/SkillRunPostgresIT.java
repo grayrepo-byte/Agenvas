@@ -1,5 +1,7 @@
 package dev.agenvas.skill;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -15,7 +17,6 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
-import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.export.application.ProjectExportManifestService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
@@ -109,7 +110,6 @@ class SkillRunPostgresIT {
     @Autowired ArtifactService artifacts;
     @Autowired AssetService assets;
     @Autowired CanvasService canvas;
-    @Autowired CanvasConnectionService connections;
     @Autowired LibraryService library;
     @Autowired SkillService skills;
     @Autowired SkillRunService skillRuns;
@@ -155,7 +155,7 @@ class SkillRunPostgresIT {
         var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS,
                 List.of(new SkillRunService.Choice(skill.id(), version, List.of())));
         AgentRun run = runs.create(owner.userId(), scenario.project().id(), scenario.agent().id(),
-                "Read the guide and its required checks", "progressive-resource-run", 0L, List.of(),
+                "Read the guide and its required checks", "progressive-resource-run", scenario.agent().version(), List.of(),
                 null, null, null, null, null, selection).run();
         gateway.prepare(run.id(), List.of(
                 toolCall("paged-main", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", version))),
@@ -338,7 +338,7 @@ class SkillRunPostgresIT {
         var source = artifacts.create(owner.userId(), project.id(), Artifact.Kind.TEXT, "原文 · 两章合成小说",
                 mapper.valueToTree(Map.of("format", "PLAIN_TEXT", "text", original)));
         UUID sourceVersion = source.resourceDefaultVersion().id();
-        var agent = agents.create(owner.userId(), project.id(), "原著分析", "使用卡片保存章节分析与覆盖范围");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "原著分析", "使用卡片保存章节分析与覆盖范围");
         canvas.apply(owner.userId(), project.id(), List.of(                new CanvasService.PlaceArtifact(UUID.randomUUID(), source.artifact().id(), new BigDecimal("400"), BigDecimal.ZERO,
                         new BigDecimal("320"), new BigDecimal("420"), 0, null, false)));
         var skill = skills.list(owner.userId(), "short-drama-novel-analyze", false, null).items().getFirst();
@@ -440,7 +440,8 @@ class SkillRunPostgresIT {
                 .satisfies(summary -> assertThat(summary.assets()).hasSize(1));
         assertNoSkillProjectCopies(scenario, 1);
         assertThat(gateway.calls).hasValue(callsBefore);
-        assertThat(runs.list(owner.userId(), scenario.project().id(), scenario.agent().id(), null, null).items()).isEmpty();
+        assertThat(jdbc.sql("select count(*) from agent_run where project_id = :project")
+                .param("project", scenario.project().id()).query(Long.class).single()).isZero();
         assertThat(tasks.listActiveDirect(owner.userId(), scenario.project().id())).isEmpty();
         assertProblem("AGENT_VERSION_CONFLICT", () -> skillRuns.saveBinding(owner.userId(), scenario.project().id(), scenario.agent().id(), scenario.agent().version(), List.of(), "stale-agent-binding"));
     }
@@ -453,14 +454,16 @@ class SkillRunPostgresIT {
                 List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(),
                         List.of(new SkillRunService.Input("subject-image", version.id())))));
         AgentRun run = createRun(scenario, scenario.agent().version(), "explicit-offcanvas-skill-input", selection).run();
-        assertThat(run.contextSnapshot().path("canvasScope").path("items")).isEmpty();
-        assertThat(run.contextSnapshot().path("bindings")).singleElement().satisfies(input -> {
-            assertThat(input.path("selectedVersionId").asText()).isEqualTo(version.id().toString());
-            assertThat(input.path("source").asText()).isEqualTo("SKILL_INPUT");
+        assertThat(run.contextSnapshot().has("canvasScope")).isFalse();
+        assertThat(run.contextSnapshot().has("bindings")).isFalse();
+        assertThat(run.contextSnapshot().path("creativeSkills").path(0).path("inputs")).singleElement().satisfies(input -> {
+            assertThat(input.path("artifactId").asText()).isEqualTo(version.artifactId().toString());
+            assertThat(input.path("artifactVersionId").asText()).isEqualTo(version.id().toString());
             assertThat(input.has("expectedVersion")).isFalse();
         });
-        assertThat(artifacts.requireAgentVisibleVersion(owner.userId(), scenario.project().id(), run.id(),
-                version.id(), run.contextSnapshot()).id()).isEqualTo(version.id());
+        assertThat(reader.artifacts(new TrustedToolContext(owner.userId(), scenario.project().id(), run.id()), run,
+                UUID.randomUUID(), mapper.writeValueAsString(Map.of("versionIds", List.of(version.id())))).path("data"))
+                .singleElement().satisfies(input -> assertThat(input.path("versionId").asText()).isEqualTo(version.id().toString()));
         assertThat(canvas.list(owner.userId(), scenario.project().id())).isEmpty();
         runs.cancel(owner.userId(), scenario.project().id(), run.id());
     }
@@ -474,7 +477,8 @@ class SkillRunPostgresIT {
                 new SkillRunService.Selection(SkillRunService.SelectionMode.DEFAULT, List.of())));
         assertProblem("RESOURCE_NOT_FOUND", () -> createRun(scenario, binding.agentVersion(), "forged-subject",
                 new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(), List.of(new SkillRunService.Input("subject-image", UUID.randomUUID())))))));
-        assertThat(runs.list(owner.userId(), scenario.project().id(), scenario.agent().id(), null, null).items()).isEmpty();
+        assertThat(jdbc.sql("select count(*) from agent_run where project_id = :project")
+                .param("project", scenario.project().id()).query(Long.class).single()).isZero();
         assertThat(gateway.calls).hasValue(callsBefore);
 
         var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS, List.of(new SkillRunService.Choice(skill.skillId(), skill.versionId(), List.of(new SkillRunService.Input("subject-image", scenario.subject().resourceDefaultVersion().id())))));
@@ -489,7 +493,7 @@ class SkillRunPostgresIT {
         assertThat(frozen.path("assetDelivery").asText()).isEqualTo("LLM_CONTEXT");
         assertThat(frozen.path("assets").path(0).has("artifactId")).isFalse();
         assertThat(frozen.path("assets").path(0).has("artifactVersionId")).isFalse();
-        assertThat(run.contextSnapshot().path("bindings")).hasSize(1);
+        assertThat(run.contextSnapshot().has("bindings")).isFalse();
         assertNoSkillProjectCopies(scenario, 1);
         assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), scenario.project().id(), run.id()))
@@ -536,7 +540,7 @@ class SkillRunPostgresIT {
             assertThat(frozen.path("skillMd").asText()).isEqualTo(skill.body());
             assertThat(frozen.path("assets").size()).isEqualTo(fixedAsset ? 1 : 0);
             assertThat(frozen.path("assetDelivery").asText()).isEqualTo("LLM_CONTEXT");
-            assertThat(run.contextSnapshot().path("bindings")).isEmpty();
+            assertThat(run.contextSnapshot().has("bindings")).isFalse();
             assertNoSkillProjectCopies(scenario, 0);
             assertThat(exports.build(owner.userId(), scenario.project().id()).creativeSkills()).singleElement()
                     .satisfies(export -> {
@@ -578,7 +582,7 @@ class SkillRunPostgresIT {
         JsonNode frozen = run.contextSnapshot().path("creativeSkills").path(0);
         assertThat(frozen.path("assetDelivery").asText()).isEqualTo("LLM_CONTEXT");
         assertThat(frozen.path("assets").path(0).has("artifactVersionId")).isFalse();
-        assertThat(run.contextSnapshot().path("bindings")).isEmpty();
+        assertThat(run.contextSnapshot().has("bindings")).isFalse();
         assertThat(canvas.list(owner.userId(), scenario.project().id())).isEmpty();
         assertThat(exports.build(owner.userId(), scenario.project().id()).creativeSkills()).singleElement()
                 .satisfies(export -> assertSameJson(export.path("mapping"), mapping));
@@ -775,65 +779,28 @@ class SkillRunPostgresIT {
         }
     }
 
-    @Test void historicalPolicyOmitsNewToolAndRejectsItsSavedCallDuringRepair() {
+    @Test void unsupportedPersistedPolicyCannotBuildMessagesDispatchToolsOrCallTheModel() {
         var scenario = scenario(false);
-        AgentRun run = createRun(scenario, 0, "historical-policy-run",
+        AgentRun run = createRun(scenario, scenario.agent().version(), "historical-policy-run",
                 new SkillRunService.Selection(SkillRunService.SelectionMode.NONE, List.of())).run();
-        // A synthetic pre-upgrade record is a fixture; all behavioral assertions use public interfaces.
+        // Unsupported synthetic records fail closed; they are never silently upgraded.
         ObjectNode legacy = (ObjectNode) run.policySnapshot().deepCopy();
         legacy.put("schemaVersion", 2).put("systemPromptVersion", 3);
-        // Pre-v6 policies had numeric budgets; copying null would fail before the model call.
         legacy.put("maxModelTurns", 12).put("maxToolExecutions", 40);
         legacy.remove("toolPolicyVersion"); legacy.remove("allowedTools");
         jdbc.sql("update agent_run set policy_snapshot_json=cast(:policy as jsonb) where id=:run")
                 .param("policy", mapper.writeValueAsString(legacy)).param("run", run.id()).update();
-        gateway.prepare(run.id(), List.of(toolCall("forged-historical-read", "read_skill_resource",
-                        "{\"skillVersionId\":\"" + UUID.randomUUID() + "\",\"path\":\"references/style-guide.md\",\"offset\":0,\"limit\":21}"),
-                new AssistantMessage("The historical policy continues without the unavailable tool.")));
         int callsBefore = gateway.calls.get();
-        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
-        assertThat(gateway.calls.get()).as("the historical Run reached its configured model").isEqualTo(callsBefore + 1);
-        assertThat(gateway.lastTools).noneSatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("read_skill_resource"));
-        assertProblem("TOOL_ARGUMENT_INVALID", () -> toolExecutions.execute(
-                new TrustedToolContext(owner.userId(), scenario.project().id(), run.id()), 0, "forged-historical-read"));
-        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
-        assertThat(gateway.lastTools).noneSatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("read_skill_resource"));
-        AgentRun completed = runs.get(owner.userId(), scenario.project().id(), run.id());
-        assertThat(completed.status()).isEqualTo(AgentRun.Status.SUCCEEDED);
-        assertThat(completed.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(3);
-        assertThat(completed.policySnapshot().has("allowedTools")).isFalse();
-        assertThat(completed.contextSnapshot().has("creativeSkill")).isFalse();
-    }
-
-    @Test void progressiveHistoricalPolicyCannotExecuteOrDispatchNewSkillImageTool() {
-        var scenario = scenario(false);
-        AgentRun run = createRun(scenario, 0, "historical-image-policy-run",
-                new SkillRunService.Selection(SkillRunService.SelectionMode.NONE, List.of())).run();
-        ObjectNode legacy = (ObjectNode) run.policySnapshot().deepCopy();
-        legacy.put("schemaVersion", 4).put("systemPromptVersion", 8).put("toolPolicyVersion", 2);
-        // Preserve the historical budget contract as well as its tool allowlist.
-        legacy.put("maxModelTurns", 12).put("maxToolExecutions", 40);
-        var allowed = legacy.putArray("allowedTools");
-        run.policySnapshot().path("allowedTools").forEach(tool -> {
-            if (!List.of("read_skill_asset", "read_canvas", "manage_canvas_node", "update_media_draft").contains(tool.asText())) allowed.add(tool.asText());
-        });
-        jdbc.sql("update agent_run set policy_snapshot_json=cast(:policy as jsonb) where id=:run")
-                .param("policy", mapper.writeValueAsString(legacy)).param("run", run.id()).update();
-        gateway.prepare(run.id(), List.of(toolCall("historical-image-forged", "read_skill_asset",
-                mapper.writeValueAsString(Map.of("skillVersionId", UUID.randomUUID(), "alias", "style-reference"))),
-                new AssistantMessage("The historical progressive policy continues.")));
-        int callsBefore = gateway.calls.get();
-        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
-        assertThat(gateway.calls.get()).as("the historical Run reached its configured model").isEqualTo(callsBefore + 1);
-        assertThat(gateway.lastTools).noneSatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("read_skill_asset"));
-        assertProblem("TOOL_ARGUMENT_INVALID", () -> toolExecutions.execute(
-                new TrustedToolContext(owner.userId(), scenario.project().id(), run.id()), 0, "historical-image-forged"));
-        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
-        assertModelImages(0, new byte[0]);
-        AgentRun completed = runs.get(owner.userId(), scenario.project().id(), run.id());
-        assertThat(completed.status()).isEqualTo(AgentRun.Status.SUCCEEDED);
-        assertThat(completed.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(8);
-        assertThat(completed.policySnapshot().path("toolPolicyVersion").asInt()).isEqualTo(2);
+        assertThatThrownBy(() -> initialContext.assemble(owner.userId(), scenario.project().id(), run.id()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("unsupported");
+        var persisted = runs.get(owner.userId(), scenario.project().id(), run.id());
+        assertThatThrownBy(() -> dev.agenvas.llm.application.RunToolPolicy.allowed(persisted.policySnapshot()))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Unsupported");
+        assertThat(gateway.calls.get()).isEqualTo(callsBefore);
+        assertThat(jdbc.sql("select count(*) from llm_turn where run_id=:run").param("run", run.id()).query(Long.class).single()).isZero();
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run").param("run", run.id()).query(Long.class).single()).isZero();
+        assertSameJson(persisted.policySnapshot(), legacy);
+        runs.cancel(owner.userId(), scenario.project().id(), run.id());
     }
 
     private void assertProblem(String code, Runnable action) {
@@ -902,11 +869,11 @@ class SkillRunPostgresIT {
         var subject = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic subject",
                 mapper.valueToTree(Map.of("sourceType", "UPLOAD", "assetId", assetId)));
         if (bindSubject) {
-            AgentInstance bound = AgentImageInputFixture.connect(agents, canvas, connections, owner.userId(), project.id(),
+            AgentInstance bound = AgentImageInputFixture.withCanvasImage(agents, canvas, owner.userId(), project.id(),
                     subject.artifact().id(), subject.resourceDefaultVersion().id(), "Skill Creator", "Use the reviewed style");
             return new Scenario(project, bound, subject);
         }
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Skill Creator", "Use the reviewed style");
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Skill Creator", "Use the reviewed style");
         return new Scenario(project, agent, subject);
     }
 

@@ -110,6 +110,12 @@ try {
     await waitFor(() => Boolean(document.querySelector(".agent-chat-launcher")));
     await page(() => document.querySelector(".agent-chat-launcher").click());
     await waitFor(() => Boolean(document.querySelector(".agent-chat-composer textarea:not(:disabled)")));
+    assert.equal(await page(() => document.querySelector(".agent-chat-heading h3").textContent), "创作导演", "The built-in director has a stable identity");
+    assert.equal(await page(() => document.querySelector('[aria-label="切换 Agent"], [aria-label="从预设新建 Agent"]') === null), true,
+      "Conversation controls do not require selecting or creating an Agent");
+    assert.equal(await page(() => [...document.querySelectorAll(".agent-chat-surface button")]
+      .some((button) => /查看产物|绑定到 Agent|清空 Agent 输入/.test(button.textContent))), false,
+    "The director manages the canvas without an output attribution or binding action");
     const layout = await page(() => {
       const dialog = document.querySelector('.agent-chat-dock-panel');
       const composer = dialog.querySelector('.agent-chat-composer');
@@ -192,6 +198,11 @@ try {
     const body = document.querySelector('[data-slot="message-scroller-viewport"]');
     return body.scrollHeight - body.clientHeight - body.scrollTop < 4;
   });
+  if (process.env.AGENVAS_AGENT_CHAT_SCREENSHOT) {
+    const capture = await cdp("Page.captureScreenshot", { format: "png" });
+    await writeFile(process.env.AGENVAS_AGENT_CHAT_SCREENSHOT.replace(".png", "-history.png"),
+      Buffer.from(capture.data, "base64"), { mode: 0o600 });
+  }
   assert.deepEqual(browserErrors, [], "Director chat has no browser runtime errors");
   console.log("Director chat passed: five viewports, canvas interaction, selection context, expand/collapse draft retention, Escape focus, paged history anchoring and jump to latest; synthetic only");
 } finally {

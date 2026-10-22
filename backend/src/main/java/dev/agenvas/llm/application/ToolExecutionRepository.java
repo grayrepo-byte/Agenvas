@@ -6,20 +6,14 @@ import java.util.Optional;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 
-/** Run、步骤与工具调用的持久化幂等边界，并维护每个 Run 的工具预算。 */
+/** Run、步骤与工具调用的持久化幂等边界。 */
 public interface ToolExecutionRepository {
-
-    /** 持有 Run 行锁时统计已完成调用，串行化新工具执行。 */
-    long countByRun(UUID projectId, UUID runId);
 
     /** 仅投影已提交动作的白名单字段；不读取完整工具结果或模型回合。 */
     List<RunAction> listCompletedActions(UUID projectId, UUID runId, int limit);
 
     /** Returns committed main-file activation and attachment read metadata for frozen approval provenance. */
     List<JsonNode> skillReads(UUID projectId, UUID runId);
-
-    /** Committed node copies are additional Run outputs, never model-supplied authorization. */
-    boolean hasCreatedCanvasItem(UUID projectId, UUID runId, UUID itemId);
 
     /** 仅在项目作用域内读取精确工具调用。 */
     Optional<ToolExecution> find(UUID projectId, UUID runId, int stepIndex, String toolCallId);

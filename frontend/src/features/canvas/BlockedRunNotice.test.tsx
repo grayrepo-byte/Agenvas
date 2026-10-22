@@ -79,19 +79,7 @@ describe("BlockedRunNotice", () => {
     render(<QueryClientProvider client={createQueryClient()}>
       <BlockedRunNotice projectId="project-1" runId="run-3" />
     </QueryClientProvider>);
-    expect(await screen.findByText(/已达到两次修复或回合上限/)).toBeInTheDocument();
-  });
-
-  it("explains a durable model-turn ceiling without implying media is still polling", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
-      HttpResponse.json([{ id: "task-limit", kind: "AGENT_TURN", status: "FAILED",
-        errorCode: "MODEL_TURN_LIMIT" }]),
-    ));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="run-limit" />
-    </QueryClientProvider>);
-    expect(await screen.findByText(/12 回合上限/)).toBeInTheDocument();
-    expect(screen.getByText(/系统未再调用模型或自动重试/)).toBeInTheDocument();
+    expect(await screen.findByText(/已达到两次修复上限/)).toBeInTheDocument();
   });
 
   it("requires a new approval when an unsubmitted media task is stale", async () => {

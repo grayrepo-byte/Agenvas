@@ -24,12 +24,12 @@ const AGENT: Agent = {
   profileKey: "creator", profileVersion: 1, version: AGENT_VERSION, createdAt: NOW, updatedAt: NOW, };
 const PREFLIGHT: RunPreflight = {
   agentId: AGENT_ID, agentVersion: AGENT_VERSION, agentName: AGENT.name,
-  agentInstruction: AGENT.instruction, bindings: [], modelAvailable: true,
-  conversationId: CONVERSATION_ID, conversationVersion: 0, conversationTurnCount: 0, inheritedBindingCount: 0, memoryTruncated: false, creativeSkills: [],
+  agentInstruction: AGENT.instruction, modelAvailable: true,
+  conversationId: CONVERSATION_ID, conversationVersion: 0, conversationTurnCount: 0, memoryTruncated: false, creativeSkills: [],
   providerAdapter: "Mock", modelId: "mock-storyboard-v1", toolCalling: true,
-  policySnapshot: { schemaVersion: 2, systemPromptVersion: 2,
-    modelConfigSource: "mock", modelConfigVersion: 7, maxModelTurns: 12,
-    maxToolExecutions: 40 },
+  policySnapshot: { schemaVersion: 7, toolPolicyVersion: 5, systemPromptVersion: 13, allowedTools: ["read_canvas"],
+    modelConfigSource: "mock", modelConfigVersion: 7, maxModelTurns: null,
+    maxToolExecutions: null },
 };
 
 function run(overrides: Partial<AgentRun> = {}): AgentRun {
@@ -60,16 +60,16 @@ function persistConversation(id = "conversation-new") {
   return HttpResponse.json(created, { status: 201 });
 }
 
-function mountPanel(activeRun: AgentRun | null = null, overrides: Partial<AgentChatPanelData> = {}, onOuterClick?: () => void) {
+function mountPanel(activeRun: AgentRun | null = null, overrides: Partial<AgentChatPanelData> = {}) {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   const data: AgentChatPanelData = {
     agent: AGENT, canvasNodeCount: 4, selectedNodeCount: 0,
-    projectId: PROJECT_ID, activeRun, outputCount: 0,
-    onShowOutputs: vi.fn(), onUpdateAgent: vi.fn(), updatingAgent: false, ...overrides,
+    projectId: PROJECT_ID, activeRun,
+    onUpdateAgent: vi.fn(), updatingAgent: false, ...overrides,
   };
   render(<QueryClientProvider client={client}>
-    <div onClick={onOuterClick}><AgentChatPanel data={data} /></div>
+    <AgentChatPanel data={data} />
   </QueryClientProvider>);
   return client;
 }
@@ -93,6 +93,40 @@ it("retains unsaved Agent configuration across chat and settings tabs", async ()
   expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("尚未保存的新名称");
   await user.click(screen.getByRole("button", { name: "保存配置" }));
   expect(onUpdateAgent).toHaveBeenCalledWith(AGENT, "尚未保存的新名称", AGENT.instruction);
+});
+
+it("shows the fixed director identity and preserves the draft when returning from history or settings", async () => {
+  mountPanel();
+  const user = userEvent.setup();
+  await user.type(await readyComposer(), "还没有发送的导演想法");
+  expect(screen.getByRole("heading", { name: "创作导演" })).toBeInTheDocument();
+  expect(screen.queryByRole("combobox", { name: "切换 Agent" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "从预设新建 Agent" })).not.toBeInTheDocument();
+  for (const destination of ["会话列表", "Agent 设置"]) {
+    await user.click(screen.getByRole("button", { name: destination }));
+    expect(screen.queryByRole("form", { name: "发送新任务" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "聊天" }));
+    expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue("还没有发送的导演想法");
+    expect(screen.getByRole("button", { name: "聊天" })).toHaveTextContent("当前创作会话");
+  }
+});
+
+it.each(["会话列表", "Agent 设置"])("returns to a clean chat when creating a session from %s", async (destination) => {
+  let created = 0;
+  server.use(http.post(CONVERSATIONS_URL, () => { created++; return persistConversation(); }));
+  mountPanel();
+  const user = userEvent.setup();
+  await user.type(await readyComposer(), "旧会话草稿");
+  await user.click(screen.getByRole("button", { name: destination }));
+  expect(screen.queryByRole("textbox", { name: "本次任务" })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "新建会话" }));
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(""));
+  expect(created).toBe(1);
+  expect(screen.getByRole("button", { name: "聊天" })).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "聊天" })).toHaveTextContent("新会话");
+  await user.click(screen.getByRole("button", { name: "会话列表" }));
+  await user.click(within(screen.getByRole("region", { name: "会话列表" })).getByRole("button", { name: /当前创作会话/ }));
+  expect(await screen.findByRole("textbox", { name: "本次任务" })).toHaveValue("旧会话草稿");
 });
 
 beforeEach(() => {
@@ -242,7 +276,7 @@ describe("AgentChatPanel", () => {
     expect(screen.queryByRole("button", { name: "确认开始" })).not.toBeInTheDocument();
     expect(requests[0]).toEqual({ agentId: AGENT_ID, conversationId: CONVERSATION_ID, expectedConversationVersion: 0, instruction: TASK_TEXT,
       expectedAgentVersion: AGENT_VERSION, expectedModelConfigSource: "mock",
-      expectedModelConfigVersion: 7, expectedSystemPromptVersion: 2,
+      expectedModelConfigVersion: 7, expectedSystemPromptVersion: 13,
       selectedItemIds: ["selected-image-1"], skillSelection: {mode:"NONE",skills:[]} });
     await waitFor(() => expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(""));
     expect(screen.queryByRole("article", { name: "待发送" })).not.toBeInTheDocument();
@@ -438,25 +472,35 @@ describe("AgentChatPanel", () => {
     expect(checks).toBe(1);
   });
 
-  it("blocks sending and keyboard submission while a different Agent owns the active run", async () => {
+  it("blocks sending and keyboard submission while another conversation owns the active run", async () => {
     let checks = 0;
     let creations = 0;
     server.use(
       http.post(`${RUNS_URL}/preflight`, () => { checks++; return HttpResponse.json(PREFLIGHT); }),
       http.post(RUNS_URL, () => { creations++; return persistRun(); }),
     );
-    mountPanel(run({ id: "other-run", agentInstanceId: "other-agent", status: "RUNNING" }));
+    mountPanel(run({ id: "other-run", conversationId: "other-conversation", status: "RUNNING" }));
     const user = userEvent.setup();
     const input = await readyComposer();
     await user.type(input, TASK_TEXT);
 
-    expect(screen.getByText("其他 Agent 运行中")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "返回运行会话" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     fireEvent.keyDown(input, { key: "Enter", code: "Enter", ctrlKey: true });
     fireEvent.submit(screen.getByRole("form", { name: "发送新任务" }));
     expect(screen.queryByRole("region", { name: "运行前确认" })).not.toBeInTheDocument();
     expect(checks).toBe(0);
     expect(creations).toBe(0);
+  });
+
+  it("labels a restored conversation outside the loaded session page as current and still shows its runs", async () => {
+    storedConversations = [conversation({ id: "another-conversation", title: "另一会话" })];
+    storedRuns = [run({ status: "SUCCEEDED" })];
+    mountPanel();
+    expect(await screen.findByRole("article", { name: "你" })).toHaveTextContent(TASK_TEXT);
+    const chat = screen.getByRole("button", { name: "聊天" });
+    expect(chat).toHaveTextContent("当前会话");
+    expect(chat).not.toHaveTextContent("新会话");
   });
 
   it("restores a persisted conversation and prepends older turns in chronological order", async () => {
@@ -538,31 +582,12 @@ describe("AgentChatPanel", () => {
     expect(creations).toBe(1);
   });
 
-  it("waits for output attribution before enabling canvas navigation", () => {
-    mountPanel(null, { outputCount: 2, outputLoading: true });
-    expect(screen.getByRole("button", { name: /查看产物/ })).toBeDisabled();
-  });
-
-  it("retries failed output attribution instead of reporting no generated nodes", async () => {
-    const onRefreshOutputs = vi.fn(); const onShowOutputs = vi.fn();
-    mountPanel(null, { outputCount: 0, outputError: new Error("Synthetic read failure"), onRefreshOutputs, onShowOutputs });
-    const output = screen.getByRole("button", { name: /查看产物/ });
-    expect(output).toBeEnabled();
-    await userEvent.click(output);
-    expect(onRefreshOutputs).toHaveBeenCalledOnce();
-    expect(onShowOutputs).not.toHaveBeenCalled();
-  });
-
-  it("shows Agent outputs without bubbling the click into canvas selection", async () => {
-    const onShowOutputs = vi.fn();
-    const onOuterClick = vi.fn();
-    mountPanel(null, { outputCount: 2, onShowOutputs }, onOuterClick);
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("button", { name: /查看产物/ }));
-
-    expect(onShowOutputs).toHaveBeenCalledExactlyOnceWith(AGENT);
-    expect(onOuterClick).not.toHaveBeenCalled();
+  it("shows whole-canvas context without an output attribution or binding action", async () => {
+    mountPanel(null, { canvasNodeCount: 12, selectedNodeCount: 3 });
+    await readyComposer();
+    expect(screen.getByText("画布 · 12 个节点")).toBeInTheDocument();
+    expect(screen.getByText("已选 3")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /查看产物|绑定到 Agent|清空 Agent 输入/ })).not.toBeInTheDocument();
   });
 
   it("creates the first conversation before checking a first message and pins its identity", async () => {
@@ -598,7 +623,7 @@ describe("AgentChatPanel", () => {
     storedConversations = [conversation({ version: 1, turnCount: 1 })];
     server.use(
       http.post(`${RUNS_URL}/preflight`, () => HttpResponse.json({ ...PREFLIGHT,
-        conversationVersion: 1, conversationTurnCount: 1, inheritedBindingCount: 2, memoryTruncated: true })),
+        conversationVersion: 1, conversationTurnCount: 1, memoryTruncated: true })),
       http.post(RUNS_URL, async ({ request }) => {
         const body = await request.json() as CreateRunRequest;
         expect(body).toMatchObject({ conversationId: CONVERSATION_ID, expectedConversationVersion: 1 });

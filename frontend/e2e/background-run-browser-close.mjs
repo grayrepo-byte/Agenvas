@@ -103,13 +103,13 @@ try {
   }
 
   const created = await page(async (secret) => {
-    async function write(path, body, extraHeaders = {}) {
+    async function write(path, body, extraHeaders = {}, method = "POST") {
       const token = await (await fetch("/api/v1/auth/csrf")).json();
       const response = await fetch(path, {
-        method: "POST", credentials: "same-origin",
+        method, credentials: "same-origin",
         headers: { "Content-Type": "application/json", [token.headerName]: token.token,
           ...extraHeaders },
-        body: JSON.stringify(body),
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
       if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}: `
         + await response.text());
@@ -127,9 +127,7 @@ try {
     const project = await write("/api/v1/projects", {
       name: "Browser-close background run", aspectRatio: "LANDSCAPE_16_9",
     });
-    const agent = await write(`/api/v1/projects/${project.id}/agents`, {
-      name: "Creator", instruction: "Create a three-shot storyboard",
-    });
+    const agent = await write(`/api/v1/projects/${project.id}/director`, undefined, {}, "PUT");
     const run = await write(`/api/v1/projects/${project.id}/runs`, {
       agentId: agent.id, instruction: "Make three shots",
     }, { "Idempotency-Key": crypto.randomUUID() });

@@ -279,7 +279,7 @@ class CanvasMediaVersionsPostgresIT {
     }
 
     @Test
-    void exactVersionSourcesAndPlacementUseOnlyTheContentCanvasAndKeepSiblingSelections() {
+    void exactVersionSourcesKeepSiblingSelectionsIndependent() {
         UUID originalId = create(Artifact.Kind.IMAGE);
         UUID first = generate(originalId);
         UUID second = generate(originalId);
@@ -297,11 +297,6 @@ class CanvasMediaVersionsPostgresIT {
                 .extracting(version -> version.id()).containsExactly(first);
         assertThat(card(originalId).item().selectedVersionId()).isEqualTo(second);
         assertThat(artifacts.get(owner.userId(), project.id(), artifactId).artifact().resourceDefaultVersionId()).isEqualTo(defaultBefore);
-        var placed = template.execute(status -> canvas.placeArtifactVersionsWithinChange(owner.userId(), project.id(), List.of(
-                new CanvasService.ArtifactVersionPlacement(artifactId, first),
-                new CanvasService.ArtifactVersionPlacement(artifactId, second)), null));
-        assertThat(placed.created()).isEmpty();
-        assertThat(placed.alreadyPresent()).extracting(item -> item.id()).containsExactlyInAnyOrder(reference.id(), originalId);
         var reused = template.execute(status -> canvas.ensureMediaReferenceWithinChange(owner.userId(), project.id(), artifactId, first, null));
         assertThat(reused.id()).isEqualTo(reference.id());
         assertThat(canvas.list(owner.userId(), project.id())).hasSize(2);

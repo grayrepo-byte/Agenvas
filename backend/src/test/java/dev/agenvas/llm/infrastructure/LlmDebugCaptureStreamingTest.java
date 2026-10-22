@@ -76,7 +76,9 @@ class LlmDebugCaptureStreamingTest {
             var message = UserMessage.builder().text("Inspect synthetic image")
                     .media(new org.springframework.ai.content.Media(org.springframework.util.MimeTypeUtils.IMAGE_PNG,
                             new org.springframework.core.io.ByteArrayResource(image))).build();
-            var policy = MAPPER.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
+            var policy = MAPPER.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION)
+                    .put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
+                    .put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
             policy.set("allowedTools", MAPPER.valueToTree(RunToolPolicy.current(false, false)));
             var tools = new ToolRegistry().modelDefinitions(policy);
             try (var scope = DebugHttpCapture.openLlm(saved::accept)) {

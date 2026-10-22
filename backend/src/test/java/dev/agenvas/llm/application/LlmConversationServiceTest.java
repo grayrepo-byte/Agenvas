@@ -24,7 +24,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Legacy receipts are projected only into new requests, preserving protocol pairs and immutable checkpoints. */
+/** Durable media receipts are projected only into new requests, preserving protocol pairs and immutable checkpoints. */
 class LlmConversationServiceTest {
     private final JsonMapper mapper = new JsonMapper();
     private final LlmProtocolCodec codec = new LlmProtocolCodec(mapper);
@@ -39,7 +39,7 @@ class LlmConversationServiceTest {
     private final AgentImageInputService images = mock(AgentImageInputService.class);
 
     @Test
-    void newContinuationCompactsAllLegacyMediaReceiptsAndKeepsAnExplicitSkillRead() {
+    void continuationCompactsMediaReceiptsAndKeepsAnExplicitSkillRead() {
         var turn = priorTurn();
         JsonNode frozen = turn.request().deepCopy();
         ObjectNode result = mapper.createObjectNode().put("status", "SUCCEEDED");
@@ -87,7 +87,7 @@ class LlmConversationServiceTest {
                 .put("name", "Second method").put("skillMd", "SECOND_BODY");
         for (JsonNode output : receipt.at("/data/outputs")) {
             var source = mapper.createObjectNode().put("schemaVersion", 2);
-            source.putArray("skills").add(output.at("/preview/creativeSkill")).add(second);
+            source.putArray("skills").add(output.at("/preview/creativeSkill/skills/0")).add(second);
             ((ObjectNode) output.path("preview")).set("creativeSkill", source);
         }
         var outcome = receipt.putObject("mediaApproval").put("status", "FAILED");
@@ -162,7 +162,7 @@ class LlmConversationServiceTest {
             var preview = outputs.addObject().put("kind", "IMAGE").put("title", "Synthetic image")
                     .put("artifactId", UUID.randomUUID().toString()).putObject("preview").put("prompt", "DUPLICATE_PROMPT");
             preview.putObject("parameters").put("aspectRatio", "16:9");
-            preview.set("creativeSkill", skill.deepCopy());
+            preview.putObject("creativeSkill").put("schemaVersion", 2).putArray("skills").add(skill.deepCopy());
         }
         return receipt;
     }

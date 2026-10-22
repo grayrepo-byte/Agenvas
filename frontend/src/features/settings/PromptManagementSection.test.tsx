@@ -79,13 +79,15 @@ describe("PromptManagementSection", () => {
       http.post("/api/v1/settings/prompts", async ({ request }) => { writes.push(await request.json()); return HttpResponse.json(feature, { status: 201 }); }),
       http.delete("/api/v1/settings/prompts/summary", ({ request }) => { deletions.push(new URL(request.url).searchParams.get("expectedVersion")!); return new HttpResponse(null, { status: 204 }); }));
     show(); await screen.findByDisplayValue(defaults.content);
-    const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: "新建提示词" }));
+    const user = userEvent.setup(); await user.click(screen.getByRole("button", { name: "新建功能提示词" }));
     fireEvent.change(screen.getByLabelText("用途标识"), { target: { value: feature.key } });
-    await selectValue(screen.getByRole("combobox", { name: "用途" }), "FUNCTION");
+    expect(screen.getByRole("textbox", { name: "用途" })).toHaveValue("功能");
+    expect(screen.getByRole("textbox", { name: "用途" })).toHaveAttribute("readonly");
+    expect(screen.queryByRole("combobox", { name: "用途" })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: feature.name } });
     fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: feature.content } });
     await user.click(screen.getByRole("button", { name: "保存配置" })); await screen.findByText("提示词已保存。");
-    expect(writes).toEqual([{ key: feature.key, kind: "FUNCTION", name: feature.name, content: feature.content, description: "" }]);
+    expect(writes).toEqual([{ key: feature.key, name: feature.name, content: feature.content, description: "" }]);
     expect(screen.getByLabelText("用途标识")).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "删除提示词" })); expect(deletions).toEqual([]);
     await user.click(screen.getByRole("button", { name: "确认删除" }));
@@ -134,14 +136,14 @@ describe("PromptManagementSection", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic", headerName: "X-CSRF-TOKEN" })),
       http.post("/api/v1/settings/prompts", () => { creates++; return creates === 1
         ? HttpResponse.json({ code: "PROMPT_KEY_CONFLICT", status: 409 }, { status: 409, headers: { "Content-Type": "application/problem+json" } })
-        : HttpResponse.json({ ...defaults, id: "writer", key: "agent.writer", name: "Writer", content: "Write", builtIn: false }); }));
+        : HttpResponse.json({ ...defaults, id: "writer", key: "feature.writer", kind: "FUNCTION", name: "Writer", content: "Write", builtIn: false }); }));
     show(); await screen.findByDisplayValue(defaults.content); const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "新建提示词" }));
-    fireEvent.change(screen.getByLabelText("用途标识"), { target: { value: "agent.director" } });
+    await user.click(screen.getByRole("button", { name: "新建功能提示词" }));
+    fireEvent.change(screen.getByLabelText("用途标识"), { target: { value: "text.generate" } });
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Writer" } });
     fireEvent.change(screen.getByLabelText("提示词正文"), { target: { value: "Write" } });
     await user.click(screen.getByRole("button", { name: "保存配置" })); await screen.findByRole("alert");
-    fireEvent.change(screen.getByLabelText("用途标识"), { target: { value: "agent.writer" } });
+    fireEvent.change(screen.getByLabelText("用途标识"), { target: { value: "feature.writer" } });
     expect(screen.getByLabelText("提示词正文")).toHaveValue("Write");
     await user.click(screen.getByRole("button", { name: "保存配置" })); await screen.findByText("提示词已保存。"); expect(creates).toBe(2);
   });

@@ -36,8 +36,6 @@ public class AgentImageInputService {
     public static final String METADATA_KEY = "agentImageInputs";
     public static final String SKILL_METADATA_KEY = "agentSkillImageInputs";
     public static final String PREVIEW_REQUEST_KEY = "imagePreviewRequested";
-    /** A committed read in the sequential protocol replaces the current pixel attachment. */
-    public static final String SEQUENTIAL_PREVIEW_KEY = "sequentialImagePreview";
     public static final int MAX_IMAGES = 8;
     public static final long MAX_IMAGE_BYTES = 2L * 1024 * 1024;
     public static final long MAX_TOTAL_BYTES = 8L * 1024 * 1024;
@@ -59,32 +57,8 @@ public class AgentImageInputService {
     /** Only successful committed reads add references; checkpoint messages never contain image bytes or storage keys. */
     public void appendReadPreviews(List<Message> history, AssistantMessage assistant,
             Map<String, JsonNode> results) {
-        boolean sequential = assistant.getToolCalls().stream()
-                .filter(call -> "read_artifacts".equals(call.name()) || "read_skill_asset".equals(call.name()))
-                .map(call -> results.get(call.id()))
-                .filter(result -> result != null && ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText()))
-                .anyMatch(result -> result.path("data").path(SEQUENTIAL_PREVIEW_KEY).asBoolean()
-                        || (result.path("data").isArray() && java.util.stream.StreamSupport
-                                .stream(result.path("data").spliterator(), false)
-                                .anyMatch(item -> item.path(SEQUENTIAL_PREVIEW_KEY).asBoolean())));
-        if (sequential) {
-            // Tool replies retain exact references and Assistant messages retain public
-            // observations. Only the current read supplies pixels to the next checkpoint.
-            history.removeIf(message -> message instanceof UserMessage
-                    && (message.getMetadata().containsKey(METADATA_KEY)
-                            || message.getMetadata().containsKey(SKILL_METADATA_KEY)));
-        }
         var existing = new LinkedHashSet<Input>();
         var existingSkills = new LinkedHashSet<SkillInput>();
-        for (Message message : history) {
-            if (!(message instanceof UserMessage)) continue;
-            if (message.getMetadata().containsKey(METADATA_KEY))
-                for (JsonNode entry : mapper.valueToTree(message.getMetadata().get(METADATA_KEY)))
-                    existing.add(projectInput(entry));
-            if (message.getMetadata().containsKey(SKILL_METADATA_KEY))
-                for (JsonNode entry : mapper.valueToTree(message.getMetadata().get(SKILL_METADATA_KEY)))
-                    existingSkills.add(skillInput(entry));
-        }
         List<Input> added = new ArrayList<>();
         List<SkillInput> addedSkills = new ArrayList<>();
         for (var call : assistant.getToolCalls()) {
@@ -104,13 +78,19 @@ public class AgentImageInputService {
                 if (existingSkills.add(input)) addedSkills.add(input);
             }
         }
+        if (!added.isEmpty() || !addedSkills.isEmpty()) {
+            // Public observations and exact tool references remain; pixels follow only the latest read.
+            history.removeIf(message -> message instanceof UserMessage
+                    && (message.getMetadata().containsKey(METADATA_KEY)
+                            || message.getMetadata().containsKey(SKILL_METADATA_KEY)));
+        }
         if (!added.isEmpty()) history.add(UserMessage.builder()
                 .text("Image previews requested by read_artifacts (exact immutable versions): " + added
-                        + (sequential ? sequentialContextNote() : ""))
+                        + sequentialContextNote())
                 .metadata(Map.of(METADATA_KEY, List.copyOf(added))).build());
         if (!addedSkills.isEmpty()) history.add(UserMessage.builder()
                 .text("Skill reference image previews requested by read_skill_asset (LLM context only): " + addedSkills
-                        + (sequential ? sequentialContextNote() : ""))
+                        + sequentialContextNote())
                 .metadata(Map.of(SKILL_METADATA_KEY, List.copyOf(addedSkills))).build());
     }
 
@@ -158,12 +138,22 @@ public class AgentImageInputService {
         }
         if (requested.isEmpty() && requestedSkills.isEmpty()) return messages;
         if (requested.size() + requestedSkills.size() > MAX_IMAGES) throw invalid();
-        validateInputs(owner, project, run, snapshot, requested);
         long total = 0;
         Map<Input, Asset> projectAssets = new LinkedHashMap<>();
         for (Input input : requested) {
-            Asset asset = image(owner, project, run, snapshot, input);
-            total += asset.thumbnailByteSize();
+            Asset asset;
+            try {
+                asset = image(owner, project, run, snapshot, input);
+            } catch (ApiProblemException inaccessible) {
+                // A user's selection/removal can invalidate a saved preview between model calls.
+                // Do not load its bytes or fail the whole Run; other errors still fail closed.
+                if (inaccessible.status() == HttpStatus.FORBIDDEN
+                        && "INPUT_SCOPE_DENIED".equals(inaccessible.code())) continue;
+                throw inaccessible;
+            }
+            Long size = asset.thumbnailByteSize();
+            if (size == null || size <= 0 || size > MAX_IMAGE_BYTES) throw invalid();
+            total += size;
             projectAssets.put(input, asset);
         }
         List<JsonNode> skillReads = requestedSkills.isEmpty() ? List.of() : ledger.skillReads(project, run);
@@ -201,13 +191,19 @@ public class AgentImageInputService {
             }
             List<Media> attachments = new ArrayList<>();
             if (message.getMetadata().containsKey(METADATA_KEY))
-                for (JsonNode entry : manifest(message, METADATA_KEY)) attachments.add(media.get(projectInput(entry)));
+                for (JsonNode entry : manifest(message, METADATA_KEY)) {
+                    Media preview = media.get(projectInput(entry));
+                    if (preview != null) attachments.add(preview);
+                }
             if (message.getMetadata().containsKey(SKILL_METADATA_KEY))
                 for (JsonNode entry : manifest(message, SKILL_METADATA_KEY)) attachments.add(skillMedia.get(skillInput(entry)));
             Map<String, Object> metadata = new LinkedHashMap<>(user.getMetadata());
             metadata.remove(METADATA_KEY);
             metadata.remove(SKILL_METADATA_KEY);
-            hydrated.add(UserMessage.builder().text(user.getText()).metadata(metadata).media(attachments).build());
+            String text = attachments.isEmpty() ? user.getText()
+                    + "\nThe saved image is no longer selected on the current canvas; no pixels are attached. "
+                    + "Read the current canvas and request its selected version when needed." : user.getText();
+            hydrated.add(UserMessage.builder().text(text).metadata(metadata).media(attachments).build());
         }
         return List.copyOf(hydrated);
     }
@@ -269,7 +265,7 @@ public class AgentImageInputService {
     }
 
     private Asset image(UUID owner, UUID project, UUID run, JsonNode snapshot, Input input) {
-        var version = artifacts.requireAgentVisibleVersion(owner, project, run, input.versionId(), snapshot);
+        var version = artifacts.requireAgentReadableVersion(owner, project, snapshot, input.versionId());
         if (!input.artifactId().equals(version.artifactId())) throw invalid();
         Asset asset = assets.metadata(owner, project, uuid(version.content(), "assetId"));
         if (asset.mediaKind() != Asset.MediaKind.IMAGE || !project.equals(asset.projectId())) throw invalid();

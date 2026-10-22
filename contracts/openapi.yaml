@@ -1019,18 +1019,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/agent-presets:
-    get:
-      operationId: listAgentPresets
-      summary: 读取可直接创建的 Agent 提示词名称和用途标识
-      tags: [Agents]
-      responses:
-        "200":
-          description: 仅名称和标识，不含正文及功能提示词；Cache-Control no-store
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/AgentPresetList"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
   /api/v1/settings/prompts:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -1041,7 +1029,7 @@ paths:
       tags: [Settings]
       responses:
         "200":
-          description: 所有 Agent 与功能提示词；Cache-Control no-store
+          description: 固定内置导演与功能提示词；Cache-Control no-store
           content:
             application/json:
               schema: {$ref: "#/components/schemas/PromptList"}
@@ -1049,7 +1037,7 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
     post:
       operationId: createPrompt
-      summary: 新建独立提示词
+      summary: 新建功能提示词
       tags: [Settings]
       requestBody:
         required: true
@@ -2928,51 +2916,25 @@ paths:
               schema: {$ref: "#/components/schemas/Canvas"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
-  /api/v1/projects/{projectId}/agents:
+  /api/v1/projects/{projectId}/director:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
-    get:
-      operationId: listAgents
-      summary: 获取项目中的 Creator Agent 配置
+    put:
+      operationId: ensureProjectDirector
+      summary: 恢复或初始化项目唯一导演
+      description: 无请求正文。在项目锁内恢复唯一导演，不存在时复制固定内置 agent.director 提示词一次；并发和重复请求返回同一身份，不覆盖已保存配置、不启动模型或创建会话。数据库约束每项目最多一个实例。
       tags: [Agents]
       responses:
         "200":
-          description: Agent 列表及其明确绑定的输入
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/AgentList"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
-    post:
-      operationId: createAgent
-      summary: 创建一个空闲的导演 Agent
-      tags: [Agents]
-      parameters:
-        - name: Idempotency-Key
-          in: header
-          required: false
-          description: 创建卡片使用此键；同键同请求重放首次配置（默认提示词之后变化也不重算），异参返回 409。
-          schema: {type: string, minLength: 1, maxLength: 200}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: "#/components/schemas/CreateAgentRequest"}
-      responses:
-        "201":
-          description: 新建的 Agent，或原创建请求的重放结果
-          headers:
-            Idempotency-Replayed:
-              description: 提供幂等键时标识是否重放首次结果
-              schema: {type: boolean}
+          description: 项目唯一导演的当前配置；已存在时不追加变更事件
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Agent"}
         "400": {$ref: "#/components/responses/ValidationError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
-        "409": {$ref: "#/components/responses/Conflict"}
         "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/agents/{agentId}:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -3012,26 +2974,6 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
-  /api/v1/projects/{projectId}/agents/{agentId}/outputs:
-    parameters:
-      - {$ref: "#/components/parameters/AcceptLanguage"}
-      - {$ref: "#/components/parameters/ProjectId"}
-      - name: agentId
-        in: path
-        required: true
-        schema: {type: string, format: uuid}
-    get:
-      operationId: listAgentOutputs
-      summary: 按当前选用版本的运行来源查询助手产物节点
-      tags: [Agents]
-      responses:
-        "200":
-          description: 当前画布可定位的真实产物
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/AgentOutputList"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
   /api/v1/projects/{projectId}/agents/{agentId}/conversations:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -3139,30 +3081,6 @@ paths:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
       - {$ref: "#/components/parameters/ProjectId"}
-    get:
-      operationId: listAgentRuns
-      summary: 分页查看一个 Agent 的持久化运行记录
-      tags: [Runs]
-      parameters:
-        - name: agentId
-          in: query
-          required: true
-          schema: {type: string, format: uuid}
-        - name: cursor
-          in: query
-          schema: {type: string}
-        - name: limit
-          in: query
-          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
-      responses:
-        "200":
-          description: 不含模型原始消息的运行摘要，按创建时间倒序
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/AgentRunList"}
-        "400": {$ref: "#/components/responses/ValidationError"}
-        "401": {$ref: "#/components/responses/Unauthenticated"}
-        "404": {$ref: "#/components/responses/NotFound"}
     post:
       operationId: createRun
       summary: 幂等创建一个持久化 Agent Run
@@ -5866,9 +5784,9 @@ components:
       properties:
         creativeSkills:
           type: array
-          description: 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId、position）；未安装时 mapping.assets 为空。
+          description: 已安装或由项目导演默认绑定的固定版本，包含 version、mapping 和可空的 directorBinding（skillId、skillVersionId、position）；未安装时 mapping.assets 为空，不导出多助手绑定列表。
           items: {type: object, additionalProperties: true}
-        schemaVersion: {type: integer, const: 7}
+        schemaVersion: {type: integer, const: 8}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -6604,10 +6522,9 @@ components:
     CreatePromptRequest:
       type: object
       additionalProperties: false
-      required: [key, kind, name, content]
+      required: [key, name, content]
       properties:
         key: {type: string, pattern: '^[a-z][a-z0-9._-]{0,119}$', maxLength: 120}
-        kind: {type: string, enum: [AGENT, FUNCTION]}
         name: {type: string, minLength: 1, maxLength: 120}
         description: {type: string, maxLength: 1000}
         content: {type: string, minLength: 1, maxLength: 8000}
@@ -6620,24 +6537,6 @@ components:
         name: {type: string, minLength: 1, maxLength: 120}
         description: {type: string, maxLength: 1000}
         content: {type: string, minLength: 1, maxLength: 8000}
-    AgentPreset:
-      type: object
-      required: [key, name]
-      properties:
-        key: {type: string}
-        name: {type: string}
-    AgentPresetList:
-      type: object
-      required: [items]
-      properties:
-        items: {type: array, items: {$ref: "#/components/schemas/AgentPreset"}}
-    CreateAgentRequest:
-      type: object
-      additionalProperties: false
-      properties:
-        promptKey: {type: string, pattern: '^[a-z][a-z0-9._-]{0,119}$', description: 选择 AGENT 提示词条目；省略时使用 agent.director，FUNCTION 不能用于创建 Agent。}
-        name: {type: string, minLength: 1, maxLength: 120, description: 省略时在创建事务内复制当前默认名称。}
-        instruction: {type: string, minLength: 1, maxLength: 8000, description: 省略时复制当前默认创作系统提示词；不自动运行，已有实例可单独修改。}
     UpdateAgentRequest:
       type: object
       additionalProperties: false
@@ -6660,24 +6559,6 @@ components:
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
-    AgentOutputList:
-      type: object
-      additionalProperties: false
-      required: [canvasItemIds]
-      properties:
-        canvasItemIds:
-          type: array
-          uniqueItems: true
-          description: 当前画布实际选用版本由该 Agent 的运行产生的节点；依据不可变版本来源，不依赖布局分组。不含尚未归档的审批草稿。
-          items: {type: string, format: uuid}
-    AgentList:
-      type: object
-      additionalProperties: false
-      required: [items]
-      properties:
-        items:
-          type: array
-          items: {$ref: "#/components/schemas/Agent"}
     AgentConversation:
       type: object
       additionalProperties: false
@@ -6803,28 +6684,21 @@ components:
         agentVersion: {type: integer, format: int64, minimum: 0}
         profileKey: {type: string}
         profileVersion: {type: integer, minimum: 1}
-        outputGroupId: {type: string, format: uuid, description: 仅历史运行冻结的布局分组；新运行不再写入或依赖 Agent 输出分组。}
         conversationId:
           type: string
           format: uuid
-          description: 新 Run 冻结的会话作用域；升级前旧快照保持原值，可能没有此字段
+          description: Run 所属会话作用域
         conversationHistoryThroughTurn:
           type: integer
           format: int64
           minimum: 0
           description: 创建 Run 前已受理的会话消息水位；仅终态历史可进入记忆
         conversationMemory: {$ref: "#/components/schemas/ConversationMemory"}
-        canvasScope:
-          $ref: "#/components/schemas/RunCanvasScope"
         creativeSkills:
           type: array
           maxItems: 100
-          description: Selected immutable Skill snapshots; complete content is persisted here but only names and descriptions are disclosed initially. Historical Runs may retain creativeSkill instead.
+          description: Selected immutable Skill snapshots; complete content and explicit read-only input mappings are persisted here but only names and descriptions are disclosed initially.
           items: {type: object, additionalProperties: true}
-        bindings:
-          type: array
-          description: 本 Run 显式选择的 Skill 输入或仍在画布范围内的会话精确输入；升级前快照可保留历史 Agent 绑定。新 Run 不读取长期素材绑定。
-          items: {$ref: "#/components/schemas/RunInputSnapshot"}
         selection:
           type: array
           maxItems: 1000
@@ -6835,39 +6709,10 @@ components:
             required: [itemId, subjectType, subjectId]
             properties:
               itemId: {type: string, format: uuid}
-              subjectType: {type: string, enum: [ARTIFACT, AGENT], description: 新 Run 固定为 ARTIFACT；AGENT 仅用于读取升级前的不可变选择快照。}
+              subjectType: {type: string, const: ARTIFACT}
               subjectId: {type: string, format: uuid}
               versionId: {type: string, format: uuid}
               kind: {$ref: "#/components/schemas/ArtifactKind"}
-    RunCanvasScope:
-      type: object
-      additionalProperties: false
-      description: 新 Run 在受理事务冻结的当前画布授权范围；目录按 read_canvas 分页提供，首轮模型仅接收节点数。旧 Run 缺省保留绑定和输出组权限。
-      required: [version, items]
-      properties:
-        version: {type: integer, const: 1}
-        items:
-          type: array
-          description: 当前画布所有 Artifact 节点；没有旧显式绑定40项限制，不包含不可变正文、原图或凭证。
-          items:
-            type: object
-            additionalProperties: false
-            required: [itemId, artifactId, kind, title, itemVersion, artifactVersion, locked, x, y, width, height, zIndex]
-            properties:
-              itemId: {type: string, format: uuid}
-              artifactId: {type: string, format: uuid}
-              kind: {$ref: "#/components/schemas/ArtifactKind"}
-              title: {type: string}
-              selectedVersionId: {type: string, format: uuid}
-              itemVersion: {type: integer, format: int64, minimum: 0}
-              artifactVersion: {type: integer, format: int64, minimum: 0}
-              locked: {type: boolean}
-              x: {type: number}
-              y: {type: number}
-              width: {type: number}
-              height: {type: number}
-              zIndex: {type: integer}
-              mediaDraft: {$ref: "#/components/schemas/MediaDraft"}
     ConversationMemory:
       type: object
       additionalProperties: false
@@ -6887,31 +6732,10 @@ components:
               content: {type: string, maxLength: 32000}
         truncated: {type: boolean}
         priorRunCount: {type: integer, minimum: 0}
-    RunInputSnapshot:
-      type: object
-      additionalProperties: false
-      required: [artifactId, selectedVersionId]
-      properties:
-        artifactId: {type: string, format: uuid}
-        selectedVersionId: {type: string, format: uuid}
-        kind: {$ref: "#/components/schemas/ArtifactKind"}
-        title: {type: string}
-        expectedVersion: {type: integer, format: int64, minimum: 0}
-        source: {type: string, enum: [CONVERSATION_OUTPUT, SKILL_INPUT]}
-        skillVersionId: {type: string, format: uuid, description: Skill reference disclosed only after activation.}
-    RunPreflightBinding:
-      type: object
-      additionalProperties: false
-      required: [artifactId, selectedVersionId, artifactTitle, artifactKind]
-      properties:
-        artifactId: {type: string, format: uuid}
-        selectedVersionId: {type: string, format: uuid}
-        artifactTitle: {type: string}
-        artifactKind: {$ref: "#/components/schemas/ArtifactKind"}
     RunPreflight:
       type: object
       additionalProperties: false
-      required: [agentId, agentVersion, agentName, agentInstruction, bindings, modelAvailable, providerAdapter, modelId, toolCalling, policySnapshot, conversationId, conversationVersion, conversationTurnCount, inheritedBindingCount, memoryTruncated, creativeSkills]
+      required: [agentId, agentVersion, agentName, agentInstruction, modelAvailable, providerAdapter, modelId, toolCalling, policySnapshot, conversationId, conversationVersion, conversationTurnCount, memoryTruncated, creativeSkills]
       properties:
         agentId: {type: string, format: uuid}
         agentVersion: {type: integer, format: int64, minimum: 0}
@@ -6920,12 +6744,8 @@ components:
         conversationId: {type: [string, "null"], format: uuid}
         conversationVersion: {type: [integer, "null"], format: int64, minimum: 0}
         conversationTurnCount: {type: integer, format: int64, minimum: 0}
-        inheritedBindingCount: {type: integer, minimum: 0, maximum: 40}
         creativeSkills: {type: array, maxItems: 100, items: {$ref: "#/components/schemas/RunSkillSummary"}}
-        memoryTruncated: {type: boolean, description: 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。}
-        bindings:
-          type: array
-          items: {$ref: "#/components/schemas/RunPreflightBinding"}
+        memoryTruncated: {type: boolean, description: 公开历史消息超过本轮上下文预算，完整记录仍保留。}
         modelAvailable: {type: boolean}
         providerAdapter: {type: [string, "null"]}
         modelId: {type: [string, "null"]}
@@ -6935,24 +6755,25 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        New policies are schema v6 with systemPromptVersion=12 and toolPolicyVersion=4.
-        Canvas nodes are authorized by a frozen, paged canvasScope; read_canvas, manage_canvas_node and update_media_draft
-        share project ownership, immutable version checks, locks and optimistic CAS with normal application services.
+        Policies are schema v7 with systemPromptVersion=13 and toolPolicyVersion=5; retired protocols are rejected.
+        The director manages the entire current project canvas, including nodes added or changed during a Run.
+        read_canvas, manage_canvas_node and update_media_draft share project ownership, current selected-version checks, locks
+        and optimistic CAS with normal application services. Explicit Skill inputs grant exact-version read access only.
         Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval.
         Selected Skills initially disclose only name, description and immutable version ID;
         read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports.
         New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references.
-        Null count limits mean no per-Run model/tool count cap. Historical numeric policies retain their frozen protocol and limits.
-      required: [schemaVersion, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions]
+        Null count limits mean no per-Run model/tool count cap.
+      required: [schemaVersion, toolPolicyVersion, systemPromptVersion, allowedTools, modelConfigSource, modelConfigVersion, maxModelTurns, maxToolExecutions]
       properties:
-        schemaVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6]}
-        toolPolicyVersion: {type: integer, enum: [1, 2, 3, 4]}
+        schemaVersion: {type: integer, const: 7}
+        toolPolicyVersion: {type: integer, const: 5}
         allowedTools: {type: array, uniqueItems: true, items: {type: string}}
-        systemPromptVersion: {type: integer, enum: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], description: New v6 snapshots pin version 12; historical rules and creative message roles remain frozen.}
+        systemPromptVersion: {type: integer, const: 13}
         modelConfigSource: {type: string}
         modelConfigVersion: {type: integer, minimum: 1}
-        maxModelTurns: {type: [integer, "null"], minimum: 1, description: Null means no model-turn count limit; historical numeric policies remain frozen.}
-        maxToolExecutions: {type: [integer, "null"], minimum: 1, description: Null means no per-Run tool execution count limit; historical numeric policies remain frozen.}
+        maxModelTurns: {type: "null", description: No model-turn count limit.}
+        maxToolExecutions: {type: "null", description: No per-Run tool execution count limit.}
     AgentRun:
       type: object
       additionalProperties: false
@@ -7158,16 +6979,18 @@ components:
     ProjectSnapshot:
       type: object
       additionalProperties: false
-      required: [project, canvas, connections, agents, activeRun, activeTasks, unknownTasks, snapshotSeq]
+      required: [project, canvas, connections, director, activeRun, activeTasks, unknownTasks, snapshotSeq]
       properties:
         project: {$ref: "#/components/schemas/Project"}
         canvas: {$ref: "#/components/schemas/Canvas"}
         connections:
           type: array
           items: {$ref: "#/components/schemas/CanvasConnection"}
-        agents:
-          type: array
-          items: {$ref: "#/components/schemas/Agent"}
+        director:
+          description: 项目唯一导演，首次打开前可为空；由 ensureProjectDirector 初始化。
+          oneOf:
+            - {$ref: "#/components/schemas/Agent"}
+            - {type: "null"}
         activeRun:
           oneOf:
             - {$ref: "#/components/schemas/AgentRun"}

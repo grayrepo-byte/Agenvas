@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -100,7 +102,7 @@ class AgentModelRetryPostgresIT {
         gateway.blockRequest = false;
         gateway.lastSink = null;
         project = projects.create(owner.userId(), "Retry project", Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Answer");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Answer");
         run = runs.create(owner.userId(), project.id(), agent.id(), "Answer", "retry-run").run();
     }
     @AfterEach void stopAnyUnfinishedTestRun() { runs.cancel(owner.userId(), project.id(), run.id()); }

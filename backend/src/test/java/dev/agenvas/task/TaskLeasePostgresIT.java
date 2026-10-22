@@ -1,5 +1,7 @@
 package dev.agenvas.task;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.agenvas.agent.application.AgentInstanceService;
@@ -92,7 +94,7 @@ class TaskLeasePostgresIT {
         AdminPrincipal owner = identityService.setup("task-admin", "task-password-123");
         Project project = projectService.create(
                 owner.userId(), "Task project", Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agentService.create(
+        AgentInstance agent = configureDirector(agentService,
                 owner.userId(), project.id(), "Creator", "Create");
         AgentRun run = runService.create(
                         owner.userId(), project.id(), agent.id(), "Create three shots", "task-run")

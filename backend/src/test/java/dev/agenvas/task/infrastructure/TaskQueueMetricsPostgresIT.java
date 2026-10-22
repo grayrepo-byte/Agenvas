@@ -1,5 +1,7 @@
 package dev.agenvas.task.infrastructure;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.agenvas.agent.application.AgentInstanceService;
@@ -57,7 +59,7 @@ class TaskQueueMetricsPostgresIT {
         AdminPrincipal owner = identities.setup("queue-admin", "queue-password-123");
         Project project = projects.create(owner.userId(), "Queue metrics",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Create");
         var run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create a plan", "queue-age-run").run();
         Task due = tasks.create(owner.userId(), project.id(), run.id(),

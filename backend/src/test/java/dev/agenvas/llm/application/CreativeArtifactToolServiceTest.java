@@ -36,7 +36,7 @@ class CreativeArtifactToolServiceTest {
     private final TrustedToolContext context = new TrustedToolContext(
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
     private final UUID agentId = UUID.randomUUID();
-    private final UUID outputGroupId = UUID.randomUUID();
+    private final UUID groupId = UUID.randomUUID();
     private final UUID artifactId = UUID.randomUUID();
     private final UUID versionId = UUID.randomUUID();
     private final UUID itemId = UUID.randomUUID();
@@ -44,67 +44,20 @@ class CreativeArtifactToolServiceTest {
     private final CanvasService canvas = mock(CanvasService.class);
     private final JsonMapper mapper = new JsonMapper();
     private final CreativeArtifactToolService service = new CreativeArtifactToolService(
-            artifacts, canvas, mapper, mock(ToolExecutionRepository.class));
+            artifacts, canvas, mapper);
     private final AgentRun run = new AgentRun(context.runId(), context.projectId(), agentId,
             UUID.randomUUID(), 1L, context.ownerId(), AgentRun.Status.RUNNING, "Arrange the result",
-            mapper.createObjectNode().put("outputGroupId", outputGroupId.toString()),
+            mapper.createObjectNode(),
             mapper.createObjectNode(), 1, 1, 1L, NOW, NOW, null);
-
-    @Test
-    void currentCanvasPlacementNeedsNoOutputGroupAndKeepsExactVersionsAcrossAliases() {
-        var snapshot = mapper.createObjectNode();
-        snapshot.putObject("canvasScope").put("version", 1).putArray("items").addObject()
-                .put("itemId", itemId.toString()).put("artifactId", artifactId.toString())
-                .put("selectedVersionId", versionId.toString());
-        var current = new AgentRun(context.runId(), context.projectId(), agentId, UUID.randomUUID(), 1L,
-                context.ownerId(), AgentRun.Status.RUNNING, "Show this exact version", snapshot,
-                mapper.createObjectNode(), 1, 1, 1L, NOW, NOW, null);
-        var view = visibleArtifact(Artifact.Kind.IMAGE, null);
-        var exact = item(versionId, UUID.randomUUID(), false);
-        var anotherSelection = item(UUID.randomUUID(), UUID.randomUUID(), false);
-        when(artifacts.requireAgentVisibleVersion(context.ownerId(), context.projectId(), context.runId(),
-                versionId, snapshot)).thenReturn(version(versionId));
-        when(canvas.list(context.ownerId(), context.projectId())).thenReturn(List.of(entry(anotherSelection, view), entry(exact, view)));
-        when(canvas.placeArtifactVersionsWithinChange(context.ownerId(), context.projectId(),
-                List.of(new CanvasService.ArtifactVersionPlacement(artifactId, versionId)), null))
-                .thenReturn(new CanvasService.OutputPlacements(List.of(), List.of(exact)));
-        var arguments = mapper.createObjectNode();
-        arguments.putArray("versionIds").add(versionId.toString());
-        assertThat(service.placeArtifacts(context, current, UUID.randomUUID(), arguments.toString())
-                .at("/data/0/versionId").asText()).isEqualTo(versionId.toString());
-        arguments.put("group", "AGENT_OUTPUT");
-        assertThatThrownBy(() -> service.placeArtifacts(context, current, UUID.randomUUID(), arguments.toString()))
-                .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
-    }
-
-    @ParameterizedTest
-    @EnumSource(value = Artifact.Kind.class, names = {"IMAGE", "VIDEO", "AUDIO"})
-    void reusesSelectedMediaOutputWithoutALibraryDefault(Artifact.Kind kind) {
-        ArtifactService.ArtifactView view = visibleArtifact(kind, null);
-        CanvasItem item = item(versionId, outputGroupId, false);
-        when(canvas.list(context.ownerId(), context.projectId()))
-                .thenReturn(List.of(entry(item, view)));
-        when(canvas.placeArtifactVersionsWithinChange(context.ownerId(),
-                context.projectId(), List.of(new CanvasService.ArtifactVersionPlacement(artifactId, versionId)), outputGroupId))
-                .thenReturn(new CanvasService.OutputPlacements(List.of(), List.of(item)));
-
-        JsonNode result = place();
-
-        assertThat(result.path("status").asText()).isEqualTo("SUCCEEDED");
-        assertThat(result.path("createdIds").isEmpty()).isTrue();
-        assertThat(result.at("/data/0/versionId").asText()).isEqualTo(versionId.toString());
-        assertThat(result.at("/data/0/itemId").asText()).isEqualTo(itemId.toString());
-        assertThat(result.at("/data/0/created").asBoolean()).isFalse();
-    }
 
     @ParameterizedTest
     @EnumSource(value = Artifact.Kind.class, names = {"IMAGE", "VIDEO", "AUDIO"})
     void arrangesSelectedMediaOutputWithoutALibraryDefault(Artifact.Kind kind) {
         ArtifactService.ArtifactView view = visibleArtifact(kind, null);
-        CanvasItem before = item(versionId, outputGroupId, false);
+        CanvasItem before = item(versionId, groupId, false);
         CanvasItem after = new CanvasItem(itemId, context.projectId(), before.subjectType(),
                 artifactId, versionId, before.title(), new BigDecimal("80"), BigDecimal.ZERO,
-                WIDTH, HEIGHT, before.zIndex(), outputGroupId, false, ITEM_VERSION + 1, NOW, NOW);
+                WIDTH, HEIGHT, before.zIndex(), groupId, false, ITEM_VERSION + 1, NOW, NOW);
         when(canvas.list(context.ownerId(), context.projectId()))
                 .thenReturn(List.of(entry(before, view)));
         when(canvas.apply(eq(context.ownerId()), eq(context.projectId()), any()))
@@ -119,64 +72,7 @@ class CreativeArtifactToolServiceTest {
         verify(canvas).apply(eq(context.ownerId()), eq(context.projectId()), saved.capture());
         CanvasService.UpdateLayout command = (CanvasService.UpdateLayout) saved.getValue().getFirst();
         assertThat(command.expectedVersion()).isEqualTo(ITEM_VERSION);
-        assertThat(command.groupId()).isEqualTo(outputGroupId);
-    }
-
-    @Test
-    void unselectedArchivedVideoPlacementKeepsItsConflictReasonInTheWorker() {
-        ArtifactService.ArtifactView view = visibleArtifact(Artifact.Kind.VIDEO, null);
-        when(canvas.list(context.ownerId(), context.projectId()))
-                .thenReturn(List.of(entry(item(null, outputGroupId, false), view)));
-
-        assertThatThrownBy(this::place).isInstanceOf(ApiProblemException.class)
-                .satisfies(failure -> assertThat(AgentTurnWorker.failureCode(failure))
-                        .isEqualTo("ARTIFACT_VERSION_CONFLICT"));
-        verify(canvas, never()).placeArtifactVersionsWithinChange(any(), any(), any(), any());
-    }
-
-    @Test
-    void placementRejectsAnOutputWithAStaleSelectionEvenWhenTheLibraryDefaultMatches() {
-        assertPlacementSelectionConflict(UUID.randomUUID());
-    }
-
-    @Test
-    void placementRejectsAnEmptyOutputEvenWhenTheLibraryDefaultMatches() {
-        assertPlacementSelectionConflict(null);
-    }
-
-    @Test
-    void placementRejectsMediaWithoutAnOutputCardOrLibraryDefault() {
-        visibleArtifact(Artifact.Kind.IMAGE, null);
-        when(canvas.list(context.ownerId(), context.projectId())).thenReturn(List.of());
-
-        assertVersionConflict(this::place);
-
-        verify(canvas, never()).placeArtifactVersionsWithinChange(any(), any(), any(), any());
-    }
-
-    @Test
-    void placementRejectsAnAbsentOutputWhenTheRequestedMediaIsNotTheLibraryDefault() {
-        visibleArtifact(Artifact.Kind.IMAGE, version(UUID.randomUUID()));
-        when(canvas.list(context.ownerId(), context.projectId())).thenReturn(List.of());
-
-        assertVersionConflict(this::place);
-
-        verify(canvas, never()).placeArtifactVersionsWithinChange(any(), any(), any(), any());
-    }
-
-    @Test
-    void placementCreatesAnAbsentMediaOutputOnlyForTheLibraryDefault() {
-        visibleArtifact(Artifact.Kind.IMAGE, version(versionId));
-        CanvasItem item = item(versionId, outputGroupId, false);
-        when(canvas.list(context.ownerId(), context.projectId())).thenReturn(List.of());
-        when(canvas.placeArtifactVersionsWithinChange(context.ownerId(),
-                context.projectId(), List.of(new CanvasService.ArtifactVersionPlacement(artifactId, versionId)), outputGroupId))
-                .thenReturn(new CanvasService.OutputPlacements(List.of(item), List.of()));
-
-        JsonNode result = place();
-
-        assertThat(result.at("/data/0/created").asBoolean()).isTrue();
-        assertThat(result.at("/data/0/versionId").asText()).isEqualTo(versionId.toString());
+        assertThat(command.groupId()).isEqualTo(groupId);
     }
 
     @Test
@@ -190,18 +86,14 @@ class CreativeArtifactToolServiceTest {
     }
 
     @Test
-    void textPlacementAndArrangementContinueToUseTheLibraryDefault() {
+    void textArrangementUsesTheCurrentResourceDefault() {
         ArtifactService.ArtifactView view = visibleArtifact(Artifact.Kind.TEXT, version(versionId));
-        CanvasItem item = item(null, outputGroupId, false);
+        CanvasItem item = item(null, groupId, false);
         when(canvas.list(context.ownerId(), context.projectId()))
                 .thenReturn(List.of(entry(item, view)));
-        when(canvas.placeArtifactVersionsWithinChange(context.ownerId(),
-                context.projectId(), List.of(new CanvasService.ArtifactVersionPlacement(artifactId, versionId)), outputGroupId))
-                .thenReturn(new CanvasService.OutputPlacements(List.of(), List.of(item)));
+
         when(canvas.apply(eq(context.ownerId()), eq(context.projectId()), any()))
                 .thenReturn(List.of(entry(item, view)));
-
-        assertThat(place().path("status").asText()).isEqualTo("SUCCEEDED");
         assertThat(arrange().path("status").asText()).isEqualTo("SUCCEEDED");
     }
 
@@ -210,32 +102,16 @@ class CreativeArtifactToolServiceTest {
         ArtifactService.ArtifactView view = visibleArtifact(Artifact.Kind.TEXT,
                 version(UUID.randomUUID()));
         when(canvas.list(context.ownerId(), context.projectId()))
-                .thenReturn(List.of(entry(item(versionId, outputGroupId, false), view)));
+                .thenReturn(List.of(entry(item(versionId, groupId, false), view)));
 
-        assertVersionConflict(this::place);
         assertVersionConflict(this::arrange);
 
-        verify(canvas, never()).placeArtifactVersionsWithinChange(any(), any(), any(), any());
         verify(canvas, never()).apply(any(), any(), any());
-    }
-
-    private void assertPlacementSelectionConflict(UUID selectedVersionId) {
-        ArtifactService.ArtifactView view = visibleArtifact(Artifact.Kind.IMAGE, version(versionId));
-        CanvasItem item = item(selectedVersionId, outputGroupId, false);
-        when(canvas.list(context.ownerId(), context.projectId()))
-                .thenReturn(List.of(entry(item, view)));
-        when(canvas.placeArtifactVersionsWithinChange(context.ownerId(),
-                context.projectId(), List.of(new CanvasService.ArtifactVersionPlacement(artifactId, versionId)), outputGroupId))
-                .thenReturn(new CanvasService.OutputPlacements(List.of(), List.of(item)));
-
-        assertVersionConflict(this::place);
-
-        verify(canvas, never()).placeArtifactVersionsWithinChange(any(), any(), any(), any());
     }
 
     private void assertArrangementSelectionConflict(UUID selectedVersionId) {
         ArtifactService.ArtifactView view = visibleArtifact(Artifact.Kind.IMAGE, version(versionId));
-        CanvasItem item = item(selectedVersionId, outputGroupId, false);
+        CanvasItem item = item(selectedVersionId, groupId, false);
         when(canvas.list(context.ownerId(), context.projectId()))
                 .thenReturn(List.of(entry(item, view)));
         when(canvas.apply(eq(context.ownerId()), eq(context.projectId()), any()))
@@ -252,12 +128,6 @@ class CreativeArtifactToolServiceTest {
                 .isEqualTo("ARTIFACT_VERSION_CONFLICT");
     }
 
-    private JsonNode place() {
-        return service.placeArtifacts(context, run, UUID.randomUUID(), mapper.createObjectNode()
-                .put("group", "AGENT_OUTPUT").set("versionIds", mapper.createArrayNode()
-                        .add(versionId.toString())).toString());
-    }
-
     private JsonNode arrange() {
         var input = mapper.createObjectNode().put("layout", "HORIZONTAL");
         input.putArray("items").addObject().put("itemId", itemId.toString())
@@ -271,8 +141,7 @@ class CreativeArtifactToolServiceTest {
                 artifactId, context.projectId(), kind, "Synthetic output",
                 resourceDefaultVersion == null ? null : resourceDefaultVersion.id(),
                 null, 1L, NOW, NOW), resourceDefaultVersion);
-        when(artifacts.requireAgentVisibleVersion(context.ownerId(), context.projectId(),
-                context.runId(), versionId, run.contextSnapshot())).thenReturn(version(versionId));
+        when(artifacts.requireCanvasVersion(context.ownerId(), context.projectId(), versionId)).thenReturn(version(versionId));
         when(artifacts.get(context.ownerId(), context.projectId(), artifactId)).thenReturn(view);
         return view;
     }

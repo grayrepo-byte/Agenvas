@@ -574,23 +574,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/agent-presets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 读取可直接创建的 Agent 提示词名称和用途标识 */
-        get: operations["listAgentPresets"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/settings/prompts": {
         parameters: {
             query?: never;
@@ -610,7 +593,7 @@ export interface paths {
          */
         get: operations["listPrompts"];
         put?: never;
-        /** 新建独立提示词 */
+        /** 新建功能提示词 */
         post: operations["createPrompt"];
         delete?: never;
         options?: never;
@@ -2311,7 +2294,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{projectId}/agents": {
+    "/api/v1/projects/{projectId}/director": {
         parameters: {
             query?: never;
             header?: {
@@ -2326,11 +2309,13 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 获取项目中的 Creator Agent 配置 */
-        get: operations["listAgents"];
-        put?: never;
-        /** 创建一个空闲的导演 Agent */
-        post: operations["createAgent"];
+        get?: never;
+        /**
+         * 恢复或初始化项目唯一导演
+         * @description 无请求正文。在项目锁内恢复唯一导演，不存在时复制固定内置 agent.director 提示词一次；并发和重复请求返回同一身份，不覆盖已保存配置、不启动模型或创建会话。数据库约束每项目最多一个实例。
+         */
+        put: operations["ensureProjectDirector"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2362,32 +2347,6 @@ export interface paths {
         head?: never;
         /** 乐观更新项目助手配置 */
         patch: operations["updateAgent"];
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/agents/{agentId}/outputs": {
-        parameters: {
-            query?: never;
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-            };
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-                agentId: string;
-            };
-            cookie?: never;
-        };
-        /** 按当前选用版本的运行来源查询助手产物节点 */
-        get: operations["listAgentOutputs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{projectId}/agents/{agentId}/conversations": {
@@ -2486,8 +2445,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 分页查看一个 Agent 的持久化运行记录 */
-        get: operations["listAgentRuns"];
+        get?: never;
         put?: never;
         /** 幂等创建一个持久化 Agent Run */
         post: operations["createRun"];
@@ -4380,12 +4338,12 @@ export interface components {
             createdAt: string;
         };
         ProjectExportManifest: {
-            /** @description 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId、position）；未安装时 mapping.assets 为空。 */
+            /** @description 已安装或由项目导演默认绑定的固定版本，包含 version、mapping 和可空的 directorBinding（skillId、skillVersionId、position）；未安装时 mapping.assets 为空，不导出多助手绑定列表。 */
             creativeSkills?: {
                 [key: string]: unknown;
             }[];
             /** @constant */
-            schemaVersion: 7;
+            schemaVersion: 8;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -5010,8 +4968,6 @@ export interface components {
         };
         CreatePromptRequest: {
             key: string;
-            /** @enum {string} */
-            kind: "AGENT" | "FUNCTION";
             name: string;
             description?: string;
             content: string;
@@ -5022,21 +4978,6 @@ export interface components {
             name: string;
             description?: string;
             content: string;
-        };
-        AgentPreset: {
-            key: string;
-            name: string;
-        };
-        AgentPresetList: {
-            items: components["schemas"]["AgentPreset"][];
-        };
-        CreateAgentRequest: {
-            /** @description 选择 AGENT 提示词条目；省略时使用 agent.director，FUNCTION 不能用于创建 Agent。 */
-            promptKey?: string;
-            /** @description 省略时在创建事务内复制当前默认名称。 */
-            name?: string;
-            /** @description 省略时复制当前默认创作系统提示词；不自动运行，已有实例可单独修改。 */
-            instruction?: string;
         };
         UpdateAgentRequest: {
             /** Format: int64 */
@@ -5060,13 +5001,6 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
-        };
-        AgentOutputList: {
-            /** @description 当前画布实际选用版本由该 Agent 的运行产生的节点；依据不可变版本来源，不依赖布局分组。不含尚未归档的审批草稿。 */
-            canvasItemIds: string[];
-        };
-        AgentList: {
-            items: components["schemas"]["Agent"][];
         };
         AgentConversation: {
             /** Format: uuid */
@@ -5192,12 +5126,7 @@ export interface components {
             profileVersion: number;
             /**
              * Format: uuid
-             * @description 仅历史运行冻结的布局分组；新运行不再写入或依赖 Agent 输出分组。
-             */
-            outputGroupId?: string;
-            /**
-             * Format: uuid
-             * @description 新 Run 冻结的会话作用域；升级前旧快照保持原值，可能没有此字段
+             * @description Run 所属会话作用域
              */
             conversationId?: string;
             /**
@@ -5206,22 +5135,16 @@ export interface components {
              */
             conversationHistoryThroughTurn?: number;
             conversationMemory?: components["schemas"]["ConversationMemory"];
-            canvasScope?: components["schemas"]["RunCanvasScope"];
-            /** @description Selected immutable Skill snapshots; complete content is persisted here but only names and descriptions are disclosed initially. Historical Runs may retain creativeSkill instead. */
+            /** @description Selected immutable Skill snapshots; complete content and explicit read-only input mappings are persisted here but only names and descriptions are disclosed initially. */
             creativeSkills?: {
                 [key: string]: unknown;
             }[];
-            /** @description 本 Run 显式选择的 Skill 输入或仍在画布范围内的会话精确输入；升级前快照可保留历史 Agent 绑定。新 Run 不读取长期素材绑定。 */
-            bindings?: components["schemas"]["RunInputSnapshot"][];
             /** @description 创建 Run 时由服务端核对并固定的画布选择；新协议通过 read_selection 分页按需读取，首轮只提供数量；不扩大工具权限 */
             selection?: {
                 /** Format: uuid */
                 itemId: string;
-                /**
-                 * @description 新 Run 固定为 ARTIFACT；AGENT 仅用于读取升级前的不可变选择快照。
-                 * @enum {string}
-                 */
-                subjectType: "ARTIFACT" | "AGENT";
+                /** @constant */
+                subjectType: "ARTIFACT";
                 /** Format: uuid */
                 subjectId: string;
                 /** Format: uuid */
@@ -5230,33 +5153,6 @@ export interface components {
             }[];
         } & {
             [key: string]: unknown;
-        };
-        /** @description 新 Run 在受理事务冻结的当前画布授权范围；目录按 read_canvas 分页提供，首轮模型仅接收节点数。旧 Run 缺省保留绑定和输出组权限。 */
-        RunCanvasScope: {
-            /** @constant */
-            version: 1;
-            /** @description 当前画布所有 Artifact 节点；没有旧显式绑定40项限制，不包含不可变正文、原图或凭证。 */
-            items: {
-                /** Format: uuid */
-                itemId: string;
-                /** Format: uuid */
-                artifactId: string;
-                kind: components["schemas"]["ArtifactKind"];
-                title: string;
-                /** Format: uuid */
-                selectedVersionId?: string;
-                /** Format: int64 */
-                itemVersion: number;
-                /** Format: int64 */
-                artifactVersion: number;
-                locked: boolean;
-                x: number;
-                y: number;
-                width: number;
-                height: number;
-                zIndex: number;
-                mediaDraft?: components["schemas"]["MediaDraft"];
-            }[];
         };
         /** @description 创建 Run 时冻结的公开用户指令、assistant 回复与已提交业务动作摘要；不包含私有推理、原始协议、工具参数或凭证，也不授予额外权限 */
         ConversationMemory: {
@@ -5268,31 +5164,6 @@ export interface components {
             }[];
             truncated: boolean;
             priorRunCount: number;
-        };
-        RunInputSnapshot: {
-            /** Format: uuid */
-            artifactId: string;
-            /** Format: uuid */
-            selectedVersionId: string;
-            kind?: components["schemas"]["ArtifactKind"];
-            title?: string;
-            /** Format: int64 */
-            expectedVersion?: number;
-            /** @enum {string} */
-            source?: "CONVERSATION_OUTPUT" | "SKILL_INPUT";
-            /**
-             * Format: uuid
-             * @description Skill reference disclosed only after activation.
-             */
-            skillVersionId?: string;
-        };
-        RunPreflightBinding: {
-            /** Format: uuid */
-            artifactId: string;
-            /** Format: uuid */
-            selectedVersionId: string;
-            artifactTitle: string;
-            artifactKind: components["schemas"]["ArtifactKind"];
         };
         RunPreflight: {
             /** Format: uuid */
@@ -5307,35 +5178,30 @@ export interface components {
             conversationVersion: number | null;
             /** Format: int64 */
             conversationTurnCount: number;
-            inheritedBindingCount: number;
             creativeSkills: components["schemas"]["RunSkillSummary"][];
-            /** @description 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。 */
+            /** @description 公开历史消息超过本轮上下文预算，完整记录仍保留。 */
             memoryTruncated: boolean;
-            bindings: components["schemas"]["RunPreflightBinding"][];
             modelAvailable: boolean;
             providerAdapter: string | null;
             modelId: string | null;
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description New policies are schema v6 with systemPromptVersion=12 and toolPolicyVersion=4. Canvas nodes are authorized by a frozen, paged canvasScope; read_canvas, manage_canvas_node and update_media_draft share project ownership, immutable version checks, locks and optimistic CAS with normal application services. Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. Historical numeric policies retain their frozen protocol and limits. */
+        /** @description Policies are schema v7 with systemPromptVersion=13 and toolPolicyVersion=5; retired protocols are rejected. The director manages the entire current project canvas, including nodes added or changed during a Run. read_canvas, manage_canvas_node and update_media_draft share project ownership, current selected-version checks, locks and optimistic CAS with normal application services. Explicit Skill inputs grant exact-version read access only. Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. */
         RunPolicySnapshot: {
-            /** @enum {integer} */
-            schemaVersion: 1 | 2 | 3 | 4 | 5 | 6;
-            /** @enum {integer} */
-            toolPolicyVersion?: 1 | 2 | 3 | 4;
-            allowedTools?: string[];
-            /**
-             * @description New v6 snapshots pin version 12; historical rules and creative message roles remain frozen.
-             * @enum {integer}
-             */
-            systemPromptVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+            /** @constant */
+            schemaVersion: 7;
+            /** @constant */
+            toolPolicyVersion: 5;
+            allowedTools: string[];
+            /** @constant */
+            systemPromptVersion: 13;
             modelConfigSource: string;
             modelConfigVersion: number;
-            /** @description Null means no model-turn count limit; historical numeric policies remain frozen. */
-            maxModelTurns: number | null;
-            /** @description Null means no per-Run tool execution count limit; historical numeric policies remain frozen. */
-            maxToolExecutions: number | null;
+            /** @description No model-turn count limit. */
+            maxModelTurns: null;
+            /** @description No per-Run tool execution count limit. */
+            maxToolExecutions: null;
         };
         AgentRun: {
             /** Format: uuid */
@@ -5553,7 +5419,8 @@ export interface components {
             project: components["schemas"]["Project"];
             canvas: components["schemas"]["Canvas"];
             connections: components["schemas"]["CanvasConnection"][];
-            agents: components["schemas"]["Agent"][];
+            /** @description 项目唯一导演，首次打开前可为空；由 ensureProjectDirector 初始化。 */
+            director: components["schemas"]["Agent"] | null;
             activeRun: components["schemas"]["AgentRun"] | null;
             activeTasks: components["schemas"]["Task"][];
             /** @description 最近 100 个未核对的外部提交，取消 Run 后仍可见 */
@@ -7460,27 +7327,6 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
-    listAgentPresets: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 仅名称和标识，不含正文及功能提示词；Cache-Control no-store */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentPresetList"];
-                };
-            };
-            401: components["responses"]["Unauthenticated"];
-        };
-    };
     listPrompts: {
         parameters: {
             query?: never;
@@ -7496,7 +7342,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 所有 Agent 与功能提示词；Cache-Control no-store */
+            /** @description 固定内置导演与功能提示词；Cache-Control no-store */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10481,7 +10327,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    listAgents: {
+    ensureProjectDirector: {
         parameters: {
             query?: never;
             header?: {
@@ -10498,47 +10344,9 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Agent 列表及其明确绑定的输入 */
+            /** @description 项目唯一导演的当前配置；已存在时不追加变更事件 */
             200: {
                 headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentList"];
-                };
-            };
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    createAgent: {
-        parameters: {
-            query?: never;
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-                /** @description 创建卡片使用此键；同键同请求重放首次配置（默认提示词之后变化也不重算），异参返回 409。 */
-                "Idempotency-Key"?: string;
-            };
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateAgentRequest"];
-            };
-        };
-        responses: {
-            /** @description 新建的 Agent，或原创建请求的重放结果 */
-            201: {
-                headers: {
-                    /** @description 提供幂等键时标识是否重放首次结果 */
-                    "Idempotency-Replayed"?: boolean;
                     [name: string]: unknown;
                 };
                 content: {
@@ -10617,37 +10425,6 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-        };
-    };
-    listAgentOutputs: {
-        parameters: {
-            query?: never;
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-            };
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-                agentId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 当前画布可定位的真实产物 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentOutputList"];
-                };
-            };
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
         };
     };
     listAgentConversations: {
@@ -10774,41 +10551,6 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description 同一会话的 Run 摘要 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentRunList"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listAgentRuns: {
-        parameters: {
-            query: {
-                agentId: string;
-                cursor?: string;
-                limit?: number;
-            };
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-            };
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 不含模型原始消息的运行摘要，按创建时间倒序 */
             200: {
                 headers: {
                     [name: string]: unknown;

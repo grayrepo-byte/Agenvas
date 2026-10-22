@@ -81,6 +81,18 @@
   max-height: min(var(--ui-canvas-editor-prompt-limit), calc(var(--draft-available-height) * 0.5));
   margin: 7px 0 6px;
 }
+/* A centered node can leave a short area below it. Scroll the panel rather than
+   collapsing the prompt below one editable line or overlapping the run controls. */
+.workspace-media-editor .media-draft-editor { overflow-y: auto; scrollbar-width: thin; }
+.workspace-media-editor .media-draft-prompt-shell {
+  min-height: calc(var(--ui-editor-text-size) * var(--ui-editor-line-height) + var(--ui-space-4));
+}
+/* The screen-sized overlay is the fixed containing block. Menus escape the
+   scrolling editor and continue to open above it. */
+.workspace-media-editor :is(.ui-popover-surface.media-draft-popover, .ui-popover-surface.voice-library, .media-draft-mention-menu) {
+  position: fixed;
+}
+.workspace-media-editor .media-draft-mention-menu { height: auto; }
 .media-draft-editor .media-draft-prompt {
   width: 100%; min-height: 0; height: 100%; overflow-y: auto; resize: none;
   field-sizing: fixed; border: 0; border-radius: var(--ui-radius-md);

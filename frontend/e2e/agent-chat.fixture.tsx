@@ -5,7 +5,6 @@ import { AgentChatDock } from "../src/features/canvas/AgentChatDock";
 import type { Agent } from "../src/shared/api/client";
 import { setLocale } from "../src/shared/i18n";
 import { Button } from "../src/shared/ui/primitives/button";
-import { Select } from "../src/shared/ui/Select";
 import "../src/styles.css";
 
 // Synthetic component/layout evidence only: no backend, credentials or Provider requests.
@@ -18,7 +17,8 @@ const history = new URLSearchParams(location.search).has("history");
 const runs = history ? Array.from({ length: 12 }, (_, index) => ({ id: `synthetic-run-${index}`,
   projectId: agent.projectId, agentInstanceId: agent.id, conversationId: "synthetic-conversation",
   conversationTurn: index + 1, status: "SUCCEEDED", instruction: `第 ${index + 1} 轮：帮我整理画布中的创意。`,
-  contextSnapshot: {}, policySnapshot: {}, createdAt: now, updatedAt: now })) : [];
+  contextSnapshot: {}, policySnapshot: { schemaVersion: 7, toolPolicyVersion: 5, systemPromptVersion: 13, allowedTools: ["read_canvas"],
+    modelConfigSource: "MOCK", modelConfigVersion: 0, maxModelTurns: null, maxToolExecutions: null }, createdAt: now, updatedAt: now })) : [];
 window.fetch = async input => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href);
   let value: unknown;
@@ -48,14 +48,9 @@ function Fixture() {
       <p style={{ fontSize: 13, lineHeight: 1.8, color: "var(--ui-text-secondary)" }}>城市午后，陌生人的一次偶遇，让两个平行的日常交汇。</p>
       <Button id="synthetic-canvas-node" variant="outline" size="sm" aria-pressed={selected} style={{ marginTop: 20 }} onClick={() => setSelected(value => !value)}>选择画布节点</Button>
     </div>
-    <AgentChatDock open={open} onOpenChange={setOpen} controls={<div style={{ display: "flex", gap: 6 }}>
-      <Select aria-label="切换 Agent" value={agent.id} onChange={() => undefined} variant="ghost" density="compact">
-        <option value={agent.id}>{agent.name}</option>
-      </Select>
-      <Button variant="ghost" size="icon-sm" aria-label="从预设新建 Agent">+</Button>
-    </div>} data={{ agent, projectId: agent.projectId,
-      activeRun: null, outputCount: 0, canvasNodeCount: 3, selectedNodeCount: selected ? 1 : 0,
-      onShowOutputs: () => undefined, onUpdateAgent: () => undefined, updatingAgent: false }} />
+    <AgentChatDock open={open} onOpenChange={setOpen} data={{ agent, projectId: agent.projectId,
+      activeRun: null, canvasNodeCount: 3, selectedNodeCount: selected ? 1 : 0,
+      onUpdateAgent: () => undefined, updatingAgent: false }} />
   </main>;
 }
 createRoot(document.getElementById("root")!).render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><Fixture /></QueryClientProvider>);

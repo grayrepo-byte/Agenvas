@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -88,7 +90,7 @@ class RunActionsPostgresIT {
         AdminPrincipal owner = identities.setup("actions-admin", "actions-password-123");
         Project project = projects.create(owner.userId(), "Actions project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
                 "PRIVATE_AGENT_PROMPT");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "PRIVATE_TOOL_ARGUMENT", "actions-run").run();
@@ -152,7 +154,7 @@ class RunActionsPostgresIT {
                 "toolCallId", "argumentHash", "createdIds", "result_json");
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId")
                 .param("projectId", project.id()).query(Long.class).single()).isEqualTo(eventCount);
-        assertThat(ledger.countByRun(project.id(), run.id())).isEqualTo(5);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :run").param("run", run.id()).query(Long.class).single()).isEqualTo(5);
 
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
         AdminPrincipal outsider = new AdminPrincipal(UUID.randomUUID(), "outsider");

@@ -8,7 +8,6 @@ import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.application.MediaDraftRestoreService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.run.domain.AgentRun;
-import dev.agenvas.run.domain.RunCanvasScope;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.task.application.DirectMediaTaskService;
@@ -24,7 +23,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Canvas commands share the normal application services, immutable Run scope and optimistic locks. */
+/** Canvas commands use the live owned canvas, normal application services and optimistic locks. */
 @Service
 @Transactional
 public class CanvasAgentToolService {
@@ -34,17 +33,15 @@ public class CanvasAgentToolService {
     private final MediaDraftService drafts;
     private final MediaDraftRestoreService draftWrites;
     private final DirectMediaTaskService mediaTasks;
-    private final ToolExecutionRepository ledger;
     private final ObjectMapper mapper;
 
     public CanvasAgentToolService(CanvasService canvas, ArtifactService artifacts, MediaDraftService drafts,
-            MediaDraftRestoreService draftWrites, DirectMediaTaskService mediaTasks, ToolExecutionRepository ledger, ObjectMapper mapper) {
+            MediaDraftRestoreService draftWrites, DirectMediaTaskService mediaTasks, ObjectMapper mapper) {
         this.canvas = canvas;
         this.artifacts = artifacts;
         this.drafts = drafts;
         this.draftWrites = draftWrites;
         this.mediaTasks = mediaTasks;
-        this.ledger = ledger;
         this.mapper = mapper;
     }
 
@@ -52,25 +49,9 @@ public class CanvasAgentToolService {
     @Transactional(readOnly = true)
     public JsonNode readCanvas(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parse(arguments, Set.of("offset", "limit", "includeDrafts"));
-        requireScope(run);
         int offset = input.has("offset") ? integer(input, "offset") : 0;
         int limit = input.has("limit") ? integer(input, "limit") : 20;
-        JsonNode frozen = RunCanvasScope.items(run.contextSnapshot());
-        List<CanvasService.CanvasEntry> current = canvas.list(context.ownerId(), context.projectId());
-        var currentById = current.stream().collect(java.util.stream.Collectors.toMap(entry -> entry.item().id(), entry -> entry));
-        Set<UUID> frozenIds = new java.util.HashSet<>();
-        List<CanvasService.CanvasEntry> directory = new java.util.ArrayList<>();
-        for (JsonNode item : frozen) {
-            UUID itemId = UUID.fromString(item.path("itemId").asText());
-            frozenIds.add(itemId);
-            if (currentById.containsKey(itemId)) directory.add(currentById.get(itemId));
-        }
-        // The authority stays frozen, while reads refresh CAS, locks, selections and drafts.
-        // New Run outputs are included; later user-created project nodes are not.
-        for (var entry : current) {
-            if (!frozenIds.contains(entry.item().id()) && (ownOutput(run, entry)
-                    || ledger.hasCreatedCanvasItem(context.projectId(), run.id(), entry.item().id()))) directory.add(entry);
-        }
+        List<CanvasService.CanvasEntry> directory = canvas.list(context.ownerId(), context.projectId());
         if (input.has("includeDrafts") && !input.path("includeDrafts").isBoolean()) throw invalid();
         boolean includeDrafts = input.path("includeDrafts").asBoolean(false);
         if (includeDrafts && limit > 6) throw invalid();
@@ -85,13 +66,6 @@ public class CanvasAgentToolService {
             ObjectNode item = describe(context, entry).put("kind", entry.artifact().artifact().kind().name())
                     .put("artifactVersion", entry.artifact().artifact().version())
                     .put("locked", entry.item().locked()).put("zIndex", entry.item().zIndex());
-            var selected = entry.artifact().artifact().kind() == Artifact.Kind.TEXT
-                    ? entry.artifact().resourceDefaultVersion() : entry.selectedVersion();
-            if (selected != null) item.put("selectedVersionReadable", readableVersion(run, selected));
-            for (JsonNode original : frozen) if (entry.item().id().toString().equals(original.path("itemId").asText())
-                    && original.path("selectedVersionId").isTextual()
-                    && !original.path("selectedVersionId").equals(item.path("selectedVersionId")))
-                item.set("frozenSelectedVersionId", original.path("selectedVersionId"));
             JsonNode draft = item.path("mediaDraft");
             if (!includeDrafts && draft.isObject()) {
                 ObjectNode metadata = mapper.createObjectNode().put("version", draft.path("version").asLong())
@@ -146,15 +120,15 @@ public class CanvasAgentToolService {
                 BigDecimal y = input.has("y") ? decimal(input, "y") : item.y().add(new BigDecimal("48"));
                 if (entry.artifact().artifact().kind() == Artifact.Kind.TEXT) {
                     var source = entry.artifact().resourceDefaultVersion();
-                    artifacts.requireAgentVisibleVersion(context.ownerId(), context.projectId(), run.id(), source.id(), run.contextSnapshot());
+                    artifacts.requireCanvasVersion(context.ownerId(), context.projectId(), source.id());
                     var copy = artifacts.createFromAgent(context.ownerId(), context.projectId(), run.id(), Artifact.Kind.TEXT,
                             item.title(), source.content());
                     updated = canvas.apply(context.ownerId(), context.projectId(), List.of(new CanvasService.PlaceArtifact(targetId,
                             copy.artifact().id(), x, y, item.width(), item.height(), item.zIndex(), item.groupId(), false)))
                             .stream().filter(candidate -> candidate.item().id().equals(targetId)).findFirst().orElseThrow();
                 } else {
-                    if (item.selectedVersionId() != null) artifacts.requireAgentVisibleVersion(context.ownerId(),
-                            context.projectId(), run.id(), item.selectedVersionId(), run.contextSnapshot());
+                    if (item.selectedVersionId() != null) artifacts.requireCanvasVersion(context.ownerId(),
+                            context.projectId(), item.selectedVersionId());
                     updated = canvas.duplicate(context.ownerId(), context.projectId(), item.id(), targetId, expected,
                             version(input, "expectedDraftVersion"), x, y, item.width(), item.height(), item.zIndex()).item();
                 }
@@ -185,7 +159,7 @@ public class CanvasAgentToolService {
             for (JsonNode value : supplied) {
                 if (!value.isObject() || value.size() != 2) throw invalid();
                 UUID versionId = uuid(value, "versionId");
-                artifacts.requireAgentVisibleVersion(context.ownerId(), context.projectId(), run.id(), versionId, run.contextSnapshot());
+                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), versionId);
                 MediaDraft.InputRole role;
                 try { role = MediaDraft.InputRole.valueOf(value.path("role").asText()); }
                 catch (IllegalArgumentException malformed) { throw invalid(); }
@@ -209,7 +183,7 @@ public class CanvasAgentToolService {
             for (JsonNode value : supplied) {
                 if (!value.isObject() || value.size() != 2) throw invalid();
                 UUID versionId = uuid(value, "versionId");
-                artifacts.requireAgentVisibleVersion(context.ownerId(), context.projectId(), run.id(), versionId, run.contextSnapshot());
+                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), versionId);
                 MediaDraft.InputRole role;
                 try { role = MediaDraft.InputRole.valueOf(value.path("role").asText()); }
                 catch (IllegalArgumentException malformed) { throw invalid(); }
@@ -237,37 +211,10 @@ public class CanvasAgentToolService {
     }
 
     private CanvasService.CanvasEntry requireItem(TrustedToolContext context, AgentRun run, UUID itemId) {
-        requireScope(run);
         CanvasService.CanvasEntry entry = canvas.list(context.ownerId(), context.projectId()).stream()
                 .filter(candidate -> candidate.item().id().equals(itemId) && candidate.item().subjectType() == CanvasItem.SubjectType.ARTIFACT)
                 .findFirst().orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", ApiMessage.of("api.canvas-service.the-canvas-card-does-not-exist-or-the-current-user")));
-        if (!RunCanvasScope.containsItem(run.contextSnapshot(), itemId) && !ownOutput(run, entry)
-                && !ledger.hasCreatedCanvasItem(context.projectId(), run.id(), itemId)) {
-            throw problem(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED", ApiMessage.of("api.artifact-service.input-exceeds-authorization-range"));
-        }
         return entry;
-    }
-
-    private boolean readableVersion(AgentRun run, dev.agenvas.artifact.domain.ArtifactVersion selected) {
-        UUID artifactId = selected.artifactId();
-        UUID versionId = selected.id();
-        if (RunCanvasScope.containsVersion(run.contextSnapshot(), artifactId, versionId)) return true;
-        for (JsonNode binding : run.contextSnapshot().path("bindings"))
-            if (artifactId.toString().equals(binding.path("artifactId").asText())
-                    && versionId.toString().equals(binding.path("selectedVersionId").asText())) return true;
-        return run.id().equals(selected.runId()) && selected.createdByKind() != dev.agenvas.artifact.domain.ArtifactVersion.CreatedByKind.USER;
-    }
-
-    private boolean ownOutput(AgentRun run, CanvasService.CanvasEntry entry) {
-        var selected = entry.artifact().artifact().kind() == Artifact.Kind.TEXT
-                ? entry.artifact().resourceDefaultVersion() : entry.selectedVersion();
-        return selected != null && run.id().equals(selected.runId())
-                && selected.createdByKind() != dev.agenvas.artifact.domain.ArtifactVersion.CreatedByKind.USER;
-    }
-
-    private void requireScope(AgentRun run) {
-        if (!RunCanvasScope.enabled(run.contextSnapshot()))
-            throw problem(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED", ApiMessage.of("api.artifact-service.input-exceeds-authorization-range"));
     }
 
     private void requireUnlocked(CanvasItem item) {

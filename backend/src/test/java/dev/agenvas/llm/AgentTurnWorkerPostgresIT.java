@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.agenvas.agent.application.AgentInstanceService;
@@ -68,7 +70,7 @@ class AgentTurnWorkerPostgresIT {
         AdminPrincipal owner = identities.setup("worker-admin", "worker-password-123");
         Project project = projects.create(owner.userId(), "Worker project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
                 "Create one text first");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create one text", "worker-run").run();
@@ -113,7 +115,7 @@ class AgentTurnWorkerPostgresIT {
         gateway.calls.set(0);
         Project failedContinuation = projects.create(owner.userId(), "Continuation transaction",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance rollbackAgent = agents.create(owner.userId(), failedContinuation.id(),
+        AgentInstance rollbackAgent = configureDirector(agents, owner.userId(), failedContinuation.id(),
                 "Creator", "Create one text first");
         AgentRun rollbackRun = runs.create(owner.userId(), failedContinuation.id(), rollbackAgent.id(),
                 "Create one text", "continuation-rollback").run();

@@ -88,7 +88,7 @@ const disconnectedConnections: Array<{ id: string; body: Record<string, unknown>
 function snapshot(): ProjectSnapshot {
   return { project: { id: "project-1", name: "删除项目", status: "ACTIVE",
     aspectRatio: "LANDSCAPE_16_9", version: 1, createdAt: now, updatedAt: now },
-    canvas: { items: linkedItems }, connections: [], agents: [], activeRun: null, activeTasks: [],
+    canvas: { items: linkedItems }, connections: [], director: null, activeRun: null, activeTasks: [],
     unknownTasks: [], snapshotSeq: 0 };
 }
 

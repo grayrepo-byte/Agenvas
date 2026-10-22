@@ -29,19 +29,17 @@ class ProgressiveSkillTest {
             mock(TaskService.class), mapper, ledger);
 
     @Test void firstRequestDisclosesOnlyNamesDescriptionsAndVersionIds() {
-        AgentRun run = run(2);
+        AgentRun run = run();
         var snapshots = (ObjectNode) run.contextSnapshot();
         snapshots.put("projectName", "Project").put("agentName", "Agent").put("agentInstruction", "Create")
                 .put("aspectRatio", "LANDSCAPE_16_9");
-        snapshots.putArray("bindings").addObject().put("skillVersionId", first.toString())
-                .put("artifactId", UUID.randomUUID().toString()).put("selectedVersionId", UUID.randomUUID().toString());
         when(run.instruction()).thenReturn("Create a poster");
         var runs = mock(AgentRunService.class);
         when(runs.get(any(), any(), any())).thenReturn(run);
         var capabilities = mock(MediaCapabilityService.class);
         when(capabilities.publishedCandidates()).thenReturn(List.of());
         var artifacts = mock(ArtifactService.class);
-        var messages = new InitialModelContextService(runs, artifacts, capabilities).assemble(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        var messages = new InitialModelContextService(runs, capabilities).assemble(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         String text = messages.stream().map(message -> message.getText()).reduce("", (a,b) -> a + b);
         assertThat(text).contains("name=first-skill", "name=second-skill", "description=First purpose", first.toString(), second.toString())
                 .doesNotContain("PRIVATE_MAIN_FIRST", "PRIVATE_MAIN_SECOND", "references/shared.md", "😀甲😀乙", "SECOND_RESOURCE", "HIDDEN_REFERENCE_ALIAS");
@@ -49,7 +47,7 @@ class ProgressiveSkillTest {
     }
 
     @Test void mainInstructionsActivateOnlyThroughCommittedLedgerAndAttachmentsAreVersionScoped() {
-        AgentRun run = run(2);
+        AgentRun run = run();
         when(ledger.skillReads(any(), any())).thenReturn(List.of());
         assertInvalid(() -> reader.skillResource(run, UUID.randomUUID(), resourceArgs(first, 0, 2)));
         JsonNode main = reader.skill(run, UUID.randomUUID(), "{\"skillVersionId\":\"" + first + "\"}").path("data");
@@ -72,18 +70,8 @@ class ProgressiveSkillTest {
         assertInvalid(() -> reader.skillResource(run, UUID.randomUUID(), "{\"skillVersionId\":\"" + first + "\",\"path\":\"../secret\"}"));
     }
 
-    @Test void historicalSingleSkillResourcesKeepTheirOriginalArgumentsWithoutActivation() {
-        AgentRun run = run(1);
-        ObjectNode snapshot = (ObjectNode) run.contextSnapshot();
-        snapshot.set("creativeSkill", snapshot.path("creativeSkills").path(0));
-        snapshot.remove("creativeSkills");
-        when(ledger.skillReads(any(), any())).thenReturn(List.of());
-        assertThat(reader.skillResource(run, UUID.randomUUID(), "{\"path\":\"references/shared.md\"}")
-                .path("data").path("content").asText()).isEqualTo("😀甲😀乙");
-    }
-
     @Test void currentManifestPlansUnicodePagesWithoutEagerlyLoadingResourceBodies() {
-        AgentRun run = run(3);
+        AgentRun run = run();
         ((ObjectNode) run.policySnapshot()).put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         String content = "😀".repeat(4_100) + "PAGE_END_SENTINEL";
         ((ObjectNode) run.contextSnapshot().path("creativeSkills").path(0).path("resources").path(0))
@@ -104,41 +92,8 @@ class ProgressiveSkillTest {
         assertInvalid(() -> reader.skillResource(run, UUID.randomUUID(), resourceArgs(first, 4_118, 4_000)));
     }
 
-    @Test void currentPagingGuidanceIsVersionedAndHistoricalManifestsRemainUnchanged() {
-        AgentRun run = run(3);
-        JsonNode historical = reader.skill(run, UUID.randomUUID(), "{\"skillVersionId\":\"" + first + "\"}").path("data");
-        assertThat(historical.path("resourceManifest").path(0).has("total")).isFalse();
-        assertThat(historical.has("resourcePageLimit")).isFalse();
-        var policy = (ObjectNode) run.policySnapshot();
-        policy.putArray("allowedTools").add("read_skill_resource");
-        policy.put("systemPromptVersion", 10);
-        assertThat(InitialModelContextService.systemRules(policy)).doesNotContain("nextOffset", "heading fragment");
-        assertThat(new ToolRegistry().modelDefinitions(policy).getFirst().getToolDefinition().description())
-                .doesNotContain("nextOffset");
-        policy.put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
-        assertThat(InitialModelContextService.systemRules(policy)).contains("nextOffset=null", "later tool batch", "heading fragment");
-        assertThat(new ToolRegistry().modelDefinitions(policy).getFirst().getToolDefinition().description())
-                .contains("nextOffset", "source directory", "partial content");
-    }
-
-    @Test void toolDefinitionsPinBothHistoricalAndProgressiveSchemas() {
-        var registry = new ToolRegistry();
-        ObjectNode policy = mapper.createObjectNode().put("systemPromptVersion", 7).put("toolPolicyVersion", 1);
-        policy.putArray("allowedTools").add("read_skill_resource");
-        String historical = registry.modelDefinitions(policy).getFirst().getToolDefinition().inputSchema();
-        assertThat(mapper.readTree(historical).path("required")).hasSize(1);
-        policy.put("toolPolicyVersion", 2).put("systemPromptVersion", 8);
-        String current = registry.modelDefinitions(policy).getFirst().getToolDefinition().inputSchema();
-        assertThat(mapper.readTree(current).path("required")).hasSize(2);
-        assertThat(current).contains("skillVersionId");
-        assertThat(RunToolPolicy.current(true, false)).contains("read_skill").doesNotContain("read_skill_resource");
-        assertThat(RunToolPolicy.current(false, false)).doesNotContain("read_skill", "read_skill_resource");
-        policy.put("toolPolicyVersion", 1).putArray("allowedTools").add("read_skill");
-        assertThatThrownBy(() -> registry.modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
-    }
-
-    @Test void imageReadsRequireCommittedActivationAndExactRegisteredAliasForV3() {
-        AgentRun run = run(3);
+    @Test void imageReadsRequireCommittedActivationAndExactRegisteredAlias() {
+        AgentRun run = run();
         var selected = (ObjectNode) run.contextSnapshot().path("creativeSkills").path(0);
         selected.put("skillId", UUID.randomUUID().toString()).put("assetDelivery", "LLM_CONTEXT");
         selected.putArray("assets").addObject().put("alias", "style").put("kind", "IMAGE")
@@ -158,29 +113,15 @@ class ProgressiveSkillTest {
         assertInvalid(() -> reader.skillAsset(run, UUID.randomUUID(), args.replace(first.toString(), second.toString())));
     }
 
-    @Test void newImageProtocolIsVersionedWithoutChangingHistoricalProgressiveRules() {
-        var policy = mapper.createObjectNode().put("toolPolicyVersion", 3).put("systemPromptVersion", 9);
-        // Pin historical tools rather than inheriting additions to the current policy.
-        policy.putArray("allowedTools").add("read_skill_asset").add("read_skill").add("read_skill_resource");
-        assertThat(new ToolRegistry().modelDefinitions(policy).stream().map(tool -> tool.getToolDefinition().name()))
-                .containsExactlyInAnyOrder("read_skill_asset", "read_skill", "read_skill_resource");
-        assertThat(RunToolPolicy.current(true, true, false)).doesNotContain("read_skill_asset");
-        assertThat(InitialModelContextService.systemRules(policy)).contains("read_skill_asset", "LLM context only")
-                .doesNotContain("required PROVIDER_REFERENCE assets must appear", "GUIDE assets are context only");
-        policy.put("toolPolicyVersion", 2).put("systemPromptVersion", 8);
-        assertThatThrownBy(() -> new ToolRegistry().modelDefinitions(policy)).isInstanceOf(IllegalStateException.class);
-        assertThat(InitialModelContextService.systemRules(policy)).doesNotContain("read_skill_asset")
-                .contains("required PROVIDER_REFERENCE assets must appear");
-    }
-
-    private AgentRun run(int policyVersion) {
+    private AgentRun run() {
         AgentRun run = mock(AgentRun.class);
         ObjectNode snapshot = mapper.createObjectNode();
+        snapshot.putArray("selection");
         var selected = snapshot.putArray("creativeSkills");
         selected.add(skill(first, "first-skill", "First purpose", "PRIVATE_MAIN_FIRST", "😀甲😀乙"));
         selected.add(skill(second, "second-skill", "Second purpose", "PRIVATE_MAIN_SECOND", "SECOND_RESOURCE"));
         when(run.contextSnapshot()).thenReturn(snapshot);
-        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("toolPolicyVersion", policyVersion).put("systemPromptVersion", policyVersion == 3 ? 9 : policyVersion == 2 ? 8 : 7));
+        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION).put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION));
         when(run.projectId()).thenReturn(UUID.randomUUID());when(run.id()).thenReturn(UUID.randomUUID());
         return run;
     }

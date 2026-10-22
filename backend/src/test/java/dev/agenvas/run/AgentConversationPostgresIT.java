@@ -1,5 +1,7 @@
 package dev.agenvas.run;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -72,7 +74,7 @@ class AgentConversationPostgresIT {
     void sessionsKeepIndependentHistoryWhileMessagesShareOneProjectSlot() throws Exception {
         AdminPrincipal owner = identities.setup("conversation-admin", "conversation-password-123");
         Project project = projects.create(owner.userId(), "Conversations", Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "制作短片");
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "制作短片");
         var empty = conversations.list(owner.userId(), project.id(), agent.id(), null, null);
         assertThat(empty.items()).isEmpty();
         assertThat(empty.currentConversationId()).isNull();
@@ -166,7 +168,7 @@ class AgentConversationPostgresIT {
         AgentRun fresh = send(owner, project, agent, secondConversation.id(), 0, "fresh");
         assertThat(fresh.conversationTurn()).isEqualTo(1);
         assertThat(fresh.contextSnapshot().path("conversationMemory").path("entries")).isEmpty();
-        assertThat(fresh.contextSnapshot().path("bindings")).isEmpty();
+        assertThat(fresh.contextSnapshot().has("bindings")).isFalse();
         assertThat(runs.get(owner.userId(), project.id(), second.id()).contextSnapshot())
                 .isEqualTo(persistedSecondSnapshot);
         runs.cancel(owner.userId(), project.id(), fresh.id());
@@ -189,17 +191,17 @@ class AgentConversationPostgresIT {
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
 
         UUID otherOwner = UUID.randomUUID();
-        AgentInstance otherAgent = agents.create(owner.userId(), project.id(), "Other", "独立 Agent");
         Project otherProject = projects.create(owner.userId(), "Other project", Project.AspectRatio.LANDSCAPE_16_9);
+        AgentInstance foreignDirector = agents.ensureDirector(owner.userId(), otherProject.id());
         assertProblem("RESOURCE_NOT_FOUND", () -> conversations.get(otherOwner, project.id(), agent.id(), firstConversation));
-        assertProblem("RESOURCE_NOT_FOUND", () -> conversations.select(owner.userId(), project.id(), otherAgent.id(), firstConversation));
+        assertProblem("RESOURCE_NOT_FOUND", () -> conversations.select(owner.userId(), project.id(), foreignDirector.id(), firstConversation));
         assertProblem("RESOURCE_NOT_FOUND", () -> runs.preflight(owner.userId(), otherProject.id(), agent.id(), firstConversation));
-        assertProblem("RESOURCE_NOT_FOUND", () -> send(owner, project, otherAgent, firstConversation, 4, "cross-agent"));
-        assertProblem("RESOURCE_NOT_FOUND", () -> runs.listConversation(owner.userId(), project.id(), otherAgent.id(), firstConversation, null, null));
+        assertProblem("RESOURCE_NOT_FOUND", () -> send(owner, project, foreignDirector, firstConversation, 4, "cross-project"));
+        assertProblem("RESOURCE_NOT_FOUND", () -> runs.listConversation(owner.userId(), project.id(), foreignDirector.id(), firstConversation, null, null));
         assertThat(conversationRows.find(otherOwner, project.id(), agent.id(), firstConversation)).isEmpty();
         assertThat(conversationRows.current(otherOwner, project.id(), agent.id())).isEmpty();
         assertThat(conversationRows.list(otherOwner, project.id(), agent.id(), null, null, 20)).isEmpty();
-        assertThat(conversationRows.select(owner.userId(), project.id(), otherAgent.id(), firstConversation)).isFalse();
+        assertThat(conversationRows.select(owner.userId(), project.id(), foreignDirector.id(), firstConversation)).isFalse();
         mvc.perform(get(path).with(authentication(new UsernamePasswordAuthenticationToken(
                 new AdminPrincipal(otherOwner, "other"), null, List.of())))).andExpect(status().isNotFound());
         mvc.perform(get(path + "/" + firstConversation + "/runs").with(authentication(new UsernamePasswordAuthenticationToken(

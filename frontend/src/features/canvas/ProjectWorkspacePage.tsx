@@ -23,7 +23,7 @@ import {
 HTTP_STATUS,
 ApiError,
 applyCanvasCommands,
-createAgent,
+ensureProjectDirector,
 createArtifact,
 createCanvasConnection,
 disconnectCanvasConnection,
@@ -32,9 +32,6 @@ getCurrentUser,
 getMediaDraft,
 getProject,
 getProjectSnapshot,
-listAgents,
-listAgentOutputs,
-listAgentPresets,
 listArtifacts,
 listCanvasConnections,
 listCanvasItems,
@@ -54,17 +51,15 @@ import { isAudioFile,isVideoFile,MEDIA_FILE_ACCEPT } from "../../shared/mediaFil
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { Tooltip,TooltipContent,TooltipProvider,TooltipTrigger } from "../../shared/ui/primitives/tooltip";
-import { Select } from "../../shared/ui/Select";
-import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
 import { Input } from "../../shared/ui/primitives/input";
 import { Separator } from "../../shared/ui/primitives/separator";
 import { Empty,EmptyContent,EmptyDescription,EmptyHeader,EmptyMedia,EmptyTitle } from "../../shared/ui/primitives/empty";
 import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
 import { AgentChatDock } from "./AgentChatDock";
-import "./ProjectWorkspacePage.css";
 import { CanvasErrorNotice } from "./CanvasErrorNotice";
 import { CanvasEditorOverlay } from "./CanvasEditorOverlay";
+import { calculateCanvasEditorViewport } from "./canvasEditorViewport";
 import { CanvasHandle } from "./CanvasHandle";
 import { CanvasPaneMenu } from "./CanvasPaneMenu";
 import { CanvasRelationEdge } from "./CanvasRelationEdge";
@@ -105,6 +100,9 @@ type RestorableResource = { subjectType: "ARTIFACT"; subjectId: string; kind: Ar
 /** Card under the pointer during a connection gesture; the drop lands on the card, not on an exact port. */
 type ConnectionTarget = { itemId: string; targetHandle: "artifact-input"; valid: boolean };
 const EDITOR_NODE_GAP = 32;
+const TEXT_EDITOR_NODE_GAP = 16;
+const CANVAS_MIN_ZOOM = 0.25;
+const EDITOR_VIEWPORT_MARGIN = 16;
 const DUPLICATE_ITEM_OFFSET = 32;
 const MAX_CANVAS_Z_INDEX = 1000;
 const MAX_ARTIFACT_TITLE_LENGTH = 160;
@@ -175,7 +173,7 @@ export function ProjectWorkspacePage() {
 
 function ProjectWorkspace({ projectId }: { projectId: string }) {
   const tryLocation = useLocation();
-  const focusedTryAgent = useRef<string | null>(null);
+  const focusedTrySkill = useRef<string | null>(null);
   useLocale();
   const queryClient = useQueryClient();
   const uploadInput = useRef<HTMLInputElement>(null);
@@ -185,8 +183,53 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     itemId: string; zIndex: number; artifactId?: string } | null>(null);
   const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
   const flow = useRef<ReactFlowInstance<CanvasNode> | null>(null);
+  const editorFocusFrame = useRef<number | null>(null);
   const boxSelectionActive = useRef(false);
   const canvasElement = useRef<HTMLElement>(null);
+  useEffect(() => () => {
+    if (editorFocusFrame.current !== null) window.cancelAnimationFrame(editorFocusFrame.current);
+  }, []);
+  const focusNodeForEditing = useCallback((node: CanvasNode) => {
+    if (editorFocusFrame.current !== null) window.cancelAnimationFrame(editorFocusFrame.current);
+    editorFocusFrame.current = null;
+    const instance = flow.current;
+    if (!instance) return;
+    const width = node.measured?.width ?? node.initialWidth ?? 0;
+    const height = node.measured?.height ?? node.initialHeight ?? 0;
+    const centerX = node.position.x + width / 2;
+    const centerY = node.position.y + height / 2;
+    const currentZoom = instance.getZoom();
+    if (node.data.item.artifact?.kind !== "TEXT") {
+      void instance.setCenter(centerX, centerY, { zoom: currentZoom });
+      return;
+    }
+    // Wait for the text editor's four-line minimum to be measured. Reserve real
+    // screen space rather than making a taller prompt inside a clipped panel.
+    editorFocusFrame.current = window.requestAnimationFrame(() => {
+      editorFocusFrame.current = null;
+      const selection = useCanvasStore.getState();
+      if (selection.selectionMode !== CANVAS_SELECTION_MODE.SINGLE
+          || selection.selectedIds.length !== 1 || selection.selectedIds[0] !== node.id) return;
+      const canvas = canvasElement.current?.querySelector(".react-flow");
+      const bounds = canvas?.getBoundingClientRect();
+      const editor = canvas?.querySelector<HTMLElement>(".text-generation-editor");
+      const anchor = [...canvas?.querySelectorAll<HTMLElement>(".react-flow__node") ?? []]
+        .find(element => element.dataset.id === node.id);
+      const actions = [...canvas?.querySelectorAll<HTMLElement>(".artifact-actions-toolbar") ?? []]
+        .find(element => element.dataset.id === node.id);
+      if (!bounds?.width || !bounds.height || !editor?.scrollHeight || !anchor) {
+        void instance.setCenter(centerX, centerY, { zoom: currentZoom });
+        return;
+      }
+      const target = calculateCanvasEditorViewport({ canvas: bounds, nodeSize: { width, height },
+        currentZoom, minZoom: CANVAS_MIN_ZOOM,
+        editorHeight: editor.scrollHeight + editor.offsetHeight - editor.clientHeight,
+        editorGap: TEXT_EDITOR_NODE_GAP,
+        topToolbarSpace: actions ? Math.max(0, anchor.getBoundingClientRect().top - actions.getBoundingClientRect().top) : 0,
+        margin: EDITOR_VIEWPORT_MARGIN });
+      void instance.setCenter(centerX, centerY + target.centerOffsetY, { zoom: target.zoom });
+    });
+  }, []);
   const { tool, setTool, spaceHeld, selecting } = useCanvasInteraction();
   const creationMenuElement = useRef<HTMLDivElement>(null);
   const creationMenuReturnFocus = useRef<HTMLElement | null>(null);
@@ -195,8 +238,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [agentChatOpen, setAgentChatOpen] = useState(false);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const agentCreationIntent = useRef<{ promptKey: string; key: string } | null>(null);
   const [resourceTab, setResourceTab] = useState<"PROJECT" | "LIBRARY">("PROJECT");
   const [resourceSearch, setResourceSearch] = useState("");
   const mediaProgress = useRef<{ fingerprint: string; createKey: string;
@@ -223,8 +264,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const setSelectedIds = useCanvasStore((state) => state.setSelectedIds);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const displaySettings = useCanvasDisplayPreferences(currentUser.data?.id, projectId);
-  const agentPresets = useQuery({ queryKey: ["agent-presets"], queryFn: listAgentPresets, enabled: currentUser.isSuccess, retry: false });
-  const presets = agentPresets.data?.items ?? [{ key: "agent.director", name: t("agent.defaults.director") }];
   const snapshot = useQuery({
     queryKey: ["snapshot", projectId],
     queryFn: () => getProjectSnapshot(projectId),
@@ -450,38 +489,20 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setSelectedIds([prepared.canvasItemId]); mvProgress.current.delete(source.id); setSaveState("saved");
   }, onError: setSaveError });
   // Agent identity and conversation memory belong to the project, independently of canvas placement.
-  const agents = snapshot.data?.agents ?? [];
-  const activeAgent = agents.find((agent) => agent.id === selectedAgentId)
-    ?? agents.find((agent) => agent.id === snapshot.data?.activeRun?.agentInstanceId) ?? agents[0] ?? null;
-  const agentOutputs = useQuery({ queryKey: ["agent-outputs", projectId, activeAgent?.id],
-    queryFn: () => listAgentOutputs(projectId, activeAgent!.id),
-    enabled: Boolean(activeAgent) && snapshot.isSuccess,
-  });
-  function rememberAgent(agent: Agent) {
+  const director = snapshot.data?.director ?? null;
+  function rememberDirector(agent: Agent) {
     queryClient.setQueryData<ProjectSnapshot>(["snapshot", projectId], (previous) => previous ? {
-      ...previous, agents: [...previous.agents.filter((candidate) => candidate.id !== agent.id), agent],
+      ...previous, director: agent,
     } : previous);
-    setSelectedAgentId(agent.id);
   }
-  const createProjectAgent = useMutation({
-    mutationFn: async ({ promptKey, ensureExisting }: { promptKey: string; ensureExisting: boolean }) => {
-      if (ensureExisting) {
-        const existing = (await listAgents(projectId)).items;
-        const preferred = existing.find((agent) => agent.id === selectedAgentId)
-          ?? existing.find((agent) => agent.id === snapshot.data?.activeRun?.agentInstanceId) ?? existing[0];
-        if (preferred) return preferred;
-      }
-      if (agentCreationIntent.current?.promptKey !== promptKey) {
-        agentCreationIntent.current = { promptKey, key: crypto.randomUUID() };
-      }
-      return createAgent(projectId, { promptKey }, agentCreationIntent.current.key);
-    },
-    onSuccess: (agent) => { rememberAgent(agent); agentCreationIntent.current = null; },
+  const ensureDirector = useMutation({
+    mutationFn: () => ensureProjectDirector(projectId),
+    onSuccess: rememberDirector,
   });
   function openAgentChat(open: boolean) {
     setAgentChatOpen(open);
-    if (open && !activeAgent && !snapshot.isError && !createProjectAgent.isPending) {
-      createProjectAgent.mutate({ promptKey: "agent.director", ensureExisting: true });
+    if (open && !director && !snapshot.isError && !ensureDirector.isPending) {
+      ensureDirector.mutate();
     }
   }
   const openAudioConversation = useMutation({
@@ -489,16 +510,16 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (source.artifact.kind !== "AUDIO" || !source.selectedVersionId)
         throw new Error(t("canvas.workspace.audioResultRequired"));
       setAgentChatOpen(true);
-      if (activeAgent) return activeAgent;
-      return createProjectAgent.mutateAsync({ promptKey: "agent.director", ensureExisting: true });
+      if (director) return director;
+      return ensureDirector.mutateAsync();
     },
-    onSuccess: (agent, source) => { rememberAgent(agent); setSelectedIds([source.id]); },
+    onSuccess: (agent, source) => { rememberDirector(agent); setSelectedIds([source.id]); },
   });
   const editAgent = useMutation({
     mutationFn: ({ agent, name, instruction }: { agent: Agent; name: string; instruction: string }) =>
       updateAgent(projectId, agent.id, { expectedVersion: agent.version, name, instruction }),
     onSuccess: async (agent) => {
-      rememberAgent(agent);
+      rememberDirector(agent);
       await Promise.all([queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] }),
         queryClient.invalidateQueries({ queryKey: ["canvas", projectId] })]);
     },
@@ -704,13 +725,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       target: target.itemId, targetHandle: target.targetHandle });
   }, [connectInputMutate, trackConnectionTarget]);
 
-  const handleShowOutputs = useCallback((agent: Agent) => {
-    const outputIds = new Set(queryClient.getQueryData<Awaited<ReturnType<typeof listAgentOutputs>>>(
-      ["agent-outputs", projectId, agent.id])?.canvasItemIds ?? []);
-    const outputs = (canvas.data?.items ?? []).filter((item) => outputIds.has(item.id));
-    setSelectedIds(outputs.map((item) => item.id));
-    if (outputs.length) void flow.current?.fitView({ nodes: outputs, padding: 0.2 });
-  }, [canvas.data?.items, queryClient, projectId, setSelectedIds]);
   const handleToggleSelection = useCallback((itemId: string) => {
     const current = useCanvasStore.getState().selectedIds;
     setSelectedIds(current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId],
@@ -940,14 +954,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   const selectedItems = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
   useEffect(() => {
-    const requestedAgentId = new URLSearchParams(tryLocation.search).get("agentId");
-    if (!requestedAgentId || focusedTryAgent.current === requestedAgentId) return;
-    const agent = agents.find((candidate) => candidate.id === requestedAgentId);
-    if (!agent) return;
-    focusedTryAgent.current = requestedAgentId;
-    setSelectedAgentId(agent.id);
+    const params = new URLSearchParams(tryLocation.search);
+    const skillId = params.get("skillId"), skillVersionId = params.get("skillVersionId");
+    const requestedSkill = skillId && skillVersionId ? `${projectId}:${skillId}:${skillVersionId}` : null;
+    if (!requestedSkill || focusedTrySkill.current === requestedSkill || !snapshot.isSuccess) return;
+    focusedTrySkill.current = requestedSkill;
     setAgentChatOpen(true);
-  }, [tryLocation.search, agents]);
+    if (!director && !ensureDirector.isPending) ensureDirector.mutate();
+  }, [projectId, tryLocation.search, snapshot.isSuccess, director, ensureDirector]);
   const projectResources = [
     ...(resources.data?.items ?? []).map((artifact) => ({
       subjectType: "ARTIFACT" as const, subjectId: artifact.id, kind: artifact.kind,
@@ -1075,9 +1089,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {snapshot.error ? <CanvasErrorNotice error={snapshot.error} title={t("canvas.feedback.loadSnapshot")} message={workspaceErrorMessage(snapshot.error)}>
             <Button variant="ghost" size="xs" type="button" onClick={() => void snapshot.refetch()}>{t("common.retryRead")}</Button>
           </CanvasErrorNotice> : null}
-          {agentPresets.error ? <CanvasErrorNotice error={agentPresets.error} title={t("prompts.loadFailed")} message={workspaceErrorMessage(agentPresets.error)}>
-            <Button variant="ghost" size="xs" type="button" onClick={() => void agentPresets.refetch()}>{t("common.retryRead")}</Button>
-          </CanvasErrorNotice> : null}
           {canvas.error ? <CanvasErrorNotice error={canvas.error} title={t("canvas.feedback.loadCanvas")} message={workspaceErrorMessage(canvas.error)}>
             <Button variant="ghost" size="xs" type="button" onClick={() => void canvas.refetch()}>{t("common.retryRead")}</Button>
           </CanvasErrorNotice> : null}
@@ -1118,7 +1129,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           fitView
           fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
           isValidConnection={(connection) => isCanvasConnectionValid(canvas.data?.items ?? [], connection)}
-          minZoom={0.25}
+          minZoom={CANVAS_MIN_ZOOM}
           nodes={nodes}
           nodeTypes={nodeTypes}
           nodesConnectable={selecting}
@@ -1148,8 +1159,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           }}
           onNodeClick={(event, node) => {
             if (!selecting || event.metaKey || event.ctrlKey || event.shiftKey) return;
+            if (event.target instanceof Element && event.target.closest(
+              "button, a, input, textarea, select, summary, [role='button'], [contenteditable]:not([contenteditable='false'])",
+            )) return;
             // An ordinary click explicitly focuses a card, even if it was the only box-selected card.
             setSelectedIds([node.id]);
+            focusNodeForEditing(node);
           }}
           onPaneClick={clearSelection}
           onSelectionStart={() => {
@@ -1186,8 +1201,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           zoomOnDoubleClick={false}
         >
           {!multiSelecting && draggingIds.length === 0 && selectedItems.length === 1 && selectedItems[0]?.artifact ?
-            // NodeToolbar keeps the editor in screen pixels; selection preserves the current canvas view and node size.
-            <NodeToolbar nodeId={selectedItems[0].id} isVisible position={Position.Bottom} offset={EDITOR_NODE_GAP}
+            // NodeToolbar keeps the editor in screen pixels below the focused node.
+            <NodeToolbar nodeId={selectedItems[0].id} isVisible position={Position.Bottom}
+              offset={selectedItems[0].artifact.kind === "TEXT" ? TEXT_EDITOR_NODE_GAP : EDITOR_NODE_GAP}
               style={{
                 // Keep the editor mounted while connecting so unsaved prompts survive the gesture.
                 display: connectGesture ? "none" : undefined,
@@ -1271,33 +1287,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             onClick={() => setSelectedIds([])} type="button"><X /></Button>
         </div> : null}
         <AgentChatDock open={agentChatOpen} onOpenChange={openAgentChat}
-          data={activeAgent ? { agent: activeAgent, projectId, activeRun: snapshot.data?.activeRun ?? null,
-            outputCount: (agentOutputs.data?.canvasItemIds ?? []).filter((id) => canvas.data?.items.some((item) => item.id === id)).length,
-            outputLoading: agentOutputs.isPending, outputError: agentOutputs.error,
-            onRefreshOutputs: () => { void agentOutputs.refetch(); },
+          data={director ? { agent: director, projectId, activeRun: snapshot.data?.activeRun ?? null,
             canvasNodeCount: nodes.length, selectedNodeCount: selectedItems.length,
-            onShowOutputs: handleShowOutputs, onUpdateAgent: handleUpdateAgent,
+            onUpdateAgent: handleUpdateAgent,
             updatingAgent: editAgent.isPending,
-            updateAgentError: editAgent.variables?.agent.id === activeAgent.id ? editAgent.error : null } : null}
-          loading={snapshot.isPending || createProjectAgent.isPending}
-          error={createProjectAgent.error ?? snapshot.error}
-          onRetry={() => { if (createProjectAgent.variables) createProjectAgent.mutate(createProjectAgent.variables);
-            else if (snapshot.isError) void snapshot.refetch(); else openAgentChat(true); }}
-          controls={<div className="workspace-agent-controls">
-            <Select aria-label={t("agent.workspace.chooseAgent")} density="compact" variant="ghost"
-              value={activeAgent?.id ?? ""} disabled={!agents.length || createProjectAgent.isPending}
-              onChange={(event) => { setSelectedAgentId(event.target.value); createProjectAgent.reset(); }}>
-              {!agents.length ? <option value="">{t("agent.defaults.director")}</option> : null}
-              {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
-            </Select>
-            <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" type="button"
-              aria-label={t("agent.workspace.newAgent")} disabled={createProjectAgent.isPending || agentPresets.isPending}>
-              <Plus size={16} /></Button></DropdownMenuTrigger>
-              <DropdownMenuContent align="end"><DropdownMenuGroup>{presets.map((preset) => <DropdownMenuItem key={preset.key}
-                onSelect={() => { setAgentChatOpen(true); createProjectAgent.mutate({ promptKey: preset.key, ensureExisting: false }); }}>
-                <Sparkle size={16} />{preset.name}</DropdownMenuItem>)}</DropdownMenuGroup></DropdownMenuContent>
-            </DropdownMenu>
-          </div>} />
+            updateAgentError: editAgent.variables?.agent.id === director.id ? editAgent.error : null } : null}
+          loading={snapshot.isPending || ensureDirector.isPending}
+          error={ensureDirector.error ?? snapshot.error}
+          onRetry={() => { if (snapshot.isError) void snapshot.refetch(); else ensureDirector.mutate(); }} />
       </section>
       <div className="workspace-narrow-warning">{t("canvas.workspace.viewportHint")}</div>
     </main>

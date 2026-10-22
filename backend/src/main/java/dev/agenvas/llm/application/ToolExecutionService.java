@@ -182,10 +182,6 @@ public class ToolExecutionService {
         if (run.status() != AgentRun.Status.RUNNING) {
             throw conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accepting-tool-execution"));
         }
-            if (run.hasToolExecutionLimit()
-                    && run.toolExecutionLimitReached(ledger.countByRun(context.projectId(), context.runId()))) {
-            throw conflict(ApiMessage.of("api.tool-execution-service.run-tool-execution-budget-is-exhausted"));
-        }
         if (!RunToolPolicy.allowed(run.policySnapshot()).contains(toolName)) {
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
         }
@@ -213,8 +209,6 @@ public class ToolExecutionService {
                     operationId, stepIndex, toolCallId, arguments);
             case "create_text" -> createText(context, run, operationId, arguments);
             case "revise_artifact" -> creative.reviseArtifact(context, run, operationId, arguments);
-            case "place_artifacts" -> creative.placeArtifacts(context, run,
-                    operationId, arguments);
             case "arrange_items" -> creative.arrangeItems(context, run,
                     operationId, arguments);
             default -> throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
@@ -320,15 +314,13 @@ public class ToolExecutionService {
                 .put(created.artifact().id().toString(), created.artifact().version());
         result.putArray("taskIds");
         result.putNull("errorCode");
-        if (dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot())) {
-            var nodes = result.putArray("createdCanvasItemIds");
-            var data = result.putArray("data");
-            for (var item : placedItems) {
-                nodes.add(item.id().toString());
-                data.addObject().put("itemId", item.id().toString()).put("itemVersion", item.version())
-                        .put("artifactId", created.artifact().id().toString())
-                        .put("versionId", created.resourceDefaultVersion().id().toString());
-            }
+        var nodes = result.putArray("createdCanvasItemIds");
+        var data = result.putArray("data");
+        for (var item : placedItems) {
+            nodes.add(item.id().toString());
+            data.addObject().put("itemId", item.id().toString()).put("itemVersion", item.version())
+                    .put("artifactId", created.artifact().id().toString())
+                    .put("versionId", created.resourceDefaultVersion().id().toString());
         }
         result.put("userVisibleSummary", "已创建文本产物");
         return result;

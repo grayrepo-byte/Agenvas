@@ -76,8 +76,6 @@ export type CanvasConnectionResult = components["schemas"]["CanvasConnectionResu
 export type DuplicateCanvasItemRequest = components["schemas"]["DuplicateCanvasItemRequest"];
 export type DuplicateCanvasItemResponse = components["schemas"]["DuplicateCanvasItemResponse"];
 export type Agent = components["schemas"]["Agent"];
-export type AgentList = components["schemas"]["AgentList"];
-export type CreateAgentRequest = components["schemas"]["CreateAgentRequest"];
 export type UpdateAgentRequest = components["schemas"]["UpdateAgentRequest"];
 export type AgentRun = components["schemas"]["AgentRun"];
 export type AgentRunList = components["schemas"]["AgentRunList"];
@@ -716,27 +714,9 @@ export async function applyCanvasCommands(
   });
 }
 
-/** Lists project assistants independently of canvas content. */
-export async function listAgents(projectId: string): Promise<AgentList> {
-  return readJson<AgentList>(`/api/v1/projects/${projectId}/agents`, t("api.errors.agentsUnavailable"));
-}
-
-/** Current selected results authored by any Run belonging to this assistant. */
-export async function listAgentOutputs(projectId: string, agentId: string): Promise<operations["listAgentOutputs"]["responses"][200]["content"]["application/json"]> {
-  return readJson(`/api/v1/projects/${projectId}/agents/${agentId}/outputs`, t("api.errors.agentOutputsUnavailable"));
-}
-
-/** Creates an idle Creator Agent; creation does not start a model run. */
-export async function createAgent(
-  projectId: string,
-  input: CreateAgentRequest,
-  idempotencyKey?: string,
-): Promise<Agent> {
-  return writeJson<Agent>(`/api/v1/projects/${projectId}/agents`, {
-    method: "POST",
-    ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
-    body: JSON.stringify(input),
-  });
+/** Restores the project's one director, creating its fixed configuration once without a model call. */
+export function ensureProjectDirector(projectId: string): Promise<Agent> {
+  return writeJson<Agent>(`/api/v1/projects/${projectId}/director`, { method: "PUT" });
 }
 
 /** Replaces project assistant role configuration using CAS. */
@@ -1179,7 +1159,6 @@ export function skillAssetThumbnailUrl(skillId: string, versionId: string, alias
 }
 
 export type PromptDefinition = components["schemas"]["PromptDefinition"];
-export type AgentPreset = components["schemas"]["AgentPreset"];
 export function listPrompts() {
   return readJson<components["schemas"]["PromptList"]>("/api/v1/settings/prompts", t("prompts.loadFailed"));
 }
@@ -1191,7 +1170,4 @@ export function updatePrompt(id: string, input: components["schemas"]["UpdatePro
 }
 export function deletePrompt(id: string, expectedVersion: number) {
   return writeEmpty(`/api/v1/settings/prompts/${id}?expectedVersion=${expectedVersion}`, { method: "DELETE" });
-}
-export function listAgentPresets() {
-  return readJson<components["schemas"]["AgentPresetList"]>("/api/v1/agent-presets", t("prompts.loadFailed"));
 }

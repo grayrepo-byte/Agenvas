@@ -56,7 +56,7 @@ public class LlmConversationService {
      * @param ownerId 经认证的项目所有者
      * @param projectId 本次 Run 所属项目
      * @param runId 需要续接的 Run
-     * @param priorStepIndex 上一回合序号，必须处于 Run 的回合上限内
+     * @param priorStepIndex 上一回合的非负序号
      * @return 按原调用顺序重建的只读消息序列
      */
     @Transactional(readOnly = true)
@@ -65,10 +65,8 @@ public class LlmConversationService {
         if (priorStepIndex < 0) {
             throw new IllegalArgumentException("Model step is outside the Run limit");
         }
-        var run = runs.find(ownerId, projectId, runId)
+        runs.find(ownerId, projectId, runId)
                 .orElseThrow(() -> new IllegalArgumentException("Run is not accessible"));
-        if (run.modelTurnLimitReached(priorStepIndex))
-            throw new IllegalArgumentException("Model step is outside the Run limit");
         LlmTurn turn = turns.find(projectId, runId, priorStepIndex)
                 .orElseThrow(() -> new IllegalStateException("Model turn checkpoint is missing"));
         if (turn.status() != LlmTurn.Status.RESPONDED) {
@@ -95,13 +93,8 @@ public class LlmConversationService {
         }
         history.add(assistant);
         history.add(codec.toolResults(assistant, results));
-        if (run.policySnapshot().path("systemPromptVersion").asInt()
-                >= InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) {
-            images.appendReadPreviews(history, assistant, results);
-        }
-        if (run.policySnapshot().path("systemPromptVersion").asInt()
-                >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION)
-            history = new ArrayList<>(RunContextWindow.project(history, mapper));
+        images.appendReadPreviews(history, assistant, results);
+        history = new ArrayList<>(RunContextWindow.project(history, mapper));
         if (history.size() > MAX_HISTORY_MESSAGES) {
             throw new IllegalStateException("Model history exceeds the message limit");
         }

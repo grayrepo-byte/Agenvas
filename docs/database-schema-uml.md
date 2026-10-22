@@ -1,5 +1,6 @@
 # 数据库 Schema UML 文档
 
+> 当前约束补充：V28 将 `agent_instance.project_id` 设为唯一，每项目最多一个导演；V29 仅允许固定内置 `agent.director` 作为 AGENT 提示词。下列全量图仍是早期 DDL 的结构快照，当前结构以完整迁移链与生成 jOOQ 为准。
 > 本文由 `backend/src/main/resources/db/migration` 的 DDL 生成,与 jOOQ 生成代码 `backend/src/jooq/java/dev/agenvas/db/tables/` 一一对应。
 > 覆盖 **73 张表、623 列、105 条外键**;测得的「废弃」结论见每张表备注与第 12 节。
 

@@ -390,7 +390,6 @@ button:disabled {
   border: 0;
   background: transparent;
   box-shadow: none;
-  transform: translate(var(--editor-shift-x, 0px), var(--editor-shift-y, 0px));
 }
 
 /* React Flow gives every NodeToolbar the same inline z-index. The editor's upward-opening

@@ -35,13 +35,6 @@ public class JooqToolExecutionRepository implements ToolExecutionRepository {
         this.mapper = mapper;
     }
 
-    /** 统计 Run 已登记的工具调用数，用于执行预算限制。 */
-    @Override
-    public long countByRun(UUID projectId, UUID runId) {
-        return dsl.fetchCount(TOOL_EXECUTION, TOOL_EXECUTION.PROJECT_ID.eq(projectId)
-                .and(TOOL_EXECUTION.RUN_ID.eq(runId)));
-    }
-
     /** JSONB 只提取服务端写入的公开摘要和业务状态，避免载入私有结果字段。 */
     @Override
     public List<RunAction> listCompletedActions(UUID projectId, UUID runId, int limit) {
@@ -76,36 +69,6 @@ public class JooqToolExecutionRepository implements ToolExecutionRepository {
                 .fetch(row -> mapper.readTree(row.get(TOOL_EXECUTION.RESULT_JSON).data()).path("data"));
     }
 
-    @Override
-    public boolean hasCreatedCanvasItem(UUID projectId, UUID runId, UUID itemId) {
-        var copied = mapper.createObjectNode();
-        copied.putArray("createdIds").add(itemId.toString());
-        copied.putObject("data").put("itemId", itemId.toString());
-        var placed = mapper.createObjectNode();
-        placed.putArray("createdIds").add(itemId.toString());
-        placed.putArray("data").addObject().put("itemId", itemId.toString()).put("created", true);
-        var textNodes = mapper.createObjectNode();
-        textNodes.putArray("createdCanvasItemIds").add(itemId.toString());
-        textNodes.putArray("data").addObject().put("itemId", itemId.toString());
-        var proposed = mapper.createObjectNode();
-        proposed.putArray("createdIds").add(itemId.toString());
-        proposed.putObject("data").putArray("outputs").addObject().put("canvasItemId", itemId.toString());
-        // createdIds also contains artifact IDs. Typed result fields prevent a caller-created node
-        // whose UUID equals such an artifact ID from becoming an accidental authorization token.
-        var recognized = TOOL_EXECUTION.TOOL_NAME.eq("manage_canvas_node")
-                .and(DSL.condition("{0} @> {1}::jsonb", TOOL_EXECUTION.RESULT_JSON, DSL.val(copied.toString())))
-                .or(TOOL_EXECUTION.TOOL_NAME.eq("place_artifacts")
-                        .and(DSL.condition("{0} @> {1}::jsonb", TOOL_EXECUTION.RESULT_JSON, DSL.val(placed.toString()))))
-                .or(TOOL_EXECUTION.TOOL_NAME.eq("propose_media_generation")
-                        .and(DSL.condition("{0} @> {1}::jsonb", TOOL_EXECUTION.RESULT_JSON, DSL.val(proposed.toString()))));
-        recognized = recognized.or(TOOL_EXECUTION.TOOL_NAME.eq("create_text")
-                .and(DSL.condition("{0} @> {1}::jsonb", TOOL_EXECUTION.RESULT_JSON, DSL.val(textNodes.toString()))));
-        return dsl.fetchExists(dsl.selectOne().from(TOOL_EXECUTION)
-                .where(TOOL_EXECUTION.PROJECT_ID.eq(projectId)).and(TOOL_EXECUTION.RUN_ID.eq(runId))
-                .and(TOOL_EXECUTION.STATUS.eq(ToolExecution.Status.COMPLETED.name())).and(recognized));
-    }
-
-    /** 按 Run、步骤和 toolCallId 读取去重记录及已完成结果。 */
     @Override
     public Optional<ToolExecution> find(UUID projectId, UUID runId,
             int stepIndex, String toolCallId) {

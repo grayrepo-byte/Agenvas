@@ -13,11 +13,7 @@ public class ToolRegistry {
     private static final String READ_PROJECT_SUMMARY_SCHEMA = """
             {"type":"object","additionalProperties":false,"properties":{}}
             """;
-    /** 读取 Run 创建时快照中的画布选择，不接受额外选择 ID。 */
-    private static final String READ_SELECTION_SCHEMA = """
-            {"type":"object","additionalProperties":false,"properties":{}}
-            """;
-    /** 精确版本白名单读取；最多 12 个互异 UUID。 */
+    /** 当前画布或显式Skill输入的精确版本读取；最多 12 个互异 UUID。 */
     private static final String READ_ARTIFACTS_SCHEMA = """
             {"type":"object","additionalProperties":false,"required":["versionIds"],
              "properties":{"versionIds":{"type":"array","minItems":1,"maxItems":12,
@@ -65,21 +61,7 @@ public class ToolRegistry {
                "title":{"type":"string","minLength":1,"maxLength":160},
                "content":{"type":"object"}}}
             """;
-    /** 仅允许把当前 Run 可见产物放入服务端指定的 Agent 输出组。 */
-    private static final String PLACE_ARTIFACTS_SCHEMA = """
-            {"type":"object","additionalProperties":false,
-             "required":["versionIds","group"],
-             "properties":{"versionIds":{"type":"array","minItems":1,"maxItems":6,
-               "uniqueItems":true,"items":{"type":"string","format":"uuid"}},
-               "group":{"type":"string","const":"AGENT_OUTPUT"}}}
-            """;
-    private static final String PLACE_CANVAS_ARTIFACTS_SCHEMA = """
-            {"type":"object","additionalProperties":false,
-             "required":["versionIds"],
-             "properties":{"versionIds":{"type":"array","minItems":1,"maxItems":6,
-               "uniqueItems":true,"items":{"type":"string","format":"uuid"}}}}
-            """;
-    /** 布局命令须提供画布项、内容版本和布局 CAS 版本。 */
+    /** 布局命令须提供画布项和布局 CAS；有选用内容时须提供内容版本。 */
     private static final String ARRANGE_ITEMS_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["items","layout"],
@@ -87,7 +69,7 @@ public class ToolRegistry {
                "enum":["HORIZONTAL","VERTICAL","GRID"]},
                "items":{"type":"array","minItems":1,"maxItems":6,
                  "items":{"type":"object","additionalProperties":false,
-                   "required":["itemId","versionId","expectedVersion"],
+                   "required":["itemId","expectedVersion"],
                    "properties":{"itemId":{"type":"string","format":"uuid"},
                      "versionId":{"type":"string","format":"uuid"},
                      "expectedVersion":{"type":"integer","minimum":0}}}}}}
@@ -133,64 +115,14 @@ public class ToolRegistry {
     public List<ToolCallback> modelDefinitions(tools.jackson.databind.JsonNode policy) {
         var allowed = RunToolPolicy.allowed(policy);
         return modelDefinitions().stream().filter(tool -> allowed.contains(
-                tool.getToolDefinition().name())).map(tool -> {
-                    var current = tool.getToolDefinition();
-                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
-                            && "read_selection".equals(current.name()))
-                        return definition(current.name(), "Read a page of the frozen canvas selection that expresses the user's intent. Use nextOffset to continue.", PAGED_READ_SCHEMA);
-                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
-                            && "place_artifacts".equals(current.name()))
-                        return definition(current.name(), "Display one to six exact authorized Artifact versions on the canvas. "
-                                + "Reuse a card displaying that exact version or create an independent display card; "
-                                + "never change another node's selection. Returns itemId and itemVersion for arrangement.",
-                                PLACE_CANVAS_ARTIFACTS_SCHEMA);
-                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
-                            && "arrange_items".equals(current.name()))
-                        return definition(current.name(), "Arrange one to six authorized canvas nodes with layout CAS. "
-                                + "Supply each selected versionId when present; omit it only for an empty media draft. Locked nodes cannot be changed.",
-                                ARRANGE_ITEMS_SCHEMA.replace("\"itemId\",\"versionId\",\"expectedVersion\"", "\"itemId\",\"expectedVersion\""));
-                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
-                            && "propose_media_generation".equals(current.name()))
-                        return definition(current.name(), current.description()
-                                + " Supply canvasItemId, expectedItemVersion and expectedDraftVersion to generate a new immutable result on an existing authorized node. "
-                                + "Omit them to create a new node. Both paths require the user's approval.", PROPOSE_CANVAS_MEDIA_SCHEMA);
-
-                    if (policy.path("systemPromptVersion").asInt()
-                            >= InitialModelContextService.SKILL_RESOURCE_PAGING_SYSTEM_PROMPT_VERSION
-                            && "read_skill_resource".equals(current.name()))
-                        return definition(current.name(), "Read one page of a registered text attachment after a successful read_skill reply. "
-                                + "Use the same skillVersionId and exact resourceManifest path (relative to the Skill root). "
-                                + "Resolve nested Markdown links against their source directory and match the manifest; omit heading fragments. "
-                                + "Offsets and totals count Unicode code points. When nextOffset is not null, use it as offset to read the next needed page; "
-                                + "nextOffset=null marks the end. Do not treat partial content as a complete resource.",
-                                PROGRESSIVE_SKILL_RESOURCE_SCHEMA);
-                    if (policy.path("systemPromptVersion").asInt()
-                            >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION
-                            && ("read_artifacts".equals(current.name()) || "read_skill_asset".equals(current.name())))
-                        return definition(current.name(), current.description()
-                                + ". Request at most one image in the entire assistant tool batch. "
-                                + "Observe its pixels and record concise public facts with its exact reference before reading another image. "
-                                + "Only the current image remains attached; prior observations and tool references remain as text. "
-                                + "Text versions may still be read in batches.", current.inputSchema());
-                    if ("read_skill_resource".equals(current.name()) && policy.path("toolPolicyVersion").asInt(1) >= RunToolPolicy.PROGRESSIVE_VERSION)
-                        return definition(current.name(), "Read a registered text attachment after read_skill has activated its exact version. Offsets count Unicode code points.",
-                                PROGRESSIVE_SKILL_RESOURCE_SCHEMA);
-                    if (!"read_artifacts".equals(current.name())
-                            || policy.path("systemPromptVersion").asInt()
-                                    < InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) return tool;
-                    return definition(current.name(), current.description()
-                            + ". For IMAGE versions, authorized preview attachments follow the committed tool reply. "
-                            + "Only requested images are sent, with at most " + AgentImageInputService.MAX_IMAGES
-                            + " distinct images in the Run context.",
-                            current.inputSchema());
-                }).toList();
+                tool.getToolDefinition().name())).toList();
     }
 
     /** 返回当前应用服务确实实现且可在此 Run 策略下开放的工具定义。 */
     private List<ToolCallback> modelDefinitions() {
         return List.of(
                 definition("read_canvas", "Read a page of currently present authorized nodes, including new Run outputs, fresh node CAS, locks, selections and media drafts. "
-                        + "Use nextOffset to continue. Default pages contain only metadata, draft CAS and input counts. Set includeDrafts=true with limit at most 6 to inspect editable media input only when needed. Image pixels and immutable content require read_artifacts. selectedVersionReadable=false means a later user selection is metadata only; frozenSelectedVersionId remains the readable original when present.", READ_CANVAS_SCHEMA),
+                        + "Use nextOffset to continue. Default pages contain only metadata, draft CAS and input counts. Set includeDrafts=true with limit at most 6 to inspect editable media input only when needed. Image pixels and immutable content require read_artifacts. All current nodes and their selected versions are available, including nodes added or changed during this Run.", READ_CANVAS_SCHEMA),
                 definition("manage_canvas_node", "Rename, move, resize, remove or duplicate an authorized unlocked node. "
                         + "Use itemVersion as expectedVersion. MOVE needs x/y, RESIZE needs width/height, RENAME needs title. "
                         + "Media DUPLICATE also needs mediaDraft.version as expectedDraftVersion. REMOVE keeps the underlying artifact and history.", MANAGE_CANVAS_SCHEMA),
@@ -202,10 +134,11 @@ public class ToolRegistry {
                 definition("read_selection",
                         "Read the canvas cards selected when this Run started; selection is "
                                 + "intent only and grants no write permission",
-                        READ_SELECTION_SCHEMA),
+                        PAGED_READ_SCHEMA),
                 definition("read_artifacts",
-                        "Read up to twelve exact immutable versions bound to this Run or "
-                                + "created by it; large content is explicitly truncated",
+                        "Read up to twelve exact immutable versions selected on the current canvas or explicitly mapped as Skill inputs; "
+                                + "large content is explicitly truncated. For images read one per tool batch; the committed reply attaches pixels. "
+                                + "Record public observations before requesting another image; only the latest image remains attached",
                         READ_ARTIFACTS_SCHEMA),
                 definition("read_task_status",
                         "Read status only for up to twelve tasks in this Run; ordinary progress "
@@ -216,41 +149,33 @@ public class ToolRegistry {
                 definition("propose_media_generation", "Propose one fixed batch of image, video or audio generation. "
                         + "The server pauses this Run for user approval and archived outcomes. "
                         + "Never poll read_task_status for these tasks or claim user authorization. "
-                        + "Use one output per request, with generationCount=1; await the server's final tool reply.",
-                        PROPOSE_MEDIA_SCHEMA),
+                        + "Use one output per request, with generationCount=1; await the server's final tool reply. "
+                        + "Supply canvasItemId, expectedItemVersion and expectedDraftVersion to target an existing node; omit them to create a node. Both paths require approval.",
+                        PROPOSE_CANVAS_MEDIA_SCHEMA),
                 definition("read_skill", "Activate one Skill from the available catalogue and read its full frozen SKILL.md plus reference and attachment manifests.",
                         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"skillVersionId\"],\"properties\":{\"skillVersionId\":{\"type\":\"string\",\"format\":\"uuid\"}}}"),
                 definition("read_skill_asset", "Read one registered Skill reference image after read_skill has activated its exact version. "
-                        + "Its image preview follows the committed reply as LLM context only; it has no project artifact ID and cannot be a Provider media input.",
+                        + "Its image preview follows the committed reply as LLM context only; it has no project artifact ID and cannot be a Provider media input. "
+                        + "Request one image per tool batch and record public observations before another read; only the latest image stays attached.",
                         """
                         {"type":"object","additionalProperties":false,"required":["skillVersionId","alias"],
                          "properties":{"skillVersionId":{"type":"string","format":"uuid"},
                          "alias":{"type":"string","minLength":1,"maxLength":64}}}
                         """),
-                definition("read_skill_resource", "Read one text resource frozen in this Run's selected Skill; "
-                        + "paths and URLs outside the resource manifest are never accessible. Offsets count Unicode code points.",
-                        """
-                        {"type":"object","additionalProperties":false,"required":["path"],
-                         "properties":{"path":{"type":"string","maxLength":160},
-                         "offset":{"type":"integer","minimum":0},
-                         "limit":{"type":"integer","minimum":1,"maximum":4000}}}
-                        """),
+                definition("read_skill_resource", "Read one page of a registered text attachment after a successful read_skill reply. "
+                        + "Use the same skillVersionId and exact resourceManifest path relative to the Skill root. "
+                        + "Resolve relative Markdown links against their source directory; omit heading fragments. "
+                        + "Offsets count Unicode code points. Follow nextOffset until null when the task needs the remaining text; a partial page is not complete.",
+                        PROGRESSIVE_SKILL_RESOURCE_SCHEMA),
                 definition("create_text", "Create a text artifact in the current project",
                         CREATE_TEXT_SCHEMA),
                 definition("revise_artifact",
-                        "Create a new version of a Run-visible text artifact; "
-                                + "requires expectedVersion from bound input or artifactVersions "
-                                + "in a prior tool result, plus complete content",
+                        "Create a new version of a current canvas text artifact; "
+                                + "requires expectedVersion observed from read_artifacts or a prior successful content write, plus complete content",
                         REVISE_ARTIFACT_SCHEMA),
-                definition("place_artifacts",
-                        "Place one to six current Run-visible Artifact versions in this Agent's "
-                                + "server-owned output group; returns itemId and itemVersion "
-                                + "for arrangement, and reuses existing cards",
-                        PLACE_ARTIFACTS_SCHEMA),
                 definition("arrange_items",
-                        "Arrange one to six Run-visible cards in this Agent's output group "
-                                + "using itemId, content versionId and itemVersion from "
-                                + "place_artifacts; requires layout CAS, never changes content",
+                        "Arrange one to six current unlocked canvas nodes with layout CAS. "
+                                + "Supply each selected versionId when present; omit it only for an empty media draft. Requires observed itemVersion",
                         ARRANGE_ITEMS_SCHEMA));
     }
 

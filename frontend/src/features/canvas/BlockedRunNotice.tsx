@@ -61,8 +61,6 @@ function switchOnFailure(code: string | null | undefined): string {
       return t("agent.blocked.keyVersionMissing");
     case "MODEL_OUTPUT_INVALID":
       return t("agent.blocked.validationFailed");
-    case "MODEL_TURN_LIMIT":
-      return t("agent.blocked.roundLimit");
     case "AGENT_TURN_FAILED":
       return t("agent.blocked.modelFailed");
     default:

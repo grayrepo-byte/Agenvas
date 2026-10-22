@@ -79,7 +79,7 @@ public class ProjectSnapshotService {
                 .orElseThrow(this::notFound);
         List<CanvasService.CanvasEntry> canvasEntries = canvas.list(ownerId, projectId);
         List<CanvasConnection> canvasConnections = connections.list(ownerId, projectId);
-        List<AgentInstance> agentInstances = agents.list(ownerId, projectId);
+        AgentInstance director = agents.findProjectDirector(ownerId, projectId).orElse(null);
         AgentRun activeRun = anchor.activeRunId() == null
                 ? null
                 : runs.get(ownerId, projectId, anchor.activeRunId());
@@ -90,7 +90,7 @@ public class ProjectSnapshotService {
                 project,
                 canvasEntries,
                 canvasConnections,
-                agentInstances,
+                director,
                 activeRun,
                 activeTasks,
                 unknownTasks,
@@ -113,7 +113,7 @@ public class ProjectSnapshotService {
      * @param project 项目设置及事件序号
      * @param canvas 当前画布展示项
      * @param connections 固定精确来源版本的当前画布连线
-     * @param agents 项目助手及会话身份
+     * @param director 项目唯一导演配置；未初始化时为空
      * @param activeRun 当前占用项目槽位的 Run；无活动 Run 时为空
      * @param activeTasks 活动 Run 与用户直接媒体任务
      * @param unknownTasks 结果未知、需要人工处理的未决任务
@@ -123,7 +123,7 @@ public class ProjectSnapshotService {
             Project project,
             List<CanvasService.CanvasEntry> canvas,
             List<CanvasConnection> connections,
-            List<AgentInstance> agents,
+            AgentInstance director,
             AgentRun activeRun,
             List<Task> activeTasks,
             List<Task> unknownTasks,

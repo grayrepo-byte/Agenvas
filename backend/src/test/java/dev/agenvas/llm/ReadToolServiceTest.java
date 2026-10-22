@@ -40,7 +40,7 @@ class ReadToolServiceTest {
         AgentRun run = mock(AgentRun.class);
         JsonNode snapshot = mapper.createObjectNode();
         when(run.contextSnapshot()).thenReturn(snapshot);
-        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("systemPromptVersion", 5));
+        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("systemPromptVersion", 13));
         Artifact artifact = mock(Artifact.class);
         ArtifactVersion version = mock(ArtifactVersion.class);
         UUID artifactId = UUID.randomUUID();
@@ -51,8 +51,7 @@ class ReadToolServiceTest {
         when(version.runId()).thenReturn(context.runId());
         when(version.content()).thenReturn(content);
         when(artifact.kind()).thenReturn(kind);
-        when(artifacts.requireAgentVisibleVersion(context.ownerId(), context.projectId(),
-                context.runId(), versionId, snapshot)).thenReturn(version);
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, versionId)).thenReturn(version);
         when(artifacts.get(context.ownerId(), context.projectId(), artifactId))
                 .thenReturn(new ArtifactService.ArtifactView(artifact, null));
 
@@ -74,8 +73,8 @@ class ReadToolServiceTest {
     void missingSkillResourceDoesNotClaimTheReadToolsAreUnavailable() {
         AgentRun run = mock(AgentRun.class);
         when(run.contextSnapshot()).thenReturn(mapper.createObjectNode());
-        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("toolPolicyVersion", 1));
-        assertThatThrownBy(() -> reader.skillResource(run, UUID.randomUUID(), "{\"path\":\"guide.md\"}"))
+        when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("toolPolicyVersion", 5));
+        assertThatThrownBy(() -> reader.skillResource(run, UUID.randomUUID(), "{\"skillVersionId\":\"" + UUID.randomUUID() + "\",\"path\":\"guide.md\"}"))
                 .isInstanceOf(ApiProblemException.class)
                 .hasMessageContaining("资源")
                 .hasMessageNotContaining("允许列表");

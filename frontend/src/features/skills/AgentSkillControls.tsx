@@ -17,15 +17,15 @@ import "./Skills.css";
 
 const MAX_SKILLS = 100;
 type Choice = SkillSelection["skills"][number];
-function initialSelection(agentId:string):SkillSelection {
+function initialSelection():SkillSelection {
   const params=new URLSearchParams(window.location.search);
   const skillId=params.get("skillId"),skillVersionId=params.get("skillVersionId");
-  return params.get("agentId")===agentId && skillId && skillVersionId
+  return skillId && skillVersionId
     ? {mode:"VERSIONS",skills:[{skillId,skillVersionId,inputs:[]}]} : {mode:"NONE",skills:[]};
 }
 /** UI selection fixes availability; only the runtime's read_skill tool activates a Skill. */
 export function useAgentSkillSelection(projectId:string,agent:Agent | null | undefined,initial?:SkillSelection) {
-  const [selection,setSelection]=useState<SkillSelection>(()=>initial??initialSelection(agent?.id??""));
+  const [selection,setSelection]=useState<SkillSelection>(()=>initial??initialSelection());
   const binding=useQuery({queryKey:["agent-skill-binding",projectId,agent?.id,agent?.version],queryFn:()=>getAgentSkillBinding(projectId,agent!.id),enabled:Boolean(agent)});
   const choices:Choice[]=selection.mode==="DEFAULT" ? (binding.data?.skills??[]).map((item)=>({...item,inputs:[]})) : selection.skills;
   const versions=useQueries({queries:choices.map((choice)=>({queryKey:["skill-version",choice.skillId,choice.skillVersionId],

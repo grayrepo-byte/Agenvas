@@ -139,12 +139,6 @@ public class AgentTurnCommitService {
                 if (run.status() != AgentRun.Status.RUNNING) {
                     throw new IllegalStateException("Run state prevents model continuation");
                 }
-                if (run.modelTurnLimitReached(stepIndex + 1)) {
-                    // 当前响应及工具账本已持久化；达到固定预算后停止创建回合。
-                    tasks.fail(lease, workerId, "MODEL_TURN_LIMIT");
-                    finishFailedRun(ownerId, lease, run, stepIndex);
-                    return ProjectEventService.Change.unchanged(Decision.LIMIT_REACHED);
-                }
                 // Completing the leased turn and publishing the next READY task share this
                 // transaction and project lock, so no dependency table or pending task is needed.
                 tasks.succeed(lease, workerId, output);
@@ -203,7 +197,7 @@ public class AgentTurnCommitService {
             if (attempt < 0 || attempt > 2) {
                 throw new IllegalStateException("Invalid model repair count");
             }
-            if (attempt >= 2 || run.modelTurnLimitReached(stepIndex + 1)) {
+            if (attempt >= 2) {
                 tasks.fail(lease, workerId, "MODEL_OUTPUT_INVALID");
                 finishFailedRun(ownerId, lease, run, stepIndex);
                 return ProjectEventService.Change.unchanged(false);
@@ -336,7 +330,7 @@ public class AgentTurnCommitService {
     private int requireStep(Task lease, AgentRun run) {
         int stepIndex = lease.input().path("stepIndex").asInt(-1);
         if (lease.input().path("schemaVersion").asInt(-1) != 1
-                || stepIndex < 0 || run.modelTurnLimitReached(stepIndex)
+                || stepIndex < 0
                 || (run.nextStepIndex() != stepIndex
                         && !(run.nextStepIndex() == stepIndex + 1
                                 && (run.status() == AgentRun.Status.WAITING_TASKS
@@ -379,8 +373,6 @@ public class AgentTurnCommitService {
         /** Approval or generation is pending; a persisted outcome schedules the continuation. */
         WAIT,
         /** 无后续工具调用，Run 可以结束。 */
-        FINISH,
-        /** 已达到历史模型回合上限，Run 停止续接。 */
-        LIMIT_REACHED
+        FINISH
     }
 }

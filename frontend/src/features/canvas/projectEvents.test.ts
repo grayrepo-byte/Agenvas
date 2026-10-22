@@ -78,7 +78,7 @@ function snapshot(seq: number): ProjectSnapshot {
     },
     canvas: { items: [] },
     connections: [],
-    agents: [],
+    director: null,
     activeRun: null,
     activeTasks: [],
     unknownTasks: [],

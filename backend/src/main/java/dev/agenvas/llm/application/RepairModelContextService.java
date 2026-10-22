@@ -47,11 +47,10 @@ public class RepairModelContextService {
     /** 只使用记录的请求和服务端生成的校验错误，不把部分工具结果当作成功业务数据。 */
     @Transactional(readOnly = true)
     public List<Message> assemble(UUID ownerId, Task repairTask) {
-        var run = runs.find(ownerId, repairTask.projectId(), repairTask.runId())
+        runs.find(ownerId, repairTask.projectId(), repairTask.runId())
                 .orElseThrow(() -> new IllegalArgumentException("Run is not accessible"));
         int priorStep = repairTask.input().path("repairFromStep").asInt(-1);
-        if (priorStep < 0 || run.modelTurnLimitReached(priorStep)
-                || priorStep + 1 != repairTask.input().path("stepIndex").asInt(-1)) {
+        if (priorStep < 0 || priorStep + 1 != repairTask.input().path("stepIndex").asInt(-1)) {
             throw new IllegalArgumentException("Repair Task has an invalid source step");
         }
         LlmTurn failed = turns.find(repairTask.projectId(), repairTask.runId(), priorStep)
@@ -72,9 +71,7 @@ public class RepairModelContextService {
         messages.add(new UserMessage("The previous structured tool output was rejected ("
                 + code + "): " + detail + ". Regenerate the entire response with valid "
                 + "tool arguments. No tools from that response were applied. Do not claim approval."));
-        return run.policySnapshot().path("systemPromptVersion").asInt()
-                >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION
-                ? RunContextWindow.project(messages, mapper) : List.copyOf(messages);
+        return RunContextWindow.project(messages, mapper);
     }
 
     /** 对安全且有界的调用 ID 回放合成拒绝结果；不会再次调用任何业务工具。 */

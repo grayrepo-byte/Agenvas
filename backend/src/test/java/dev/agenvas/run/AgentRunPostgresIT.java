@@ -1,5 +1,7 @@
 package dev.agenvas.run;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -21,6 +23,7 @@ import dev.agenvas.llm.application.InitialModelContextService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
+import dev.agenvas.run.application.AgentConversationService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskService;
@@ -86,6 +89,8 @@ class AgentRunPostgresIT {
     @Autowired
     private AgentRunService runService;
 
+    @Autowired private AgentConversationService conversations;
+
     @Autowired
     private TaskService taskService;
 
@@ -112,18 +117,17 @@ class AgentRunPostgresIT {
                 Artifact.Kind.TEXT,
                 "Brief",
                 objectMapper.readTree("{\"format\":\"PLAIN_TEXT\",\"text\":\"Coffee\"}"));
-        AgentInstance agent = agentService.create(
+        AgentInstance agent = configureDirector(agentService,
                 owner.userId(),
                 project.id(),
                 "Creator",
                 "Create a storyboard");
         AgentRunService.RunPreflight preflight = runService.preflight(owner.userId(),
                 project.id(), agent.id());
-        assertThat(preflight.agentVersion()).isZero();
-        assertThat(preflight.bindings()).isEmpty();
+        assertThat(preflight.agentVersion()).isEqualTo(agent.version());
         assertThat(preflight.modelAvailable()).isFalse();
         assertThat(preflight.policySnapshot().path("maxModelTurns").isNull()).isTrue();
-        assertThat(preflight.policySnapshot().path("schemaVersion").asInt()).isEqualTo(6);
+        assertThat(preflight.policySnapshot().path("schemaVersion").asInt()).isEqualTo(7);
         assertThat(preflight.policySnapshot().path("maxToolExecutions").isNull()).isTrue();
         assertThat(preflight.policySnapshot().path("systemPromptVersion").asInt())
                 .isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
@@ -147,7 +151,8 @@ class AgentRunPostgresIT {
         mvc.perform(get(preflightPath).with(authentication(
                         new UsernamePasswordAuthenticationToken(owner, null, List.of()))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.bindings").isEmpty())
+                .andExpect(jsonPath("$.bindings").doesNotExist())
+                .andExpect(jsonPath("$.inheritedBindingCount").doesNotExist())
                 .andExpect(jsonPath("$.policySnapshot.modelConfigSource")
                         .value(reviewedModelSource))
                 .andExpect(jsonPath("$.policySnapshot.modelConfigVersion")
@@ -187,22 +192,23 @@ class AgentRunPostgresIT {
                     assertThat(task.stepKey()).isEqualTo("agent-turn-0");
                     assertThat(task.input().path("stepIndex").intValue()).isZero();
                 });
-        assertThat(run.contextSnapshot().path("bindings")).isEmpty();
+        assertThat(run.contextSnapshot().has("bindings")).isFalse();
+        assertThat(run.contextSnapshot().has("canvasScope")).isFalse();
         assertThat(run.contextSnapshot().has("outputGroupId")).isFalse();
         assertThat(run.policySnapshot().get("maxModelTurns").isNull()).isTrue();
         assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), project.id(), run.id())
-                .getFirst().getText()).contains("image preview attachments", "Inspect only attached images");
+                .getFirst().getText()).contains("Only committed image reads attach previews", "Inspect only attached pixels");
 
-        agentService.update(owner.userId(), project.id(), agent.id(), 0,
+        agentService.update(owner.userId(), project.id(), agent.id(), agent.version(),
                 agent.name(), "Ignore the original storyboard");
         assertProblem("AGENT_VERSION_CONFLICT", () -> runService.create(owner.userId(),
-                project.id(), agent.id(), "Create three shots", "stale-reviewed-version", 0L));
+                project.id(), agent.id(), "Create three shots", "stale-reviewed-version", agent.version()));
         artifactService.revise(owner.userId(), project.id(), brief.artifact().id(),
                 brief.artifact().version(), null,
                 objectMapper.readTree("{\"format\":\"PLAIN_TEXT\",\"text\":\"Changed tea\"}"));
         AgentRun snapshotted = runService.get(owner.userId(), project.id(), run.id());
-        assertThat(snapshotted.contextSnapshot().get("bindings")).isEmpty();
+        assertThat(snapshotted.contextSnapshot().has("bindings")).isFalse();
         assertThat(snapshotted.contextSnapshot().path("agentInstruction").asText())
                 .isEqualTo("Create a storyboard");
         assertThat(initialContext.assemble(owner.userId(), project.id(), run.id()))
@@ -275,26 +281,27 @@ class AgentRunPostgresIT {
                                 "after-terminal")
                         .run();
         assertThat(afterTerminal.status()).isEqualTo(AgentRun.Status.QUEUED);
-        AgentRunService.RunPage firstHistory = runService.list(owner.userId(),
-                project.id(), agent.id(), null, 1);
-        assertThat(firstHistory.items()).extracting(AgentRun::id)
-                .containsExactly(afterTerminal.id());
+        var separateConversation = conversations.create(owner.userId(), project.id(), agent.id(), "isolated-history");
+        assertThat(runService.listConversation(owner.userId(), project.id(), agent.id(),
+                separateConversation.id(), null, 20).items()).isEmpty();
+        AgentRunService.RunPage firstHistory = runService.listConversation(owner.userId(),
+                project.id(), agent.id(), run.conversationId(), null, 1);
+        assertThat(firstHistory.items()).extracting(AgentRun::id).containsExactly(afterTerminal.id());
         assertThat(firstHistory.nextCursor()).isNotBlank();
-        AgentRunService.RunPage secondHistory = runService.list(owner.userId(),
-                project.id(), agent.id(), firstHistory.nextCursor(), 1);
-        assertThat(secondHistory.items()).extracting(AgentRun::id)
-                .containsExactly(winner);
+        AgentRunService.RunPage secondHistory = runService.listConversation(owner.userId(),
+                project.id(), agent.id(), run.conversationId(), firstHistory.nextCursor(), 1);
+        assertThat(secondHistory.items()).extracting(AgentRun::id).containsExactly(winner);
         assertThat(secondHistory.nextCursor()).isNotBlank();
-        assertThat(runService.list(owner.userId(), project.id(), agent.id(),
-                secondHistory.nextCursor(), 1).items()).extracting(AgentRun::id)
-                .containsExactly(run.id());
-        assertProblem("VALIDATION_ERROR", () -> runService.list(owner.userId(),
-                project.id(), agent.id(), "broken-cursor", 1));
-        assertProblem("VALIDATION_ERROR", () -> runService.list(owner.userId(),
-                project.id(), agent.id(), null, 101));
-        assertProblem("RESOURCE_NOT_FOUND", () -> runService.list(UUID.randomUUID(),
-                project.id(), agent.id(), null, 20));
-        String historyPath = "/api/v1/projects/" + project.id() + "/runs?agentId=" + agent.id();
+        assertThat(runService.listConversation(owner.userId(), project.id(), agent.id(), run.conversationId(),
+                secondHistory.nextCursor(), 1).items()).extracting(AgentRun::id).containsExactly(run.id());
+        assertProblem("VALIDATION_ERROR", () -> runService.listConversation(owner.userId(),
+                project.id(), agent.id(), run.conversationId(), "broken-cursor", 1));
+        assertProblem("VALIDATION_ERROR", () -> runService.listConversation(owner.userId(),
+                project.id(), agent.id(), run.conversationId(), null, 101));
+        assertProblem("RESOURCE_NOT_FOUND", () -> runService.listConversation(UUID.randomUUID(),
+                project.id(), agent.id(), run.conversationId(), null, 20));
+        String historyPath = "/api/v1/projects/" + project.id() + "/agents/" + agent.id()
+                + "/conversations/" + run.conversationId() + "/runs";
         mvc.perform(get(historyPath).with(authentication(
                         new UsernamePasswordAuthenticationToken(owner, null, List.of()))))
                 .andExpect(status().isOk())
@@ -302,10 +309,11 @@ class AgentRunPostgresIT {
                 .andExpect(jsonPath("$.items[0].id").value(afterTerminal.id().toString()))
                 .andExpect(jsonPath("$.items[0].contextSnapshot").doesNotExist());
         mvc.perform(get(historyPath)).andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/v1/projects/" + project.id()
-                        + "/runs?agentId=" + UUID.randomUUID())
-                .with(authentication(new UsernamePasswordAuthenticationToken(
-                        owner, null, List.of()))))
+        mvc.perform(get("/api/v1/projects/" + project.id() + "/runs?agentId=" + agent.id())
+                .with(authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()))))
+                .andExpect(status().isMethodNotAllowed());
+        mvc.perform(get("/api/v1/projects/" + project.id() + "/agents/" + agent.id() + "/outputs")
+                .with(authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()))))
                 .andExpect(status().isNotFound());
         assertThat(taskService.claimDue("media-worker", 1)).isEmpty();
         Task activeTurn = taskService.claimAgentTurns("model-worker", 1).getFirst();
@@ -331,7 +339,7 @@ class AgentRunPostgresIT {
 
         Project httpProject = projectService.create(owner.userId(), "HTTP replay project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance httpAgent = agentService.create(owner.userId(), httpProject.id(),
+        AgentInstance httpAgent = configureDirector(agentService, owner.userId(), httpProject.id(),
                 "HTTP Creator", "Create");
         assertConcurrentHttpCreate(mvc, owner, httpProject.id(), httpAgent.id());
     }
@@ -343,7 +351,7 @@ class AgentRunPostgresIT {
         AgentRunService.RunPreflight reviewed = runService.preflight(owner.userId(),
                 projectId, agentId);
         String body = "{\"agentId\":\"" + agentId
-                + "\",\"instruction\":\"Create three shots\",\"expectedAgentVersion\":0"
+                + "\",\"instruction\":\"Create three shots\",\"expectedAgentVersion\":" + reviewed.agentVersion()
                 + ",\"expectedModelConfigSource\":\""
                 + reviewed.policySnapshot().path("modelConfigSource").asText()
                 + "\",\"expectedModelConfigVersion\":"

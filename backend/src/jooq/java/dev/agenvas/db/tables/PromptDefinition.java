@@ -156,6 +156,7 @@ public class PromptDefinition extends TableImpl<PromptDefinitionRecord> {
     @Override
     public List<Check<PromptDefinitionRecord>> getChecks() {
         return Arrays.asList(
+            Internal.createCheck(this, DSL.name("ck_prompt_fixed_director"), "((((kind)::text <> 'AGENT'::text) OR (((key)::text = 'agent.director'::text) AND built_in)))", true),
             Internal.createCheck(this, DSL.name("prompt_definition_content_check"), "(((length(btrim(content)) >= 1) AND (length(btrim(content)) <= 8000)))", true),
             Internal.createCheck(this, DSL.name("prompt_definition_key_check"), "(((key)::text ~ '^[a-z][a-z0-9._-]{0,119}$'::text))", true),
             Internal.createCheck(this, DSL.name("prompt_definition_kind_check"), "(((kind)::text = ANY ((ARRAY['AGENT'::character varying, 'FUNCTION'::character varying])::text[])))", true),

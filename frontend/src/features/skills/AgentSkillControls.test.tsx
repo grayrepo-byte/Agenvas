@@ -10,7 +10,7 @@ import {server} from "../../test/server";
 import {AgentRunSkillControls,AgentSkillSettings,useAgentSkillSelection} from "./AgentSkillControls";
 
 const agent:Agent={id:"agent-1",projectId:"project-1",profileKey:"creator",profileVersion:1,name:"Agent",instruction:"Create",version:3,createdAt:"2026-10-02T00:00:00Z",updatedAt:"2026-10-02T00:00:00Z"};
-afterEach(cleanup);
+afterEach(()=>{cleanup();window.history.replaceState(null,"","/");});
 it("keeps the edit's original CAS baseline when SSE brings a newer Agent configuration",async()=>{
   let liveVersion=agent.version;let submitted:SaveAgentSkillBindingRequest|undefined;const requests:SaveAgentSkillBindingRequest[]=[];
   server.use(http.get("/api/v1/auth/csrf",()=>HttpResponse.json({token:"synthetic-csrf",headerName:"X-CSRF-TOKEN"})),
@@ -50,6 +50,19 @@ function publishedSkillHandlers(){return [
   http.get("/api/v1/skills/skill-1/versions",()=>HttpResponse.json([skillVersion])),
   http.get("/api/v1/skills/skill-1/versions/version-1",()=>HttpResponse.json(skillVersion)),
 ];}
+it("preselects the fixed Skill version from a director try URL without an Agent selector",async()=>{
+  server.use(...publishedSkillHandlers());
+  window.history.replaceState(null,"","/projects/project-1?skillId=skill-1&skillVersionId=version-1");
+  showRunPicker();
+  expect(screen.getByLabelText("active selection")).toHaveTextContent('"mode":"VERSIONS"');
+  expect(screen.getByLabelText("active selection")).toHaveTextContent('"skillId":"skill-1","skillVersionId":"version-1"');
+  await waitFor(()=>expect(screen.getByRole("button",{name:"选择 Skill"})).toHaveTextContent("warm-art"));
+});
+it.each(["skillId=skill-1","skillVersionId=version-1"])("requires a complete fixed Skill reference for try URL %s",async(query)=>{
+  window.history.replaceState(null,"","/projects/project-1?"+query);
+  showRunPicker();
+  expect(screen.getByLabelText("active selection")).toHaveTextContent('{"mode":"NONE","skills":[]}');
+});
 it("keeps modal choices local until applied and can clear a selected Skill",async()=>{
   server.use(...publishedSkillHandlers());
   const {onChanged}=showRunPicker();const user=userEvent.setup();

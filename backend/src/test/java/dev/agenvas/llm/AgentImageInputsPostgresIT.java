@@ -6,7 +6,6 @@ import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
-import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.domain.CanvasConnection;
 import dev.agenvas.identity.application.IdentityService;
@@ -78,7 +77,6 @@ class AgentImageInputsPostgresIT {
     @Autowired private AssetService assets;
     @Autowired private AgentInstanceService agents;
     @Autowired private CanvasService canvas;
-    @Autowired private CanvasConnectionService connections;
     @Autowired private AgentRunService runs;
     @Autowired private AgentTurnWorker worker;
     @Autowired private FakeGateway gateway;
@@ -93,7 +91,7 @@ class AgentImageInputsPostgresIT {
         ImageIO.write(new BufferedImage(3, 2, BufferedImage.TYPE_INT_RGB), "png", png);
         var asset = assets.archiveImage(owner.userId(), project.id(), new ByteArrayInputStream(png.toByteArray()));
         var artifact = artifacts.createTemplateImport(owner.userId(), project.id(), "Synthetic reference", asset.id());
-        var agent = AgentImageInputFixture.connect(agents, canvas, connections, owner.userId(), project.id(),
+        var agent = AgentImageInputFixture.withCanvasImage(agents, canvas, owner.userId(), project.id(),
                 artifact.artifact().id(), artifact.resourceDefaultVersion().id(), "Image reader", "Read bound images");
         var unrequested = artifacts.createTemplateImport(owner.userId(), project.id(), "Unrequested reference", asset.id());
         UUID source = UUID.randomUUID();

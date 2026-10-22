@@ -1,9 +1,10 @@
 import { useCallback, useLayoutEffect, type RefObject } from "react";
 
 /** Size the prompt's flex basis from its rendered contents, including wrapping and mention chips.
- * The panel owns the available-height limit, so measuring never moves the caret or rebuilds text.
+ * minimumRows defines its natural minimum; the panel owns the available-height limit.
+ * Measuring never moves the caret or rebuilds text.
  */
-export function usePromptContentHeight(ref: RefObject<HTMLElement | null>) {
+export function usePromptContentHeight(ref: RefObject<HTMLElement | null>, minimumRows = 1) {
   const measure = useCallback(() => {
     const editor = ref.current;
     const shell = editor?.closest<HTMLElement>(".media-draft-prompt-shell");
@@ -15,11 +16,13 @@ export function usePromptContentHeight(ref: RefObject<HTMLElement | null>) {
     const style = getComputedStyle(editor);
     const lineHeight = parseFloat(style.lineHeight) || 0;
     const padding = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
-    const contentHeight = Math.ceil(Math.max(editor.scrollHeight, lineHeight + padding));
+    const minimumHeight = Math.ceil(lineHeight * minimumRows + padding);
+    shell.style.setProperty("--prompt-min-height", `${minimumHeight}px`);
+    const contentHeight = Math.ceil(Math.max(editor.scrollHeight, minimumHeight));
     shell.style.setProperty("--prompt-content-height", `${contentHeight}px`);
     editor.style.height = height;
     editor.scrollTop = scrollTop;
-  }, [ref]);
+  }, [minimumRows, ref]);
 
   // Run after the editor's own layout effect has applied external text or mention changes.
   useLayoutEffect(measure);
