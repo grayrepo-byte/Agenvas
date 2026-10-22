@@ -1302,6 +1302,82 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/RateLimited"}
+  /api/v1/account/mcp-tokens:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    get:
+      operationId: listMcpTokens
+      summary: 查询当前用户的 MCP 凭据元数据
+      description: 仅接受网页登录 Session；MCP Bearer 凭据不能调用管理 API。结果不包含 Token 明文或散列。
+      tags: [Identity]
+      responses:
+        "200":
+          description: 当前用户的凭据；Cache-Control no-store
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/McpTokenSummary"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      operationId: createMcpToken
+      summary: 创建用户级 MCP 凭据
+      description: 网页 Session 与 CSRF 校验。READ 必选，凭据每次使用时仍校验当前用户及项目权限。明文仅本次响应提供，不能放入 URL、浏览器持久存储或模型上下文。
+      tags: [Identity]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateMcpTokenRequest"}
+      responses:
+        "201":
+          description: 凭据已创建；明文仅展示一次
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/McpTokenCreatedResponse"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "503": {$ref: "#/components/responses/Unavailable"}
+  /api/v1/account/mcp-tokens/{tokenId}/revoke:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: tokenId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: revokeMcpToken
+      summary: 撤销当前用户的 MCP 凭据
+      description: 网页 Session 与 CSRF 校验。首次撤销校验 expectedVersion；重复撤销幂等返回已撤销元数据，不会恢复凭据或修改已受理的 Task。
+      tags: [Identity]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RevokeMcpTokenRequest"}
+      responses:
+        "200":
+          description: 凭据已撤销；Cache-Control no-store
+          headers:
+            Cache-Control:
+              schema: {type: string, const: no-store}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/McpTokenSummary"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "503": {$ref: "#/components/responses/Unavailable"}
   /api/v1/settings/storage:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -5966,6 +6042,56 @@ components:
       properties:
         currentPassword: {type: string, minLength: 1, maxLength: 128}
         newPassword: {type: string, minLength: 12, maxLength: 128}
+    McpTokenScope:
+      type: string
+      enum: [READ, CONTENT_WRITE, MEDIA_GENERATE]
+    McpTokenSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name, tokenHint, scopes, version, createdAt, expiresAt, revokedAt, lastUsedAt]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, minLength: 1, maxLength: 100}
+        tokenHint: {type: string, description: 非敏感显示前缀，不可用于认证}
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/McpTokenScope"}
+        version: {type: integer, format: int64, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        revokedAt: {type: [string, "null"], format: date-time}
+        lastUsedAt: {type: [string, "null"], format: date-time}
+    CreateMcpTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [name, scopes]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          description: READ 必选；CONTENT_WRITE 和 MEDIA_GENERATE 可独立选择
+          contains: {const: READ}
+          items: {$ref: "#/components/schemas/McpTokenScope"}
+        expiresInDays: {type: integer, minimum: 1, maximum: 90, default: 30}
+    McpTokenCreatedResponse:
+      type: object
+      additionalProperties: false
+      required: [credential, token]
+      properties:
+        credential: {$ref: "#/components/schemas/McpTokenSummary"}
+        token: {type: string, minLength: 1, description: 仅创建时返回的完整 Bearer 凭据}
+    RevokeMcpTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
     CurrentUser:
       type: object
       additionalProperties: false
@@ -6441,7 +6567,7 @@ components:
         inputReferences:
           type: array
           items: {$ref: "#/components/schemas/ArtifactInputReference"}
-        createdByKind: {type: string, enum: [USER, AGENT, TASK]}
+        createdByKind: {type: string, enum: [USER, AGENT, TASK, EXTERNAL_TOOL]}
         runId: {type: [string, "null"], format: uuid}
         createdAt: {type: string, format: date-time}
     Artifact:

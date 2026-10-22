@@ -31,6 +31,8 @@ RUN if [ "${MAVEN_CACHE_MOUNT}" = false ]; then \
 
 COPY backend/src/main src/main
 COPY backend/src/jooq src/jooq
+# The explicit MCP catalog is packaged as a classpath resource by Maven, also in source image builds.
+COPY contracts/mcp /workspace/contracts/mcp
 RUN --mount=type=cache,id=agenvas-maven,target=/root/.m2-cache,sharing=locked \
     if [ "${MAVEN_CACHE_MOUNT}" = true ]; then export MAVEN_USER_HOME=/root/.m2-cache; fi \
     && ./mvnw --batch-mode --no-transfer-progress \

@@ -22,6 +22,7 @@
 | Spring Boot Parent / Maven Plugin | 4.0.8 |
 | Tomcat Embed | 11.0.25（Boot 4.0 管理系列内的安全修复覆盖） |
 | Spring AI BOM / `spring-ai-client-chat` / `spring-ai-starter-model-openai` | 2.0.1 |
+| Spring AI MCP WebMVC starter / transport | 2.0.1，由现有 Spring AI BOM 管理；官方 MCP Java SDK core / Jackson 3 mapper 2.0.0，显式无状态工具注册，最高协商 `2025-11-25` |
 | OkHttp（LLM 出站固定目标与 DNS/重定向控制） | 4.12.0；与 Spring AI 2.0.1 当前解析版本一致 |
 | TwelveMonkeys ImageIO WebP reader | 3.15.2；用于实际 WebP 解码，见 [项目仓库](https://github.com/haraldk/TwelveMonkeys) |
 | ONNX Runtime Java CPU | 1.30.0；仅用于服务端本地 Depth Anything V2 Small 推理，Maven 包包含 Linux/macOS x64/aarch64 与 Windows x64 原生库；Compose server 镜像内置固定提交、SHA-256 校验的 27.3 MB INT8 ONNX |
@@ -33,7 +34,7 @@
 
 本地 Testcontainers PostgreSQL 仅用于测试且不启用 TLS；Maven Surefire/Failsafe 的测试进程固定 JDBC `sslmode=disable`，避免驱动在 Docker Desktop 端口代理上进行不必要的 SSL 协商。此设置不进入 Spring Boot 生产运行配置，也不改变部署数据库的 TLS 策略。
 
-jOOQ 生成源码（145 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的独立 jooq-codegen job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
+jOOQ 生成源码（157 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的独立 jooq-codegen job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
 
 Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；本项目使用 BOM 管理的 `spring-ai-client-chat` 与 OpenAI 兼容模型 starter，避免混入 1.x API。默认禁用 Spring AI 的所有外部模型自动配置；独立 JVM 的默认 Mock 与开发 Compose 的显式 Mock 加载应用自有确定性 `ChatGateway` 和 `GenerationGateway`。默认部署 Compose 使用 `configured`，管理员配置数据库模型或部署者配置候选聊天适配器的端点、模型与 Key 后才会创建真实聊天客户端。两种模式仍经过同一持久化 Runtime/Task 路径。
 
@@ -70,6 +71,10 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 server 和 web 使用非 root 用户、只读根文件系统及受限 tmpfs；PostgreSQL 在各 Compose 内联入口中首次生成持久密钥后，交由官方入口初始化数据库并以 postgres 用户运行。server 从只读 credentials-data 文件读取数据库密码与凭证主密钥，目录为 0700、文件为 0600，UID 100/GID 101。默认镜像部署仅发布 Web 8088 到 `0.0.0.0`；源码与 Mock Compose 保留三个端口的 `127.0.0.1` 绑定。部署定向测试使用 Python 3 标准库和隔离官方 PostgreSQL，运行服务不需要 Python；8 项通过，详见 T02。
 
 Web 运行镜像在固定 Alpine 基础镜像上执行 `apk upgrade --no-cache`；server 使用固定 Ubuntu Noble/Temurin glibc 镜像并执行 `apt-get upgrade`，因为 Maven 发布的 ONNX Runtime Linux 原生库依赖 glibc，不能在 Alpine/musl 上可靠加载。实际 OS 包版本由每次镜像 SBOM 记录，不能仅凭基础镜像 digest 推断。2026-10-04 按用户决定，PostgreSQL 直接使用[官方固定版本镜像](https://hub.docker.com/_/postgres)，移除自建 Dockerfile、su-exec 替换和 gosu 路径扫描排除；CI 直接拉取并扫描官方镜像。旧派生镜像扫描和初始化结果是历史记录，不代表当前官方镜像的安全验收。
+
+## MCP 验证范围
+
+附加 MCP 入口保持 Java 21、Boot 4.0.8、Spring AI 2.0.1 与 Jackson 3 基线；没有引入预览版本。依赖解析、实际 TCP SDK 客户端、12 工具 Schema、真实 PostgreSQL 鉴权/并发/恢复、Mock 媒体归档与图片返回已定向验证；客户端兼容和非回归结果见[开发清单](DEVELOPMENT-CHECKLIST.md)。Maven 从 `contracts/mcp/tools.json` 打包唯一目录，源码 Docker 构建同步复制该目录。首版手工 Bearer 不提供 OAuth 授权发现，不声明支持 `2026-07-28` 传输或所有客户端。
 
 ## 源码构建缓存与本地更新
 

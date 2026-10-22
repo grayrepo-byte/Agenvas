@@ -14,6 +14,7 @@ import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.Asset.AssetPath;
 import dev.agenvas.db.tables.AssetStorageRoute.AssetStorageRoutePath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
+import dev.agenvas.db.tables.McpOperation.McpOperationPath;
 import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
 import dev.agenvas.db.tables.ProjectEvent.ProjectEventPath;
 import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
@@ -300,6 +301,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _canvasItem = new CanvasItemPath(this, null, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_PROJECT.getInverseKey());
 
         return _canvasItem;
+    }
+
+    private transient McpOperationPath _mcpOperation;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.mcp_operation</code> table
+     */
+    public McpOperationPath mcpOperation() {
+        if (_mcpOperation == null)
+            _mcpOperation = new McpOperationPath(this, null, Keys.MCP_OPERATION__FK_MCP_OPERATION_PROJECT.getInverseKey());
+
+        return _mcpOperation;
     }
 
     private transient ProjectEventPath _projectEvent;

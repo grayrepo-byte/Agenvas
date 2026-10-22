@@ -138,10 +138,20 @@ public class ManualUnknownRetryService {
         Artifact card = artifacts.get(ownerId, projectId, target.artifactId()).artifact();
         if (card.archivedAt() != null) throw conflict(ApiMessage.of("api.manual-unknown-retry-service.the-card-has-been-archived-and-cannot-be-tried-again"));
         Instant now = clock.instant();
+        ObjectNode replacementInput = (ObjectNode) original.input().deepCopy();
+        if (original.initiator() == Task.Initiator.EXTERNAL_MCP) {
+            // The website's explicit new attempt is a new user delegation. The immutable
+            // replacement relation retains the original external provenance without making
+            // an old MCP command (or a revoked credential) authorize another charge.
+            replacementInput.put("initiator", Task.Initiator.USER_DIRECT.name());
+            replacementInput.remove("mcpTokenId");
+            replacementInput.remove("mcpOperationId");
+        }
         Task replacement = new Task(UUID.randomUUID(), projectId, null,
                 "retry." + original.id() + "." + (original.attemptNo() + 1),
-                original.kind(), Task.Status.READY, false, original.input().deepCopy(),
-                original.inputHash(), null, null,
+                original.kind(), Task.Status.READY, false, replacementInput,
+                original.initiator() == Task.Initiator.EXTERNAL_MCP
+                        ? dev.agenvas.shared.crypto.Sha256.hex(replacementInput.toString()) : original.inputHash(), null, null,
                 original.attemptNo() + 1, now, null, null, 0, 0, null, now, now, null);
         repository.create(replacement);
         repository.bindMediaTask(replacement.id(), binding);

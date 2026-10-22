@@ -25,6 +25,8 @@ import dev.agenvas.db.tables.LibraryCommand;
 import dev.agenvas.db.tables.LibraryEntry;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmTurn;
+import dev.agenvas.db.tables.McpAccessToken;
+import dev.agenvas.db.tables.McpOperation;
 import dev.agenvas.db.tables.MediaRelayObject;
 import dev.agenvas.db.tables.MediaTemplate;
 import dev.agenvas.db.tables.Project;
@@ -77,6 +79,8 @@ public class Indexes {
     public static final Index IX_LIBRARY_COMMAND_CLAIM = Internal.createIndex(DSL.name("ix_library_command_claim"), LibraryCommand.LIBRARY_COMMAND, new OrderField[] { LibraryCommand.LIBRARY_COMMAND.STATUS, LibraryCommand.LIBRARY_COMMAND.LEASE_UNTIL, LibraryCommand.LIBRARY_COMMAND.CREATED_AT }, false);
     public static final Index IX_LIBRARY_ENTRY_LIST = Internal.createIndex(DSL.name("ix_library_entry_list"), LibraryEntry.LIBRARY_ENTRY, new OrderField[] { LibraryEntry.LIBRARY_ENTRY.OWNER_ID, LibraryEntry.LIBRARY_ENTRY.TRASHED_AT, LibraryEntry.LIBRARY_ENTRY.CATEGORY, LibraryEntry.LIBRARY_ENTRY.CREATED_AT.desc(), LibraryEntry.LIBRARY_ENTRY.ID.desc() }, false);
     public static final Index IX_LLM_TURN_PROJECT_RUN = Internal.createIndex(DSL.name("ix_llm_turn_project_run"), LlmTurn.LLM_TURN, new OrderField[] { LlmTurn.LLM_TURN.PROJECT_ID, LlmTurn.LLM_TURN.RUN_ID, LlmTurn.LLM_TURN.STEP_INDEX }, false);
+    public static final Index IX_MCP_ACCESS_TOKEN_USER = Internal.createIndex(DSL.name("ix_mcp_access_token_user"), McpAccessToken.MCP_ACCESS_TOKEN, new OrderField[] { McpAccessToken.MCP_ACCESS_TOKEN.USER_ID, McpAccessToken.MCP_ACCESS_TOKEN.CREATED_AT.desc(), McpAccessToken.MCP_ACCESS_TOKEN.ID }, false);
+    public static final Index IX_MCP_OPERATION_PROJECT = Internal.createIndex(DSL.name("ix_mcp_operation_project"), McpOperation.MCP_OPERATION, new OrderField[] { McpOperation.MCP_OPERATION.PROJECT_ID, McpOperation.MCP_OPERATION.CREATED_AT.desc(), McpOperation.MCP_OPERATION.ID }, false);
     public static final Index IX_MEDIA_TEMPLATE_LIST = Internal.createIndex(DSL.name("ix_media_template_list"), MediaTemplate.MEDIA_TEMPLATE, new OrderField[] { MediaTemplate.MEDIA_TEMPLATE.SCOPE, MediaTemplate.MEDIA_TEMPLATE.OWNER_ID, MediaTemplate.MEDIA_TEMPLATE.TARGET_KIND, MediaTemplate.MEDIA_TEMPLATE.UPDATED_AT.desc() }, false);
     public static final Index IX_PROJECT_EVENT_OCCURRED_AT = Internal.createIndex(DSL.name("ix_project_event_occurred_at"), ProjectEvent.PROJECT_EVENT, new OrderField[] { ProjectEvent.PROJECT_EVENT.OCCURRED_AT }, false);
     public static final Index IX_PROJECT_OWNER_CREATED = Internal.createIndex(DSL.name("ix_project_owner_created"), Project.PROJECT, new OrderField[] { Project.PROJECT.OWNER_ID, Project.PROJECT.CREATED_AT.desc(), Project.PROJECT.ID.desc() }, false);

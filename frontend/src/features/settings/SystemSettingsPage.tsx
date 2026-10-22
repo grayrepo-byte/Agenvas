@@ -13,6 +13,7 @@ import { CallLogRetentionSection } from "./CallLogRetentionSection";
 import { DebugModeSection } from "./DebugModeSection";
 import { PromptManagementSection } from "./PromptManagementSection";
 import { PasswordChangeSection } from "./PasswordChangeSection";
+import { McpTokensSection } from "./McpTokensSection";
 import "./SettingsPages.css";
 import "./SystemSettingsPage.css";
 import { SystemDiagnosticsSection } from "./SystemDiagnosticsSection";
@@ -89,7 +90,7 @@ export function SystemSettingsPage() {
       </Panel> : null}
       {tab === "styles" ? <MediaStyleSettingsSection enabled={currentUser.isSuccess && selected === tab} /> : null}
       {tab === "prompts" ? <PromptManagementSection enabled={currentUser.isSuccess && selected === tab} /> : null}
-      {tab === "security" ? <PasswordChangeSection /> : null}
+      {tab === "security" ? <><PasswordChangeSection /><McpTokensSection key={currentUser.data?.id} userId={currentUser.data?.id} enabled={currentUser.isSuccess && selected === tab} /></> : null}
       {tab === "logs" ? <><CallLogRetentionSection enabled={currentUser.isSuccess && selected === tab} /><DebugModeSection enabled={currentUser.isSuccess && selected === tab} /></> : null}
       {tab === "diagnostics" ? <SystemDiagnosticsSection enabled={currentUser.isSuccess && selected === tab} /> : null}
       {tab === "templates" ? <SystemMediaTemplatesSection enabled={currentUser.data?.role === "ADMIN" && selected === tab} /> : null}

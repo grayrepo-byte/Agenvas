@@ -1,6 +1,6 @@
 # MCP 附加接入实施计划
 
-状态：待实施。用户已确认保留现有 Agent、增加 MCP 附加入口；鉴权采用用户级别，MCP 媒体生成不增加用户收费审批。本文的工具、数据结构与阶段划分是具体实施方案，不代表已接入或已通过测试。方向决策见 [ADR 0048](adr/0048-additive-mcp-access.md)。
+状态：代码已实施，按下述首版边界交付。保留现有 Agent，附加用户级 MCP，媒体生成不增加收费审批。实际验证与限制见[开发清单](DEVELOPMENT-CHECKLIST.md)，使用见[客户端指南](mcp-client-guide.md)。方向决策见 [ADR 0048](adr/0048-additive-mcp-access.md)。
 
 ## 1. 目标与首版边界
 
@@ -9,7 +9,7 @@
 - 一份 MCP 凭据属于一个用户，可操作该用户当前有权访问的项目；不按项目签发凭据。每个项目工具显式携带 `projectId`，服务端逐次校验当前权限和资源归属。
 - `run_media` 直接受理持久媒体 Task，不创建待审批事项，不要求再次确认费用。生成权限来自用户授予凭据的 `MEDIA_GENERATE` 能力，模型不能自行增加权限。
 - 复用已有 Task、Provider、用量、归档、不可变版本、UNKNOWN 和画布事件。内置 Agent 的审批要求不因 MCP 改变。
-- 首版交付一个实际外部客户端的完整闭环，不承诺所有 MCP 客户端兼容。验收目标为支持 HTTP 与自定义 Bearer header 的 Claude Code，加 MCP Inspector 做协议检查；实际版本在阶段 A 锁定。
+- 首版交付一个实际外部客户端的完整闭环，不承诺所有 MCP 客户端兼容。已验证官方 Java SDK 2.0.0 的实际 HTTP 客户端逐一调用 12 工具，以及 MCP Inspector 2.12.0 完成文字与 Mock 图片闭环；Claude Code 2.1.296 通过环境变量 Bearer 健康连接。另有 `McpRealServiceIT` 对复用三方配置的隔离服务完成真实 GPT Image 2 兼容图片能力的 12 工具及单张生成验收；另以 Python HTTP JSON-RPC 客户端完成 AutoDL 视频适配器的 6 段同人物参考生成及 10 句 SeedAudio 配音，全部成功；拼接、字幕和混音由本地完成，成片通过普通 REST 上传回写。Claude 模型驱动对话和其他未列 Provider 未运行；视频仅做抽帧与解码检查，配音未听验。
 - 首版不做 ACP、Agent Runner、OAuth 登录授权服务、外部聊天同步、完成后自动唤醒、上传工具、项目创建/删除、节点删除/复制、UNKNOWN 重试工具或 CreativeSkill 接入。既有对应功能继续工作。
 
 ## 2. 执行拓扑
@@ -28,7 +28,7 @@ flowchart LR
 
 MCP 是同一应用中的接入模块，不增加业务服务器、数据库、端口或持久卷。外部客户端不访问生产数据库、Provider 密钥或素材卷。浏览器继续从项目事件和查询投影得到画布变化。
 
-首版采用 Streamable HTTP，优先复用当前 Spring AI 2.0.1 BOM 管理的 `spring-ai-starter-mcp-server-webmvc` / 官方 Java SDK，显式注册工具白名单，不自动暴露所有 Spring Tool Bean。阶段 A 验证 Java 21、Boot 4、Jackson 3 和目标客户端后，锁定稳定依赖及共同支持的协议 revision；不为接入升级大版本或引入预览依赖。
+采用现有 Spring AI 2.0.1 BOM 管理的 `spring-ai-starter-mcp-server-webmvc` 与官方 Java SDK 2.0.0，最高协商 `2025-11-25`，无状态 Streamable HTTP。关闭自动工具发现，由本项目显式注册白名单；不导出内置 Spring Tool Bean，不升级 Java 21、Boot 4 或 Jackson 3 基线，不引入预览依赖。
 
 协议业务身份始终来自逐请求认证，不来自 MCP transport session。无论 SDK 是否维护连接状态，断线都不丢失已提交命令和媒体 Task。
 
@@ -39,7 +39,7 @@ MCP 是同一应用中的接入模块，不增加业务服务器、数据库、�
 | 工具 | 权限 | 主要参数与返回 | 首版行为 |
 | --- | --- | --- | --- |
 | `list_projects` | `READ` | 分页、可选名称查询；项目 ID、名称、状态 | 只列当前用户有权访问的项目，不返回导演/模型配置 |
-| `read_project_summary` | `READ` | `projectId`；项目创作说明、画幅及内容数量 | 使用独立安全投影，不复用包含 Run/Task 输入的全量快照 |
+| `read_project_summary` | `READ` | `projectId`；项目名称、画幅及内容数量 | 使用独立安全投影，不复用包含 Run/Task 输入的全量快照 |
 | `read_canvas` | `READ` | `offset/limit/includeDrafts`；节点目录、内容引用、布局 CAS、草稿 CAS | 默认元数据和草稿摘要；显式读取完整草稿，沿用已有分页上限 |
 | `read_artifacts` | `READ` | 精确 `versionIds`；文字、媒体元数据、受控图片预览 | 每个引用必须属于指定项目；不返回内部文件路径或可复用签名下载 URL |
 | `create_text` | `CONTENT_WRITE` | `title/text/placement?`；内容版本、节点及 CAS | 内容与节点同事务创建，响应丢失不重复放置 |
@@ -84,14 +84,15 @@ MCP 凭据不能调用管理凭据的 REST，也不能借由工具枚举管理�
 精确 `/mcp` 使用优先的独立无状态 Spring Security 链，只接受 Bearer，拒绝 Cookie 作为替代认证，不创建网页 Session。仅 MCP 协议入口免 CSRF，现有网页/API 防护保留。MCP token 只作为凭据，不进入模型工具参数。
 
 ```text
-Bearer → 有效凭据与用户 → 工具权限 → 当前项目权限
-       → 参数白名单 → 同项目对象 → 锁定/占用/CAS/额度
-       → 命令幂等 → 业务提交与事件
+Bearer → 有效凭据与用户 → 工具权限与参数白名单
+       → 项目事务锁与当前权限 → 凭据行锁复核
+       → 命令账本重放/预留 → 同项目对象与锁定/占用/CAS/额度
+       → 业务、账本与事件同提交
 ```
 
 写命令在短事务内再次锁定并核验凭据有效性。统一锁顺序为项目事务锁 → 凭据行锁 → 目标业务对象/命令账本；撤销只锁凭据，不反向取项目锁。已先取得授权锁的短事务可以提交；撤销成功返回后，后续写事务必须拒绝。撤销不回滚历史，也不取消已经受理的 Task。
 
-恢复模式按工具语义区分读写：MCP 的读取也使用 HTTP POST，不能把现有 `RecoveryModeWriteGuard` 的 HTTP 方法判断直接套过来。归档项目拒绝写入；读取继续按既有项目规则处理。Origin/Host、HTTPS 反代、请求大小与并发限制在传输层实施。
+恢复模式按工具语义区分读写：MCP 的读取也使用 HTTP POST，不能把现有 `RecoveryModeWriteGuard` 的 HTTP 方法判断直接套过来。归档项目拒绝写入；读取继续按既有项目规则处理。原生客户端不携带 Origin；首版拒绝带 Origin 的浏览器调用，不开放 CORS。HTTPS 与 Host 按部署反代处理。后端实际请求体上限 300 KiB，工具参数 256 KiB，Nginx 外层 2 MiB；每用户跨令牌共用 4 个在途请求，进程最多 64 个，超限返回 429 和 Retry-After。SDK 原始报文日志关闭，协议解析失败不回传正文片段。
 
 ## 5. 写命令、任务与来源
 
@@ -128,7 +129,7 @@ create_media_node → update_media_draft → run_media
 
 ### 5.3 来源与数据变更
 
-计划新增以下表；最终 Flyway 编号在实施时取当前下一序号，不预占或修改工作区已有 V27–V29：
+V30 新增以下表，未修改此前 V27–V29：
 
 | 表/模型 | 用途与关键约束 |
 | --- | --- |
@@ -165,7 +166,7 @@ HTTP 凭据 schema 拟新增 `McpTokenSummary/CreateRequest/CreatedResponse`；M
 
 ## 7. 实施顺序与验收
 
-下列均为待办，当前没有完成项。估算按一名熟悉项目的开发者、一个实际客户端、复用现有媒体能力计算；不是已经实测的工期。
+下表保留实施前的拆分与成本估算，代码已按该顺序完成；估算按熟悉项目的开发者及现有媒体能力计算，不是实测工期。最终验证范围见开发清单。
 
 | 阶段 | 交付与退出条件 | 估算 |
 | --- | --- | --- |
@@ -189,14 +190,14 @@ HTTP 凭据 schema 拟新增 `McpTokenSummary/CreateRequest/CreatedResponse`；M
 
 ## 8. 计划使用的验证命令
 
-以下命令尚未运行；新增测试名称为计划名称，实施时按实际文件调整。数据库事务/并发/恢复使用真实 PostgreSQL，不运行全量测试作为开发基线。
+以下是实际定向验证入口；结果见开发清单。数据库事务/并发/恢复使用真实 PostgreSQL，不运行全量测试作为开发基线。
 
 ```bash
 # backend/：本次新增功能单元测试
-./mvnw -Dtest=McpTokenServiceTest,McpToolPolicyTest,McpCommandSchemaTest test
+./mvnw -Dtest=McpTokenServiceTest,McpBearerAuthenticationFilterTest,McpRequestLimitsFilterTest,McpToolPolicyTest,McpCommandSchemaTest,IdentityServiceTest,MessageCatalogTest test
 
 # backend/：定向数据库/HTTP集成与内置功能回归
-./mvnw -Pci-integration -Dit.test=McpTokenPostgresIT,McpToolsPostgresIT,McpDirectMediaPostgresIT,IdentityPostgresIT,ResourceScopePostgresIT,RecoveryModePostgresIT,AgentMediaApprovalPostgresIT,MockAgentTurnPostgresIT,AgentRunPostgresIT,DirectTextGenerationPostgresIT,ImagePromptPostgresIT,TaskSubmissionUnknownPostgresIT,DirectMediaGenerationPlacementPostgresIT verify
+./mvnw -Pci-integration -Dit.test=McpTokenPostgresIT,McpToolsPostgresIT,McpDirectMediaPostgresIT,McpHttpPostgresIT,McpRecoveryModePostgresIT,McpDisabledPostgresIT,FlywayBaselinePostgresIT,IdentityPostgresIT,ResourceScopePostgresIT,RecoveryModePostgresIT,AgentMediaApprovalPostgresIT,MockAgentTurnPostgresIT,AgentStreamPostgresIT,SkillRunPostgresIT,AgentRunPostgresIT,AgentConversationPostgresIT,DirectTextGenerationPostgresIT,ImagePromptPostgresIT,TaskSubmissionUnknownPostgresIT,DirectMediaGenerationPlacementPostgresIT verify
 
 # backend/：按 ADR 0012 配置一次性空 PostgreSQL 后执行，不连接生产数据库
 ./mvnw -Pjooq-codegen generate-sources
@@ -209,6 +210,7 @@ pnpm lint
 pnpm build
 pnpm test:agent-chat-layout
 pnpm test:agent-workspace
+pnpm test:mcp-settings
 
 # 仓库根：部署配置
 bash deploy/check-compose.sh
@@ -220,7 +222,7 @@ MCP 协议测试使用选定 revision 的实际发现/初始化、工具枚举�
 
 只增加 MCP 数据和必要来源扩展，不迁移或删除内置 Agent 历史。数据库升级前备份；新枚举、迁移、后端及生成类型按同批部署处理。关闭 MCP 时拒绝新调用，已受理 Task 继续按原持久化链完成；旧版本回退若不认识新来源枚举，需要恢复对应备份或使用经验证的兼容版本，不能直接假定可回退。
 
-实施时同步依赖基线、OpenAPI、MCP Schema、jOOQ、生成 TS、开发清单和部署说明。未实现/未验证条目保持未勾选。本文仅完成代码与资料审阅，没有实施 MCP 或运行功能测试。
+实施时同步依赖基线、OpenAPI、MCP Schema、jOOQ、生成 TS、开发清单和部署说明。未实现/未验证条目保持未勾选。V30/jOOQ、生成 TypeScript、工具 Schema、账户 UI 和部署反代已同步；验证结论以开发清单为准。
 
 外部依据（本次核查 2026-10-22）：
 

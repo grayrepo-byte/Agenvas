@@ -851,6 +851,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/account/mcp-tokens": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询当前用户的 MCP 凭据元数据
+         * @description 仅接受网页登录 Session；MCP Bearer 凭据不能调用管理 API。结果不包含 Token 明文或散列。
+         */
+        get: operations["listMcpTokens"];
+        put?: never;
+        /**
+         * 创建用户级 MCP 凭据
+         * @description 网页 Session 与 CSRF 校验。READ 必选，凭据每次使用时仍校验当前用户及项目权限。明文仅本次响应提供，不能放入 URL、浏览器持久存储或模型上下文。
+         */
+        post: operations["createMcpToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/account/mcp-tokens/{tokenId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                tokenId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 撤销当前用户的 MCP 凭据
+         * @description 网页 Session 与 CSRF 校验。首次撤销校验 expectedVersion；重复撤销幂等返回已撤销元数据，不会恢复凭据或修改已受理的 Task。
+         */
+        post: operations["revokeMcpToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/storage": {
         parameters: {
             query?: never;
@@ -4491,6 +4549,42 @@ export interface components {
             currentPassword: string;
             newPassword: string;
         };
+        /** @enum {string} */
+        McpTokenScope: "READ" | "CONTENT_WRITE" | "MEDIA_GENERATE";
+        McpTokenSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description 非敏感显示前缀，不可用于认证 */
+            tokenHint: string;
+            scopes: components["schemas"]["McpTokenScope"][];
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            revokedAt: string | null;
+            /** Format: date-time */
+            lastUsedAt: string | null;
+        };
+        CreateMcpTokenRequest: {
+            name: string;
+            /** @description READ 必选；CONTENT_WRITE 和 MEDIA_GENERATE 可独立选择 */
+            scopes: components["schemas"]["McpTokenScope"][];
+            /** @default 30 */
+            expiresInDays: number;
+        };
+        McpTokenCreatedResponse: {
+            credential: components["schemas"]["McpTokenSummary"];
+            /** @description 仅创建时返回的完整 Bearer 凭据 */
+            token: string;
+        };
+        RevokeMcpTokenRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+        };
         CurrentUser: {
             /** Format: uuid */
             id: string;
@@ -4897,7 +4991,7 @@ export interface components {
             content: components["schemas"]["ArtifactContent"];
             inputReferences: components["schemas"]["ArtifactInputReference"][];
             /** @enum {string} */
-            createdByKind: "USER" | "AGENT" | "TASK";
+            createdByKind: "USER" | "AGENT" | "TASK" | "EXTERNAL_TOOL";
             /** Format: uuid */
             runId?: string | null;
             /** Format: date-time */
@@ -7792,6 +7886,109 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
+        };
+    };
+    listMcpTokens: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前用户的凭据；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenSummary"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMcpToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMcpTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description 凭据已创建；明文仅展示一次 */
+            201: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenCreatedResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    revokeMcpToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                tokenId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeMcpTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description 凭据已撤销；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenSummary"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
         };
     };
     getStorageSettings: {

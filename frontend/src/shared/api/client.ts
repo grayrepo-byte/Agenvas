@@ -13,6 +13,11 @@ export type CurrentUser = components["schemas"]["CurrentUser"];
 export type SetupRequest = components["schemas"]["SetupRequest"];
 export type LoginRequest = components["schemas"]["LoginRequest"];
 export type ChangePasswordRequest = components["schemas"]["ChangePasswordRequest"];
+export type McpTokenScope = components["schemas"]["McpTokenScope"];
+export type McpTokenSummary = components["schemas"]["McpTokenSummary"];
+export type CreateMcpTokenRequest = components["schemas"]["CreateMcpTokenRequest"];
+export type McpTokenCreatedResponse = components["schemas"]["McpTokenCreatedResponse"];
+export const MCP_TOKEN_SCOPES = { READ: "READ", CONTENT_WRITE: "CONTENT_WRITE", MEDIA_GENERATE: "MEDIA_GENERATE" } as const satisfies Record<McpTokenScope, McpTokenScope>;
 export type Project = components["schemas"]["Project"];
 export type ProjectList = components["schemas"]["ProjectList"];
 export type ProjectSnapshot = components["schemas"]["ProjectSnapshot"];
@@ -418,6 +423,25 @@ export async function changePassword(input: ChangePasswordRequest): Promise<void
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+/** Session-only credential management. List responses contain safe metadata only. */
+export function listMcpTokens(): Promise<McpTokenSummary[]> {
+  return readJson("/api/v1/account/mcp-tokens", t("mcp.tokens.loadFailed"));
+}
+
+/** The caller must keep the returned secret in ephemeral component memory, never a query cache. */
+export function createMcpToken(input: CreateMcpTokenRequest): Promise<McpTokenCreatedResponse> {
+  return writeJson("/api/v1/account/mcp-tokens", {
+    method: "POST", cache: "no-store", body: JSON.stringify(input),
+  }, t("mcp.tokens.createFailed"));
+}
+
+/** Revocation is idempotent; an already revoked credential stays revoked. */
+export function revokeMcpToken(token: McpTokenSummary): Promise<McpTokenSummary> {
+  return writeJson(`/api/v1/account/mcp-tokens/${encodeURIComponent(token.id)}/revoke`, {
+    method: "POST", body: JSON.stringify({ expectedVersion: token.version }),
+  }, t("mcp.tokens.revokeFailed"));
 }
 
 /** Lists an owner-scoped project page. */

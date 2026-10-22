@@ -222,6 +222,33 @@ public class ArtifactService {
         }).value();
     }
 
+    /** Trusted external tool entry; callers provide user authority, never a fabricated Run. */
+    @Transactional
+    public ArtifactView createFromExternalTool(UUID ownerId, UUID projectId,
+            Artifact.Kind kind, String title, JsonNode content) {
+        if (kind != Artifact.Kind.TEXT && content != null && !content.isNull()) {
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
+                    ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"),
+                    ApiMessage.of("api.artifact-service.agents-cannot-modify-archived-media-content"), false);
+        }
+        return events.recordChange(ownerId, projectId, () -> {
+            ArtifactView created = createLocked(ownerId, projectId, kind, title, content,
+                    ArtifactVersion.CreatedByKind.EXTERNAL_TOOL, null, false);
+            return ProjectEventService.Change.changed(created, artifactEvent("artifact.created", created));
+        }).value();
+    }
+
+    /** External revisions retain ordinary content CAS and locked-node protections. */
+    @Transactional
+    public ArtifactView reviseFromExternalTool(UUID ownerId, UUID projectId, UUID artifactId,
+            long expectedVersion, String title, JsonNode content) {
+        return events.recordChange(ownerId, projectId, () -> {
+            ArtifactView revised = reviseLocked(ownerId, projectId, artifactId, expectedVersion,
+                    title, content, ArtifactVersion.CreatedByKind.EXTERNAL_TOOL, null);
+            return ProjectEventService.Change.changed(revised, artifactEvent("artifact.version.created", revised));
+        }).value();
+    }
+
     /** 统一创建边界；只允许在活动项目内创建产物。 */
     private ArtifactView createLocked(UUID ownerId, UUID projectId, Artifact.Kind kind,
             String requestedTitle, JsonNode content, ArtifactVersion.CreatedByKind createdByKind,
@@ -230,7 +257,8 @@ public class ArtifactService {
         projects.requireActiveProject(ownerId, projectId);
         String title = validateTitle(requestedTitle);
         if (content == null && isMediaKind(kind)) {
-            if (createdByKind != ArtifactVersion.CreatedByKind.USER) {
+            if (createdByKind != ArtifactVersion.CreatedByKind.USER
+                    && createdByKind != ArtifactVersion.CreatedByKind.EXTERNAL_TOOL) {
                 throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
                         ApiMessage.of("api.artifact-service.media-text-is-invalid"), ApiMessage.of("api.artifact-service.media-artifacts-created-by-tasks-and-agents-must-contain-archived"), false);
             }
@@ -361,7 +389,8 @@ public class ArtifactService {
         projects.requireActiveProject(ownerId, projectId);
         Artifact current = artifacts.findForUpdate(ownerId, projectId, artifactId)
                 .orElseThrow(this::notFound);
-        if (author == ArtifactVersion.CreatedByKind.AGENT) {
+        if (author == ArtifactVersion.CreatedByKind.AGENT
+                || author == ArtifactVersion.CreatedByKind.EXTERNAL_TOOL) {
             if (current.kind() != Artifact.Kind.TEXT) {
                 throw new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
                         ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"),

@@ -71,6 +71,16 @@ public record Task(
         catch (IllegalArgumentException invalid) { return false; }
     }
 
+    /** Server-authored initiator; a null Run alone does not imply a browser click. */
+    public enum Initiator { USER_DIRECT, BUILTIN_AGENT, EXTERNAL_MCP }
+
+    public Initiator initiator() {
+        if (Initiator.EXTERNAL_MCP.name().equals(input.path("initiator").asText())
+                && runId == null && input.path("mcpOperationId").isString()
+                && input.path("mcpTokenId").isString()) return Initiator.EXTERNAL_MCP;
+        return runId == null ? Initiator.USER_DIRECT : Initiator.BUILTIN_AGENT;
+    }
+
     /** Worker 可以认领的受限任务类别。 */
     public enum Kind {
         /** 调用模型并恢复受控工具回合。 */

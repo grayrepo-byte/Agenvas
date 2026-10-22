@@ -8,6 +8,8 @@ import dev.agenvas.db.Indexes;
 import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.AgentRun.AgentRunPath;
+import dev.agenvas.db.tables.McpOperation.McpOperationPath;
+import dev.agenvas.db.tables.McpOperationTask.McpOperationTaskPath;
 import dev.agenvas.db.tables.MediaCapability.MediaCapabilityPath;
 import dev.agenvas.db.tables.MediaCapabilityVersion.MediaCapabilityVersionPath;
 import dev.agenvas.db.tables.MediaProviderConnectionVersion.MediaProviderConnectionVersionPath;
@@ -385,6 +387,19 @@ public class Task extends TableImpl<TaskRecord> {
         return _fkManualReplacementOriginal;
     }
 
+    private transient McpOperationTaskPath _mcpOperationTask;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.mcp_operation_task</code> table
+     */
+    public McpOperationTaskPath mcpOperationTask() {
+        if (_mcpOperationTask == null)
+            _mcpOperationTask = new McpOperationTaskPath(this, null, Keys.MCP_OPERATION_TASK__FK_MCP_OPERATION_TASK_TASK.getInverseKey());
+
+        return _mcpOperationTask;
+    }
+
     private transient ProviderAttemptPath _providerAttempt;
 
     /**
@@ -435,6 +450,14 @@ public class Task extends TableImpl<TaskRecord> {
             _taskProviderPollRetry = new TaskProviderPollRetryPath(this, null, Keys.TASK_PROVIDER_POLL_RETRY__TASK_PROVIDER_POLL_RETRY_TASK_ID_FKEY.getInverseKey());
 
         return _taskProviderPollRetry;
+    }
+
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.mcp_operation</code> table
+     */
+    public McpOperationPath mcpOperation() {
+        return mcpOperationTask().mcpOperation();
     }
 
     @Override

@@ -30,6 +30,15 @@ class IdentityServiceTest {
             accounts, passwords, CLOCK);
 
     @Test
+    void exposesOnlyTheCurrentActiveUserStatusAcrossModuleBoundaries() {
+        UUID userId = UUID.randomUUID();
+        when(accounts.isActiveById(userId)).thenReturn(true);
+        assertThat(service.isActiveUser(userId)).isTrue();
+        assertThat(service.isActiveUser(UUID.randomUUID())).isFalse();
+        assertThat(service.isActiveUser(null)).isFalse();
+    }
+
+    @Test
     void createsOnlyAHashedNormalizedAdministrator() {
         when(accounts.isSetupCompleted()).thenReturn(false);
         when(accounts.completeSetup(CLOCK.instant())).thenReturn(true);

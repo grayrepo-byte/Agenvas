@@ -121,7 +121,7 @@ public class DirectMediaTaskService {
     public Task run(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId,
             long expectedDraftVersion, String commandKey) {
         return runInternal(ownerId, projectId, null, null, artifactId, canvasItemId,
-                expectedDraftVersion, commandKey, null);
+                expectedDraftVersion, commandKey, null, null).getFirst();
     }
 
     /** Only the approval application service calls this after recording the user's decision. */
@@ -139,11 +139,23 @@ public class DirectMediaTaskService {
             UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey, JsonNode creativeSkill) {
         if (runId == null || approvalId == null) throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
         return runInternal(ownerId, projectId, runId, approvalId, artifactId, canvasItemId,
-                expectedDraftVersion, commandKey, creativeSkill);
+                expectedDraftVersion, commandKey, creativeSkill, null).getFirst();
     }
 
-    private Task runInternal(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
-            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey, JsonNode creativeSkill) {
+    /** External commands are already authenticated and ledgered by MCP. Occupancy is an
+     * explicit conflict, and every charged batch output is returned to that command. */
+    @Transactional
+    public List<Task> runExternal(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId,
+            long expectedDraftVersion, UUID tokenId, UUID operationId) {
+        if (tokenId == null || operationId == null) throw new IllegalArgumentException("External task source is required");
+        return runInternal(ownerId, projectId, null, null, artifactId, canvasItemId,
+                expectedDraftVersion, "mcp:" + operationId + ":0", null, new ExternalSource(tokenId, operationId));
+    }
+
+    private record ExternalSource(UUID tokenId, UUID operationId) {}
+
+    private List<Task> runInternal(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
+            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey, JsonNode creativeSkill, ExternalSource external) {
         if (canvasItemId == null || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH || expectedDraftVersion < 0) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
@@ -166,7 +178,8 @@ public class DirectMediaTaskService {
                                 .equals(approvalId == null ? "" : approvalId.toString())) {
                     throw conflict(ApiMessage.of("api.direct-media-task-service.the-same-idempotent-key-has-been-used-in-different-card"));
                 }
-                return ProjectEventService.Change.unchanged(prior);
+                if (external != null) throw new IllegalStateException("External command must replay through its operation ledger");
+                return ProjectEventService.Change.unchanged(List.of(prior));
             }
             // Occupancy lookup is internal: authorize the target before returning another command's task.
             Artifact authorizedTarget = artifacts.get(ownerId, projectId, artifactId).artifact();
@@ -175,8 +188,11 @@ public class DirectMediaTaskService {
             Task occupying = tasks.findOccupyingDirectMediaTask(projectId, canvasItemId)
                     .orElse(null);
             if (occupying != null) {
+                if (external != null) throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_BUSY",
+                        ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
+                        ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"), false);
                 if (runId != null) throw conflict(ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"));
-                return ProjectEventService.Change.unchanged(occupying);
+                return ProjectEventService.Change.unchanged(List.of(occupying));
             }
             PreparedMedia prepared = prepare(ownerId, projectId, authorizedTarget, authorizedCard, expectedDraftVersion, true);
             Artifact target = prepared.target();
@@ -199,7 +215,7 @@ public class DirectMediaTaskService {
             String resolutionTier = prepared.resolutionTier();
             Instant now = clock.instant();
             int outputCount = imageParameters == null ? 1 : imageParameters.generationCount();
-            Task primary = null;
+            List<Task> accepted = new java.util.ArrayList<>();
             for (int outputIndex = 0; outputIndex < outputCount; outputIndex++) {
                 // Regeneration adds a version to the current node. Additional batch outputs
                 // keep independent nodes; only image edits create derivation relationships.
@@ -209,6 +225,11 @@ public class DirectMediaTaskService {
                                 UUID.randomUUID(), draft.version(), outputIndex);
                 ObjectNode input = mapper.createObjectNode();
                 input.put("schemaVersion", MEDIA_TASK_INPUT_SCHEMA_VERSION);
+                input.put("initiator", (external != null ? Task.Initiator.EXTERNAL_MCP : runId == null ? Task.Initiator.USER_DIRECT : Task.Initiator.BUILTIN_AGENT).name());
+                if (external != null) {
+                    input.put("mcpTokenId", external.tokenId().toString());
+                    input.put("mcpOperationId", external.operationId().toString());
+                }
                 if (approvalId != null) input.put(Task.APPROVAL_INPUT_PROPERTY, approvalId.toString());
                 if (dynamic) input.put("providerProtocol", "RUNNINGHUB_V2");
                 if (kling != null) input.put("providerProtocol", KlingModels.PROTOCOL_ID);
@@ -328,7 +349,8 @@ public class DirectMediaTaskService {
                 pinImageRelay(input, binding);
                 frozen.set("mentions", mapper.valueToTree(draft.mentions()));
                 if (creativeSkill != null) frozen.set("creativeSkill", creativeSkill.deepCopy());
-                String stepKey = outputIndex == 0 ? commandKey
+                String stepKey = external != null ? "mcp:" + external.operationId() + ":" + outputIndex
+                        : outputIndex == 0 ? commandKey
                         : "image-batch:" + Sha256.hex(commandKey).substring(0, BATCH_KEY_DIGEST_LENGTH) + ":" + outputIndex;
                 Task task = new Task(UUID.randomUUID(), projectId, runId, stepKey, kind,
                         Task.Status.READY, false, input, Sha256.hex(input.toString()), null, null,
@@ -349,9 +371,9 @@ public class DirectMediaTaskService {
                 events.append(ownerId, projectId,
                         new ProjectEventService.EventDraft("task.status.changed", TASK_EVENT_SCHEMA_VERSION, task.id(),
                                 task.version(), payload));
-                if (primary == null) primary = task;
+                accepted.add(task);
             }
-            return ProjectEventService.Change.unchanged(java.util.Objects.requireNonNull(primary));
+            return ProjectEventService.Change.unchanged(List.copyOf(accepted));
         }).value();
     }
 
@@ -1200,6 +1222,17 @@ public class DirectMediaTaskService {
                             taskId, canceled.version(), payload));
             return ProjectEventService.Change.unchanged(canceled);
         }).value();
+    }
+
+    /** Draft callers hold the project lock; any unresolved external submission keeps the card busy. */
+    @Transactional(readOnly = true)
+    public void requireUnoccupied(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId) {
+        Artifact target = artifacts.get(ownerId, projectId, artifactId).artifact();
+        requireTargetCard(target, canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId));
+        if (tasks.findOccupyingDirectMediaTask(projectId, canvasItemId).isPresent())
+            throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_BUSY",
+                    ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
+                    ApiMessage.of("api.task-service.this-media-card-already-has-tasks-queued-executed-or-pending"), false);
     }
 
     @Transactional(readOnly = true)

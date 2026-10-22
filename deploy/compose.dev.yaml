@@ -120,6 +120,7 @@ services:
       AGENVAS_STORAGE_ROOT: /opt/agenvas/data/assets
       AGENVAS_TASK_LEASE_DURATION: PT30M
       AGENVAS_RECOVERY_MODE: "false"
+      AGENVAS_MCP_ENABLED: "true"
       AGENVAS_SECURE_COOKIES: "false"
     depends_on:
       postgres:

@@ -10,6 +10,11 @@ import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import type { VersionedArtifact } from "./versionedArtifact";
 
+const VERSION_SOURCE_LABELS = {
+  USER: "artifacts.versions.sourceUser", AGENT: "artifacts.versions.sourceAgent",
+  TASK: "artifacts.versions.sourceTask", EXTERNAL_TOOL: "artifacts.versions.sourceExternalTool",
+} as const;
+
 /** Selects the actual Artifact version used by the card and by new outgoing connections. */
 export function TextVersionPicker({ artifact, disabled = false }: {
   artifact: VersionedArtifact;
@@ -51,7 +56,7 @@ export function TextVersionPicker({ artifact, disabled = false }: {
         ? history.error.message : t("artifacts.versions.loadFailed")}</p> : null}
       {history.data?.items.map((version) => <DropdownMenuItem className="text-card-version-option" disabled={disabled || select.isPending || version.id === artifact.resourceDefaultVersionId} aria-current={version.id === artifact.resourceDefaultVersionId ? "true" : undefined} role="menuitem" key={version.id} onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }}>
         <span>v{version.versionNo}</span>
-        <small>{version.id === artifact.resourceDefaultVersionId ? t("artifacts.versions.selected") : version.createdByKind}</small>
+        <small>{version.id === artifact.resourceDefaultVersionId ? t("artifacts.versions.selected") : t(VERSION_SOURCE_LABELS[version.createdByKind])}</small>
       </DropdownMenuItem>)}
       {select.error ? <p role="alert">{select.error instanceof ApiError && select.error.status === HTTP_STATUS.CONFLICT
         ? t("text.versions.selectionConflict")

@@ -35,6 +35,10 @@ import dev.agenvas.db.tables.LibraryImport;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmProviderConfigCounter;
 import dev.agenvas.db.tables.LlmTurn;
+import dev.agenvas.db.tables.McpAccessToken;
+import dev.agenvas.db.tables.McpOperation;
+import dev.agenvas.db.tables.McpOperationTask;
+import dev.agenvas.db.tables.McpOperationVersion;
 import dev.agenvas.db.tables.MediaCapability;
 import dev.agenvas.db.tables.MediaCapabilityCreateKey;
 import dev.agenvas.db.tables.MediaCapabilityVersion;
@@ -253,6 +257,30 @@ public class Public extends SchemaImpl {
      * 固定模型配置版本的持久模型回合，保存完整响应后才执行工具
      */
     public final LlmTurn LLM_TURN = LlmTurn.LLM_TURN;
+
+    /**
+     * User-owned revocable MCP credentials; only the secret hash is stored,
+     * never a project-specific grant.
+     */
+    public final McpAccessToken MCP_ACCESS_TOKEN = McpAccessToken.MCP_ACCESS_TOKEN;
+
+    /**
+     * Committed external write commands; results, business changes and project
+     * events share one transaction.
+     */
+    public final McpOperation MCP_OPERATION = McpOperation.MCP_OPERATION;
+
+    /**
+     * All media tasks accepted by an external command, including every batch
+     * output.
+     */
+    public final McpOperationTask MCP_OPERATION_TASK = McpOperationTask.MCP_OPERATION_TASK;
+
+    /**
+     * Typed provenance for externally created text and archived media versions,
+     * without fake Agent runs.
+     */
+    public final McpOperationVersion MCP_OPERATION_VERSION = McpOperationVersion.MCP_OPERATION_VERSION;
 
     /**
      * 管理员媒体能力身份、可用状态和当前不可变版本
@@ -509,6 +537,10 @@ public class Public extends SchemaImpl {
             LlmProviderConfig.LLM_PROVIDER_CONFIG,
             LlmProviderConfigCounter.LLM_PROVIDER_CONFIG_COUNTER,
             LlmTurn.LLM_TURN,
+            McpAccessToken.MCP_ACCESS_TOKEN,
+            McpOperation.MCP_OPERATION,
+            McpOperationTask.MCP_OPERATION_TASK,
+            McpOperationVersion.MCP_OPERATION_VERSION,
             MediaCapability.MEDIA_CAPABILITY,
             MediaCapabilityCreateKey.MEDIA_CAPABILITY_CREATE_KEY,
             MediaCapabilityVersion.MEDIA_CAPABILITY_VERSION,

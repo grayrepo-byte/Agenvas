@@ -291,11 +291,17 @@ M0 必须产出 `dependency-baseline.md`，记录 JDK、Node、pnpm、Maven、�
 
 LLM 调用、文件下载、视频生成、FFmpeg 运行都不放在数据库长事务中。
 
-### 5.3 MCP 附加入口（待实施）
+### 5.3 MCP 附加入口
 
 用户确认保留内置导演、Agent Runtime、聊天、媒体审批与结果续接，同时在现有 Spring Boot 增加供外部客户端调用的 MCP 入口。MCP 使用用户级凭据，每次按当前用户权限核对项目和对象；具备生成权限的调用直接受理媒体 Task，不增加收费审批，不创建 AgentRun 或模型回合。内置 Agent 的原审批规则保留。
 
-首批工具、用户凭据、命令幂等、模块改动与验收顺序见 [MCP 附加接入实施计划](mcp-extension-implementation-plan.md)，接入取舍见 [ADR 0048](adr/0048-additive-mcp-access.md)。该入口尚未实施，计划不代表通过验收。
+`/mcp` 采用无状态 Streamable HTTP 和用户级 opaque Bearer；设置页管理令牌，secret 仅创建时展示，数据库只存 hash。`READ` 必选，`CONTENT_WRITE` 和 `MEDIA_GENERATE` 分别授权；读取、重放与执行均核对用户有效性及当前项目归属。所有写工具带 `commandId`，按用户唯一账本与业务/事件原子提交；原命令重放先于当前 CAS 检查，同键异参冲突。
+
+首批 12 工具覆盖项目、目录、精确版本、文字、节点布局、媒体节点/草稿、能力和 Task 状态；目录 Schema 为 `contracts/mcp/tools.json`。文字来源为 `EXTERNAL_TOOL`，媒体来源通过可信 Task 与关联表追踪。锁定、占用、独立草稿 CAS、能力与用量规则继续执行。`UNKNOWN` 查询和归档恢复不重提生成；本版不提供外部重试/取消工具。
+
+精确 `/mcp` 使用独立无状态安全链并免 CSRF；网页登录/API 继续使用 Session 与 CSRF，MCP 凭据不能调用管理 REST。入口拒绝带 Origin 的浏览器调用，实际请求体上限 300 KiB、工具参数 256 KiB，每用户最多 4 个、进程 64 个在途请求。运维可通过 `AGENVAS_MCP_ENABLED=false` 关闭新入口；已受理任务继续执行。首版是手工 Bearer，最高协商 `2025-11-25`，不提供 OAuth 登录发现。
+
+首批工具、模块与实施细节见 [MCP 实施计划](mcp-extension-implementation-plan.md)，接入取舍见 [ADR 0048](adr/0048-additive-mcp-access.md)，使用见[客户端指南](mcp-client-guide.md)，实际验证范围见开发清单。
 
 ---
 
@@ -1318,6 +1324,8 @@ Agent 当前产物查询使用独立 Query 缓存 `agent-outputs / projectId / a
 | POST `/auth/logout` | 失效会话 |
 | GET `/auth/me` | 当前用户 |
 | POST `/auth/change-password` | 修改密码并使旧会话失效 |
+| GET / POST `/account/mcp-tokens` | 当前用户列出安全元数据或创建一次展示的 MCP 凭据，创建需 Session + CSRF |
+| POST `/account/mcp-tokens/{id}/revoke` | 仅本人可幂等撤销，带 expectedVersion，需 Session + CSRF |
 | GET `/projects` | 游标分页项目列表 |
 | POST `/projects` | 创建项目 |
 | GET `/projects/{id}` | 项目概要 |
@@ -1496,7 +1504,7 @@ Key 从前端经 HTTPS 单次提交后，只在服务器加密保存。使用带
 
 控制措施：输入来源标记、数据与指令分层、工具允许列表、作用域限制、服务端参数校验、付费/破坏性操作须由用户显式发起并检查额度、最小返回数据、禁止任意工具发现与代码执行。
 
-计划中的 MCP 用户凭据可包含 `MEDIA_GENERATE`，表示用户委托外部客户端直接受理媒体任务，不要求每次收费审批；项目权限、能力、输入、额度和幂等仍由服务端检查。此授权不来自模型文字，也不改变内置 Agent 的审批规则，详见 §5.3。
+MCP 用户凭据可包含 `MEDIA_GENERATE`，表示用户委托外部客户端直接受理媒体任务，不要求每次收费审批；项目权限、能力、输入、额度和幂等仍由服务端检查。此授权不来自模型文字，也不改变内置 Agent 的审批规则，详见 §5.3。
 
 不能宣传通过一句系统提示词就能彻底防住注入，也不把模型审核自己当成唯一防线。
 

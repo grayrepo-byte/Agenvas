@@ -69,7 +69,7 @@ public class TaskController {
     /** 任务对外投影包含所属用户可见的输入与结果，省略租约 epoch、Worker 身份和输入摘要。
      * @param id 任务 ID
      * @param projectId 所属项目 ID
-     * @param runId 所属 Run；用户直连任务时为空
+     * @param runId 所属 Run；网页或 MCP 直接任务时为空
      * @param stepKey 创建任务时的稳定步骤键
      * @param kind 任务类别
      * @param status 持久化任务状态
