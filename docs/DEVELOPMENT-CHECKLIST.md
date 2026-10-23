@@ -2688,3 +2688,11 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 真实 Chrome 生产构建 `node e2e/canvas-editing-browser.mjs --motion-only` 通过：图片/文字各 13 个不同中间位置，独立计算终点正确、无越界/回弹；快速连续点击最终目标正确，手形/滚轮中途接管后不被旧相机抢回。减少动态效果为 0 个中间位置，恢复后重新有连续帧；100 混合节点记录到 12 个中间位置，仅作本机合成场景观察，不作为跨设备帧率保证。节点数据、布局草稿、媒体恢复草稿数和业务写入均保持。
 - [x] 默认 100 节点生产 Chrome 全流程也复验通过，覆盖分组、命名、整组拖动、折叠保留草稿、独立复制、撤销/重做、失败重试及俄语布局。截图已人工检查，帧轨迹/截图/日志保存在仓库外私有目录；全部使用内存合成 HTTP，未操作真实项目。
 - [ ] 本次未运行全量、后端、真实 Provider、部署、其他浏览器、移动端或低性能设备基准；不把单次本机观察表述为稳定帧率承诺。
+
+## 2026-10-24 CI 跳过项核查
+
+- [x] 核对 develop 托管 CI 的 7 项跳过记录：`AutoDlRealProviderPostgresIT`、`RunningHubRealProviderIT` 和 `McpRealServiceIT` 需要显式开启真实服务验收，可能提交收费生成；`RunningHubRealUsageIT`、`RunningHubRealResultArchiveIT` 只查询或归档原任务，但仍需私有凭据与回执；`LocalVideoCompositionRealMediaIT` 需要仓库外真实素材及配置。六类默认不启用，保留真实验收与合成回归的边界。
+- [x] `LocalImageProcessorAdapterTest.runsConfiguredDepthAnythingModel` 在普通单测中因未提供 ONNX 权重跳过；同一提交的 server amd64、arm64 镜像构建均启用 `VERIFY_DEPTH_MODEL=true`，实际执行该方法，均为 1 项通过、零失败/错误/跳过。不存在深度推理被整条 CI 遗漏的问题。
+- [x] 修复只读 RunningHub 用量验收仍要求旧两任务回执、从名称推断目标并使用旧目标 ID 的问题：读取回执保存的目标身份，接受非空任务集合，在读取密钥及查询前校验全部任务已成功、原任务 ID 完整。只把直出视频与原用量交给生产 manifest 归一化，附属 ZIP 不下载；仅 ZIP 的响应明确不适用于本专项，ZIP 解码仍由独立归档验收负责。真实服务显式开启条件保持。
+- [x] 当前单目标合成回执先复现旧逻辑“预期 2 条、实际 1 条”失败；修复后新增回执、非法输入、ZIP 前置不下载与原查询状态回归共 23 项，既有 RunningHub 适配器回归 14 项，合计 37 项通过，零失败/错误/跳过。全部测试源码编译、差异空白检查通过；仅修改测试侧文件及验收记录，无生产代码、合约、迁移或依赖变化。
+- [ ] 本轮真实 Provider、私有素材验收、全量测试与部署未运行；不以合成回执证明真实 Provider 已通过。
