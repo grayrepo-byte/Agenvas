@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sampleVideoCameraMotion, VIDEO_CAMERA_MOTIONS, type VideoCameraMotionState, type VideoCameraVector } from "./videoCameraMotion";
-import { clipWorldSegment, drawVideoCameraPreview, projectWorldPoint, videoCameraDoorwayPlane, videoCameraHorizontalFov, videoCameraLocalLight, type VideoCameraPreviewPalette } from "./videoCameraPreviewRenderer";
+import { clipWorldSegment, disposeVideoCameraPreview, drawVideoCameraPreview, projectWorldPoint, videoCameraDoorwayPlane, videoCameraHorizontalFov, videoCameraLocalLight, type VideoCameraPreviewPalette } from "./videoCameraPreviewRenderer";
 
 const camera: VideoCameraMotionState = {
   position: [0, 1, 8], target: [0, 1, 0], fov: 48, roll: 0, focus: 8,
@@ -25,6 +25,7 @@ function recordingCanvas() {
   const gradient = () => ({ addColorStop: nothing });
   const context = {
     save: nothing, restore: nothing, beginPath: nothing, closePath: nothing, clip: nothing,
+    clearRect: coordinates, drawImage: nothing, setTransform: nothing, getTransform: () => ({ a: 1, d: 1 }),
     fill: nothing, stroke: nothing, setLineDash: (pattern: number[]) => { dashPatterns.push(pattern); },
     rect: coordinates, fillRect: (...values: number[]) => { coordinates(...values); rectangles.push(values); }, moveTo: coordinates, lineTo: coordinates,
     arc: coordinates, ellipse: coordinates, roundRect: coordinates,
@@ -34,6 +35,21 @@ function recordingCanvas() {
   } as unknown as CanvasRenderingContext2D;
   return { context, filters, rectangles, dashPatterns, get coordinateCount() { return coordinateCount; } };
 }
+
+let layerCanvases: { width: number; height: number }[];
+
+beforeEach(() => {
+  layerCanvases = [];
+  vi.stubGlobal("OffscreenCanvas", class {
+    width = 1;
+    height = 1;
+    private context = recordingCanvas().context;
+    constructor() { layerCanvases.push(this); }
+    getContext() { return this.context; }
+  });
+});
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("camera rehearsal perspective projection", () => {
   it("centers the look-at target while retaining the world up and right directions", () => {
@@ -130,8 +146,39 @@ describe("camera rehearsal perspective projection", () => {
     recording.filters.length = 0;
     const deepFocus = VIDEO_CAMERA_MOTIONS["deep-focus-wide"]!;
     drawVideoCameraPreview(recording.context, 480, 270, sampleVideoCameraMotion(deepFocus, 0), deepFocus, 0, palette, "frame");
-    expect(recording.filters.length).toBeGreaterThan(0);
-    expect(recording.filters.every((filter) => filter === "blur(0px)")).toBe(true);
+    expect(recording.filters.every((filter) => filter === "none" || filter === "blur(0px)")).toBe(true);
+  });
+
+  it("bounds blur compositing for a shallow-focus rehearsal independently of mesh complexity", () => {
+    const recording = recordingCanvas();
+    const profile = VIDEO_CAMERA_MOTIONS["over-the-shoulder"]!;
+    drawVideoCameraPreview(recording.context, 480, 270, sampleVideoCameraMotion(profile, 0), profile, 0, palette, "frame");
+    // A blur on every mesh face causes hundreds of raster passes in a single preview frame.
+    expect(recording.filters.filter((filter) => filter !== "none" && filter !== "blur(0px)").length).toBeLessThanOrEqual(12);
+  });
+
+  it("reuses one depth bitmap and releases its pixels before rebuilding a disposed player", () => {
+    const { context } = recordingCanvas();
+    const profile = VIDEO_CAMERA_MOTIONS["over-the-shoulder"]!;
+    const draw = (progress: number) => drawVideoCameraPreview(context, 480, 270, sampleVideoCameraMotion(profile, progress), profile, progress, palette, "frame");
+    draw(0);
+    draw(0.5);
+    expect(layerCanvases).toHaveLength(1);
+    expect(layerCanvases[0]).toMatchObject({ width: 480, height: 270 });
+    disposeVideoCameraPreview(context);
+    expect(layerCanvases[0]).toMatchObject({ width: 0, height: 0 });
+    draw(0.75);
+    expect(layerCanvases).toHaveLength(2);
+    expect(layerCanvases[1]).toMatchObject({ width: 480, height: 270 });
+  });
+
+  it("stops after one unavailable depth-bitmap allocation so the player can show its fallback", () => {
+    const getContext = vi.fn(() => null);
+    vi.stubGlobal("OffscreenCanvas", class { getContext = getContext; });
+    const { context } = recordingCanvas();
+    const profile = VIDEO_CAMERA_MOTIONS["over-the-shoulder"]!;
+    expect(() => drawVideoCameraPreview(context, 480, 270, sampleVideoCameraMotion(profile, 0), profile, 0, palette, "frame")).toThrow();
+    expect(getContext).toHaveBeenCalledTimes(1);
   });
 
   it("puts the doorway between the endpoints of a through or pullback move", () => {

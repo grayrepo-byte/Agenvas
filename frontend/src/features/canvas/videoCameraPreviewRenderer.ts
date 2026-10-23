@@ -29,6 +29,48 @@ type Surface = {
   width?: number;
 };
 
+type RehearsalLayer = {
+  canvas: HTMLCanvasElement | OffscreenCanvas;
+  context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+};
+
+const rehearsalLayers = new WeakMap<CanvasRenderingContext2D, RehearsalLayer>();
+
+function rehearsalLayer(context: CanvasRenderingContext2D, width: number, height: number) {
+  let layer = rehearsalLayers.get(context);
+  if (!layer) {
+    const canvas = typeof OffscreenCanvas === "undefined" ? document.createElement("canvas") : new OffscreenCanvas(1, 1);
+    const drawing = canvas.getContext("2d");
+    if (!drawing) {
+      canvas.width = 0; canvas.height = 0;
+      // The player catches this once and presents its retryable unavailable state.
+      throw new Error("Camera rehearsal bitmap context is unavailable");
+    }
+    layer = { canvas, context: drawing as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D };
+    rehearsalLayers.set(context, layer);
+  }
+  const transform = context.getTransform();
+  const pixelWidth = Math.max(1, Math.round(width * Math.abs(transform.a)));
+  const pixelHeight = Math.max(1, Math.round(height * Math.abs(transform.d)));
+  if (layer.canvas.width !== pixelWidth || layer.canvas.height !== pixelHeight) {
+    layer.canvas.width = pixelWidth;
+    layer.canvas.height = pixelHeight;
+  }
+  layer.context.setTransform(transform);
+  layer.context.lineJoin = "round";
+  layer.context.lineCap = "round";
+  return layer;
+}
+
+/** Release the selected preview's reusable bitmap as soon as its player is disposed. */
+export function disposeVideoCameraPreview(context: CanvasRenderingContext2D) {
+  const layer = rehearsalLayers.get(context);
+  if (!layer) return;
+  layer.canvas.width = 0;
+  layer.canvas.height = 0;
+  rehearsalLayers.delete(context);
+}
+
 const NEAR_PLANE = 0.08;
 const TAU = Math.PI * 2;
 const SLALOM_PILLARS: readonly Vector[] = [[0, 1.5, 4], [0, 1.5, -2]];
@@ -284,61 +326,77 @@ function drawFrame(context: CanvasRenderingContext2D, width: number, height: num
     center: multiply(surface.points.reduce((total, point) => add(total, point), [0, 0, 0] as Vector), 1 / surface.points.length),
     depth: surface.points.reduce((total, point) => total + worldDepth(point, state, basis), 0) / surface.points.length,
   })).sort((a, b) => b.depth - a.depth);
+  const shallowFocus = profile.scene === "macro" || profile.scene === "foreground" || profile.scene === "dialogue";
+  const motionBlur = profile.id === "backlight-flare-clear-reveal" ? 0 : state.blur * 3;
+  let layer: RehearsalLayer | undefined;
+  let currentBlur = 0;
+  function compositeLayer() {
+    if (!layer || currentBlur === 0) return;
+    context.save();
+    context.filter = `blur(${currentBlur * height / 260}px)`;
+    context.drawImage(layer.canvas, 0, 0, width, height);
+    context.restore();
+    layer.context.clearRect(0, 0, width, height);
+  }
   for (const surface of surfaces) {
     const clipped = surface.line ? clipWorldSegment(surface.points[0]!, surface.points[surface.points.length - 1]!, state) : clipPolygon(surface.points, state, basis);
     if (!clipped || clipped.length < 2) continue;
     const points = clipped.map((point) => projectWithBasis(point, state, basis, width, height));
     if (points.some((point) => !point)) continue;
     const projected = points as ProjectedWorldPoint[];
-    const shallowFocus = profile.scene === "macro" || profile.scene === "foreground" || profile.scene === "dialogue";
     const focusBlur = state.focus > 0 && shallowFocus ? Math.min(4, Math.abs(surface.depth - state.focus) * (profile.scene === "dialogue" ? 0.9 : 0.65)) : 0;
-    const motionBlur = profile.id === "backlight-flare-clear-reveal" ? 0 : state.blur * 3;
+    // Adjacent depth bands preserve far-to-near occlusion while blurring a shared
+    // bitmap once, instead of rasterizing a separate filter for every mesh face.
+    const blur = Math.round(focusBlur) + motionBlur;
+    if (blur !== currentBlur) { compositeLayer(); currentBlur = blur; }
+    if (blur > 0 && !layer) layer = rehearsalLayer(context, width, height);
+    const paint = blur > 0 && layer ? layer.context : context;
     const illumination = profile.id === "motivated-light-reveal" ? videoCameraLocalLight(surface.center, state, progress) : 1;
-    context.save();
-    context.globalAlpha = surface.alpha ?? 1;
-    context.filter = `blur(${(focusBlur + motionBlur) * height / 260}px)`;
-    context.beginPath();
-    context.moveTo(projected[0]!.x, projected[0]!.y);
-    projected.slice(1).forEach((point) => context.lineTo(point.x, point.y));
+    paint.save();
+    paint.globalAlpha = surface.alpha ?? 1;
+    paint.beginPath();
+    paint.moveTo(projected[0]!.x, projected[0]!.y);
+    projected.slice(1).forEach((point) => paint.lineTo(point.x, point.y));
     if (surface.line) {
       // Polyline joints also clip individually, preserving chest/direction details near the lens.
       if (surface.points.length > 2) {
-        context.beginPath();
+        paint.beginPath();
         for (let index = 1; index < surface.points.length; index += 1) {
           const segment = clipWorldSegment(surface.points[index - 1]!, surface.points[index]!, state);
           if (!segment) continue;
           const a = projectWithBasis(segment[0], state, basis, width, height);
           const b = projectWithBasis(segment[1], state, basis, width, height);
-          if (a && b) { context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); }
+          if (a && b) { paint.moveTo(a.x, a.y); paint.lineTo(b.x, b.y); }
         }
       }
-      context.strokeStyle = surface.color;
-      context.lineWidth = surface.width ?? 1;
-      context.globalAlpha *= illumination;
-      context.stroke();
+      paint.strokeStyle = surface.color;
+      paint.lineWidth = surface.width ?? 1;
+      paint.globalAlpha *= illumination;
+      paint.stroke();
     } else {
-      context.closePath();
-      context.fillStyle = surface.color;
-      context.fill();
+      paint.closePath();
+      paint.fillStyle = surface.color;
+      paint.fill();
       if (surface.shade) {
-        context.globalAlpha = (surface.alpha ?? 1) * surface.shade;
-        context.fillStyle = palette.background;
-        context.fill();
+        paint.globalAlpha = (surface.alpha ?? 1) * surface.shade;
+        paint.fillStyle = palette.background;
+        paint.fill();
       }
       if (surface.stroke) {
-        context.globalAlpha = (surface.alpha ?? 1) * 0.5;
-        context.strokeStyle = surface.stroke;
-        context.lineWidth = 0.6;
-        context.stroke();
+        paint.globalAlpha = (surface.alpha ?? 1) * 0.5;
+        paint.strokeStyle = surface.stroke;
+        paint.lineWidth = 0.6;
+        paint.stroke();
       }
       if (illumination < 1) {
-        context.globalAlpha = (surface.alpha ?? 1) * (1 - illumination);
-        context.fillStyle = palette.background;
-        context.fill();
+        paint.globalAlpha = (surface.alpha ?? 1) * (1 - illumination);
+        paint.fillStyle = palette.background;
+        paint.fill();
       }
     }
-    context.restore();
+    paint.restore();
   }
+  compositeLayer();
   if (profile.id === "backlight-flare-clear-reveal" && state.blur > 0) {
     const glow = context.createRadialGradient(width * 0.3, height * 0.2, 1, width * 0.3, height * 0.2, width * 0.85);
     glow.addColorStop(0, palette.accentLight);
@@ -494,9 +552,10 @@ function drawPlan(context: CanvasRenderingContext2D, width: number, height: numb
 export function drawVideoCameraPreview(context: CanvasRenderingContext2D, width: number, height: number, state: VideoCameraMotionState, profile: VideoCameraMotionProfile, progress: number, palette: VideoCameraPreviewPalette, view: "frame" | "plan") {
   if (width <= 0 || height <= 0 || !Number.isFinite(width + height)) return;
   context.save();
-  context.beginPath(); context.rect(0, 0, width, height); context.clip();
-  context.lineJoin = "round"; context.lineCap = "round";
-  if (view === "plan") drawPlan(context, width, height, state, profile, palette);
-  else drawFrame(context, width, height, state, profile, clamp(progress, 0, 1), palette);
-  context.restore();
+  try {
+    context.beginPath(); context.rect(0, 0, width, height); context.clip();
+    context.lineJoin = "round"; context.lineCap = "round";
+    if (view === "plan") drawPlan(context, width, height, state, profile, palette);
+    else drawFrame(context, width, height, state, profile, clamp(progress, 0, 1), palette);
+  } finally { context.restore(); }
 }

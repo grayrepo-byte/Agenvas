@@ -1,0 +1,7 @@
+.video-presets-results.video-presets-virtual-list { display: block; overflow-x: hidden; overflow-anchor: none; }
+.video-presets-virtual-content { position: relative; width: 100%; }
+.video-presets-virtual-content > .video-preset-option[data-slot="button"] { position: absolute; transition-property: color, background-color, border-color, box-shadow, outline-color; }
+.video-presets-virtual-content .video-preset-option-copy > strong { overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .video-presets-results.video-presets-virtual-list { overflow-x: auto; overflow-y: hidden; }
+}
