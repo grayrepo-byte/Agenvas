@@ -40,6 +40,8 @@ public class ReadToolService {
     private static final int MAX_TOTAL_INLINE_BYTES = 160 * 1024;
     /** 超出内联上限时，预览文本按 Unicode 码点截取的字符数。 */
     private static final int PREVIEW_CHARS = 2_000;
+    /** 单版本正文分页按 Unicode 码点计数，避免长剧本只能读取预览或切断代理对。 */
+    private static final int MAX_TEXT_PAGE = 4_000;
 
     /** 读取项目元数据时检查请求用户的项目权限。 */
     private final ProjectService projects;
@@ -222,8 +224,9 @@ public class ReadToolService {
     public JsonNode artifacts(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
-        if (input.size() != 1 || !input.has("versionIds")) {
-            throw invalid(ApiMessage.of("api.read-tool-service.read-artifacts-requires-only-versionids"));
+        if (!input.has("versionIds") || input.propertyNames().stream()
+                .anyMatch(field -> !Set.of("versionIds", "textOffset", "textLimit").contains(field))) {
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         }
         JsonNode requested = input.path("versionIds");
         if (!requested.isArray() || requested.isEmpty()
@@ -231,6 +234,15 @@ public class ReadToolService {
             throw invalid(ApiMessage.of("api.read-tool-service.read-artifacts-requires-one-to-twelve-version-ids"));
         }
         List<UUID> versionIds = validatedIds(requested, "read_artifacts");
+        boolean textPageRequested = input.has("textOffset") || input.has("textLimit");
+        int textOffset = 0;
+        int textLimit = MAX_TEXT_PAGE;
+        if (textPageRequested) {
+            textOffset = pageInteger(input, "textOffset", 0);
+            textLimit = pageInteger(input, "textLimit", MAX_TEXT_PAGE);
+            if (versionIds.size() != 1 || textLimit < 1 || textLimit > MAX_TEXT_PAGE)
+                throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        }
         ObjectNode output = result(operationId, "已读取允许范围内的产物版本");
         ArrayNode items = output.putArray("data");
         int inlineBytes = 0;
@@ -240,6 +252,8 @@ public class ReadToolService {
                     context.projectId(), run.contextSnapshot(), versionId);
             ArtifactService.ArtifactView view = artifacts.get(context.ownerId(),
                     context.projectId(), version.artifactId());
+            if (textPageRequested && view.artifact().kind() != Artifact.Kind.TEXT)
+                throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
             ObjectNode item = items.addObject();
             item.put("artifactId", version.artifactId().toString());
             item.put("versionId", version.id().toString());
@@ -273,6 +287,10 @@ public class ReadToolService {
                     && artifacts.isCurrentCanvasVersion(context.ownerId(), context.projectId(), versionId)) {
                 item.put("expectedVersion", view.artifact().version());
             }
+            if (textPageRequested) {
+                appendTextPage(item, version.content(), textOffset, textLimit);
+                continue;
+            }
             String content = version.content().toString();
             int size = content.getBytes(StandardCharsets.UTF_8).length;
             if (size <= MAX_INLINE_BYTES && inlineBytes + size <= MAX_TOTAL_INLINE_BYTES) {
@@ -288,6 +306,22 @@ public class ReadToolService {
             }
         }
         return output;
+    }
+
+    /** 每页重新检查同一精确版本的读权；到达末尾不代表调用方已读取此前各页。 */
+    private void appendTextPage(ObjectNode item, JsonNode content, int offset, int limit) {
+        if (!content.path("text").isTextual() || !content.path("format").isTextual())
+            throw new IllegalStateException("Text artifact content is malformed");
+        String text = content.path("text").asText();
+        int total = text.codePointCount(0, text.length());
+        if (offset > total)
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        int end = offset + Math.min(limit, total - offset);
+        item.putObject("content").put("format", content.path("format").asText())
+                .put("text", text.substring(text.offsetByCodePoints(0, offset), text.offsetByCodePoints(0, end)));
+        item.put("contentTruncated", offset > 0 || end < total);
+        ObjectNode page = item.putObject("textPage").put("offset", offset).put("endOffset", end).put("total", total);
+        if (end < total) page.put("nextOffset", end); else page.putNull("nextOffset");
     }
 
     /** Record exact requested sample times without decoding while the tool ledger transaction is open. */

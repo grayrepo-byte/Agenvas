@@ -17,6 +17,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.ai.tool.ToolCallback;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -180,8 +181,10 @@ public class AgentTurnWorker {
             return;
         }
         List<Message> messages = frozenMessages(lease, ownerId, stepIndex, saved);
-        JsonNode response = awaitModelResponse(lease, workerId, ownerId, stepIndex, run,
-                messages, remaining, saved != null && saved.status() == LlmTurn.Status.RESPONDED, execution);
+        List<ToolCallback> definitions = saved == null ? registry.modelDefinitions(run.policySnapshot())
+                : codec.requestTools(saved.request(), RunToolPolicy.allowed(run.policySnapshot()));
+        JsonNode response = awaitModelResponse(lease, workerId, ownerId, stepIndex,
+                messages, definitions, remaining, saved != null && saved.status() == LlmTurn.Status.RESPONDED, execution);
         applyResponse(lease, workerId, ownerId, stepIndex, response, execution);
     }
 
@@ -194,7 +197,7 @@ public class AgentTurnWorker {
     }
 
     private JsonNode awaitModelResponse(Task lease, String workerId, UUID ownerId, int stepIndex,
-            AgentRun run, List<Message> messages, Duration remaining, boolean recorded,
+            List<Message> messages, List<ToolCallback> definitions, Duration remaining, boolean recorded,
             LeasedModelExecutor.Execution execution) throws Exception {
         // rounds.callLeased 在网络请求两侧提交带租约校验的检查点；这里不持有数据库事务。
         Duration wait = remaining.compareTo(MODEL_TIMEOUT) < 0 ? remaining : MODEL_TIMEOUT;
@@ -202,7 +205,7 @@ public class AgentTurnWorker {
         Duration timeout = recorded ? MODEL_TIMEOUT : Duration.ofMillis(Math.max(1, wait.toMillis()));
         return execution.call(() -> rounds.callLeased(ownerId,
                 lease.projectId(), lease.runId(), stepIndex, messages,
-                registry.modelDefinitions(run.policySnapshot()),
+                definitions,
                 Map.of("projectId", lease.projectId().toString(),
                         "runId", lease.runId().toString()), lease, workerId), timeout);
     }

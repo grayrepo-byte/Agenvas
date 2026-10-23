@@ -14,6 +14,9 @@ import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.AgentTurnCommitService;
 import dev.agenvas.llm.application.InitialModelContextService;
 import dev.agenvas.llm.application.LlmRoundService;
+import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.LlmTurn;
+import dev.agenvas.llm.application.LlmTurnCheckpointService;
 import dev.agenvas.llm.application.ToolRegistry;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
@@ -39,6 +42,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -56,6 +61,9 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /** Synthetic model failures with real PostgreSQL and a controlled clock; no Provider traffic. */
 @Testcontainers
@@ -63,6 +71,12 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, AgentModelRetryPostgresIT.FakeConfig.class})
 class AgentModelRetryPostgresIT {
+    private static final String LEGACY_READ_DESCRIPTION = "Synthetic pre-upgrade read_artifacts definition";
+    private static final String LEGACY_READ_SCHEMA = """
+            {"type":"object","additionalProperties":false,"required":["versionIds"],
+             "properties":{"versionIds":{"type":"array","minItems":1,"maxItems":12,
+             "uniqueItems":true,"items":{"type":"string","format":"uuid"}}}}
+            """;
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
     @DynamicPropertySource
@@ -84,6 +98,9 @@ class AgentModelRetryPostgresIT {
     @Autowired private InitialModelContextService context;
     @Autowired private LlmRoundService rounds;
     @Autowired private ToolRegistry registry;
+    @Autowired private LlmProtocolCodec codec;
+    @Autowired private LlmTurnCheckpointService checkpoints;
+    @Autowired private ObjectMapper mapper;
     @Autowired private JdbcClient jdbc;
     private AdminPrincipal owner;
     private Project project;
@@ -101,6 +118,7 @@ class AgentModelRetryPostgresIT {
         gateway.createFirstTool = false;
         gateway.blockRequest = false;
         gateway.lastSink = null;
+        gateway.expectedReadSchema = null;
         project = projects.create(owner.userId(), "Retry project", Project.AspectRatio.LANDSCAPE_16_9);
         var agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Answer");
         run = runs.create(owner.userId(), project.id(), agent.id(), "Answer", "retry-run").run();
@@ -233,6 +251,74 @@ class AgentModelRetryPostgresIT {
                 .param("id", run.id()).query(Long.class).single()).isEqualTo(2);
         assertThat(gateway.calls).hasValue(3);
     }
+
+    @ParameterizedTest
+    @EnumSource(LlmTurn.Status.class)
+    void persistedOldToolDefinitionsSurviveRetryAndRespondedReplayAfterRegistryChanges(LlmTurn.Status status) {
+        gateway.failures = 0;
+        Task lease = tasks.claimAgentTurns("pre-upgrade-worker", 1).getFirst();
+        AgentRun started = commits.start(lease, "pre-upgrade-worker");
+        ObjectNode frozenRequest = oldDefinitionRequest(started);
+        assertThat(frozenRequest).isNotEqualTo(codec.request(codec.requestMessages(frozenRequest),
+                registry.modelDefinitions(started.policySnapshot())));
+        checkpoints.reserveLeased(owner.userId(), project.id(), run.id(), 0, 1, "test-fake",
+                frozenRequest, lease, "pre-upgrade-worker");
+        if (status == LlmTurn.Status.RESPONDED) {
+            tasks.startAgentStream(lease, "pre-upgrade-worker");
+            checkpoints.saveResponseLeased(owner.userId(), project.id(), run.id(), 0, 1,
+                    codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage("Saved before upgrade"))))),
+                    lease, "pre-upgrade-worker");
+            // Simulate a process stopping after the response commit but before advancing the Run.
+            jdbc.sql("update task set lease_until=:expired where id=:id")
+                    .param("expired", clock.instant().minusSeconds(1).atOffset(java.time.ZoneOffset.UTC))
+                    .param("id", lease.id()).update();
+        } else {
+            assertThat(commits.modelFailed(lease, "pre-upgrade-worker", "LLM_CALL_TIMEOUT")).isNull();
+            clock.now = task().nextActionAt();
+            gateway.expectedReadSchema = LEGACY_READ_SCHEMA;
+        }
+
+        assertThat(worker.runOnce("post-upgrade-worker")).isEqualTo(1);
+
+        assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertThat(task().status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(gateway.calls).hasValue(status == LlmTurn.Status.RESPONDED ? 0 : 1);
+        JsonNode persisted = mapper.readTree(jdbc.sql("select request_json::text from llm_turn where run_id=:id and step_index=0")
+                .param("id", run.id()).query(String.class).single());
+        assertThat(persisted).isEqualTo(frozenRequest);
+        assertThat(jdbc.sql("select count(*) from llm_turn where run_id=:id")
+                .param("id", run.id()).query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void aPersistedUnknownToolDefinitionCannotReachTheModelOrGrantExecutionPermission() {
+        Task lease = tasks.claimAgentTurns("invalid-checkpoint-worker", 1).getFirst();
+        AgentRun started = commits.start(lease, "invalid-checkpoint-worker");
+        ObjectNode request = oldDefinitionRequest(started);
+        ((ObjectNode) request.at("/tools/0")).put("name", "run_shell");
+        checkpoints.reserveLeased(owner.userId(), project.id(), run.id(), 0, 1, "test-fake",
+                request, lease, "invalid-checkpoint-worker");
+        commits.modelFailed(lease, "invalid-checkpoint-worker", "LLM_CALL_TIMEOUT");
+        clock.now = task().nextActionAt();
+
+        assertThat(worker.runOnce("restored-checkpoint-worker")).isEqualTo(1);
+
+        assertThat(gateway.calls).hasValue(0);
+        assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.FAILED);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:id")
+                .param("id", run.id()).query(Long.class).single()).isZero();
+    }
+
+    private ObjectNode oldDefinitionRequest(AgentRun started) {
+        ObjectNode request = codec.request(context.assemble(owner.userId(), project.id(), run.id()),
+                registry.modelDefinitions(started.policySnapshot()));
+        for (JsonNode tool : request.path("tools")) {
+            if ("read_artifacts".equals(tool.path("name").asText())) {
+                ((ObjectNode) tool).put("description", LEGACY_READ_DESCRIPTION).put("inputSchema", LEGACY_READ_SCHEMA);
+            }
+        }
+        return request;
+    }
     @TestConfiguration static class FakeConfig {
         @Bean @Primary FakeGateway fakeGateway() { return new FakeGateway(); }
         @Bean @Primary RetryClock retryClock() { return new RetryClock(); }
@@ -252,6 +338,7 @@ class AgentModelRetryPostgresIT {
         volatile boolean createFirstTool;
         volatile boolean blockRequest;
         volatile Consumer<String> lastSink;
+        volatile String expectedReadSchema;
         @Override public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> context, ConfigIdentity expected, Consumer<String> publicDelta,
                 boolean captureContent, Consumer<LlmStreamLog> log) {
@@ -264,6 +351,12 @@ class AgentModelRetryPostgresIT {
         @Override public Capabilities capabilities() { return new Capabilities(toolCalling, false, false); }
         @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             int attempt = calls.incrementAndGet();
+            if (expectedReadSchema != null) {
+                var restored = tools.stream().map(ToolCallback::getToolDefinition)
+                        .filter(tool -> "read_artifacts".equals(tool.name())).findFirst().orElseThrow();
+                assertThat(restored.description()).isEqualTo(LEGACY_READ_DESCRIPTION);
+                assertThat(restored.inputSchema()).isEqualTo(expectedReadSchema);
+            }
             if (blockRequest) {
                 try { Thread.sleep(Duration.ofSeconds(10)); }
                 catch (InterruptedException stopped) { Thread.currentThread().interrupt(); }

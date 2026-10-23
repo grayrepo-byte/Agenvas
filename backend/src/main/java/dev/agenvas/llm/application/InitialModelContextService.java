@@ -30,7 +30,13 @@ public class InitialModelContextService {
             versions, layout CAS, locks and media drafts. Nodes added or changed during this Run
             are accessible through the same current-project checks. No Agent output ownership,
             artifact binding or accepted-time node list restricts the canvas. Never guess IDs.
-            Read full text and image pixels only when needed through read_artifacts. Explicit
+            Read full text and image pixels only when needed through read_artifacts. A truncated
+            text preview is not the full source. For long TEXT content, call read_artifacts with
+            exactly one versionId and textOffset/textLimit (up to 4000 Unicode code points).
+            Follow textPage.nextOffset on that same exact version until null, retaining the
+            covered ranges. A last page does not prove earlier pages were read. If the version
+            becomes inaccessible or changes, reread the current directory and report the gap;
+            never combine pages of different versions as one complete source. Explicit
             Skill input mappings grant read access to their exact versions, not permission to
             edit, arrange or target nodes outside the current canvas. Use manage_canvas_node for
             rename, move, resize, remove and duplicate, and update_media_draft for editable media

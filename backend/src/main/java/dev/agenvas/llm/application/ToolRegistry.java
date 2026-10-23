@@ -17,7 +17,9 @@ public class ToolRegistry {
     private static final String READ_ARTIFACTS_SCHEMA = """
             {"type":"object","additionalProperties":false,"required":["versionIds"],
              "properties":{"versionIds":{"type":"array","minItems":1,"maxItems":12,
-               "uniqueItems":true,"items":{"type":"string","format":"uuid"}}}}
+               "uniqueItems":true,"items":{"type":"string","format":"uuid"}},
+               "textOffset":{"type":"integer","minimum":0},
+               "textLimit":{"type":"integer","minimum":1,"maximum":4000}}}
             """;
     /** Run 内任务状态查询；最多 12 个互异任务 ID。 */
     private static final String READ_TASK_STATUS_SCHEMA = """
@@ -175,7 +177,10 @@ public class ToolRegistry {
                         PAGED_READ_SCHEMA),
                 definition("read_artifacts",
                         "Read up to twelve exact immutable versions selected on the current canvas or explicitly mapped as Skill inputs; "
-                                + "large content is explicitly truncated. For images read one per tool batch; the committed reply attaches pixels. "
+                                + "large content is explicitly truncated. To read full TEXT content, pass textOffset and/or textLimit: "
+                                + "pagination requires exactly one TEXT version, counts Unicode code points, and defaults to offset 0 / limit 4000. "
+                                + "Follow textPage.nextOffset on the same version until null; the final page alone does not mean earlier pages were read. "
+                                + "For images read one per tool batch; the committed reply attaches pixels. "
                                 + "Record public observations before requesting another image; only the latest image remains attached",
                         READ_ARTIFACTS_SCHEMA),
                 definition("read_media_sample", "Inspect one authorized exact VIDEO/AUDIO version. Request up to four unique frame timestamps in milliseconds, and/or an audioStartMs/audioDurationMs pair (max 15 seconds). Next model call attaches a timestamped contact sheet and/or WAV sample; no bytes in the tool ledger. Read one sample per batch. Inspect only attached content; sparse frames cannot verify every intervening action. Audio requires an audio-capable model; do not infer speech from metadata.",

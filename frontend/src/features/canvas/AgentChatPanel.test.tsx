@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Agent, AgentRun, AgentConversation, CreateRunRequest, RunPreflight } from "../../shared/api/client";
 import * as api from "../../shared/api/client";
+import { t } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { AgentChatPanel, type AgentChatPanelData, type AgentChatRunRequest } from "./AgentChatPanel";
 import { useCanvasStore } from "./canvasStore";
@@ -110,6 +111,27 @@ it("shows the fixed director identity and preserves the draft when returning fro
     expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue("还没有发送的导演想法");
     expect(screen.getByRole("button", { name: "聊天" })).toHaveTextContent("当前创作会话");
   }
+});
+
+it("fills the script breakdown and storyboard shortcut as an editable draft without starting a run", async () => {
+  const preflight = vi.spyOn(api, "getRunPreflight").mockResolvedValue(PREFLIGHT);
+  const create = vi.spyOn(api, "createRun").mockResolvedValue(run());
+  mountPanel();
+  const user = userEvent.setup();
+  const input = await readyComposer();
+  const shortcut = await screen.findByRole("button", { name: /剧本拆解与分镜/ });
+  expect(shortcut).toHaveTextContent("拆解场次与人物，设计可执行的镜头方案");
+
+  await user.click(shortcut);
+
+  const instruction = t("agent.chat.suggestion.storyboard.prompt");
+  expect(input).toHaveValue(instruction);
+  expect(input).toHaveFocus();
+  await user.type(input, " 补充：横屏短片。");
+  expect(input).toHaveValue(`${instruction} 补充：横屏短片。`);
+  expect(preflight).not.toHaveBeenCalled();
+  expect(create).not.toHaveBeenCalled();
+  expect(storedRuns).toHaveLength(0);
 });
 
 it.each(["会话列表", "Agent 设置"])("returns to a clean chat when creating a session from %s", async (destination) => {

@@ -18,6 +18,7 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -164,4 +165,118 @@ class ReadToolServiceTest {
                 "{\"versionIds\":[\"" + versionId + "\"]}")).hasMessage("denied");
         verifyNoInteractions(assets);
     }
+
+    @Test
+    void textPagesCountUnicodeCodePointsAndDistinguishTheLastPageFromTheWholeSource() {
+        var fixture = textFixture("😀甲😀乙");
+        JsonNode middle = textPage(fixture, ",\"textOffset\":1,\"textLimit\":2");
+        assertThat(middle.at("/content/text").asText()).isEqualTo("甲😀");
+        assertThat(middle.at("/content/format").asText()).isEqualTo("MARKDOWN");
+        assertThat(middle.path("contentTruncated").asBoolean()).isTrue();
+        assertThat(middle.path("textPage")).isEqualTo(mapper.createObjectNode()
+                .put("offset", 1).put("endOffset", 3).put("total", 4).put("nextOffset", 3));
+
+        JsonNode last = textPage(fixture, ",\"textOffset\":3,\"textLimit\":1");
+        assertThat(last.at("/content/text").asText()).isEqualTo("乙");
+        assertThat(last.path("contentTruncated").asBoolean()).isTrue();
+        assertThat(last.at("/textPage/nextOffset").isNull()).isTrue();
+        JsonNode whole = textPage(fixture, ",\"textOffset\":0,\"textLimit\":4");
+        assertThat(whole.at("/content/text").asText()).isEqualTo("😀甲😀乙");
+        assertThat(whole.path("contentTruncated").asBoolean()).isFalse();
+        JsonNode emptyEnd = textPage(fixture, ",\"textOffset\":4");
+        assertThat(emptyEnd.at("/content/text").asText()).isEmpty();
+        assertThat(emptyEnd.at("/textPage/nextOffset").isNull()).isTrue();
+        assertThat(emptyEnd.path("contentTruncated").asBoolean()).isTrue();
+        assertInvalid(() -> textPage(fixture, ",\"textOffset\":5"));
+        assertInvalid(() -> textPage(fixture, ",\"textOffset\":2147483647"));
+    }
+
+    @Test
+    void textPagingDefaultsAllowReconstructingLongSourceWhileOrdinaryReadsKeepTheirShape() {
+        String text = "😀甲".repeat(3600) + "SOURCE_END";
+        var fixture = textFixture(text);
+        JsonNode ordinary = textPage(fixture, "");
+        assertThat(ordinary.path("contentTruncated").asBoolean()).isTrue();
+        assertThat(ordinary.has("content")).isFalse();
+        assertThat(ordinary.has("textPage")).isFalse();
+        assertThat(ordinary.path("contentPreview").asText()).isNotEmpty();
+
+        JsonNode first = textPage(fixture, ",\"textOffset\":0");
+        assertThat(first.at("/textPage/endOffset").asInt()).isEqualTo(4000);
+        assertThat(first.at("/textPage/nextOffset").asInt()).isEqualTo(4000);
+        JsonNode second = textPage(fixture, ",\"textOffset\":4000");
+        assertThat(second.at("/textPage/nextOffset").isNull()).isTrue();
+        assertThat(first.at("/content/text").asText() + second.at("/content/text").asText()).isEqualTo(text);
+        assertThat(textPage(fixture, ",\"textLimit\":2").at("/content/text").asText()).isEqualTo("😀甲");
+
+        var shortFixture = textFixture("短剧本");
+        JsonNode ordinaryShort = textPage(shortFixture, "");
+        assertThat(ordinaryShort.at("/content/text").asText()).isEqualTo("短剧本");
+        assertThat(ordinaryShort.path("contentTruncated").asBoolean()).isFalse();
+        assertThat(ordinaryShort.has("textPage")).isFalse();
+    }
+
+    @Test
+    void malformedTextPaginationAndBatchRequestsFailBeforeReadingAnyArtifact() {
+        AgentRun run = mock(AgentRun.class);
+        String ids = "\"versionIds\":[\"" + UUID.randomUUID() + "\"]";
+        for (String field : List.of("\"textOffset\":-1", "\"textOffset\":1.5", "\"textOffset\":\"0\"",
+                "\"textOffset\":null", "\"textOffset\":true", "\"textOffset\":2147483648",
+                "\"textLimit\":0", "\"textLimit\":-1", "\"textLimit\":4001", "\"textLimit\":2.5",
+                "\"textLimit\":\"2\"", "\"textLimit\":null", "\"textLimit\":false",
+                "\"textLimit\":2147483648", "\"unknown\":0")) {
+            assertInvalid(() -> reader.artifacts(context, run, UUID.randomUUID(), "{" + ids + "," + field + "}"));
+        }
+        assertInvalid(() -> reader.artifacts(context, run, UUID.randomUUID(),
+                "{\"versionIds\":[\"" + UUID.randomUUID() + "\",\"" + UUID.randomUUID() + "\"],\"textOffset\":0}"));
+        verifyNoInteractions(artifacts, assets);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Artifact.Kind.class, names = {"IMAGE", "VIDEO", "AUDIO"})
+    void rejectsTextPaginationForMediaBeforeRequestingPixelsOrMetadata(Artifact.Kind kind) {
+        var fixture = textFixture("Media cannot be paged as text");
+        when(fixture.artifact().kind()).thenReturn(kind);
+        assertInvalid(() -> textPage(fixture, ",\"textLimit\":1"));
+        verifyNoInteractions(assets);
+    }
+
+    @Test
+    void everyTextPageRechecksAccessToItsExactImmutableVersion() {
+        var fixture = textFixture("第一页😀第二页");
+        assertThat(textPage(fixture, ",\"textLimit\":3").at("/content/text").asText()).isEqualTo("第一页");
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(),
+                fixture.run().contextSnapshot(), fixture.versionId())).thenThrow(new IllegalStateException("revoked"));
+        assertThatThrownBy(() -> textPage(fixture, ",\"textOffset\":3")).hasMessage("revoked");
+    }
+
+    private TextFixture textFixture(String text) {
+        AgentRun run = mock(AgentRun.class);
+        JsonNode snapshot = mapper.createObjectNode();
+        when(run.contextSnapshot()).thenReturn(snapshot);
+        Artifact artifact = mock(Artifact.class);
+        ArtifactVersion version = mock(ArtifactVersion.class);
+        UUID artifactId = UUID.randomUUID();
+        UUID versionId = UUID.randomUUID();
+        when(artifact.kind()).thenReturn(Artifact.Kind.TEXT);
+        when(version.id()).thenReturn(versionId);
+        when(version.artifactId()).thenReturn(artifactId);
+        when(version.content()).thenReturn(mapper.createObjectNode().put("format", "MARKDOWN").put("text", text));
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, versionId)).thenReturn(version);
+        when(artifacts.get(context.ownerId(), context.projectId(), artifactId))
+                .thenReturn(new ArtifactService.ArtifactView(artifact, version));
+        return new TextFixture(run, artifact, versionId);
+    }
+
+    private JsonNode textPage(TextFixture fixture, String fields) {
+        return reader.artifacts(context, fixture.run(), UUID.randomUUID(),
+                "{\"versionIds\":[\"" + fixture.versionId() + "\"]" + fields + "}").path("data").get(0);
+    }
+
+    private void assertInvalid(Runnable action) {
+        assertThatThrownBy(action::run).isInstanceOf(ApiProblemException.class)
+                .extracting("code").isEqualTo("TOOL_ARGUMENT_INVALID");
+    }
+
+    private record TextFixture(AgentRun run, Artifact artifact, UUID versionId) {}
 }
