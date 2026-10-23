@@ -24,6 +24,29 @@ class RunningHubDefinitionTest {
         var input = mapper.readTree("{\"dynamicValues\":{\"person\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
         assertThat(definition.values(mapper, input, "", null, true).path("strength").asDouble()).isEqualTo(0.5);
     }
+    @Test void publishedFieldsAccept1024AndReject1025() {
+        var schema = schema();
+        var fields = schema.putArray("fields");
+        for (int index = 1; index <= 1024; index++)
+            fields.addObject().put("key", "field" + index).put("label", "Parameter " + index)
+                    .put("nodeId", Integer.toString(index)).put("fieldName", "steps").put("type", "INTEGER");
+        assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).fields()).hasSize(1024);
+        fields.addObject().put("key", "overflow").put("label", "Overflow")
+                .put("nodeId", "1025").put("fieldName", "steps").put("type", "INTEGER");
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+    }
+    @Test void fixedBindingsAccept1024AndReject1025() {
+        var schema = schema();
+        schema.putArray("fields");
+        var bindings = schema.putArray("fixedBindings");
+        for (int index = 1; index <= 1024; index++)
+            bindings.addObject().put("nodeId", Integer.toString(index)).put("fieldName", "steps").put("value", 20);
+        assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).fixedBindings()).hasSize(1024);
+        bindings.addObject().put("nodeId", "1025").put("fieldName", "steps").put("value", 20);
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+    }
     @Test void serverPromptCompositionKeepsTheDefaultAndRechecksFinalLengths() {
         ObjectNode schema = schema();
         var fields = schema.putArray("fields");

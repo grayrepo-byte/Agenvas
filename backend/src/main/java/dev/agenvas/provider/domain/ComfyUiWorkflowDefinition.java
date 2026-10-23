@@ -39,6 +39,8 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
     public static final long MAX_VIDEO_INPUT_BYTES = 500L * 1024 * 1024;
     public static final long MAX_AUDIO_INPUT_BYTES = 50L * 1024 * 1024;
     private static final int MAX_INPUTS = 128;
+    // Shared scalar-field parsing must not inherit RunningHub's larger discovery limit.
+    private static final int MAX_PARAMETERS = 64;
     private static final int MAX_DEPTH = 16;
     private static final int MAX_FPS = 120;
     private static final int MAX_FRAME_MULTIPLE = 64;
@@ -136,6 +138,7 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
     private static List<RunningHubDefinition.Field> parseParameters(ObjectMapper mapper, JsonNode raw,
             JsonNode graph, Set<String> ancestors, Set<String> targets) {
         if (raw == null || raw.isNull()) return List.of();
+        if (raw.size() > MAX_PARAMETERS) throw invalid("parameters");
         List<RunningHubDefinition.Field> parameters = new ArrayList<>();
         for (var field : RunningHubDefinition.parseFields(mapper, raw)) {
             if (field.nodeId() == null || field.fieldName() == null) throw invalid("parameters");

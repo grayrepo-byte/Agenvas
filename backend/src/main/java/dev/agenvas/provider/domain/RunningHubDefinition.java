@@ -20,7 +20,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         String sourceSha256, List<NodeOption> nodeOptions, JsonNode importSource) {
     public static final int SCHEMA_VERSION = 1;
     public static final String PROTOCOL_VERSION = "V2";
-    public static final int MAX_FIELDS = 64;
+    public static final int MAX_FIELDS = 1024;
     public static final int MAX_NODE_OPTIONS = 2048;
     public static final int MAX_OUTPUTS = 16;
     public static final int MAX_TEXT_LENGTH = 20_000;

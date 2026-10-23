@@ -5992,11 +5992,11 @@ components:
         retainSeconds: {type: [integer, "null"], minimum: 10, maximum: 180, description: Additional provider charge; disabled by default.}
         fields:
           type: array
-          maxItems: 64
+          maxItems: 1024
           items: {$ref: "#/components/schemas/RunningHubField"}
         fixedBindings:
           type: [array, "null"]
-          maxItems: 64
+          maxItems: 1024
           items:
             type: object
             additionalProperties: false
@@ -6179,7 +6179,7 @@ components:
           description: Optional trimmed AI app or workflow display name from read-only discovery. Null when unavailable or importing local JSON. Autofills an empty capability name only; not retained in the imported input contract.
         recommendedFieldKeys:
           type: array
-          maxItems: 64
+          maxItems: 1024
           uniqueItems: true
           description: Suggested exposed candidate keys for the editor (unambiguous canvas prompt and media inputs). Other fields remain available for manual exposure. Editor selection only; never stored in a capability or used to authorize execution.
           items: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"}

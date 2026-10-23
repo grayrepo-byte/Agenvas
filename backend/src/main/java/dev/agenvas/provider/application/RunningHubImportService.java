@@ -118,7 +118,9 @@ public final class RunningHubImportService {
                     case "LIST" -> RunningHubDefinition.FieldType.SELECT; default -> RunningHubDefinition.FieldType.STRING;
                 };
                 JsonNode value = input.get("fieldValue");
-                var options = options(input.get("fieldData"));
+                // Upload widgets also list server files (sometimes repeated); only LIST fields declare enum choices.
+                List<RunningHubDefinition.Option> options = fieldType == RunningHubDefinition.FieldType.SELECT
+                        ? options(input.get("fieldData")) : List.of();
                 if (fieldType == RunningHubDefinition.FieldType.SELECT && options.isEmpty()) {
                     fieldType = RunningHubDefinition.FieldType.STRING;
                     warnings.add(ApiMessage.of("api.running-hub-import-service.node-field-has-no-recognized-list-options-add-dropdown-options", node, name));
@@ -146,7 +148,8 @@ public final class RunningHubImportService {
                     prompt.advanced(), prompt.nodeId(), prompt.fieldName(), RunningHubDefinition.Source.PROMPT,
                     prompt.encoding(), prompt.resourceFormat(), prompt.enabledWhen()));
         }
-        if (fields.size() > RunningHubDefinition.MAX_FIELDS) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.there-are-more-than-64-fields-please-import-the-selected"));
+        if (fields.size() > RunningHubDefinition.MAX_FIELDS) throw RunningHubDefinition.invalid(ApiMessage.of(
+                "api.running-hub-import-service.field-limit-exceeded", RunningHubDefinition.MAX_FIELDS));
         RunningHubDefinition definition = new RunningHubDefinition(RunningHubDefinition.SCHEMA_VERSION, RunningHubDefinition.PROTOCOL_VERSION, type, targetId,
                 List.copyOf(fields), List.of(), List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.valueOf(kind.name().replace("_GENERATION", "")), true, 1)),
                 "default", false, false, null, Sha256.hex(source.toString()),
