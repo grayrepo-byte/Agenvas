@@ -137,7 +137,9 @@ class CharacterVoicePostgresIT {
         UUID imageItem = place(owner.userId(), project.id(), image.artifact().id(), 1000);
         var imageDraft = drafts.save(owner.userId(), project.id(), imageItem, 0, "Portrait only",
                 mapper.createObjectNode(), null, null, null, List.of(), List.of(), null);
-        JsonNode before = mapper.valueToTree(imageDraft);
+        // Compare persisted states across the rejected operation; save's in-memory timestamp
+        // can have finer precision than PostgreSQL's stored timestamp.
+        JsonNode before = mapper.valueToTree(drafts.get(owner.userId(), project.id(), imageItem));
         var incompatible = new CharacterBindingSelection(characterId, revised.version(), null, false, true);
         assertUnsupported(() -> characters.preview(owner.userId(), project.id(), imageItem,
                 new PreviewCharacterBindings(0, imageDraft.version(), List.of(incompatible), ClearMode.REMOVE_OWNED)));

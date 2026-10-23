@@ -2639,3 +2639,10 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 真实 PostgreSQL 17.11 定向集成 8 类、14 项全部通过：`CharacterPostgresIT,CharacterGenerationIntegrationPostgresIT,CharacterVoicePostgresIT,CharacterMigrationPostgresIT,MediaDraftPostgresIT,MediaDraftReplacementPostgresIT,CanvasAgentToolsPostgresIT,ProjectExportManifestPostgresIT`。覆盖 Session/CSRF/项目隔离、幂等并发/CAS、项目并发归档、独立复核失效、应用与旧 Task/晚到结果冻结、素材断线、V34→V35 升级及数据库约束。合成 3 秒 WAV 经真实归档和生产音频引用加载器读取，变更角色后旧任务仍读取旧音频字节；Mock 能力受理，无外部 Provider 请求。
 - [x] 前端 `Characters,projectCache,MediaDraftPersistence,MediaDraftEditor,ProjectWorkspacePage,AgentMediaApprovalCard` 六个定向文件共 256 项通过。类型检查、改动文件 ESLint、四语言/主题检查、生产构建与差异空白检查通过；构建保留既有大分块提示。生产构建 Chrome 在 1440×900 验证角色表单滚动/固定操作栏、焦点/Esc、忙碌保护、预览→应用→复核及关闭后无旧自动保存覆盖；HTTP 全部拦截为隔离合成数据，未修改真实项目。浏览器夹具与脚本保存于 `frontend/e2e/characters*`，截图在仓库外。
 - [ ] 全量测试、真实 Provider 外观/音色/台词/口型一致性、移动端及其他浏览器验证和部署未运行。结构化分镜制作台、场景/道具状态管理、跨项目角色库和自动一致性评分不属于本次已实现范围。
+
+## 2026-10-23 develop CI 修复
+
+- [x] 根据手动触发的 develop CI 失败日志，为单元测试 job 补齐 FFmpeg/FFprobe；新增工作流回归断言，确认媒体工具安装先于 Maven 测试。消息目录检查发现的动态键改为调用处静态 `ApiMessage`，保留原错误码、状态与参数，并清理已支持文本分页后不再使用的旧提示键。
+- [x] 导演首次创建后读回数据库实际记录，避免纳秒内存时间与 PostgreSQL 微秒时间造成首次响应、并发和重复读取不一致。固定纳秒 Clock 的真实 PostgreSQL 并发测试先失败、修复后通过；角色声音拒绝应用的原子性测试严格比较前后持久状态。两处旧 schema 断言同步当前导出 v10、媒体 Task v7。
+- [x] 本地定向单测 38 项，零失败/错误，字幕媒体专项因本机环境跳过 1 项；真实 PostgreSQL 五类 18 项全部通过，无失败、错误或跳过。CI 脚本 32 项、工作流语法与差异空白检查通过；使用合成素材及 Mock/固定响应，没有真实 Provider 调用。
+- [ ] 本地全量测试、真实 Provider 与部署未运行；完整托管 CI 结果以本次修复提交的工作流记录为准。

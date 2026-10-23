@@ -449,11 +449,11 @@ public class CharacterService {
         ObjectNode payload = mapper.createObjectNode(); payload.put("id", aggregate.toString()); payload.put("version", version);
         return new ProjectEventService.EventDraft(type, 1, aggregate, version, payload);
     }
-    private ApiProblemException invalid() { return problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "api.character.invalid"); }
-    private ApiProblemException conflict() { return problem(HttpStatus.CONFLICT, "CHARACTER_PREVIEW_CONFLICT", "api.character.conflict"); }
-    private ApiProblemException archived() { return problem(HttpStatus.CONFLICT, "CHARACTER_ARCHIVED", "api.character.archived"); }
-    private ApiProblemException notFound() { return problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "api.project-service.the-project-does-not-exist-or-the-current-user-does"); }
-    private ApiProblemException problem(HttpStatus status, String code, String detail) {
-        return new ApiProblemException(status, code, ApiMessage.of(detail), ApiMessage.of(detail), false);
+    private ApiProblemException invalid() { return problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.character.invalid")); }
+    private ApiProblemException conflict() { return problem(HttpStatus.CONFLICT, "CHARACTER_PREVIEW_CONFLICT", ApiMessage.of("api.character.conflict")); }
+    private ApiProblemException archived() { return problem(HttpStatus.CONFLICT, "CHARACTER_ARCHIVED", ApiMessage.of("api.character.archived")); }
+    private ApiProblemException notFound() { return problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", ApiMessage.of("api.project-service.the-project-does-not-exist-or-the-current-user-does")); }
+    private ApiProblemException problem(HttpStatus status, String code, ApiMessage detail) {
+        return new ApiProblemException(status, code, detail, detail, false);
     }
 }

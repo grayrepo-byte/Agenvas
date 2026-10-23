@@ -76,7 +76,10 @@ public class AgentInstanceService {
                     CREATOR_PROFILE_KEY, CREATOR_PROFILE_VERSION, validateName(directorPrompt.name()),
                     validateInstruction(directorPrompt.content()), 0, now, now);
             agents.create(director);
-            return ProjectEventService.Change.changed(director, agentEvent(director));
+            // Return the database representation, including PostgreSQL's timestamp precision,
+            // so the creating request and concurrent/repeated reads observe the same state.
+            AgentInstance persisted = require(ownerId, projectId, director.id());
+            return ProjectEventService.Change.changed(persisted, agentEvent(persisted));
         }).value();
     }
 

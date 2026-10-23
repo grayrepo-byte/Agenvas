@@ -22,6 +22,9 @@ import dev.agenvas.project.application.ProjectSnapshotService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.testing.MigrationVersions;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -30,6 +33,10 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -47,6 +54,7 @@ import tools.jackson.databind.ObjectMapper;
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = AgenvasApplication.class)
+@Import(AgentPostgresIT.PreciseClock.class)
 class AgentPostgresIT {
     @Container
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
@@ -157,5 +165,13 @@ class AgentPostgresIT {
     private void assertProblem(String code, Runnable action) {
         assertThatThrownBy(action::run).isInstanceOfSatisfying(ApiProblemException.class,
                 problem -> assertThat(problem.code()).isEqualTo(code));
+    }
+
+    /** PostgreSQL stores microseconds; use nanoseconds so create/read equality is exercised on every OS. */
+    @TestConfiguration
+    static class PreciseClock {
+        @Bean @Primary Clock directorTestClock() {
+            return Clock.fixed(Instant.parse("2026-10-23T00:00:00.123456789Z"), ZoneOffset.UTC);
+        }
     }
 }

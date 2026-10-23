@@ -72,9 +72,9 @@ public class AgentLocalMediaToolService {
             long expected, Artifact.Kind kind) {
         CanvasItem item = items.requireArtifactItem(context.ownerId(), context.projectId(), uuid(input, "canvasItemId"));
         if (item.locked()) throw problem(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
-                "api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent");
+                ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"));
         if (item.version() != expected || !versionId.equals(item.selectedVersionId()))
-            throw problem(HttpStatus.CONFLICT, "DIRECT_MEDIA_CONFLICT", "api.media-function.source-changed");
+            throw problem(HttpStatus.CONFLICT, "DIRECT_MEDIA_CONFLICT", ApiMessage.of("api.media-function.source-changed"));
         var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), versionId);
         var artifact = artifacts.get(context.ownerId(), context.projectId(), item.subjectId()).artifact();
         if (!item.subjectId().equals(version.artifactId()) || artifact.kind() != kind || artifact.archivedAt() != null)
@@ -120,10 +120,9 @@ public class AgentLocalMediaToolService {
     }
 
     private static ApiProblemException invalid() {
-        return problem(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID", "api.tool-execution-service.tool-parameter-is-invalid");
+        return problem(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID", ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
     }
-    private static ApiProblemException problem(HttpStatus status, String code, String key) {
-        var message = ApiMessage.of(key);
+    private static ApiProblemException problem(HttpStatus status, String code, ApiMessage message) {
         return new ApiProblemException(status, code, message, message, false);
     }
 }

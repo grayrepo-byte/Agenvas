@@ -70,10 +70,14 @@ public class StoryboardMediaLinkService {
     }
 
     private ApiProblemException problem(boolean stale) {
-        return new ApiProblemException(stale ? HttpStatus.CONFLICT : HttpStatus.BAD_REQUEST,
-                stale ? "AGENT_MEDIA_APPROVAL_STALE" : "TOOL_ARGUMENT_INVALID",
-                ApiMessage.of(stale ? "api.agent-media-approval.conflict-title" : "api.agent-media-approval.invalid-title"),
-                ApiMessage.of(stale ? "api.agent-media-approval.conflict-detail" : "api.agent-media-approval.invalid-detail", "storyboard-shot-revision"), false);
+        if (stale) {
+            return new ApiProblemException(HttpStatus.CONFLICT, "AGENT_MEDIA_APPROVAL_STALE",
+                    ApiMessage.of("api.agent-media-approval.conflict-title"),
+                    ApiMessage.of("api.agent-media-approval.conflict-detail", "storyboard-shot-revision"), false);
+        }
+        return new ApiProblemException(HttpStatus.BAD_REQUEST, "TOOL_ARGUMENT_INVALID",
+                ApiMessage.of("api.agent-media-approval.invalid-title"),
+                ApiMessage.of("api.agent-media-approval.invalid-detail", "storyboard-shot-revision"), false);
     }
 
     public record Link(UUID shotId, String shotCode, int shotRevision, Storyboard.Role role) {}

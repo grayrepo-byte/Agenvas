@@ -81,7 +81,7 @@ public class AudioTrimService {
             if (prior != null) {
                 // JSONB reload normalizes small integral CAS values to IntNode.
                 if (!mapper.readTree(request.toString()).equals(prior.input().path("audioTrimRequest")))
-                    throw conflict("IDEMPOTENCY_CONFLICT", "api.media-function.conflict");
+                    throw conflict("IDEMPOTENCY_CONFLICT", ApiMessage.of("api.media-function.conflict"));
                 return ProjectEventService.Change.unchanged(prior);
             }
             var sourceArtifact = artifacts.get(ownerId, projectId, artifactId).artifact();
@@ -90,7 +90,7 @@ public class AudioTrimService {
             var sourceItem = items.requireArtifactItem(ownerId, projectId, canvasItemId);
             if (!sourceItem.subjectId().equals(artifactId) || sourceItem.version() != expectedCanvasItemVersion
                     || !sourceVersionId.equals(sourceItem.selectedVersionId()))
-                throw conflict("DIRECT_MEDIA_CONFLICT", "api.media-function.source-changed");
+                throw conflict("DIRECT_MEDIA_CONFLICT", ApiMessage.of("api.media-function.source-changed"));
             var source = artifacts.requireMediaVersionForTask(ownerId, projectId, sourceVersionId, Artifact.Kind.AUDIO);
             if (!artifactId.equals(source.artifactId())) throw AudioTrimParameters.invalid();
             var asset = assets.metadata(ownerId, projectId, UUID.fromString(source.content().path("assetId").asText()));
@@ -138,8 +138,8 @@ public class AudioTrimService {
         }).value();
     }
 
-    private static ApiProblemException conflict(String code, String message) {
+    private static ApiProblemException conflict(String code, ApiMessage message) {
         return new ApiProblemException(HttpStatus.CONFLICT, code,
-                ApiMessage.of("api.audio-trim.invalid"), ApiMessage.of(message), false);
+                ApiMessage.of("api.audio-trim.invalid"), message, false);
     }
 }

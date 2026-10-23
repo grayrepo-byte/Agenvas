@@ -88,6 +88,17 @@ class ShardingTest(unittest.TestCase):
                     ci.integration_shard(Path(folder), index, count)
 
 
+class RuntimeDependenciesTest(unittest.TestCase):
+    def test_backend_unit_installs_media_tools_before_running_tests(self):
+        workflow = (SCRIPT_DIR.parents[1] / ".github/workflows/ci.yml").read_text()
+        unit_job = workflow.split("\n  backend-unit:\n", 1)[1].split("\n  backend-integration:\n", 1)[0]
+        # These tests launch /usr/bin/ffmpeg and /usr/bin/ffprobe; Ubuntu's
+        # ffmpeg package supplies both binaries before Surefire starts.
+        install = "run: sudo apt-get update && sudo apt-get install -y ffmpeg"
+        self.assertIn(install, unit_job)
+        self.assertLess(unit_job.index(install), unit_job.index("run: ./mvnw"))
+
+
 class GateTest(unittest.TestCase):
     def test_publishing_credentials_are_only_used_after_the_gate_on_tag_pushes(self):
         workflow = (SCRIPT_DIR.parents[1] / ".github/workflows/ci.yml").read_text()
