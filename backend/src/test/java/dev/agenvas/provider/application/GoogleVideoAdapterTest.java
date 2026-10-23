@@ -42,6 +42,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 class GoogleVideoAdapterTest {
+    private static final String VEO_MODEL = "veo-3.1-generate-preview";
     private final ObjectMapper mapper = new ObjectMapper();
     private final JooqMediaCapabilityRepository catalog = mock(JooqMediaCapabilityRepository.class);
     private final CredentialCipher cipher = mock(CredentialCipher.class);
@@ -55,7 +56,7 @@ class GoogleVideoAdapterTest {
     private static final String VALID_PROBE = "{\"format\":{\"format_name\":\"mov,mp4,m4a\",\"duration\":\"8\"},\"streams\":[{\"codec_type\":\"video\",\"width\":1280,\"height\":720},{\"codec_type\":\"audio\"}]}";
 
     @Test void pinsModelCredentialVersionAndExactNativeValuesBeforeSubmission() {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         var context = context(p, mapper.createObjectNode());
         when(references.load(eq(context), any(), any(), eq(false))).thenReturn(Map.of());
         assertThat(veo.preflightFailure(context)).isNull();
@@ -66,7 +67,7 @@ class GoogleVideoAdapterTest {
         assertThat(veo.preflightFailure(context)).isEqualTo(ProviderFailureCodes.PROTOCOL_INVALID);
     }
     @Test void uncertainCreateNeverFallsBackAndKnownCredentialFailureIsRejectedBeforePost() {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         var context = context(p, mapper.createObjectNode());
         when(references.load(eq(context), any(), any(), eq(true))).thenReturn(Map.of());
         doThrow(new GoogleVideoClient.Unknown(ProviderFailureCodes.RESPONSE_LOST)).when(client).create(eq(p), eq(GoogleVideoClient.ORIGIN), eq("synthetic-key"), any());
@@ -77,7 +78,7 @@ class GoogleVideoAdapterTest {
         verify(client, times(1)).create(any(), anyString(), anyString(), any());
     }
     @Test void uriRecoveryQueriesOnlyOriginalIdentityAndStoresSafeExtensionProvenance() throws Exception {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         var context = context(p, mapper.createObjectNode());
         doReturn(new GoogleVideoClient.State("completed", new GoogleVideoClient.Video(null, "files/synthetic-video")))
                 .when(client).query(p, GoogleVideoClient.ORIGIN, "synthetic-key", "operations/synthetic-original");
@@ -114,7 +115,7 @@ class GoogleVideoAdapterTest {
         verify(client, never()).create(any(), anyString(), anyString(), any());
     }
     @Test void permanentQueryAndMediaFailuresBlock() {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         var context = context(p, mapper.createObjectNode());
         doThrow(new NativeMediaFailure(GoogleVideoClient.TASK_EXPIRED)).when(client).query(p, GoogleVideoClient.ORIGIN, "synthetic-key", "operations/synthetic-original");
         assertThat(veo.reconcile(context)).isEqualTo(new Submission.Blocked(GoogleVideoClient.TASK_EXPIRED));
@@ -125,7 +126,7 @@ class GoogleVideoAdapterTest {
         verify(client, never()).create(any(), anyString(), anyString(), any());
     }
     @Test void technicalDownloadFailureRetriesOnlyTheOriginalIdentityAndCleansPartialScratch() throws Exception {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         var context = context(p, mapper.createObjectNode());
         doReturn(new GoogleVideoClient.State("completed", new GoogleVideoClient.Video(null, "files/synthetic-video")))
                 .when(client).query(p, GoogleVideoClient.ORIGIN, "synthetic-key", "operations/synthetic-original");

@@ -54,23 +54,26 @@ async function waitFor(fn, ...args) {
   throw new Error(`Timed out waiting for workspace: ${await page(() => document.body.innerText)}`);
 }
 async function click(selector, text) {
-  await waitFor((target, label) => {
+  function visiblePoint(target, label) {
     const element = [...document.querySelectorAll(target)].find((item) => !label || item.textContent.includes(label));
     if (!element || element.disabled) return false;
     element.scrollIntoView({ block: "nearest" });
     const rect = element.getBoundingClientRect();
-    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    return hit === element || element.contains(hit);
-  }, selector, text);
-  const point = await page((target, label) => {
-    const element = [...document.querySelectorAll(target)].find((item) => !label || item.textContent.includes(label));
-    if (!element) throw new Error(`Missing click target: ${target}`);
-    const rect = element.getBoundingClientRect();
-    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
-    const hit = document.elementFromPoint(x, y);
-    return { x, y, reachable: hit === element || element.contains(hit), hit: hit?.outerHTML.slice(0, 240) };
-  }, selector, text);
-  assert.ok(point.reachable, `Workspace control is pointer reachable: ${selector}: ${JSON.stringify(point)}`);
+    const left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
+    const top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
+    if (left >= right || top >= bottom) return false;
+    // A nonmodal dock can cover a card's center while its left edge is still
+    // usable. Choose a real hit on the visible card, keeping full occlusion red.
+    for (const xFraction of [0.5, 0.1, 0.9]) for (const yFraction of [0.5, 0.1, 0.9]) {
+      const x = left + (right - left) * xFraction, y = top + (bottom - top) * yFraction;
+      const hit = document.elementFromPoint(x, y);
+      if (hit === element || element.contains(hit)) return { x, y };
+    }
+    return false;
+  }
+  await waitFor(visiblePoint, selector, text);
+  const point = await page(visiblePoint, selector, text);
+  assert.ok(point, `Workspace control is pointer reachable: ${selector}`);
   await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
   await cdp("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
   await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
@@ -91,9 +94,11 @@ function inspectLayout(activeSelector) {
   const inputRect = input.getBoundingClientRect();
   const hit = document.elementFromPoint(inputRect.left + inputRect.width / 2, inputRect.top + inputRect.height / 2);
   const controls = [...panel.querySelectorAll(".agent-chat-header button")]
-    .filter((element) => element.getBoundingClientRect().width > 0).map((element) => ({
-      label: element.getAttribute("aria-label"), ...rect(element),
-    }));
+    .filter((element) => element.getBoundingClientRect().width > 0).map((element) => {
+      const bounds = rect(element);
+      const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      return { label: element.getAttribute("aria-label"), ...bounds, reachable: element === hit || element.contains(hit) };
+    });
   let opacity = 1;
   for (let element = dialog; element; element = element.parentElement) opacity *= Number(getComputedStyle(element).opacity);
   return { viewport: { width: innerWidth, height: innerHeight }, dialog: rect(dialog),
@@ -114,9 +119,13 @@ function assertLayout(layout) {
   assert.equal(layout.opacity, 1, "Narrow-screen canvas dimming does not dim the dock");
   assert.equal(layout.warningDisplay, "none", "Narrow-screen warning is hidden while chatting");
   assert.equal(layout.overflow, false, "Workspace has no document horizontal overflow");
-  assert.equal(layout.controls.length, 2, "The director header contains expand and close controls");
+  const labels = layout.controls.map((control) => control.label);
+  assert.ok(labels.includes("收起创作导演"), "The director header retains its collapse action");
+  assert.ok(labels.some((label) => ["展开对话", "还原对话大小"].includes(label)),
+    "The director header retains its expand or restore action");
   for (const [index, control] of layout.controls.entries()) {
     assert.ok(within(control, layout.dialog), "Header control stays inside dock: " + JSON.stringify(control));
+    assert.ok(control.reachable, "Header control remains pointer reachable: " + JSON.stringify(control));
     for (const other of layout.controls.slice(index + 1)) {
       const overlaps = Math.min(control.right, other.right) - Math.max(control.left, other.left) > 1
         && Math.min(control.bottom, other.bottom) - Math.max(control.top, other.top) > 1;

@@ -8,6 +8,8 @@ import { AudioTrimDialog } from "./AudioTrimDialog";
 
 const source = { canvasItemId: "source-item", sourceVersionId: "source-v1", expectedCanvasItemVersion: 7 };
 const endpoint = "/api/v1/projects/project-1/artifacts/audio-1/audio-trims";
+const decodeAudioData = vi.fn(() => Promise.resolve({ numberOfChannels: 1,
+  getChannelData: () => new Float32Array([0, 0.2, 0.9, 0]) }));
 function show(durationMs = 25_000) {
   const client = createQueryClient();
   const close = vi.fn();
@@ -25,10 +27,11 @@ const preview = () => screen.getByRole("button", { name: "试听所选片段" })
 const change = (field: HTMLElement, value: string) => fireEvent.change(field, { target: { value } });
 
 beforeEach(() => {
+  decodeAudioData.mockClear();
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
   vi.stubGlobal("AudioContext", class {
-    decodeAudioData() { return Promise.resolve({ numberOfChannels: 1, getChannelData: () => new Float32Array([0, 0.2, 0.9, 0]) }); }
+    decodeAudioData = decodeAudioData;
     close() { return Promise.resolve(); }
   });
   server.use(
@@ -44,7 +47,14 @@ describe("AudioTrimDialog", () => {
     expect(start()).toHaveValue(0);
     expect(end()).toHaveValue(6.432);
     expect(screen.getByRole("radio", { name: "WAV" })).toHaveAttribute("data-state", "on");
-    await waitFor(() => expect(view.container.ownerDocument.querySelectorAll(".audio-player-waveform span")).toHaveLength(48));
+    await waitFor(() => expect(decodeAudioData).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByText("正在加载波形…")).not.toBeInTheDocument());
+    // The decoded signal must affect the visible waveform; the sampling density is not a product contract.
+    const bars = [...view.container.ownerDocument.querySelectorAll<HTMLElement>(".audio-player-waveform [style]")];
+    expect(bars.length).toBeGreaterThan(1);
+    const heights = bars.map((bar) => Number.parseFloat(bar.style.height));
+    expect(heights.every((height) => Number.isFinite(height) && height > 0 && height <= 100)).toBe(true);
+    expect(new Set(heights).size).toBeGreaterThan(1);
     expect(screen.getByText(/单人、清晰/)).toBeVisible();
     expect(submit()).toBeEnabled();
   });

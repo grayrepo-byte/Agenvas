@@ -190,7 +190,11 @@ try {
   const before = await position();
   await gesture(".audio-player-title");
   await waitFor(() => document.querySelector(".react-flow__node").classList.contains("selected"));
-  await waitFor(() => document.querySelectorAll(".audio-player-waveform > span").length === 48);
+  // Sampling density may change; selection must still decode the synthetic signal
+  // into visible waveform bars rather than leaving the loading placeholder.
+  await waitFor(() => !document.querySelector(".audio-player-waveform-placeholder")
+    && [...document.querySelectorAll(".audio-player-waveform > span")]
+      .some((bar) => bar.getBoundingClientRect().height > 3));
   await gesture(".audio-player-title", 80);
   await waitFor(() => document.querySelector(".react-flow__node").getBoundingClientRect().x > 160);
   assert.ok(await position() > before + 40, "Dragging audio text must move the node");

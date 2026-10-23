@@ -15,10 +15,15 @@ import tools.jackson.databind.node.ObjectNode;
 class WanModelsTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final WanModels models = new WanModels();
-    private final NativeMediaProtocol.Profile image = models.profiles().get(0), pro = models.profiles().get(1), video = models.profiles().get(2);
-    @Test void catalogContainsCurrentMainlineModelsAndFiniteNativeInputs() {
+    private final NativeMediaProtocol.Profile image = profile("wan2.7-image"), pro = profile("wan2.7-image-pro"), video = profile("wan3.0-video");
+    @Test void catalogContainsUniqueMainlineModelsAndFiniteNativeInputs() {
+        assertThat(models.profiles()).isNotEmpty().doesNotHaveDuplicates();
         assertThat(models.profiles()).extracting(NativeMediaProtocol.Profile::model)
-                .containsExactly("wan2.7-image", "wan2.7-image-pro", "wan3.0-video", "wan3.0-video-prime");
+                .contains("wan2.7-image", "wan2.7-image-pro", "wan3.0-video", "wan3.0-video-prime");
+        for (var profile : models.profiles()) {
+            assertThat(models.inputs(profile)).isNotEmpty().extracting(CreatorInputField::key).doesNotHaveDuplicates();
+            assertThat(models.declaration(profile).kind()).isEqualTo(profile.kind());
+        }
         assertThat(models.inputs(image)).extracting(CreatorInputField::key).contains("image_9", "image_9_bbox_2_y2", "color_10_ratio", "thinking_mode", "enable_sequential");
         assertThat(models.inputs(video)).extracting(CreatorInputField::key).contains("audio_5", "video_5", "image_10", "first_frame", "last_frame", "smart_duration");
         assertThat(models.inputs(video)).extracting(CreatorInputField::key).doesNotContain("link", "file", "callback_url", "external_task_id", "apiKey");
@@ -100,6 +105,10 @@ class WanModelsTest {
                 "video_2", asset(Asset.MediaKind.VIDEO, "video/mp4", 1000, 720, 1280, 8000)))).isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> models.validateProbe(video, "video_1", values(video), mapper.readTree("{\"format\":{\"format_name\":\"mov,mp4\",\"duration\":\"3\"},\"streams\":[{\"codec_type\":\"video\",\"avg_frame_rate\":\"15/1\"}]}")))
                 .isInstanceOf(ApiProblemException.class);
+    }
+    private NativeMediaProtocol.Profile profile(String model) {
+        return models.profiles().stream().filter(profile -> profile.model().equals(model) && profile.operation().equals("GENERATE"))
+                .findFirst().orElseThrow();
     }
     private NativeMediaProfiles.Selection selected(NativeMediaProtocol.Profile p) { return new NativeMediaProfiles.Selection(models, p); }
     private ObjectNode values(NativeMediaProtocol.Profile p) { return NativeMediaProfiles.effectiveValues(selected(p), mapper.createObjectNode(), "A synthetic landscape", 5, mapper); }

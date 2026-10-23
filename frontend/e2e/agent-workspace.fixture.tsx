@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ProjectWorkspacePage } from "../src/features/canvas/ProjectWorkspacePage";
-import type { Agent, AgentConversation, CanvasItem, ProjectSnapshot } from "../src/shared/api/client";
+import type { Agent, AgentConversation, CanvasEditorState, CanvasItem, CharacterIndex, ProjectSnapshot } from "../src/shared/api/client";
 import { setLocale } from "../src/shared/i18n";
 import "../src/styles.css";
 
@@ -32,6 +32,8 @@ const image: CanvasItem = { ...textItem("synthetic-image", "视觉参考", "", 4
     resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 0, createdAt: now, updatedAt: now },
   selectedVersionId: null, selectedVersion: null };
 const items = [story, character, image];
+const canvasEditor: CanvasEditorState = { items, groups: [] };
+const characters: CharacterIndex = { characters: [], bindings: [] };
 const connections: ProjectSnapshot["connections"] = [];
 const snapshot: ProjectSnapshot = { project, canvas: { items }, connections, director,
   activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
@@ -90,6 +92,8 @@ window.fetch = async (input, init) => {
   else if (path === `/api/v1/projects/${projectId}`) value = project;
   else if (path.endsWith("/snapshot")) value = snapshot;
   else if (path.endsWith("/canvas/items")) value = { items };
+  else if (path === `/api/v1/projects/${projectId}/canvas/editor`) value = canvasEditor;
+  else if (path === `/api/v1/projects/${projectId}/characters`) value = characters;
   else if (path.endsWith("/canvas/connections")) value = { items: connections };
   else if (path.endsWith("/conversations")) {
     const agentId = path.split("/").at(-2)!;

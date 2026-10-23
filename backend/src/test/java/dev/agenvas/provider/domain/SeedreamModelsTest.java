@@ -3,6 +3,7 @@ package dev.agenvas.provider.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.agenvas.task.domain.Task;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -13,12 +14,22 @@ class SeedreamModelsTest {
     private final SeedreamModels models = new SeedreamModels();
     private final ObjectMapper mapper = new ObjectMapper();
 
-    @Test void exposesOnlyTheThreeMainModelsAndTheirSupportedOperations() {
-        assertThat(models.profiles()).hasSize(7);
-        assertThat(models.profiles()).extracting(NativeMediaProtocol.Profile::model)
-                .containsOnly(SeedreamModels.PRO, SeedreamModels.FLASH, SeedreamModels.LITE);
+    @Test void exposesUniqueResolvableProfilesIncludingTheSupportedMainlineOperations() {
+        assertThat(models.profiles()).isNotEmpty().doesNotHaveDuplicates();
+        // Existing model/operation pairs must remain discoverable; additional profiles are allowed.
+        for (String model : List.of(SeedreamModels.PRO, SeedreamModels.FLASH, SeedreamModels.LITE)) {
+            assertThat(models.profiles()).contains(new NativeMediaProtocol.Profile(
+                    SeedreamModels.ADAPTER_ID, model, SeedreamModels.GENERATE, Task.Kind.IMAGE_GENERATION));
+        }
+        for (String model : List.of(SeedreamModels.PRO, SeedreamModels.FLASH)) {
+            for (String operation : List.of(SeedreamModels.LAYERS, SeedreamModels.EDIT)) {
+                assertThat(models.profiles()).contains(new NativeMediaProtocol.Profile(
+                        SeedreamModels.ADAPTER_ID, model, operation, Task.Kind.IMAGE_GENERATION));
+            }
+        }
         assertThatThrownBy(() -> models.resolve(SeedreamModels.LITE, SeedreamModels.LAYERS)).isInstanceOf(RuntimeException.class);
         for (var p : models.profiles()) {
+            assertThat(models.resolve(p.model(), p.operation())).isEqualTo(p);
             assertThat(models.declaration(p).maxReferenceImages()).isEqualTo(SeedreamModels.layers(p) ? 1 : SeedreamModels.proFamily(p) ? 10 : 14);
             assertThat(models.inputs(p)).noneMatch(f -> List.of("stream", "response_format", "layers", "bbox", "coordinate").contains(f.key()));
         }

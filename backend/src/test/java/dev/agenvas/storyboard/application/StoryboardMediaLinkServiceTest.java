@@ -3,7 +3,7 @@ package dev.agenvas.storyboard.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import dev.agenvas.artifact.domain.Artifact;
@@ -28,7 +28,18 @@ class StoryboardMediaLinkServiceTest {
                 .isEqualTo(new StoryboardMediaLinkService.Link(shotId, "SHOT-1", 4, Storyboard.Role.KEYFRAME));
         assertThat(service.freeze(owner, project, shotId, 4, Artifact.Kind.VIDEO).role()).isEqualTo(Storyboard.Role.VIDEO);
         assertThat(service.freeze(owner, project, shotId, 4, Artifact.Kind.AUDIO).role()).isEqualTo(Storyboard.Role.AUDIO);
-        verify(projects, org.mockito.Mockito.times(3)).get(owner, project);
+    }
+
+    @Test void rejectsUnauthorizedProjectBeforeReadingShotContent() {
+        var denied = new IllegalStateException("synthetic project access denied");
+        when(projects.get(owner, project)).thenThrow(denied);
+
+        for (var kind : List.of(Artifact.Kind.IMAGE, Artifact.Kind.VIDEO, Artifact.Kind.AUDIO)) {
+            assertThatThrownBy(() -> service.freeze(owner, project, shotId, 4, kind)).isSameAs(denied);
+        }
+        assertThatThrownBy(() -> service.requireCurrent(owner, project,
+                new StoryboardMediaLinkService.Link(shotId, "SHOT-1", 4, Storyboard.Role.VIDEO))).isSameAs(denied);
+        verifyNoInteractions(boards);
     }
 
     @Test void refusesMissingOrStaleShotAtProposal() {

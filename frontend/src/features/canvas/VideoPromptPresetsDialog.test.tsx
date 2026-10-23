@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { setLocale } from "../../shared/i18n";
 import { VideoPromptPresetsDialog } from "./VideoPromptPresetsDialog";
-import { filterVideoPromptPresets, VIDEO_PROMPT_PRESETS } from "./videoPromptPresets";
+import { filterVideoPromptPresets, VIDEO_PROMPT_PRESETS, type VideoPromptPreset } from "./videoPromptPresets";
 
 // Playback lifecycle and drawing are verified independently; this suite exercises selection and draft application.
 vi.mock("./VideoCameraMotionPreview", () => ({ VideoCameraMotionPreview: ({ preset }: { preset: { id: string } }) =>
@@ -13,6 +13,12 @@ function setup(prompt = "An existing scene.", maxLength = 20000, accepted = true
   const onClose = vi.fn();
   render(<VideoPromptPresetsDialog prompt={prompt} maxLength={maxLength} onApply={onApply} onClose={onClose} />);
   return { onApply, onClose };
+}
+
+function expectPresetOptions(presets: readonly VideoPromptPreset[]) {
+  const list = screen.getByRole("group", { name: "运镜预设列表" });
+  expect(within(list).getAllByRole("button").map((button) => button.getAttribute("aria-label")))
+    .toEqual(presets.map((preset) => preset.copy.zh.name));
 }
 
 describe("VideoPromptPresetsDialog", () => {
@@ -34,14 +40,13 @@ describe("VideoPromptPresetsDialog", () => {
   it("filters by category and keyword, and clears an empty search without applying", () => {
     const { onApply } = setup();
     fireEvent.click(screen.getByRole("button", { name: /变焦与对焦/ }));
-    const list = screen.getByRole("group", { name: "运镜预设列表" });
-    expect(within(list).getAllByRole("button")).toHaveLength(10);
+    expectPresetOptions(VIDEO_PROMPT_PRESETS.filter(({ category }) => category === "lens"));
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "nonexistent-preset-xyz" } });
     expect(screen.getByText("没有找到合适的镜头")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "追加到提示词" })).toBeDisabled();
     expect(screen.queryByRole("region", { name: "镜头详情" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
-    expect(within(list).getAllByRole("button")).toHaveLength(112);
+    expectPresetOptions(VIDEO_PROMPT_PRESETS);
     expect(onApply).not.toHaveBeenCalled();
   });
 
@@ -49,7 +54,7 @@ describe("VideoPromptPresetsDialog", () => {
     const { onApply } = setup();
     fireEvent.click(screen.getByRole("button", { name: /摇摄与滚转/ }));
     const list = screen.getByRole("group", { name: "运镜预设列表" });
-    expect(within(list).getAllByRole("button")).toHaveLength(4);
+    expectPresetOptions(VIDEO_PROMPT_PRESETS.filter(({ category }) => category === "rotation"));
     const roll = VIDEO_PROMPT_PRESETS.find(({ id }) => id === "axial-barrel-roll")!;
     fireEvent.click(within(list).getByRole("button", { name: roll.copy.zh.name }));
     expect(screen.getByTestId("camera-preview")).toHaveAttribute("data-preset", roll.id);
@@ -64,7 +69,7 @@ describe("VideoPromptPresetsDialog", () => {
     expect(screen.getByRole("radio", { name: "产品展示" })).toBeChecked();
     const products = filterVideoPromptPresets("", "all", "product");
     const list = screen.getByRole("group", { name: "运镜预设列表" });
-    expect(within(list).getAllByRole("button")).toHaveLength(products.length);
+    expectPresetOptions(products);
     expect(within(list).queryByRole("button", { name: "过肩镜头" })).not.toBeInTheDocument();
     expect(screen.getByTestId("camera-preview")).toHaveAttribute("data-preset", products[0]!.id);
     const lensCount = filterVideoPromptPresets("", "lens", "product").length;
@@ -73,9 +78,11 @@ describe("VideoPromptPresetsDialog", () => {
     fireEvent.click(lensCategory);
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "微距" } });
     const macro = VIDEO_PROMPT_PRESETS.find(({ id }) => id === "macro-focus-travel")!;
-    expect(within(list).getAllByRole("button")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: /^变焦与对焦\s*1$/ })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: /^全部镜头\s*1$/ })).toBeInTheDocument();
+    const macros = filterVideoPromptPresets("微距", "lens", "product");
+    expectPresetOptions(macros);
+    expect(screen.getByRole("button", { name: new RegExp(`^变焦与对焦\\s*${macros.length}$`) })).toHaveAttribute("aria-pressed", "true");
+    const allMacroCount = filterVideoPromptPresets("微距", "all", "product").length;
+    expect(screen.getByRole("button", { name: new RegExp(`^全部镜头\\s*${allMacroCount}$`) })).toBeInTheDocument();
     expect(screen.getByTestId("camera-preview")).toHaveAttribute("data-preset", macro.id);
     fireEvent.click(screen.getByRole("button", { name: "追加到提示词" }));
     expect(onApply).toHaveBeenCalledExactlyOnceWith(macro.prompt);
@@ -92,14 +99,16 @@ describe("VideoPromptPresetsDialog", () => {
     expect(onApply).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("radio", { name: "全部场景" }));
     expect(screen.getByRole("searchbox")).toHaveValue("过肩");
-    expect(screen.getByRole("button", { name: /^构图与视角\s*1$/ })).toHaveAttribute("aria-pressed", "true");
+    const shoulders = filterVideoPromptPresets("过肩", "framing");
+    expectPresetOptions(shoulders);
+    expect(screen.getByRole("button", { name: new RegExp(`^构图与视角\\s*${shoulders.length}$`) })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("camera-preview")).toHaveAttribute("data-preset", "over-the-shoulder");
     fireEvent.click(screen.getByRole("radio", { name: "风景" }));
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(screen.getByRole("searchbox")).toHaveValue("");
     expect(screen.getByRole("radio", { name: "全部场景" })).toBeChecked();
-    expect(screen.getByRole("button", { name: /^全部镜头\s*112$/ })).toHaveAttribute("aria-pressed", "true");
-    expect(within(screen.getByRole("group", { name: "运镜预设列表" })).getAllByRole("button")).toHaveLength(112);
+    expect(screen.getByRole("button", { name: new RegExp(`^全部镜头\\s*${VIDEO_PROMPT_PRESETS.length}$`) })).toHaveAttribute("aria-pressed", "true");
+    expectPresetOptions(VIDEO_PROMPT_PRESETS);
   });
 
   it("offers a reset while results remain and restores a nonempty scene selection when toggled off", () => {

@@ -256,13 +256,13 @@ class NativeMediaPostgresIT {
     }
 
     @Test void copiedGoogleFilesMetadataCannotTurnAUserUploadIntoAnExtendableVeoResult() throws Exception {
-        Fixture initial = fixture("GOOGLE", "GOOGLE_VEO", mapper.createObjectNode().put("operation", "EXTEND"), mapper.createObjectNode(), 8);
+        Fixture initial = fixture("GOOGLE", "GOOGLE_VEO", mapper.createObjectNode().put("model", "veo-3.1-generate-preview").put("operation", "EXTEND"), mapper.createObjectNode(), 8);
         var asset = assets.archiveVideo(owner, initial.project(), new java.io.ByteArrayInputStream(video()));
         // Ordinary artifact writes accept generated-shaped content but cannot author TASK provenance.
         var content = mapper.createObjectNode().put("assetId", asset.id().toString()).put("prompt", "Synthetic source")
                 .put("workflowVersion", "GOOGLE_VEO").put("sourceTaskId", UUID.randomUUID().toString());
         content.putObject("parameters").putObject("nativeProviderResult").put("adapterId", "GOOGLE_VEO")
-                .put("model", GoogleVideoModels.VEO_MODELS.getFirst()).put("connectionId", initial.connection().toString())
+                .put("model", "veo-3.1-generate-preview").put("connectionId", initial.connection().toString())
                 .put("connectionVersion", 1).put("fileName", "files/synthetic-forged");
         var source = artifacts.create(owner, initial.project(), Artifact.Kind.VIDEO, "Synthetic forged source", content);
         var parameters = mapper.createObjectNode(); parameters.putObject("dynamicValues").put("base_video", source.resourceDefaultVersion().id().toString());

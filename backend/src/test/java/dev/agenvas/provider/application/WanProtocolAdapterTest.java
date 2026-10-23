@@ -43,7 +43,8 @@ import tools.jackson.databind.node.ObjectNode;
 class WanProtocolAdapterTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final WanModels models = new WanModels();
-    private final NativeMediaProtocol.Profile profile = models.profiles().getFirst();
+    private final NativeMediaProtocol.Profile profile = new NativeMediaProtocol.Profile(
+            WanModels.IMAGE_ADAPTER_ID, "wan2.7-image", "GENERATE", Task.Kind.IMAGE_GENERATION);
     private final JooqMediaCapabilityRepository catalog = mock(JooqMediaCapabilityRepository.class);
     private final CredentialCipher cipher = mock(CredentialCipher.class);
     private final WanClient client = spy(new WanClient(mapper, URI.create("http://127.0.0.1:65534")));

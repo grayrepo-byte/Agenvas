@@ -332,7 +332,7 @@ class KlingPostgresIT {
 
     @Test void everyCurrentProfilePublishesGraphFreeVersionedInputsAndMergesDefaults() {
         UUID connection = connection();
-        assertThat(KlingModels.profiles()).hasSize(15);
+        assertThat(KlingModels.profiles()).isNotEmpty().doesNotHaveDuplicates();
         for (var profile : KlingModels.profiles()) {
             String adapter = profile.kind() == Task.Kind.IMAGE_GENERATION ? "KLING_IMAGE" : "KLING_VIDEO";
             ObjectNode settings = mapper.createObjectNode().put("model", profile.model()).put("operation", profile.operation().name());

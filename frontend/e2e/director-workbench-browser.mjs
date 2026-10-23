@@ -179,7 +179,10 @@ try {
   const readCameraDraft = () => page(() => Object.fromEntries([...document.querySelectorAll('.director-inspector input[type="number"]')]
     .map((input) => [input.getAttribute("aria-label"), Number(input.value)])));
   const observationDraft = await readCameraDraft();
-  assert.equal(Object.keys(observationDraft).length, 7, "Observation check includes the camera position target");
+  for (const field of ["水平角度 (°)", "俯仰角度 (°)", "距离 (m)", "焦距 (mm)", "目标 X", "目标 Y", "目标 Z"]) {
+    assert.ok(Object.hasOwn(observationDraft, field) && Number.isFinite(observationDraft[field]),
+      `Observation check includes the camera field: ${field}`);
+  }
   await orbitViewport();
   assert.deepEqual(await readCameraDraft(), observationDraft, "Orbiting the director observation view does not alter the scene camera");
   await clickNamed('[role="radio"]', "摄影机视图");

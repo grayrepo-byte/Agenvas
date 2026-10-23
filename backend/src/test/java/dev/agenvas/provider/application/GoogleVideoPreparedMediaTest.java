@@ -24,6 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 class GoogleVideoPreparedMediaTest {
+    private static final String VEO_MODEL = "veo-3.1-generate-preview";
     private final ObjectMapper mapper = new ObjectMapper();
     private final NativeMediaReferences references = mock(NativeMediaReferences.class);
     private final GoogleVideoPreparedMedia media = new GoogleVideoPreparedMedia(references);
@@ -43,7 +44,7 @@ class GoogleVideoPreparedMediaTest {
         verify(references).load(eq(context), eq(selected), any(), eq(false));
     }
     @Test void extensionUsesOnlyServerProvenanceMatchingFrozenConnectionAndVersion() {
-        var selected = selected(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "EXTEND");
+        var selected = selected(GoogleVideoModels.VEO, VEO_MODEL, "EXTEND");
         ObjectNode source = source();
         when(references.load(eq(context), eq(selected), any(), eq(true))).thenReturn(Map.of("base_video",
                 new NativeMediaReferences.Input(video(), source, new byte[]{1, 2, 3}, null)));
@@ -70,7 +71,7 @@ class GoogleVideoPreparedMediaTest {
     private ObjectNode source() {
         var content = mapper.createObjectNode();
         content.putObject("parameters").putObject("nativeProviderResult").put("adapterId", GoogleVideoModels.VEO)
-                .put("model", GoogleVideoModels.VEO_MODELS.getFirst()).put("connectionId", connection.toString()).put("connectionVersion", 7)
+                .put("model", VEO_MODEL).put("connectionId", connection.toString()).put("connectionVersion", 7)
                 .put("fileName", "files/synthetic-video");
         return content;
     }

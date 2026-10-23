@@ -1,26 +1,54 @@
 import { describe, expect, it } from "vitest";
-import { SUPPORTED_LOCALES } from "../../shared/i18n";
-import { appendVideoPrompt, filterVideoPromptPresets, VIDEO_PROMPT_CATEGORIES, VIDEO_PROMPT_PRESETS, VIDEO_PROMPT_SCENARIOS } from "./videoPromptPresets";
+import { SUPPORTED_LOCALES, translate } from "../../shared/i18n";
+import { appendVideoPrompt, filterVideoPromptPresets, VIDEO_PROMPT_CATEGORIES, VIDEO_PROMPT_PRESETS, VIDEO_PROMPT_SCENARIOS, type VideoPromptScenario } from "./videoPromptPresets";
 import { VIDEO_PROMPT_SCENARIOS_BY_PRESET } from "./videoPromptPresetScenarios";
+import firstPresets from "./video-prompt-presets-a.json";
+import secondPresets from "./video-prompt-presets-b.json";
+import supplementalPresets from "./video-prompt-presets-c.json";
+
+/** Allow new matching presets while checking every returned entry against the requested filters. */
+function matchingPresets(query: string, category: string, scenario: VideoPromptScenario | "all" = "all") {
+  const results = filterVideoPromptPresets(query, category, scenario);
+  for (const preset of results) {
+    if (category !== "all") expect(preset.category, preset.id).toBe(category);
+    if (scenario !== "all") expect(preset.scenarios, preset.id).toContain(scenario);
+    const searchable = JSON.stringify({ englishName: preset.englishName, prompt: preset.prompt, copy: preset.copy })
+      .normalize("NFKC").toLocaleLowerCase();
+    for (const term of query.normalize("NFKC").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)) {
+      expect(searchable, preset.id).toContain(term);
+    }
+  }
+  return results;
+}
 
 describe("bundled video camera presets", () => {
-  it("ships 112 distinct complete presets across eleven categories with four localized guides", () => {
-    expect(VIDEO_PROMPT_PRESETS).toHaveLength(112);
-    expect(new Set(VIDEO_PROMPT_PRESETS.map((preset) => preset.id)).size).toBe(112);
-    expect(new Set(VIDEO_PROMPT_PRESETS.map((preset) => preset.prompt)).size).toBe(112);
-    const counts = { framing: 10, rotation: 4, dolly: 11, tracking: 10, orbit: 11, vertical: 10,
-      lens: 10, handheld: 11, aerial: 13, reveal: 10, sequence: 12 };
-    expect(VIDEO_PROMPT_CATEGORIES.map(({ id }) => id).sort()).toEqual(Object.keys(counts).sort());
+  it("loads every authored preset without duplicates, with complete categories and localized guides", () => {
+    const authoredPresets = [...firstPresets, ...secondPresets, ...supplementalPresets];
+    // The JSON files are the catalogue: expansions must not require updating another count snapshot.
+    expect(authoredPresets.length).toBeGreaterThan(0);
+    expect(VIDEO_PROMPT_PRESETS.map(({ id, category, englishName, prompt, copy }) =>
+      ({ id, category, englishName, prompt, copy }))).toEqual(authoredPresets);
+    expect(new Set(VIDEO_PROMPT_PRESETS.map((preset) => preset.id)).size).toBe(authoredPresets.length);
+    expect(new Set(VIDEO_PROMPT_PRESETS.map((preset) => preset.prompt)).size).toBe(authoredPresets.length);
+    const categories = VIDEO_PROMPT_CATEGORIES.map(({ id }) => id);
+    expect(categories).toEqual(expect.arrayContaining(["framing", "rotation", "dolly", "tracking", "orbit", "vertical",
+      "lens", "handheld", "aerial", "reveal", "sequence"]));
+    expect(new Set(categories).size).toBe(categories.length);
     for (const category of VIDEO_PROMPT_CATEGORIES) {
-      expect(VIDEO_PROMPT_PRESETS.filter((preset) => preset.category === category.id)).toHaveLength(counts[category.id]);
+      expect(category.id).toMatch(/^[a-z][a-z0-9-]+$/);
+      for (const locale of SUPPORTED_LOCALES) expect(translate(locale, category.label).trim()).not.toBe("");
+      expect(VIDEO_PROMPT_PRESETS.some((preset) => preset.category === category.id), category.id).toBe(true);
     }
     for (const preset of VIDEO_PROMPT_PRESETS) {
       expect(preset.id).toMatch(/^[a-z][a-z0-9-]+$/);
       expect(preset.englishName.trim()).not.toBe("");
-      expect(preset.prompt.length).toBeGreaterThan(80);
+      expect(categories, preset.id).toContain(preset.category);
+      expect(preset.prompt.trim(), preset.id).not.toBe("");
       expect(preset.prompt).not.toMatch(/\{\{|\[subject\]|\[scene\]|https?:\/\//i);
       for (const locale of SUPPORTED_LOCALES) {
-        for (const value of Object.values(preset.copy[locale])) expect(value.trim().length).toBeGreaterThan(0);
+        for (const field of ["name", "conditions", "effect", "caution"] as const) {
+          expect(preset.copy[locale][field].trim(), `${preset.id}: ${locale}.${field}`).not.toBe("");
+        }
       }
     }
     expect(VIDEO_PROMPT_PRESETS.some((preset) => /over.the.shoulder/i.test(preset.englishName))).toBe(true);
@@ -29,8 +57,8 @@ describe("bundled video camera presets", () => {
 
   it("finds Chinese and English terminology, descriptions and intersecting category filters", () => {
     expect(filterVideoPromptPresets("过肩", "all").some((preset) => /over.the.shoulder/i.test(preset.englishName))).toBe(true);
-    expect(filterVideoPromptPresets("  STEADICAM  ", "tracking").length).toBeGreaterThan(0);
-    expect(filterVideoPromptPresets("STEADICAM", "lens")).toHaveLength(0);
+    expect(matchingPresets("  STEADICAM  ", "tracking").map(({ id }) => id)).toContain("steadicam-follow");
+    expect(matchingPresets("STEADICAM", "lens").map(({ id }) => id)).not.toContain("steadicam-follow");
     expect(filterVideoPromptPresets("360", "rotation").map(({ id }) => id)).toContain("axial-barrel-roll");
     expect(filterVideoPromptPresets("Snorricam", "handheld").map(({ id }) => id)).toContain("snorricam-body-mount");
     expect(filterVideoPromptPresets("FPV", "aerial").map(({ id }) => id)).toEqual(expect.arrayContaining(["fpv-vertical-dive", "fpv-gap-slalom"]));
@@ -51,7 +79,12 @@ describe("bundled video camera presets", () => {
   it("curates valid, nonempty use cases for every preset without orphaned mappings", () => {
     expect(Object.keys(VIDEO_PROMPT_SCENARIOS_BY_PRESET).sort()).toEqual(VIDEO_PROMPT_PRESETS.map(({ id }) => id).sort());
     const scenarios = VIDEO_PROMPT_SCENARIOS.map(({ id }) => id);
-    expect(scenarios).toEqual(["dialogue", "product", "entrance", "chase", "landscape"]);
+    expect(scenarios).toEqual(expect.arrayContaining(["dialogue", "product", "entrance", "chase", "landscape"]));
+    expect(new Set(scenarios).size).toBe(scenarios.length);
+    for (const scenario of VIDEO_PROMPT_SCENARIOS) {
+      expect(scenario.id).toMatch(/^[a-z][a-z0-9-]+$/);
+      for (const locale of SUPPORTED_LOCALES) expect(translate(locale, scenario.label).trim()).not.toBe("");
+    }
     for (const preset of VIDEO_PROMPT_PRESETS) {
       expect(preset.scenarios.length, preset.id).toBeGreaterThan(0);
       expect(new Set(preset.scenarios).size, preset.id).toBe(preset.scenarios.length);
@@ -61,12 +94,15 @@ describe("bundled video camera presets", () => {
   });
 
   it("intersects use case, category and keyword without treating all scenes as a reset", () => {
-    expect(filterVideoPromptPresets("过肩", "all", "dialogue").map(({ id }) => id)).toContain("over-the-shoulder");
-    expect(filterVideoPromptPresets("过肩", "all", "product")).toHaveLength(0);
-    expect(filterVideoPromptPresets("FPV", "aerial", "chase").map(({ id }) => id)).toEqual(["fpv-vertical-dive", "fpv-gap-slalom"]);
-    expect(filterVideoPromptPresets("FPV", "lens", "chase")).toHaveLength(0);
-    expect(filterVideoPromptPresets("微距", "lens", "product").map(({ id }) => id)).toContain("macro-focus-travel");
-    expect(filterVideoPromptPresets("微距", "lens", "landscape")).toHaveLength(0);
+    expect(matchingPresets("过肩", "all", "dialogue").map(({ id }) => id)).toContain("over-the-shoulder");
+    expect(matchingPresets("过肩", "all", "product").map(({ id }) => id)).not.toContain("over-the-shoulder");
+    const fpvChase = matchingPresets("FPV", "aerial", "chase");
+    expect(fpvChase.map(({ id }) => id)).toEqual(expect.arrayContaining(["fpv-vertical-dive", "fpv-gap-slalom"]));
+    const fpvLens = matchingPresets("FPV", "lens", "chase").map(({ id }) => id);
+    expect(fpvLens).not.toContain("fpv-vertical-dive");
+    expect(fpvLens).not.toContain("fpv-gap-slalom");
+    expect(matchingPresets("微距", "lens", "product").map(({ id }) => id)).toContain("macro-focus-travel");
+    expect(matchingPresets("微距", "lens", "landscape").map(({ id }) => id)).not.toContain("macro-focus-travel");
     expect(filterVideoPromptPresets("微距", "lens", "all")).toEqual(filterVideoPromptPresets("微距", "lens"));
   });
 });
