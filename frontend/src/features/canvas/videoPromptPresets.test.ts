@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { SUPPORTED_LOCALES, translate } from "../../shared/i18n";
 import { appendVideoPrompt, filterVideoPromptPresets, VIDEO_PROMPT_CATEGORIES, VIDEO_PROMPT_PRESETS, VIDEO_PROMPT_SCENARIOS, type VideoPromptScenario } from "./videoPromptPresets";
 import { VIDEO_PROMPT_SCENARIOS_BY_PRESET } from "./videoPromptPresetScenarios";
@@ -66,6 +66,29 @@ describe("bundled video camera presets", () => {
     const preset = VIDEO_PROMPT_PRESETS[0]!;
     expect(filterVideoPromptPresets(preset.copy.ja.name, "all")).toContain(preset);
     expect(filterVideoPromptPresets(preset.copy.ru.name, "all")).toContain(preset);
+  });
+
+  it.each(SUPPORTED_LOCALES)("searches every guide field in %s and ANDs normalized terms across languages", (locale) => {
+    const preset = VIDEO_PROMPT_PRESETS.find(({ id }) => id === "steadicam-follow")!;
+    for (const field of ["name", "conditions", "effect", "caution"] as const) {
+      expect(filterVideoPromptPresets(preset.copy[locale][field], "tracking"), field).toContain(preset);
+    }
+    expect(filterVideoPromptPresets(`\u3000ＳＴＥＡＤＩＣＡＭ\u3000ＦＯＬＬＯＷ\u3000${preset.copy[locale].name}`, "tracking")).toContain(preset);
+    expect(filterVideoPromptPresets(`ＳＴＥＡＤＩＣＡＭ ${preset.copy[locale].name} nonexistent-camera-presets-xyz`, "tracking")).toHaveLength(0);
+  });
+
+  it("skips search documents for empty queries and reuses them for repeated searches", async () => {
+    vi.resetModules();
+    const { filterVideoPromptPresets: filter } = await import("./videoPromptPresets");
+    const normalize = vi.spyOn(String.prototype, "normalize");
+    filter("\u3000 ", "all");
+    expect(normalize).toHaveBeenCalledTimes(1);
+    filter("FPV", "all");
+    normalize.mockClear();
+    const queries = ["ＦＰＶ", "过肩", "  STEADICAM FOLLOW  ", "微距"];
+    for (const query of queries) filter(query, "all");
+    // Only each new query is normalized; the bundled four-language documents are stable.
+    expect(normalize).toHaveBeenCalledTimes(queries.length);
   });
 
   it("preserves every existing character and mention marker when appending", () => {

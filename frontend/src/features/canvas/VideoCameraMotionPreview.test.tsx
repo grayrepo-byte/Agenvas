@@ -1,10 +1,10 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VideoCameraMotionPreview } from "./VideoCameraMotionPreview";
-import { drawVideoCameraPreview } from "./videoCameraPreviewRenderer";
+import { disposeVideoCameraPreview, drawVideoCameraPreview } from "./videoCameraPreviewRenderer";
 import { VIDEO_PROMPT_PRESETS } from "./videoPromptPresets";
 
-vi.mock("./videoCameraPreviewRenderer", () => ({ drawVideoCameraPreview: vi.fn() }));
+vi.mock("./videoCameraPreviewRenderer", () => ({ drawVideoCameraPreview: vi.fn(), disposeVideoCameraPreview: vi.fn() }));
 
 const preset = VIDEO_PROMPT_PRESETS.find((item) => item.id === "slow-dolly-in")!;
 let queue: Map<number, FrameRequestCallback>;
@@ -25,6 +25,7 @@ beforeEach(() => {
   queue = new Map(); sequence = 0; reduced = false;
   preferenceChanged = undefined; visibilityChanged = undefined;
   vi.mocked(drawVideoCameraPreview).mockClear();
+  vi.mocked(disposeVideoCameraPreview).mockClear();
   vi.stubGlobal("requestAnimationFrame", vi.fn((callback: FrameRequestCallback) => { const id = ++sequence; queue.set(id, callback); return id; }));
   vi.stubGlobal("cancelAnimationFrame", vi.fn((id: number) => queue.delete(id)));
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: reduced,
@@ -97,6 +98,7 @@ describe("VideoCameraMotionPreview", () => {
     expect(queue.size).toBe(1);
     view.unmount();
     expect(queue.size).toBe(0);
+    expect(disposeVideoCameraPreview).toHaveBeenCalledTimes(2);
   });
 
   it("keeps guidance available when canvas is unavailable and retries the local renderer", () => {

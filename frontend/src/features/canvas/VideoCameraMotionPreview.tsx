@@ -7,7 +7,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { sampleVideoCameraMotion, VIDEO_CAMERA_MOTIONS } from "./videoCameraMotion";
-import { drawVideoCameraPreview, type VideoCameraPreviewPalette } from "./videoCameraPreviewRenderer";
+import { disposeVideoCameraPreview, drawVideoCameraPreview, type VideoCameraPreviewPalette } from "./videoCameraPreviewRenderer";
 import type { VideoPromptPreset } from "./videoPromptPresets";
 import "./VideoCameraMotionPreview.css";
 
@@ -119,7 +119,10 @@ export function VideoCameraMotionPreview({ preset }: { preset: VideoPromptPreset
     // Refresh semantic colors after an application theme switch without reading styles every frame.
     const theme = new MutationObserver(() => { palette = previewPalette(root); draw(); });
     theme.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
-    return () => { resize.disconnect(); theme.disconnect(); drawRef.current = () => {}; };
+    return () => {
+      resize.disconnect(); theme.disconnect(); drawRef.current = () => {};
+      for (const context of contexts) disposeVideoCameraPreview(context);
+    };
   }, [profile, locale, durationSeconds, attempt]);
 
   useEffect(() => {

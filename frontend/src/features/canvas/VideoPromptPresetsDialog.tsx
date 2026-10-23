@@ -1,16 +1,15 @@
-import { ArrowRight, CaretRight, Check, FilmStrip, MagnifyingGlass } from "@/shared/ui/icons";
-import { cn } from "cn";
-import { useId, useRef, useState } from "react";
+import { ArrowRight, FilmStrip, MagnifyingGlass } from "@/shared/ui/icons";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { t, useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Alert, AlertDescription } from "../../shared/ui/primitives/alert";
 import { Badge } from "../../shared/ui/primitives/badge";
 import { Button } from "../../shared/ui/primitives/button";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "../../shared/ui/primitives/empty";
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { ToggleGroup, ToggleGroupItem } from "../../shared/ui/primitives/toggle-group";
-import { appendVideoPrompt, filterVideoPromptPresets, VIDEO_PROMPT_CATEGORIES, VIDEO_PROMPT_PRESETS, VIDEO_PROMPT_SCENARIOS, type VideoPromptScenario } from "./videoPromptPresets";
+import { appendVideoPrompt, filterVideoPromptPresets, VIDEO_PROMPT_CATEGORIES, VIDEO_PROMPT_PRESETS, VIDEO_PROMPT_SCENARIOS, type VideoPromptPreset, type VideoPromptScenario } from "./videoPromptPresets";
+import { VideoPromptPresetList } from "./VideoPromptPresetList";
 import { VideoCameraMotionPreview } from "./VideoCameraMotionPreview";
 import "./VideoPromptPresetsDialog.css";
 
@@ -27,18 +26,29 @@ export function VideoPromptPresetsDialog({ prompt, maxLength, onApply, onClose }
   const [category, setCategory] = useState("all");
   const [scenario, setScenario] = useState<VideoPromptScenario | "all">("all");
   const [applyRejected, setApplyRejected] = useState(false);
+  const [resultsResetCount, setResultsResetCount] = useState(0);
   const [selectedId, setSelectedId] = useState(VIDEO_PROMPT_PRESETS.find((preset) => /over.the.shoulder/i.test(preset.englishName))?.id ?? "");
   const detailsRef = useRef<HTMLElement>(null);
-  const resultsRef = useRef<HTMLDivElement>(null);
   // Category counts reflect the current scene/search, without the active category hiding alternatives.
-  const matchingPresets = filterVideoPromptPresets(query, "all", scenario);
-  const results = category === "all" ? matchingPresets : matchingPresets.filter((preset) => preset.category === category);
+  const matchingPresets = useMemo(() => filterVideoPromptPresets(query, "all", scenario), [query, scenario]);
+  const results = useMemo(() => category === "all" ? matchingPresets : matchingPresets.filter((preset) => preset.category === category), [matchingPresets, category]);
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const preset of matchingPresets) counts.set(preset.category, (counts.get(preset.category) ?? 0) + 1);
+    return counts;
+  }, [matchingPresets]);
+  const selectPreset = useCallback((preset: VideoPromptPreset) => {
+    setSelectedId(preset.id);
+    setApplyRejected(false);
+    if (window.matchMedia?.("(max-width: 700px)").matches) detailsRef.current?.scrollIntoView?.({ block: "start", behavior: "instant" });
+  }, []);
   const filtered = query.trim() !== "" || category !== "all" || scenario !== "all";
   const selected = results.find((preset) => preset.id === selectedId) ?? results[0];
   const copy = selected?.copy[locale];
   const nextLength = selected ? appendVideoPrompt(prompt, selected.prompt).length : 0;
   const tooLong = nextLength > maxLength;
-  function resetResults() { setApplyRejected(false); resultsRef.current?.scrollTo?.({ top: 0, left: 0 }); }
+  // Clicking an already active filter still returns to the start of its results.
+  function resetResults() { setApplyRejected(false); setResultsResetCount((count) => count + 1); }
   function clearFilters() { setQuery(""); setCategory("all"); setScenario("all"); resetResults(); }
 
   return <Dialog title={t("video.presets.title")} description={t("video.presets.description")} className="video-presets-dialog"
@@ -74,26 +84,15 @@ export function VideoPromptPresetsDialog({ prompt, maxLength, onApply, onClose }
         {VIDEO_PROMPT_CATEGORIES.map((item, index) => <Button key={item.id} type="button" variant={category === item.id ? "secondary" : "ghost"}
           aria-pressed={category === item.id} onClick={() => { setCategory(item.id); resetResults(); }}>
           <span className="video-presets-category-number" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span><span>{t(item.label)}</span>
-          <small>{matchingPresets.filter((preset) => preset.category === item.id).length}</small>
+          <small>{categoryCounts.get(item.id) ?? 0}</small>
         </Button>)}
       </nav>
       <div className="video-presets-catalog">
         <div className="video-presets-result-count"><p role="status">{t("video.presets.resultCount", { count: results.length })}</p>
           {filtered && results.length > 0 ? <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>{t("video.presets.reset")}</Button> : null}
         </div>
-        <div ref={resultsRef} className="video-presets-results" role="group" aria-label={t("video.presets.results")}>
-          {results.map((preset) => <Button key={preset.id} type="button" variant="ghost" className={cn("video-preset-option", selected?.id === preset.id && "is-selected")}
-            aria-label={preset.copy[locale].name} aria-pressed={selected?.id === preset.id} onClick={() => {
-              setSelectedId(preset.id);
-              setApplyRejected(false);
-              if (window.matchMedia?.("(max-width: 700px)").matches) detailsRef.current?.scrollIntoView?.({ block: "start", behavior: "instant" });
-            }}>
-            <span className="video-preset-option-copy"><strong>{preset.copy[locale].name}</strong><small lang="en">{preset.englishName}</small><span>{preset.copy[locale].effect}</span></span>
-            {selected?.id === preset.id ? <Check aria-hidden="true" /> : <CaretRight aria-hidden="true" />}
-          </Button>)}
-          {!results.length ? <Empty><EmptyHeader><EmptyMedia variant="icon"><MagnifyingGlass /></EmptyMedia><EmptyTitle>{t("video.presets.empty")}</EmptyTitle><EmptyDescription>{t("video.presets.emptyHint")}</EmptyDescription></EmptyHeader>
-            <EmptyContent><Button type="button" variant="outline" onClick={clearFilters}>{t("video.presets.reset")}</Button></EmptyContent></Empty> : null}
-        </div>
+        <VideoPromptPresetList presets={results} selectedId={selected?.id} onSelect={selectPreset}
+          resetKey={JSON.stringify([query, category, scenario, resultsResetCount])} onReset={clearFilters} />
       </div>
       {selected && copy ? <section className="video-presets-detail" ref={detailsRef} aria-label={t("video.presets.details")} key={selected.id}>
         <div className="video-presets-detail-heading"><Badge variant="outline">{t(VIDEO_PROMPT_CATEGORIES.find((item) => item.id === selected.category)?.label ?? "video.presets.all")}</Badge>

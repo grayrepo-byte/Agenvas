@@ -17,11 +17,31 @@ function setup(prompt = "An existing scene.", maxLength = 20000, accepted = true
 
 function expectPresetOptions(presets: readonly VideoPromptPreset[]) {
   const list = screen.getByRole("group", { name: "运镜预设列表" });
-  expect(within(list).getAllByRole("button").map((button) => button.getAttribute("aria-label")))
-    .toEqual(presets.map((preset) => preset.copy.zh.name));
+  const names = within(list).getAllByRole("button").map((button) => button.getAttribute("aria-label"));
+  // Off-screen options are intentionally unmounted; the visible window retains catalog order.
+  expect(names.length).toBeLessThanOrEqual(20);
+  expect(names).toEqual(presets.slice(0, names.length).map((preset) => preset.copy.zh.name));
+  expect(screen.getByRole("status")).toHaveTextContent(String(presets.length));
 }
 
 describe("VideoPromptPresetsDialog", () => {
+  it("bounds mounted options when the full camera library is open", () => {
+    setup();
+    const list = screen.getByRole("group", { name: "运镜预设列表" });
+    expect(within(list).getAllByRole("button").length).toBeLessThanOrEqual(20);
+    expect(screen.getByRole("status")).toHaveTextContent(String(VIDEO_PROMPT_PRESETS.length));
+  });
+
+  it("resets the scroll window when the active category is clicked again", () => {
+    setup();
+    const list = screen.getByRole("group", { name: "运镜预设列表" });
+    fireEvent.scroll(list, { target: { scrollTop: 100000 } });
+    expect(within(list).getByRole("button", { name: VIDEO_PROMPT_PRESETS.at(-1)!.copy.zh.name })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^全部镜头/ }));
+    expect(screen.getByRole("group", { name: "运镜预设列表" }).scrollTop).toBe(0);
+    expectPresetOptions(VIDEO_PROMPT_PRESETS);
+  });
+
   it("shows the guide and full fixed prompt, then applies only the selected suffix", () => {
     const { onApply, onClose } = setup();
     const selected = VIDEO_PROMPT_PRESETS.find((preset) => /over.the.shoulder/i.test(preset.englishName))!;
@@ -133,6 +153,7 @@ describe("VideoPromptPresetsDialog", () => {
   it("updates the guide and appended instruction when another shot is selected", () => {
     const { onApply } = setup();
     const next = VIDEO_PROMPT_PRESETS.find((preset) => /steadicam/i.test(preset.englishName))!;
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "steadicam" } });
     fireEvent.click(screen.getByRole("button", { name: next.copy.zh.name }));
     expect(screen.getByRole("heading", { name: next.copy.zh.name })).toBeInTheDocument();
     expect(screen.getByText(next.copy.zh.conditions)).toBeInTheDocument();

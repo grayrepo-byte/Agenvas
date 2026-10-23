@@ -45,14 +45,26 @@ export type VideoPromptPreset = Readonly<{
 export const VIDEO_PROMPT_PRESETS: readonly VideoPromptPreset[] = [...firstPresets, ...secondPresets, ...supplementalPresets]
   .map((preset) => ({ ...preset, scenarios: VIDEO_PROMPT_SCENARIOS_BY_PRESET[preset.id] ?? [] }));
 
+const searchTextByPreset = new WeakMap<VideoPromptPreset, string>();
+
+/** Compile each immutable bundled guide only when searched, then reuse it across filters. */
+function presetSearchText(preset: VideoPromptPreset): string {
+  const cached = searchTextByPreset.get(preset);
+  if (cached !== undefined) return cached;
+  const searchable = [preset.englishName, preset.prompt,
+    ...Object.values(preset.copy).flatMap((copy) => [copy.name, copy.conditions, copy.effect, copy.caution])]
+    .join(" ").normalize("NFKC").toLocaleLowerCase();
+  searchTextByPreset.set(preset, searchable);
+  return searchable;
+}
+
 export function filterVideoPromptPresets(query: string, category: string, scenario: VideoPromptScenario | "all" = "all"): readonly VideoPromptPreset[] {
   const terms = query.normalize("NFKC").trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   return VIDEO_PROMPT_PRESETS.filter((preset) => {
     if (category !== "all" && preset.category !== category) return false;
     if (scenario !== "all" && !preset.scenarios.includes(scenario)) return false;
-    const searchable = [preset.englishName, preset.prompt,
-      ...Object.values(preset.copy).flatMap((copy) => [copy.name, copy.conditions, copy.effect, copy.caution])]
-      .join(" ").normalize("NFKC").toLocaleLowerCase();
+    if (terms.length === 0) return true;
+    const searchable = presetSearchText(preset);
     return terms.every((term) => searchable.includes(term));
   });
 }
