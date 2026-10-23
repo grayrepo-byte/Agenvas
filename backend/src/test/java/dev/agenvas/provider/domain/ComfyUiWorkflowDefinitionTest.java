@@ -130,6 +130,23 @@ class ComfyUiWorkflowDefinitionTest {
         assertThatThrownBy(() -> workflow.values(mapper, parameters, "prompt", null, List.of(), false)).isInstanceOf(ApiProblemException.class);
     }
 
+    @Test void scalarParametersKeepTheirOwn64FieldLimit() {
+        var raw = definition(false, false);
+        var inputs = raw.withObject("graph").withObject("14").withObject("inputs");
+        var parameters = raw.putArray("parameters");
+        for (int index = 1; index <= 64; index++) {
+            inputs.put("custom" + index, 20);
+            parameters.addObject().put("key", "custom" + index).put("label", "Parameter " + index)
+                    .put("type", "INTEGER").put("nodeId", "14").put("fieldName", "custom" + index);
+        }
+        assertThat(ComfyUiWorkflowDefinition.parse(mapper, raw, Task.Kind.IMAGE_GENERATION).parameters()).hasSize(64);
+        inputs.put("custom65", 20);
+        parameters.addObject().put("key", "custom65").put("label", "Overflow")
+                .put("type", "INTEGER").put("nodeId", "14").put("fieldName", "custom65");
+        assertThatThrownBy(() -> ComfyUiWorkflowDefinition.parse(mapper, raw, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(ApiProblemException.class);
+    }
+
     @Test void scalarDeclarationsRejectMappedTargetsDisconnectedInputsReservedKeysAndIncompatibleTypes() {
         for (String fieldName : List.of("conditioning", "missing", "seed")) {
             var raw = definition(false, false);

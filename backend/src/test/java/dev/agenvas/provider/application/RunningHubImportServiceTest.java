@@ -19,11 +19,49 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 class RunningHubImportServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final RunningHubImportService imports = new RunningHubImportService(null, null, null, mapper);
+    @ParameterizedTest
+    @EnumSource(RunningHubDefinition.TargetType.class)
+    void discoveryAcceptsMoreThan64FieldsThrough1024AndPreservesThemWhenPublished(RunningHubDefinition.TargetType type) {
+        for (int count : new int[]{65, 1024}) {
+            var source = scalarInputs(type, count);
+            var preview = imports.candidates(type, "123", Task.Kind.IMAGE_GENERATION, source);
+            assertThat(preview.definition().fields()).hasSize(count);
+            assertThat(preview.definition().fields().getLast().key()).isEqualTo("input" + count);
+            assertThat(preview.definition().importSource()).isEqualTo(source);
+            assertThat(RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()), Task.Kind.IMAGE_GENERATION))
+                    .isEqualTo(preview.definition());
+        }
+    }
+    @ParameterizedTest
+    @EnumSource(RunningHubDefinition.TargetType.class)
+    void discoveryRejects1025FieldsWithTheCurrentLimit(RunningHubDefinition.TargetType type) {
+        assertThatThrownBy(() -> imports.candidates(type, "123", Task.Kind.IMAGE_GENERATION, scalarInputs(type, 1025)))
+                .hasMessageContaining("1024");
+    }
+
+    private JsonNode scalarInputs(RunningHubDefinition.TargetType type, int count) {
+        if (type == RunningHubDefinition.TargetType.WORKFLOW) {
+            var graph = mapper.createObjectNode();
+            for (int index = 1; index <= count; index++)
+                graph.putObject(Integer.toString(index)).put("class_type", "SyntheticSampler")
+                        .putObject("inputs").put("steps", 20);
+            return graph;
+        }
+        var inputs = mapper.createArrayNode();
+        for (int index = 1; index <= count; index++)
+            inputs.addObject().put("nodeId", Integer.toString(index)).put("fieldName", "steps")
+                    .put("fieldType", "INTEGER").put("fieldValue", 20);
+        return inputs;
+    }
+
     @Test void automaticPublicAppDiscoveryProducesAValidVideoContractWithoutSendingCredentialsOrGenerating() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         var calls = new AtomicInteger();
@@ -37,6 +75,9 @@ class RunningHubImportServiceTest {
                 var object = (tools.jackson.databind.node.ObjectNode) node;
                 object.put("description", object.path("nodeName").asText());
                 object.put("nodeName", "LoadImage");
+                var choices = object.putArray("fieldData");
+                choices.addArray().add("synthetic.png").add("None").add("synthetic.png");
+                choices.addObject().put("image_upload", true);
             }
             payload.putObject("data").put("id", "2084320751339032577").put("name", "  Synthetic video app  ").set("inputNodes", nodes);
             server.createContext("/api/webapp/detail", exchange -> {
@@ -65,6 +106,8 @@ class RunningHubImportServiceTest {
             assertThat(preview.definition().fields().stream().filter(field -> field.type() == RunningHubDefinition.FieldType.IMAGE))
                     .extracting(RunningHubDefinition.Field::label)
                     .containsExactly("参考图1", "参考图2", "参考图3", "参考图4", "参考图5", "参考图6");
+            assertThat(preview.definition().fields().stream().filter(RunningHubDefinition.Field::media))
+                    .allSatisfy(field -> assertThat(field.options()).isEmpty());
             assertThat(preview.definition().fields()).anyMatch(field -> field.fieldName().equals("aspect_ratio") && field.options().size() == 8);
             assertThat(preview.definition().outputs().getFirst().kind()).isEqualTo(RunningHubDefinition.OutputKind.VIDEO);
             preview.definition().validate(Task.Kind.VIDEO_GENERATION);
@@ -240,6 +283,48 @@ class RunningHubImportServiceTest {
         assertThat(field.options()).hasSize(3);
         assertThat(field.options().getFirst().value().asText()).isEqualTo("4");
         assertThat(field.defaultValue().asText()).isEqualTo("5");
+    }
+    @Test void mediaUploadWidgetsDoNotCreateDropdownOptions() {
+        var source = mapper.readTree("""
+            [{"nodeId":"1","fieldName":"image","fieldType":"IMAGE","fieldValue":"sample.png",
+              "fieldData":"[[\\"sample.png\\",\\"None\\",\\"sample.png\\"],{\\"image_upload\\":true}]"},
+             {"nodeId":"2","fieldName":"audio","fieldType":"AUDIO","fieldValue":"None",
+              "fieldData":["COMBO",{"options":["None","None"],"audio_upload":true}]},
+             {"nodeId":"3","fieldName":"video","fieldType":"VIDEO","fieldValue":"sample.mp4",
+              "fieldData":[["sample.mp4","sample.mp4"],{}]},
+             {"nodeId":"4","nodeName":"LoadImage","fieldName":"file","fieldType":"STRING","fieldValue":"sample.png",
+              "fieldData":[["sample.png","sample.png"],{"image_upload":true}]}]
+            """);
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION, source);
+        assertThat(preview.definition().fields()).extracting(RunningHubDefinition.Field::type)
+                .containsExactly(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.AUDIO,
+                        RunningHubDefinition.FieldType.VIDEO, RunningHubDefinition.FieldType.IMAGE);
+        assertThat(preview.definition().fields()).allSatisfy(field -> {
+            assertThat(field.options()).isEmpty();
+            assertThat(field.defaultValue()).isNull();
+        });
+        assertThat(preview.definition().importSource()).isEqualTo(source);
+        assertThat(preview.recommendedFieldKeys()).containsExactly("input1", "input2", "input3", "input4");
+        var published = RunningHubDefinition.parse(mapper, mapper.valueToTree(preview.definition()), Task.Kind.VIDEO_GENERATION);
+        var publishedJson = mapper.valueToTree(published);
+        assertThat(publishedJson).isEqualTo(mapper.valueToTree(preview.definition()));
+    }
+    @Test void ordinaryScalarWidgetMetadataDoesNotCreateDropdownOptions() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
+                mapper.readTree("""
+                    [{"nodeId":"1","fieldName":"steps","fieldType":"INTEGER","fieldValue":"20","fieldData":[20,20]},
+                     {"nodeId":"2","fieldName":"enabled","fieldType":"BOOLEAN","fieldValue":"true","fieldData":[true,true]},
+                     {"nodeId":"3","fieldName":"scale","fieldType":"NUMBER","fieldValue":"1.0","fieldData":[1,1.0]}]
+                    """));
+        assertThat(preview.definition().fields()).allSatisfy(field -> assertThat(field.options()).isEmpty());
+        assertThat(preview.definition().fields().getFirst().defaultValue().asInt()).isEqualTo(20);
+    }
+    @Test void realDropdownOptionsStillRejectDuplicateValues() {
+        assertThatThrownBy(() -> imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
+                mapper.readTree("""
+                    [{"nodeId":"1","fieldName":"mode","fieldType":"LIST","fieldValue":"fast",
+                      "fieldData":["COMBO",{"options":["fast","fast"]}]}]
+                    """))).hasMessageContaining("下拉选项值重复");
     }
     @Test void minimaxAppTypedComboPreservesAspectRatioValuesWithoutInterpretingWidgetSettings() throws Exception {
         try (var input = getClass().getResourceAsStream("/runninghub/minimax-h3-app-inputs.json")) {

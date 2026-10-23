@@ -18,7 +18,7 @@ import { RunningHubForm } from "../canvas/RunningHubForm";
 import { importedRunningHubSelection, restoreRunningHubCandidates } from "./runningHubImport";
 import { selectRunningHubNodes } from "./runningHubSelection";
 
-const MAX_FIELDS = 64;
+const MAX_FIELDS = 1024;
 const MAX_OUTPUTS = 16;
 const MAX_IMPORT_SOURCE_CHARACTERS = 1024 * 1024;
 const NODE_LABEL_SEPARATOR = " · ";

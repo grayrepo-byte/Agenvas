@@ -208,6 +208,52 @@ describe("RunningHubDefinitionEditor saved import JSON", () => {
   });
 });
 
+describe("RunningHubDefinitionEditor field capacity", () => {
+  function importedFields(count: number): RunningHubDefinition["fields"] {
+    return Array.from({ length: count }, (_, index) => ({
+      key: `imported${index}`, label: `导入字段 ${index}`, type: "STRING", nodeId: "3", fieldName: `input${index}`,
+      required: false, advanced: false,
+    }));
+  }
+
+  function preview(definition: RunningHubDefinition) {
+    server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({
+        definition, warnings: [], recommendedFieldKeys: [],
+      })));
+  }
+
+  it("accepts automatic discovery when merged candidates reach 1024 fields", async () => {
+    const onChange = vi.fn();
+    preview({ ...initialDefinition, fields: importedFields(1022), fixedBindings: [] });
+    render(<QueryClientProvider client={new QueryClient()}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
+      value={initialDefinition} onChange={onChange} /></QueryClientProvider>);
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    await waitFor(() => expect(onChange).toHaveBeenCalledOnce());
+    const next = onChange.mock.calls[0]?.[0] as RunningHubDefinition;
+    expect(next.fields).toHaveLength(1024);
+    expect(next.fields.slice(0, 2)).toEqual(initialDefinition.fields);
+    expect(next.fixedBindings).toEqual(initialDefinition.fixedBindings);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("preserves mappings and JSON drafts when re-parsing would merge 1025 fields", async () => {
+    const stored = { ...initialDefinition, importSource: { saved: true } };
+    const onChange = vi.fn();
+    preview({ ...initialDefinition, fields: importedFields(1023), fixedBindings: [] });
+    render(<QueryClientProvider client={new QueryClient()}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE"
+      value={stored} onChange={onChange} /></QueryClientProvider>);
+    fireEvent.click(screen.getByText("导入 / 已保存的 JSON"));
+    const source = screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" });
+    fireEvent.change(source, { target: { value: '{"draft":true}' } });
+    await clickControl(screen.getByRole("button", { name: "导入 JSON 字段" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("合并后开放字段超过 1024 个，原配置已保留。");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("row", { name: "模式" })).toBeInTheDocument();
+    expect(source).toHaveValue('{"draft":true}');
+  });
+});
+
 const scalarInputs = [
   { label: "默认值", error: "默认值需要有效数字或 JSON 标量。", getValue: (definition: RunningHubDefinition) => definition.fields[1]?.defaultValue },
   { label: "条件值（JSON 标量）", error: "显示条件需要有效的 JSON 标量。", getValue: (definition: RunningHubDefinition) => definition.fields[1]?.enabledWhen?.value },

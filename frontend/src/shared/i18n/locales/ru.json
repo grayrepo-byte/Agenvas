@@ -1722,7 +1722,7 @@
   "settings.runningHub.importing": "Импорт…",
   "settings.runningHub.importJson": "Импортированный / сохранённый JSON",
   "settings.runningHub.savedSourceHint": "После публикации или сохранения JSON сохраняется с версией возможности и восстанавливается при редактировании. Повторный разбор той же цели сохраняет настроенные поля, фиксированные параметры и выходы, добавляя недостающие варианты. Изменение JSON не меняет облачный процесс RunningHub.",
-  "settings.runningHub.restoreTooManyFields": "После объединения доступных полей больше 64. Настройки сохранены. Удалите ненужные поля перед повторным разбором.",
+  "settings.runningHub.restoreTooManyFields": "После объединения доступных полей больше 1024. Настройки сохранены. Удалите ненужные поля перед повторным разбором.",
   "settings.runningHub.importPlaceholder": "nodeInfoList или ComfyUI API-формат JSON",
   "settings.runningHub.inputSource": "источник входного сигнала",
   "settings.runningHub.instance": "Пример",

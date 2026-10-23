@@ -458,7 +458,8 @@ class RunningHubPostgresIT {
                 {"targetType":"AI_APP","targetId":"123","kind":"IMAGE_GENERATION","source":{"nodeInfoList":[
                   {"nodeId":"516","fieldName":"sampling_mode.top_p","fieldType":"NUMBER","fieldValue":0.9},
                   {"nodeId":"1","nodeName":"Text","fieldName":"text","fieldType":"STRING","fieldValue":"synthetic scene"},
-                  {"nodeId":"2","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE"}]}}
+                  {"nodeId":"2","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE",
+                   "fieldData":[["synthetic.png","None","synthetic.png"],{"image_upload":true}]}]}}
                 """;
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body)
                     .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
@@ -474,14 +475,28 @@ class RunningHubPostgresIT {
             assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(0).asText()).isEqualTo("input2");
             assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(1).asText()).isEqualTo("input3");
             assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(3);
+            assertThat(mapper.readTree(response).path("definition").path("fields").get(2).path("options")).isEmpty();
             assertThat(mapper.readTree(response).path("definition").path("fields").get(0).path("fieldName").asText())
                     .isEqualTo("sampling_mode.top_p");
             var discoveryCalls = new AtomicInteger();
             var graph = mapper.readTree("{\"1\":{\"class_type\":\"Text\",\"inputs\":{\"text\":\"synthetic scene\"}}}");
+            var appInputs = mapper.createArrayNode();
+            appInputs.addObject().put("nodeId", "1").put("fieldName", "text").put("fieldType", "STRING").put("fieldValue", "scene");
+            // Exercise the full automatic HTTP discovery path at the published field limit.
+            for (int index = 2; index <= 1024; index++) {
+                ((ObjectNode) graph).putObject(Integer.toString(index)).put("class_type", "SyntheticSampler")
+                        .putObject("inputs").put("steps", 20);
+                appInputs.addObject().put("nodeId", Integer.toString(index)).put("fieldName", "steps")
+                        .put("fieldType", "INTEGER").put("fieldValue", 20);
+            }
+            var appResponse = mapper.createObjectNode().put("code", 0);
+            appResponse.putObject("data").put("id", "123").put("name", " Synthetic app ")
+                    .put("curl", "fake-runninghub-key").putObject("owner").put("name", "Private owner");
+            ((ObjectNode) appResponse.path("data")).set("inputNodes", appInputs);
             var workflowResponse = mapper.createObjectNode().put("code", 0);
             workflowResponse.putObject("data").put("prompt", graph.toString());
             for (var entry : java.util.Map.of(
-                    "/api/webapp/detail", "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic app \",\"inputNodes\":[{\"nodeId\":\"1\",\"fieldName\":\"text\",\"fieldType\":\"STRING\",\"fieldValue\":\"scene\"}],\"owner\":{\"name\":\"Private owner\"},\"curl\":\"fake-runninghub-key\"}}",
+                    "/api/webapp/detail", appResponse.toString(),
                     "/api/openapi/getJsonApiFormat", workflowResponse.toString(),
                     "/api/portal/workflow/detail", "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic workflow \",\"owner\":{\"name\":\"Private owner\"}}}").entrySet()) {
                 provider.server.createContext(entry.getKey(), exchange -> {
@@ -505,7 +520,7 @@ class RunningHubPostgresIT {
                         .andReturn().getResponse().getContentAsString();
                 var preview = mapper.readTree(automatic);
                 assertThat(preview.path("targetName").asText()).isEqualTo(targetType.equals("AI_APP") ? "Synthetic app" : "Synthetic workflow");
-                assertThat(preview.path("definition").path("fields")).hasSize(1);
+                assertThat(preview.path("definition").path("fields")).hasSize(1024);
                 assertThat(preview.path("definition").path("importSource").toString()).doesNotContain("Synthetic app", "Synthetic workflow");
                 assertThat(automatic).doesNotContain("Private owner", "fake-runninghub-key", "curl");
             }
