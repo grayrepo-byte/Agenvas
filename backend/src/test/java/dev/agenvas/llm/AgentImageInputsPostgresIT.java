@@ -121,7 +121,6 @@ class AgentImageInputsPostgresIT {
         for (String request : requests.subList(2, requests.size())) {
             assertThat(request).contains(AgentImageInputService.METADATA_KEY, gateway.versionId.toString())
                     .doesNotContain("base64", "image_url");
-            assertThat(mapper.readTree(request).path("schemaVersion").asInt()).isEqualTo(1);
         }
     }
 

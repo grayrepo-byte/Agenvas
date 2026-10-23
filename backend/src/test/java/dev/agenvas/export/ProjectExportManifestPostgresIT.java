@@ -37,13 +37,17 @@ import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.storyboard.application.StoryboardService;
 import dev.agenvas.storyboard.domain.Storyboard;
 import dev.agenvas.testing.ImageAssetFixture;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Base64;
 import java.util.UUID;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.YamlMapFactoryBean;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -218,7 +222,7 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(10);
+        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(declaredManifestSchemaVersion());
         assertThat(manifest.path("characters").path("characters")).hasSize(1);
         assertThat(manifest.path("characters").path("characters").get(0).path("id").asText())
                 .isEqualTo(characterId.toString());
@@ -314,6 +318,21 @@ class ProjectExportManifestPostgresIT {
         ObjectNode changedSource = skillSource.deepCopy().put("bundleHash", "synthetic-other-bundle");
         assertThat(directMedia.preflightApproved(owner.userId(), project.id(), video.artifact().id(),
                 targetItemId, draftVersion, changedSource).frozenInputHash()).isNotEqualTo(changedStyle.frozenInputHash());
+    }
+
+    /** OpenAPI owns the public version; feature tests exercise the exported content below. */
+    private int declaredManifestSchemaVersion() {
+        for (Path directory = Path.of("").toAbsolutePath(); directory != null; directory = directory.getParent()) {
+            Path contract = directory.resolve("contracts/openapi.yaml");
+            if (!Files.isRegularFile(contract)) continue;
+            YamlMapFactoryBean yaml = new YamlMapFactoryBean();
+            yaml.setResources(new FileSystemResource(contract));
+            JsonNode specification = mapper.valueToTree(yaml.getObject());
+            JsonNode version = specification.at("/components/schemas/ProjectExportManifest/properties/schemaVersion/const");
+            assertThat(version.isIntegralNumber()).as("OpenAPI manifest schemaVersion const").isTrue();
+            return version.intValue();
+        }
+        throw new AssertionError("Cannot locate contracts/openapi.yaml");
     }
 
     private ObjectNode mediaContent(UUID assetId, String prompt) {

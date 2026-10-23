@@ -55,7 +55,9 @@ class AutoDlWorkflowDiscoveryTest {
         verifyNoMoreInteractions(client);
     }
     @Test void localMetadataFallbackDoesNotUseTheNetworkAndRejectsMismatchedIdentity() {
-        assertThat(discovery.preview("future_video_v1", metadata()).path("schemaVersion").asInt()).isEqualTo(1);
+        var parsed = AutoDlWorkflowDefinition.parse(discovery.preview("future_video_v1", metadata()));
+        assertThat(parsed.id()).isEqualTo("future_video_v1");
+        assertThat(parsed.label()).isEqualTo("Future video");
         assertThatThrownBy(() -> discovery.preview("different_id", metadata())).hasMessageContaining("工作流定义");
         verifyNoInteractions(client);
     }
@@ -88,7 +90,7 @@ class AutoDlWorkflowDiscoveryTest {
         var slots = definition.deepCopy().put("mode", "GENERAL_REFERENCE").put("minimumImages", 0);
         slots.putArray("imageFields").add("ref_image_1");
         assertThatThrownBy(() -> AutoDlWorkflowDefinition.parse(slots)).hasMessageContaining("工作流定义");
-        var copy = definition.deepCopy().put("schemaVersion", 2);
+        var copy = definition.deepCopy().put("schemaVersion", Integer.MAX_VALUE);
         JsonNode invalid = copy;
         assertThatThrownBy(() -> AutoDlWorkflowDefinition.parse(invalid)).hasMessageContaining("工作流定义");
     }

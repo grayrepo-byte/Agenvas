@@ -14,33 +14,44 @@ import org.springframework.core.io.ClassPathResource;
 import tools.jackson.databind.json.JsonMapper;
 
 class BuiltinSkillCatalogueTest {
-    private final BuiltinSkillCatalogue catalogue = new BuiltinSkillCatalogue(new JsonMapper(), new SkillFormat());
+    private final JsonMapper mapper = new JsonMapper();
+    private final BuiltinSkillCatalogue catalogue = new BuiltinSkillCatalogue(mapper, new SkillFormat());
 
-    @Test void packagesEightCanvasSkillsWithNativeCardTemplatesAndUsefulReferences() throws IOException {
+    @Test void packagesReviewedCanvasSkillsWithEveryManifestResourceAndNativeCardTemplates() throws IOException {
+        var manifest = mapper.readValue(read("manifest.json"), BuiltinSkillCatalogue.Manifest.class);
         assertThat(catalogue.entries()).extracting(entry -> entry.bundle().name()).containsExactlyInAnyOrder(
                 "short-drama-novel-analyze", "short-drama-develop", "short-drama-write", "short-drama-assets",
                 "short-drama-image-prompts", "short-drama-storyboard", "short-drama-video-prompts", "short-drama-review");
+        assertThat(catalogue.entries()).extracting(entry -> entry.bundle().name())
+                .containsExactlyInAnyOrderElementsOf(manifest.skills().stream().map(BuiltinSkillCatalogue.Definition::name).toList());
         for (String excluded : new String[] { "short-drama", "short-drama-produce", "short-drama-edit" }) {
             assertThat(new ClassPathResource("builtin-skills/drama-skills/skills/" + excluded + "/SKILL.md").exists()).isFalse();
         }
-        assertThat(catalogue.entries().stream().mapToInt(entry -> entry.bundle().resources().size()).sum()).isEqualTo(112);
         for (var entry : catalogue.entries()) {
             var bundle = entry.bundle();
+            var definition = manifest.skills().stream().filter(skill -> skill.name().equals(bundle.name())).findFirst().orElseThrow();
             assertThat(entry.key()).isEqualTo("drama-skills/agenvas-canvas-v1/" + bundle.name());
+            assertThat(entry.title()).isEqualTo(definition.title());
+            assertThat(bundle.description()).isEqualTo(definition.description());
             assertThat(bundle.skillMd()).isEqualTo(read("skills/" + bundle.name() + "/SKILL.md"))
+                    .isNotBlank().hasSizeLessThanOrEqualTo(BuiltinSkillCatalogue.MAX_MAIN_LENGTH)
                     .contains("references/agenvas-cards.md", "assets/card-templates.md");
             assertThat(bundle.assets()).isEmpty();
             assertThat(bundle.inputSlots()).isEmpty();
+            // The reviewed manifest defines the attachments; adding a valid reference must not require a new magic total.
+            assertThat(bundle.resources()).isNotEmpty().hasSizeLessThanOrEqualTo(BuiltinSkillCatalogue.MAX_RESOURCES);
+            assertThat(bundle.resources()).extracting(resource -> resource.path())
+                    .containsExactlyElementsOf(definition.resources()).doesNotHaveDuplicates();
             for (var resource : bundle.resources()) {
-                assertThat(resource.path()).doesNotContain("scripts/", "..", "\\");
+                assertThat(resource.path()).hasSizeLessThanOrEqualTo(SkillFormat.MAX_PATH_LENGTH)
+                        .doesNotContain("scripts/", "..", "\\");
                 String source = BuiltinSkillCatalogue.CARD_WORKFLOW_PATH.equals(resource.path()) ? resource.path()
                         : "skills/" + bundle.name() + "/" + resource.path();
-                assertThat(resource.content()).isEqualTo(read(source));
+                assertThat(resource.content()).isEqualTo(read(source))
+                        .isNotBlank().hasSizeLessThanOrEqualTo(BuiltinSkillCatalogue.MAX_RESOURCE_LENGTH);
                 assertThat(resource.contentHash()).isEqualTo(Sha256.hex(resource.content()));
             }
         }
-        assertThat(catalogue.entries().stream().flatMap(entry -> entry.bundle().resources().stream()))
-                .anySatisfy(resource -> assertThat(resource.content().length()).isGreaterThan(20000));
     }
 
     @Test void allModelVisibleContentUsesCanvasWorkflowsWithoutCommandsOrDanglingResourceLinks() {

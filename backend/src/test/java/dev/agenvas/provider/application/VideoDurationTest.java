@@ -80,10 +80,17 @@ class VideoDurationTest {
             "{\"schemaVersion\":7,\"durationSeconds\":1.25}",
             "{\"schemaVersion\":7,\"durationSeconds\":0}",
             "{\"schemaVersion\":7,\"durationSeconds\":31}",
-            "{\"schemaVersion\":7,\"durationMs\":5000}",
-            "{\"schemaVersion\":8,\"durationSeconds\":5}"})
-    void rejectsInvalidFrozenDurationsAndUnsupportedSchemas(String invalid) {
+            "{\"schemaVersion\":7,\"durationMs\":5000}"})
+    void rejectsInvalidFrozenDurations(String invalid) {
         assertThatThrownBy(() -> VideoDuration.fromFrozenTask(mapper.readTree(invalid)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void rejectsUnsupportedFutureSchemas() {
+        var input = mapper.createObjectNode().put("schemaVersion", Integer.MAX_VALUE)
+                .put("durationSeconds", 5);
+        assertThatThrownBy(() -> VideoDuration.fromFrozenTask(input))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

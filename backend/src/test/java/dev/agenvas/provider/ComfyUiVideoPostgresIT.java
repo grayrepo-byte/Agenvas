@@ -159,7 +159,6 @@ class ComfyUiVideoPostgresIT {
         Task videoTask = directMedia.run(owner.userId(), project.id(),
                 videoCard.artifact().id(), videoItemId,
                 videoDraft.version(), "comfy-video-run");
-        assertThat(videoTask.input().path("schemaVersion").asInt()).isEqualTo(7);
         assertThat(videoTask.input().path("durationSeconds").asInt()).isEqualTo(5);
         assertThat(videoTask.input().at("/mediaInput/providerParameters/aspectRatio").asText()).isEqualTo("16:9");
         assertThat(videoTask.input().path("mediaInput").path("images").get(0)

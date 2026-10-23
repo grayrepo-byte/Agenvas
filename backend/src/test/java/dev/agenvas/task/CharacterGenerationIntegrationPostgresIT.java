@@ -164,7 +164,6 @@ class CharacterGenerationIntegrationPostgresIT {
                         assertThat(problem.code()).isEqualTo("INPUT_SCOPE_DENIED"));
 
         JsonNode manifest = mapper.valueToTree(exports.build(owner.userId(), project.id()));
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(10);
         assertThat(manifest.at("/characters/characters/0/content/looks/0/clothing").asText()).isEqualTo("Red coat");
         assertThat(manifest.at("/characters/bindings/0/snapshots/0/look/clothing").asText()).isEqualTo("Blue coat");
         assertThat(manifest.at("/characters/bindings/0/contribution/promptBlock").asText()).contains("Blue coat");

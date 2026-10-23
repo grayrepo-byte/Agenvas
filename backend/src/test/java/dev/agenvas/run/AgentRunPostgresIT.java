@@ -20,6 +20,7 @@ import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.InitialModelContextService;
+import dev.agenvas.llm.application.RunToolPolicy;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
@@ -127,7 +128,8 @@ class AgentRunPostgresIT {
         assertThat(preflight.agentVersion()).isEqualTo(agent.version());
         assertThat(preflight.modelAvailable()).isFalse();
         assertThat(preflight.policySnapshot().path("maxModelTurns").isNull()).isTrue();
-        assertThat(preflight.policySnapshot().path("schemaVersion").asInt()).isEqualTo(7);
+        assertThat(RunToolPolicy.allowed(preflight.policySnapshot()))
+                .contains("read_canvas", "read_storyboard", "write_storyboard_shots");
         assertThat(preflight.policySnapshot().path("maxToolExecutions").isNull()).isTrue();
         assertThat(preflight.policySnapshot().path("systemPromptVersion").asInt())
                 .isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);

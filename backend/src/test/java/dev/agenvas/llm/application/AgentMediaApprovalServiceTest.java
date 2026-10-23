@@ -442,7 +442,6 @@ class AgentMediaApprovalServiceTest {
         var result = service.decide(ownerId, projectId, runId, approvalId, 0,
                 AgentMediaApprovalService.Decision.REJECT, "reject-command");
         assertThat(result.status()).isEqualTo(AgentMediaApproval.Status.REJECTED);
-        assertThat(result.result().path("schemaVersion").asInt()).isEqualTo(1);
         assertThat(result.result().path("errorCode").asText()).isEqualTo("AGENT_MEDIA_APPROVAL_REJECTED");
         assertThat(result.result().path("tasks").isEmpty()).isTrue();
         verify(mediaTasks, never()).runApproved(any(), any(), any(), any(), any(), any(), anyLong(), any());

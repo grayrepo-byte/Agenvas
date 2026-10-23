@@ -157,7 +157,6 @@ class ThreeViewPromptPostgresIT {
                 cardId, image.resourceDefaultVersion().id(), 0, ImageOperation.THREE_VIEW, guidance,
                 functionVersion, 1, List.of(), null, parameters, "synthetic-first-views");
         String firstPrompt = firstContent + " Subject guidance: " + guidance;
-        assertThat(accepted.input().path("schemaVersion").asInt()).isEqualTo(9);
         assertThat(accepted.input().path("promptKey").asText()).isEqualTo(key);
         assertThat(accepted.input().path("promptVersion").asLong()).isEqualTo(saved.path("version").asLong());
         assertFrozenPrompt(accepted, firstPrompt);

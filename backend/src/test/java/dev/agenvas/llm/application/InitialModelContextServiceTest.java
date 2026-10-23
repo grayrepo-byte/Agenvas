@@ -73,7 +73,7 @@ class InitialModelContextServiceTest {
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unsupported");
-        policy.put("systemPromptVersion", 99);
+        policy.put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION + 1);
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unsupported");
