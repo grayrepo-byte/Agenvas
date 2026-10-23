@@ -9,6 +9,7 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
+import dev.agenvas.db.tables.CanvasCharacterBinding.CanvasCharacterBindingPath;
 import dev.agenvas.db.tables.CanvasConnection.CanvasConnectionPath;
 import dev.agenvas.db.tables.CanvasItemMediaVersion.CanvasItemMediaVersionPath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
@@ -328,6 +329,19 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
             _fkCanvasConnectionTarget = new CanvasConnectionPath(this, null, Keys.CANVAS_CONNECTION__FK_CANVAS_CONNECTION_TARGET.getInverseKey());
 
         return _fkCanvasConnectionTarget;
+    }
+
+    private transient CanvasCharacterBindingPath _canvasCharacterBinding;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_character_binding</code> table
+     */
+    public CanvasCharacterBindingPath canvasCharacterBinding() {
+        if (_canvasCharacterBinding == null)
+            _canvasCharacterBinding = new CanvasCharacterBindingPath(this, null, Keys.CANVAS_CHARACTER_BINDING__FK_CHARACTER_BINDING_CANVAS.getInverseKey());
+
+        return _canvasCharacterBinding;
     }
 
     private transient MediaDraftPath _mediaDraft;

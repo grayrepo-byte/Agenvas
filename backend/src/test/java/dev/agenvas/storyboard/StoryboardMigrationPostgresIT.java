@@ -9,14 +9,14 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
-/** Verifies the additive V34-to-V35 upgrade retains project data and creates documented board tables. */
+/** Verifies the additive V35-to-V36 upgrade retains project data and creates documented board tables. */
 @Testcontainers
 class StoryboardMigrationPostgresIT {
     @Container static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17.11-alpine");
 
-    @Test void upgradesExistingV34ProjectWithoutCreatingOrChangingCreativeContent() throws Exception {
+    @Test void upgradesExistingV35ProjectWithoutCreatingOrChangingCreativeContent() throws Exception {
         Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration").target("34").load().migrate();
+                .locations("classpath:db/migration").target("35").load().migrate();
         UUID owner = UUID.randomUUID(); UUID project = UUID.randomUUID();
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())) {
             try (var insert = connection.prepareStatement("insert into app_user(id,login_name,password_hash,status,created_at) values (?, 'upgrade-admin','synthetic','ACTIVE',now())")) {
@@ -27,7 +27,7 @@ class StoryboardMigrationPostgresIT {
             }
         }
         var migration = Flyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
-                .locations("classpath:db/migration").target("35").load().migrate();
+                .locations("classpath:db/migration").target("36").load().migrate();
         assertThat(migration.migrationsExecuted).isEqualTo(1);
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
                 var query = connection.createStatement()) {

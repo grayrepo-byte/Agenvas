@@ -41,8 +41,8 @@ class DirectorShotMediaProposalMigrationPostgresIT {
 
     @BeforeEach
     void previousVersion() {
-        migration("37").clean();
-        migration("36").migrate();
+        migration("38").clean();
+        migration("37").migrate();
     }
 
     @Test
@@ -78,7 +78,7 @@ class DirectorShotMediaProposalMigrationPostgresIT {
                 history.put(table, snapshot(db, table, "true"));
         }
 
-        assertThat(migration("37").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(migration("38").migrate().migrationsExecuted).isEqualTo(1);
 
         try (Connection db = connection()) {
             String current = scalar(db, "select content from prompt_definition where key='agent.director'");
@@ -120,7 +120,7 @@ class DirectorShotMediaProposalMigrationPostgresIT {
                     """);
             globalBefore = scalar(db, "select to_jsonb(p)::text from prompt_definition p where key='agent.director'");
         }
-        migration("37").migrate();
+        migration("38").migrate();
         try (Connection db = connection()) {
             assertThat(scalar(db, "select to_jsonb(p)::text from prompt_definition p where key='agent.director'"))
                     .isEqualTo(globalBefore);
@@ -147,19 +147,19 @@ class DirectorShotMediaProposalMigrationPostgresIT {
             for (String table : List.of("prompt_definition", "agent_instance", "project", "project_event"))
                 before.put(table, snapshot(db, table, "true"));
         }
-        assertThatThrownBy(() -> migration("37").migrate()).hasStackTraceContaining("Synthetic event write failure");
+        assertThatThrownBy(() -> migration("38").migrate()).hasStackTraceContaining("Synthetic event write failure");
         try (Connection db = connection()) {
             for (var entry : before.entrySet()) assertThat(snapshot(db, entry.getKey(), "true"))
                     .as("transactionally retained %s", entry.getKey()).isEqualTo(entry.getValue());
             assertThat(scalar(db, "select version from flyway_schema_history order by installed_rank desc limit 1"))
-                    .isEqualTo("36");
+                    .isEqualTo("37");
         }
     }
 
     @Test
     void freshInstallHasTheWorkflowAndRepeatedStartupDoesNotRewriteIt() throws Exception {
-        migration("37").clean();
-        migration("37").migrate();
+        migration("38").clean();
+        migration("38").migrate();
         String before;
         try (Connection db = connection()) {
             before = snapshot(db, "prompt_definition", "true");
@@ -168,10 +168,10 @@ class DirectorShotMediaProposalMigrationPostgresIT {
             assertThat(scalar(db, "select count(*)::text from agent_instance")).isEqualTo("0");
             assertThat(scalar(db, "select count(*)::text from project_event")).isEqualTo("0");
         }
-        assertThat(migration("37").migrate().migrationsExecuted).isZero();
+        assertThat(migration("38").migrate().migrationsExecuted).isZero();
         try (Connection db = connection()) {
             // The guarded SQL itself is safe to replay, independently of Flyway's applied-version check.
-            execute(db, resource("db/migration/V37__director_shot_media_proposals.sql"));
+            execute(db, resource("db/migration/V38__director_shot_media_proposals.sql"));
             assertThat(snapshot(db, "prompt_definition", "true")).isEqualTo(before);
             assertThat(scalar(db, "select count(*)::text from project_event")).isEqualTo("0");
         }
@@ -185,12 +185,12 @@ class DirectorShotMediaProposalMigrationPostgresIT {
             project(db, project, owner, 11);
             director(db, project, agent, "Synthetic replay director", previousDirector(), 4);
         }
-        migration("37").migrate();
+        migration("38").migrate();
         Map<String, String> before = new LinkedHashMap<>();
         try (Connection db = connection()) {
             for (String table : List.of("prompt_definition", "agent_instance", "project", "project_event"))
                 before.put(table, snapshot(db, table, "true"));
-            execute(db, resource("db/migration/V37__director_shot_media_proposals.sql"));
+            execute(db, resource("db/migration/V38__director_shot_media_proposals.sql"));
             for (var entry : before.entrySet()) assertThat(snapshot(db, entry.getKey(), "true"))
                     .as("idempotently retained %s", entry.getKey()).isEqualTo(entry.getValue());
         }
@@ -198,7 +198,7 @@ class DirectorShotMediaProposalMigrationPostgresIT {
 
     @Test
     void aNewProjectDirectorCopiesTheMigratedDefaultThroughTheApplicationService() throws Exception {
-        migration("37").migrate();
+        migration("38").migrate();
         UUID owner = UUID.randomUUID();
         try (Connection db = connection()) {
             db.setAutoCommit(false);
@@ -314,7 +314,7 @@ class DirectorShotMediaProposalMigrationPostgresIT {
 
     private String previousDirector() throws Exception {
         var match = Pattern.compile("\\$workbench_director\\$(.*?)\\$workbench_director\\$", Pattern.DOTALL)
-                .matcher(resource("db/migration/V36__director_storyboard_workbench_tools.sql"));
+                .matcher(resource("db/migration/V37__director_storyboard_workbench_tools.sql"));
         assertThat(match.find()).isTrue();
         return match.group(1);
     }

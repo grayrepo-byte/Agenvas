@@ -62,13 +62,27 @@ class VideoDurationTest {
     }
 
     @ParameterizedTest
+    @ValueSource(ints = {1, 5, 30})
+    void readsPinnedWholeSecondsFromCharacterSnapshotSchema(int seconds) {
+        var input = mapper.createObjectNode().put("schemaVersion", 7)
+                .put("durationSeconds", seconds).put("durationMs", 999);
+        input.putObject("mediaInput").putArray("characterBindings")
+                .addObject().put("name", "Aster").put("characterVersion", 2);
+        assertThat(VideoDuration.fromFrozenTask(input)).isEqualTo(Duration.ofSeconds(seconds));
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {
             "{\"schemaVersion\":6,\"durationSeconds\":1.25}",
             "{\"schemaVersion\":6,\"durationSeconds\":0}",
             "{\"schemaVersion\":6,\"durationSeconds\":31}",
             "{\"schemaVersion\":6,\"durationMs\":5000}",
-            "{\"schemaVersion\":7,\"durationSeconds\":5}"})
-    void rejectsInvalidRelayDurationsAndUnsupportedSchemas(String invalid) {
+            "{\"schemaVersion\":7,\"durationSeconds\":1.25}",
+            "{\"schemaVersion\":7,\"durationSeconds\":0}",
+            "{\"schemaVersion\":7,\"durationSeconds\":31}",
+            "{\"schemaVersion\":7,\"durationMs\":5000}",
+            "{\"schemaVersion\":8,\"durationSeconds\":5}"})
+    void rejectsInvalidFrozenDurationsAndUnsupportedSchemas(String invalid) {
         assertThatThrownBy(() -> VideoDuration.fromFrozenTask(mapper.readTree(invalid)))
                 .isInstanceOf(IllegalArgumentException.class);
     }

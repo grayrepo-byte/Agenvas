@@ -52,6 +52,18 @@ describe("AgentMediaApprovalCard", () => {
     expect(screen.getByText("关联镜头：SHOT-03 · 修订 4")).toBeVisible();
     expect(screen.getByRole("button", { name: "批准并生成" })).toBeEnabled();
   });
+  it("shows only the frozen character version, look and selected uses", () => {
+    const pending = approval();
+    const output = pending.outputs[0];
+    if (!output) throw new Error("Synthetic approval output is required");
+    output.preview.characterBindings = [{ characterId: "character-1", characterVersion: 4, name: "Mira", description: "PRIVATE_CHARACTER_METADATA", look: { id: "look-1", name: "Travel coat", clothing: "Coat", expression: "Calm", description: "Stable", views: [] }, useAppearance: true, useVoice: true, voice: { versionId: null, speakerId: "PRIVATE_VOICE_METADATA", description: "Warm" } }];
+    mountCard(pending);
+    expect(screen.getByText("Mira · v4 · Travel coat")).toBeVisible();
+    expect(screen.getByText("应用外观与参考图 · 应用声音与音色")).toBeVisible();
+    expect(document.body).not.toHaveTextContent("PRIVATE_VOICE_METADATA");
+    expect(document.body).not.toHaveTextContent("PRIVATE_CHARACTER_METADATA");
+  });
+
   it("shows the frozen prompt, parameters, inputs and unknown cost without exposing provider configuration", () => {
     const pending = approval();
     const output = pending.outputs[0];

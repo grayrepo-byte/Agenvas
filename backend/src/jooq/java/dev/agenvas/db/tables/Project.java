@@ -16,6 +16,8 @@ import dev.agenvas.db.tables.AssetStorageRoute.AssetStorageRoutePath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.McpOperation.McpOperationPath;
 import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
+import dev.agenvas.db.tables.ProjectCharacter.ProjectCharacterPath;
+import dev.agenvas.db.tables.ProjectCharacterCommand.ProjectCharacterCommandPath;
 import dev.agenvas.db.tables.ProjectEvent.ProjectEventPath;
 import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
 import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
@@ -304,6 +306,19 @@ public class Project extends TableImpl<ProjectRecord> {
         return _canvasItem;
     }
 
+    private transient ProjectCharacterCommandPath _projectCharacterCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.project_character_command</code> table
+     */
+    public ProjectCharacterCommandPath projectCharacterCommand() {
+        if (_projectCharacterCommand == null)
+            _projectCharacterCommand = new ProjectCharacterCommandPath(this, null, Keys.PROJECT_CHARACTER_COMMAND__FK_CHARACTER_COMMAND_PROJECT.getInverseKey());
+
+        return _projectCharacterCommand;
+    }
+
     private transient McpOperationPath _mcpOperation;
 
     /**
@@ -315,6 +330,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _mcpOperation = new McpOperationPath(this, null, Keys.MCP_OPERATION__FK_MCP_OPERATION_PROJECT.getInverseKey());
 
         return _mcpOperation;
+    }
+
+    private transient ProjectCharacterPath _projectCharacter;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.project_character</code> table
+     */
+    public ProjectCharacterPath projectCharacter() {
+        if (_projectCharacter == null)
+            _projectCharacter = new ProjectCharacterPath(this, null, Keys.PROJECT_CHARACTER__FK_PROJECT_CHARACTER_PROJECT.getInverseKey());
+
+        return _projectCharacter;
     }
 
     private transient ProjectEventPath _projectEvent;

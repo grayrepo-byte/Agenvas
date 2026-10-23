@@ -16,6 +16,8 @@ const supportedTypes = [
   "agent.run.changed",
   "agent.media.approval.changed",
   "storyboard.changed",
+  "character.profile.changed",
+  "character.bindings.changed",
   ...ASSISTANT_STREAM_EVENT_TYPES,
   "llm.turn.requested",
   "llm.turn.recorded",

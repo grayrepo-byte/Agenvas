@@ -183,6 +183,8 @@ describe("ProjectWorkspacePage", () => {
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
     await screen.findByRole("group", { name: "添加卡片" });
+    expect(screen.getByRole("button", { name: "项目角色" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "分镜制作台" })).toBeEnabled();
     measureCreationCanvas();
     const add = screen.getByRole("button", { name: "添加卡片" });
     vi.spyOn(add, "getBoundingClientRect").mockReturnValue(new DOMRect(124, 300, 36, 36));

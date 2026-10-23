@@ -29,8 +29,8 @@ class DirectorStoryboardWorkbenchMigrationPostgresIT {
 
     @BeforeEach
     void previousVersion() {
-        migration("36").clean();
-        migration("35").migrate();
+        migration("37").clean();
+        migration("36").migrate();
     }
 
     @Test
@@ -70,7 +70,7 @@ class DirectorStoryboardWorkbenchMigrationPostgresIT {
                 history.put(table, snapshot(db, table, "true"));
         }
 
-        assertThat(migration("36").migrate().migrationsExecuted).isEqualTo(1);
+        assertThat(migration("37").migrate().migrationsExecuted).isEqualTo(1);
 
         try (Connection db = connection()) {
             String current = scalar(db, "select content from prompt_definition where key='agent.director'");
@@ -112,7 +112,7 @@ class DirectorStoryboardWorkbenchMigrationPostgresIT {
                     """);
             globalBefore = scalar(db, "select to_jsonb(p)::text from prompt_definition p where key='agent.director'");
         }
-        migration("36").migrate();
+        migration("37").migrate();
         try (Connection db = connection()) {
             assertThat(scalar(db, "select to_jsonb(p)::text from prompt_definition p where key='agent.director'"))
                     .isEqualTo(globalBefore);
@@ -139,19 +139,19 @@ class DirectorStoryboardWorkbenchMigrationPostgresIT {
             for (String table : List.of("prompt_definition", "agent_instance", "project", "project_event"))
                 before.put(table, snapshot(db, table, "true"));
         }
-        assertThatThrownBy(() -> migration("36").migrate()).hasStackTraceContaining("Synthetic event write failure");
+        assertThatThrownBy(() -> migration("37").migrate()).hasStackTraceContaining("Synthetic event write failure");
         try (Connection db = connection()) {
             for (var entry : before.entrySet()) assertThat(snapshot(db, entry.getKey(), "true"))
                     .as("transactionally retained %s", entry.getKey()).isEqualTo(entry.getValue());
             assertThat(scalar(db, "select version from flyway_schema_history order by installed_rank desc limit 1"))
-                    .isEqualTo("35");
+                    .isEqualTo("36");
         }
     }
 
     @Test
     void freshInstallHasTheWorkflowAndRepeatedStartupDoesNotRewriteIt() throws Exception {
-        migration("36").clean();
-        migration("36").migrate();
+        migration("37").clean();
+        migration("37").migrate();
         String before;
         try (Connection db = connection()) {
             before = snapshot(db, "prompt_definition", "true");
@@ -160,10 +160,10 @@ class DirectorStoryboardWorkbenchMigrationPostgresIT {
             assertThat(scalar(db, "select count(*)::text from agent_instance")).isEqualTo("0");
             assertThat(scalar(db, "select count(*)::text from project_event")).isEqualTo("0");
         }
-        assertThat(migration("36").migrate().migrationsExecuted).isZero();
+        assertThat(migration("37").migrate().migrationsExecuted).isZero();
         try (Connection db = connection()) {
             // The guarded SQL itself is safe to replay, independently of Flyway's applied-version check.
-            execute(db, resource("db/migration/V36__director_storyboard_workbench_tools.sql"));
+            execute(db, resource("db/migration/V37__director_storyboard_workbench_tools.sql"));
             assertThat(snapshot(db, "prompt_definition", "true")).isEqualTo(before);
             assertThat(scalar(db, "select count(*)::text from project_event")).isEqualTo("0");
         }
@@ -177,12 +177,12 @@ class DirectorStoryboardWorkbenchMigrationPostgresIT {
             project(db, project, owner, 11);
             director(db, project, agent, "Synthetic replay director", previousDirector(), 4);
         }
-        migration("36").migrate();
+        migration("37").migrate();
         Map<String, String> before = new LinkedHashMap<>();
         try (Connection db = connection()) {
             for (String table : List.of("prompt_definition", "agent_instance", "project", "project_event"))
                 before.put(table, snapshot(db, table, "true"));
-            execute(db, resource("db/migration/V36__director_storyboard_workbench_tools.sql"));
+            execute(db, resource("db/migration/V37__director_storyboard_workbench_tools.sql"));
             for (var entry : before.entrySet()) assertThat(snapshot(db, entry.getKey(), "true"))
                     .as("idempotently retained %s", entry.getKey()).isEqualTo(entry.getValue());
         }

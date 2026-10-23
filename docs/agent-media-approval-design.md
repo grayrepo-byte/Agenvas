@@ -57,7 +57,7 @@ outputs: 1–6 项
 
 ## HTTP 合约
 
-镜头媒体提案扩展见 [ADR 0057](adr/0057-shot-linked-media-approvals.md)：每项工具输出可成对提交 `shotId / expectedShotRevision`，服务端冻结 `storyboard: {shotId, shotCode, shotRevision, role}`，不修改分镜制作关联或选用。批准前重查关联镜头存在和创作修订，相关镜头已改稿则整批拒绝受理，仍允许拒绝或重复原决策。分镜查询按当前镜头身份或已绑定节点汇总原批次，未绑定节点也能展示提案；固定批次始终整体批准/拒绝。
+镜头媒体提案扩展见 [ADR 0058](adr/0058-shot-linked-media-approvals.md)：每项工具输出可成对提交 `shotId / expectedShotRevision`，服务端冻结 `storyboard: {shotId, shotCode, shotRevision, role}`，不修改分镜制作关联或选用。批准前重查关联镜头存在和创作修订，相关镜头已改稿则整批拒绝受理，仍允许拒绝或重复原决策。分镜查询按当前镜头身份或已绑定节点汇总原批次，未绑定节点也能展示提案；固定批次始终整体批准/拒绝。
 
 所有路径带 `/api/v1` 前缀，并复用已有登录、项目授权与 CSRF 边界。
 

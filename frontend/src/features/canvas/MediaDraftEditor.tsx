@@ -69,6 +69,7 @@ import { PromptMentionEditor, type PromptReference } from "./PromptMentionEditor
 import { promptForMediaInputs, removePromptReferences } from "./mediaPrompt";
 import { mediaStylesQueryOptions } from "../../shared/mediaStyles";
 import { MediaStylePicker } from "./MediaStylePicker";
+import { CharacterBindingsDialog } from "../characters/CharacterBindingsDialog";
 
 const MAX_PROMPT_LENGTH = 20000;
 const MAX_AUDIO_PROMPT_LENGTH = 3000;
@@ -209,6 +210,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [templateBusy, setTemplateBusy] = useState(false);
+  const [characterOpen, setCharacterOpen] = useState(false);
+  const [characterBusy, setCharacterBusy] = useState(false);
   const [popover, setPopover] = useState<Popover | null>(null);
   const [referenceSourcesOpen, setReferenceSourcesOpen] = useState(false);
   const [submissionTipOpen, setSubmissionTipOpen] = useState(false);
@@ -437,10 +440,10 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
 
   useMediaDraftSessionLifecycle(session, artifact.kind, {
     readOnly: editorReadOnly,
-    refreshBlocked: commitAssetReferences.isPending || libraryBusy || templateBusy || run.isPending,
+    refreshBlocked: commitAssetReferences.isPending || libraryBusy || templateBusy || characterOpen || run.isPending,
     autosaveBlocked: commitAssetReferences.isPending || removeConnectedInput.isPending
-      || libraryBusy || templateBusy || popover === "libraryReferences",
-    closeBlocked: libraryBusy || templateBusy,
+      || libraryBusy || templateBusy || characterOpen || popover === "libraryReferences",
+    closeBlocked: libraryBusy || templateBusy || characterBusy,
   });
 
   useEffect(() => {
@@ -1024,6 +1027,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     <fieldset className="media-draft-controls" disabled={editorReadOnly}>
     <div className="media-draft-header">
       <span className="media-draft-tab-active">Prompt</span>
+      <Button variant="ghost" className="media-draft-tab" type="button" disabled={characterBusy || templateBusy || libraryBusy || run.isPending}
+        onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setCharacterOpen(true); }}>{t("character.bindingsTitle")}</Button>
       {(artifact.kind === "IMAGE" || artifact.kind === "VIDEO") ? <Button variant="ghost" className="media-draft-tab" type="button"
         disabled={!promptEnabled || templateBusy || save.isPending || run.isPending || commitAssetReferences.isPending || removeConnectedInput.isPending || libraryBusy || Boolean(error)}
         onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setTemplateOpen(true); }}>{t("templates.entry")}</Button> : null}
@@ -1034,6 +1039,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         prompt={fields.prompt} hasMentions={fields.mentions.length > 0} onApply={(prompt) => edit({ prompt, mentions: [] })} /> : null}
       <span className={`media-draft-save-state${error ? " is-error" : ""}`} role="status">{saveLabel}</span>
     </div>
+    {characterOpen ? <CharacterBindingsDialog projectId={artifact.projectId} itemId={canvasItemId} session={session} readOnly={editorReadOnly}
+      onBusy={setCharacterBusy} onClose={() => setCharacterOpen(false)} /> : null}
     {templateOpen && (artifact.kind === "IMAGE" || artifact.kind === "VIDEO") ? <MediaTemplatePicker projectId={artifact.projectId}
       targetKind={artifact.kind} fields={fields} capability={chosenCapability}
       seedImages={selectedReferences.flatMap(({ input, choice }) => choice?.kind === "IMAGE" ? [{ versionId: input.versionId,

@@ -92,6 +92,9 @@ import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
 import { KIND_LABELS } from "../library/libraryLabels";
 import { useMediaNodeRatios } from "./useMediaNodeRatios";
 import { useCanvasLayoutSave } from "./useCanvasLayoutSave";
+import { CharacterManagerDialog } from "../characters/CharacterManagerDialog";
+import { characterBindingStale, characterQueryOptions } from "../characters/characterQueries";
+import { Badge } from "../../shared/ui/primitives/badge";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
@@ -162,6 +165,8 @@ type CanvasNodeData = {
   onToggleSelection: (itemId: string) => void;
   /** Connection gesture feedback: this card is under the pointer and will accept, or reject, the line. */
   connectionTarget: "valid" | "invalid" | null;
+  characterLabel: string | null;
+  characterNeedsReview: boolean;
 };
 
 type CanvasNode = Node<CanvasNodeData, "canvasCard">;
@@ -246,6 +251,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
   const [storyboardOpen, setStoryboardOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [charactersOpen, setCharactersOpen] = useState(false);
+  const characters = useQuery(characterQueryOptions(projectId));
+  const bindingsByItem = useMemo(() => new Map(characters.data?.bindings.map((binding) => [binding.canvasItemId, binding]) ?? []), [characters.data]);
   const [agentChatOpen, setAgentChatOpen] = useState(false);
   const [videoEditIds, setVideoEditIds] = useState<string[] | null>(null);
   const [agentRunRequest, setAgentRunRequest] = useState<AgentChatRunRequest | null>(null);
@@ -777,6 +785,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             data: {
               item,
               projectId,
+              characterLabel: bindingsByItem.get(item.id)?.snapshots.map((snapshot) => `${snapshot.name} v${snapshot.characterVersion}`).join(" · ") || null,
+              characterNeedsReview: Boolean(bindingsByItem.get(item.id)?.needsReview || (bindingsByItem.get(item.id) && characterBindingStale(bindingsByItem.get(item.id)!, characters.data?.characters ?? []))),
               onResizeEnd: handleResizeEnd,
               onRemove: handleRemove,
               onToggleLocked: handleToggleLocked,
@@ -798,6 +808,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         }),
     [
       canvas.data?.items,
+      bindingsByItem,
+      characters.data,
       drafts,
       draggingIds,
       nodeActionsVisible,
@@ -1053,6 +1065,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <SaveBadge state={saveState} />
         </div>
         <div className="workspace-header-actions">
+          <Button variant="ghost" size="sm" onClick={() => setCharactersOpen(true)} type="button">{t("character.title")}</Button>
           <Button variant="ghost" size="sm" onClick={() => {
             setToolsKind(null); setResourcesOpen(true);
           }} type="button"><FolderSimple data-icon="inline-start" />{t("canvas.workspace.resources")}</Button>
@@ -1355,6 +1368,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           error={ensureDirector.error ?? snapshot.error}
           onRetry={() => { if (snapshot.isError) void snapshot.refetch(); else ensureDirector.mutate(); }} />
       </section>
+      {charactersOpen ? <CharacterManagerDialog projectId={projectId} onClose={() => setCharactersOpen(false)} /> : null}
       {videoEditIds ? <VideoEditDialog projectId={projectId} items={canvas.data?.items ?? []} initialIds={videoEditIds} onClose={() => setVideoEditIds(null)} /> : null}
       <div className="workspace-narrow-warning">{t("canvas.workspace.viewportHint")}</div>
     </main>
@@ -1391,6 +1405,7 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
           onDuplicate={() => data.onDuplicate(data.item)} onMakeMV={() => data.onMakeMV(data.item)}
           onComposeVideo={() => data.onComposeVideo(data.item)} onEditVideo={() => data.onEditVideo(data.item)} compositionDisabledReason={data.compositionDisabledReason} />
         : <ContentCanvasCard {...cardProps} />}
+      {data.characterLabel ? <div className="pointer-events-none absolute bottom-1 left-1 flex max-w-full flex-wrap gap-1"><Badge variant="secondary" className="max-w-full truncate">{data.characterLabel}</Badge>{data.characterNeedsReview ? <Badge variant="outline">{t("character.needsReview")}</Badge> : null}</div> : null}
     </>
   );
 });

@@ -114,10 +114,15 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
       const parameters = Object.entries(record(preview.parameters))
         .filter(([key]) => !/credential|apiKey|endpoint|authorization|secret/i.test(key));
       const inputs = Array.isArray(preview.mediaInputs) ? preview.mediaInputs.map(record) : [];
+      const characterSnapshots = output.preview.characterBindings ?? [];
       return <details key={output.canvasItemId} className="agent-media-approval__output" open={reviewing && approval.outputs.length === 1}>
         <summary><span>{index + 1}. {output.title}</span><small>{KIND_LABELS[output.kind]?.()}</small></summary>
         {storyboard ? <p>{t("storyboard.candidate.frozenShot", { "0": storyboard.shotCode, "1": storyboard.shotRevision })}</p> : null}
         <CreativeSkillSource source={preview.creativeSkill} />
+        {characterSnapshots.length ? <div className="agent-media-approval__inputs"><strong>{t("character.appliedVersions")}</strong><ul>{characterSnapshots.map((snapshot, snapshotIndex) => <li key={`${text(snapshot.characterId)}-${snapshotIndex}`}>
+          <span>{text(snapshot.name)} · v{typeof snapshot.characterVersion === "number" ? snapshot.characterVersion : "?"}{text(record(snapshot.look).name) ? ` · ${text(record(snapshot.look).name)}` : ""}</span>
+          <span>{snapshot.useAppearance === true ? t("character.useAppearance") : null}{snapshot.useAppearance === true && snapshot.useVoice === true ? " · " : null}{snapshot.useVoice === true ? t("character.useVoice") : null}</span>
+        </li>)}</ul></div> : null}
         <p className="agent-media-approval__prompt">{text(preview.prompt) || t("agent.approval.promptEmpty")}</p>
         <dl className="agent-media-approval__fields">
           <div><dt>{t("agent.approval.capability")}</dt><dd><span>{text(preview.adapterId)}</span>

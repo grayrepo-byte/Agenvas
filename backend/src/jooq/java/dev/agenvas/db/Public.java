@@ -19,6 +19,8 @@ import dev.agenvas.db.tables.AuditDebugSettings;
 import dev.agenvas.db.tables.AuditLogRetentionSettings;
 import dev.agenvas.db.tables.CallLog;
 import dev.agenvas.db.tables.CallLogDebug;
+import dev.agenvas.db.tables.CanvasCharacterBinding;
+import dev.agenvas.db.tables.CanvasCharacterBindingMember;
 import dev.agenvas.db.tables.CanvasConnection;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
@@ -57,6 +59,9 @@ import dev.agenvas.db.tables.MediaTemplateImportCommand;
 import dev.agenvas.db.tables.MediaTemplateImportImage;
 import dev.agenvas.db.tables.MediaTemplateImportSource;
 import dev.agenvas.db.tables.Project;
+import dev.agenvas.db.tables.ProjectCharacter;
+import dev.agenvas.db.tables.ProjectCharacterCommand;
+import dev.agenvas.db.tables.ProjectCharacterRevision;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.PromptDefinition;
 import dev.agenvas.db.tables.ProviderAttempt;
@@ -179,6 +184,17 @@ public class Public extends SchemaImpl {
      * 仅在明确启用调试时保存的已脱敏请求与响应正文
      */
     public final CallLogDebug CALL_LOG_DEBUG = CallLogDebug.CALL_LOG_DEBUG;
+
+    /**
+     * Applied character snapshots and independent shot review state.
+     */
+    public final CanvasCharacterBinding CANVAS_CHARACTER_BINDING = CanvasCharacterBinding.CANVAS_CHARACTER_BINDING;
+
+    /**
+     * Relational same project revision references and impact lookup for applied
+     * snapshots.
+     */
+    public final CanvasCharacterBindingMember CANVAS_CHARACTER_BINDING_MEMBER = CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER;
 
     /**
      * 画布卡片关系；输入来源和派生线不代表执行依赖
@@ -377,6 +393,22 @@ public class Public extends SchemaImpl {
     public final Project PROJECT = Project.PROJECT;
 
     /**
+     * Stable project characters with independently versioned immutable content.
+     */
+    public final ProjectCharacter PROJECT_CHARACTER = ProjectCharacter.PROJECT_CHARACTER;
+
+    /**
+     * Durable character and binding command replay without repeating draft
+     * mutations.
+     */
+    public final ProjectCharacterCommand PROJECT_CHARACTER_COMMAND = ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND;
+
+    /**
+     * Immutable revisions used by fixed character shot snapshots.
+     */
+    public final ProjectCharacterRevision PROJECT_CHARACTER_REVISION = ProjectCharacterRevision.PROJECT_CHARACTER_REVISION;
+
+    /**
      * 与业务变化同事务提交的项目事件，项目内序号作为 SSE 水位
      */
     public final ProjectEvent PROJECT_EVENT = ProjectEvent.PROJECT_EVENT;
@@ -533,6 +565,8 @@ public class Public extends SchemaImpl {
             AuditLogRetentionSettings.AUDIT_LOG_RETENTION_SETTINGS,
             CallLog.CALL_LOG,
             CallLogDebug.CALL_LOG_DEBUG,
+            CanvasCharacterBinding.CANVAS_CHARACTER_BINDING,
+            CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER,
             CanvasConnection.CANVAS_CONNECTION,
             CanvasItem.CANVAS_ITEM,
             CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT,
@@ -571,6 +605,9 @@ public class Public extends SchemaImpl {
             MediaTemplateImportImage.MEDIA_TEMPLATE_IMPORT_IMAGE,
             MediaTemplateImportSource.MEDIA_TEMPLATE_IMPORT_SOURCE,
             Project.PROJECT,
+            ProjectCharacter.PROJECT_CHARACTER,
+            ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND,
+            ProjectCharacterRevision.PROJECT_CHARACTER_REVISION,
             ProjectEvent.PROJECT_EVENT,
             PromptDefinition.PROMPT_DEFINITION,
             ProviderAttempt.PROVIDER_ATTEMPT,

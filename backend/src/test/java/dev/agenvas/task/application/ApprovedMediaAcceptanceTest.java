@@ -65,6 +65,10 @@ class ApprovedMediaAcceptanceTest {
     private final ProjectEventService events = mock(ProjectEventService.class);
     private final UsageService usage = mock(UsageService.class);
     private final AgentRunService runs = mock(AgentRunService.class);
+    private final dev.agenvas.character.application.CharacterService characters = mock(dev.agenvas.character.application.CharacterService.class);
+    private final org.springframework.beans.factory.ObjectProvider<dev.agenvas.character.application.CharacterService> characterProvider =
+            new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters", characters))
+                    .getBeanProvider(dev.agenvas.character.application.CharacterService.class);
     private final dev.agenvas.settings.application.MediaStyleService styles = mock(dev.agenvas.settings.application.MediaStyleService.class);
     private final MediaCapabilityBinding binding = new MediaCapabilityBinding(UUID.randomUUID(), 2,
             UUID.randomUUID(), 4, "MOCK_IMAGE", "a".repeat(64));
@@ -75,7 +79,10 @@ class ApprovedMediaAcceptanceTest {
         service = new DirectMediaTaskService(repository, drafts, artifacts, mock(AssetService.class),
                 cards, canvas, capabilities, events, usage,
                 mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ProjectService.class), runs, styles, mock(dev.agenvas.asset.storage.MediaRelayService.class),
-                mock(dev.agenvas.settings.application.PromptService.class), mock(dev.agenvas.provider.application.MediaFunctionService.class));
+                mock(dev.agenvas.settings.application.PromptService.class), mock(dev.agenvas.provider.application.MediaFunctionService.class), characterProvider);
+        when(characters.frozenBindings(OWNER, PROJECT, CARD)).thenAnswer(call -> mapper.createArrayNode());
+        when(characters.frozenContribution(OWNER, PROJECT, CARD)).thenReturn(
+                new dev.agenvas.character.application.CharacterModels.CharacterContribution(List.of(), "", null));
         Artifact artifact = new Artifact(ARTIFACT, PROJECT, Artifact.Kind.IMAGE, "Proposal", null,
                 null, 0, NOW, NOW);
         when(artifacts.get(OWNER, PROJECT, ARTIFACT)).thenReturn(new ArtifactService.ArtifactView(artifact, null));
@@ -124,6 +131,57 @@ class ApprovedMediaAcceptanceTest {
     }
 
     @Test
+    void appliedCharacterSnapshotsParticipateInApprovalAndRemainFixedAfterAcceptance() {
+        var applied = mapper.createArrayNode();
+        var snapshot = applied.addObject().put("characterId", UUID.randomUUID().toString())
+                .put("characterVersion", 2).put("name", "Aster").put("description", "Short silver hair");
+        UUID exactReference = UUID.randomUUID();
+        snapshot.putObject("look").put("name", "Blue coat").putArray("views")
+                .addObject().put("versionId", exactReference.toString());
+        when(characters.frozenBindings(OWNER, PROJECT, CARD)).thenReturn(applied);
+        var contribution = new dev.agenvas.character.application.CharacterModels.CharacterContribution(
+                List.of(exactReference), "Applied continuity description", null);
+        when(characters.frozenContribution(OWNER, PROJECT, CARD)).thenReturn(contribution);
+        var preflight = service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION);
+        assertThat(preflight.safeSummary().path("characterBindings")).isEqualTo(applied);
+        assertThat(preflight.safeSummary().path("characterContribution")).isEqualTo(mapper.valueToTree(contribution));
+
+        Task task = service.runApproved(OWNER, PROJECT, RUN, APPROVAL, ARTIFACT, CARD,
+                DRAFT_VERSION, "approved-character");
+        assertThat(task.input().path("mediaInput").path("characterBindings")).isEqualTo(applied);
+        assertThat(task.input().at("/mediaInput/characterBindings/0/look/views/0/versionId").asText())
+                .isEqualTo(exactReference.toString());
+        assertThat(task.input().at("/mediaInput/characterContribution/versionIds/0").asText()).isEqualTo(exactReference.toString());
+
+        // Mutating the catalog/service response later cannot change the accepted Task tree.
+        snapshot.put("characterVersion", 3).put("description", "New red hair");
+        assertThat(task.input().at("/mediaInput/characterBindings/0/characterVersion").asLong()).isEqualTo(2);
+        assertThat(task.input().at("/mediaInput/characterBindings/0/description").asText()).isEqualTo("Short silver hair");
+        assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash())
+                .isNotEqualTo(preflight.frozenInputHash());
+    }
+
+    @Test
+    void characterSnapshotObjectOrderDoesNotInvalidateApproval() {
+        var first = mapper.createArrayNode().add(mapper.createObjectNode().put("name", "Aster").put("characterVersion", 2));
+        var reordered = mapper.createArrayNode().add(mapper.createObjectNode().put("characterVersion", 2).put("name", "Aster"));
+        when(characters.frozenBindings(OWNER, PROJECT, CARD)).thenReturn(first, reordered);
+        assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash())
+                .isEqualTo(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash());
+    }
+
+    @Test
+    void changesInContributionOwnershipInvalidateTheApprovalHash() {
+        var contribution = new dev.agenvas.character.application.CharacterModels.CharacterContribution(
+                List.of(UUID.randomUUID()), "Applied continuity description", null);
+        when(characters.frozenContribution(OWNER, PROJECT, CARD)).thenReturn(contribution);
+        String before = service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash();
+        when(characters.frozenContribution(OWNER, PROJECT, CARD)).thenReturn(
+                new dev.agenvas.character.application.CharacterModels.CharacterContribution(List.of(), contribution.promptBlock(), null));
+        assertThat(service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION).frozenInputHash()).isNotEqualTo(before);
+    }
+
+    @Test
     void staleDraftCannotPassPreflight() {
         assertThatThrownBy(() -> service.preflight(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION - 1))
                 .isInstanceOfSatisfying(ApiProblemException.class, problem ->
@@ -159,6 +217,31 @@ class ApprovedMediaAcceptanceTest {
         assertThatThrownBy(() -> service.runApproved(OWNER, PROJECT, RUN, APPROVAL, ARTIFACT, CARD,
                 DRAFT_VERSION, "linked-approved-command", null, false)).isInstanceOf(ApiProblemException.class);
         verify(repository).create(task);
+    }
+
+    @Test
+    void additionalRequestedImagesCopyTheAppliedCharacterAssociationToTheirOwnDrafts() {
+        UUID extraCardId = UUID.randomUUID();
+        CanvasItem extraCard = mock(CanvasItem.class);
+        when(extraCard.id()).thenReturn(extraCardId);
+        when(drafts.get(OWNER, PROJECT, CARD)).thenReturn(draft("Aster at the station", 2));
+        when(drafts.get(OWNER, PROJECT, extraCardId)).thenReturn(draft("Aster at the station", 2));
+        when(canvas.forkMediaOutputWithinChange(eq(OWNER), eq(PROJECT), eq(CARD), any(), eq(DRAFT_VERSION), eq(1)))
+                .thenReturn(extraCard);
+        var applied = mapper.createArrayNode().add(mapper.createObjectNode().put("name", "Aster").put("characterVersion", 2));
+        when(characters.frozenBindings(OWNER, PROJECT, CARD)).thenReturn(applied);
+
+        service.run(OWNER, PROJECT, ARTIFACT, CARD, DRAFT_VERSION, "character-image-batch");
+
+        ArgumentCaptor<tools.jackson.databind.JsonNode> copiedInput = ArgumentCaptor.forClass(tools.jackson.databind.JsonNode.class);
+        verify(characters).copyFrozenBindingsWithinChange(eq(OWNER), eq(PROJECT), eq(extraCardId), copiedInput.capture());
+        verify(characters, never()).copyFrozenBindingsWithinChange(eq(OWNER), eq(PROJECT), eq(CARD), any());
+        ArgumentCaptor<Task> accepted = ArgumentCaptor.forClass(Task.class);
+        verify(repository, org.mockito.Mockito.times(2)).create(accepted.capture());
+        assertThat(accepted.getAllValues()).allSatisfy(task ->
+                assertThat(task.input().path("mediaInput").path("characterBindings")).isEqualTo(applied));
+        assertThat(accepted.getAllValues().get(1).input().path("canvasItemId").asText()).isEqualTo(extraCardId.toString());
+        assertThat(copiedInput.getValue()).isEqualTo(accepted.getAllValues().get(1).input().path("mediaInput"));
     }
 
     @Test

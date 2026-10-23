@@ -20,6 +20,8 @@ import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.domain.CanvasConnection;
+import dev.agenvas.character.application.CharacterService;
+import dev.agenvas.character.application.CharacterModels.*;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.library.application.LibraryService;
@@ -92,6 +94,7 @@ class ProjectExportManifestPostgresIT {
     @Autowired private LibraryService library;
     @Autowired private DirectMediaTaskService directMedia;
     @Autowired private StoryboardService storyboards;
+    @Autowired private CharacterService characters;
     @Autowired private ObjectMapper mapper;
     @Autowired private WebApplicationContext context;
 
@@ -172,6 +175,18 @@ class ProjectExportManifestPostgresIT {
         ObjectNode skillSource = mapper.createObjectNode().put("schemaVersion", 1)
                 .put("skillId", skill.id().toString()).put("skillVersionId", skillVersionId.toString())
                 .put("bundleHash", skills.getVersion(owner.userId(), skill.id(), skillVersionId).bundleHash());
+        // The same project must retain character profiles/bindings alongside its board history.
+        UUID characterId = UUID.randomUUID(), lookId = UUID.randomUUID();
+        characters.save(owner.userId(), project.id(), characterId,
+                new SaveCharacter(UUID.randomUUID(), 0, new CharacterContent("Traveler", "Returning home",
+                        List.of(new CharacterLook(lookId, "Station outfit", "Blue coat", "Calm", "Synthetic look", List.of())), null)));
+        var selections = List.of(new CharacterBindingSelection(characterId, 1, lookId, true, false));
+        long beforeCharacterDraftVersion = mediaDrafts.get(owner.userId(), project.id(), targetItemId).version();
+        var characterPreview = characters.preview(owner.userId(), project.id(), targetItemId,
+                new PreviewCharacterBindings(0, beforeCharacterDraftVersion, selections, ClearMode.REMOVE_OWNED));
+        characters.apply(owner.userId(), project.id(), targetItemId,
+                new ApplyCharacterBindings(UUID.randomUUID(), 0, beforeCharacterDraftVersion, selections,
+                        ClearMode.REMOVE_OWNED, characterPreview.previewHash()));
         long draftVersion = mediaDrafts.get(owner.userId(), project.id(), targetItemId).version();
         var styledPreflight = directMedia.preflightApproved(owner.userId(), project.id(), video.artifact().id(),
                 targetItemId, draftVersion, skillSource);
@@ -203,7 +218,15 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(9);
+        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(10);
+        assertThat(manifest.path("characters").path("characters")).hasSize(1);
+        assertThat(manifest.path("characters").path("characters").get(0).path("id").asText())
+                .isEqualTo(characterId.toString());
+        assertThat(manifest.path("characters").path("bindings")).hasSize(1);
+        assertThat(manifest.path("characters").path("bindings").get(0).path("canvasItemId").asText())
+                .isEqualTo(targetItemId.toString());
+        assertThat(manifest.path("characters").path("bindings").get(0).path("snapshots").get(0)
+                .path("characterId").asText()).isEqualTo(characterId.toString());
         assertThat(manifest.path("storyboard").path("projectId").asText()).isEqualTo(project.id().toString());
         assertThat(manifest.path("storyboard").path("version").asLong()).isEqualTo(2);
         assertThat(manifest.path("storyboard").path("shots").get(0).path("dialogue").asText())
