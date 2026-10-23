@@ -2,6 +2,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
 export const server = setupServer(
+  http.get("/api/v1/projects/:projectId/characters", () => HttpResponse.json({ characters: [], bindings: [] })),
   http.get("/api/v1/account/mcp-tokens", () => HttpResponse.json([])),
   http.get("/api/v1/projects/:projectId/agents/:agentId/skill-binding", () => HttpResponse.json({agentVersion:0,skills:[]})),
   http.get("/api/v1/skills", () => HttpResponse.json({items:[],nextCursor:null,total:0})),

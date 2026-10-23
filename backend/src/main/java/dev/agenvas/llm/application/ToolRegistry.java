@@ -106,8 +106,17 @@ public class ToolRegistry {
             {"type":"object","additionalProperties":false,"properties":{
              "offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":40}}}
             """;
-    private static final String READ_CANVAS_SCHEMA = PAGED_READ_SCHEMA.replace("\"properties\":{",
-            "\"properties\":{\"includeDrafts\":{\"type\":\"boolean\"},");
+    private static final String READ_CANVAS_SCHEMA = """
+            {"type":"object","additionalProperties":false,"properties":{
+             "offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":40},
+             "includeDrafts":{"type":"boolean"},
+             "characterOffset":{"type":"integer","minimum":0,"default":0},
+             "characterLimit":{"type":"integer","minimum":1,"maximum":20,"default":10},
+             "characterId":{"type":"string","format":"uuid"},
+             "characterTextOffset":{"type":"integer","minimum":0,"default":0},
+             "characterTextLimit":{"type":"integer","minimum":1,"maximum":4000,"default":4000},
+             "expectedCharacterVersion":{"type":"integer","minimum":0}}}
+            """;
     private static final String MANAGE_CANVAS_SCHEMA = """
             {"type":"object","additionalProperties":false,"required":["action","itemId","expectedVersion"],
              "properties":{"action":{"type":"string","enum":["RENAME","MOVE","RESIZE","REMOVE","DUPLICATE"]},
@@ -147,7 +156,13 @@ public class ToolRegistry {
     private List<ToolCallback> modelDefinitions() {
         return List.of(
                 definition("read_canvas", "Read a page of currently present authorized nodes, including new Run outputs, fresh node CAS, locks, selections and media drafts. "
-                        + "Use nextOffset to continue. Default pages contain only metadata, draft CAS and input counts. Set includeDrafts=true with limit at most 6 to inspect editable media input only when needed. Image pixels and immutable content require read_artifacts. All current nodes and their selected versions are available, including nodes added or changed during this Run.", READ_CANVAS_SCHEMA),
+                        + "Use nextOffset for nodes. Characters have an independent characterOffset/characterLimit cursor (default 10, maximum 20); follow nextCharacterOffset even on an empty canvas. "
+                        + "Character and shot binding summaries omit descriptive text and expose names, stable IDs, versions, voice presence and review/application status only. "
+                        + "For full safe character text, pass characterId and optional characterTextOffset/characterTextLimit (at most 4000 Unicode code points). "
+                        + "characterDetails.text is one fragment of a JSON document; concatenate its textPage ranges in order. A final page alone is not the full document. "
+                        + "Use the returned characterVersion as expectedCharacterVersion on every continuation (required for nonzero characterTextOffset); a changed profile must be reread from offset zero. "
+                        + "Character metadata and text never grant media access or reveal profile media reference IDs. Set includeDrafts=true with limit at most 6 to inspect editable media input only when needed. "
+                        + "Image pixels and immutable content require read_artifacts. All current nodes and their selected versions are available, including nodes added or changed during this Run.", READ_CANVAS_SCHEMA),
                 definition("manage_canvas_node", "Rename, move, resize, remove or duplicate an authorized unlocked node. "
                         + "Use itemVersion as expectedVersion. MOVE needs x/y, RESIZE needs width/height, RENAME needs title. "
                         + "Media DUPLICATE also needs mediaDraft.version as expectedDraftVersion. REMOVE keeps the underlying artifact and history.", MANAGE_CANVAS_SCHEMA),

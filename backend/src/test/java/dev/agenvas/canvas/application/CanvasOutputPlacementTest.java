@@ -42,7 +42,10 @@ class CanvasOutputPlacementTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final CanvasService canvas = new CanvasService(mock(ProjectService.class), artifacts,
             drafts, items, mock(CanvasConnectionService.class),
-            mock(ProjectEventService.class), mapper, Clock.fixed(NOW, java.time.ZoneOffset.UTC));
+            mock(ProjectEventService.class), mapper, Clock.fixed(NOW, java.time.ZoneOffset.UTC),
+                    new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
+                            mock(dev.agenvas.character.application.CharacterService.class)))
+                            .getBeanProvider(dev.agenvas.character.application.CharacterService.class));
 
     @BeforeEach
     void setup() {

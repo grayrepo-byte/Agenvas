@@ -33,6 +33,7 @@
 | Agent collaboration | Use director chat in the bottom-right corner to read and work with the current canvas, with persistent conversations and Skills; media proposals require user approval |
 | MCP access | Keep the built-in director and expose 12 creative tools to external clients through user tokens; authorized media calls accept tasks without per-call paid approval |
 | Reusable materials | Project resources, personal assets, prompt templates, visual styles, and mixed references |
+| Character consistency | Project characters, multiple looks, image and voice references; preview and apply to shot drafts, track affected shots, and review results separately |
 | Image tools | Annotate, crop, rotate, mirror, resize, extract depth, and use configured AI editing capabilities |
 | Self-hosting | Model settings, local and OSS/COS/S3 storage, task and call records, and project manifest exports |
 

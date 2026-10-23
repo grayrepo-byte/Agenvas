@@ -7,6 +7,7 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.canvas.domain.MediaUploadPurpose;
+import dev.agenvas.character.application.CharacterService;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -18,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,6 +80,7 @@ public class CanvasService {
     private final ObjectMapper objectMapper;
     /** 为新布局项提供统一时间。 */
     private final Clock clock;
+    private final ObjectProvider<CharacterService> characters;
 
     /** 组装空间投影、布局并发校验和项目事件写入能力。
      * @param projects 校验项目归属和活动状态
@@ -95,7 +98,7 @@ public class CanvasService {
             CanvasConnectionService connections,
             ProjectEventService events,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock, ObjectProvider<CharacterService> characters) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.mediaDrafts = mediaDrafts;
@@ -104,6 +107,7 @@ public class CanvasService {
         this.events = events;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.characters = characters;
     }
 
     /** 读取持久化产物布局和其内容版本。 */
@@ -120,7 +124,7 @@ public class CanvasService {
     public DuplicateResult duplicate(UUID ownerId, UUID projectId, UUID sourceItemId,
             UUID targetItemId, long expectedSourceVersion, long expectedSourceDraftVersion,
             BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, int zIndex) {
-        return events.recordChange(ownerId, projectId, () -> {
+        DuplicateResult copied = events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             validateGeometry(x, y, width, height, zIndex);
             CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
@@ -150,6 +154,10 @@ public class CanvasService {
                     new ProjectEventService.EventDraft("canvas.item.duplicated", 1,
                             targetItemId, target.version(), payload));
         }).value();
+        // The canvas event has already advanced the locked project sequence. A separate
+        // character event can now be appended without nesting changed sequence snapshots.
+        characters.getObject().copyBindingsWithinChange(ownerId, projectId, sourceItemId, targetItemId);
+        return copied;
     }
 
     public record DuplicateResult(CanvasEntry item,
@@ -294,6 +302,8 @@ public class CanvasService {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.putArray("itemIds").add(item.id().toString());
         events.append(ownerId, projectId, new ProjectEventService.EventDraft("canvas.items.changed", 1, projectId, 0, payload));
+        if (source.subjectId().equals(artifactId))
+            characters.getObject().copyFrozenBindingsWithinChange(ownerId, projectId, item.id(), frozenInput);
         return item;
     }
 

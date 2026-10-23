@@ -14,6 +14,7 @@ import dev.agenvas.db.tables.ArtifactVersion;
 import dev.agenvas.db.tables.ArtifactVersionReference;
 import dev.agenvas.db.tables.Asset;
 import dev.agenvas.db.tables.CallLog;
+import dev.agenvas.db.tables.CanvasCharacterBindingMember;
 import dev.agenvas.db.tables.CanvasConnection;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
@@ -73,6 +74,7 @@ public class Indexes {
     public static final Index IX_CANVAS_CONNECTION_TARGET = Internal.createIndex(DSL.name("ix_canvas_connection_target"), CanvasConnection.CANVAS_CONNECTION, new OrderField[] { CanvasConnection.CANVAS_CONNECTION.PROJECT_ID, CanvasConnection.CANVAS_CONNECTION.TARGET_CANVAS_ITEM_ID }, false);
     public static final Index IX_CANVAS_ITEM_PROJECT = Internal.createIndex(DSL.name("ix_canvas_item_project"), CanvasItem.CANVAS_ITEM, new OrderField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.Z_INDEX, CanvasItem.CANVAS_ITEM.ID }, false);
     public static final Index IX_CANVAS_ITEM_SUBJECT = Internal.createIndex(DSL.name("ix_canvas_item_subject"), CanvasItem.CANVAS_ITEM, new OrderField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.SUBJECT_TYPE, CanvasItem.CANVAS_ITEM.SUBJECT_ID }, false);
+    public static final Index IX_CHARACTER_MEMBER_IMPACT = Internal.createIndex(DSL.name("ix_character_member_impact"), CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER, new OrderField[] { CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER.PROJECT_ID, CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER.CHARACTER_ID, CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER.CANVAS_ITEM_ID }, false);
     public static final Index IX_CONVERSATION_AGENT_UPDATED = Internal.createIndex(DSL.name("ix_conversation_agent_updated"), AgentConversation.AGENT_CONVERSATION, new OrderField[] { AgentConversation.AGENT_CONVERSATION.PROJECT_ID, AgentConversation.AGENT_CONVERSATION.AGENT_INSTANCE_ID, AgentConversation.AGENT_CONVERSATION.UPDATED_AT.desc(), AgentConversation.AGENT_CONVERSATION.ID.desc() }, false);
     public static final Index IX_CREATIVE_SKILL_LIST = Internal.createIndex(DSL.name("ix_creative_skill_list"), CreativeSkill.CREATIVE_SKILL, new OrderField[] { CreativeSkill.CREATIVE_SKILL.OWNER_ID, CreativeSkill.CREATIVE_SKILL.TRASHED_AT, CreativeSkill.CREATIVE_SKILL.UPDATED_AT.desc(), CreativeSkill.CREATIVE_SKILL.ID.desc() }, false);
     public static final Index IX_IDEMPOTENCY_EXPIRY = Internal.createIndex(DSL.name("ix_idempotency_expiry"), IdempotencyRecord.IDEMPOTENCY_RECORD, new OrderField[] { IdempotencyRecord.IDEMPOTENCY_RECORD.EXPIRES_AT }, false);

@@ -2573,3 +2573,15 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 成片实际验证：30.000 秒、1280×720、30fps、900 帧，三段原生音轨通过 KEEP 保留，每段均有非零音频信号；三个源镜头与成片均完整解码成功。抽查 9 帧，女主发型、服装与场景基本连续。H3 源片实际为 10.125 秒，合成每段取前 10 秒；没有听验依据证明裁掉的尾部必然是静音。第三镜源画面出现模型生成的内嵌字幕，合成配置没有另加字幕，不能把配置中未添加字幕表述为成片绝无字幕。
 
 未完成范围：本次提供了真实旧成片台词时间轴，不能记为纯文本模型自主听音、说话人识别或人声分离通过；音色相似度、台词准确性与逐帧口型尚未听验/识别。全量测试未运行；未发布或部署主服务。错误分类的新回归单测通过，后端打包、生成类型、前端类型检查、错误文案测试/i18n/限定 lint 与差异空白检查通过。
+
+## 2026-10-23 角色一致性管理
+
+- [x] 按 [ADR 0055](adr/0055-character-consistency-management.md) 增加项目角色档案及不可变修订，维护姓名、身份、多造型、衣着/表情、有用途的精确图片视图、精确音频与指定音色；目录、镜头关联和复核状态随项目事件更新。修改档案前展示影响范围，只标记待复核，不改写已有草稿、结果或受理任务。
+- [x] 画布“角色”目录和媒体节点关联入口支持多个角色、固定角色版本/造型与独立外观/声音用途。服务端先预览实际提示词、参考、参数和模式，再以摘要、命令键及档案/关联/草稿 CAS 显式应用；保留失败草稿，冲突重新预览，应用期间隔离后台自动保存。锁定、忙碌、归档项目与能力不兼容明确拒绝，应用不创建生成任务。
+- [x] 精确追踪角色贡献的素材来源、说明块与指定音色；替换/清空保留原有手动引用、连接和共享参考。已经手动修改的说明块拒绝覆盖；移除角色拥有的来源后再断线会正确移除参考，不把保留的连线输入重新变成手动输入。结果复核独立固定当前草稿和选用版本，后续档案、草稿或选用变化重新标记。
+- [x] Task 受理输入 schema 7、审批摘要/hash 与结果来源冻结角色快照及安全贡献；普通复制重新复核，批量/晚到额外结果使用原 Task 冻结记录，来源节点后续变化不污染旧任务。导演角色目录独立分页、正文按固定版本和 Unicode 码点分段，省略媒体版本 ID；不扩大媒体读取或生成授权。导出清单 schema 9 包含角色资料及安全关联。
+- [x] 追加 V35 五张角色表、项目边界约束、持久幂等与修订不可变保护；在一次性 PostgreSQL 17.11 上迁移并重新生成 jOOQ。OpenAPI、Java、生成 TypeScript、四种前端语言、后端 API 文案、规格、领域词汇和 README 同步，无新增依赖。现有 V34 数据升级后内容、选用版本和草稿保持。
+- [x] 后端 13 个定向单测类共 105 项通过，覆盖预览无写入、贡献所有权、连接/手动/共享参考、音色应用、旧快照、能力拒绝、目录/全文分页与工具策略；执行 `MediaCharacterDraftGatewayTest,MediaDraftConnectionsTest,MediaDraftReplacementTest,ApiI18nTest,CharacterServiceTest,ApprovedMediaAcceptanceTest,CanvasCharacterSummaryTest,VideoCompositionCancellationTest,CanvasMediaDerivationDraftTest,CanvasTaskResultSelectionTest,CanvasOutputPlacementTest,CanvasProposalWithdrawalTest,RunToolPolicyTest`。
+- [x] 真实 PostgreSQL 17.11 定向集成 8 类、14 项全部通过：`CharacterPostgresIT,CharacterGenerationIntegrationPostgresIT,CharacterVoicePostgresIT,CharacterMigrationPostgresIT,MediaDraftPostgresIT,MediaDraftReplacementPostgresIT,CanvasAgentToolsPostgresIT,ProjectExportManifestPostgresIT`。覆盖 Session/CSRF/项目隔离、幂等并发/CAS、项目并发归档、独立复核失效、应用与旧 Task/晚到结果冻结、素材断线、V34→V35 升级及数据库约束。合成 3 秒 WAV 经真实归档和生产音频引用加载器读取，变更角色后旧任务仍读取旧音频字节；Mock 能力受理，无外部 Provider 请求。
+- [x] 前端 `Characters,projectCache,MediaDraftPersistence,MediaDraftEditor,ProjectWorkspacePage,AgentMediaApprovalCard` 六个定向文件共 256 项通过。类型检查、改动文件 ESLint、四语言/主题检查、生产构建与差异空白检查通过；构建保留既有大分块提示。生产构建 Chrome 在 1440×900 验证角色表单滚动/固定操作栏、焦点/Esc、忙碌保护、预览→应用→复核及关闭后无旧自动保存覆盖；HTTP 全部拦截为隔离合成数据，未修改真实项目。浏览器夹具与脚本保存于 `frontend/e2e/characters*`，截图在仓库外。
+- [ ] 全量测试、真实 Provider 外观/音色/台词/口型一致性、移动端及其他浏览器验证和部署未运行。结构化分镜制作台、场景/道具状态管理、跨项目角色库和自动一致性评分不属于本次已实现范围。

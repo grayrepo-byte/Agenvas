@@ -13,6 +13,7 @@ import dev.agenvas.artifact.domain.VideoGenerationParameters;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.application.CanvasItemQueryService;
 import dev.agenvas.canvas.domain.CanvasItem;
+import dev.agenvas.character.application.CharacterService;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.event.application.ProjectEventService;
@@ -48,6 +49,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import javax.imageio.ImageIO;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,7 +64,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class DirectMediaTaskService {
     private static final int MAX_COMMAND_KEY_LENGTH = 160;
     private static final int MAX_IMAGE_OPERATION_INSTRUCTION_LENGTH = 4000;
-    private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 6;
+    private static final int MEDIA_TASK_INPUT_SCHEMA_VERSION = 7;
     private static final int IMAGE_OPERATION_INPUT_SCHEMA_VERSION = 9;
     private static final int TASK_EVENT_SCHEMA_VERSION = 1;
     private static final int BATCH_KEY_DIGEST_LENGTH = 32;
@@ -90,6 +92,7 @@ public class DirectMediaTaskService {
     private final PromptService prompts;
     private final dev.agenvas.provider.application.MediaFunctionService functions;
     private final dev.agenvas.asset.storage.MediaRelayService relay;
+    private final ObjectProvider<CharacterService> characters;
 
     public DirectMediaTaskService(TaskRepository tasks, MediaDraftService drafts,
             ArtifactService artifacts, AssetService assets, CanvasItemQueryService canvasItems,
@@ -97,7 +100,8 @@ public class DirectMediaTaskService {
             MediaCapabilityService capabilities,
             ProjectEventService events, UsageService usage,
             ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles, dev.agenvas.asset.storage.MediaRelayService relay,
-            PromptService prompts, dev.agenvas.provider.application.MediaFunctionService functions) {
+            PromptService prompts, dev.agenvas.provider.application.MediaFunctionService functions,
+            ObjectProvider<CharacterService> characters) {
         this.tasks = tasks;
         this.drafts = drafts;
         this.artifacts = artifacts;
@@ -115,6 +119,7 @@ public class DirectMediaTaskService {
         this.relay = relay;
         this.prompts = prompts;
         this.functions = functions;
+        this.characters = characters;
     }
 
     @Transactional
@@ -350,7 +355,13 @@ public class DirectMediaTaskService {
                 }
                 pinImageRelay(input, binding);
                 frozen.set("mentions", mapper.valueToTree(draft.mentions()));
+                // These are the applied snapshots validated against this saved draft. Providers
+                // consume its frozen prompt and exact references, never a live character profile.
+                frozen.set("characterBindings", prepared.characterBindings().deepCopy());
+                frozen.set("characterContribution", prepared.characterContribution().deepCopy());
                 if (creativeSkill != null) frozen.set("creativeSkill", creativeSkill.deepCopy());
+                if (outputIndex > 0) characters.getObject().copyFrozenBindingsWithinChange(ownerId,
+                        projectId, outputCard.id(), frozen);
                 String stepKey = external != null ? "mcp:" + external.operationId() + ":" + outputIndex
                         : outputIndex == 0 ? commandKey
                         : "image-batch:" + Sha256.hex(commandKey).substring(0, BATCH_KEY_DIGEST_LENGTH) + ":" + outputIndex;
@@ -581,7 +592,9 @@ public class DirectMediaTaskService {
         }
         return new PreparedMedia(target, canvasItem, draft, kind, binding, definition,
                 dynamicParameters, imageParameters, videoParameters, duration, configuredSettings,
-                renderedPrompt, autodlResolution, resolutionTier, style, comfyValues, kling, nativeProfile);
+                renderedPrompt, autodlResolution, resolutionTier, style, comfyValues, kling, nativeProfile,
+                characters.getObject().frozenBindings(ownerId, projectId, canvasItem.id()).deepCopy(),
+                mapper.valueToTree(characters.getObject().frozenContribution(ownerId, projectId, canvasItem.id())));
     }
 
     private ComfyUiWorkflowDefinition.Dimensions comfyDimensions(UUID ownerId, UUID projectId, PreparedMedia prepared) {
@@ -604,7 +617,9 @@ public class DirectMediaTaskService {
             ObjectNode dynamicParameters, ImageGenerationParameters imageParameters,
             VideoGenerationParameters videoParameters, Integer duration, JsonNode configuredSettings,
             String renderedPrompt, String autodlResolution, String resolutionTier,
-            MediaStyleService.Snapshot style, ObjectNode comfyValues, KlingModels.Profile kling, NativeMediaProfiles.Selection nativeProfile) {}
+            MediaStyleService.Snapshot style, ObjectNode comfyValues, KlingModels.Profile kling,
+            NativeMediaProfiles.Selection nativeProfile, JsonNode characterBindings,
+            JsonNode characterContribution) {}
 
     private ObjectNode nativeProviderParameters(PreparedMedia prepared) {
         ObjectNode result = mapper.createObjectNode();
@@ -752,6 +767,9 @@ public class DirectMediaTaskService {
         }
         snapshot.set("mediaInputs", mapper.valueToTree(prepared.draft().mediaInputs()));
         snapshot.set("mentions", mapper.valueToTree(prepared.draft().mentions()));
+        // JSONB may reorder object fields; normalize snapshots before approval hashing.
+        snapshot.set("characterBindings", canonicalSkillSource(prepared.characterBindings()));
+        snapshot.set("characterContribution", canonicalSkillSource(prepared.characterContribution()));
         snapshot.set("binding", mapper.valueToTree(prepared.binding()));
         snapshot.put("kind", prepared.kind().name());
         snapshot.put("mode", prepared.kind() == Task.Kind.IMAGE_GENERATION ? "GENERAL_REFERENCE"
@@ -773,6 +791,8 @@ public class DirectMediaTaskService {
         summary.put("outputCount", outputCount);
         // Approval clients must see exactly which immutable material versions will be sent.
         summary.set("mediaInputs", mapper.valueToTree(prepared.draft().mediaInputs()));
+        summary.set("characterBindings", prepared.characterBindings().deepCopy());
+        summary.set("characterContribution", prepared.characterContribution().deepCopy());
         if (prepared.kind() == Task.Kind.VIDEO_GENERATION) {
             summary.put("videoInputMode", prepared.draft().videoInputMode().name());
         }

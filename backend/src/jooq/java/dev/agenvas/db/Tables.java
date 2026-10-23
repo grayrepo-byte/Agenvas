@@ -19,6 +19,8 @@ import dev.agenvas.db.tables.AuditDebugSettings;
 import dev.agenvas.db.tables.AuditLogRetentionSettings;
 import dev.agenvas.db.tables.CallLog;
 import dev.agenvas.db.tables.CallLogDebug;
+import dev.agenvas.db.tables.CanvasCharacterBinding;
+import dev.agenvas.db.tables.CanvasCharacterBindingMember;
 import dev.agenvas.db.tables.CanvasConnection;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
@@ -57,6 +59,9 @@ import dev.agenvas.db.tables.MediaTemplateImportCommand;
 import dev.agenvas.db.tables.MediaTemplateImportImage;
 import dev.agenvas.db.tables.MediaTemplateImportSource;
 import dev.agenvas.db.tables.Project;
+import dev.agenvas.db.tables.ProjectCharacter;
+import dev.agenvas.db.tables.ProjectCharacterCommand;
+import dev.agenvas.db.tables.ProjectCharacterRevision;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.PromptDefinition;
 import dev.agenvas.db.tables.ProviderAttempt;
@@ -163,6 +168,17 @@ public class Tables {
      * 仅在明确启用调试时保存的已脱敏请求与响应正文
      */
     public static final CallLogDebug CALL_LOG_DEBUG = CallLogDebug.CALL_LOG_DEBUG;
+
+    /**
+     * Applied character snapshots and independent shot review state.
+     */
+    public static final CanvasCharacterBinding CANVAS_CHARACTER_BINDING = CanvasCharacterBinding.CANVAS_CHARACTER_BINDING;
+
+    /**
+     * Relational same project revision references and impact lookup for applied
+     * snapshots.
+     */
+    public static final CanvasCharacterBindingMember CANVAS_CHARACTER_BINDING_MEMBER = CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER;
 
     /**
      * 画布卡片关系；输入来源和派生线不代表执行依赖
@@ -359,6 +375,22 @@ public class Tables {
      * 项目权限边界、当前活动 Run、事件序号与并发控制版本
      */
     public static final Project PROJECT = Project.PROJECT;
+
+    /**
+     * Stable project characters with independently versioned immutable content.
+     */
+    public static final ProjectCharacter PROJECT_CHARACTER = ProjectCharacter.PROJECT_CHARACTER;
+
+    /**
+     * Durable character and binding command replay without repeating draft
+     * mutations.
+     */
+    public static final ProjectCharacterCommand PROJECT_CHARACTER_COMMAND = ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND;
+
+    /**
+     * Immutable revisions used by fixed character shot snapshots.
+     */
+    public static final ProjectCharacterRevision PROJECT_CHARACTER_REVISION = ProjectCharacterRevision.PROJECT_CHARACTER_REVISION;
 
     /**
      * 与业务变化同事务提交的项目事件，项目内序号作为 SSE 水位

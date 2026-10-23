@@ -86,6 +86,33 @@ public class MediaDraftService {
             Integer durationSeconds, UUID capabilityId,
             MediaDraft.VideoInputMode requestedMode, List<SaveMediaInput> requestedInputs,
             List<MediaDraft.PromptMention> requestedMentions, UUID styleId) {
+        return events.recordChange(ownerId, projectId, () -> {
+            MediaDraft update = previewSave(ownerId, projectId, canvasItemId,
+                    expectedVersion, prompt, parameters, durationSeconds, capabilityId,
+                    requestedMode, requestedInputs, requestedMentions, styleId);
+            if (!artifacts.updateMediaDraft(update, expectedVersion)) {
+                throw draftConflict(ApiMessage.of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
+            }
+            artifacts.replaceMediaInputs(projectId, canvasItemId, update.mediaInputs(),
+                    update.updatedAt());
+            ObjectNode payload = mapper.createObjectNode();
+            payload.put("canvasItemId", canvasItemId.toString());
+            payload.put("draftVersion", update.version());
+            return ProjectEventService.Change.changed(update,
+                    new ProjectEventService.EventDraft("media.draft.changed", 1,
+                            canvasItemId, update.version(), payload));
+        }).value();
+    }
+
+    /** Validates the exact proposed write without changing drafts, topology, events or tasks.
+     * Callers use this for an honest preview, then revalidate under the project lock on apply.
+     */
+    @Transactional(readOnly = true)
+    public MediaDraft previewSave(UUID ownerId, UUID projectId, UUID canvasItemId,
+            long expectedVersion, String prompt, JsonNode parameters,
+            Integer durationSeconds, UUID capabilityId,
+            MediaDraft.VideoInputMode requestedMode, List<SaveMediaInput> requestedInputs,
+            List<MediaDraft.PromptMention> requestedMentions, UUID styleId) {
         projects.requireActiveProject(ownerId, projectId);
         Artifact.Kind kind = requireMediaCanvas(ownerId, projectId, canvasItemId).kind();
         if (expectedVersion < 0 || prompt == null || prompt.length() > MAX_PROMPT_LENGTH) {
@@ -122,6 +149,9 @@ public class MediaDraftService {
         }
         MediaDraft persisted = artifacts.findMediaDraft(projectId, canvasItemId)
                 .orElseThrow(() -> new IllegalStateException("Media draft missing"));
+        if (persisted.version() != expectedVersion) {
+            throw draftConflict(ApiMessage.of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
+        }
         styles.validateSelection(styleId, kind);
         if (inputCommands.size() > MAX_MEDIA_INPUTS) {
             throw invalid(ApiMessage.of("api.media-draft-service.a-single-card-can-save-up-to-14-media-inputs"));
@@ -188,28 +218,10 @@ public class MediaDraftService {
                 throw invalid(ApiMessage.of("api.media-draft-service.image-tags-can-only-reference-the-exact-version-and-role"));
             }
         }
-        return events.recordChange(ownerId, projectId, () -> {
-            MediaDraft before = artifacts.findMediaDraft(projectId, canvasItemId)
-                    .orElseThrow(() -> new IllegalStateException("Media draft missing"));
-            List<MediaDraft.MediaInput> effectiveInputs = mergeInputs(
-                    before.mediaInputs(), inputs);
-            MediaDraft update = new MediaDraft(projectId, canvasItemId, prompt,
-                    normalizedParameters.deepCopy(), durationSeconds, capabilityId, styleId,
-                    mode, effectiveInputs, mentions,
-                    before.displayMode(),
-                    expectedVersion + 1, before.createdAt(), clock.instant());
-            if (!artifacts.updateMediaDraft(update, expectedVersion)) {
-                throw draftConflict(ApiMessage.of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
-            }
-            artifacts.replaceMediaInputs(projectId, canvasItemId, effectiveInputs,
-                    update.updatedAt());
-            ObjectNode payload = mapper.createObjectNode();
-            payload.put("canvasItemId", canvasItemId.toString());
-            payload.put("draftVersion", update.version());
-            return ProjectEventService.Change.changed(update,
-                    new ProjectEventService.EventDraft("media.draft.changed", 1,
-                            canvasItemId, update.version(), payload));
-        }).value();
+        return new MediaDraft(projectId, canvasItemId, prompt,
+                normalizedParameters.deepCopy(), durationSeconds, capabilityId, styleId,
+                mode, mergeInputs(persisted.mediaInputs(), inputs), mentions,
+                persisted.displayMode(), expectedVersion + 1, persisted.createdAt(), clock.instant());
     }
 
     /** Replaces the complete working draft from one immutable result's frozen input. */
@@ -611,6 +623,31 @@ public class MediaDraftService {
         List<MediaDraft.PromptMention> mentions = before.mentions().stream()
                 .filter(mention -> !mention.versionId().equals(imageVersionId))
                 .toList();
+        return replaceInputsWithinChange(before, inputs, mentions);
+    }
+
+    /** Releases only explicitly tracked manual source identities. A connected or independently
+     * selected copy of the same version remains. The enclosing project mutation owns the event.
+     */
+    public MediaDraft releaseInputSourcesWithinChange(UUID ownerId, UUID projectId,
+            UUID canvasItemId, long expectedVersion, java.util.Map<UUID, List<UUID>> ownedSources) {
+        MediaDraft before = get(ownerId, projectId, canvasItemId);
+        if (before.version() != expectedVersion) {
+            throw draftConflict(ApiMessage.of("api.media-draft-service.the-draft-has-been-modified-by-other-operations-please-retain"));
+        }
+        List<MediaDraft.MediaInput> inputs = new ArrayList<>();
+        boolean changed = false;
+        for (MediaDraft.MediaInput input : before.mediaInputs()) {
+            List<UUID> owned = ownedSources.getOrDefault(input.versionId(), List.of());
+            List<MediaDraft.InputSource> retained = input.sources().stream().filter(source ->
+                    source.type() != MediaDraft.SourceType.MANUAL || !owned.contains(source.id())).toList();
+            changed |= retained.size() != input.sources().size();
+            if (!retained.isEmpty()) inputs.add(new MediaDraft.MediaInput(input.versionId(),
+                    input.artifactId(), input.role(), inputs.size(), input.color(), retained));
+        }
+        if (!changed) return before;
+        List<MediaDraft.PromptMention> mentions = before.mentions().stream().filter(mention ->
+                inputs.stream().anyMatch(input -> input.versionId().equals(mention.versionId()))).toList();
         return replaceInputsWithinChange(before, inputs, mentions);
     }
 

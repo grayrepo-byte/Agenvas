@@ -78,6 +78,12 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       }
       if (event.type === "media.draft.changed") invalidate("media-draft", "canvas-connections");
       if (event.type === "usage.changed") invalidate("project-usage");
+      // Character review depends on the current draft and exact selected result, not
+      // just profile mutations. Reconnect recovery refreshes the same projection below.
+      if (event.type.startsWith("character.") || event.type.startsWith("canvas.")
+          || event.type === "media.draft.changed" || event.type === "artifact.version.created") {
+        invalidate("project-characters");
+      }
     },
     onSnapshot: (fresh: ProjectSnapshot) => {
       queryClient.setQueryData(["snapshot", projectId], fresh);
@@ -88,7 +94,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       // The snapshot contains the current workspace, but not historical panels or lists.
       // A missed event may have changed any of them while the stream was unavailable.
       invalidate(...HISTORY_QUERY_PREFIXES, "run-tasks", "direct-media-tasks", "media-draft",
-        "canvas-media-versions", "project-usage");
+        "canvas-media-versions", "project-usage", "project-characters");
     },
   };
 }

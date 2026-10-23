@@ -4474,8 +4474,393 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/characters:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+    get:
+      operationId: listCharacters
+      tags: [Characters]
+      responses:
+        "200":
+          description: Successful character operation; saves only mark affected shots for review and never run generation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CharacterIndex"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/characters/{characterId}:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: characterId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    put:
+      operationId: saveCharacter
+      tags: [Characters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SaveCharacter"}
+      responses:
+        "200":
+          description: Successful character operation; saves only mark affected shots for review and never run generation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CharacterProfile"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/characters/{characterId}/preview-change:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: characterId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: previewCharacterChange
+      tags: [Characters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SaveCharacter"}
+      responses:
+        "200":
+          description: Successful character operation; saves only mark affected shots for review and never run generation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CharacterChangePreview"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/characters/{characterId}/archive:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - name: characterId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    post:
+      operationId: archiveCharacter
+      tags: [Characters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ArchiveCharacter"}
+      responses:
+        "200":
+          description: Successful character operation; saves only mark affected shots for review and never run generation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CharacterProfile"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/character-bindings/preview:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/CanvasItemId"}
+    post:
+      operationId: previewCharacterBindings
+      tags: [Characters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PreviewCharacterBindings"}
+      responses:
+        "200":
+          description: Successful character operation; saves only mark affected shots for review and never run generation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CharacterBindingPreview"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/character-bindings/apply:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/CanvasItemId"}
+    post:
+      operationId: applyCharacterBindings
+      tags: [Characters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ApplyCharacterBindings"}
+      responses:
+        "200":
+          description: Successful character operation; saves only mark affected shots for review and never run generation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CharacterBindingApplied"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/canvas-items/{canvasItemId}/character-bindings/review:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - {$ref: "#/components/parameters/ProjectId"}
+      - {$ref: "#/components/parameters/CanvasItemId"}
+    post:
+      operationId: reviewCharacterBindings
+      tags: [Characters]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReviewCharacterBindings"}
+      responses:
+        "200":
+          description: Successful character operation; saves only mark affected shots for review and never run generation.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CharacterBinding"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   schemas:
+    CharacterView:
+      type: object
+      additionalProperties: false
+      required: [versionId, purpose, description]
+      properties:
+        versionId: {type: string, format: uuid}
+        purpose: {type: string, minLength: 1, maxLength: 120}
+        description: {type: string, maxLength: 2000}
+    CharacterVoice:
+      type: object
+      additionalProperties: false
+      required: [versionId, speakerId, description]
+      properties:
+        versionId: {type: [string, "null"], format: uuid}
+        speakerId: {type: [string, "null"], maxLength: 120, pattern: "^[A-Za-z0-9_-]*$"}
+        description: {type: string, maxLength: 2000}
+    CharacterLook:
+      type: object
+      additionalProperties: false
+      required: [id, name, clothing, expression, description, views]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, minLength: 1, maxLength: 160}
+        clothing: {type: string, maxLength: 2000}
+        expression: {type: string, maxLength: 2000}
+        description: {type: string, maxLength: 4000}
+        views:
+          type: array
+          maxItems: 14
+          items: {$ref: "#/components/schemas/CharacterView"}
+    CharacterContent:
+      type: object
+      additionalProperties: false
+      required: [name, description, looks, voice]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 160}
+        description: {type: string, maxLength: 4000}
+        looks:
+          type: array
+          maxItems: 20
+          items: {$ref: "#/components/schemas/CharacterLook"}
+        voice:
+          oneOf:
+            - {$ref: "#/components/schemas/CharacterVoice"}
+            - {type: "null"}
+    CharacterProfile:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, content, version, archived, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        projectId: {type: string, format: uuid}
+        content: {$ref: "#/components/schemas/CharacterContent"}
+        version: {type: integer, format: int64, minimum: 1}
+        archived: {type: boolean}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    CharacterSnapshot:
+      type: object
+      additionalProperties: false
+      required: [characterId, characterVersion, name, description, look, voice, useAppearance, useVoice]
+      properties:
+        characterId: {type: string, format: uuid}
+        characterVersion: {type: integer, format: int64, minimum: 1}
+        name: {type: string}
+        description: {type: string}
+        look:
+          oneOf:
+            - {$ref: "#/components/schemas/CharacterLook"}
+            - {type: "null"}
+        voice:
+          oneOf:
+            - {$ref: "#/components/schemas/CharacterVoice"}
+            - {type: "null"}
+        useAppearance: {type: boolean}
+        useVoice: {type: boolean}
+    CharacterBindingSelection:
+      type: object
+      additionalProperties: false
+      required: [characterId, characterVersion, lookId, useAppearance, useVoice]
+      properties:
+        characterId: {type: string, format: uuid}
+        characterVersion: {type: integer, format: int64, minimum: 1}
+        lookId: {type: [string, "null"], format: uuid}
+        useAppearance: {type: boolean}
+        useVoice: {type: boolean}
+    SaveCharacter:
+      type: object
+      additionalProperties: false
+      required: [commandId, expectedVersion, content]
+      properties:
+        commandId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        content: {$ref: "#/components/schemas/CharacterContent"}
+    ArchiveCharacter:
+      type: object
+      additionalProperties: false
+      required: [commandId, expectedVersion]
+      properties:
+        commandId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64, minimum: 1}
+    CharacterAffectedItem:
+      type: object
+      additionalProperties: false
+      required: [canvasItemId, title, bindingVersion]
+      properties:
+        canvasItemId: {type: string, format: uuid}
+        title: {type: string}
+        bindingVersion: {type: integer, format: int64}
+    CharacterChangePreview:
+      type: object
+      additionalProperties: false
+      required: [characterId, expectedVersion, affectedItems]
+      properties:
+        characterId: {type: string, format: uuid}
+        expectedVersion: {type: integer, format: int64}
+        affectedItems:
+          type: array
+          items: {$ref: "#/components/schemas/CharacterAffectedItem"}
+    CharacterClearMode:
+      type: string
+      enum: [KEEP_INPUTS, REMOVE_OWNED]
+      description: KEEP_INPUTS removes bindings but retains media inputs and description; REMOVE_OWNED removes only still-owned contributions, preserving manual/shared references.
+    PreviewCharacterBindings:
+      type: object
+      additionalProperties: false
+      required: [expectedBindingVersion, expectedDraftVersion, selections, clearMode]
+      properties:
+        expectedBindingVersion: {type: integer, format: int64, minimum: 0}
+        expectedDraftVersion: {type: integer, format: int64, minimum: 0}
+        selections:
+          type: array
+          maxItems: 20
+          items: {$ref: "#/components/schemas/CharacterBindingSelection"}
+        clearMode: {$ref: "#/components/schemas/CharacterClearMode"}
+    ApplyCharacterBindings:
+      type: object
+      additionalProperties: false
+      required: [commandId, expectedBindingVersion, expectedDraftVersion, selections, clearMode, previewHash]
+      properties:
+        commandId: {type: string, format: uuid}
+        expectedBindingVersion: {type: integer, format: int64, minimum: 0}
+        expectedDraftVersion: {type: integer, format: int64, minimum: 0}
+        selections:
+          type: array
+          maxItems: 20
+          items: {$ref: "#/components/schemas/CharacterBindingSelection"}
+        clearMode: {$ref: "#/components/schemas/CharacterClearMode"}
+        previewHash: {type: string, pattern: "^[a-f0-9]{64}$"}
+    ReviewCharacterBindings:
+      type: object
+      additionalProperties: false
+      required: [expectedBindingVersion, expectedDraftVersion, selectedVersionId]
+      properties:
+        expectedBindingVersion: {type: integer, format: int64, minimum: 1}
+        expectedDraftVersion: {type: integer, format: int64, minimum: 0}
+        selectedVersionId: {type: string, format: uuid}
+    CharacterContribution:
+      type: object
+      additionalProperties: false
+      required: [versionIds, promptBlock, speakerId]
+      properties:
+        versionIds:
+          type: array
+          items: {type: string, format: uuid}
+        promptBlock: {type: string}
+        speakerId: {type: [string, "null"]}
+    CharacterBinding:
+      type: object
+      additionalProperties: false
+      required: [canvasItemId, version, draftVersion, selectedVersionId, snapshots, needsReview, reviewReasons, contribution, reviewedAt]
+      properties:
+        canvasItemId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 1}
+        draftVersion: {type: integer, format: int64, minimum: 0}
+        selectedVersionId: {type: [string, "null"], format: uuid}
+        snapshots:
+          type: array
+          items: {$ref: "#/components/schemas/CharacterSnapshot"}
+        needsReview: {type: boolean}
+        reviewReasons:
+          type: array
+          items: {type: string, enum: [PROFILE_CHANGED, DRAFT_CHANGED, RESULT_CHANGED, NOT_REVIEWED, CHARACTER_ARCHIVED]}
+        contribution: {$ref: "#/components/schemas/CharacterContribution"}
+        reviewedAt: {type: [string, "null"], format: date-time}
+    CharacterBindingPreview:
+      type: object
+      additionalProperties: false
+      required: [previewHash, expectedBindingVersion, expectedDraftVersion, snapshots, candidateDraft, warnings, changes]
+      properties:
+        previewHash: {type: string, pattern: "^[a-f0-9]{64}$"}
+        expectedBindingVersion: {type: integer, format: int64}
+        expectedDraftVersion: {type: integer, format: int64}
+        snapshots:
+          type: array
+          items: {$ref: "#/components/schemas/CharacterSnapshot"}
+        candidateDraft: {$ref: "#/components/schemas/MediaDraft"}
+        warnings:
+          type: array
+          items: {type: string}
+        changes:
+          type: array
+          items: {type: string}
+    CharacterBindingApplied:
+      type: object
+      additionalProperties: false
+      required: [binding, draft]
+      properties:
+        binding: {$ref: "#/components/schemas/CharacterBinding"}
+        draft: {$ref: "#/components/schemas/MediaDraft"}
+    CharacterIndex:
+      type: object
+      additionalProperties: false
+      required: [characters, bindings]
+      properties:
+        characters:
+          type: array
+          items: {$ref: "#/components/schemas/CharacterProfile"}
+        bindings:
+          type: array
+          items: {$ref: "#/components/schemas/CharacterBinding"}
     MediaStyleSummary:
       type: object
       additionalProperties: false
@@ -5919,13 +6304,14 @@ components:
       type: object
       additionalProperties: false
       required: [schemaVersion, generatedAt, snapshotSeq, project, artifacts, assets,
-        canvasItems, connections]
+        canvasItems, connections, characters]
       properties:
+        characters: {$ref: "#/components/schemas/CharacterIndex"}
         creativeSkills:
           type: array
           description: 已安装或由项目导演默认绑定的固定版本，包含 version、mapping 和可空的 directorBinding（skillId、skillVersionId、position）；未安装时 mapping.assets 为空，不导出多助手绑定列表。
           items: {type: object, additionalProperties: true}
-        schemaVersion: {type: integer, const: 8}
+        schemaVersion: {type: integer, const: 9}
         generatedAt: {type: string, format: date-time}
         snapshotSeq: {type: integer, format: int64, minimum: 0}
         project: {$ref: "#/components/schemas/ManifestProject"}
@@ -5975,7 +6361,7 @@ components:
         baseVersionId: {type: [string, "null"], format: uuid}
         frozenInput:
           oneOf:
-            - {type: object, additionalProperties: true}
+            - {$ref: "#/components/schemas/MediaFrozenInput"}
             - {type: "null"}
         createdAt: {type: string, format: date-time}
         content: {$ref: "#/components/schemas/ManifestVersionContent"}
@@ -6769,6 +7155,16 @@ components:
         role: {type: string, minLength: 1, maxLength: 64}
         order: {type: integer, minimum: 0}
         kind: {$ref: "#/components/schemas/ArtifactKind"}
+    MediaFrozenInput:
+      type: object
+      additionalProperties: true
+      description: Immutable input of a media Task and its result; schema 7 fixes applicable applied character snapshots without resolving later profile revisions.
+      properties:
+        schemaVersion: {type: integer, minimum: 1, maximum: 7}
+        characterBindings:
+          type: array
+          items: {$ref: "#/components/schemas/CharacterSnapshot"}
+        characterContribution: {$ref: "#/components/schemas/CharacterContribution"}
     ArtifactVersion:
       type: object
       additionalProperties: false
@@ -6780,7 +7176,7 @@ components:
         baseVersionId: {type: [string, "null"], format: uuid}
         frozenInput:
           oneOf:
-            - {type: object, additionalProperties: true}
+            - {$ref: "#/components/schemas/MediaFrozenInput"}
             - {type: "null"}
         content: {$ref: "#/components/schemas/ArtifactContent"}
         inputReferences:
@@ -6955,7 +7351,12 @@ components:
         preview:
           type: object
           additionalProperties: true
-          description: 固定提示词、参数、能力、mediaInputs 精确素材版本、视频 videoInputMode 及估算费用/费用未知的安全预检摘要；不返回 endpoint、Key 或签名下载地址。
+          description: 固定提示词、参数、能力、mediaInputs 精确素材版本、视频 videoInputMode、已应用角色快照 characterBindings 及估算费用/费用未知的安全预检摘要；不返回 endpoint、Key 或签名下载地址。
+          properties:
+            characterBindings:
+              type: array
+              items: {$ref: "#/components/schemas/CharacterSnapshot"}
+            characterContribution: {$ref: "#/components/schemas/CharacterContribution"}
     AgentMediaApproval:
       type: object
       additionalProperties: false
@@ -7240,7 +7641,11 @@ components:
         kind: {$ref: "#/components/schemas/TaskKind"}
         status: {$ref: "#/components/schemas/TaskStatus"}
         cancelRequested: {type: boolean, description: "已要求停止本系统后续编排，不表示外部任务已停止或退款"}
-        input: {type: object, additionalProperties: true}
+        input:
+          type: object
+          additionalProperties: true
+          properties:
+            mediaInput: {$ref: "#/components/schemas/MediaFrozenInput"}
         output:
           description: |
             AGENT_TURN 执行中的 assistantStream 为持久公开回答进度，结构为

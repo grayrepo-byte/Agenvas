@@ -29,6 +29,41 @@ export type ArtifactList = components["schemas"]["ArtifactList"];
 export type ResourceResult = components["schemas"]["ResourceResult"];
 export type ResourceFilters = NonNullable<paths["/api/v1/resources"]["get"]["parameters"]["query"]>;
 
+export type CharacterProfile = components["schemas"]["CharacterProfile"];
+export type CharacterContent = components["schemas"]["CharacterContent"];
+export type CharacterLook = components["schemas"]["CharacterLook"];
+export type CharacterView = components["schemas"]["CharacterView"];
+export type CharacterIndex = components["schemas"]["CharacterIndex"];
+export type CharacterBinding = components["schemas"]["CharacterBinding"];
+export type CharacterBindingSelection = components["schemas"]["CharacterBindingSelection"];
+export type CharacterBindingPreview = components["schemas"]["CharacterBindingPreview"];
+export type CharacterChangePreview = components["schemas"]["CharacterChangePreview"];
+export type SaveCharacter = components["schemas"]["SaveCharacter"];
+export type PreviewCharacterBindings = components["schemas"]["PreviewCharacterBindings"];
+export const CHARACTER_CLEAR_MODES = { KEEP_INPUTS: "KEEP_INPUTS", REMOVE_OWNED: "REMOVE_OWNED" } as const;
+
+export function listCharacters(projectId: string): Promise<CharacterIndex> {
+  return readJson(`/api/v1/projects/${projectId}/characters`, t("character.loadFailed"));
+}
+export function saveCharacter(projectId: string, characterId: string, request: SaveCharacter): Promise<CharacterProfile> {
+  return writeJson(`/api/v1/projects/${projectId}/characters/${characterId}`, { method: "PUT", body: JSON.stringify(request) }, t("character.saveFailed"));
+}
+export function previewCharacterChange(projectId: string, characterId: string, request: SaveCharacter): Promise<CharacterChangePreview> {
+  return writeJson(`/api/v1/projects/${projectId}/characters/${characterId}/preview-change`, { method: "POST", body: JSON.stringify(request) }, t("character.previewFailed"));
+}
+export function archiveCharacter(projectId: string, characterId: string, request: components["schemas"]["ArchiveCharacter"]): Promise<CharacterProfile> {
+  return writeJson(`/api/v1/projects/${projectId}/characters/${characterId}/archive`, { method: "POST", body: JSON.stringify(request) }, t("character.saveFailed"));
+}
+export function previewCharacterBindings(projectId: string, itemId: string, request: PreviewCharacterBindings): Promise<CharacterBindingPreview> {
+  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/preview`, { method: "POST", body: JSON.stringify(request) }, t("character.previewFailed"));
+}
+export function applyCharacterBindings(projectId: string, itemId: string, request: components["schemas"]["ApplyCharacterBindings"]): Promise<components["schemas"]["CharacterBindingApplied"]> {
+  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/apply`, { method: "POST", body: JSON.stringify(request) }, t("character.applyFailed"));
+}
+export function reviewCharacterBindings(projectId: string, itemId: string, request: components["schemas"]["ReviewCharacterBindings"]): Promise<CharacterBinding> {
+  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/review`, { method: "POST", body: JSON.stringify(request) }, t("character.reviewFailed"));
+}
+
 /** Account-wide immutable results, paged by the server rather than fetched project by project. */
 export function listResources(filters: ResourceFilters): Promise<components["schemas"]["ResourcePage"]> {
   const query = new URLSearchParams();

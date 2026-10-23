@@ -3480,10 +3480,346 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/characters": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get: operations["listCharacters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/characters/{characterId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveCharacter"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/characters/{characterId}/preview-change": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewCharacterChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/characters/{characterId}/archive": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["archiveCharacter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/character-bindings/preview": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewCharacterBindings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/character-bindings/apply": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["applyCharacterBindings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/character-bindings/review": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reviewCharacterBindings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CharacterView: {
+            /** Format: uuid */
+            versionId: string;
+            purpose: string;
+            description: string;
+        };
+        CharacterVoice: {
+            /** Format: uuid */
+            versionId: string | null;
+            speakerId: string | null;
+            description: string;
+        };
+        CharacterLook: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            clothing: string;
+            expression: string;
+            description: string;
+            views: components["schemas"]["CharacterView"][];
+        };
+        CharacterContent: {
+            name: string;
+            description: string;
+            looks: components["schemas"]["CharacterLook"][];
+            voice: components["schemas"]["CharacterVoice"] | null;
+        };
+        CharacterProfile: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            content: components["schemas"]["CharacterContent"];
+            /** Format: int64 */
+            version: number;
+            archived: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CharacterSnapshot: {
+            /** Format: uuid */
+            characterId: string;
+            /** Format: int64 */
+            characterVersion: number;
+            name: string;
+            description: string;
+            look: components["schemas"]["CharacterLook"] | null;
+            voice: components["schemas"]["CharacterVoice"] | null;
+            useAppearance: boolean;
+            useVoice: boolean;
+        };
+        CharacterBindingSelection: {
+            /** Format: uuid */
+            characterId: string;
+            /** Format: int64 */
+            characterVersion: number;
+            /** Format: uuid */
+            lookId: string | null;
+            useAppearance: boolean;
+            useVoice: boolean;
+        };
+        SaveCharacter: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            content: components["schemas"]["CharacterContent"];
+        };
+        ArchiveCharacter: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+        };
+        CharacterAffectedItem: {
+            /** Format: uuid */
+            canvasItemId: string;
+            title: string;
+            /** Format: int64 */
+            bindingVersion: number;
+        };
+        CharacterChangePreview: {
+            /** Format: uuid */
+            characterId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            affectedItems: components["schemas"]["CharacterAffectedItem"][];
+        };
+        /**
+         * @description KEEP_INPUTS removes bindings but retains media inputs and description; REMOVE_OWNED removes only still-owned contributions, preserving manual/shared references.
+         * @enum {string}
+         */
+        CharacterClearMode: "KEEP_INPUTS" | "REMOVE_OWNED";
+        PreviewCharacterBindings: {
+            /** Format: int64 */
+            expectedBindingVersion: number;
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            selections: components["schemas"]["CharacterBindingSelection"][];
+            clearMode: components["schemas"]["CharacterClearMode"];
+        };
+        ApplyCharacterBindings: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedBindingVersion: number;
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            selections: components["schemas"]["CharacterBindingSelection"][];
+            clearMode: components["schemas"]["CharacterClearMode"];
+            previewHash: string;
+        };
+        ReviewCharacterBindings: {
+            /** Format: int64 */
+            expectedBindingVersion: number;
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            /** Format: uuid */
+            selectedVersionId: string;
+        };
+        CharacterContribution: {
+            versionIds: string[];
+            promptBlock: string;
+            speakerId: string | null;
+        };
+        CharacterBinding: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: int64 */
+            draftVersion: number;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            snapshots: components["schemas"]["CharacterSnapshot"][];
+            needsReview: boolean;
+            reviewReasons: ("PROFILE_CHANGED" | "DRAFT_CHANGED" | "RESULT_CHANGED" | "NOT_REVIEWED" | "CHARACTER_ARCHIVED")[];
+            contribution: components["schemas"]["CharacterContribution"];
+            /** Format: date-time */
+            reviewedAt: string | null;
+        };
+        CharacterBindingPreview: {
+            previewHash: string;
+            /** Format: int64 */
+            expectedBindingVersion: number;
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            snapshots: components["schemas"]["CharacterSnapshot"][];
+            candidateDraft: components["schemas"]["MediaDraft"];
+            warnings: string[];
+            changes: string[];
+        };
+        CharacterBindingApplied: {
+            binding: components["schemas"]["CharacterBinding"];
+            draft: components["schemas"]["MediaDraft"];
+        };
+        CharacterIndex: {
+            characters: components["schemas"]["CharacterProfile"][];
+            bindings: components["schemas"]["CharacterBinding"][];
+        };
         MediaStyleSummary: {
             /** Format: uuid */
             id: string;
@@ -4456,12 +4792,13 @@ export interface components {
             createdAt: string;
         };
         ProjectExportManifest: {
+            characters: components["schemas"]["CharacterIndex"];
             /** @description 已安装或由项目导演默认绑定的固定版本，包含 version、mapping 和可空的 directorBinding（skillId、skillVersionId、position）；未安装时 mapping.assets 为空，不导出多助手绑定列表。 */
             creativeSkills?: {
                 [key: string]: unknown;
             }[];
             /** @constant */
-            schemaVersion: 8;
+            schemaVersion: 9;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -4499,9 +4836,7 @@ export interface components {
             schemaVersion: number;
             /** Format: uuid */
             baseVersionId: string | null;
-            frozenInput: {
-                [key: string]: unknown;
-            } | null;
+            frozenInput: components["schemas"]["MediaFrozenInput"] | null;
             /** Format: date-time */
             createdAt: string;
             content: components["schemas"]["ManifestVersionContent"];
@@ -5174,6 +5509,14 @@ export interface components {
             order: number;
             kind: components["schemas"]["ArtifactKind"];
         };
+        /** @description Immutable input of a media Task and its result; schema 7 fixes applicable applied character snapshots without resolving later profile revisions. */
+        MediaFrozenInput: {
+            schemaVersion?: number;
+            characterBindings?: components["schemas"]["CharacterSnapshot"][];
+            characterContribution?: components["schemas"]["CharacterContribution"];
+        } & {
+            [key: string]: unknown;
+        };
         ArtifactVersion: {
             /** Format: uuid */
             id: string;
@@ -5182,9 +5525,7 @@ export interface components {
             schemaVersion: 1 | 2;
             /** Format: uuid */
             baseVersionId?: string | null;
-            frozenInput?: {
-                [key: string]: unknown;
-            } | null;
+            frozenInput?: components["schemas"]["MediaFrozenInput"] | null;
             content: components["schemas"]["ArtifactContent"];
             inputReferences: components["schemas"]["ArtifactInputReference"][];
             /** @enum {string} */
@@ -5345,8 +5686,11 @@ export interface components {
             canvasItemId: string;
             /** Format: int64 */
             draftVersion: number;
-            /** @description 固定提示词、参数、能力、mediaInputs 精确素材版本、视频 videoInputMode 及估算费用/费用未知的安全预检摘要；不返回 endpoint、Key 或签名下载地址。 */
+            /** @description 固定提示词、参数、能力、mediaInputs 精确素材版本、视频 videoInputMode、已应用角色快照 characterBindings 及估算费用/费用未知的安全预检摘要；不返回 endpoint、Key 或签名下载地址。 */
             preview: {
+                characterBindings?: components["schemas"]["CharacterSnapshot"][];
+                characterContribution?: components["schemas"]["CharacterContribution"];
+            } & {
                 [key: string]: unknown;
             };
         };
@@ -5607,6 +5951,8 @@ export interface components {
             /** @description 已要求停止本系统后续编排，不表示外部任务已停止或退款 */
             cancelRequested: boolean;
             input: {
+                mediaInput?: components["schemas"]["MediaFrozenInput"];
+            } & {
                 [key: string]: unknown;
             };
             /**
@@ -12780,6 +13126,260 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentSkillBinding"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listCharacters: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterIndex"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    saveCharacter: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCharacter"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterProfile"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    previewCharacterChange: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCharacter"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterChangePreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveCharacter: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveCharacter"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterProfile"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    previewCharacterBindings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewCharacterBindings"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterBindingPreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    applyCharacterBindings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyCharacterBindings"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterBindingApplied"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    reviewCharacterBindings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewCharacterBindings"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterBinding"];
                 };
             };
             400: components["responses"]["ValidationError"];

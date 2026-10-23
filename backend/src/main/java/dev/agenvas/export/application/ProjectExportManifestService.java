@@ -11,6 +11,8 @@ import dev.agenvas.canvas.domain.CanvasConnection;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.MediaDraft;
+import dev.agenvas.character.application.CharacterModels.CharacterIndex;
+import dev.agenvas.character.application.CharacterService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.settings.application.MediaStyleService;
@@ -31,7 +33,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** 按所有者读取项目，并只导出明确允许的非密钥配置、产物历史及媒体元数据。 */
 @Service
 public class ProjectExportManifestService {
-    private static final int MANIFEST_SCHEMA_VERSION = 8;
+    private static final int MANIFEST_SCHEMA_VERSION = 9;
 
     /** 校验项目所有者并读取一致性快照中的项目版本。 */
     private final ProjectService projects;
@@ -51,12 +53,13 @@ public class ProjectExportManifestService {
     private final Clock clock;
     private final MediaStyleService styles;
     private final SkillRunService skills;
+    private final CharacterService characters;
 
     /** 组装项目清单所需的权限、产物、资产和时间服务。 */
     public ProjectExportManifestService(ProjectService projects, ArtifactService artifacts,
             AssetService assets, CanvasService canvas, MediaDraftService mediaDrafts,
             CanvasConnectionService connections, ObjectMapper mapper, Clock clock,
-            MediaStyleService styles, SkillRunService skills) {
+            MediaStyleService styles, SkillRunService skills, CharacterService characters) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.assets = assets;
@@ -67,6 +70,7 @@ public class ProjectExportManifestService {
         this.clock = clock;
         this.styles = styles;
         this.skills = skills;
+        this.characters = characters;
     }
 
     /** 在一个可重复读快照中生成清单，保留资产 ID 但不包含 URL 或存储密钥。 */
@@ -92,7 +96,8 @@ public class ProjectExportManifestService {
                 catalog.artifacts().stream().map(artifact -> artifactEntry(
                         artifact, versions.getOrDefault(artifact.id(), List.of()))).toList(),
                 assets.listProjectAssets(ownerId, projectId).stream()
-                        .map(this::assetEntry).toList(), canvasItems, connectionEntries, skills.exportProject(ownerId, projectId));
+                        .map(this::assetEntry).toList(), canvasItems, connectionEntries,
+                skills.exportProject(ownerId, projectId), characters.exportData(ownerId, projectId));
     }
 
     /** 将产物资源库默认指针、归档状态和历史版本摘要组装为清单条目。 */
@@ -175,7 +180,8 @@ public class ProjectExportManifestService {
      */
     public record Manifest(int schemaVersion, Instant generatedAt, long snapshotSeq,
             ProjectEntry project, List<ArtifactEntry> artifacts, List<AssetEntry> assets,
-            List<CanvasItemEntry> canvasItems, List<ConnectionEntry> connections, List<JsonNode> creativeSkills) {}
+            List<CanvasItemEntry> canvasItems, List<ConnectionEntry> connections,
+            List<JsonNode> creativeSkills, CharacterIndex characters) {}
 
     /** 不含所有者或凭证的项目身份摘要。
      * @param id 项目 ID

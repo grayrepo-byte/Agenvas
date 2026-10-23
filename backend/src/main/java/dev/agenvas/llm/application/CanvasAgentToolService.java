@@ -7,12 +7,19 @@ import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.application.MediaDraftRestoreService;
 import dev.agenvas.canvas.domain.CanvasItem;
+import dev.agenvas.character.application.CharacterModels.CharacterBinding;
+import dev.agenvas.character.application.CharacterModels.CharacterIndex;
+import dev.agenvas.character.application.CharacterModels.CharacterLook;
+import dev.agenvas.character.application.CharacterModels.CharacterProfile;
+import dev.agenvas.character.application.CharacterModels.CharacterSnapshot;
+import dev.agenvas.character.application.CharacterService;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.domain.Task;
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -27,6 +34,10 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 @Transactional
 public class CanvasAgentToolService {
+    private static final int DEFAULT_CHARACTER_LIMIT = 10;
+    private static final int MAX_CHARACTER_LIMIT = 20;
+    private static final int MAX_CHARACTER_TEXT_PAGE = 4000;
+    private static final int MAX_SUMMARY_NAME = 160;
     private enum Action { RENAME, MOVE, RESIZE, REMOVE, DUPLICATE }
     private final CanvasService canvas;
     private final ArtifactService artifacts;
@@ -34,36 +45,48 @@ public class CanvasAgentToolService {
     private final MediaDraftRestoreService draftWrites;
     private final DirectMediaTaskService mediaTasks;
     private final ObjectMapper mapper;
+    private final CharacterService characters;
 
     public CanvasAgentToolService(CanvasService canvas, ArtifactService artifacts, MediaDraftService drafts,
-            MediaDraftRestoreService draftWrites, DirectMediaTaskService mediaTasks, ObjectMapper mapper) {
+            MediaDraftRestoreService draftWrites, DirectMediaTaskService mediaTasks, ObjectMapper mapper,
+            CharacterService characters) {
         this.canvas = canvas;
         this.artifacts = artifacts;
         this.drafts = drafts;
         this.draftWrites = draftWrites;
         this.mediaTasks = mediaTasks;
         this.mapper = mapper;
+        this.characters = characters;
     }
 
     /** Directory pages disclose metadata and persisted drafts only after the model asks for them. */
     @Transactional(readOnly = true)
     public JsonNode readCanvas(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
-        ObjectNode input = parse(arguments, Set.of("offset", "limit", "includeDrafts"));
+        ObjectNode input = parse(arguments, Set.of("offset", "limit", "includeDrafts", "characterOffset",
+                "characterLimit", "characterId", "characterTextOffset", "characterTextLimit", "expectedCharacterVersion"));
         int offset = input.has("offset") ? integer(input, "offset") : 0;
         int limit = input.has("limit") ? integer(input, "limit") : 20;
+        int characterOffset = input.has("characterOffset") ? integer(input, "characterOffset") : 0;
+        int characterLimit = input.has("characterLimit") ? integer(input, "characterLimit") : DEFAULT_CHARACTER_LIMIT;
+        if (characterLimit < 1 || characterLimit > MAX_CHARACTER_LIMIT) throw invalid();
+        if (!input.has("characterId") && (input.has("characterTextOffset") || input.has("characterTextLimit")
+                || input.has("expectedCharacterVersion"))) throw invalid();
         List<CanvasService.CanvasEntry> directory = canvas.list(context.ownerId(), context.projectId());
         if (input.has("includeDrafts") && !input.path("includeDrafts").isBoolean()) throw invalid();
         boolean includeDrafts = input.path("includeDrafts").asBoolean(false);
         if (includeDrafts && limit > 6) throw invalid();
         if (limit < 1 || limit > 40 || offset > directory.size()) throw invalid();
         ObjectNode result = result(operationId, "已读取画布节点目录");
+        CharacterIndex characterIndex = characters.listForAgent(context.ownerId(), context.projectId());
+        appendCharacterDirectory(result, characterIndex, characterOffset, characterLimit);
+        if (input.has("characterId")) appendCharacterTextPage(result, characterIndex, input);
         result.put("offset", offset).put("total", directory.size());
         int end = Math.min(directory.size(), offset + limit);
         if (end < directory.size()) result.put("nextOffset", end); else result.putNull("nextOffset");
         var data = result.putArray("data");
         for (int index = offset; index < end; index++) {
             var entry = directory.get(index);
-            ObjectNode item = describe(context, entry).put("kind", entry.artifact().artifact().kind().name())
+            ObjectNode item = describe(context, entry, characterIndex).put("kind", entry.artifact().artifact().kind().name())
                     .put("artifactVersion", entry.artifact().artifact().version())
                     .put("locked", entry.item().locked()).put("zIndex", entry.item().zIndex());
             JsonNode draft = item.path("mediaDraft");
@@ -229,6 +252,11 @@ public class CanvasAgentToolService {
     }
 
     private ObjectNode describe(TrustedToolContext context, CanvasService.CanvasEntry entry) {
+        return describe(context, entry, characters.listForAgent(context.ownerId(), context.projectId()));
+    }
+
+    private ObjectNode describe(TrustedToolContext context, CanvasService.CanvasEntry entry,
+            CharacterIndex characterIndex) {
         CanvasItem item = entry.item();
         var data = mapper.createObjectNode().put("itemId", item.id().toString()).put("itemVersion", item.version())
                 .put("artifactId", item.subjectId().toString()).put("title", item.title())
@@ -237,7 +265,100 @@ public class CanvasAgentToolService {
         if (version != null) data.put("selectedVersionId", version.id().toString());
         if (entry.artifact().artifact().kind() != Artifact.Kind.TEXT)
             data.set("mediaDraft", mapper.valueToTree(drafts.get(context.ownerId(), context.projectId(), item.id())));
+        var bindings = data.putArray("characterBindings");
+        characterIndex.bindings().stream().filter(binding -> binding.canvasItemId().equals(item.id()))
+                .forEach(binding -> bindings.add(characterBindingSummary(binding).put("appliedToCurrentDraft",
+                        !characters.frozenBindings(context.ownerId(), context.projectId(), item.id()).isEmpty())));
         return data;
+    }
+
+    /** Character metadata is useful for planning, but does not register a media read or expose
+     * the profile's reference IDs. Pixels and audio still require their existing read tools. */
+    private void appendCharacterDirectory(ObjectNode result, CharacterIndex index, int offset, int limit) {
+        // The character cursor is independent of the canvas cursor, including on an empty canvas.
+        List<CharacterProfile> directory = index.characters().stream()
+                .sorted(Comparator.comparing(character -> character.id().toString())).toList();
+        if (offset > directory.size()) throw invalid();
+        int end = offset + Math.min(limit, directory.size() - offset);
+        result.put("characterOffset", offset).put("characterTotal", directory.size());
+        if (end < directory.size()) result.put("nextCharacterOffset", end); else result.putNull("nextCharacterOffset");
+        var data = result.putArray("characters");
+        directory.subList(offset, end).forEach(character -> {
+            var summary = data.addObject().put("characterId", character.id().toString())
+                    .put("characterVersion", character.version()).put("archived", character.archived())
+                    .put("hasVoice", character.content().voice() != null).put("textDetailsOmitted", true);
+            putSummaryName(summary, character.content().name());
+            var looks = summary.putArray("looks");
+            character.content().looks().forEach(look -> looks.add(characterLookSummary(look)));
+        });
+    }
+
+    /** Each page reauthorizes the current project profile. Continuations pin its version, so
+     * a concurrent edit cannot silently splice two different revisions into one document. */
+    private void appendCharacterTextPage(ObjectNode result, CharacterIndex index, ObjectNode input) {
+        UUID characterId = uuid(input, "characterId");
+        int offset = input.has("characterTextOffset") ? integer(input, "characterTextOffset") : 0;
+        int limit = input.has("characterTextLimit") ? integer(input, "characterTextLimit") : MAX_CHARACTER_TEXT_PAGE;
+        if (limit < 1 || limit > MAX_CHARACTER_TEXT_PAGE || offset > 0 && !input.has("expectedCharacterVersion")) throw invalid();
+        CharacterProfile character = index.characters().stream().filter(profile -> profile.id().equals(characterId))
+                .findFirst().orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
+                        ApiMessage.of("api.project-service.the-project-does-not-exist-or-the-current-user-does")));
+        if (input.has("expectedCharacterVersion") && version(input, "expectedCharacterVersion") != character.version())
+            throw problem(HttpStatus.CONFLICT, "CHARACTER_VERSION_CONFLICT", ApiMessage.of("api.character.conflict"));
+        String text = characterSafeText(character).toString();
+        int total = text.codePointCount(0, text.length());
+        if (offset > total) throw invalid();
+        int end = offset + Math.min(limit, total - offset);
+        ObjectNode detail = result.putObject("characterDetails").put("characterId", character.id().toString())
+                .put("characterVersion", character.version()).put("format", "JSON")
+                .put("text", text.substring(text.offsetByCodePoints(0, offset), text.offsetByCodePoints(0, end)));
+        ObjectNode page = detail.putObject("textPage").put("offset", offset).put("endOffset", end)
+                .put("total", total).put("truncated", offset > 0 || end < total);
+        if (end < total) page.put("nextOffset", end); else page.putNull("nextOffset");
+    }
+
+    /** Explicit safe projection: do not serialize profile records, reference IDs, speaker IDs
+     * or storage metadata. Fixed field and persisted look/view order make paging deterministic. */
+    private ObjectNode characterSafeText(CharacterProfile character) {
+        var result = mapper.createObjectNode().put("characterId", character.id().toString())
+                .put("characterVersion", character.version()).put("name", character.content().name())
+                .put("description", character.content().description()).put("archived", character.archived());
+        var looks = result.putArray("looks");
+        for (CharacterLook look : character.content().looks()) {
+            var entry = looks.addObject().put("lookId", look.id().toString()).put("name", look.name())
+                    .put("clothing", look.clothing()).put("expression", look.expression()).put("description", look.description());
+            var views = entry.putArray("views");
+            look.views().forEach(view -> views.addObject().put("purpose", view.purpose()).put("description", view.description()));
+        }
+        if (character.content().voice() != null) result.put("voiceDescription", character.content().voice().description());
+        return result;
+    }
+
+    private ObjectNode characterBindingSummary(CharacterBinding binding) {
+        var summary = mapper.createObjectNode().put("bindingVersion", binding.version())
+                .put("draftVersion", binding.draftVersion()).put("needsReview", binding.needsReview());
+        summary.set("reviewReasons", mapper.valueToTree(binding.reviewReasons()));
+        var snapshots = summary.putArray("snapshots");
+        for (CharacterSnapshot snapshot : binding.snapshots()) {
+            var entry = snapshots.addObject().put("characterId", snapshot.characterId().toString())
+                    .put("characterVersion", snapshot.characterVersion()).put("useAppearance", snapshot.useAppearance())
+                    .put("useVoice", snapshot.useVoice()).put("hasVoice", snapshot.voice() != null).put("textDetailsOmitted", true);
+            putSummaryName(entry, snapshot.name());
+            if (snapshot.look() != null) entry.set("look", characterLookSummary(snapshot.look()));
+        }
+        return summary;
+    }
+
+    private ObjectNode characterLookSummary(CharacterLook look) {
+        var result = mapper.createObjectNode().put("lookId", look.id().toString()).put("textDetailsOmitted", true);
+        putSummaryName(result, look.name());
+        return result;
+    }
+
+    private void putSummaryName(ObjectNode result, String name) {
+        int count = name.codePointCount(0, name.length());
+        result.put("name", name.substring(0, name.offsetByCodePoints(0, Math.min(count, MAX_SUMMARY_NAME))))
+                .put("nameTruncated", count > MAX_SUMMARY_NAME);
     }
 
     private ObjectNode result(UUID operationId, String summary) {

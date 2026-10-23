@@ -35,7 +35,10 @@ class CanvasTaskResultSelectionTest {
     private final CanvasService canvas = new CanvasService(mock(ProjectService.class),
             mock(ArtifactService.class), drafts, items,
             mock(CanvasConnectionService.class), mock(ProjectEventService.class),
-            new ObjectMapper(), Clock.systemUTC());
+            new ObjectMapper(), Clock.systemUTC(),
+                    new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
+                            mock(dev.agenvas.character.application.CharacterService.class)))
+                            .getBeanProvider(dev.agenvas.character.application.CharacterService.class));
 
     private void current(long epoch, long draftVersion) {
         Instant now = Instant.now();

@@ -39,9 +39,14 @@ class CanvasMediaDerivationDraftTest {
     private final MediaDraftService drafts = mock(MediaDraftService.class);
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final CanvasConnectionService connections = mock(CanvasConnectionService.class);
+    private final dev.agenvas.character.application.CharacterService characters =
+            mock(dev.agenvas.character.application.CharacterService.class);
     private final CanvasService canvas = new CanvasService(mock(ProjectService.class), artifacts,
             drafts, items, connections,
-            mock(ProjectEventService.class), new ObjectMapper(), Clock.systemUTC());
+            mock(ProjectEventService.class), new ObjectMapper(), Clock.systemUTC(),
+                    new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
+                            characters))
+                            .getBeanProvider(dev.agenvas.character.application.CharacterService.class));
 
     @BeforeEach
     void source() {
@@ -93,6 +98,17 @@ class CanvasMediaDerivationDraftTest {
         verify(drafts).initializeWithinChange(project, target, false);
         verify(drafts, never()).duplicateWithinChange(any(), any(), any(), any(), anyLong());
         verify(connections).createMediaDerivationWithinChange(owner, project, source, target, parent);
+        verify(characters, never()).copyBindingsWithinChange(any(), any(), any(), any());
+        verify(characters, never()).copyFrozenBindingsWithinChange(any(), any(), any(), any());
+    }
+
+    @Test
+    void additionalProviderResultsInheritCharactersAfterTheirFrozenDraftIsInitialized() {
+        var frozen = new ObjectMapper().createObjectNode().put("prompt", "Old applied character description");
+        CanvasItem result = canvas.placeTaskMediaOutputWithinChange(owner, project, source, artifactId, 1, frozen);
+        var sequence = org.mockito.Mockito.inOrder(drafts, characters);
+        sequence.verify(drafts).initializeFrozenWithinChange(project, result.id(), Artifact.Kind.IMAGE, frozen);
+        sequence.verify(characters).copyFrozenBindingsWithinChange(owner, project, result.id(), frozen);
     }
 
     @Test
