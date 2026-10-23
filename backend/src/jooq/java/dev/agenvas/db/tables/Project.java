@@ -20,6 +20,7 @@ import dev.agenvas.db.tables.ProjectEvent.ProjectEventPath;
 import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
 import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
 import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
+import dev.agenvas.db.tables.Storyboard.StoryboardPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.ThirdPartyPromptImport.ThirdPartyPromptImportPath;
 import dev.agenvas.db.tables.records.ProjectRecord;
@@ -327,6 +328,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _projectEvent = new ProjectEventPath(this, null, Keys.PROJECT_EVENT__FK_PROJECT_EVENT_PROJECT.getInverseKey());
 
         return _projectEvent;
+    }
+
+    private transient StoryboardPath _storyboard;
+
+    /**
+     * Get the implicit to-many join path to the <code>public.storyboard</code>
+     * table
+     */
+    public StoryboardPath storyboard() {
+        if (_storyboard == null)
+            _storyboard = new StoryboardPath(this, null, Keys.STORYBOARD__FK_STORYBOARD_PROJECT.getInverseKey());
+
+        return _storyboard;
     }
 
     private transient TaskPath _task;

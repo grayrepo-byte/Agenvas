@@ -11,6 +11,8 @@ import dev.agenvas.canvas.application.CanvasItemQueryService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.idempotency.IdempotencyState;
+import dev.agenvas.storyboard.application.StoryboardSelectedMediaReadAccessService;
+import dev.agenvas.task.application.TaskOutputReadAccessService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -50,6 +52,8 @@ public class ArtifactService {
     /** 生成版本创建及幂等过期时间。 */
     private final Clock clock;
     private final CanvasItemQueryService canvasItems;
+    private final TaskOutputReadAccessService taskOutputReads;
+    private final StoryboardSelectedMediaReadAccessService storyboardReads;
 
     /** 组装产物校验、媒体引用鉴权、不可变版本写入与事件事务。
      * @param projects 校验所有者和项目状态
@@ -67,7 +71,8 @@ public class ArtifactService {
             AssetService assets,
             ProjectEventService events,
             ObjectMapper objectMapper,
-            Clock clock, CanvasItemQueryService canvasItems) {
+            Clock clock, CanvasItemQueryService canvasItems, TaskOutputReadAccessService taskOutputReads,
+            StoryboardSelectedMediaReadAccessService storyboardReads) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.contentValidator = contentValidator;
@@ -76,6 +81,8 @@ public class ArtifactService {
         this.objectMapper = objectMapper;
         this.clock = clock;
         this.canvasItems = canvasItems;
+        this.taskOutputReads = taskOutputReads;
+        this.storyboardReads = storyboardReads;
     }
 
     /**
@@ -521,16 +528,41 @@ public class ArtifactService {
     public ArtifactVersion requireAgentReadableVersion(UUID ownerId, UUID projectId,
             JsonNode runSnapshot, UUID versionId) {
         ArtifactVersion version = requireVersionById(ownerId, projectId, versionId);
-        if (currentCanvasVersion(ownerId, projectId, version)) return version;
+        if (ordinaryAgentReadable(ownerId, projectId, runSnapshot, version)) return version;
+        throw inputScopeDenied();
+    }
+
+    /** Trusted Run identity is passed separately from model/snapshot JSON. Exact linked outputs and
+     * saved user storyboard selections can be inspected without silently selecting their canvas nodes. */
+    @Transactional(readOnly = true)
+    public ArtifactVersion requireAgentReadableVersion(UUID ownerId, UUID projectId,
+            JsonNode runSnapshot, UUID trustedRunId, UUID versionId) {
+        ArtifactVersion version = requireVersionById(ownerId, projectId, versionId);
+        if (ordinaryAgentReadable(ownerId, projectId, runSnapshot, version)) return version;
+        if (requireArtifact(ownerId, projectId, version.artifactId()).kind() == Artifact.Kind.TEXT) throw inputScopeDenied();
+        if (storyboardReads.allows(ownerId, projectId, version.artifactId(), versionId)) return version;
+        if (trustedRunId != null && version.createdByKind() == ArtifactVersion.CreatedByKind.TASK
+                && trustedRunId.equals(version.runId()) && version.content().path("sourceTaskId").isTextual()) {
+            UUID sourceTask = null;
+            try { sourceTask = UUID.fromString(version.content().path("sourceTaskId").asText()); }
+            catch (IllegalArgumentException malformed) { /* An untrusted hint cannot identify a task. */ }
+            if (sourceTask != null && taskOutputReads.allows(ownerId, projectId, trustedRunId, sourceTask,
+                    version.artifactId(), versionId)) return version;
+        }
+        throw inputScopeDenied();
+    }
+
+    private boolean ordinaryAgentReadable(UUID ownerId, UUID projectId, JsonNode runSnapshot, ArtifactVersion version) {
+        if (currentCanvasVersion(ownerId, projectId, version)) return true;
         for (JsonNode skill : runSnapshot.path("creativeSkills")) {
             for (JsonNode input : skill.path("inputs")) {
                 if (version.artifactId().toString().equals(input.path("artifactId").asText())
-                        && versionId.toString().equals(input.path("artifactVersionId").asText())) {
-                    return version;
+                        && version.id().toString().equals(input.path("artifactVersionId").asText())) {
+                    return true;
                 }
             }
         }
-        throw inputScopeDenied();
+        return false;
     }
 
     /** 可用于编辑令牌和模型图像续接的当前画布精确版本判定，不接受 Skill 只读输入。 */

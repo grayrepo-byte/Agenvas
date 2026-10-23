@@ -132,7 +132,7 @@ public class AgentImageInputService {
     public List<Message> hydrate(UUID owner, UUID project, UUID run, JsonNode snapshot, List<Message> messages) {
         if (TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("Agent image dispatch cannot hold a database transaction");
-        messages = hydrateSamples(owner, project, snapshot, messages);
+        messages = hydrateSamples(owner, project, run, snapshot, messages);
         List<Input> requested = new ArrayList<>();
         List<SkillInput> requestedSkills = new ArrayList<>();
         for (Message message : messages) {
@@ -224,7 +224,7 @@ public class AgentImageInputService {
         return List.copyOf(hydrated);
     }
 
-    private List<Message> hydrateSamples(UUID owner, UUID project, JsonNode snapshot, List<Message> messages) {
+    private List<Message> hydrateSamples(UUID owner, UUID project, UUID run, JsonNode snapshot, List<Message> messages) {
         List<Message> result = new ArrayList<>();
         int count = 0;
         for (Message message : messages) {
@@ -237,7 +237,7 @@ public class AgentImageInputService {
             Map<String, Object> metadata = new LinkedHashMap<>(user.getMetadata());
             metadata.remove(AgentMediaSampleService.METADATA_KEY);
             result.add(UserMessage.builder().text(user.getText()).metadata(metadata)
-                    .media(samples.hydrate(owner, project, snapshot, sample)).build());
+                    .media(samples.hydrate(owner, project, snapshot, run, sample)).build());
         }
         return List.copyOf(result);
     }
@@ -299,7 +299,7 @@ public class AgentImageInputService {
     }
 
     private Asset image(UUID owner, UUID project, UUID run, JsonNode snapshot, Input input) {
-        var version = artifacts.requireAgentReadableVersion(owner, project, snapshot, input.versionId());
+        var version = artifacts.requireAgentReadableVersion(owner, project, snapshot, run, input.versionId());
         if (!input.artifactId().equals(version.artifactId())) throw invalid();
         Asset asset = assets.metadata(owner, project, uuid(version.content(), "assetId"));
         if (asset.mediaKind() != Asset.MediaKind.IMAGE || !project.equals(asset.projectId())) throw invalid();

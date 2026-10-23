@@ -75,7 +75,7 @@ public class AgentLocalMediaToolService {
                 "api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent");
         if (item.version() != expected || !versionId.equals(item.selectedVersionId()))
             throw problem(HttpStatus.CONFLICT, "DIRECT_MEDIA_CONFLICT", "api.media-function.source-changed");
-        var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), versionId);
+        var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), versionId);
         var artifact = artifacts.get(context.ownerId(), context.projectId(), item.subjectId()).artifact();
         if (!item.subjectId().equals(version.artifactId()) || artifact.kind() != kind || artifact.archivedAt() != null)
             throw invalid();

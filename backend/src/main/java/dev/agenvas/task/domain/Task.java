@@ -54,6 +54,7 @@ public record Task(
 
     public static final String MODEL_RETRY_PROPERTY = "modelRetry";
     public static final String APPROVAL_INPUT_PROPERTY = "agentApprovalId";
+    public static final String REQUIRE_EXPLICIT_SELECTION_PROPERTY = "requireExplicitResultSelection";
     public static final String IMAGE_PROMPT_PURPOSE = "IMAGE_REVERSE_PROMPT";
 
     public boolean isVideoComposition() {

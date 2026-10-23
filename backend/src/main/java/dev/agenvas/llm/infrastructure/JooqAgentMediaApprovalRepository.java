@@ -57,6 +57,61 @@ public class JooqAgentMediaApprovalRepository implements AgentMediaApprovalRepos
     }
 
     @Override
+    public List<AgentMediaApproval> listByStoryboardTargets(UUID ownerId, UUID projectId,
+            java.util.Set<UUID> itemIds, java.util.Set<UUID> shotIds, int limit) {
+        if (itemIds.isEmpty() && shotIds.isEmpty()) return List.of();
+        List<org.jooq.Condition> matches = new ArrayList<>(itemIds.stream().map(id -> {
+            var target = mapper.createObjectNode();
+            target.putArray("outputs").addObject().put("canvasItemId", id.toString());
+            return DSL.condition("{0} @> {1}", AGENT_MEDIA_APPROVAL.TARGET_JSON, JSONB.valueOf(target.toString()));
+        }).toList());
+        for (UUID id : shotIds) {
+            var target = mapper.createObjectNode();
+            target.putArray("outputs").addObject().putObject("storyboard").put("shotId", id.toString());
+            matches.add(DSL.condition("{0} @> {1}", AGENT_MEDIA_APPROVAL.TARGET_JSON, JSONB.valueOf(target.toString())));
+        }
+        return dsl.selectFrom(AGENT_MEDIA_APPROVAL)
+                .where(AGENT_MEDIA_APPROVAL.PROJECT_ID.eq(projectId))
+                .and(AGENT_MEDIA_APPROVAL.OWNER_ID.eq(ownerId))
+                .and(DSL.or(matches))
+                .orderBy(DSL.when(AGENT_MEDIA_APPROVAL.STATUS.eq(AgentMediaApproval.Status.PENDING.name()), 0)
+                                .when(AGENT_MEDIA_APPROVAL.STATUS.eq(AgentMediaApproval.Status.APPROVED.name()), 1)
+                                .otherwise(2),
+                        AGENT_MEDIA_APPROVAL.CREATED_AT.desc(), AGENT_MEDIA_APPROVAL.ID.desc())
+                .limit(limit).fetch(this::map);
+    }
+
+    @Override
+    public Optional<Integer> findStoryboardResultRevision(UUID ownerId, UUID projectId,
+            UUID shotId, UUID canvasItemId, UUID versionId) {
+        // Query exact result provenance, including heterogeneous additional output cards.
+        var primary = mapper.createObjectNode();
+        var task = primary.putArray("tasks").addObject();
+        task.putObject("storyboard").put("shotId", shotId.toString());
+        task.put("canvasItemId", canvasItemId.toString()).put("artifactVersionId", versionId.toString());
+        var additional = mapper.createObjectNode();
+        var extraTask = additional.putArray("tasks").addObject();
+        extraTask.putObject("storyboard").put("shotId", shotId.toString());
+        extraTask.putArray("additionalResults").addObject().put("canvasItemId", canvasItemId.toString())
+                .put("artifactVersionId", versionId.toString());
+        return dsl.select(AGENT_MEDIA_APPROVAL.RESULT_JSON).from(AGENT_MEDIA_APPROVAL)
+                .where(AGENT_MEDIA_APPROVAL.OWNER_ID.eq(ownerId))
+                .and(AGENT_MEDIA_APPROVAL.PROJECT_ID.eq(projectId))
+                .and(DSL.condition("({0} @> {1} or {0} @> {2})", AGENT_MEDIA_APPROVAL.RESULT_JSON,
+                        JSONB.valueOf(primary.toString()), JSONB.valueOf(additional.toString())))
+                .fetch(AGENT_MEDIA_APPROVAL.RESULT_JSON).stream()
+                .map(json -> mapper.readTree(json.data()))
+                .flatMap(result -> java.util.stream.StreamSupport.stream(result.path("tasks").spliterator(), false))
+                .filter(item -> shotId.toString().equals(item.at("/storyboard/shotId").asText()))
+                .filter(item -> canvasItemId.toString().equals(item.path("canvasItemId").asText())
+                        && versionId.toString().equals(item.path("artifactVersionId").asText())
+                        || java.util.stream.StreamSupport.stream(item.path("additionalResults").spliterator(), false)
+                                .anyMatch(extra -> canvasItemId.toString().equals(extra.path("canvasItemId").asText())
+                                        && versionId.toString().equals(extra.path("artifactVersionId").asText())))
+                .map(item -> item.at("/storyboard/shotRevision").asInt()).filter(revision -> revision > 0).min(Integer::compare);
+    }
+
+    @Override
     public List<AgentMediaApproval> listByRun(UUID projectId, UUID runId) {
         return dsl.selectFrom(AGENT_MEDIA_APPROVAL)
                 .where(AGENT_MEDIA_APPROVAL.PROJECT_ID.eq(projectId))

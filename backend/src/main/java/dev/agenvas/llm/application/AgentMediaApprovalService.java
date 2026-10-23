@@ -9,6 +9,7 @@ import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.llm.domain.AgentMediaApproval;
+import dev.agenvas.storyboard.application.StoryboardMediaLinkService;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.run.application.AgentRunService;
@@ -48,7 +49,7 @@ public class AgentMediaApprovalService {
     private static final String INPUT_COLOR = "#7C3AED";
     private static final Set<String> OUTPUT_FIELDS = Set.of("kind", "title", "prompt",
             "capabilityId", "parameters", "durationSeconds", "videoInputMode", "mediaInputs",
-            "canvasItemId", "expectedItemVersion", "expectedDraftVersion");
+            "canvasItemId", "expectedItemVersion", "expectedDraftVersion", "shotId", "expectedShotRevision");
 
     private final AgentMediaApprovalRepository approvals;
     private final AgentRunService runs;
@@ -63,13 +64,16 @@ public class AgentMediaApprovalService {
     private final ObjectMapper mapper;
     private final Clock clock;
     private final ToolExecutionRepository toolLedger;
+    private final StoryboardMediaLinkService storyboardLinks;
+    private final dev.agenvas.task.application.TaskService tasks;
+    private final dev.agenvas.task.application.TaskOutputReadAccessService archivedOutputs;
 
     public AgentMediaApprovalService(AgentMediaApprovalRepository approvals, AgentRunService runs,
             ArtifactService artifacts, CanvasService canvas, MediaDraftService drafts,
             MediaCapabilityService capabilities, DirectMediaTaskService mediaTasks,
             ProjectEventService events, ApplicationEventPublisher publisher,
             ObjectMapper mapper, Clock clock, ToolExecutionRepository toolLedger,
-            CanvasConnectionService connections) {
+            CanvasConnectionService connections, StoryboardMediaLinkService storyboardLinks, dev.agenvas.task.application.TaskService tasks, dev.agenvas.task.application.TaskOutputReadAccessService archivedOutputs) {
         this.approvals = approvals;
         this.runs = runs;
         this.artifacts = artifacts;
@@ -83,6 +87,9 @@ public class AgentMediaApprovalService {
         this.mapper = mapper;
         this.clock = clock;
         this.toolLedger = toolLedger;
+        this.storyboardLinks = storyboardLinks;
+        this.tasks = tasks;
+        this.archivedOutputs = archivedOutputs;
     }
 
     /** Tool execution and this proposal share the existing project transaction and call ledger. */
@@ -182,6 +189,10 @@ public class AgentMediaApprovalService {
                     target.put("artifactId", artifactId.toString());
                     target.put("canvasItemId", item.id().toString());
                     target.put("createdByProposal", createdByProposal);
+                    if (request.storyboard() != null) {
+                        target.set("storyboard", mapper.valueToTree(request.storyboard().link()));
+                        target.put("storyboardCreativeHash", request.storyboard().creativeHash());
+                    }
                     if (!createdByProposal) target.put("itemVersion", item.version());
                     target.put("draftVersion", saved.version());
                     target.put("frozenInputHash", preflight.frozenInputHash());
@@ -217,6 +228,45 @@ public class AgentMediaApprovalService {
     public List<ApprovalView> list(UUID ownerId, UUID projectId, UUID runId) {
         runs.get(ownerId, projectId, runId);
         return approvals.listByRun(projectId, runId).stream().map(this::view).toList();
+    }
+
+    /** Read-only project aggregation for the storyboard; decisions retain their original Run boundary. */
+    @Transactional(readOnly = true)
+    public List<ApprovalView> listForCanvasItems(UUID ownerId, UUID projectId, Set<UUID> itemIds) {
+        if (itemIds.isEmpty()) return List.of();
+        return approvals.listByStoryboardTargets(ownerId, projectId, itemIds, Set.of(), 100).stream()
+                .map(this::view).toList();
+    }
+
+    /** Linked proposals remain visible even before the user chooses a production node. */
+    @Transactional(readOnly = true)
+    public List<ApprovalView> listForStoryboard(UUID ownerId, UUID projectId, Set<UUID> itemIds, Set<UUID> shotIds) {
+        if (itemIds.isEmpty() && shotIds.isEmpty()) return List.of();
+        return approvals.listByStoryboardTargets(ownerId, projectId, itemIds, shotIds, 100).stream().map(this::view).toList();
+    }
+
+    /** Frozen generation provenance prevents adopting an old result from silently clearing review. */
+    @Transactional(readOnly = true)
+    public java.util.Optional<Integer> storyboardResultRevision(UUID ownerId, UUID projectId,
+            UUID shotId, UUID canvasItemId, UUID versionId) {
+        if (versionId == null) return java.util.Optional.empty();
+        var archived = approvals.findStoryboardResultRevision(ownerId, projectId, shotId, canvasItemId, versionId);
+        if (archived.isPresent()) return archived;
+        // A batch may still be running, or a canceled/UNKNOWN task may archive late.
+        // Task-created immutable version provenance resolves that window without guessing by kind.
+        var version = artifacts.requireVersionById(ownerId, projectId, versionId);
+        if (version.createdByKind() != dev.agenvas.artifact.domain.ArtifactVersion.CreatedByKind.TASK
+                || !version.content().path("sourceTaskId").isTextual()) return java.util.Optional.empty();
+        UUID sourceTask;
+        try { sourceTask = UUID.fromString(version.content().path("sourceTaskId").asText()); }
+        catch (IllegalArgumentException invalidSource) { return java.util.Optional.empty(); }
+        var source = approvals.findByTaskId(projectId, sourceTask).orElse(null);
+        if (source == null || !source.ownerId().equals(ownerId)) return java.util.Optional.empty();
+        int outputIndex = source.taskIds().indexOf(sourceTask);
+        if (outputIndex < 0 || outputIndex >= source.targets().path("outputs").size()) return java.util.Optional.empty();
+        JsonNode link = source.targets().path("outputs").get(outputIndex).path("storyboard");
+        return shotId.toString().equals(link.path("shotId").asText()) && link.path("shotRevision").asInt() > 0
+                ? java.util.Optional.of(link.path("shotRevision").asInt()) : java.util.Optional.empty();
     }
 
     @Transactional(readOnly = true)
@@ -269,6 +319,8 @@ public class AgentMediaApprovalService {
                 // Shared catalog locks pin administrator-controlled capability and connection
                 // versions through both revalidation and the atomic batch Task acceptance.
                 for (JsonNode target : approval.targets().path("outputs")) {
+                    if (target.path("storyboard").isObject())
+                        storyboardLinks.requireCurrent(ownerId, projectId, mapper.treeToValue(target.path("storyboard"), StoryboardMediaLinkService.Link.class), target.path("storyboardCreativeHash").asText(null));
                     if (!target.path("createdByProposal").asBoolean(true)) {
                         CanvasItem existing = existingItem(ownerId, projectId, uuid(target.path("canvasItemId")));
                         if (existing.locked() || existing.version() != target.path("itemVersion").asLong(-1)
@@ -300,7 +352,7 @@ public class AgentMediaApprovalService {
                     Task task = approvedTask(ownerId, projectId, runId, approvalId,
                             uuid(target.path("artifactId")), uuid(target.path("canvasItemId")),
                             target.path("draftVersion").longValue(),
-                            "agent-media:" + approvalId + ":" + index++, approval.request().get("creativeSkill"));
+                            "agent-media:" + approvalId + ":" + index++, approval.request().get("creativeSkill"), target.path("storyboard").isObject());
                     taskIds.add(task.id());
                 }
                 update = approval.transition(AgentMediaApproval.Status.APPROVED, taskIds,
@@ -380,7 +432,7 @@ public class AgentMediaApprovalService {
                 catch (IllegalArgumentException failure) { throw invalid("role"); }
                 // Model-selected IDs never widen the Run's explicit exact-version context.
                 artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(),
-                        run.contextSnapshot(), versionId);
+                        run.contextSnapshot(), context.runId(), versionId);
                 inputs.add(new MediaDraftService.SaveMediaInput(versionId, role, INPUT_COLOR));
             }
         }
@@ -402,7 +454,15 @@ public class AgentMediaApprovalService {
             }
         }
         return new OutputRequest(kind, title, prompt, parameters, duration, capabilityId, mode,
-                List.copyOf(inputs), object, canvasItemId, expectedItemVersion, expectedDraftVersion);
+                List.copyOf(inputs), object, canvasItemId, expectedItemVersion, expectedDraftVersion, parseStoryboardLink(context, object, kind));
+    }
+
+    private StoryboardMediaLinkService.Frozen parseStoryboardLink(TrustedToolContext context, ObjectNode output, Artifact.Kind kind) {
+        if (!output.has("shotId") && !output.has("expectedShotRevision")) return null;
+        JsonNode revision = output.path("expectedShotRevision");
+        if (!output.hasNonNull("shotId") || !revision.isIntegralNumber() || !revision.canConvertToInt() || revision.intValue() < 1)
+            throw invalid("storyboard-shot-revision");
+        return storyboardLinks.freezeWithFingerprint(context.ownerId(), context.projectId(), uuid(output.path("shotId")), revision.intValue(), kind);
     }
 
     /** Existing destinations retain their identity, results and history, including on rejection. */
@@ -435,7 +495,9 @@ public class AgentMediaApprovalService {
                 : mediaTasks.preflightApproved(owner, project, artifact, card, draftVersion, skill);
     }
     private Task approvedTask(UUID owner, UUID project, UUID run, UUID approval, UUID artifact, UUID card,
-            long draftVersion, String key, JsonNode skill) {
+            long draftVersion, String key, JsonNode skill, boolean requireExplicitSelection) {
+        if (requireExplicitSelection) return mediaTasks.runApproved(owner, project, run, approval,
+                artifact, card, draftVersion, key, skill, true);
         return skill == null ? mediaTasks.runApproved(owner, project, run, approval, artifact, card, draftVersion, key)
                 : mediaTasks.runApproved(owner, project, run, approval, artifact, card, draftVersion, key, skill);
     }
@@ -543,12 +605,27 @@ public class AgentMediaApprovalService {
             outputs.add(new ApprovalOutput(Artifact.Kind.valueOf(request.path("kind").asText()),
                     request.path("title").asText(), uuid(target.path("artifactId")),
                     uuid(target.path("canvasItemId")), target.path("draftVersion").longValue(),
-                    target.path("preview").deepCopy()));
+                    target.path("preview").deepCopy(), target.path("storyboard").isObject()
+                            ? mapper.treeToValue(target.path("storyboard"), StoryboardMediaLinkService.Link.class) : null));
         }
         return new ApprovalView(approval.id(), approval.projectId(), approval.runId(),
                 approval.operationId(), approval.status(), approval.version(), List.copyOf(outputs),
-                approval.taskIds(), approval.result(), approval.createdAt(), approval.expiresAt(),
+                approval.taskIds(), approval.result(), archivedResults(approval), approval.createdAt(), approval.expiresAt(),
                 approval.executionDeadline());
+    }
+
+    private List<JsonNode> archivedResults(AgentMediaApproval approval) {
+        List<JsonNode> archived = new ArrayList<>();
+        for (UUID taskId : approval.taskIds()) {
+            Task task = tasks.get(approval.ownerId(), approval.projectId(), taskId);
+            if (task == null) continue;
+            for (JsonNode output : archivedOutputs.archivedOutputs(approval.ownerId(), approval.projectId(), taskId)) {
+                if (output.path("artifactVersionId").isTextual()
+                        || output.path("additionalResults").isArray() && !output.path("additionalResults").isEmpty())
+                    archived.add(AgentMediaResultProjection.task(mapper, approval, task, output));
+            }
+        }
+        return List.copyOf(archived);
     }
 
     private ApiProblemException invalid(String field) {
@@ -573,13 +650,13 @@ public class AgentMediaApprovalService {
             JsonNode parameters, Integer durationSeconds, UUID capabilityId,
             MediaDraft.VideoInputMode videoInputMode,
             List<MediaDraftService.SaveMediaInput> mediaInputs, ObjectNode original,
-            UUID canvasItemId, Long expectedItemVersion, Long expectedDraftVersion) {}
+            UUID canvasItemId, Long expectedItemVersion, Long expectedDraftVersion, StoryboardMediaLinkService.Frozen storyboard) {}
 
     public enum Decision { APPROVE, REJECT }
     public record ApprovalOutput(Artifact.Kind kind, String title, UUID artifactId,
-            UUID canvasItemId, long draftVersion, JsonNode preview) {}
+            UUID canvasItemId, long draftVersion, JsonNode preview, StoryboardMediaLinkService.Link storyboard) {}
     public record ApprovalView(UUID id, UUID projectId, UUID runId, UUID operationId,
             AgentMediaApproval.Status status, long version, List<ApprovalOutput> outputs,
-            List<UUID> taskIds, JsonNode result, Instant createdAt, Instant expiresAt,
+            List<UUID> taskIds, JsonNode result, List<JsonNode> archivedResults, Instant createdAt, Instant expiresAt,
             Instant executionDeadline) {}
 }

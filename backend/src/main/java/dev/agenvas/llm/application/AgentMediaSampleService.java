@@ -71,8 +71,8 @@ public class AgentMediaSampleService {
     }
 
     /** Used by the read tool before committing its sample manifest; it performs no media I/O. */
-    public Asset authorize(UUID owner, UUID project, JsonNode snapshot, Sample sample) {
-        var version = artifacts.requireAgentReadableVersion(owner, project, snapshot, sample.versionId());
+    public Asset authorize(UUID owner, UUID project, JsonNode snapshot, UUID trustedRunId, Sample sample) {
+        var version = artifacts.requireAgentReadableVersion(owner, project, snapshot, trustedRunId, sample.versionId());
         if (!sample.artifactId().equals(version.artifactId())) throw invalid();
         Asset asset = assets.metadata(owner, project, UUID.fromString(version.content().path("assetId").asText()));
         if (!project.equals(asset.projectId()) || asset.durationMs() == null || asset.durationMs() < 1
@@ -83,10 +83,10 @@ public class AgentMediaSampleService {
         return asset;
     }
 
-    public List<Media> hydrate(UUID owner, UUID project, JsonNode snapshot, Sample sample) {
+    public List<Media> hydrate(UUID owner, UUID project, JsonNode snapshot, UUID trustedRunId, Sample sample) {
         if (TransactionSynchronizationManager.isActualTransactionActive())
             throw new IllegalStateException("Media sample dispatch cannot hold a database transaction");
-        Asset asset = authorize(owner, project, snapshot, sample);
+        Asset asset = authorize(owner, project, snapshot, trustedRunId, sample);
         Path directory = null;
         try {
             Path source = assets.get(owner, project, asset.id()).path();

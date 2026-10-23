@@ -146,7 +146,7 @@ class AgentSkillImageInputServiceTest {
             var visible = mock(ArtifactVersion.class);
             when(visible.artifactId()).thenReturn(artifactId);
             when(visible.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
-            when(artifacts.requireAgentReadableVersion(owner, project, snapshot(), versionId)).thenReturn(visible);
+            when(artifacts.requireAgentReadableVersion(owner, project, snapshot(), run, versionId)).thenReturn(visible);
             var asset = mock(Asset.class);
             when(asset.projectId()).thenReturn(project);
             when(asset.mediaKind()).thenReturn(Asset.MediaKind.IMAGE);

@@ -75,6 +75,9 @@ class AgentTurnFailureCodeTest {
         assertThat(AgentTurnWorker.failureCode(new ExecutionException(new ApiProblemException(
                 HttpStatus.CONFLICT, "ARTIFACT_VERSION_CONFLICT", safeMessage, safeMessage, false))))
                 .isEqualTo("ARTIFACT_VERSION_CONFLICT");
+        assertThat(AgentTurnWorker.failureCode(new ExecutionException(new ApiProblemException(
+                HttpStatus.CONFLICT, "STORYBOARD_VERSION_CONFLICT", safeMessage, safeMessage, false))))
+                .isEqualTo("STORYBOARD_VERSION_CONFLICT");
         assertThat(AgentTurnWorker.failureCode(new ApiProblemException(
                 HttpStatus.INTERNAL_SERVER_ERROR, "SYNTHETIC_INTERNAL_CODE", safeMessage, safeMessage, false)))
                 .isEqualTo("AGENT_TURN_FAILED");

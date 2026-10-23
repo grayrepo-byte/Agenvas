@@ -82,7 +82,7 @@ public class AgentVideoCompositionToolService {
             throw invalid();
         }
         var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(),
-                run.contextSnapshot(), id);
+                run.contextSnapshot(), context.runId(), id);
         if (artifacts.get(context.ownerId(), context.projectId(), version.artifactId()).artifact().kind() != kind)
             throw invalid();
     }

@@ -70,6 +70,8 @@ import dev.agenvas.db.tables.SpringSession;
 import dev.agenvas.db.tables.SpringSessionAttributes;
 import dev.agenvas.db.tables.StorageProfile;
 import dev.agenvas.db.tables.StorageSettings;
+import dev.agenvas.db.tables.Storyboard;
+import dev.agenvas.db.tables.StoryboardRevision;
 import dev.agenvas.db.tables.Task;
 import dev.agenvas.db.tables.TaskArtifactTarget;
 import dev.agenvas.db.tables.TaskLateResult;
@@ -425,6 +427,16 @@ public class Tables {
      * 当前存储配置选择及并发控制版本；已有资产保留原路由
      */
     public static final StorageSettings STORAGE_SETTINGS = StorageSettings.STORAGE_SETTINGS;
+
+    /**
+     * 项目分镜制作台的当前修订指针；内容只存在不可变修订中
+     */
+    public static final Storyboard STORYBOARD = Storyboard.STORYBOARD;
+
+    /**
+     * 追加式分镜板修订，冻结镜头、精确版本引用与人工复核状态
+     */
+    public static final StoryboardRevision STORYBOARD_REVISION = StoryboardRevision.STORYBOARD_REVISION;
 
     /**
      * 持久执行单元；短事务认领、租约及 fencing epoch 保护所有状态写入

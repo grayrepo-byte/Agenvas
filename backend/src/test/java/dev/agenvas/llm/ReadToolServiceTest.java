@@ -62,7 +62,7 @@ class ReadToolServiceTest {
                 kind == Artifact.Kind.AUDIO ? "audio/wav" : "video/mp4", 1234, "PRIVATE_HASH",
                 kind == Artifact.Kind.VIDEO ? 1920 : null, kind == Artifact.Kind.VIDEO ? 1080 : null,
                 kind == Artifact.Kind.IMAGE ? null : 9876, null, null, null, java.time.Instant.EPOCH));
-        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, versionId)).thenReturn(version);
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), versionId)).thenReturn(version);
         when(artifacts.get(context.ownerId(), context.projectId(), artifactId))
                 .thenReturn(new ArtifactService.ArtifactView(artifact, null));
 
@@ -159,7 +159,7 @@ class ReadToolServiceTest {
         JsonNode snapshot = mapper.createObjectNode();
         when(run.contextSnapshot()).thenReturn(snapshot);
         UUID versionId = UUID.randomUUID();
-        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, versionId))
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), versionId))
                 .thenThrow(new IllegalStateException("denied"));
         assertThatThrownBy(() -> reader.artifacts(context, run, UUID.randomUUID(),
                 "{\"versionIds\":[\"" + versionId + "\"]}")).hasMessage("denied");
@@ -246,7 +246,7 @@ class ReadToolServiceTest {
         var fixture = textFixture("第一页😀第二页");
         assertThat(textPage(fixture, ",\"textLimit\":3").at("/content/text").asText()).isEqualTo("第一页");
         when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(),
-                fixture.run().contextSnapshot(), fixture.versionId())).thenThrow(new IllegalStateException("revoked"));
+                fixture.run().contextSnapshot(), context.runId(), fixture.versionId())).thenThrow(new IllegalStateException("revoked"));
         assertThatThrownBy(() -> textPage(fixture, ",\"textOffset\":3")).hasMessage("revoked");
     }
 
@@ -262,7 +262,7 @@ class ReadToolServiceTest {
         when(version.id()).thenReturn(versionId);
         when(version.artifactId()).thenReturn(artifactId);
         when(version.content()).thenReturn(mapper.createObjectNode().put("format", "MARKDOWN").put("text", text));
-        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, versionId)).thenReturn(version);
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), versionId)).thenReturn(version);
         when(artifacts.get(context.ownerId(), context.projectId(), artifactId))
                 .thenReturn(new ArtifactService.ArtifactView(artifact, version));
         return new TextFixture(run, artifact, versionId);

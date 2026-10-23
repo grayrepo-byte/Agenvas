@@ -95,6 +95,48 @@ class RunToolPolicyTest {
             else assertThat(schema.path("required").toString()).contains("startMs", "endMs");
         }
     }
+    @Test void storyboardSchemasExposeOnlyCreativeEditsAndPreserveFrozenPermissions() {
+        var policy = policy();
+        policy.putArray("allowedTools").add("read_canvas");
+        assertThat(names(policy)).doesNotContain("read_storyboard", "write_storyboard_shots");
+        assertThat(RunToolPolicy.current(false, false)).contains("read_storyboard", "write_storyboard_shots");
+        policy.withArray("allowedTools").add("read_storyboard").add("write_storyboard_shots");
+        for (var callback : registry.modelDefinitions(policy)) {
+            var tool = callback.getToolDefinition();
+            if (!tool.name().contains("storyboard")) continue;
+            var schema = mapper.readTree(tool.inputSchema());
+            assertThat(schema.path("additionalProperties").asBoolean()).isFalse();
+            assertThat(tool.inputSchema()).doesNotContain("projectId", "ownerId", "runId", "approved",
+                    "productions", "composition", "confirmReviewed", "reviewedRevision", "selectedVersionId");
+            assertThatThrownBy(() -> callback.call("{}"))
+                    .isInstanceOf(IllegalStateException.class);
+            if (tool.name().equals("read_storyboard")) {
+                assertThat(schema.at("/properties/limit/maximum").asInt()).isEqualTo(40);
+                assertThat(schema.at("/properties/shotIds/maxItems").asInt()).isEqualTo(1);
+            } else {
+                assertThat(schema.path("required").toString()).contains("expectedVersion", "shots");
+                assertThat(schema.at("/properties/shots/maxItems").asInt()).isEqualTo(6);
+                assertThat(schema.at("/properties/shots/items/additionalProperties").asBoolean()).isFalse();
+                assertThat(tool.description()).contains("preserved", "user approval");
+            }
+        }
+    }
+    @Test void shotMediaAssociationsExposeOnlyObservedIdentityAndRevision() {
+        var policy = policy();
+        policy.putArray("allowedTools").add("propose_media_generation");
+        var callback = registry.modelDefinitions(policy).getFirst();
+        var definition = callback.getToolDefinition();
+        var output = mapper.readTree(definition.inputSchema()).at("/properties/outputs/items");
+        assertThat(output.path("additionalProperties").asBoolean()).isFalse();
+        assertThat(output.at("/properties/shotId/format").asText()).isEqualTo("uuid");
+        assertThat(output.at("/properties/expectedShotRevision/minimum").asInt()).isEqualTo(1);
+        assertThat(output.path("properties").has("shotCode")).isFalse();
+        assertThat(output.path("properties").has("role")).isFalse();
+        assertThat(output.path("properties").has("selectedVersionId")).isFalse();
+        assertThat(definition.description()).contains("users alone approve and select", "fresh reviewed proposal");
+        assertThatThrownBy(() -> callback.call("{}"))
+                .isInstanceOf(IllegalStateException.class);
+    }
     private tools.jackson.databind.node.ObjectNode policy() {
         return mapper.createObjectNode().put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
                 .put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION)

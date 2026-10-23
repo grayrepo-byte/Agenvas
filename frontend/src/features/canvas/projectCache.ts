@@ -29,7 +29,11 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         if (needsRecovery || event.type !== "agent.turn.stream.delta") invalidateRunState(event.payload.runId);
         return;
       }
+      if (event.type === "storyboard.changed") {
+        invalidate("storyboard", "storyboard-revisions", "storyboard-media-approvals");
+      }
       if (event.type === "agent.media.approval.changed") {
+        invalidate("storyboard-media-approvals");
         void queryClient.invalidateQueries({ queryKey: typeof event.payload.runId === "string"
           ? ["run-media-approvals", projectId, event.payload.runId] : ["run-media-approvals", projectId] });
         invalidate("snapshot");
@@ -74,7 +78,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         void queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId, activeRunId] });
       }
       if (event.type === "task.status.changed") {
-        invalidate("direct-media-tasks", "direct-media-queue");
+        invalidate("direct-media-tasks", "direct-media-queue", "storyboard-media-approvals");
       }
       if (event.type === "media.draft.changed") invalidate("media-draft", "canvas-connections");
       if (event.type === "usage.changed") invalidate("project-usage");
@@ -88,7 +92,8 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       // The snapshot contains the current workspace, but not historical panels or lists.
       // A missed event may have changed any of them while the stream was unavailable.
       invalidate(...HISTORY_QUERY_PREFIXES, "run-tasks", "direct-media-tasks", "media-draft",
-        "canvas-media-versions", "project-usage");
+        "canvas-media-versions", "project-usage", "storyboard", "storyboard-revisions",
+        "storyboard-media-approvals");
     },
   };
 }

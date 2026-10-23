@@ -32,6 +32,8 @@ import dev.agenvas.skill.application.SkillRunService;
 import dev.agenvas.skill.application.SkillService;
 import dev.agenvas.skill.domain.SkillContent;
 import dev.agenvas.task.application.DirectMediaTaskService;
+import dev.agenvas.storyboard.application.StoryboardService;
+import dev.agenvas.storyboard.domain.Storyboard;
 import dev.agenvas.testing.ImageAssetFixture;
 import java.util.List;
 import java.util.Base64;
@@ -89,6 +91,7 @@ class ProjectExportManifestPostgresIT {
     @Autowired private SkillRunService skillRuns;
     @Autowired private LibraryService library;
     @Autowired private DirectMediaTaskService directMedia;
+    @Autowired private StoryboardService storyboards;
     @Autowired private ObjectMapper mapper;
     @Autowired private WebApplicationContext context;
 
@@ -175,6 +178,19 @@ class ProjectExportManifestPostgresIT {
         assertThat(styledPreflight.safeSummary().path("styleId").asText()).isEqualTo(style.id().toString());
         assertThat(styledPreflight.safeSummary().path("creativeSkill")).isEqualTo(skillSource);
 
+        UUID shotId = UUID.randomUUID();
+        UUID frameVersionId = revisedImage.resourceDefaultVersion().id();
+        var frameBinding = new StoryboardService.ProductionInput(Storyboard.Role.KEYFRAME,
+                sourceItemId, frameVersionId, false);
+        storyboards.save(owner.userId(), project.id(), new StoryboardService.Save(0,
+                List.of(new StoryboardService.ShotInput(shotId, "SHOT-001", "SC-01", "Arrival",
+                        "A traveler arrives.", "Hello.", new BigDecimal("6"), null,
+                        List.of(frameVersionId), List.of(frameBinding))), null));
+        storyboards.save(owner.userId(), project.id(), new StoryboardService.Save(1,
+                List.of(new StoryboardService.ShotInput(shotId, "SHOT-001", "SC-01", "Arrival",
+                        "A traveler arrives.", "Welcome back.", new BigDecimal("8"), null,
+                        List.of(frameVersionId), List.of(frameBinding))), null));
+
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
         String path = "/api/v1/projects/" + project.id() + "/export-manifest";
         MockHttpSession session = new MockHttpSession(null,
@@ -187,7 +203,16 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(8);
+        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(9);
+        assertThat(manifest.path("storyboard").path("projectId").asText()).isEqualTo(project.id().toString());
+        assertThat(manifest.path("storyboard").path("version").asLong()).isEqualTo(2);
+        assertThat(manifest.path("storyboard").path("shots").get(0).path("dialogue").asText())
+                .isEqualTo("Welcome back.");
+        assertThat(manifest.path("storyboardRevisions")).hasSize(2);
+        assertThat(manifest.path("storyboardRevisions").get(0).path("shots").get(0).path("dialogue").asText())
+                .isEqualTo("Hello.");
+        assertThat(manifest.path("storyboardRevisions").get(0).path("shots").get(0).path("productions").get(0)
+                .path("selectedVersionId").asText()).isEqualTo(frameVersionId.toString());
         assertThat(manifest.path("project").path("id").asText())
                 .isEqualTo(project.id().toString());
         assertThat(manifest.path("project").has("ownerId")).isFalse();

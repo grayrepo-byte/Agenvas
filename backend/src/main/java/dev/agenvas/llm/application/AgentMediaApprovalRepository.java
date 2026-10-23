@@ -11,6 +11,10 @@ public interface AgentMediaApprovalRepository {
     Optional<AgentMediaApproval> findForUpdate(UUID projectId, UUID runId, UUID approvalId);
     Optional<AgentMediaApproval> findByToolCall(UUID projectId, UUID runId,
             int stepIndex, String toolCallId);
+    List<AgentMediaApproval> listByStoryboardTargets(UUID ownerId, UUID projectId,
+            java.util.Set<UUID> itemIds, java.util.Set<UUID> shotIds, int limit);
+    Optional<Integer> findStoryboardResultRevision(UUID ownerId, UUID projectId,
+            UUID shotId, UUID canvasItemId, UUID versionId);
     List<AgentMediaApproval> listByRun(UUID projectId, UUID runId);
     Optional<AgentMediaApproval> findByTaskId(UUID projectId, UUID taskId);
     List<AgentMediaApproval> listOutstanding(int limit);

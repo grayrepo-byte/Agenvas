@@ -738,6 +738,28 @@ V76/V77 增加 Skill、草稿、版本、绑定、发布/安装及幂等操作�
 
 已有图片可切到图片角度模式，展示来源二维图片，并依据当前 3D 相机生成方向与构图提示。工作台通过已有 `ImageFunctionConfiguration` 展示管理员绑定的图片功能能力，用户显式点击生成后，才通过现有 `VIEW_ANGLE` Task 路径重绘精确来源图片；该操作沿用费用估算、幂等受理、失败/UNKNOWN、版本与派生规则。此模式不把平面图片视为真实三维模型，不保证生成背面或新遮挡准确，也不自动上传导演台画面或声称已执行连续运镜。真实 Provider 的构图遵从和视角重绘效果另列验证，Mock 与本地 PNG 成功不能替代。
 
+### 6.19 分镜制作台（2026-10-23）
+
+项目画布提供独立全屏分镜制作台，以一张持久分镜板组织镜头制作。此决定扩展 §8.7 的文字分镜，替代 ADR 0054「不新增镜头身份」的边界，见 [ADR 0055](adr/0055-storyboard-production-workbench.md)。导演原有剧本拆解、分镜提示词及辅助 TEXT 成果仍适用；导演通过 §8.7 的专用工具直接创建和修改正式镜头。已有文字不会隐式转换为镜头，自定义导演配置与历史 Run 保留。
+
+每镜有稳定 UUID、板内唯一镜号、场次、标题、画面描述、逐字台词、估计时长，可选择一个 TEXT 来源精确版本和多个媒体参考精确版本。镜头重排保留身份，删除只从当前板移除，已提交修订和媒体结果保留。时长是创作估计，不证明媒体实际时长，也不改变媒体能力的整数秒生成契约。制作台提供创建、编辑、重排、删除及显式 JSON 导入；JSON 仅导入创作文字和估时，为镜头分配新 UUID，不导入制作绑定、权限或复核断言，不从自然语言文档隐式提取并执行任务。板最多 200 镜，每镜最多 30 个媒体参考，估时为 0.1–3600 秒、最多三位小数。
+
+每镜按 `KEYFRAME`、`VIDEO`、`AUDIO` 分别关联同项目画布节点，可固定该节点可选用的精确结果版本；成片也选择既有视频节点和精确版本。来源与参考固定版本，不随 Artifact 默认版本或节点选用变化更新。界面可以预览固定结果、明确采用其他结果并定位画布节点；修改关联不改写节点草稿，不建立媒体输入连线，不触发生成。用户也可明确「准备节点」，创建独立媒体草稿并填入画面或台词；失败重试保留该动作的节点身份与输入，仍需在节点确认能力、媒体参考用途与生成时长，准备动作不调用模型。引用失效或节点不存在时明确提示，不能把它显示为已完成。
+
+镜头创作内容、台词、时长、来源或参考变化时，由服务端递增该镜头创作修订，将保留的制作结果标记 `needsReview`。用户审看后显式确认适用，才能清除待复核；确认不修改媒体内容，也不表示系统已检验画质、对白或口型。其他镜头身份、修订和已付费结果不变。板的镜头内容、顺序及结果选用变化使已关联成片待复核，保留旧成片；再次输出仍走既有视频剪辑或导演本地合成入口与限制。
+
+状态按镜头关联提案、实际关联节点和 Task 投影待准备、待审批、生成中、可选用、失败、取消、UNKNOWN 和待复核，不能仅凭镜头已有标题或受理回执判定完成。制作台集中显示最多 100 个匹配当前镜头身份或关联节点的既有 Agent 审批，未绑定节点也能收到镜头提案；待审批和已批准优先，同类按创建时间倒序。沿用固定批次费用、期限、CAS 和整体批准/拒绝语义，批次包含其他目标时仍展示完整范围。用户批量生产按关键帧、视频或音频阶段预检最多六个已保存目标草稿、能力、互锁与费用，区分已知估算和未知费用；用户明确确认后逐节点通过现有直接运行入口受理，显示各项受理与失败。部分失败不撤销已受理任务，不确定受理保留原提交身份以供显式核对，失败或 UNKNOWN 不自动重提；重做继续由用户显式发起。改分镜不会修改冻结 Task 或历史结果来源。
+
+导演为具体镜头提出媒体生成时，每项携带真实 `shotId` 和当前 `expectedShotRevision`；服务端验证后冻结镜头身份、镜号、修订和按媒体类型推导的制作角色。提案不绑定制作节点、不更换已选结果、不追加板修订。批准前核对相关镜头仍存在且修订一致，改稿或删除使整批失效；其他镜头编辑或改镜号不使其失效。拒绝和幂等决策仍可处理，不能通过模型文字批准。批准后的旧输入继续冻结；生成期间改稿时，新归档结果显示原修订依据，失败、UNKNOWN 等也自动回到镜头。
+
+关联结果以候选展示，用户点击选用才修改本地制作关联与精确结果，再通过保存 CAS 持久化；审批或生成成功、轮询及 SSE 不自动采用。镜头提案归档也不自动切换节点结果。选用较旧镜头修订产生的结果时，服务端按审批来源保留 `needsReview`，用户明确确认适用才核销。额外结果按精确节点和版本匹配，节点移除时提示不可选用；历史 `selected` 是画布选用记录，不能当作分镜已选。见 [ADR 0057](adr/0057-shot-linked-media-approvals.md)。
+
+导演镜头写入同样使用全板 CAS：模型只提交最多六镜的创作字段，服务端在当前板上合并并调用既有保存命令。未提交字段、其他镜头、制作关联、精确结果选用和成片均保留；Agent 不能删除、重排、修改选用或确认复核。创作变化按相同规则标记待复核，不触发媒体生成；并发修改不能用旧板快照覆盖。
+
+服务器以全板 `expectedVersion` 保存完整内容并追加不可变修订，初始未保存板为零版。并发保存返回冲突，客户端保留本地草稿并提示检查当前板；保存等待、失败、冲突、未授权与空态均有明确反馈。V35 新增 `storyboard` 当前指针与 `storyboard_revision` JSONB 历史；历史不更新、不删除。生产状态由现有节点、审批和 Task 投影，不持久为另一个任务真相。TanStack Query 管板与历史，交互草稿由界面保留；`storyboard.changed` 和快照恢复均使独立板查询失效。
+
+本次提供制作组织与结果复核，不增加可执行 DAG、新媒体类型、角色造型/音色身份、自由多轨成片工程或自动字幕。脱敏项目清单 schema v9 包含分镜板与修订，仍不携带媒体字节或提供项目工程包导入。
+
 ## 7. 数据模型与持久化约定
 
 ### 7.1 通用约定
@@ -766,6 +788,8 @@ V76/V77 增加 Skill、草稿、版本、绑定、发布/安装及幂等操作�
 | `canvas_item_input` | id、project_id、canvas_item_id、artifact_version_id、role、position、color_key、version；目标内按精确版本去重，顺序/角色受模式约束 |
 | `canvas_item_input_source` | id、project_id、input_id、source_kind、connection_id、created_at；同一引用可有一个手动来源及多条连线来源 |
 | `canvas_connection` | id、project_id、source_canvas_item_id、target_canvas_item_id、relation_type（MEDIA_INPUT / MEDIA_DERIVATION）、captured_source_version_id、version、created_at；端点与固定版本均持久化 |
+| `storyboard` | project_id、current_version；每项目至多一张分镜板，当前修订指针作为全板 CAS |
+| `storyboard_revision` | project_id、version、content_json、created_at；追加式镜头及成片完整快照，保存精确版本引用和人工复核状态 |
 | `agent_instance` | id、project_id、profile_key、profile_version、name、instruction、current_conversation_id、version；项目聊天身份，不持有素材绑定或输出组 |
 | `agent_conversation` | id、project_id、agent_instance_id、title、version、turn_count、timestamps |
 | `agent_run` | id、project_id、agent_instance_id、conversation_id、conversation_turn、user_id、status、instruction、context_snapshot_json、policy_snapshot_json、profile_version、next_step_index、version、timestamps |
@@ -797,6 +821,7 @@ AgentProfile 与工具权限继续由应用的版本化配置管理；用户创�
 | 对象 | 必须约束 |
 |---|---|
 | 内容版本 | `UNIQUE(artifact_id, version_no)`；内容版本写入后不可原地修改 |
+| 分镜板 | 项目唯一；`PRIMARY KEY(project_id, version)` 固定每次修订，禁止修改或删除历史；镜头 UUID、镜号在单板内唯一，引用写入时校验同项目及内容/节点版本归属 |
 | CanvasItem 图片输入 | `UNIQUE(canvas_item_id, artifact_version_id)`；位置/角色在同一草稿模式内唯一，引用版本必须属于同项目 IMAGE、VIDEO 或 AUDIO Artifact，角色与产物类型匹配 |
 | 图片输入来源 | 每个引用至多一个手动来源；每条 CanvasItem 连线至多对应一个来源，删除一种来源不得误删其他来源 |
 | 画布卡片连线 | 来源、目标和固定版本同项目；不允许相同端点/关系/固定版本重复，应用服务在事务中拒绝 CanvasItem 有向环 |
@@ -946,11 +971,21 @@ UI 在 WAITING_* 状态不显示虚假的“模型正在思考”。
 
 默认导演创作指令支持「读取剧本 → 场次/节拍拆解 → 视觉设定与场次调度 → 正式分镜 → 关键帧/视频提示词 → 审校与进度交付」。已有剧本直接拆解，只有想法时先补为可拍摄剧本；用户要求完整分镜时持续完成文字成果，只要求局部阶段时按该范围交付。流程属于可编辑、按 Run 冻结的创作指令，程序工具协议不强制角色、风格或镜头数量，也不自动选择或激活 Skill。
 
-使用普通 TEXT 产物保存《剧本拆解》《视觉设定与连续性》《分镜》《镜头提示词》《分镜审校》《分镜制作进度》，沿用自动画布放置、不可变内容版本和 CAS。场次 `SC-` 与镜头 `SHOT-` 为文档内稳定标识，每镜关联来源精确版本/节拍，包含叙事职责、景别/构图/机位/轴线、调度与动作起止、逐字对白及声音、预计时长与依据、转场及素材依赖。重排保留镜号，拆并镜新增号并记录前后继；对白、动作、信息、连续性和总时长均需核对，无实测音频时明确文本估时。
+辅助《剧本拆解》《视觉设定与连续性》《镜头提示词》《分镜审校》《分镜制作进度》继续使用普通 TEXT，沿用自动画布放置、不可变内容版本和 CAS。正式镜头直接写入 §6.19 的分镜板：先用 `read_storyboard` 读取板版本和既有镜号，再按实际已读剧本用 `write_storyboard_shots` 每批创建或修改 1–6 镜。新镜不传 `shotId`，服务端生成稳定 UUID 并校验唯一镜号；已有镜头按真实 UUID 局部修改所给创作字段。用户要求完整分镜时持续按场次写完，不能仅创建《分镜》文字卡或只交付首批。
 
-长剧本须读取实际全文，按场次分批保存、审校与记录已读范围；预览或最后一页不能证明全部来源已读。进度只将工具成功保存的精确产物版本记为完成；来源变化标记受影响镜头与下游成果待重核，失败、遗漏和未验证内容保留。没有 Provider 或参考图仍可完成文字分镜，明确待准备素材；只有任务包含媒体生产时再发现能力并逐依赖批次审批，成片沿用现有本地合成限制。
+场次 `SC-` 与镜头 `SHOT-` 是创作标识，板内镜头另有稳定 UUID。每镜记录来源精确版本/节拍、叙事职责、景别/构图/机位/轴线、调度与动作起止、逐字对白及声音、预计时长与依据、转场及素材依赖；`description` 承载完整镜头设计，`dialogue` 保留逐字台词。对白、动作、信息、连续性和总时长均需核对，无实测音频时明确文本估时。辅助文字与正式镜头通过精确来源版本和真实 UUID/镜号衔接，板不替代文字阅读、设计和审校方法。
 
-V34 仅将全局默认词和已有导演中仍精确匹配原始默认正文的配置更新为新流程，保留名称、说明、自定义指令及 Run 冻结历史；实际更新的导演增加配置版本并同事务发送项目事件。之后的普通默认词编辑继续只影响新项目初始化。决定与升级边界见 [ADR 0054](adr/0054-director-script-to-storyboard-workflow.md)。
+`read_storyboard` 默认目录从 offset 0、limit 20 分页（最多 40），返回板版本与 `nextOffset`；指定 `shotIds:[单个UUID]` 才读取完整单镜和其制作关联/精确选用。读取板内来源或参考 ID 不授予读取来源正文或媒体的权限，`read_artifacts` 仍重新检查当前画布或显式 Skill 精确输入授权。修改单镜先读取其完整内容及最新板版本，再提交 `expectedVersion` 和目标 `shotId`；未提供字段由服务端保留。冲突重新读取、核对用户修改后再提交，不静默覆盖其他编辑。新建或变更引用要求同项目及当前画布或 Skill 的精确授权，保持的既有引用不会扩大 Run 权限。
+
+Agent 只能写镜号、场次、标题、画面描述、台词、估时、来源与参考等创作字段，不能删除/重排镜头、改制作关联/精确选用/成片、核销待复核或批准媒体。服务端按当前板保留制作状态；创作变化只递增受影响镜头修订并标记相应结果与成片待复核，其他镜头与精确结果不变。只有整批写入成功，进度才记录返回的 `data.version`、`data.shots` 的真实 id/code/revision/needsReview 和 `compositionNeedsReview`。拆并镜的停用和顺序由用户在制作台处理，Agent 保留前后继及影响说明，不将旧号改指无关镜头。
+
+长剧本须读取实际全文，按场次分批保存、审校与记录已读范围；预览或最后一页不能证明全部来源已读。进度只将工具成功保存的精确产物版本、板版本与镜头身份记为完成；来源变化标记受影响镜头与下游成果待重核，失败、遗漏和未验证内容保留。没有 Provider 或参考图仍可完成文字分镜，明确待准备素材；只有任务包含媒体生产时再发现能力并逐依赖批次审批，成片沿用现有本地合成限制。
+
+正式镜头的关键帧、视频和音频提案先读取实际镜头，向 `propose_media_generation` 的各输出提交 `shotId / expectedShotRevision`。审批和归档结果据此回到该镜头，尚未绑定制作节点也能展示；独立素材可不关联镜头。Agent 不能声称成功归档即已选用，不自动重提已失效或 UNKNOWN 的批次。V37 仅在精确 V36 默认正文及其初始化归一化形式上增补此工作流，继续保留用户配置和冻结历史；接口新增字段见 [ADR 0057](adr/0057-shot-linked-media-approvals.md)。
+
+镜头提案结果不自动切换画布选用。导演仍可在可信当前 Run 中读取该 Run 已批准镜头任务所实际归档的精确版本，以及用户已保存到分镜制作关联或成片选用、且目标节点仍存在的精确媒体版本，用于审看与后续明确提案的输入。授权核对服务器持久任务输出或分镜明确选用，不按模型的来源声明、未保存草稿、普通 source/reference ID 或其他 Run 未选候选授予；读取/引用不扩大节点写入与媒体审批权限。取消、超时或 UNKNOWN 后晚到归档通过只读 `archivedResults` 回到候选，原审批终态和模型结果续接不改写。
+
+V34 仅将全局默认词和已有导演中仍精确匹配原始默认正文的配置更新为新流程，保留名称、说明、自定义指令及 Run 冻结历史；实际更新的导演增加配置版本并同事务发送项目事件。之后的普通默认词编辑继续只影响新项目初始化。决定与升级边界见 [ADR 0054](adr/0054-director-script-to-storyboard-workflow.md)。V36 继续以 V34 默认正文精确匹配及初始化首尾空白归一化形式升级全局默认和已有项目导演，保留名称、说明、自定义正文、冻结 Run 及全部媒体/分镜历史；项目锁先于导演锁，实际更新才递增配置版本和项目事件。新 Run 允许列表增补两个工具；既有 Run 的允许列表保持冻结，不因恢复而获得新工具，技术重放仍使用原请求定义。工具策略/schema/系统提示词版本保持 6/7/14，此次通过冻结的工具名集合区分可用能力；无 HTTP/OpenAPI、MCP 或数据库 schema 变化。见 [ADR 0056](adr/0056-director-storyboard-workbench-tools.md)。
 
 ## 9. Tool 合约、权限与副作用
 
@@ -971,6 +1006,8 @@ Controller 与 Tool 使用同一组业务命令和权限规则。Tool 不直接�
 | `read_skill_asset` | 已激活版本 ID、登记图片别名 | 只读；下一模型请求直接附带 Skill 图片预览，不创建项目内容 |
 | `read_selection` | 服务端记录的当前选择引用；新协议 offset/limit 分页最多 40 项 | 只读；不扩大授权范围 |
 | `read_canvas` | 当前项目画布目录的 offset/limit；可选 includeDrafts | 默认最多 40 项最新元数据、CAS 与草稿摘要；完整草稿须显式 includeDrafts 且每页最多 6 项 |
+| `read_storyboard` | 当前项目分镜目录 offset/limit（默认 0/20、最多 40），或 `shotIds` 中一个 UUID | 只读板版本、目录或完整单镜；不授予来源/参考的读取权限 |
+| `write_storyboard_shots` | 全板 `expectedVersion` 与 1–6 个镜头；新镜必填 code/description/dialogue/durationSeconds，已有镜按 shotId 局部提交创作字段 | 复用板保存命令，服务端合并并保留未提交镜头和制作状态，追加不可变修订及项目事件；不生成媒体、不改选用或确认复核 |
 | `manage_canvas_node` | 节点 ID、expectedVersion 与 RENAME/MOVE/RESIZE/REMOVE/DUPLICATE 操作 | 复用画布应用服务；保护锁定与 CAS |
 | `update_media_draft` | 节点 ID、expectedVersion 与允许的媒体草稿字段及结构化 mentions | 保存图片/视频/音频草稿；显式替换引用时同事务清理旧连线，不调用媒体 Provider |
 | `read_task_status` | 本 Run 的 taskId 列表，最多 12 个 | 只读；正常进度由调度器查询，不让 LLM 反复轮询 |
@@ -978,7 +1015,7 @@ Controller 与 Tool 使用同一组业务命令和权限规则。Tool 不直接�
 | `extract_audio` | 当前 VIDEO 节点 `canvasItemId`、精确 `sourceVersionId`、观察到的 `expectedCanvasItemVersion`，可选 WAV/MP3 与零起始音轨 `trackIndex` | 固定本地处理器提取音轨，创建音频及静音视频结果；持久等待归档结果后续接，不调用配置的云端功能路由 |
 | `trim_audio` | 当前 AUDIO 节点及精确来源版本、节点 CAS、整数毫秒 `startMs/endMs`，可选 WAV/MP3 | 同 Artifact 派生独立节点与不可变音频片段；持久等待完成后返回可作为 `AUDIO_REFERENCE` 的精确版本 |
 | `compose_video` | 基于已读取的分镜/台词编排有序精确视频和配音版本，可附镜内剧情锚点 | 直接受理本地零外部费用合成 Task；后台声音分析、自动定位、混音拼接；新协议等待归档终态后续接，停止导演不取消已受理合成 |
-| `propose_media_generation` | 1–6 个图片/视频/音频输出，含标题、提示词、可选能力、参数、时长和精确媒体输入；可指定当前项目画布已有节点及最新布局/草稿 CAS | 创建固定草稿与审批批次，不提交 Provider；批准后才受理媒体 Task |
+| `propose_media_generation` | 1–6 个图片/视频/音频输出，含标题、提示词、可选能力、参数、时长和精确媒体输入；可指定已有节点及布局/草稿 CAS，镜头输出成对提供 shotId/expectedShotRevision | 创建固定草稿与审批批次，不提交 Provider；冻结已验证镜头关联，批准前复核相关镜头修订；结果回到镜头候选，由用户显式批准和选用 |
 | `create_text` | title、text、用途 | 创建文本产物并自动放置节点，返回 createdCanvasItemIds 与精确版本/节点 CAS，可继续读取及排列 |
 | `revise_artifact` | artifactId、expectedVersion、文字内容及允许字段 | 为 Run 可修订的文字产物追加不可变版本；不能改写归档媒体 |
 | `arrange_items` | 1–6 个当前画布节点 ID、当前内容版本、预期布局版本；水平/垂直/网格 | 按项目权限与布局 CAS 排列，不修改内容或锁定节点 |
@@ -1307,7 +1344,7 @@ H3 创建响应丢失或受理不明保留 UNKNOWN，查询、重启恢复、下
 
 ### 14.1 事件模型
 
-必需事件：artifact.created、artifact.version.created、artifact.resource_default_version.changed、canvas.items.changed、canvas.item.selected_version.changed、media.draft.changed、agent.run.changed、task.changed、asset.ready、usage.changed。
+必需事件：artifact.created、artifact.version.created、artifact.resource_default_version.changed、canvas.items.changed、canvas.item.selected_version.changed、media.draft.changed、storyboard.changed、agent.run.changed、task.changed、asset.ready、usage.changed。
 
 每个事件包含 eventId、projectId、seq、type、schemaVersion、aggregateId、aggregateVersion、occurredAt、payload。正文只包含展示必需的数据；敏感配置与完整 Prompt 不进入通用事件流。
 
@@ -1394,6 +1431,9 @@ Agent 当前产物查询使用独立 Query 缓存 `agent-outputs / projectId / a
 | POST `/projects/{id}/archive` | 归档项目 |
 | GET `/projects/{id}/snapshot` | 一致性快照 + snapshotSeq |
 | GET `/projects/{id}/events` | SSE 历史补发与增量 |
+| GET / PUT `/projects/{id}/storyboard` | 读取当前分镜板，或以全板 expectedVersion 保存并追加不可变修订；未保存板为零版 |
+| GET `/projects/{id}/storyboard/revisions` | 按修订序号分页读取分镜历史，仍校验当前项目权限 |
+| GET `/projects/{id}/storyboard/media-approvals` | 读取与分镜关联节点匹配的既有 Agent 完整审批批次，不创建审批或改变原决策端点 |
 | POST `/projects/{id}/artifacts` | 手工创建合法产物 |
 | POST `/projects/{id}/artifacts/{artifactId}/revisions` | 新内容版本 |
 | GET `/projects/{id}/artifacts/{artifactId}/versions` | 历史版本 |
@@ -1526,6 +1566,7 @@ springdoc 作为后端实现说明与比对工具，不允许它与手写合约�
 - 逐字段白名单：不包含服务端 Key、会话、原始内部配置或可复用签名链接；用户主动写入的创作正文仍按内容导出。
 - 完整描述 CanvasItem 当前选用媒体结果、节点历史的 `mediaVersionIds`、媒体草稿、有序媒体输入（图片/音频）、来源、颜色和连线，以及 Artifact 的 `baseVersionId` 审计分支图和资源默认版本；冻结任务/结果来源仍按其不可变记录导出。
 - 清单 schema v3 增加节点历史归属 `mediaVersionIds`；v2 消费者需先适配版本识别，再读取新增字段。
+- 当前清单 schema v9 增加分镜板与不可变修订历史，保存镜头身份、精确来源/参考、制作与成片选用和复核状态；仍逐字段白名单导出，不包含任务检查点、凭据或可复用链接。v8 消费者需先适配版本识别。
 - 输出为脱敏 JSON 与素材清单，通过 `GET /projects/{id}/export-manifest` 读取。
 - 只读生成，不创建 Task，不运行 FFmpeg；JSON 导入不在 P0。
 

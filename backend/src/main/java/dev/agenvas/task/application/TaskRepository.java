@@ -83,6 +83,9 @@ public interface TaskRepository {
     /** 按所有者和项目共同限定任务读取。 */
     Optional<Task> find(UUID ownerId, UUID projectId, UUID taskId);
 
+    /** Owned exact archives received after cancellation; these do not replace the task's original outcome. */
+    List<JsonNode> lateResults(UUID ownerId, UUID projectId, UUID taskId);
+
     /** 在所有者作用域内读取原任务的外部提交尝试。 */
     List<ProviderAttempt> listProviderAttempts(UUID ownerId, UUID projectId, UUID taskId);
 

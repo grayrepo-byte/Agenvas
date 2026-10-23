@@ -31,6 +31,7 @@ final class RunContextWindow {
             "costStatus", "estimatedCost", "actualCost", "currency");
     private static final List<String> RESOURCE_PROGRESS_FIELDS = List.of("path", "contentHash", "offset",
             "endOffset", "total", "nextOffset");
+    private static final int STORYBOARD_SHOT_REFERENCES = 6;
 
     private RunContextWindow() {}
 
@@ -102,7 +103,9 @@ final class RunContextWindow {
                 if (message instanceof ToolResponseMessage replies) for (var reply : replies.getResponses()) {
                     var references = new StringBuilder();
                     JsonNode result = mapper.readTree(reply.responseData());
-                    references(result, references);
+                    if (Set.of("read_storyboard", "write_storyboard_shots").contains(reply.name()))
+                        storyboardReferences(reply.name(), result, references, mapper);
+                    else references(result, references);
                     // Keep resource continuation facts even when the old page body leaves the window.
                     // These fields are scoped to the successful resource tool, never arbitrary nested paths.
                     if ("read_skill_resource".equals(reply.name())
@@ -147,6 +150,37 @@ final class RunContextWindow {
     private static String bounded(String text, int max) {
         int count = text.codePointCount(0, text.length());
         return count <= max ? text : text.substring(0, text.offsetByCodePoints(0, max)) + " [truncated]";
+    }
+
+    /** Shot identifiers are public tool facts, but an archived board version cannot authorize a later CAS write. */
+    private static void storyboardReferences(String toolName, JsonNode result, StringBuilder output, ObjectMapper mapper) {
+        for (String field : List.of("status", "errorCode")) {
+            JsonNode value = result.path(field);
+            if (value.isValueNode()) output.append(field).append('=').append(value.asText()).append(' ');
+        }
+        if (!ToolResultStatus.SUCCEEDED.name().equals(result.path("status").asText())) return;
+        JsonNode data = result.path("data");
+        if (data.path("version").isIntegralNumber())
+            output.append("historicalBoardVersion=").append(data.path("version").asText()).append(' ');
+        output.append("(historical observation; reread read_storyboard before writing for current expectedVersion) ");
+        if ("read_storyboard".equals(toolName)) for (String field : List.of("offset", "nextOffset")) {
+            JsonNode value = data.path(field);
+            if (value.isIntegralNumber() || value.isNull())
+                output.append(field).append('=').append(value.isNull() ? "null" : value.asText()).append(' ');
+        }
+        JsonNode shots = data.path("shots");
+        if (!shots.isArray()) return;
+        int retained = 0;
+        for (JsonNode shot : shots) {
+            if (retained == STORYBOARD_SHOT_REFERENCES) break;
+            if (!shot.path("id").isTextual() || !shot.path("code").isTextual()
+                    || !shot.path("revision").isIntegralNumber()) continue;
+            output.append("shotId=").append(bounded(shot.path("id").asText(), 80))
+                    .append(" code=").append(mapper.writeValueAsString(bounded(shot.path("code").asText(), 80)))
+                    .append(" revision=").append(shot.path("revision").asText()).append(' ');
+            retained++;
+        }
+        if (retained < shots.size()) output.append("shotReferencesOmitted=").append(shots.size() - retained).append(' ');
     }
 
     /** Exact references and safe statuses only; old prompts, raw arguments and private metadata are excluded. */

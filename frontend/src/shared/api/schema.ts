@@ -1420,6 +1420,82 @@ export interface paths {
         patch: operations["updateProject"];
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/storyboard": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** 读取项目分镜制作台，尚未创建时返回零版空板 */
+        get: operations["getStoryboard"];
+        /** CAS 保存完整分镜板并追加不可变修订，不运行模型或媒体任务 */
+        put: operations["saveStoryboard"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/storyboard/revisions": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** 按版本升序读取有界不可变分镜板历史 */
+        get: operations["listStoryboardRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/storyboard/media-approvals": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** 汇总与板上镜头或生产节点关联的 Agent 审批批次与结果候选，待处理优先，最多 100 条 */
+        get: operations["listStoryboardMediaApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/archive": {
         parameters: {
             query?: never;
@@ -4455,13 +4531,112 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        Storyboard: {
+            /** Format: uuid */
+            projectId: string;
+            /** Format: int64 */
+            version: number;
+            shots: components["schemas"]["StoryboardShot"][];
+            composition: components["schemas"]["StoryboardComposition"] | null;
+        };
+        SaveStoryboardRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            shots: components["schemas"]["StoryboardShotInput"][];
+            composition: components["schemas"]["StoryboardCompositionInput"] | null;
+        };
+        StoryboardShotInput: {
+            /** Format: uuid */
+            id: string;
+            /** @description 同板唯一的镜号，不含首尾空白。 */
+            code: string;
+            scene: string;
+            title: string;
+            description: string;
+            dialogue: string;
+            durationSeconds: number;
+            /**
+             * Format: uuid
+             * @description 同项目精确 TEXT 版本。
+             */
+            sourceVersionId: string | null;
+            /** @description 同项目精确媒体版本。 */
+            referenceVersionIds: string[];
+            productions: components["schemas"]["StoryboardProductionInput"][];
+        };
+        StoryboardShot: {
+            /** Format: uuid */
+            id: string;
+            /** @description 同板唯一的镜号，不含首尾空白。 */
+            code: string;
+            scene: string;
+            title: string;
+            description: string;
+            dialogue: string;
+            durationSeconds: number;
+            /**
+             * Format: uuid
+             * @description 同项目精确 TEXT 版本。
+             */
+            sourceVersionId: string | null;
+            /** @description 同项目精确媒体版本。 */
+            referenceVersionIds: string[];
+            /** @description 仅创作正文、台词、时长、源文稿或参考变化时由服务器推进。 */
+            revision: number;
+            productions: components["schemas"]["StoryboardProduction"][];
+        };
+        StoryboardProductionInput: {
+            /** @enum {string} */
+            role: "KEYFRAME" | "VIDEO" | "AUDIO";
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            /**
+             * @description 显式确认当前镜头修订；不会产生任务。
+             * @default false
+             */
+            confirmReviewed: boolean;
+        };
+        StoryboardProduction: {
+            /** @enum {string} */
+            role: "KEYFRAME" | "VIDEO" | "AUDIO";
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            reviewedRevision: number;
+            needsReview: boolean;
+        };
+        StoryboardCompositionInput: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            /** @default false */
+            confirmReviewed: boolean;
+        };
+        StoryboardComposition: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            needsReview: boolean;
+        };
+        StoryboardRevisionPage: {
+            items: components["schemas"]["Storyboard"][];
+            /** Format: int64 */
+            nextAfterVersion: number | null;
+        };
         ProjectExportManifest: {
+            storyboard: components["schemas"]["Storyboard"];
+            storyboardRevisions: components["schemas"]["Storyboard"][];
             /** @description 已安装或由项目导演默认绑定的固定版本，包含 version、mapping 和可空的 directorBinding（skillId、skillVersionId、position）；未安装时 mapping.assets 为空，不导出多助手绑定列表。 */
             creativeSkills?: {
                 [key: string]: unknown;
             }[];
             /** @constant */
-            schemaVersion: 8;
+            schemaVersion: 9;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -5345,10 +5520,68 @@ export interface components {
             canvasItemId: string;
             /** Format: int64 */
             draftVersion: number;
+            /** @description 提案时由服务端验证并冻结的镜头关联；不绑定制作目标、不批准生成，也不选用结果。历史或独立素材提案可为空。 */
+            storyboard?: components["schemas"]["AgentMediaStoryboardLink"] | null;
             /** @description 固定提示词、参数、能力、mediaInputs 精确素材版本、视频 videoInputMode 及估算费用/费用未知的安全预检摘要；不返回 endpoint、Key 或签名下载地址。 */
             preview: {
                 [key: string]: unknown;
             };
+        };
+        AgentMediaStoryboardLink: {
+            /** Format: uuid */
+            shotId: string;
+            /** @description 提案时的镜号；改名不改历史关联。 */
+            shotCode: string;
+            /** @description 提案冻结的镜头创作修订；批准前须仍匹配，生成期间改稿保留旧依据。 */
+            shotRevision: number;
+            /** @enum {string} */
+            role: "KEYFRAME" | "VIDEO" | "AUDIO";
+        };
+        AgentMediaApprovalAdditionalResult: {
+            ordinal?: number;
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            canvasItemId?: string | null;
+            /** Format: uuid */
+            artifactVersionId: string;
+            /** @description 画布节点的历史选用状态，不表示分镜已选用。 */
+            selected: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        AgentMediaApprovalTaskResult: {
+            /** Format: uuid */
+            taskId: string;
+            kind: string;
+            status: components["schemas"]["TaskStatus"];
+            errorCode?: string | null;
+            possibleExternalCost?: boolean;
+            /** @description 对应冻结 outputs 的索引；旧结果可能未记录。 */
+            outputIndex?: number;
+            /**
+             * Format: uuid
+             * @description 该主结果的冻结目标；旧结果可能未记录。
+             */
+            canvasItemId?: string;
+            storyboard?: components["schemas"]["AgentMediaStoryboardLink"] | null;
+            /** Format: uuid */
+            artifactId?: string;
+            /** Format: uuid */
+            artifactVersionId?: string;
+            /** @description 画布节点的历史选用状态，不表示分镜已选用。 */
+            selected?: boolean;
+            additionalResults?: components["schemas"]["AgentMediaApprovalAdditionalResult"][];
+        } & {
+            [key: string]: unknown;
+        };
+        AgentMediaApprovalResult: {
+            schemaVersion: number;
+            status: components["schemas"]["AgentMediaApprovalStatus"];
+            errorCode?: string;
+            tasks: components["schemas"]["AgentMediaApprovalTaskResult"][];
+        } & {
+            [key: string]: unknown;
         };
         AgentMediaApproval: {
             /** Format: uuid */
@@ -5365,10 +5598,10 @@ export interface components {
             outputs: components["schemas"]["AgentMediaApprovalOutput"][];
             /** @description 批准后受理的持久媒体任务；批准之前为空。 */
             taskIds: string[];
-            /** @description 终态批次结果，包括可验证的输出和逐任务状态；等待时为空，不包含私有推理或凭据。 */
-            result: {
-                [key: string]: unknown;
-            } | null;
+            /** @description 从当前可信任务输出读取的已归档结果候选，每个归档记录一项，同一 taskId 可含多次归档，包括部分成功及终态审批后的晚到结果；不改写冻结 result 或审批状态，不代表已选用。 */
+            archivedResults?: components["schemas"]["AgentMediaApprovalTaskResult"][];
+            /** @description 终态批次结果，包括可验证的输出和逐任务状态；等待时为空。镜头结果仅成为候选，须用户显式选用，不包含私有推理或凭据。 */
+            result: components["schemas"]["AgentMediaApprovalResult"] | null;
             /** Format: date-time */
             createdAt: string;
             /**
@@ -5478,7 +5711,7 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description Policies are schema v7 with systemPromptVersion=14 and toolPolicyVersion=6; retired protocols are rejected. The director manages the entire current project canvas, including nodes added or changed during a Run. read_canvas, manage_canvas_node and update_media_draft share project ownership, current selected-version checks, locks and optimistic CAS with normal application services. Explicit Skill inputs grant exact-version read access only. Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval. extract_audio and trim_audio accept the current canvasItemId, exact sourceVersionId and observed expectedCanvasItemVersion; they create immutable local audio results through the same authorized application services, with no external generation or media approval. extract_audio uses a fixed local processor, independent of administrator-configured cloud function routes. These tools and compose_video persist their task receipts and wait in WAITING_TASKS until the server freezes their terminal outcomes. The original tool reply then supplies the archived artifactVersionId or actual failure; acceptance alone does not mean completion and the model must not poll. Local tasks remain independent after acceptance: canceling the Run stops subsequent model turns but does not cancel these tasks. Task reads require the same Run's committed local-tool receipt; UNKNOWN and late results never trigger automatic regeneration or rewrite a frozen outcome. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. */
+        /** @description Policies are schema v7 with systemPromptVersion=14 and toolPolicyVersion=6; retired protocols are rejected. The director manages the entire current project canvas, including nodes added or changed during a Run. read_canvas, manage_canvas_node and update_media_draft share project ownership, current selected-version checks, locks and optimistic CAS with normal application services. Explicit Skill inputs grant exact-version read access only. Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval. Storyboard media outputs may pair shotId with expectedShotRevision; the server freezes their shot identity, revision and inferred role. Approval checks the same shot revision before acceptance. Archived outcomes return as candidates, requiring explicit user selection. extract_audio and trim_audio accept the current canvasItemId, exact sourceVersionId and observed expectedCanvasItemVersion; they create immutable local audio results through the same authorized application services, with no external generation or media approval. extract_audio uses a fixed local processor, independent of administrator-configured cloud function routes. These tools and compose_video persist their task receipts and wait in WAITING_TASKS until the server freezes their terminal outcomes. The original tool reply then supplies the archived artifactVersionId or actual failure; acceptance alone does not mean completion and the model must not poll. Local tasks remain independent after acceptance: canceling the Run stops subsequent model turns but does not cancel these tasks. Task reads require the same Run's committed local-tool receipt; UNKNOWN and late results never trigger automatic regeneration or rewrite a frozen outcome. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. */
         RunPolicySnapshot: {
             /** @constant */
             schemaVersion: 7;
@@ -9182,6 +9415,139 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getStoryboard: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前分镜板 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Storyboard"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveStoryboard: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveStoryboardRequest"];
+            };
+        };
+        responses: {
+            /** @description 服务器计算镜头修订及复核状态后的分镜板 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Storyboard"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listStoryboardRevisions: {
+        parameters: {
+            query?: {
+                afterVersion?: number;
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分镜板修订页 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoryboardRevisionPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listStoryboardMediaApprovals: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最多 100 条关联批次，PENDING、APPROVED 优先，各状态组内按创建时间倒序；镜头关联无需先绑定生产节点。超过上限的待处理批次需回原导演对话处理。决策仍调用既有审批接口，归档结果须用户显式选用并保存分镜。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AgentMediaApproval"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
         };
     };
     archiveProject: {

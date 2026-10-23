@@ -35,6 +35,21 @@ export function listResources(filters: ResourceFilters): Promise<components["sch
   Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
   return readJson(`/api/v1/resources?${query}`, t("resources.loadFailed"));
 }
+export type Storyboard = components["schemas"]["Storyboard"];
+export type StoryboardShot = components["schemas"]["StoryboardShot"];
+export type StoryboardProduction = components["schemas"]["StoryboardProduction"];
+export type SaveStoryboardRequest = components["schemas"]["SaveStoryboardRequest"];
+
+/** Project storyboard reads never prepare or authorize media work. */
+export function getStoryboard(projectId: string): Promise<Storyboard> {
+  return readJson(`/api/v1/projects/${encodeURIComponent(projectId)}/storyboard`, t("storyboard.loadFailed"));
+}
+export function saveStoryboard(projectId: string, input: SaveStoryboardRequest): Promise<Storyboard> {
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/storyboard`, { method: "PUT", body: JSON.stringify(input) });
+}
+export function listStoryboardMediaApprovals(projectId: string): Promise<{ items: AgentMediaApproval[] }> {
+  return readJson(`/api/v1/projects/${encodeURIComponent(projectId)}/storyboard/media-approvals`, t("storyboard.loadFailed"));
+}
 export type MediaDraft = components["schemas"]["MediaDraft"];
 export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest"];
 export type RemoveMediaDraftMediaInputRequest = components["schemas"]["RemoveMediaDraftMediaInputRequest"];

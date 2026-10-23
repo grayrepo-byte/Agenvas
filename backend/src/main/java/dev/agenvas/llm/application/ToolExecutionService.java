@@ -57,6 +57,7 @@ public class ToolExecutionService {
     private final CanvasAgentToolService canvasTools;
     private final AgentVideoCompositionToolService videoCompositions;
     private final AgentLocalMediaToolService localMedia;
+    private final StoryboardAgentToolService storyboards;
 
     /** 组装工具身份验证、持久化去重、业务应用服务及租约 fencing 边界。
      * @param runs 校验工具调用所属 Run 和项目权限
@@ -76,7 +77,8 @@ public class ToolExecutionService {
             ProjectEventService events, AgentTurnLeaseGuard leaseGuard,
             ObjectMapper mapper, Clock clock, AgentMediaApprovalService mediaApprovals,
             MediaCapabilityService capabilities, CanvasAgentToolService canvasTools,
-            AgentVideoCompositionToolService videoCompositions, AgentLocalMediaToolService localMedia) {
+            AgentVideoCompositionToolService videoCompositions, AgentLocalMediaToolService localMedia,
+            StoryboardAgentToolService storyboards) {
         this.runs = runs;
         this.turns = turns;
         this.ledger = ledger;
@@ -92,6 +94,7 @@ public class ToolExecutionService {
         this.canvasTools = canvasTools;
         this.videoCompositions = videoCompositions;
         this.localMedia = localMedia;
+        this.storyboards = storyboards;
     }
 
     /**
@@ -199,6 +202,8 @@ public class ToolExecutionService {
         try {
             result = switch (toolName) {
             case "read_canvas" -> canvasTools.readCanvas(context, run, operationId, arguments);
+            case "read_storyboard" -> storyboards.readStoryboard(context, run, operationId, arguments);
+            case "write_storyboard_shots" -> storyboards.writeShots(context, run, operationId, arguments);
             case "manage_canvas_node" -> canvasTools.manageNode(context, run, operationId, arguments);
             case "update_media_draft" -> canvasTools.updateMediaDraft(context, run, operationId, arguments);
             case "extract_audio" -> localMedia.extract(context, run, operationId, arguments);
@@ -223,7 +228,8 @@ public class ToolExecutionService {
             default -> throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
             };
         } catch (ApiProblemException problem) {
-            if (Set.of("read_canvas", "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio", "trim_audio").contains(toolName)
+            if (Set.of("read_canvas", "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio", "trim_audio",
+                    "read_storyboard", "write_storyboard_shots").contains(toolName)
                     && (problem.status() == HttpStatus.BAD_REQUEST || problem.status() == HttpStatus.UNPROCESSABLE_ENTITY)
                     && !"TOOL_ARGUMENT_INVALID".equals(problem.code())) {
                 throw new ApiProblemException(problem.status(), "TOOL_ARGUMENT_INVALID", problem.title(), problem.detail(), false);

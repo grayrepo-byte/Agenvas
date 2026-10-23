@@ -159,7 +159,7 @@ public class CanvasAgentToolService {
             for (JsonNode value : supplied) {
                 if (!value.isObject() || value.size() != 2) throw invalid();
                 UUID versionId = uuid(value, "versionId");
-                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), versionId);
+                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), versionId);
                 MediaDraft.InputRole role;
                 try { role = MediaDraft.InputRole.valueOf(value.path("role").asText()); }
                 catch (IllegalArgumentException malformed) { throw invalid(); }
@@ -183,7 +183,7 @@ public class CanvasAgentToolService {
             for (JsonNode value : supplied) {
                 if (!value.isObject() || value.size() != 2) throw invalid();
                 UUID versionId = uuid(value, "versionId");
-                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), versionId);
+                artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), versionId);
                 MediaDraft.InputRole role;
                 try { role = MediaDraft.InputRole.valueOf(value.path("role").asText()); }
                 catch (IllegalArgumentException malformed) { throw invalid(); }

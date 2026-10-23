@@ -72,7 +72,7 @@ class AgentMediaApprovalServiceTest {
             1, UUID.randomUUID(), 1, "mock-image", "synthetic-mapping");
     private final AgentMediaApprovalService service = new AgentMediaApprovalService(approvals,
             runs, artifacts, canvas, drafts, capabilities, mediaTasks, events, publisher,
-            mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ToolExecutionRepository.class), connections);
+            mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ToolExecutionRepository.class), connections, mock(dev.agenvas.storyboard.application.StoryboardMediaLinkService.class), mock(dev.agenvas.task.application.TaskService.class), mock(dev.agenvas.task.application.TaskOutputReadAccessService.class));
 
     @BeforeEach
     void lockedProjectMutationExecutes() {
@@ -524,7 +524,7 @@ class AgentMediaApprovalServiceTest {
         when(runs.get(ownerId, projectId, runId)).thenReturn(run);
         when(approvals.findByToolCall(projectId, runId, 1, "call-media"))
                 .thenReturn(Optional.empty());
-        when(artifacts.requireAgentReadableVersion(ownerId, projectId, run.contextSnapshot(), referenceId)).thenThrow(new ApiProblemException(HttpStatus.FORBIDDEN,
+        when(artifacts.requireAgentReadableVersion(ownerId, projectId, run.contextSnapshot(), runId, referenceId)).thenThrow(new ApiProblemException(HttpStatus.FORBIDDEN,
                         "INPUT_SCOPE_DENIED", ApiMessage.of("api.agent-media-approval.invalid-title"),
                         ApiMessage.of("api.agent-media-approval.invalid-detail", "reference"), false));
 

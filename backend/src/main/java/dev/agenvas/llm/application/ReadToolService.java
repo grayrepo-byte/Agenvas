@@ -249,7 +249,7 @@ public class ReadToolService {
         int imageCount = 0;
         for (UUID versionId : versionIds) {
             ArtifactVersion version = artifacts.requireAgentReadableVersion(context.ownerId(),
-                    context.projectId(), run.contextSnapshot(), versionId);
+                    context.projectId(), run.contextSnapshot(), context.runId(), versionId);
             ArtifactService.ArtifactView view = artifacts.get(context.ownerId(),
                     context.projectId(), version.artifactId());
             if (textPageRequested && view.artifact().kind() != Artifact.Kind.TEXT)
@@ -332,10 +332,10 @@ public class ReadToolService {
         UUID versionId;
         try { versionId = UUID.fromString(input.path("versionId").asText()); }
         catch (IllegalArgumentException malformed) { throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid")); }
-        var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), versionId);
+        var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), versionId);
         input.put("artifactId", version.artifactId().toString());
         var sample = AgentMediaSampleService.parse(input);
-        var asset = samples.authorize(context.ownerId(), context.projectId(), run.contextSnapshot(), sample);
+        var asset = samples.authorize(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), sample);
         ObjectNode output = result(operationId, "已请求精确时间点的媒体样本");
         ObjectNode data = output.putObject("data");
         data.setAll(input);

@@ -17,7 +17,7 @@ final class AgentMediaToolResult {
     private static final String TOOL_NAME = "propose_media_generation";
     private static final List<String> APPROVAL_FIELDS = List.of("id", "projectId", "runId", "operationId",
             "status", "version", "taskIds", "result", "createdAt", "expiresAt", "executionDeadline");
-    private static final List<String> OUTPUT_FIELDS = List.of("kind", "title", "artifactId", "canvasItemId", "draftVersion");
+    private static final List<String> OUTPUT_FIELDS = List.of("kind", "title", "artifactId", "canvasItemId", "draftVersion", "storyboard");
     // The original assistant call already contains the prompt. Effective parameters and exact inputs can differ after preflight.
     private static final List<String> PREVIEW_FIELDS = List.of("kind", "capabilityId", "adapterId", "outputCount",
             "parameters", "mediaInputs", "videoInputMode", "durationSeconds", "priceUnknown", "mediaPricing",

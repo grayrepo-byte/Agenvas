@@ -120,11 +120,13 @@ it("fills the script breakdown and storyboard shortcut as an editable draft with
   const user = userEvent.setup();
   const input = await readyComposer();
   const shortcut = await screen.findByRole("button", { name: /剧本拆解与分镜/ });
-  expect(shortcut).toHaveTextContent("拆解场次与人物，设计可执行的镜头方案");
+  expect(shortcut).toHaveTextContent("拆解剧本，把镜头保存到分镜制作台");
 
   await user.click(shortcut);
 
   const instruction = t("agent.chat.suggestion.storyboard.prompt");
+  expect(instruction).toContain("正式镜头直接保存到制作台");
+  expect(instruction).toContain("已有镜头按稳定 ID 局部修改");
   expect(input).toHaveValue(instruction);
   expect(input).toHaveFocus();
   await user.type(input, " 补充：横屏短片。");

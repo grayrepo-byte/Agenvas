@@ -12,7 +12,8 @@ public final class RunToolPolicy {
             "read_artifacts", "read_media_sample", "read_task_status", "create_text", "revise_artifact",
             "arrange_items", "list_media_capabilities", "propose_media_generation",
             "read_skill_resource", "read_skill", "read_skill_asset", "read_canvas",
-            "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio", "trim_audio");
+            "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio", "trim_audio",
+            "read_storyboard", "write_storyboard_shots");
 
     private RunToolPolicy() {}
 

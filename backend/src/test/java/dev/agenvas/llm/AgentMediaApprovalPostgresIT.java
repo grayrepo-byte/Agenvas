@@ -47,6 +47,9 @@ import dev.agenvas.task.application.TaskRecoveryScheduler;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.domain.Task;
+import dev.agenvas.storyboard.domain.Storyboard;
+import dev.agenvas.storyboard.application.StoryboardService;
+import dev.agenvas.storyboard.application.StoryboardService.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -180,9 +183,28 @@ class AgentMediaApprovalPostgresIT {
         }
     }
 
+    @Autowired private dev.agenvas.storyboard.application.StoryboardService storyboards;
+
     @Test
     void mediaCardsExposeApprovedAgentTasksThroughTheirTaskQuery() throws Exception {
         Scenario scenario = propose(outputs("IMAGE", "VIDEO", "AUDIO"));
+        var productions = scenario.approval().outputs().stream().map(output ->
+                new dev.agenvas.storyboard.application.StoryboardService.ProductionInput(
+                        switch (output.kind()) {
+                            case IMAGE -> dev.agenvas.storyboard.domain.Storyboard.Role.KEYFRAME;
+                            case VIDEO -> dev.agenvas.storyboard.domain.Storyboard.Role.VIDEO;
+                            case AUDIO -> dev.agenvas.storyboard.domain.Storyboard.Role.AUDIO;
+                            default -> throw new IllegalStateException();
+                        }, output.canvasItemId(), null, false)).toList();
+        storyboards.save(owner.userId(), scenario.project().id(),
+                new dev.agenvas.storyboard.application.StoryboardService.Save(0,
+                        List.of(new dev.agenvas.storyboard.application.StoryboardService.ShotInput(
+                                UUID.randomUUID(), "SHOT-001", "SC-01", "Approval shot", "", "", BigDecimal.ONE,
+                                null, List.of(), productions)), null));
+        assertThat(storyboards.mediaApprovals(owner.userId(), scenario.project().id()))
+                .extracting(ApprovalView::id).containsExactly(scenario.approval().id());
+        var unlinked = projects.create(owner.userId(), "Unlinked storyboard", Project.AspectRatio.LANDSCAPE_16_9);
+        assertThat(storyboards.mediaApprovals(owner.userId(), unlinked.id())).isEmpty();
         for (var output : scenario.approval().outputs()) {
             assertThat(cardTasks(scenario, output)).isEmpty();
         }
@@ -1066,6 +1088,285 @@ class AgentMediaApprovalPostgresIT {
         assertThat(canvas.list(owner.userId(), image.project().id())).hasSize(2);
         assertThat(canvas.listMediaVersions(owner.userId(), image.project().id(), targetId)).hasSize(1);
         finish(laterScenario, "REJECTED");
+    }
+
+    @Test
+    void linkedProposalsReturnToUnboundShotsAndArchiveWithoutSelectingAnyResult() throws Exception {
+        Scenario scenario = proposeLinked("IMAGE", "IMAGE");
+        Storyboard before = storyboards.get(owner.userId(), scenario.project().id());
+        assertThat(before.shots()).allSatisfy(shot -> assertThat(shot.productions()).isEmpty());
+        assertThat(storyboards.mediaApprovals(owner.userId(), scenario.project().id()))
+                .extracting(ApprovalView::id).containsExactly(scenario.approval().id());
+        var pending = mapper.readTree(mvc.perform(get("/api/v1/projects/" + scenario.project().id() + "/storyboard/media-approvals")
+                .with(auth)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        assertThat(pending.at("/items/0/outputs/0/storyboard/shotId").asText()).isEqualTo(before.shots().getFirst().id().toString());
+        assertThat(pending.at("/items/0/outputs/1/storyboard/shotId").asText()).isEqualTo(before.shots().get(1).id().toString());
+        assertThat(mediaTasks(scenario)).isEmpty();
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).allSatisfy(card -> assertThat(card.item().selectedVersionId()).isNull());
+
+        decide(scenario, "APPROVE", "linked-explicit-approve");
+        assertThat(mediaTasks(scenario)).hasSize(2).allSatisfy(task ->
+                assertThat(task.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean()).isTrue());
+        // The input remains valid after acceptance; a later edit only affects result review.
+        Storyboard removedDuringGeneration = storyboards.save(owner.userId(), scenario.project().id(), new Save(before.version(),
+                List.of(shotInput(before.shots().get(1), before.shots().get(1).description(), List.of())), null));
+        Storyboard edited = storyboards.save(owner.userId(), scenario.project().id(), new Save(removedDuringGeneration.version(),
+                List.of(shotInput(before.shots().getFirst(), "Recreated while generating", List.of()),
+                        shotInput(before.shots().get(1), before.shots().get(1).description(), List.of())), null));
+        assertThat(edited.shots().getFirst().revision()).isEqualTo(2);
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        ApprovalView completed = currentApproval(scenario);
+        assertThat(completed.status()).isEqualTo(AgentMediaApproval.Status.SUCCEEDED);
+        for (int index = 0; index < 2; index++) {
+            JsonNode outcome = completed.result().path("tasks").get(index);
+            assertThat(outcome.path("outputIndex").asInt()).isEqualTo(index);
+            assertThat(outcome.path("canvasItemId").asText()).isEqualTo(scenario.approval().outputs().get(index).canvasItemId().toString());
+            assertThat(outcome.at("/storyboard/shotId").asText()).isEqualTo(before.shots().get(index).id().toString());
+            assertThat(outcome.at("/storyboard/shotRevision").asInt()).isEqualTo(1);
+            assertThat(outcome.path("selected").asBoolean()).isFalse();
+        }
+        assertThat(storyboards.get(owner.userId(), scenario.project().id())).isEqualTo(edited);
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).allSatisfy(card -> assertThat(card.item().selectedVersionId()).isNull());
+        UUID version = UUID.fromString(completed.result().at("/tasks/0/artifactVersionId").asText());
+        assertThat(artifacts.requireAgentReadableVersion(owner.userId(), scenario.project().id(),
+                scenario.run().contextSnapshot(), scenario.run().id(), version).id()).isEqualTo(version);
+        assertThatThrownBy(() -> artifacts.requireAgentReadableVersion(owner.userId(), scenario.project().id(),
+                scenario.run().contextSnapshot(), UUID.randomUUID(), version)).isInstanceOf(ApiProblemException.class);
+        var choice = new ProductionInput(Storyboard.Role.KEYFRAME, scenario.approval().outputs().getFirst().canvasItemId(), version, false);
+        Storyboard adopted = replaceShot(scenario, 0, edited.shots().getFirst().description(), List.of(choice), false);
+        assertThat(adopted.shots().getFirst().productions().getFirst().needsReview()).isTrue();
+        assertThat(adopted.shots().getFirst().productions().getFirst().reviewedRevision()).isEqualTo(1);
+        assertThatThrownBy(() -> storyboards.save(owner.userId(), scenario.project().id(), new Save(edited.version(),
+                adopted.shots().stream().map(shot -> shotInput(shot, shot.description(), shot.productions().stream()
+                        .map(value -> new ProductionInput(value.role(), value.canvasItemId(), value.selectedVersionId(), false)).toList())).toList(), null)))
+                .isInstanceOfSatisfying(ApiProblemException.class, failure -> assertThat(failure.code()).isEqualTo("STORYBOARD_VERSION_CONFLICT"));
+        Storyboard confirmed = replaceShot(scenario, 0, adopted.shots().getFirst().description(),
+                List.of(new ProductionInput(choice.role(), choice.canvasItemId(), version, true)), true);
+        assertThat(confirmed.shots().getFirst().productions().getFirst().needsReview()).isFalse();
+        assertThat(confirmed.shots().getFirst().productions().getFirst().selectedVersionId()).isEqualTo(version);
+        finish(scenario, "SUCCEEDED");
+    }
+
+    @Test
+    void onlyTheLinkedCreativeRevisionInvalidatesApprovalAndRejectionStillWorks() throws Exception {
+        Scenario scenario = proposeLinked("IMAGE");
+        replaceShot(scenario, 0, "Changed linked shot before approval", List.of(), false);
+        Storyboard changed = storyboards.get(owner.userId(), scenario.project().id());
+        mvc.perform(post(decisionPath(scenario)).with(auth).with(csrf()).header("Idempotency-Key", "linked-stale")
+                .contentType("application/json").content(decision("APPROVE"))).andExpect(status().isConflict());
+        assertThat(currentApproval(scenario).status()).isEqualTo(AgentMediaApproval.Status.PENDING);
+        assertThat(mediaTasks(scenario)).isEmpty();
+        decide(scenario, "REJECT", "linked-stale-reject");
+        assertThat(storyboards.get(owner.userId(), scenario.project().id())).isEqualTo(changed);
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).isEmpty();
+        assertThat(storyboards.mediaApprovals(owner.userId(), scenario.project().id())).singleElement()
+                .satisfies(approval -> assertThat(approval.status()).isEqualTo(AgentMediaApproval.Status.REJECTED));
+        finish(scenario, "REJECTED");
+    }
+
+    @Test
+    void editingAnotherShotAndRenamingTheLinkedCodeDoNotInvalidateApproval() throws Exception {
+        Scenario scenario = proposeLinked("AUDIO");
+        Storyboard before = storyboards.get(owner.userId(), scenario.project().id());
+        var first = before.shots().getFirst();
+        var renamed = new ShotInput(first.id(), "RENAMED-001", first.scene(), first.title(), first.description(), first.dialogue(),
+                first.durationSeconds(), first.sourceVersionId(), first.referenceVersionIds(), List.of());
+        storyboards.save(owner.userId(), scenario.project().id(), new Save(before.version(),
+                List.of(renamed, shotInput(before.shots().get(1), "Unrelated rewrite", List.of())), null));
+        decide(scenario, "APPROVE", "unrelated-shot-approve");
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        assertThat(currentApproval(scenario).result().at("/tasks/0/storyboard/shotCode").asText()).isEqualTo("SHOT-001");
+        assertThat(currentApproval(scenario).result().at("/tasks/0/storyboard/role").asText()).isEqualTo("AUDIO");
+        finish(scenario, "SUCCEEDED");
+    }
+
+    @Test
+    void deletingTheLinkedShotBlocksApprovalWithoutLosingTheFrozenProposal() throws Exception {
+        Scenario scenario = proposeLinked("VIDEO");
+        Storyboard before = storyboards.get(owner.userId(), scenario.project().id());
+        storyboards.save(owner.userId(), scenario.project().id(), new Save(before.version(),
+                List.of(shotInput(before.shots().get(1), before.shots().get(1).description(), List.of())), null));
+        mvc.perform(post(decisionPath(scenario)).with(auth).with(csrf()).header("Idempotency-Key", "removed-shot-approve")
+                .contentType("application/json").content(decision("APPROVE"))).andExpect(status().isConflict());
+        assertThat(currentApproval(scenario).outputs().getFirst().storyboard().shotId()).isEqualTo(before.shots().getFirst().id());
+        assertThat(mediaTasks(scenario)).isEmpty();
+        decide(scenario, "REJECT", "removed-shot-reject");
+        finish(scenario, "REJECTED");
+    }
+
+    @Test
+    void linkedUnknownOutcomePreservesItsExactShotAndNeverCreatesAnotherAttempt() throws Exception {
+        Scenario scenario = proposeLinked("AUDIO");
+        decide(scenario, "APPROVE", "linked-unknown-approve");
+        Task uncertain = tasks.claimBoundMedia(MEDIA_WORKER, 1).getFirst();
+        tasks.beginSubmission(uncertain, MEDIA_WORKER);
+        assertThat(tasks.markSubmissionUnknown(uncertain, MEDIA_WORKER, "SYNTHETIC_LINKED_UNKNOWN")).isTrue();
+        JsonNode result = currentApproval(scenario).result().at("/tasks/0");
+        assertThat(result.path("status").asText()).isEqualTo("UNKNOWN");
+        assertThat(result.path("outputIndex").asInt()).isZero();
+        assertThat(result.path("canvasItemId").asText()).isEqualTo(scenario.approval().outputs().getFirst().canvasItemId().toString());
+        assertThat(result.at("/storyboard/shotId").asText()).isEqualTo(scenario.approval().outputs().getFirst().storyboard().shotId().toString());
+        assertThat(result.path("possibleExternalCost").asBoolean()).isTrue();
+        outcomes.reconcile(owner.userId(), scenario.project().id(), scenario.run().id(), scenario.approval().id());
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isZero();
+        assertThat(mediaTasks(scenario)).singleElement().satisfies(task -> assertThat(task.attemptNo()).isEqualTo(1));
+        assertThat(storyboards.get(owner.userId(), scenario.project().id()).shots()).allSatisfy(shot -> assertThat(shot.productions()).isEmpty());
+        finish(scenario, "FAILED");
+    }
+
+    @Test
+    void partiallyCompletedBatchAndAdditionalOutputsKeepFrozenReviewProvenance() throws Exception {
+        Scenario scenario = proposeLinked("IMAGE", "AUDIO");
+        decide(scenario, "APPROVE", "linked-extra-approve");
+        Storyboard edited = replaceShot(scenario, 0, "Changed while batch is active", List.of(), false);
+        Task lease = tasks.claimBoundMedia(MEDIA_WORKER, 1).getFirst();
+        assertThat(lease.kind()).isEqualTo(Task.Kind.IMAGE_GENERATION);
+        tasks.beginSubmission(lease, MEDIA_WORKER);
+        ObjectNode primary = linkedImageContent(scenario, lease, "primary");
+        ObjectNode extra = linkedImageContent(scenario, lease, "extra");
+        tasks.succeedWithArtifacts(lease, MEDIA_WORKER, List.of(
+                new TaskService.ArchivedProviderResult(0, Artifact.Kind.IMAGE, true, primary),
+                new TaskService.ArchivedProviderResult(1, Artifact.Kind.IMAGE, false, extra)), null);
+        Task completed = tasks.get(owner.userId(), scenario.project().id(), lease.id());
+        assertThat(currentApproval(scenario).status()).isEqualTo(AgentMediaApproval.Status.APPROVED);
+        assertThat(currentApproval(scenario).result()).isNull();
+        assertThat(currentApproval(scenario).archivedResults()).hasSize(1);
+        JsonNode extraResult = completed.output().at("/additionalResults/0");
+        UUID extraNode = UUID.fromString(extraResult.path("canvasItemId").asText());
+        UUID extraVersion = UUID.fromString(extraResult.path("artifactVersionId").asText());
+        assertThat(extraResult.path("selected").asBoolean()).isFalse();
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).allSatisfy(card -> assertThat(card.item().selectedVersionId()).isNull());
+        Storyboard adopted = replaceShot(scenario, 0, edited.shots().getFirst().description(),
+                List.of(new ProductionInput(Storyboard.Role.KEYFRAME, extraNode, extraVersion, false)), false);
+        assertThat(adopted.shots().getFirst().productions().getFirst().needsReview()).isTrue();
+        assertThat(adopted.shots().getFirst().productions().getFirst().reviewedRevision()).isEqualTo(1);
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        assertThat(approvals.storyboardResultRevision(owner.userId(), scenario.project().id(), edited.shots().getFirst().id(), extraNode, extraVersion)).contains(1);
+        finish(scenario, "SUCCEEDED");
+    }
+
+    @Test
+    void proposalRejectsForgedCrossProjectMissingAndStaleShotLinksBeforeCreatingMedia() {
+        Project project = projects.create(owner.userId(), "Invalid linked proposal", Project.AspectRatio.LANDSCAPE_16_9);
+        Storyboard board = seedLinkedBoard(project);
+        Project other = projects.create(owner.userId(), "Other linked project", Project.AspectRatio.LANDSCAPE_16_9);
+        UUID foreignShot = seedLinkedBoard(other).shots().getFirst().id();
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Synthetic linked director", "Propose linked media");
+        AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(), "Invalid links", "linked-invalid-" + UUID.randomUUID()).run();
+        AgentRun run = runs.transition(owner.userId(), project.id(), queued.id(), queued.version(), AgentRun.Status.RUNNING);
+        var trusted = new dev.agenvas.llm.application.TrustedToolContext(owner.userId(), project.id(), run.id());
+        List<ObjectNode> invalid = new java.util.ArrayList<>();
+        ObjectNode valid = (ObjectNode) outputs("IMAGE").path("outputs").get(0);
+        valid.put("shotId", board.shots().getFirst().id().toString()).put("expectedShotRevision", 1);
+        invalid.add(valid.deepCopy().put("shotId", foreignShot.toString()));
+        invalid.add(valid.deepCopy().put("expectedShotRevision", 2));
+        invalid.add(valid.deepCopy().put("expectedShotRevision", 0));
+        invalid.add(valid.deepCopy().put("expectedShotRevision", 1.5));
+        invalid.add(valid.deepCopy().put("shotCode", "FORGED-CODE"));
+        invalid.add(valid.deepCopy().put("storyboard", "forged-link"));
+        ObjectNode missingRevision = valid.deepCopy(); missingRevision.remove("expectedShotRevision"); invalid.add(missingRevision);
+        ObjectNode missingShot = valid.deepCopy(); missingShot.remove("shotId"); invalid.add(missingShot);
+        for (ObjectNode output : invalid) {
+            ObjectNode request = mapper.createObjectNode(); request.putArray("outputs").add(output);
+            assertThatThrownBy(() -> approvals.propose(trusted, run, UUID.randomUUID(), 0, "invalid-" + UUID.randomUUID(), request.toString()))
+                    .isInstanceOfSatisfying(ApiProblemException.class, failure -> assertThat(failure.code()).isEqualTo("TOOL_ARGUMENT_INVALID"));
+            assertThat(approvals.list(owner.userId(), project.id(), run.id())).isEmpty();
+            assertThat(canvas.list(owner.userId(), project.id())).isEmpty();
+            assertThat(storyboards.get(owner.userId(), project.id())).isEqualTo(board);
+        }
+        runs.cancel(owner.userId(), project.id(), run.id());
+    }
+
+    @Test
+    void deleteRecreateWithTheSameShotIdCannotReuseAnOldApproval() throws Exception {
+        Scenario scenario = proposeLinked("IMAGE");
+        Storyboard before = storyboards.get(owner.userId(), scenario.project().id());
+        storyboards.save(owner.userId(), scenario.project().id(), new Save(before.version(),
+                List.of(shotInput(before.shots().get(1), before.shots().get(1).description(), List.of())), null));
+        Storyboard removed = storyboards.get(owner.userId(), scenario.project().id());
+        Storyboard recreated = storyboards.save(owner.userId(), scenario.project().id(), new Save(removed.version(),
+                List.of(shotInput(before.shots().getFirst(), "Entirely different re-created shot", List.of()),
+                        shotInput(before.shots().get(1), before.shots().get(1).description(), List.of())), null));
+        assertThat(recreated.shots().getFirst().revision()).isEqualTo(2);
+        mvc.perform(post(decisionPath(scenario)).with(auth).with(csrf()).header("Idempotency-Key", "aba-shot-approve")
+                .contentType("application/json").content(decision("APPROVE"))).andExpect(status().isConflict());
+        assertThat(mediaTasks(scenario)).isEmpty();
+        decide(scenario, "REJECT", "aba-shot-reject");
+        finish(scenario, "REJECTED");
+    }
+
+    @Test
+    void lateArchivedResultReturnsToTheWorkbenchWithoutChangingTheFinalApprovalReply() throws Exception {
+        Scenario scenario = proposeLinked("IMAGE");
+        decide(scenario, "APPROVE", "linked-late-approve");
+        Task lease = tasks.claimBoundMedia(MEDIA_WORKER, 1).getFirst();
+        tasks.beginSubmission(lease, MEDIA_WORKER);
+        runs.cancel(owner.userId(), scenario.project().id(), scenario.run().id());
+        JsonNode frozenResult = currentApproval(scenario).result().deepCopy();
+        assertThat(currentApproval(scenario).status()).isEqualTo(AgentMediaApproval.Status.CANCELED);
+        assertThat(currentApproval(scenario).archivedResults()).isEmpty();
+        tasks.succeedWithArtifacts(lease, MEDIA_WORKER, List.of(new TaskService.ArchivedProviderResult(0,
+                Artifact.Kind.IMAGE, true, linkedImageContent(scenario, lease, "late"))), null);
+        ApprovalView late = currentApproval(scenario);
+        assertThat(late.result()).isEqualTo(frozenResult);
+        assertThat(late.status()).isEqualTo(AgentMediaApproval.Status.CANCELED);
+        assertThat(late.archivedResults()).singleElement().satisfies(result -> {
+            assertThat(result.path("artifactVersionId").isTextual()).isTrue();
+            assertThat(result.path("selected").asBoolean()).isFalse();
+            assertThat(result.path("outputIndex").asInt()).isZero();
+            assertThat(result.at("/storyboard/shotId").asText()).isEqualTo(scenario.approval().outputs().getFirst().storyboard().shotId().toString());
+        });
+        assertThat(storyboards.mediaApprovals(owner.userId(), scenario.project().id())).singleElement()
+                .satisfies(approval -> assertThat(approval.archivedResults()).hasSize(1));
+        assertThat(storyboards.get(owner.userId(), scenario.project().id()).shots()).allSatisfy(shot -> assertThat(shot.productions()).isEmpty());
+        assertThat(canvas.list(owner.userId(), scenario.project().id())).allSatisfy(card -> assertThat(card.item().selectedVersionId()).isNull());
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isZero();
+        assertThat(turnCount(scenario)).isEqualTo(1);
+    }
+
+    private ObjectNode linkedImageContent(Scenario scenario, Task lease, String prompt) {
+        ObjectNode content = mapper.createObjectNode().put("assetId",
+                dev.agenvas.testing.ImageAssetFixture.archive(assets, owner.userId(), scenario.project().id()).toString())
+                .put("prompt", prompt).put("workflowVersion", "synthetic-v1").put("sourceTaskId", lease.id().toString());
+        content.putObject("parameters");
+        return content;
+    }
+
+    private Scenario proposeLinked(String... kinds) {
+        Project project = projects.create(owner.userId(), "Synthetic linked storyboard", Project.AspectRatio.LANDSCAPE_16_9);
+        Storyboard board = seedLinkedBoard(project);
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Synthetic linked director", "Create only approved media");
+        AgentRun run = runs.create(owner.userId(), project.id(), agent.id(), "Create linked media", "linked-" + UUID.randomUUID()).run();
+        ObjectNode request = outputs(kinds);
+        for (int index = 0; index < kinds.length; index++) {
+            ((ObjectNode) request.path("outputs").get(index)).put("shotId", board.shots().get(index).id().toString()).put("expectedShotRevision", 1);
+        }
+        gateway.prepare(run.id(), request.toString());
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        return new Scenario(project, run, approvals.list(owner.userId(), project.id(), run.id()).getFirst());
+    }
+
+    private Storyboard seedLinkedBoard(Project project) {
+        return storyboards.save(owner.userId(), project.id(), new Save(0, List.of(
+                new ShotInput(UUID.randomUUID(), "SHOT-001", "SC-1", "First", "First shot", "", BigDecimal.ONE, null, List.of(), List.of()),
+                new ShotInput(UUID.randomUUID(), "SHOT-002", "SC-1", "Second", "Second shot", "", BigDecimal.ONE, null, List.of(), List.of())), null));
+    }
+
+    private Storyboard replaceShot(Scenario scenario, int index, String description, List<ProductionInput> productions, boolean confirming) {
+        Storyboard board = storyboards.get(owner.userId(), scenario.project().id());
+        List<ShotInput> inputs = new java.util.ArrayList<>();
+        for (int position = 0; position < board.shots().size(); position++) {
+            Storyboard.Shot shot = board.shots().get(position);
+            inputs.add(shotInput(shot, position == index ? description : shot.description(), position == index ? productions : shot.productions().stream()
+                    .map(value -> new ProductionInput(value.role(), value.canvasItemId(), value.selectedVersionId(), false)).toList()));
+        }
+        return storyboards.save(owner.userId(), scenario.project().id(), new Save(board.version(), List.copyOf(inputs), null));
+    }
+
+    private ShotInput shotInput(Storyboard.Shot shot, String description, List<ProductionInput> productions) {
+        return new ShotInput(shot.id(), shot.code(), shot.scene(), shot.title(), description, shot.dialogue(), shot.durationSeconds(),
+                shot.sourceVersionId(), shot.referenceVersionIds(), productions);
     }
 
     private Scenario proposeExisting(String kind, boolean seedResult) {

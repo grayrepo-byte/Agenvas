@@ -35,6 +35,8 @@ public class ToolRegistry {
                    "kind":{"type":"string","enum":["IMAGE","VIDEO","AUDIO"]},
                    "title":{"type":"string","minLength":1,"maxLength":160},
                    "prompt":{"type":"string","maxLength":20000},
+                   "shotId":{"type":"string","format":"uuid","description":"Storyboard shot ID observed through read_storyboard; pair with expectedShotRevision. This association grants no approval or result selection."},
+                   "expectedShotRevision":{"type":"integer","minimum":1,"description":"Current creative revision of that shot, required with shotId."},
                    "capabilityId":{"type":"string","format":"uuid"},
                    "parameters":{"type":"object"},
                    "durationSeconds":{"type":"integer","minimum":1,"maximum":60},
@@ -64,6 +66,32 @@ public class ToolRegistry {
                "startMs":{"type":"integer","minimum":0,"maximum":599900},
                "endMs":{"type":"integer","minimum":100,"maximum":600000},
                "format":{"type":"string","enum":["WAV","MP3"],"default":"WAV"}}}
+            """;
+
+    private static final String READ_STORYBOARD_SCHEMA = """
+            {"type":"object","additionalProperties":false,"properties":{
+             "offset":{"type":"integer","minimum":0,"default":0},
+             "limit":{"type":"integer","minimum":1,"maximum":40,"default":20},
+             "shotIds":{"type":"array","minItems":1,"maxItems":1,"uniqueItems":true,
+               "description":"Read one complete shot instead of the summary page; omit offset and limit.",
+               "items":{"type":"string","format":"uuid"}}}}
+            """;
+    private static final String WRITE_STORYBOARD_SHOTS_SCHEMA = """
+            {"type":"object","additionalProperties":false,"required":["expectedVersion","shots"],
+             "properties":{"expectedVersion":{"type":"integer","minimum":0},
+             "shots":{"type":"array","minItems":1,"maxItems":6,
+               "items":{"type":"object","additionalProperties":false,
+                 "description":"Omit shotId to append; then code, description, dialogue and durationSeconds are required. With shotId supply only creative fields to change.",
+                 "properties":{"shotId":{"type":"string","format":"uuid"},
+                   "code":{"type":"string","minLength":1,"maxLength":80},
+                   "scene":{"type":"string","maxLength":200},
+                   "title":{"type":"string","maxLength":200},
+                   "description":{"type":"string","maxLength":20000},
+                   "dialogue":{"type":"string","maxLength":20000},
+                   "durationSeconds":{"type":"number","minimum":0.1,"maximum":3600,"multipleOf":0.001},
+                   "sourceVersionId":{"type":["string","null"],"format":"uuid"},
+                   "referenceVersionIds":{"type":"array","maxItems":30,"uniqueItems":true,
+                     "items":{"type":"string","format":"uuid"}}}}}}}
             """;
 
     /** 文本产物只允许标题、正文和格式字段。 */
@@ -148,6 +176,14 @@ public class ToolRegistry {
         return List.of(
                 definition("read_canvas", "Read a page of currently present authorized nodes, including new Run outputs, fresh node CAS, locks, selections and media drafts. "
                         + "Use nextOffset to continue. Default pages contain only metadata, draft CAS and input counts. Set includeDrafts=true with limit at most 6 to inspect editable media input only when needed. Image pixels and immutable content require read_artifacts. All current nodes and their selected versions are available, including nodes added or changed during this Run.", READ_CANVAS_SCHEMA),
+                definition("read_storyboard", "Read the current project's storyboard workbench. Default offset/limit pages return shot IDs, codes, creative text previews, exact references and production/review metadata. "
+                        + "Follow data.nextOffset for the complete directory; previews are not full text. Use shotIds with exactly one observed shot ID and no pagination fields to read that shot's complete creative text. "
+                        + "data.version is the board CAS. Source/reference IDs do not grant permission to read their artifact content. No media is generated.", READ_STORYBOARD_SCHEMA),
+                definition("write_storyboard_shots", "Save one to six storyboard shots using data.version from read_storyboard as expectedVersion. "
+                        + "Omit shotId to append a new server-identified shot; include code, description, dialogue and estimated durationSeconds. "
+                        + "Use an observed shot ID to patch only supplied creative fields. Other shots, production selections and composition are preserved. "
+                        + "This cannot delete/reorder shots, select media results, confirm reviews or approve generation. Creative changes mark retained results for review. "
+                        + "New source/reference versions must already be authorized exact inputs; media production still requires propose_media_generation and user approval.", WRITE_STORYBOARD_SHOTS_SCHEMA),
                 definition("manage_canvas_node", "Rename, move, resize, remove or duplicate an authorized unlocked node. "
                         + "Use itemVersion as expectedVersion. MOVE needs x/y, RESIZE needs width/height, RENAME needs title. "
                         + "Media DUPLICATE also needs mediaDraft.version as expectedDraftVersion. REMOVE keeps the underlying artifact and history.", MANAGE_CANVAS_SCHEMA),
@@ -201,6 +237,8 @@ public class ToolRegistry {
                         + "The server pauses this Run for user approval and archived outcomes. "
                         + "Never poll read_task_status for these tasks or claim user authorization. "
                         + "Use one output per request, with generationCount=1; await the server's final tool reply. "
+                        + "For storyboard shot media, supply the observed shotId and expectedShotRevision; the server freezes the shot association and inferred media role. "
+                        + "Approval and archived candidates return to that shot, while users alone approve and select results. A changed shot requires a fresh reviewed proposal. "
                         + "Supply canvasItemId, expectedItemVersion and expectedDraftVersion to target an existing node; omit them to create a node. Both paths require approval.",
                         PROPOSE_CANVAS_MEDIA_SCHEMA),
                 definition("read_skill", "Activate one Skill from the available catalogue and read its full frozen SKILL.md plus reference and attachment manifests.",

@@ -27,7 +27,7 @@ class AgentMediaSampleServiceTest {
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final AssetService assets = mock(AssetService.class);
     private final UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), artifact = UUID.randomUUID(),
-            versionId = UUID.randomUUID(), assetId = UUID.randomUUID();
+            versionId = UUID.randomUUID(), assetId = UUID.randomUUID(), run = UUID.randomUUID();
     private final MediaToolRunner tools = new MediaToolRunner(new MediaToolsProperties(null, null, null));
     private final AgentMediaSampleService service = new AgentMediaSampleService(artifacts, assets, tools);
     private final tools.jackson.databind.node.ObjectNode snapshot = mapper.createObjectNode();
@@ -39,7 +39,7 @@ class AgentMediaSampleServiceTest {
         ArtifactVersion version = mock(ArtifactVersion.class);
         when(version.artifactId()).thenReturn(artifact);
         when(version.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
-        when(artifacts.requireAgentReadableVersion(owner, project, snapshot, versionId)).thenReturn(version);
+        when(artifacts.requireAgentReadableVersion(owner, project, snapshot, run, versionId)).thenReturn(version);
         Asset asset = mock(Asset.class);
         when(asset.id()).thenReturn(assetId); when(asset.projectId()).thenReturn(project);
         when(asset.durationMs()).thenReturn(2000); when(asset.mediaKind()).thenReturn(Asset.MediaKind.VIDEO);
@@ -48,9 +48,9 @@ class AgentMediaSampleServiceTest {
     }
     @Test void rejectsOutOfRangeSamplesBeforeOpeningAnyMedia() {
         authorized();
-        assertThatThrownBy(() -> service.authorize(owner, project, snapshot, sample(List.of(2000), null, null)))
+        assertThatThrownBy(() -> service.authorize(owner, project, snapshot, run, sample(List.of(2000), null, null)))
                 .isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> service.authorize(owner, project, snapshot, sample(List.of(), 1500, 1000)))
+        assertThatThrownBy(() -> service.authorize(owner, project, snapshot, run, sample(List.of(), 1500, 1000)))
                 .isInstanceOf(ApiProblemException.class);
         verify(assets, never()).get(any(), any(), any());
     }
@@ -64,7 +64,7 @@ class AgentMediaSampleServiceTest {
     @Test void refusesDecodingInsideATransaction() {
         TransactionSynchronizationManager.setActualTransactionActive(true);
         try {
-            assertThatThrownBy(() -> service.hydrate(owner, project, snapshot, sample(List.of(0), null, null)))
+            assertThatThrownBy(() -> service.hydrate(owner, project, snapshot, run, sample(List.of(0), null, null)))
                     .isInstanceOf(IllegalStateException.class).hasMessageContaining("transaction");
             verifyNoInteractions(assets, artifacts);
         } finally { TransactionSynchronizationManager.setActualTransactionActive(false); }
@@ -78,7 +78,7 @@ class AgentMediaSampleServiceTest {
         when(asset.byteSize()).thenReturn(Files.size(source));
         when(asset.sha256()).thenReturn(java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(source))));
         when(assets.get(owner, project, assetId)).thenReturn(new AssetService.AssetFile(asset, source));
-        var result = service.hydrate(owner, project, snapshot, sample(List.of(0, 1000), 0, 1000));
+        var result = service.hydrate(owner, project, snapshot, run, sample(List.of(0, 1000), 0, 1000));
         assertThat(result).hasSize(2);
         var sheet = ImageIO.read(new ByteArrayInputStream(result.getFirst().getDataAsByteArray()));
         assertThat(sheet.getWidth()).isEqualTo(1024);
@@ -87,11 +87,11 @@ class AgentMediaSampleServiceTest {
         byte[] audio = result.get(1).getDataAsByteArray();
         assertThat(audio).hasSizeBetween(32000, 33000);
         assertThat(new String(audio, 0, 4, java.nio.charset.StandardCharsets.US_ASCII)).isEqualTo("RIFF");
-        verify(artifacts).requireAgentReadableVersion(owner, project, snapshot, versionId);
+        verify(artifacts).requireAgentReadableVersion(owner, project, snapshot, run, versionId);
         byte[] corrupted = Files.readAllBytes(source);
         corrupted[corrupted.length - 1] ^= 1;
         Files.write(source, corrupted);
-        assertThatThrownBy(() -> service.hydrate(owner, project, snapshot, sample(List.of(0), null, null)))
+        assertThatThrownBy(() -> service.hydrate(owner, project, snapshot, run, sample(List.of(0), null, null)))
                 .isInstanceOf(ApiProblemException.class);
     }
 }

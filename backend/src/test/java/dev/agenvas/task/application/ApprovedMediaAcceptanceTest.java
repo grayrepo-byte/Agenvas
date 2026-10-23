@@ -148,6 +148,20 @@ class ApprovedMediaAcceptanceTest {
     }
 
     @Test
+    void linkedApprovalPinsExplicitSelectionAndItsReplayCannotChangeThatPolicy() {
+        Task task = service.runApproved(OWNER, PROJECT, RUN, APPROVAL, ARTIFACT, CARD,
+                DRAFT_VERSION, "linked-approved-command", null, true);
+        assertThat(task.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean()).isTrue();
+        when(repository.findAgentByStepKey(OWNER, PROJECT, RUN, "linked-approved-command"))
+                .thenReturn(java.util.Optional.of(task));
+        assertThat(service.runApproved(OWNER, PROJECT, RUN, APPROVAL, ARTIFACT, CARD,
+                DRAFT_VERSION, "linked-approved-command", null, true)).isSameAs(task);
+        assertThatThrownBy(() -> service.runApproved(OWNER, PROJECT, RUN, APPROVAL, ARTIFACT, CARD,
+                DRAFT_VERSION, "linked-approved-command", null, false)).isInstanceOf(ApiProblemException.class);
+        verify(repository).create(task);
+    }
+
+    @Test
     void approvalCannotAttachAnUnrelatedOccupyingTask() {
         when(repository.findOccupyingDirectMediaTask(PROJECT, CARD)).thenReturn(java.util.Optional.of(mock(Task.class)));
         assertThatThrownBy(() -> service.runApproved(OWNER, PROJECT, RUN, APPROVAL, ARTIFACT, CARD,

@@ -110,6 +110,45 @@ public class InitialModelContextService {
             committed by this Run's tool ledger; success requires a returned archived artifactVersionId.
             """;
 
+    /** Added only to Runs whose frozen tool list permits board editing. */
+    private static final String STORYBOARD_RULES = """
+
+            When the user asks for script breakdown into a storyboard or asks to revise specific shots,
+            save the formal shots to the storyboard workbench through write_storyboard_shots. Do not
+            stop at a prose reply or a TEXT storyboard alone. Supporting breakdown, visual design,
+            prompts, review notes and progress can still be ordinary TEXT artifacts. For a new script
+            breakdown, discover and actually read the authorized script with read_canvas/read_artifacts.
+            For an existing-shot edit, inspect read_storyboard first and read source content only as
+            needed and currently authorized. Directory descriptions/dialogue are previews; read a complete shot with
+            shotIds before rewriting its existing creative text. Source/reference IDs on the board
+            do not extend artifact read permissions. Never guess shot or content identities.
+            Follow directory data.nextOffset until the relevant existing shots and unique codes are
+            accounted for. data.version is the board-wide expectedVersion. Append at most six shots
+            at a time by omitting shotId; the server returns stable shot IDs. For existing shots,
+            send shotId and only fields intentionally changed. Never recreate all shots to edit one
+            line. Keep exact authorized sourceVersionId and referenceVersionIds where applicable;
+            use null or [] only when deliberately clearing that creative reference. Duration is an
+            estimate, not measured media timing. Advance progress only after a successful tool reply.
+            After a board conflict, reread and compare the current shot before another explicit edit;
+            do not overwrite user changes. Other shots and pinned media remain preserved. Changed
+            creative input marks retained media and the linked composition for human review. You
+            cannot confirm those reviews, choose media results, or grant/claim generation approval.
+            Missing media must still go through propose_media_generation and authenticated approval.
+            For media belonging to a storyboard shot, read that shot and supply its actual shotId and
+            current expectedShotRevision in each output. The server derives the role from media kind
+            and freezes the shot identity and creative revision. Other standalone assets may omit
+            this pair. A stale shot requires rereading and a new intentional proposal; never resubmit
+            automatically. Approval status and archived result candidates return to the workbench,
+            but neither approval nor generation selects a storyboard result. Only the user may approve
+            the fixed batch, choose exact results, and confirm applicability after a creative revision.
+            Report archive success separately from user selection; never infer selection from a Task.
+            Use read_artifacts to inspect exact archived versions from this Run's approved shot
+            outputs, or the user's saved storyboard production/composition selections. These narrow
+            read/reference grants do not authorize a new generation, another Run's unselected
+            candidates, arbitrary board source/reference IDs, or a write to an unselected target.
+            Saving a storyboard creates no media Task and conveys no permission to generate.
+            """;
+
     private final AgentRunService runs;
     private final MediaCapabilityService capabilities;
 
@@ -209,7 +248,10 @@ public class InitialModelContextService {
                 || version.intValue() != CURRENT_SYSTEM_PROMPT_VERSION)
             throw new IllegalStateException("Run system prompt version is unsupported");
         String rules = SYSTEM_RULES;
-        for (JsonNode tool : policySnapshot.path("allowedTools")) {
+        var allowed = policySnapshot.path("allowedTools");
+        if (allowed.isArray() && java.util.stream.StreamSupport.stream(allowed.spliterator(), false)
+                .anyMatch(tool -> "write_storyboard_shots".equals(tool.asText()))) rules += STORYBOARD_RULES;
+        for (JsonNode tool : allowed) {
             if ("compose_video".equals(tool.asText())) rules += COMPOSITION_RULES;
             if ("extract_audio".equals(tool.asText())) rules += """
 

@@ -1149,6 +1149,16 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .execute() == 1;
     }
 
+    @Override
+    public List<JsonNode> lateResults(UUID ownerId, UUID projectId, UUID taskId) {
+        return dsl.select(TASK_LATE_RESULT.OUTPUT_JSON).from(TASK_LATE_RESULT)
+                .join(TASK).on(TASK.ID.eq(TASK_LATE_RESULT.TASK_ID).and(TASK.PROJECT_ID.eq(TASK_LATE_RESULT.PROJECT_ID)))
+                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
+                .where(PROJECT.OWNER_ID.eq(ownerId)).and(TASK.PROJECT_ID.eq(projectId)).and(TASK.ID.eq(taskId))
+                .orderBy(TASK_LATE_RESULT.CREATED_AT, TASK_LATE_RESULT.ID)
+                .fetch(row -> objectMapper.readTree(row.value1().data()));
+    }
+
     private Field<JSONB> interruptedAgentOutput() {
         return DSL.when(TASK.KIND.eq(Task.Kind.AGENT_TURN.name()).and(DSL.condition(
                         "{0}->'assistantStream'->>'status' = 'STREAMING'", TASK.OUTPUT_JSON)),

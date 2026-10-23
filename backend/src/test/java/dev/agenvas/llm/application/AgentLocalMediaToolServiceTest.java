@@ -86,7 +86,7 @@ class AgentLocalMediaToolServiceTest {
     @Test void wrongKindAndInaccessibleContentPreventQueueing() {
         allow(Artifact.Kind.AUDIO);
         assertThatThrownBy(() -> tools.extract(context, run, operationId, request().toString())).isInstanceOf(ApiProblemException.class);
-        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, versionId))
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), versionId))
                 .thenThrow(new IllegalStateException("scope denied"));
         assertThatThrownBy(() -> tools.trim(context, run, operationId, request().put("startMs", 0).put("endMs", 1000).toString()))
                 .hasMessage("scope denied");
@@ -116,7 +116,7 @@ class AgentLocalMediaToolServiceTest {
         when(item.selectedVersionId()).thenReturn(versionId); when(item.version()).thenReturn(4L);
         ArtifactVersion version = mock(ArtifactVersion.class);
         when(version.artifactId()).thenReturn(artifactId);
-        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, versionId)).thenReturn(version);
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), versionId)).thenReturn(version);
         Artifact artifact = mock(Artifact.class); when(artifact.kind()).thenReturn(kind);
         when(artifacts.get(context.ownerId(), context.projectId(), artifactId)).thenReturn(new ArtifactService.ArtifactView(artifact, version));
     }

@@ -282,7 +282,8 @@ public class AgentTurnWorker {
                             || "LLM_CONFIG_UNAVAILABLE".equals(problem.code())
                             // Archived media may be unselected after a draft edit. Preserve
                             // the conflict without exposing exception text or overriding the card.
-                            || "ARTIFACT_VERSION_CONFLICT".equals(problem.code()))) {
+                            || "ARTIFACT_VERSION_CONFLICT".equals(problem.code())
+                            || "STORYBOARD_VERSION_CONFLICT".equals(problem.code()))) {
                 return problem.code();
             }
         }

@@ -87,6 +87,25 @@ function snapshot(seq: number): ProjectSnapshot {
 }
 
 describe("project event subscription", () => {
+  it("delivers storyboard revisions once and recovers a missed revision through the project cursor", async () => {
+    const stream = new FakeStream();
+    const changes: ProjectEvent[] = [];
+    const recovered: ProjectSnapshot[] = [];
+    const loadSnapshot = vi.fn(async () => snapshot(4));
+    const stop = subscribeProjectEvents(projectId, 0, {
+      onChange: (value) => changes.push(value), onSnapshot: (value) => recovered.push(value), onStatus: () => {},
+    }, { open: () => stream, loadSnapshot,
+      schedule: (callback) => setTimeout(callback, 5_000), clearSchedule: clearTimeout });
+    const saved = { ...event(1, 1), type: "storyboard.changed" };
+    stream.emit(saved);
+    stream.emit(saved);
+    expect(changes).toEqual([saved]);
+    stream.emit({ ...event(4, 3), type: "storyboard.changed" });
+    await vi.waitFor(() => expect(recovered).toEqual([snapshot(4)]));
+    expect(loadSnapshot).toHaveBeenCalledOnce();
+    stop();
+  });
+
   it("delivers approvals and every assistant stream event through the existing project cursor", () => {
     const stream = new FakeStream();
     const changes: ProjectEvent[] = [];

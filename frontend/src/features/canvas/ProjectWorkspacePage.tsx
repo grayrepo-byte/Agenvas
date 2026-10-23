@@ -71,6 +71,7 @@ import { CanvasToolMenu } from "./CanvasToolMenu";
 import { CanvasViewportControls } from "./CanvasViewportControls";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 import { MediaCanvasCard } from "./MediaCanvasCard";
+import { StoryboardWorkbench } from "./StoryboardWorkbench";
 import { DirectorWorkbench } from "./DirectorWorkbench";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { TextGenerationEditor } from "./TextGenerationEditor";
@@ -243,6 +244,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [paneMenu, setPaneMenu] = useState<Omit<CreationMenu, "centerAtPoint"> | null>(null);
   const [directorItem, setDirectorItem] = useState<CanvasItem | null>(null);
   const [toolsKind, setToolsKind] = useState<DrawerKind | null>(null);
+  const [storyboardOpen, setStoryboardOpen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [agentChatOpen, setAgentChatOpen] = useState(false);
   const [videoEditIds, setVideoEditIds] = useState<string[] | null>(null);
@@ -1054,6 +1056,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <Button variant="ghost" size="sm" onClick={() => {
             setToolsKind(null); setResourcesOpen(true);
           }} type="button"><FolderSimple data-icon="inline-start" />{t("canvas.workspace.resources")}</Button>
+          <Button variant="ghost" size="sm" disabled={!canvas.isSuccess} onClick={() => setStoryboardOpen(true)} type="button"><VideoCamera data-icon="inline-start" />{t("storyboard.title")}</Button>
           {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
           <Separator orientation="vertical" className="data-[orientation=vertical]:h-4" />
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
@@ -1298,6 +1301,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             persistenceError={displaySettings.persistenceError} onRetrySave={displaySettings.retrySave}
             disabled={!displaySettings.ready} />
         </CanvasToolMenu>
+        {storyboardOpen ? <StoryboardWorkbench projectId={projectId} items={canvas.data?.items ?? []} onClose={() => setStoryboardOpen(false)} onOpenNode={(item) => {
+          // Panel drafts live in Zustand and remain available after editing this one production node.
+          setStoryboardOpen(false); setSelectedIds([item.id], CANVAS_SELECTION_MODE.SINGLE);
+          const node = nodes.find((candidate) => candidate.id === item.id);
+          if (node) focusNodeForEditing(node);
+          window.requestAnimationFrame(focusArtifactEditor);
+        }} /> : null}
         {directorItem ? <DirectorWorkbench key={directorItem.id} projectId={projectId} artifactId={directorItem.artifact.id}
           canvasItemId={directorItem.id} expectedVersion={directorItem.version} sourceVersionId={directorItem.selectedVersionId}
           sourceTitle={directorItem.title} initialScene={directorItem.selectedVersion?.frozenInput?.directorScene}

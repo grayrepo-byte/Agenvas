@@ -266,6 +266,18 @@ describe("AgentRunConversation", () => {
     expect(screen.getByRole("region", { name: "任务对话" })).not.toHaveTextContent("PRIVATE_TOOL_RESULT");
   });
 
+  it("names storyboard tool actions without exposing their saved shot payloads", async () => {
+    mockConversation([], [
+      action({ id: "read-board", toolName: "read_storyboard", summary: "已读取镜头目录" }),
+      action({ id: "write-board", stepIndex: 1, toolName: "write_storyboard_shots", summary: "已保存第 3 镜的台词" }),
+    ]);
+    mountConversation();
+    expect(await screen.findByText("已保存第 3 镜的台词")).toBeInTheDocument();
+    expect(taskSummary("已读取镜头目录").getByText("读取分镜制作台")).toBeInTheDocument();
+    expect(taskSummary("已保存第 3 镜的台词").getByText("写入分镜镜头")).toBeInTheDocument();
+    expect(taskSummary("已保存第 3 镜的台词").getByText("已完成")).toBeInTheDocument();
+  });
+
   it("keeps failed, canceled, unknown and queued task outcomes distinct", async () => {
     mockConversation([
       task({ id: "failed-planning", kind: "AGENT_TURN", stepKey: "planning-failed", status: "FAILED", errorCode: "MODEL_OUTPUT_INVALID" }),

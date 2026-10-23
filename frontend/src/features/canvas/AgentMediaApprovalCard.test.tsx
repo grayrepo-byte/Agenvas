@@ -46,6 +46,12 @@ function mountCard(initial: AgentMediaApproval, disabled = false) {
 }
 
 describe("AgentMediaApprovalCard", () => {
+  it("shows the frozen shot code and creative revision without making a decision", () => {
+    const pending = approval(); pending.outputs[0]!.storyboard = { shotId: "shot-3", shotCode: "SHOT-03", shotRevision: 4, role: "VIDEO" };
+    mountCard(pending);
+    expect(screen.getByText("关联镜头：SHOT-03 · 修订 4")).toBeVisible();
+    expect(screen.getByRole("button", { name: "批准并生成" })).toBeEnabled();
+  });
   it("shows the frozen prompt, parameters, inputs and unknown cost without exposing provider configuration", () => {
     const pending = approval();
     const output = pending.outputs[0];

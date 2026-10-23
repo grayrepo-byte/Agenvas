@@ -57,6 +57,8 @@ outputs: 1–6 项
 
 ## HTTP 合约
 
+镜头媒体提案扩展见 [ADR 0057](adr/0057-shot-linked-media-approvals.md)：每项工具输出可成对提交 `shotId / expectedShotRevision`，服务端冻结 `storyboard: {shotId, shotCode, shotRevision, role}`，不修改分镜制作关联或选用。批准前重查关联镜头存在和创作修订，相关镜头已改稿则整批拒绝受理，仍允许拒绝或重复原决策。分镜查询按当前镜头身份或已绑定节点汇总原批次，未绑定节点也能展示提案；固定批次始终整体批准/拒绝。
+
 所有路径带 `/api/v1` 前缀，并复用已有登录、项目授权与 CSRF 边界。
 
 | 方法与路径 | 请求 | 响应 |
@@ -65,13 +67,17 @@ outputs: 1–6 项
 | GET `/projects/{projectId}/runs/{runId}/media-approvals/{approvalId}` | 无 | `AgentMediaApproval` |
 | POST `/projects/{projectId}/runs/{runId}/media-approvals/{approvalId}/decision` | 必需 `Idempotency-Key`（1–200 字符）；正文 `{expectedVersion, decision: APPROVE | REJECT}` | HTTP 200 + 决策后的 `AgentMediaApproval`；批准后异步执行 |
 
-审批响应字段：`id / projectId / runId / operationId / status / version / outputs / taskIds / result / createdAt / expiresAt / executionDeadline`。每项 `outputs` 含 `kind / title / artifactId / canvasItemId / draftVersion / preview`；`preview` 是固定安全摘要。批准前 `taskIds` 为空，未产生最终结果时 `result` 为空，批准前 `executionDeadline` 为空。响应不包含原始模型消息、私有推理、连接地址或密钥。
+审批响应字段：`id / projectId / runId / operationId / status / version / outputs / taskIds / result / createdAt / expiresAt / executionDeadline`。每项 `outputs` 含 `kind / title / artifactId / canvasItemId / draftVersion / preview`，以及可为空的冻结 `storyboard` 镜头关联；`preview` 是固定安全摘要。批准前 `taskIds` 为空，未产生最终结果时 `result` 为空，批准前 `executionDeadline` 为空。响应不包含原始模型消息、私有推理、连接地址或密钥。
 
 决策必须核对审批版本与状态。相同幂等键、相同请求返回同一审批的当前状态，不重复受理；相同键、不同正文返回 HTTP 409。尚为 `PENDING` 的过期审批转为 `EXPIRED` 并返回 HTTP 200，提交终态通知；其他非 `PENDING` 状态或并发版本变化返回冲突。批准时再次核验 Run 未取消、固定草稿/输入/能力/有效参数/价格未变化；变化不提交 Provider，不用模型猜测修复。整个批次统一批准或拒绝，不提供部分批准、审批正文修改生成参数或可重复使用的长期授权。
 
 权威结构见 [OpenAPI](../contracts/openapi.yaml)。新增端点为增量接口；Run 状态集合和现有直连媒体路径保留。Flyway 以新迁移增加审批账本和约束，不修改已发布迁移；升级前仍按部署流程备份，审批链路不删除既有创作数据。构建不连接数据库生成 jOOQ，schema 改动后重新生成并提交源码。
 
 ## 状态、最终结果与续接
+
+新终态任务项还包含明确的 `outputIndex / canvasItemId / storyboard`，使同类媒体多镜输出及额外结果可精确归属；历史记录可缺这些字段。镜头提案归档只产生候选，不自动选用。制作台刷新只更新审批与候选投影，用户明确采用后通过分镜保存命令写入目标与精确结果；结果产生时旧选用保持不变。若生成期间改稿或后来选择较旧修订结果，仍按冻结依据待用户复核。`selected` 是画布历史选用标志，不表示分镜选用。
+
+`archivedResults` 是从当前持久 Task 输出读取的安全候选投影，覆盖部分成功和终态审批后晚到的归档；不改写审批最终 `result` 或再次续接 Agent。导演可以在可信同 Run 上下文读取本 Run 的已批准镜头任务精确输出，或者读取用户已保存、仍有当前目标节点的分镜制作/成片选用；其他 Run 未选候选、普通镜头来源/参考 ID、模型声明和未保存草稿不授予读取或引用权。该授权不授予节点写入或后续生成审批。
 
 审批状态为 `PENDING / APPROVED / SUCCEEDED / FAILED / REJECTED / EXPIRED / CANCELED`。`PENDING` 自创建后 24 小时到期；`APPROVED` 自批准后 24 小时达到执行截止。成功必须包括归档后的真实媒体结果；仅收到第三方任务 ID 或生成完成地址不等于成功。
 

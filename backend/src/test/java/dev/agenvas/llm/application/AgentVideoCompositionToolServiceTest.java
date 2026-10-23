@@ -56,9 +56,9 @@ class AgentVideoCompositionToolServiceTest {
         var result = tools.compose(context, run, operation, request.toString());
 
         var ordered = inOrder(artifacts, compositions);
-        ordered.verify(artifacts).requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, video);
-        ordered.verify(artifacts).requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, audio);
-        ordered.verify(artifacts).requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, secondAudio);
+        ordered.verify(artifacts).requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), video);
+        ordered.verify(artifacts).requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), audio);
+        ordered.verify(artifacts).requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), secondAudio);
         ordered.verify(compositions).runFromAgent(context.ownerId(), context.projectId(), context.runId(), operation, request,
                 "agent-video-composition:" + operation);
         assertThat(result.path("awaitingLocalTask").asBoolean()).isTrue();
@@ -77,7 +77,7 @@ class AgentVideoCompositionToolServiceTest {
     void inaccessibleAudioPreventsAnyCompositionSideEffect() {
         allow(video, Artifact.Kind.VIDEO);
         var message = ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid");
-        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, audio))
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), audio))
                 .thenThrow(new ApiProblemException(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED", message, message, false));
 
         assertThatThrownBy(() -> tools.compose(context, run, UUID.randomUUID(), request().toString()))
@@ -127,7 +127,7 @@ class AgentVideoCompositionToolServiceTest {
         UUID artifactId = UUID.randomUUID();
         var version = mock(ArtifactVersion.class);
         when(version.artifactId()).thenReturn(artifactId);
-        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, id)).thenReturn(version);
+        when(artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, context.runId(), id)).thenReturn(version);
         var artifact = mock(Artifact.class);
         when(artifact.kind()).thenReturn(kind);
         when(artifacts.get(context.ownerId(), context.projectId(), artifactId))

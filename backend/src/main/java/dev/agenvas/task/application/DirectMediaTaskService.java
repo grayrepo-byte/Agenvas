@@ -121,7 +121,7 @@ public class DirectMediaTaskService {
     public Task run(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId,
             long expectedDraftVersion, String commandKey) {
         return runInternal(ownerId, projectId, null, null, artifactId, canvasItemId,
-                expectedDraftVersion, commandKey, null, null).getFirst();
+                expectedDraftVersion, commandKey, null, null, false).getFirst();
     }
 
     /** Only the approval application service calls this after recording the user's decision. */
@@ -137,9 +137,18 @@ public class DirectMediaTaskService {
     @Transactional
     public Task runApproved(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
             UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey, JsonNode creativeSkill) {
+        return runApproved(ownerId, projectId, runId, approvalId, artifactId, canvasItemId,
+                expectedDraftVersion, commandKey, creativeSkill, false);
+    }
+
+    /** Only a trusted linked approval can require explicit result selection after archival. */
+    @Transactional
+    public Task runApproved(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
+            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey,
+            JsonNode creativeSkill, boolean requireExplicitSelection) {
         if (runId == null || approvalId == null) throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
         return runInternal(ownerId, projectId, runId, approvalId, artifactId, canvasItemId,
-                expectedDraftVersion, commandKey, creativeSkill, null).getFirst();
+                expectedDraftVersion, commandKey, creativeSkill, null, requireExplicitSelection).getFirst();
     }
 
     /** External commands are already authenticated and ledgered by MCP. Occupancy is an
@@ -149,13 +158,13 @@ public class DirectMediaTaskService {
             long expectedDraftVersion, UUID tokenId, UUID operationId) {
         if (tokenId == null || operationId == null) throw new IllegalArgumentException("External task source is required");
         return runInternal(ownerId, projectId, null, null, artifactId, canvasItemId,
-                expectedDraftVersion, "mcp:" + operationId + ":0", null, new ExternalSource(tokenId, operationId));
+                expectedDraftVersion, "mcp:" + operationId + ":0", null, new ExternalSource(tokenId, operationId), false);
     }
 
     private record ExternalSource(UUID tokenId, UUID operationId) {}
 
     private List<Task> runInternal(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
-            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey, JsonNode creativeSkill, ExternalSource external) {
+            UUID artifactId, UUID canvasItemId, long expectedDraftVersion, String commandKey, JsonNode creativeSkill, ExternalSource external, boolean requireExplicitSelection) {
         if (canvasItemId == null || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH || expectedDraftVersion < 0) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-idempotency-key-and-draft-version"));
@@ -174,6 +183,7 @@ public class DirectMediaTaskService {
                 if (!prior.input().path("artifactId").asText().equals(artifactId.toString())
                         || !priorSourceCanvasItemId.equals(canvasItemId.toString())
                         || prior.input().path("draftVersion").asLong(-1) != expectedDraftVersion
+                        || prior.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean(false) != requireExplicitSelection
                         || !prior.input().path(Task.APPROVAL_INPUT_PROPERTY).asText("")
                                 .equals(approvalId == null ? "" : approvalId.toString())) {
                     throw conflict(ApiMessage.of("api.direct-media-task-service.the-same-idempotent-key-has-been-used-in-different-card"));
@@ -231,6 +241,7 @@ public class DirectMediaTaskService {
                     input.put("mcpOperationId", external.operationId().toString());
                 }
                 if (approvalId != null) input.put(Task.APPROVAL_INPUT_PROPERTY, approvalId.toString());
+                if (requireExplicitSelection) input.put(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY, true);
                 if (dynamic) input.put("providerProtocol", "RUNNINGHUB_V2");
                 if (kling != null) input.put("providerProtocol", KlingModels.PROTOCOL_ID);
                 if (nativeProfile != null) {

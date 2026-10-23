@@ -55,6 +55,19 @@ class InitialModelContextServiceTest {
     }
 
     @Test
+    void storyboardGuidanceRequiresTheFrozenWritePermission() {
+        var policy = mapper.createObjectNode().put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        policy.putArray("allowedTools").add("read_canvas");
+        String previous = InitialModelContextService.systemRules(policy);
+        assertThat(previous).doesNotContain("write_storyboard_shots", "board-wide expectedVersion");
+        policy.withArray("allowedTools").add("read_storyboard").add("write_storyboard_shots");
+        assertThat(InitialModelContextService.systemRules(policy)).contains(previous,
+                "save the formal shots", "Other shots and pinned media remain preserved", "cannot confirm those reviews",
+                "Saving a storyboard creates no media Task", "compare the current shot", "shotIds",
+                "current expectedShotRevision", "Only the user may approve", "never infer selection from a Task");
+    }
+
+    @Test
     void unknownOrMalformedPromptVersionsFailClosed() {
         ObjectNode policy = mapper.createObjectNode();
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))

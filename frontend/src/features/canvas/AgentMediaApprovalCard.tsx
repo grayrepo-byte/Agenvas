@@ -7,6 +7,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { AgentChatApproval } from "./AgentChatPrimitives";
 import { CreativeSkillSource } from "../skills/CreativeSkillSource";
 import { taskErrorDetail } from "./taskErrorMessages";
+import { outputStoryboard } from "./storyboardMedia";
 
 const STATUS_LABELS: Record<AgentMediaApproval["status"], () => string> = {
   PENDING: () => t("agent.approval.pending"), APPROVED: () => t("agent.approval.approved"),
@@ -70,6 +71,7 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
       pending.current = false;
       await Promise.all([
         client.invalidateQueries({ queryKey }),
+        client.invalidateQueries({ queryKey: ["storyboard-media-approvals", projectId] }),
         client.invalidateQueries({ queryKey: ["run-history-tasks", projectId, runId] }),
         client.invalidateQueries({ queryKey: ["run-actions", projectId, runId] }),
         client.invalidateQueries({ queryKey: ["conversation-runs", projectId] }),
@@ -108,11 +110,13 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
     <p className="agent-media-approval__status" role="status"><Icon size={STATUS_ICON_SIZE} aria-hidden="true" />{status}</p>
     {approval.outputs.map((output, index) => {
       const preview = record(output.preview);
+      const storyboard = outputStoryboard(output);
       const parameters = Object.entries(record(preview.parameters))
         .filter(([key]) => !/credential|apiKey|endpoint|authorization|secret/i.test(key));
       const inputs = Array.isArray(preview.mediaInputs) ? preview.mediaInputs.map(record) : [];
       return <details key={output.canvasItemId} className="agent-media-approval__output" open={reviewing && approval.outputs.length === 1}>
         <summary><span>{index + 1}. {output.title}</span><small>{KIND_LABELS[output.kind]?.()}</small></summary>
+        {storyboard ? <p>{t("storyboard.candidate.frozenShot", { "0": storyboard.shotCode, "1": storyboard.shotRevision })}</p> : null}
         <CreativeSkillSource source={preview.creativeSkill} />
         <p className="agent-media-approval__prompt">{text(preview.prompt) || t("agent.approval.promptEmpty")}</p>
         <dl className="agent-media-approval__fields">

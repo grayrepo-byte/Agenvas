@@ -25,8 +25,6 @@ public class AgentMediaOutcomeService {
     private static final int RESULT_SCHEMA_VERSION = 1;
     private static final Set<Task.Status> RESOLVED = Set.of(Task.Status.SUCCEEDED,
             Task.Status.FAILED, Task.Status.CANCELED, Task.Status.BLOCKED, Task.Status.UNKNOWN);
-    private static final List<String> OUTPUT_FIELDS = List.of("artifactId", "artifactVersionId",
-            "selected", "additionalResults");
     private final AgentMediaApprovalRepository approvals;
     private final ToolExecutionRepository toolExecutions;
     private final AgentRunService runs;
@@ -193,17 +191,7 @@ public class AgentMediaOutcomeService {
         if (errorCode != null) result.put("errorCode", errorCode);
         var taskResults = result.putArray("tasks");
         for (Task task : media) {
-            var item = taskResults.addObject().put("taskId", task.id().toString())
-                    .put("kind", task.kind().name()).put("status", task.status().name());
-            if (task.errorCode() != null) item.put("errorCode", task.errorCode());
-            // Provider receipts, credentials, URLs and billing payloads do not enter the Prompt.
-            if (task.output() != null) {
-                for (String field : OUTPUT_FIELDS) {
-                    if (task.output().has(field)) item.set(field, task.output().get(field));
-                }
-            }
-            item.put("possibleExternalCost", task.status() == Task.Status.UNKNOWN
-                    || task.providerRequestId() != null || task.status() == Task.Status.SUBMITTING);
+            taskResults.add(AgentMediaResultProjection.task(mapper, approval, task));
         }
         AgentMediaApproval updated = approval.transition(status, approval.taskIds(), result,
                 approval.executionDeadline(), approval.decisionKey(), approval.decisionHash());

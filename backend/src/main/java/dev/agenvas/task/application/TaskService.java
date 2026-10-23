@@ -649,7 +649,9 @@ public class TaskService {
                             lease.input().path("canvasItemId").asText())) {
                 throw validation(ApiMessage.of("api.task-service.card-targets-for-the-media-task-were-inconsistent-with-fixed"));
             }
-            boolean allowTargetSelection = !canceled && !projectArchived && pinnedMediaInputsCurrent(ownerId, lease);
+            boolean explicitSelection = lease.approvedMedia()
+                    && lease.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean(false);
+            boolean allowTargetSelection = !explicitSelection && !canceled && !projectArchived && pinnedMediaInputsCurrent(ownerId, lease);
             boolean selectResult = allowTargetSelection
                     && (lease.runId() != null || canvasItemId != null);
             boolean acknowledgedPoll = requireMediaResultLease(current, lease, workerId, canceled, now);
@@ -664,7 +666,7 @@ public class TaskService {
             output.put("artifactVersionId", result.versionId().toString());
             output.put("selected", result.selected());
             // New output cards have no previous selection or draft to compare with the pinned input.
-            boolean allowAdditionalSelection = !canceled && !projectArchived;
+            boolean allowAdditionalSelection = !explicitSelection && !canceled && !projectArchived;
             output.set("additionalResults", archiveAdditionalResults(ownerId, lease, target, results,
                     allowTargetSelection, allowAdditionalSelection));
             if (providerUsage != null) output.set("providerUsage", providerUsage.deepCopy());

@@ -84,7 +84,8 @@ describe("project cache callbacks", () => {
     { type: "asset.ready", beforeRead: [], afterRead: [] },
     { type: "llm.turn.requested", beforeRead: ["snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
     { type: "llm.turn.recorded", beforeRead: ["snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
-    { type: "agent.media.approval.changed", beforeRead: ["run-media-approvals", "snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
+    { type: "agent.media.approval.changed", beforeRead: ["storyboard-media-approvals", "run-media-approvals", "snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
+    { type: "storyboard.changed", beforeRead: ["storyboard", "storyboard-revisions", "storyboard-media-approvals"], afterRead: [] },
   ])("refreshes only the expected views for $type in order", ({ type, beforeRead, afterRead }) => {
     const tracked = trackCache();
     tracked.callbacks.onChange(event(type));
@@ -133,7 +134,7 @@ describe("project cache callbacks", () => {
       ...invalidations("canvas-media-versions", "snapshot", ...historyPrefixes), readSnapshot,
       ...invalidations(...(artifactId ? ["canvas", "media-draft"] : [])),
       ...(activeRunId ? [["invalidate", ["run-tasks", projectId, activeRunId]]] : []),
-      ...invalidations("direct-media-tasks", "direct-media-queue"),
+      ...invalidations("direct-media-tasks", "direct-media-queue", "storyboard-media-approvals"),
     ]);
   });
 
@@ -147,6 +148,7 @@ describe("project cache callbacks", () => {
     const tracked = trackCache("old-run");
     const refreshedPrefixes = [
       ...historyPrefixes, "run-tasks", "direct-media-tasks", "media-draft", "canvas-media-versions", "project-usage",
+      "storyboard", "storyboard-revisions", "storyboard-media-approvals",
     ];
     const refreshedKeys = refreshedPrefixes.map((prefix) => [prefix, projectId, "scope-1"]);
     const unchangedKeys = [
