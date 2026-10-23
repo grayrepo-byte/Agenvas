@@ -111,6 +111,32 @@ public class ArtifactService {
                 .value();
     }
 
+    /** Creates an independent text identity inside a canvas edit's existing project lock.
+     * The enclosing edit publishes the single event; no nested sequence is consumed here.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ArtifactView createTextCopyWithinChange(UUID ownerId, UUID projectId,
+            String title, JsonNode content) {
+        return createLocked(ownerId, projectId, Artifact.Kind.TEXT, title, content,
+                ArtifactVersion.CreatedByKind.USER, null, false);
+    }
+
+    /** Advances only the text copy's optimistic revision when its deleted canvas incarnation
+     * is restored. The exact immutable content and history stay unchanged, while an autosave
+     * prepared before undo can no longer overwrite the explicitly restored branch.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void fenceTextCopyWithinChange(UUID ownerId, UUID projectId, UUID artifactId,
+            long expectedVersion, UUID expectedContentVersion) {
+        projects.requireActiveProject(ownerId, projectId);
+        Artifact current = artifacts.findForUpdate(ownerId, projectId, artifactId).orElseThrow(this::notFound);
+        if (current.kind() != Artifact.Kind.TEXT || current.version() != expectedVersion
+                || !java.util.Objects.equals(current.resourceDefaultVersionId(), expectedContentVersion)) throw versionConflict();
+        requireEditable(current);
+        if (!artifacts.setResourceDefaultVersion(ownerId, projectId, artifactId, expectedVersion,
+                current.resourceDefaultVersionId(), current.title(), clock.instant())) throw versionConflict();
+    }
+
     /** Trusted library boundary. Ordinary artifact writes cannot assert this provenance. */
     @Transactional
     public ArtifactView createLibraryImport(UUID ownerId, UUID projectId, Artifact.Kind kind,

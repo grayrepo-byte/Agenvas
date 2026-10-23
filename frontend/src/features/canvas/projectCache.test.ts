@@ -71,9 +71,9 @@ describe("project cache callbacks", () => {
     { type: "artifact.created", beforeRead: ["canvas", "media-draft"], afterRead: [] },
     { type: "artifact.version.created", beforeRead: ["canvas", "media-draft"], afterRead: ["project-characters"] },
     { type: "artifact.resource_default_version.changed", beforeRead: ["canvas", "media-draft"], afterRead: [] },
-    { type: "canvas.items.changed", beforeRead: ["canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: ["project-characters"] },
-    { type: "canvas.connection.created", beforeRead: ["canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: ["project-characters"] },
-    { type: "canvas.connection.deleted", beforeRead: ["canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: ["project-characters"] },
+    { type: "canvas.items.changed", beforeRead: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft"], afterRead: ["project-characters"] },
+    { type: "canvas.connection.created", beforeRead: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft"], afterRead: ["project-characters"] },
+    { type: "canvas.connection.deleted", beforeRead: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft"], afterRead: ["project-characters"] },
     { type: "agent.instance.changed", beforeRead: ["canvas", "snapshot"], afterRead: [] },
     { type: "agent.conversation.changed", beforeRead: ["snapshot", ...historyPrefixes], afterRead: [] },
     { type: "agent.run.changed", beforeRead: ["snapshot", ...historyPrefixes], afterRead: [] },
@@ -96,6 +96,18 @@ describe("project cache callbacks", () => {
     ]);
   });
 
+  it("refreshes group metadata and restored copy drafts without invalidating another project", () => {
+    const tracked = trackCache();
+    tracked.queryClient.setQueryData(["canvas-editor", "other-project"], { groups: [] });
+    tracked.clear();
+    tracked.callbacks.onChange(event("canvas.edited", { operation: "DUPLICATE", state: "APPLIED" }));
+    expect(tracked.calls()).toEqual([
+      ...invalidations("canvas-media-versions", "canvas-editor", "canvas-connections", "media-draft", "artifacts", "canvas"),
+      readSnapshot, ...invalidations("project-characters"),
+    ]);
+    expect(tracked.queryClient.getQueryState(["canvas-editor", "other-project"])?.isInvalidated).toBe(false);
+  });
+
   it.each([
     { payload: { canvasItemId: "card-1", artifactId: "artifact-1" },
       scopedKeys: [["media-draft", projectId, "card-1"], ["artifact-versions", projectId, "artifact-1"]] },
@@ -116,7 +128,7 @@ describe("project cache callbacks", () => {
     tracked.clear();
     tracked.callbacks.onChange(event("canvas.item.selected_version.changed", payload));
     expect(tracked.calls()).toEqual([
-      ...invalidations("canvas-media-versions", "canvas"),
+      ...invalidations("canvas-media-versions", "canvas-editor", "canvas"),
       ...scopedKeys.map((key): CacheCall => ["invalidate", key]), readSnapshot, ...invalidations("project-characters"),
     ]);
     expect(tracked.queryClient.getQueryState(cardDraftKey)?.isInvalidated).toBe(scopedKeys.length > 0);
@@ -150,7 +162,7 @@ describe("project cache callbacks", () => {
     const tracked = trackCache("old-run");
     const refreshedPrefixes = [
       ...historyPrefixes, "run-tasks", "direct-media-tasks", "media-draft", "canvas-media-versions", "project-usage",
-      "storyboard", "storyboard-revisions", "storyboard-media-approvals", "project-characters",
+      "storyboard", "storyboard-revisions", "storyboard-media-approvals", "project-characters", "canvas-editor",
     ];
     const refreshedKeys = refreshedPrefixes.map((prefix) => [prefix, projectId, "scope-1"]);
     const unchangedKeys = [

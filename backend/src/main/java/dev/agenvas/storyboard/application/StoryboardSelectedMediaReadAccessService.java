@@ -31,4 +31,11 @@ public class StoryboardSelectedMediaReadAccessService {
                 .anyMatch(production -> versionId.equals(production.selectedVersionId())
                         && currentItems.contains(production.canvasItemId()));
     }
+
+    /** Undo must preserve a card used by any saved board, even with no selected result yet. */
+    @Transactional(readOnly = true)
+    public boolean hasCanvasReference(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        items.requireArtifactItem(ownerId, projectId, canvasItemId);
+        return boards.hasCanvasReference(projectId, canvasItemId);
+    }
 }

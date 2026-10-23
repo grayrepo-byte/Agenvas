@@ -13,6 +13,9 @@ import dev.agenvas.db.tables.AppUser.AppUserPath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.Asset.AssetPath;
 import dev.agenvas.db.tables.AssetStorageRoute.AssetStorageRoutePath;
+import dev.agenvas.db.tables.CanvasEditCommand.CanvasEditCommandPath;
+import dev.agenvas.db.tables.CanvasEditReceipt.CanvasEditReceiptPath;
+import dev.agenvas.db.tables.CanvasGroup.CanvasGroupPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.McpOperation.McpOperationPath;
 import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
@@ -291,6 +294,45 @@ public class Project extends TableImpl<ProjectRecord> {
             _asset = new AssetPath(this, null, Keys.ASSET__FK_ASSET_PROJECT.getInverseKey());
 
         return _asset;
+    }
+
+    private transient CanvasEditCommandPath _canvasEditCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_edit_command</code> table
+     */
+    public CanvasEditCommandPath canvasEditCommand() {
+        if (_canvasEditCommand == null)
+            _canvasEditCommand = new CanvasEditCommandPath(this, null, Keys.CANVAS_EDIT_COMMAND__FK_CANVAS_EDIT_COMMAND_PROJECT.getInverseKey());
+
+        return _canvasEditCommand;
+    }
+
+    private transient CanvasEditReceiptPath _canvasEditReceipt;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_edit_receipt</code> table
+     */
+    public CanvasEditReceiptPath canvasEditReceipt() {
+        if (_canvasEditReceipt == null)
+            _canvasEditReceipt = new CanvasEditReceiptPath(this, null, Keys.CANVAS_EDIT_RECEIPT__FK_CANVAS_EDIT_RECEIPT_PROJECT.getInverseKey());
+
+        return _canvasEditReceipt;
+    }
+
+    private transient CanvasGroupPath _canvasGroup;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_group</code> table
+     */
+    public CanvasGroupPath canvasGroup() {
+        if (_canvasGroup == null)
+            _canvasGroup = new CanvasGroupPath(this, null, Keys.CANVAS_GROUP__FK_CANVAS_GROUP_PROJECT.getInverseKey());
+
+        return _canvasGroup;
     }
 
     private transient CanvasItemPath _canvasItem;

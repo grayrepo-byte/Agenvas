@@ -92,26 +92,52 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .workspace-shell .artifact-canvas-card {
-    transition: box-shadow var(--ui-duration) var(--ui-ease-standard), background var(--ui-duration) var(--ui-ease-standard);
+    transition: box-shadow var(--ui-duration) var(--ui-ease-standard), background-color var(--ui-duration) var(--ui-ease-standard);
   }
-  .workspace-shell :is(.artifact-card-title, .artifact-card-title-icon) {
+  .workspace-shell :is(.artifact-card-title, .artifact-card-title-icon, .canvas-group__name) {
     transition: color var(--ui-duration) var(--ui-ease-standard);
   }
+  .workspace-shell .canvas-group {
+    transition: border-color var(--ui-duration) var(--ui-ease-standard), box-shadow var(--ui-duration) var(--ui-ease-standard);
+  }
+  .workspace-shell .canvas-group__header { transition: background-color var(--ui-duration) var(--ui-ease-standard); }
+  /* Animate only inner surfaces: React Flow keeps full ownership of every node and
+     portal anchor. These entrances never affect editor measurement or drag geometry. */
   .workspace-shell .artifact-card-toolbar,
-  .workspace-editor-content,
+  .workspace-shell .workspace-editor-content,
+  .workspace-selection-toolbar { animation: canvas-context-enter 180ms var(--ui-ease-out); }
   .workspace-shell .canvas-overview { animation: canvas-surface-enter var(--ui-motion-enter) var(--ui-ease-out); }
-  .workspace-selection-toolbar { animation: canvas-fade-enter var(--ui-motion-enter) var(--ui-ease-out); }
   .workspace-drawer { animation: canvas-drawer-enter var(--ui-motion-enter) var(--ui-ease-out); }
   .save-badge-saving svg { animation: canvas-status-spin 1s linear infinite; }
-  .workspace-tool-rail button { transition: background var(--ui-duration), color var(--ui-duration); }
+  .workspace-tool-rail button,
+  .canvas-viewport-dock button,
+  .workspace-selection-actions button,
+  .canvas-group__header button,
+  .artifact-card-toolbar > :where(button, a),
+  .artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > button {
+    transition: background-color var(--ui-duration) var(--ui-ease-standard),
+      border-color var(--ui-duration) var(--ui-ease-standard), color var(--ui-duration) var(--ui-ease-standard),
+      scale 100ms var(--ui-ease-out);
+  }
+  .workspace-tool-rail button:active:enabled,
+  .canvas-viewport-dock button:active:enabled,
+  .workspace-selection-actions button:active:enabled,
+  .canvas-group__header button:active:enabled,
+  .artifact-card-toolbar > :where(button:active:enabled, a:active),
+  .artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > button:active:enabled { scale: .97; }
 }
+@keyframes canvas-context-enter { from { opacity: 0; translate: 0 4px; } to { opacity: 1; translate: 0 0; } }
 @keyframes canvas-surface-enter { from { opacity: 0; translate: 0 6px; } to { opacity: 1; translate: 0 0; } }
-@keyframes canvas-fade-enter { from { opacity: 0; } to { opacity: 1; } }
 @keyframes canvas-drawer-enter { from { opacity: 0; translate: -8px 0; } to { opacity: 1; translate: 0 0; } }
 @keyframes canvas-status-spin { to { rotate: 360deg; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .canvas-viewport-dock button { transition: none; }
+  .workspace-tool-rail button,
+  .canvas-viewport-dock button,
+  .workspace-selection-actions button,
+  .canvas-group__header button,
+  .artifact-card-toolbar > :where(button, a),
+  .artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > button { transition: none; }
 }
 
 .workspace-canvas:has(.canvas-overview) .canvas-gesture-hints { display: none; }

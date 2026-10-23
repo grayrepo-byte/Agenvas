@@ -1,10 +1,10 @@
 # Agenvas 与 Topview、LibTV 的功能差距
 
-核对日期：2026-10-23。本文是产品研究与后续建议，不改变现行规格、ADR 或开发排期。
+核对日期：2026-10-23。当前 develop 基线为 `96b4dc4`；本轮大画布编辑增量已进入 develop。本文是产品研究与后续建议，不改变现行规格、ADR 或开发排期。
 
-整合状态说明：项目角色档案、多造型/视图、音色、媒体节点关联、显式预览应用、独立复核与冻结来源已实现，见 [ADR 0055](../adr/0055-character-consistency-management.md)。分镜制作台、导演直接写入与按镜修改、镜头媒体提案及审批/候选返回也已实现，见 [ADR 0056](../adr/0056-storyboard-production-workbench.md)、[ADR 0057](../adr/0057-director-storyboard-workbench-tools.md)、[ADR 0058](../adr/0058-shot-linked-media-approvals.md)。这两组基础功能不再列为当前缺口；生成仍由用户显式审批，结果仍须明确选用。实际部署及真实生成的外观、音色与口型效果未验证。
+整合状态说明：项目角色档案、多造型/视图、音色、媒体节点关联、显式预览应用、独立复核与冻结来源已实现，见 [ADR 0055](../adr/0055-character-consistency-management.md)。分镜制作台、导演直接写入与按镜修改、镜头媒体提案及审批/候选返回也已实现，见 [ADR 0056](../adr/0056-storyboard-production-workbench.md)、[ADR 0057](../adr/0057-director-storyboard-workbench-tools.md)、[ADR 0058](../adr/0058-shot-linked-media-approvals.md)。本轮画布增量进一步实现了大画布命名/折叠分组、独立多选、组复制、普通复制及会话内 50 步撤销/重做，见 [ADR 0059](../adr/0059-canvas-groups-and-edit-history.md)。上述基础功能不再列为当前缺口；生成仍由用户显式审批，结果仍须明确选用。实际部署及真实生成的外观、音色与口型效果未验证。
 
-行为以[角色与分镜规格](../MVP-SPEC.md#619-角色一致性管理2026-10-23)和[开发清单本轮整合验收](../DEVELOPMENT-CHECKLIST.md#分镜制作台与-develop-角色功能整合2026-10-23)为准。下文保留研究当时的源码快照、公开来源和建议顺序，不将历史研究判断或合并前测试当作当前验收。后续重点评估可保存成片工程/整片预览、语音字幕校对及角色目录与分镜创作流程的整合。
+行为以[角色与分镜规格](../MVP-SPEC.md#619-角色一致性管理2026-10-23)和[开发清单](../DEVELOPMENT-CHECKLIST.md)为准。下文保留研究当时的源码快照、公开来源和建议顺序，不将历史研究判断或合并前测试当作当前验收；当前基线是 develop `96b4dc4`，本轮画布增量单独标注。后续重点评估可保存成片工程/整片预览、语音字幕校对及角色目录与分镜创作流程的整合；画布侧还剩删除/连线撤销、跨刷新历史、搜索直接定位与批量交付。最新功能核查与更新排序见[最新功能缺口](develop-feature-gaps-2026-10-23.md)。
 ## 范围与证据
 
 - 竞品依据可公开读取的官方产品页、帮助文档及官方 Skill；详细来源分别见 [Topview 调研](topview-capabilities-2026-10-23.md)、[LibTV 调研](libtv-capabilities-2026-10-23.md)。未登录竞品、未进行付费生成，也未实测其画质、可靠性或一致性。
@@ -25,7 +25,7 @@ Agenvas 已有画布、多模态生成、导演对话、Skill/MCP、资产库、
 | 剧本与镜头组织 | Drama Studio 描述大纲、集、角色、场景、剧本、分镜与视频版本，V2 为 Beta。[官方介绍](https://www.topview.ai/drama-studio) | TV Director 宣传原创、改编、剧本编辑及导演/分镜提示词辅助；精细镜头数据未核实。[官方介绍](https://www.liblib.tv/ai-video/rival?sourceid=040154) | 已有导演完整文字流程，下一步可增加直接操作分镜的界面。 |
 | 成片编辑 | 同项目 Canvas/Timeline，整片播放、裁切、排序、分音轨、整片/片段/ZIP 导出有操作文档。[Timeline](https://www.topview.ai/academy/timeline) | 官网有智能剪辑入口；多轨、工程持续编辑、时长等细节未核实。[官网](https://www.liblib.tv/) | 已有有界后期；主要完善工程保存与整片预览。 |
 | 角色与声音 | 官方练习包含角色资产、角色声音及逐镜 @ 引用，要求检查外观与声音一致性。[教程](https://www.topview.ai/academy/team-collab) | 官网出现角色造型室入口，跨镜头绑定与声音复用未核实。[官网](https://www.liblib.tv/) | 已有分类资产和精确参考，尚缺稳定的角色/造型/镜头关联。 |
-| 画布效率与复用 | 分组、图层、共享素材和撤销/重做有文档；未证实通用可执行工作流模板。[组织画布](https://www.topview.ai/academy/organize-canvas)、[基础操作](https://www.topview.ai/academy/what-is-canvas) | 有精选画布及作品展示；完整工作流复制与打组细节未核实。[官网](https://www.liblib.tv/) | 可补用户可操作分组、画布级撤销及流程复用；不能据此宣称两家均已有通用模板。 |
+| 画布效率与复用 | 分组、图层、共享素材和撤销/重做有文档；未证实通用可执行工作流模板。[组织画布](https://www.topview.ai/academy/organize-canvas)、[基础操作](https://www.topview.ai/academy/what-is-canvas) | 有精选画布及作品展示；完整工作流复制与打组细节未核实。[官网](https://www.liblib.tv/) | 基线已有节点拖拽/复制；本轮画布增量已补命名/折叠分组、组复制及会话内撤销/重做。仍可补删除/连线撤销、跨刷新历史、搜索直接定位、批量交付和通用流程模板。 |
 | 空间预演 | 3D Builder 文档描述姿态、路径、多机位、截图和视频输出。[空间控制](https://www.topview.ai/academy/spatial-control) | 3D-BOX 专页宣传 Agent 搭景、站位调度和手绘轨迹运镜。[专页](https://www.liblib.tv/3d-box) | 已有静态 3D 构图与截图，可按需要增加姿态和动态运镜。 |
 | 外部自动化 | 官方 Skill 介绍图片、视频、Avatar、TTS 等入口；未核实全部 Canvas 领域接口。[Skill](https://www.topview.ai/skill) | 官方客户端代码可证会话、上传、增量查询、批量下载和回画布。[官方仓库](https://github.com/libtv-labs/libtv-skills) | 已有内置导演、Skill 和 MCP，不应重复列为基础能力缺失。 |
 
@@ -45,10 +45,10 @@ Topview 的公开操作文档较完整，适合逐项核对交互能力；LibTV 
 | 参考视频拆解 | 已有图片提示词反推、视频帧与音频样本读取底座 | 导入视频后拆镜头、动作、机位、节奏和声音，产出可编辑分镜与复用提示词 | [AgentMediaSampleService](../../backend/src/main/java/dev/agenvas/llm/application/AgentMediaSampleService.java)、[MediaCanvasCard](../../frontend/src/features/canvas/MediaCanvasCard.tsx) |
 | 完整流程复用 | 已有资产、提示词和参考图模板、风格、Skill，以及发布的 ComfyUI/RunningHub 能力 | 保存一组节点、引用、可替换槽位、能力要求和参数为制作模板；预览后复制到新项目 | [规格 §6.14–6.17](../MVP-SPEC.md#614-个人资产库2026-10-01)、[媒体模板设计](../media-templates-design.md) |
 | 项目交付 | 已有成片输出、单资源下载及脱敏 JSON 清单；清单不是携带媒体的可恢复工程包 | 素材打包、项目复制、含媒体工程包导入/导出；字幕文件与剪辑软件交接按需求增加 | [导出服务](../../backend/src/main/java/dev/agenvas/export/application/ProjectExportManifestService.java)、[规格 §16.4](../MVP-SPEC.md#164-项目导出清单)、[API 合约](../../contracts/openapi.yaml) |
-| 画布效率 | 已有拖拽、框选、连线、整理和节点复制；groupId 有模型字段；标注/蒙版已有局部撤销 | 用户可命名、折叠的分镜组/区域；画布级撤销重做；组复制、搜索定位与批量下载 | [ProjectWorkspacePage](../../frontend/src/features/canvas/ProjectWorkspacePage.tsx)、[canvasStore](../../frontend/src/features/canvas/canvasStore.ts)、[canvasInteraction](../../frontend/src/features/canvas/canvasInteraction.ts) |
+| 画布效率 | develop 基线已有拖拽、框选、连线、整理和节点复制；本轮画布增量已接入命名/折叠分组、独立多选、组复制、普通复制及会话内 50 步撤销/重做 | 基础画布操作已补齐；剩余范围是删除/连线撤销、跨刷新历史、从搜索结果直接定位与批量下载/交付 | [ProjectWorkspacePage](../../frontend/src/features/canvas/ProjectWorkspacePage.tsx)、[canvasStore](../../frontend/src/features/canvas/canvasStore.ts)、[ADR 0059](../adr/0059-canvas-groups-and-edit-history.md) |
 | 3D 导演台 | 已有程序化人偶/几何体摆位、物体变换、拍摄机位与截图回画布 | 多机位、骨骼姿态、模型/全景导入、镜头轨迹和参考视频，分项验证下游模型遵从效果 | [ADR 0051](../adr/0051-local-3d-director-workbench.md)、[3D 调研](3d-director-workbench.md) |
 
-当前本地合成限制为 60 秒、12 镜、30 句字幕。应先完善工程与预览，再通过实际性能验证决定放宽范围；不要把限制变化本身当成编辑体验完善。
+当前本地合成限制为 60 秒、12 镜、30 句配音、100 条字幕。应先完善工程与预览，再通过实际性能验证决定放宽范围；不要把限制变化本身当成编辑体验完善。
 
 ## 研究时点的建议顺序与验收示例
 
@@ -68,7 +68,7 @@ Topview 的公开操作文档较完整，适合逐项核对交互能力；LibTV 
 
 增加 ASR 与字幕校正、台词比对、时间对齐及持久审片批注。声音活动检测只能判断活动区间，不能替代识字、辨人或口型；将声音相似度、台词准确性、字幕可读性和逐帧口型作为不同验收项。
 
-随后交付分镜组、画布级撤销/重做和流程模板。例如把“角色参考 → 关键帧 → 视频 → 配音 → 成片”存为可替换素材的模板，并能复制为独立项目。模板保存与应用不自动取得模型调用授权。
+画布侧的分镜组、组复制和会话内撤销/重做已随本轮画布增量进入 develop；后续应明确删除/连线撤销、跨刷新历史、搜索直接定位与批量交付的边界。再交付流程模板，例如把“角色参考 → 关键帧 → 视频 → 配音 → 成片”存为可替换素材的模板，并能复制为独立项目。模板保存与应用不自动取得模型调用授权。
 
 ### 按定位安排的后续方向
 
@@ -84,4 +84,4 @@ Topview 的公开操作文档较完整，适合逐项核对交互能力；LibTV 
 
 该记录同时明确：尚未证明自主听音、音色相似度、台词准确性与逐帧口型；文字模型音频输入曾返回不支持错误。不能把已有合成闭环说成没有实现，也不能据视频可解码、音轨非零或引用了同一音频就宣称声音和表演质量已经通过。
 
-本次只做资料和源码对照。要比较两家竞品与 Agenvas 的实际创作效果，需要另用相同剧本、素材和预算进行真实任务验收；此处没有性能、画质或成本胜负结论。
+本次只做资料和源码对照，并吸收本轮画布增量的定向证据。要比较两家竞品与 Agenvas 的实际创作效果，需要另用相同剧本、素材和预算进行真实任务验收；此处没有部署、全量测试、真实 Provider、性能、画质或成本胜负结论。

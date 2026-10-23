@@ -2925,6 +2925,88 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/canvas/editor": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** Read authoritative canvas items and persistent presentation groups */
+        get: operations["getCanvasEditor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/edits": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Atomically edit presentation, groups or copy up to 100 independent content nodes
+         * @description Command identities and request fingerprints are durable. The latest 100 receipt snapshots per project are retained; retries after their snapshot expires return CANVAS_EDIT_EXPIRED and never execute again. Copies freeze saved text/media/character state and inherit no tasks or connections. Group membership changes must explicitly include all changed nodes. Locked nodes may be renamed, unlocked or copied, but cannot move or change group. No provider calls are made.
+         */
+        post: operations["editCanvas"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/edits/{receiptId}/replay": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                receiptId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo or redo one retained presentation receipt under semantic and revision preconditions
+         * @description Only receipt-owned presentation changes are replayed. Clone undo refuses any subsequent content, draft, selection, role, connection, task, approval or composition usage. Redo restores fixed clone content and never rereads a changed source. A stale, expired or unsafe receipt returns 409 without partial changes. Existing delete/connect commands have no undo receipt.
+         */
+        post: operations["replayCanvasEdit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/canvas/commands": {
         parameters: {
             query?: never;
@@ -4968,12 +5050,14 @@ export interface components {
             characters: components["schemas"]["CharacterIndex"];
             storyboard: components["schemas"]["Storyboard"];
             storyboardRevisions: components["schemas"]["Storyboard"][];
+            /** @description 当前项目的安全分组名称、折叠状态与版本；不含编辑回执或命令指纹。 */
+            canvasGroups: components["schemas"]["CanvasGroup"][];
             /** @description 已安装或由项目导演默认绑定的固定版本，包含 version、mapping 和可空的 directorBinding（skillId、skillVersionId、position）；未安装时 mapping.assets 为空，不导出多助手绑定列表。 */
             creativeSkills?: {
                 [key: string]: unknown;
             }[];
             /** @constant */
-            schemaVersion: 10;
+            schemaVersion: 11;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -6391,6 +6475,106 @@ export interface components {
             expectedVersion: number;
         };
         CanvasCommand: components["schemas"]["PlaceArtifactCommand"] | components["schemas"]["UpdateCanvasItemTitleCommand"] | components["schemas"]["UpdateLayoutCommand"] | components["schemas"]["SetCanvasItemLockedCommand"] | components["schemas"]["RemoveCanvasItemCommand"];
+        CanvasGroup: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            /** @description Trimmed name measured in Unicode code points. */
+            name: string;
+            collapsed: boolean;
+            /** Format: int64 */
+            version: number;
+        };
+        CanvasEditReceipt: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            operation: "DISPLAY" | "GROUP" | "DUPLICATE";
+            /** Format: int64 */
+            revision: number;
+            /** @enum {string} */
+            state: "APPLIED" | "UNDONE";
+        };
+        CanvasEditorState: {
+            items: components["schemas"]["CanvasItem"][];
+            groups: components["schemas"]["CanvasGroup"][];
+            receipt?: null;
+        };
+        CanvasEditResponse: {
+            items: components["schemas"]["CanvasItem"][];
+            groups: components["schemas"]["CanvasGroup"][];
+            receipt: components["schemas"]["CanvasEditReceipt"];
+        };
+        CanvasEditItemChange: {
+            /** Format: uuid */
+            itemId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            title: string;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            zIndex: number;
+            /** Format: uuid */
+            groupId?: string | null;
+            locked: boolean;
+        };
+        CanvasEditGroupChange: {
+            /** @enum {string} */
+            type: "UPSERT" | "DELETE";
+            /** Format: uuid */
+            groupId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            /** @description Required for UPSERT. */
+            name?: string;
+            /** @description Required for UPSERT. */
+            collapsed?: boolean;
+        };
+        CanvasEditCopy: {
+            /** Format: uuid */
+            sourceItemId: string;
+            /** Format: uuid */
+            targetItemId: string;
+            /** Format: int64 */
+            expectedSourceVersion: number;
+            /**
+             * Format: int64
+             * @description Required for media.
+             */
+            expectedSourceDraftVersion?: number | null;
+            /**
+             * Format: uuid
+             * @description Exact current text version; null for empty text.
+             */
+            expectedSourceContentVersion?: string | null;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            zIndex: number;
+            /** Format: uuid */
+            groupId?: string | null;
+        };
+        CanvasEditRequest: {
+            /** Format: uuid */
+            commandId: string;
+            /** @enum {string} */
+            operation: "DISPLAY" | "GROUP" | "DUPLICATE";
+            itemChanges?: components["schemas"]["CanvasEditItemChange"][];
+            groupChanges?: components["schemas"]["CanvasEditGroupChange"][];
+            copies?: components["schemas"]["CanvasEditCopy"][];
+        };
+        CanvasEditReplayRequest: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedRevision: number;
+            /** @enum {string} */
+            direction: "UNDO" | "REDO";
+        };
         CanvasCommandBatchRequest: {
             commands: components["schemas"]["CanvasCommand"][];
         };
@@ -12150,6 +12334,111 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getCanvasEditor: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canvas editor state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEditorState"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    editCanvas: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Authoritative state and replay receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEditResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    replayCanvasEdit: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                receiptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasEditReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Authoritative state with the incremented receipt revision and direction */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEditResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };

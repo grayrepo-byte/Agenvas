@@ -16,6 +16,8 @@ public interface AgentMediaApprovalRepository {
     Optional<Integer> findStoryboardResultRevision(UUID ownerId, UUID projectId,
             UUID shotId, UUID canvasItemId, UUID versionId);
     List<AgentMediaApproval> listByRun(UUID projectId, UUID runId);
+    /** Any persisted proposal/result use, including rejected, expired and completed batches. */
+    boolean hasCanvasOwnership(UUID ownerId, UUID projectId, UUID canvasItemId);
     Optional<AgentMediaApproval> findByTaskId(UUID projectId, UUID taskId);
     List<AgentMediaApproval> listOutstanding(int limit);
     List<AgentMediaApproval> listOutstandingAfter(UUID afterId, int limit);

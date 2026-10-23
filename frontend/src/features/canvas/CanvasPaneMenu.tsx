@@ -1,4 +1,4 @@
-import { DotsNine,ImageSquare,MusicNotes,Plus,TextT,UploadSimple,VideoCamera } from "@/shared/ui/icons";
+import { CopySimple,DotsNine,ImageSquare,MusicNotes,Plus,TextT,UploadSimple,VideoCamera } from "@/shared/ui/icons";
 import { t,useLocale } from "../../shared/i18n";
 import {
   DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuPortal,
@@ -15,10 +15,11 @@ const CREATION_OPTIONS = [
 ] as const;
 
 /** A controlled menu anchored to the pane pointer; Radix owns focus, nesting and edge collision. */
-export function CanvasPaneMenu({ position, onClose, onAdd, onUpload, onArrange, uploading, creatingText, arranging, canArrange }: {
+export function CanvasPaneMenu({ position, onClose, onAdd, onUpload, onArrange, uploading, creatingText, arranging, canArrange, canPaste, onPaste }: {
   position: { x: number; y: number } | null;
   onClose: () => void; onAdd: (kind: PaneCreationKind) => void; onUpload: () => void; onArrange: () => void;
   uploading: boolean; creatingText: boolean; arranging: boolean; canArrange: boolean;
+  canPaste?: boolean; onPaste?: () => void;
 }) {
   useLocale();
   return <DropdownMenu open={position !== null} onOpenChange={(open) => { if (!open) onClose(); }} modal={false}>
@@ -42,7 +43,10 @@ export function CanvasPaneMenu({ position, onClose, onAdd, onUpload, onArrange, 
         <DropdownMenuItem className="rounded-xl py-2.5" disabled={uploading} onSelect={onUpload}><UploadSimple />{t("canvas.context.upload")}</DropdownMenuItem>
       </DropdownMenuGroup>
       <DropdownMenuSeparator />
-      <DropdownMenuGroup><DropdownMenuItem className="rounded-xl py-2.5" disabled={!canArrange || arranging}
+      <DropdownMenuGroup>
+        {onPaste ? <DropdownMenuItem className="rounded-xl py-2.5" disabled={!canPaste}
+          onSelect={onPaste}><CopySimple />{t("canvas.edit.paste")}</DropdownMenuItem> : null}
+        <DropdownMenuItem className="rounded-xl py-2.5" disabled={!canArrange || arranging}
         onSelect={onArrange}><DotsNine />{t("canvas.context.arrange")}</DropdownMenuItem></DropdownMenuGroup>
     </DropdownMenuContent>
   </DropdownMenu>;

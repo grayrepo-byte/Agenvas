@@ -286,6 +286,22 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         return (Long) get(17);
     }
 
+    /**
+     * Setter for <code>public.canvas_item.topology_epoch</code>.
+     * 任何关联连线创建、修改、删除时递增；与展示版本和内容选择epoch独立，防止连线变化后误撤销复制
+     */
+    public void setTopologyEpoch(Long value) {
+        set(18, value);
+    }
+
+    /**
+     * Getter for <code>public.canvas_item.topology_epoch</code>.
+     * 任何关联连线创建、修改、删除时递增；与展示版本和内容选择epoch独立，防止连线变化后误撤销复制
+     */
+    public Long getTopologyEpoch() {
+        return (Long) get(18);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -309,7 +325,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
     /**
      * Create a detached, initialised CanvasItemRecord
      */
-    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, String title, UUID selectedVersionId, Long mediaSelectionEpoch) {
+    public CanvasItemRecord(UUID id, UUID projectId, String subjectType, UUID subjectId, UUID artifactId, BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, Integer zIndex, UUID groupId, Boolean locked, Long version, OffsetDateTime createdAt, OffsetDateTime updatedAt, String title, UUID selectedVersionId, Long mediaSelectionEpoch, Long topologyEpoch) {
         super(CanvasItem.CANVAS_ITEM);
 
         setId(id);
@@ -330,6 +346,7 @@ public class CanvasItemRecord extends UpdatableRecordImpl<CanvasItemRecord> {
         setTitle(title);
         setSelectedVersionId(selectedVersionId);
         setMediaSelectionEpoch(mediaSelectionEpoch);
+        setTopologyEpoch(topologyEpoch);
         resetChangedOnNotNull();
     }
 }

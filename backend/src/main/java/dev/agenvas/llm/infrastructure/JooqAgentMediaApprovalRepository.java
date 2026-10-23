@@ -120,6 +120,19 @@ public class JooqAgentMediaApprovalRepository implements AgentMediaApprovalRepos
     }
 
     @Override
+    public boolean hasCanvasOwnership(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        var path = "$.**.canvasItemId ? (@ == $item)";
+        return dsl.fetchExists(dsl.selectOne().from(AGENT_MEDIA_APPROVAL)
+                .where(AGENT_MEDIA_APPROVAL.OWNER_ID.eq(ownerId))
+                .and(AGENT_MEDIA_APPROVAL.PROJECT_ID.eq(projectId))
+                .and(DSL.condition("jsonb_path_exists({0}, {3}::jsonpath, jsonb_build_object('item', {4}))"
+                                + " or jsonb_path_exists({1}, {3}::jsonpath, jsonb_build_object('item', {4}))"
+                                + " or jsonb_path_exists({2}, {3}::jsonpath, jsonb_build_object('item', {4}))",
+                        AGENT_MEDIA_APPROVAL.REQUEST_JSON, AGENT_MEDIA_APPROVAL.TARGET_JSON,
+                        AGENT_MEDIA_APPROVAL.RESULT_JSON, DSL.val(path), DSL.val(canvasItemId.toString()))));
+    }
+
+    @Override
     public Optional<AgentMediaApproval> findByTaskId(UUID projectId, UUID taskId) {
         return dsl.selectFrom(AGENT_MEDIA_APPROVAL)
                 .where(AGENT_MEDIA_APPROVAL.PROJECT_ID.eq(projectId))

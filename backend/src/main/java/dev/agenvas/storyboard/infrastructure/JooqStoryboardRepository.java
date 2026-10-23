@@ -80,4 +80,13 @@ public class JooqStoryboardRepository implements StoryboardRepository {
         tree.remove("schemaVersion");
         return mapper.treeToValue(tree, Storyboard.class);
     }
+
+    @Override
+    public boolean hasCanvasReference(UUID projectId, UUID canvasItemId) {
+        return dsl.fetchExists(dsl.selectOne().from(STORYBOARD_REVISION)
+                .where(STORYBOARD_REVISION.PROJECT_ID.eq(projectId))
+                .and(org.jooq.impl.DSL.condition(
+                        "jsonb_path_exists({0}, '$.**.canvasItemId ? (@ == $item)', jsonb_build_object('item', {1}))",
+                        STORYBOARD_REVISION.CONTENT_JSON, org.jooq.impl.DSL.val(canvasItemId.toString()))));
+    }
 }

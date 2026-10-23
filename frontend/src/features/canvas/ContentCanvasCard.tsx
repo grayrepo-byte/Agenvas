@@ -1,5 +1,5 @@
 import {
-LinkSimple,LockSimple,PencilSimple,
+CopySimple,LinkSimple,LockSimple,PencilSimple,
 Stack,TextT,X
 } from "@/shared/ui/icons";
 import type { MouseEvent,ReactNode } from "react";
@@ -28,6 +28,7 @@ type ContentCanvasCardProps = {
   toolbarVisible?: boolean;
   locked: boolean;
   children: ReactNode;
+  onDuplicate?: () => void;
 };
 
 /** 正文卡片只承载文字产物；图片与视频由 MediaCanvasCard 渲染。 */
@@ -35,7 +36,7 @@ const TEXT_PRESENTATION = { get label() { return t("common.text"); }, icon: Text
 
 /** Text edits in place; the persisted content is shown as written. */
 export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, locked,
-  children }: ContentCanvasCardProps) {
+  children, onDuplicate }: ContentCanvasCardProps) {
   useLocale();
   const [editingText, setEditingText] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
@@ -59,6 +60,8 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
   return <ArtifactCardFrame title={item.title} titleIcon={<Icon size={16} />} kindLabel={label} selected={selected} locked={locked}
     toolbarVisible={toolbarVisible}
     editableTitle={{ projectId: artifact.projectId, item }} className="content-canvas-card" toolbar={<>
+        {onDuplicate ? <Button variant="ghost" type="button" disabled={Boolean(editingState?.busy)}
+          onClick={onDuplicate}><CopySimple data-icon="inline-start" />{t("canvas.edit.duplicate")}</Button> : null}
         {!editingText ? <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={emptyText} /> : null}
         {hasCurrentVersion(artifact)
           ? <TextVersionPicker artifact={editingText && editingState ? editingState.artifact : artifact}
@@ -84,12 +87,13 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
         <Icon size={17} aria-hidden />
         <h3 title={header}>{header}</h3>
       </div>
-      {emptyText ? <div className="content-card-empty nodrag nowheel nopan" onDoubleClick={beginEditing}>
+      {emptyText ? <div className="content-card-empty nowheel" onDoubleClick={beginEditing}>
         <TextT size={44} aria-hidden />
         <span>{t("text.card.emptyHint")}</span>
-      </div> : <div className="content-card-body nodrag nowheel nopan" tabIndex={0}
+      </div> : <div className="content-card-body nowheel" tabIndex={0}
         role="region" aria-label={t("text.card.bodyLabel", { "0": label })} onDoubleClick={beginEditing}>
-        <p className="content-card-text">{text}</p>
+        {/* Native selection belongs to the written text; the surrounding blank surface can move the node. */}
+        <p className="content-card-text nodrag nopan">{text}</p>
       </div>}
       {references > 0 || locked ? <footer className="content-card-sources">
         {references > 0 ? <span className="content-card-chip"><LinkSimple size={12} aria-hidden />{t("text.card.referenceCount", { "0": references })}</span> : null}

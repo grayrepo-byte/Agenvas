@@ -7,6 +7,7 @@ import { useCanvasStore } from "./canvasStore";
 import { ASPECT_RATIO_OPTIONS, type MediaDraftFields } from "./mediaDraftCapability";
 import { saveClosedMediaDraft, type PendingMediaDraftSave } from "./mediaDraftCloseSave";
 import { mediaDraftQueryOptions } from "./mediaDisplay";
+import { useCanvasEditingGuard } from "./canvasEditingGuards";
 
 const AUTOSAVE_DELAY_MS = 650;
 
@@ -19,6 +20,7 @@ type SessionState = {
 
 type SavedFields = { fields: MediaDraftFields; dirty: boolean; error?: Error | null };
 type PendingBusinessWrite = { result: Promise<Error | null> };
+type PendingSaveAcknowledgement = { result: Promise<Error | null>; finish: (error: Error | null) => void };
 
 /** These gates deliberately differ: removing an input pauses autosave, but not clean reads. */
 type SessionPolicy = {
@@ -50,6 +52,7 @@ export function useMediaDraftSession(projectId: string, canvasItemId: string) {
   const latest = useRef(state);
   const readOnly = useRef(false);
   const pendingSave = useRef<PendingMediaDraftSave | undefined>(undefined);
+  const pendingAcknowledgement = useRef<PendingSaveAcknowledgement | undefined>(undefined);
   const pendingBusinessWrites = useRef(new Set<PendingBusinessWrite>());
   // Every transition updates the async snapshot together with its rendered state.
   const update = useCallback((change: (current: SessionState) => SessionState) => {
@@ -76,6 +79,9 @@ export function useMediaDraftSession(projectId: string, canvasItemId: string) {
   const saveMutation = useMutation({
     mutationFn: (request: SaveMediaDraftRequest) => {
       if (readOnly.current) throw new Error(t("media.editor.editingLocked"));
+      let finish: (error: Error | null) => void = () => {};
+      const acknowledged = new Promise<Error | null>((resolve) => { finish = resolve; });
+      pendingAcknowledgement.current = { result: acknowledged, finish };
       const result = saveMediaDraft(projectId, canvasItemId, request);
       pendingSave.current = { request, result };
       return result;
@@ -90,11 +96,39 @@ export function useMediaDraftSession(projectId: string, canvasItemId: string) {
       queryClient.setQueryData(key, saved);
       // A capability switch may remove unmatched connection sources in the save transaction.
       if (context?.capabilityChanged) void queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] });
+      pendingAcknowledgement.current?.finish(null);
+      pendingAcknowledgement.current = undefined;
     },
-    onError: (error) => { pendingSave.current = undefined; setError(error); },
+    onError: (error) => {
+      pendingSave.current = undefined; setError(error);
+      pendingAcknowledgement.current?.finish(error);
+      pendingAcknowledgement.current = undefined;
+    },
   });
   const { isPending, mutate, mutateAsync } = saveMutation;
-  const awaitPendingSave = useCallback(async () => pendingSave.current ? await pendingSave.current.result : undefined, []);
+  const awaitPendingSave = useCallback(async () => {
+    const pending = pendingSave.current;
+    const acknowledgement = pendingAcknowledgement.current;
+    if (!pending) return undefined;
+    const saved = await pending.result;
+    // A raw HTTP promise can resolve before React Query merges its CAS and fields.
+    const error = acknowledgement ? await acknowledgement.result : null;
+    if (error) throw error;
+    return saved;
+  }, []);
+  useCanvasEditingGuard(projectId, canvasItemId, async () => {
+    const failures = await Promise.all([...pendingBusinessWrites.current].map((pending) => pending.result));
+    const failure = failures.find((error) => error !== null);
+    if (failure) throw failure;
+    await awaitPendingSave();
+    const current = latest.current;
+    if (!current.dirty) return;
+    if (current.error) throw current.error;
+    if (readOnly.current || !current.fields || current.expectedVersion === null) {
+      throw new Error(t("canvas.edit.draftsPending"));
+    }
+    await mutateAsync({ ...current.fields, expectedVersion: current.expectedVersion });
+  });
   const beginBusinessWrite = useCallback(() => {
     let finish: (error: Error | null) => void = () => {};
     const result = new Promise<Error | null>((resolve) => { finish = resolve; });

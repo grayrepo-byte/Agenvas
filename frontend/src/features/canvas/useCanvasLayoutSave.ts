@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, applyCanvasCommands, HTTP_STATUS, type Canvas, type CanvasCommand, type CanvasItem } from "../../shared/api/client";
 import { useCanvasStore, type LayoutDraft } from "./canvasStore";
 import { persistableNodeSize } from "./imageNodeLayout";
+import { canvasItemPresentation, type CanvasEditExecutor } from "./useCanvasEditing";
 
 /** The existing canvas command API accepts at most 100 commands per transaction. */
 const CANVAS_LAYOUT_BATCH_SIZE = 100;
@@ -16,7 +17,8 @@ type LayoutSubmission = { input: LayoutInput; commands: CanvasCommand[];
 
 /** Save frozen layout commands; later edits remain drafts until their own request is acknowledged. */
 export function useCanvasLayoutSave(projectId: string,
-  effectiveNodeSize: (item: CanvasItem, patch: Partial<LayoutPatch>) => NodeSize) {
+  effectiveNodeSize: (item: CanvasItem, patch: Partial<LayoutPatch>) => NodeSize,
+  execute?: CanvasEditExecutor) {
   const queryClient = useQueryClient();
   const prepare = useCallback((input: LayoutInput): LayoutSubmission => {
     const updates = Array.isArray(input) ? input : [input];
@@ -37,7 +39,19 @@ export function useCanvasLayoutSave(projectId: string,
   }, [effectiveNodeSize]);
   const mutation = useMutation<Canvas, Error, LayoutSubmission>({
     retry: false,
-    mutationFn: ({ commands }) => applyCanvasCommands(projectId, commands),
+    mutationFn: async ({ commands, input, submitted }) => {
+      if (!execute) return applyCanvasCommands(projectId, commands);
+      const updates = Array.isArray(input) ? input : [input];
+      const result = await execute({ operation: "DISPLAY", itemChanges: commands.map((command, index) => {
+        const item = updates[index]!.item;
+        if (command.type !== "UPDATE_LAYOUT") throw new Error("Expected a layout command");
+        return { ...canvasItemPresentation(item), x: command.x!, y: command.y!,
+          width: command.width!, height: command.height!, zIndex: command.zIndex!, groupId: command.groupId };
+      }) }, () => {
+        for (const { itemId, draft } of submitted) useCanvasStore.getState().clearDraftIfUnchanged(itemId, draft);
+      });
+      return { items: result.items };
+    },
     onMutate: () => useCanvasStore.getState().setSaveState("saving"),
     onError: (error) => useCanvasStore.getState().setSaveState(
       error instanceof ApiError && error.status === HTTP_STATUS.CONFLICT ? "conflict" : "failed"),
@@ -74,5 +88,11 @@ export function useCanvasLayoutSave(projectId: string,
     }
   }, [prepare, submitAsync]);
   return { isPending: mutation.isPending, error: mutation.error,
-    variables: mutation.variables?.input, mutate, mutateAsync, saveInBatches };
+    variables: mutation.variables?.input, mutate, mutateAsync, saveInBatches, reset: mutation.reset,
+    discardFailed: () => {
+      for (const { itemId, draft } of mutation.variables?.submitted ?? []) {
+        useCanvasStore.getState().clearDraftIfUnchanged(itemId, draft);
+      }
+      mutation.reset();
+    } };
 }

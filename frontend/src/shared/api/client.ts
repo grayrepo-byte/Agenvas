@@ -130,6 +130,12 @@ export type Canvas = components["schemas"]["Canvas"];
 export type CanvasItem = components["schemas"]["CanvasItem"];
 export type SelectMediaVersionRequest = components["schemas"]["SelectMediaVersionRequest"];
 export type CanvasCommand = components["schemas"]["CanvasCommand"];
+export type CanvasGroup = components["schemas"]["CanvasGroup"];
+export type CanvasEditorState = components["schemas"]["CanvasEditorState"];
+export type CanvasEditRequest = components["schemas"]["CanvasEditRequest"];
+export type CanvasEditResponse = components["schemas"]["CanvasEditResponse"];
+export type CanvasEditReceipt = components["schemas"]["CanvasEditReceipt"];
+export type CanvasEditReplayRequest = components["schemas"]["CanvasEditReplayRequest"];
 export type CanvasConnection = components["schemas"]["CanvasConnection"];
 export type CanvasConnectionList = components["schemas"]["CanvasConnectionList"];
 export type CreateCanvasConnectionRequest = components["schemas"]["CreateCanvasConnectionRequest"];
@@ -789,6 +795,21 @@ export async function uploadCanvasItemVersion(
 /** Loads the authoritative canvas projection for refresh recovery. */
 export async function listCanvasItems(projectId: string): Promise<Canvas> {
   return readJson<Canvas>(`/api/v1/projects/${projectId}/canvas/items`, t("api.errors.canvasUnavailable"));
+}
+
+export function getCanvasEditor(projectId: string): Promise<CanvasEditorState> {
+  return readJson("/api/v1/projects/" + projectId + "/canvas/editor", t("canvas.edit.loadGroups"));
+}
+
+/** A reversible edit is acknowledged by the server before entering the session history. */
+export function editCanvas(projectId: string, input: CanvasEditRequest): Promise<CanvasEditResponse> {
+  return writeJson("/api/v1/projects/" + projectId + "/canvas/edits",
+    { method: "POST", body: JSON.stringify(input) }, t("canvas.edit.failed"));
+}
+
+export function replayCanvasEdit(projectId: string, receiptId: string, input: CanvasEditReplayRequest): Promise<CanvasEditResponse> {
+  return writeJson("/api/v1/projects/" + projectId + "/canvas/edits/" + receiptId + "/replay",
+    { method: "POST", body: JSON.stringify(input) }, t("canvas.edit.failed"));
 }
 
 /** Atomically applies one or more presentation-only canvas commands. */

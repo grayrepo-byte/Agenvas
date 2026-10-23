@@ -6,7 +6,7 @@ import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes } from "react-router";
 import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Agent,CanvasCommand,CanvasItem,CreateRunRequest,ProjectSnapshot } from "../../shared/api/client";
+import type { Agent,CanvasCommand,CanvasEditRequest,CanvasItem,CreateRunRequest,ProjectSnapshot } from "../../shared/api/client";
 import { changeControl } from "../../test/controls";
 import { imageFunctionSettings } from "../../test/imageFunctionsFixture";
 import { server } from "../../test/server";
@@ -807,7 +807,8 @@ describe("ProjectWorkspacePage", () => {
       ...textCard(), id: `card-${index}`, title: `Note ${index}`, x: count - index, y: count - index,
       version: 7, locked: false,
     }));
-    const batches: CanvasCommand[][] = [];
+    const batches: NonNullable<CanvasEditRequest["itemChanges"]>[] = [];
+    const requestIds: string[] = [];
     let finishFirstBatch: (() => void) | undefined;
     const firstBatch = new Promise<void>((resolve) => { finishFirstBatch = resolve; });
     server.use(
@@ -818,17 +819,20 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/canvas/connections", () => HttpResponse.json({ items:
         items.slice(1).map((item, index) => ({ id: `edge-${index}`, sourceCanvasItemId: `card-${index}`,
           targetCanvasItemId: item.id, sourceArtifactVersionId: "text-v2", relationType: "MEDIA_DERIVATION" })) })),
-      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-        const { commands } = await request.json() as { commands: CanvasCommand[] };
+      http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
+        const input = await request.json() as CanvasEditRequest;
+        expect(input).toMatchObject({ operation: "DISPLAY", commandId: expect.any(String) });
+        const commands = input.itemChanges ?? [];
         batches.push(commands);
+        requestIds.push(input.commandId);
         if (editPendingBatch && batches.length === 1) await firstBatch;
         if (batches.length === failBatch) return HttpResponse.json({ code: "CANVAS_VERSION_CONFLICT", title: "合成布局冲突", detail: "合成布局冲突" },
           { status: 409, headers: { "Content-Type": "application/problem+json" } });
         items = items.map((item) => {
           const command = commands.find((candidate) => candidate.itemId === item.id);
-          return command?.type === "UPDATE_LAYOUT" ? { ...item, ...command, version: item.version + 1 } : item;
+          return command ? { ...item, ...command, version: item.version + 1 } : item;
         });
-        return HttpResponse.json({ items });
+        return HttpResponse.json({ items, groups: [], receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
       }),
     );
     const user = userEvent.setup();
@@ -872,8 +876,8 @@ describe("ProjectWorkspacePage", () => {
     const first = commands.find((command) => command.itemId === "card-0");
     const fifth = commands.find((command) => command.itemId === "card-4");
     const sixth = commands.find((command) => command.itemId === "card-5");
-    expect(first).toMatchObject({ type: "UPDATE_LAYOUT", expectedVersion: 7, x: 1, y: 1, width: 280, height: 180 });
-    if (!first || first.type !== "UPDATE_LAYOUT" || !fifth || fifth.type !== "UPDATE_LAYOUT" || !sixth || sixth.type !== "UPDATE_LAYOUT")
+    expect(first).toMatchObject({ expectedVersion: 7, x: 1, y: 1, width: 280, height: 180 });
+    if (!first || !fifth || !sixth)
       throw new Error("Missing layout commands");
     expect(fifth.y).toBe(first.y);
     expect(fifth.x).toBeGreaterThan(first.x);
@@ -882,24 +886,26 @@ describe("ProjectWorkspacePage", () => {
     if (failBatch) {
       expect(viewportProbe.center).not.toHaveBeenCalled();
       expect(Object.keys(useCanvasStore.getState().drafts)).toHaveLength(failBatch === 2 ? 1 : count);
-      expect(await screen.findByText("合成布局冲突")).toBeVisible();
+      expect((await screen.findAllByText("合成布局冲突"))[0]).toBeVisible();
       if (failBatch === 2) {
         expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items.find((item) => item.id === "card-0")?.version).toBe(8);
         expect(useCanvasStore.getState().drafts["card-100"]).toBeDefined();
-        // Explicitly run the arrangement again. The confirmed batch uses its returned
-        // versions; the previously rejected item still uses its unchanged server version.
-        fireEvent.contextMenu(pane, { clientX: 300, clientY: 200 });
-        await user.click(await screen.findByRole("menuitem", { name: "一键整理" }));
-        await waitFor(() => expect(batches).toHaveLength(4));
+        // Retry the rejected batch as the same durable intent. The accepted first
+        // batch stays acknowledged and must never be resubmitted or overwritten.
+        await user.click(screen.getByRole("button", { name: "重试本次操作" }));
+        await waitFor(() => expect(batches).toHaveLength(3));
         await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
-        expect(batches[2]?.find((command) => command.itemId === "card-0"))
-          .toMatchObject({ expectedVersion: 8 });
-        expect(batches[3]?.[0]).toMatchObject({ itemId: "card-100", expectedVersion: 7 });
+        expect(requestIds[2]).toBe(requestIds[1]);
+        expect(batches[2]).toEqual(batches[1]);
+        expect(batches[2]?.[0]).toMatchObject({ itemId: "card-100", expectedVersion: 7 });
+        expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items
+          .find((item) => item.id === "card-0")?.version).toBe(8);
         expect(useCanvasStore.getState().drafts).toEqual({});
       }
     } else {
       await waitFor(() => expect(viewportProbe.center).toHaveBeenCalledExactlyOnceWith(
-        first.x + first.width / 2, first.y + first.height / 2, { zoom: initialZoom }));
+        first.x + first.width / 2, first.y + first.height / 2, expect.objectContaining({
+          zoom: initialZoom, duration: expect.any(Number), ease: expect.any(Function), interpolate: "linear" })));
       expect(useCanvasStore.getState().selectedIds).toEqual([]);
       expect(useCanvasStore.getState().drafts).toEqual({});
       expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items[0]?.version).toBe(8);

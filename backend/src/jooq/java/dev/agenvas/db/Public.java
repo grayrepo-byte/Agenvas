@@ -22,6 +22,9 @@ import dev.agenvas.db.tables.CallLogDebug;
 import dev.agenvas.db.tables.CanvasCharacterBinding;
 import dev.agenvas.db.tables.CanvasCharacterBindingMember;
 import dev.agenvas.db.tables.CanvasConnection;
+import dev.agenvas.db.tables.CanvasEditCommand;
+import dev.agenvas.db.tables.CanvasEditReceipt;
+import dev.agenvas.db.tables.CanvasGroup;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
@@ -200,6 +203,21 @@ public class Public extends SchemaImpl {
      * 画布卡片关系；输入来源和派生线不代表执行依赖
      */
     public final CanvasConnection CANVAS_CONNECTION = CanvasConnection.CANVAS_CONNECTION;
+
+    /**
+     * 持久紧凑的编辑命令幂等墓碑；历史快照过期后仍拒绝迟到重试重新执行
+     */
+    public final CanvasEditCommand CANVAS_EDIT_COMMAND = CanvasEditCommand.CANVAS_EDIT_COMMAND;
+
+    /**
+     * 每项目最近100次展示编辑的撤销重做凭据；不承担内容或任务回放
+     */
+    public final CanvasEditReceipt CANVAS_EDIT_RECEIPT = CanvasEditReceipt.CANVAS_EDIT_RECEIPT;
+
+    /**
+     * 项目内命名、折叠的画布展示分组；解组保留墓碑以避免身份和版本重用
+     */
+    public final CanvasGroup CANVAS_GROUP = CanvasGroup.CANVAS_GROUP;
 
     /**
      * 画布空间卡片及卡片独立的标题、版本选择与内容选择 epoch
@@ -568,6 +586,9 @@ public class Public extends SchemaImpl {
             CanvasCharacterBinding.CANVAS_CHARACTER_BINDING,
             CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER,
             CanvasConnection.CANVAS_CONNECTION,
+            CanvasEditCommand.CANVAS_EDIT_COMMAND,
+            CanvasEditReceipt.CANVAS_EDIT_RECEIPT,
+            CanvasGroup.CANVAS_GROUP,
             CanvasItem.CANVAS_ITEM,
             CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT,
             CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE,

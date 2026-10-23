@@ -445,6 +445,24 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                         Task.Kind.VIDEO_GENERATION.name(), Task.Kind.AUDIO_GENERATION.name()));
     }
 
+    @Override
+    public boolean hasCanvasOwnership(UUID ownerId, UUID projectId, UUID canvasItemId, UUID textArtifactId) {
+        Condition ownership = TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID.eq(canvasItemId)
+                .or(canvasIdentityIn(TASK.INPUT_JSON, canvasItemId))
+                .or(canvasIdentityIn(TASK.OUTPUT_JSON, canvasItemId));
+        if (textArtifactId != null) ownership = ownership.or(TASK_ARTIFACT_TARGET.ARTIFACT_ID.eq(textArtifactId));
+        return dsl.fetchExists(dsl.selectOne().from(TASK)
+                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
+                .leftJoin(TASK_ARTIFACT_TARGET).on(TASK_ARTIFACT_TARGET.TASK_ID.eq(TASK.ID))
+                .where(PROJECT.OWNER_ID.eq(ownerId)).and(TASK.PROJECT_ID.eq(projectId)).and(ownership));
+    }
+
+    private Condition canvasIdentityIn(Field<JSONB> json, UUID itemId) {
+        return DSL.condition("jsonb_path_exists({0}, '$.**.canvasItemId ? (@ == $item)', jsonb_build_object('item', {1}))"
+                        + " or jsonb_path_exists({0}, '$.**.sourceCanvasItemId ? (@ == $item)', jsonb_build_object('item', {1}))",
+                json, DSL.val(itemId.toString()));
+    }
+
     private List<Task> listForTarget(UUID ownerId, UUID projectId,
             Field<UUID> targetField, UUID targetId, Condition taskScope) {
         return dsl.select(TASK.fields()).from(TASK)

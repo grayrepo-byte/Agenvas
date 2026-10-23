@@ -752,6 +752,7 @@ public class CanvasService {
 
     /** 核验产物权限和坐标后创建卡片；客户端 ID 只允许完全相同的布局重放。 */
     private void placeArtifact(UUID ownerId, UUID projectId, PlaceArtifact command) {
+        if (command.groupId() != null && !canvasItems.groupExists(ownerId, projectId, command.groupId())) throw conflict();
         validateGeometry(
                 command.x(),
                 command.y(),
@@ -873,6 +874,8 @@ public class CanvasService {
         if (current.version() != command.expectedVersion()) {
             throw conflict();
         }
+        if (command.groupId() != null && !java.util.Objects.equals(command.groupId(), current.groupId())
+                && !canvasItems.groupExists(ownerId, projectId, command.groupId())) throw conflict();
         CanvasItem updated = current.withLayout(
                 command.x(), command.y(), command.width(), command.height(),
                 command.zIndex(), command.groupId());
@@ -920,7 +923,7 @@ public class CanvasService {
     }
 
     /** Layout rows refer only to artifacts; the database remains the source of immutable content. */
-    private CanvasEntry toEntry(UUID ownerId, CanvasItem item) {
+    CanvasEntry toEntry(UUID ownerId, CanvasItem item) {
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, item.projectId(), item.subjectId());
         return new CanvasEntry(item, artifact, selectedVersion(ownerId, item, artifact));
     }
@@ -980,7 +983,7 @@ public class CanvasService {
     }
 
     /** 拒绝 null、越界坐标/尺寸及超出 [-1000,1000] 的层级。 */
-    private void validateGeometry(
+    void validateGeometry(
             BigDecimal x,
             BigDecimal y,
             BigDecimal width,
@@ -1017,7 +1020,7 @@ public class CanvasService {
     }
 
     /** 规范化卡片标题并保持数据库、合约和应用层的同一长度约束。 */
-    private String validateTitle(String title) {
+    String validateTitle(String title) {
         String normalized = title == null ? "" : title.trim();
         if (normalized.isEmpty() || normalized.length() > MAX_TITLE_LENGTH) {
             throw validation(ApiMessage.of("api.canvas-service.card-title-must-contain-1-to-160-characters"));

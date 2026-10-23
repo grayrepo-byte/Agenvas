@@ -68,6 +68,9 @@ public interface TaskRepository {
     /** Recent media requests for one CanvasItem, including approved Agent work, newest first. */
     List<Task> listMediaForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId);
 
+    /** All historical ownership, including replaced/terminal tasks and secondary output targets. */
+    boolean hasCanvasOwnership(UUID ownerId, UUID projectId, UUID canvasItemId, UUID textArtifactId);
+
     /** All nonterminal direct work, independent of the project's AgentRun slot. */
     List<Task> listActiveDirect(UUID ownerId, UUID projectId);
 

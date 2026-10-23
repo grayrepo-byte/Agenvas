@@ -161,6 +161,14 @@ public class JooqArtifactRepository implements ArtifactRepository {
     }
 
     @Override
+    public boolean advanceMediaDraftCopyVersion(UUID projectId, UUID canvasItemId, long expectedVersion, long targetVersion) {
+        if (targetVersion <= expectedVersion) return targetVersion == expectedVersion;
+        return dsl.update(MEDIA_DRAFT).set(MEDIA_DRAFT.VERSION, targetVersion)
+                .where(MEDIA_DRAFT.PROJECT_ID.eq(projectId)).and(MEDIA_DRAFT.CANVAS_ITEM_ID.eq(canvasItemId))
+                .and(MEDIA_DRAFT.VERSION.eq(expectedVersion)).execute() == 1;
+    }
+
+    @Override
     public void replaceMediaInputs(UUID projectId, UUID canvasItemId,
             List<MediaDraft.MediaInput> inputs, Instant now) {
         dsl.deleteFrom(CANVAS_ITEM_MEDIA_INPUT)

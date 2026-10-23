@@ -6,11 +6,13 @@ import { useLayoutEffect } from "react";
 import { MemoryRouter,Route,Routes } from "react-router";
 import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { CanvasCommand,CanvasItem,ProjectSnapshot,SaveMediaDraftRequest } from "../../shared/api/client";
+import type { CanvasEditRequest,CanvasItem,ProjectSnapshot,SaveMediaDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
+
+type CanvasItemChange = NonNullable<CanvasEditRequest["itemChanges"]>[number];
 
 type SelectionChange = NodeSelectionChange;
 type FlowProps = ReactFlowProps;
@@ -157,13 +159,16 @@ const selectChange = (id: string, selected: boolean): SelectionChange =>
 describe("canvas selection clearing", () => {
   it("offers relevant bulk actions for any selected cards with a working close button", async () => {
     const canvasItems = items;
-    const commands: CanvasCommand[][] = [];
+    const commands: CanvasItemChange[][] = [];
     server.use(
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: canvasItems } })),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: canvasItems })),
-      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-        commands.push((await request.json() as { commands: CanvasCommand[] }).commands);
-        return HttpResponse.json({ items: canvasItems });
+      http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
+        const input = await request.json() as CanvasEditRequest;
+        expect(input).toMatchObject({ operation: "DISPLAY", commandId: expect.any(String) });
+        commands.push(input.itemChanges ?? []);
+        return HttpResponse.json({ items: canvasItems, groups: [], receipt: {
+          id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
       }),
     );
     await renderInteractiveFlow();
@@ -176,8 +181,8 @@ describe("canvas selection clearing", () => {
     fireEvent.click(within(toolbar).getByRole("button", { name: "左对齐" }));
     await waitFor(() => expect(commands).toHaveLength(1));
     expect(commands[0]).toEqual([
-      expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "image-card", x: 0 }),
-      expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "text-card", x: 0 }),
+      expect.objectContaining({ itemId: "image-card", x: 0 }),
+      expect.objectContaining({ itemId: "text-card", x: 0 }),
     ]);
     act(() => useCanvasStore.getState().setSelectedIds(["image-card", "text-card", "middle-card"]));
     expect(within(toolbar).queryByRole("button", { name: "绑定到 Agent" })).not.toBeInTheDocument();
@@ -436,8 +441,13 @@ describe("node editor centering", () => {
       expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClick + 1);
       expect(focusProbe.center).toHaveBeenLastCalledWith(
         projected.position.x + width / 2, projected.position.y + height / 2,
-        expect.objectContaining({ zoom }));
-      expect(focusProbe.viewport).not.toHaveBeenCalled();
+        expect.objectContaining({ zoom, duration: expect.any(Number), ease: expect.any(Function), interpolate: "linear" }));
+      const duration = focusProbe.center.mock.lastCall?.[2]?.duration;
+      expect(duration).toBeGreaterThanOrEqual(240);
+      expect(duration).toBeLessThanOrEqual(420);
+      // The probe does not animate the camera. A second focus may stop the previous
+      // native transition, but that stop must preserve the current position and zoom.
+      for (const call of focusProbe.viewport.mock.calls) expect(call).toEqual([viewport, { duration: 0 }]);
       expect(focusProbe.fit).not.toHaveBeenCalled();
     }
     const centersBeforeClosing = focusProbe.center.mock.calls.length;
@@ -446,8 +456,73 @@ describe("node editor centering", () => {
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
     expect(focusProbe.instance!.getViewport()).toEqual(viewport);
     expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClosing);
-    expect(focusProbe.viewport).not.toHaveBeenCalled();
+    for (const call of focusProbe.viewport.mock.calls) expect(call).toEqual([viewport, { duration: 0 }]);
     expect(focusProbe.fit).not.toHaveBeenCalled();
+  });
+
+  it("focuses both media and text nodes immediately when reduced motion is requested", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    await renderInteractiveFlow();
+    for (const id of ["image-card", "text-card"]) {
+      fireEvent.click(nodeElement(id));
+      await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+      expect(focusProbe.center).toHaveBeenLastCalledWith(expect.any(Number), expect.any(Number), {
+        zoom: 1, duration: 0, ease: expect.any(Function), interpolate: "linear",
+      });
+    }
+    expect(focusProbe.center).toHaveBeenCalledTimes(2);
+    expect(focusProbe.viewport).not.toHaveBeenCalled();
+  });
+
+  it.each(["pointerDown", "wheel"] as const)("cancels a pending text editor focus on %s before the next frame", async (gesture) => {
+    await renderInteractiveFlow();
+    const schedule = vi.spyOn(window, "requestAnimationFrame");
+    const cancel = vi.spyOn(window, "cancelAnimationFrame");
+    fireEvent.click(nodeElement("text-card"));
+    expect(schedule).toHaveBeenCalled();
+    const frame = schedule.mock.results.at(-1)?.value;
+    expect(frame).toEqual(expect.any(Number));
+    fireEvent[gesture](nodeElement("image-card"));
+    expect(cancel).toHaveBeenCalledWith(frame);
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(focusProbe.center).not.toHaveBeenCalled();
+  });
+
+  it("stops an unfinished focus in pointer capture before a node starts dragging", async () => {
+    const saves = observeLayoutSaves();
+    // D3's interrupted animation promise can remain pending forever. A new gesture
+    // must never wait for that promise before it can drag or save a node.
+    focusProbe.center.mockImplementationOnce(() => new Promise<boolean>(() => {}));
+    await renderInteractiveFlow();
+    const node = nodeElement("image-card");
+    fireEvent.click(node);
+    expect(focusProbe.center).toHaveBeenCalledOnce();
+    const viewport = focusProbe.instance!.getViewport();
+    const onPointerDown = vi.fn(() => {
+      expect(focusProbe.viewport).toHaveBeenCalledExactlyOnceWith(viewport, { duration: 0 });
+    });
+    node.addEventListener("pointerdown", onPointerDown, { once: true });
+    fireEvent.pointerDown(node);
+    expect(onPointerDown).toHaveBeenCalledOnce();
+    nodeMouseGesture("mouseDown", node, 0);
+    nodeMouseGesture("mouseMove", node, CANVAS_POINTER_THRESHOLD + 1);
+    nodeMouseGesture("mouseMove", node, 40);
+    nodeMouseGesture("mouseUp", node, 40);
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toEqual([expect.objectContaining({ itemId: "image-card", x: 36, y: 0 })]);
+    expect(focusProbe.center).toHaveBeenCalledOnce();
+  });
+
+  it("keeps programmatic camera motion and gives user viewport movement immediate control", async () => {
+    await renderInteractiveFlow();
+    fireEvent.click(nodeElement("image-card"));
+    const viewport = focusProbe.instance!.getViewport();
+    act(() => flowProps.onMoveStart?.(null, viewport));
+    expect(focusProbe.viewport).not.toHaveBeenCalled();
+    expect(selectedIds()).toEqual(["image-card"]);
+    act(() => flowProps.onMoveStart?.(new MouseEvent("mousedown"), viewport));
+    expect(focusProbe.viewport).toHaveBeenCalledExactlyOnceWith(viewport, { duration: 0 });
+    expect(selectedIds()).toEqual([]);
   });
 });
 
@@ -465,22 +540,72 @@ function nodeMouseGesture(type: "mouseDown" | "mouseMove" | "mouseUp", node: HTM
 }
 
 function observeLayoutSaves(fail = false, baseItems = items) {
-  const batches: CanvasCommand[][] = [];
-  server.use(http.post("/api/v1/projects/project-1/canvas/commands", async ({ request }) => {
-    const body = await request.json() as { commands: CanvasCommand[] };
-    batches.push(body.commands);
+  const batches: CanvasItemChange[][] = [];
+  server.use(http.post("/api/v1/projects/project-1/canvas/edits", async ({ request }) => {
+    const input = await request.json() as CanvasEditRequest;
+    expect(input).toMatchObject({ operation: "DISPLAY", commandId: expect.any(String) });
+    const changes = input.itemChanges ?? [];
+    batches.push(changes);
     if (fail) return HttpResponse.json({ code: "VERSION_CONFLICT", title: "布局冲突" }, { status: 409 });
     return HttpResponse.json({ items: baseItems.map((item) => {
-      const command = body.commands.find((candidate) => candidate.itemId === item.id);
-      return command?.type === "UPDATE_LAYOUT"
+      const command = changes.find((candidate) => candidate.itemId === item.id);
+      return command
         ? { ...item, x: command.x, y: command.y, width: command.width, height: command.height,
           version: item.version + 1 } : item;
-    }) });
+    }), groups: [], receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
   }));
   return batches;
 }
 
 describe("node click and drag gestures", () => {
+  it.each([
+    ["text-card", ".content-card-body", 836],
+    ["middle-card", ".content-card-empty", 436],
+    ["middle-card", ".content-card-empty svg", 436],
+  ] as const)("drags an unlocked text node from the blank surface %s %s and saves once", async (id, selector, x) => {
+    const saves = observeLayoutSaves();
+    await renderInteractiveFlow();
+    const target = nodeElement(id).querySelector<HTMLElement>(selector);
+    if (!target) throw new Error(`Missing text drag surface ${selector}`);
+    nodeMouseGesture("mouseDown", target, 0);
+    nodeMouseGesture("mouseMove", target, CANVAS_POINTER_THRESHOLD + 1);
+    nodeMouseGesture("mouseMove", target, 40);
+    nodeMouseGesture("mouseUp", target, 40);
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toEqual([expect.objectContaining({ itemId: id, x, y: 0 })]);
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+  });
+
+  it("preserves native text selection instead of moving the node from its real text", async () => {
+    const saves = observeLayoutSaves();
+    await renderInteractiveFlow();
+    const node = nodeElement("text-card");
+    const text = node.querySelector<HTMLElement>(".content-card-text");
+    if (!text) throw new Error("Missing text selection surface");
+    const before = node.style.transform;
+    nodeMouseGesture("mouseDown", text, 0);
+    nodeMouseGesture("mouseMove", text, 40);
+    nodeMouseGesture("mouseUp", text, 40);
+    expect(node.style.transform).toBe(before);
+    expect(saves).toHaveLength(0);
+    expect(useCanvasStore.getState().drafts).toEqual({});
+  });
+
+  it("preserves editing gestures inside the text editor instead of moving the node", async () => {
+    const saves = observeLayoutSaves();
+    await renderInteractiveFlow();
+    const node = nodeElement("text-card");
+    fireEvent.doubleClick(within(node).getByText("选中的正文"));
+    const editor = await screen.findByRole("textbox", { name: "内容" });
+    const before = node.style.transform;
+    nodeMouseGesture("mouseDown", editor, 0);
+    nodeMouseGesture("mouseMove", editor, 40);
+    nodeMouseGesture("mouseUp", editor, 40);
+    expect(node.style.transform).toBe(before);
+    expect(saves).toHaveLength(0);
+    expect(useCanvasStore.getState().drafts).toEqual({});
+  });
+
   it.each([".audio-player-details", ".audio-player"])("selects and drags an audio node from %s", async (targetSelector) => {
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     const source = items[0]!;
@@ -507,7 +632,7 @@ describe("node click and drag gestures", () => {
     nodeMouseGesture("mouseMove", target, 40);
     nodeMouseGesture("mouseUp", target, 40);
     await waitFor(() => expect(saves).toHaveLength(1));
-    expect(saves[0]).toEqual([expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "image-card", x: 36, y: 0 })]);
+    expect(saves[0]).toEqual([expect.objectContaining({ itemId: "image-card", x: 36, y: 0 })]);
   });
 
   it("highlights an unselected node only while dragging, saves on release, and accepts the next click", async () => {
@@ -531,7 +656,7 @@ describe("node click and drag gestures", () => {
     expect(node.querySelector(".artifact-canvas-card")).not.toHaveClass("is-selected");
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
     await waitFor(() => expect(saves).toHaveLength(1));
-    expect(saves[0]).toEqual([expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "image-card",
+    expect(saves[0]).toEqual([expect.objectContaining({ itemId: "image-card",
       expectedVersion: 3, x: 36, y: 0 })]);
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
     expect(focusProbe.center).not.toHaveBeenCalled();

@@ -11,4 +11,6 @@ public interface StoryboardRepository {
     boolean append(Storyboard board, long expectedVersion);
     List<Storyboard> revisions(UUID projectId, long afterVersion, int limit);
     java.util.Map<UUID, Integer> maxShotRevisions(UUID projectId, java.util.Set<UUID> shotIds);
+    /** Any immutable board revision may retain a useful production/composition card. */
+    boolean hasCanvasReference(UUID projectId, UUID canvasItemId);
 }

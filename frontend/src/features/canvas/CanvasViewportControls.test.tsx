@@ -2,9 +2,10 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CanvasViewportControls } from "./CanvasViewportControls";
+import { canvasViewportEase } from "./canvasViewportMotion";
 
 const viewport = vi.hoisted(() => ({ transform: [0, 0, 0.67], minZoom: 0.25, maxZoom: 2 }));
-const flow = vi.hoisted(() => ({ zoomIn: vi.fn(), zoomOut: vi.fn(), zoomTo: vi.fn(), fitView: vi.fn() }));
+const flow = vi.hoisted(() => ({ zoomIn: vi.fn(), zoomOut: vi.fn(), zoomTo: vi.fn(), fitView: vi.fn(), getNodes: vi.fn(() => [{ id: "visible", style: {} }, { id: "collapsed-child", style: { visibility: "hidden" } }]) }));
 vi.mock("@xyflow/react", () => ({
   useReactFlow: () => flow,
   useStore: (selector: (state: typeof viewport) => unknown) => selector(viewport),
@@ -21,9 +22,10 @@ it("shows the actual zoom, resets it, fits the canvas, and opens/closes the over
   render(<CanvasViewportControls hasNodes />);
   expect(screen.getByRole("button", { name: "回到 100%" })).toHaveTextContent("67%");
   await user.click(screen.getByRole("button", { name: "回到 100%" }));
-  expect(flow.zoomTo).toHaveBeenCalledWith(1, { duration: 220 });
+  expect(flow.zoomTo).toHaveBeenCalledWith(1, { duration: 220, ease: canvasViewportEase, interpolate: "linear" });
   await user.click(screen.getByRole("button", { name: "适应画布" }));
-  expect(flow.fitView).toHaveBeenCalledWith({ padding: 0.2, maxZoom: 1, duration: 220 });
+  expect(flow.fitView).toHaveBeenCalledWith({ padding: 0.2, maxZoom: 1, duration: 360,
+    ease: canvasViewportEase, interpolate: "linear", nodes: [{ id: "visible" }] });
   const overview = screen.getByRole("button", { name: "画布缩略图" });
   expect(overview).toHaveAttribute("aria-pressed", "false");
   await user.click(overview);
@@ -50,7 +52,10 @@ it("uses immediate viewport changes when the system requests reduced motion", as
   const user = userEvent.setup();
   render(<CanvasViewportControls hasNodes />);
   await user.click(screen.getByRole("button", { name: "放大画布" }));
-  expect(flow.zoomIn).toHaveBeenCalledWith({ duration: 0 });
+  expect(flow.zoomIn).toHaveBeenCalledWith({ duration: 0, ease: canvasViewportEase, interpolate: "linear" });
   await user.click(screen.getByRole("button", { name: "缩小画布" }));
-  expect(flow.zoomOut).toHaveBeenCalledWith({ duration: 0 });
+  expect(flow.zoomOut).toHaveBeenCalledWith({ duration: 0, ease: canvasViewportEase, interpolate: "linear" });
+  await user.click(screen.getByRole("button", { name: "适应画布" }));
+  expect(flow.fitView).toHaveBeenCalledWith({ padding: 0.2, maxZoom: 1, duration: 0,
+    ease: canvasViewportEase, interpolate: "linear", nodes: [{ id: "visible" }] });
 });

@@ -1,5 +1,5 @@
 import { VideoEditDialog } from "./VideoEditDialog";
-import { AlignLeftSimple,ArrowLeft,CheckCircle,CircleNotch,Cube,DownloadSimple,FolderSimple,ImageSquare,MusicNotes,Plus,SelectionAll,Sparkle,TextT,VideoCamera,WarningCircle,X,type Icon } from "@/shared/ui/icons";
+import { AlignLeftSimple,ArrowClockwise,ArrowCounterClockwise,ArrowLeft,CopySimple,CheckCircle,CircleNotch,Cube,DownloadSimple,FolderSimple,ImageSquare,MusicNotes,Plus,SelectionAll,Sparkle,TextT,VideoCamera,WarningCircle,X,type Icon } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import {
 Background,
@@ -28,7 +28,6 @@ ensureProjectDirector,
 createArtifact,
 createCanvasConnection,
 disconnectCanvasConnection,
-duplicateCanvasItem,
 getCurrentUser,
 getMediaDraft,
 getProject,
@@ -69,6 +68,7 @@ import { CanvasSettingsMenu } from "./CanvasSettingsMenu";
 import { CanvasSelectionCheckbox } from "./CanvasSelectionCheckbox";
 import { CanvasToolMenu } from "./CanvasToolMenu";
 import { CanvasViewportControls } from "./CanvasViewportControls";
+import { useCanvasViewportMotion } from "./useCanvasViewportMotion";
 import { ContentCanvasCard } from "./ContentCanvasCard";
 import { MediaCanvasCard } from "./MediaCanvasCard";
 import { StoryboardWorkbench } from "./StoryboardWorkbench";
@@ -95,6 +95,13 @@ import { useCanvasLayoutSave } from "./useCanvasLayoutSave";
 import { CharacterManagerDialog } from "../characters/CharacterManagerDialog";
 import { characterBindingStale, characterQueryOptions } from "../characters/characterQueries";
 import { Badge } from "../../shared/ui/primitives/badge";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
+import { CanvasGroupNode, type CanvasGroupFlowNode } from "./CanvasGroupNode";
+import { CanvasGroupRenameDialog } from "./CanvasGroupActions";
+import { canvasGroupIdFromNodeId, canvasGroupNodeId, remapCollapsedCanvasEdges } from "./canvasGroups";
+import { hasOpenCanvasEditingOverlay, resolveCanvasEditingShortcut } from "./canvasEditingShortcuts";
+import { CanvasEditingContext, canvasItemPresentation } from "./useCanvasEditing";
+import { CANVAS_EDIT_ITEM_LIMIT, useCanvasOrganization } from "./useCanvasOrganization";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
@@ -110,8 +117,6 @@ const EDITOR_NODE_GAP = 32;
 const TEXT_EDITOR_NODE_GAP = 16;
 const CANVAS_MIN_ZOOM = 0.25;
 const EDITOR_VIEWPORT_MARGIN = 16;
-const DUPLICATE_ITEM_OFFSET = 32;
-const MAX_CANVAS_Z_INDEX = 1000;
 const MAX_ARTIFACT_TITLE_LENGTH = 160;
 const CREATION_MENU_WIDTH = 208;
 /** Match the menu's title, rows, gaps and padding in styles.css so edge clamping stays accurate. */
@@ -170,6 +175,7 @@ type CanvasNodeData = {
 };
 
 type CanvasNode = Node<CanvasNodeData, "canvasCard">;
+type WorkspaceNode = CanvasNode | CanvasGroupFlowNode;
 const edgeTypes = { canvasRelation: CanvasRelationEdge };
 
 /** Safe client-side validation message for unsupported canvas connection gestures. */
@@ -194,10 +200,18 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const textProgress = useRef<{ fingerprint: string; createKey: string;
     itemId: string; zIndex: number; artifactId?: string } | null>(null);
   const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
-  const flow = useRef<ReactFlowInstance<CanvasNode> | null>(null);
+  const flow = useRef<ReactFlowInstance<WorkspaceNode> | null>(null);
+  const groupDragOrigins = useRef(new Map<string, { x: number; y: number;
+    members: { id: string; x: number; y: number }[] }>());
   const editorFocusFrame = useRef<number | null>(null);
   const boxSelectionActive = useRef(false);
   const canvasElement = useRef<HTMLElement>(null);
+  const viewportMotion = useCanvasViewportMotion(flow, canvasElement);
+  const cancelCameraMotion = useCallback(() => {
+    if (editorFocusFrame.current !== null) window.cancelAnimationFrame(editorFocusFrame.current);
+    editorFocusFrame.current = null;
+    viewportMotion.cancel();
+  }, [viewportMotion]);
   useEffect(() => () => {
     if (editorFocusFrame.current !== null) window.cancelAnimationFrame(editorFocusFrame.current);
   }, []);
@@ -212,7 +226,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const centerY = node.position.y + height / 2;
     const currentZoom = instance.getZoom();
     if (node.data.item.artifact?.kind !== "TEXT") {
-      void instance.setCenter(centerX, centerY, { zoom: currentZoom });
+      viewportMotion.center(centerX, centerY, currentZoom);
       return;
     }
     // Wait for the text editor's four-line minimum to be measured. Reserve real
@@ -230,7 +244,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const actions = [...canvas?.querySelectorAll<HTMLElement>(".artifact-actions-toolbar") ?? []]
         .find(element => element.dataset.id === node.id);
       if (!bounds?.width || !bounds.height || !editor?.scrollHeight || !anchor) {
-        void instance.setCenter(centerX, centerY, { zoom: currentZoom });
+        viewportMotion.center(centerX, centerY, currentZoom);
         return;
       }
       const target = calculateCanvasEditorViewport({ canvas: bounds, nodeSize: { width, height },
@@ -239,9 +253,9 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         editorGap: TEXT_EDITOR_NODE_GAP,
         topToolbarSpace: actions ? Math.max(0, anchor.getBoundingClientRect().top - actions.getBoundingClientRect().top) : 0,
         margin: EDITOR_VIEWPORT_MARGIN });
-      void instance.setCenter(centerX, centerY + target.centerOffsetY, { zoom: target.zoom });
+      viewportMotion.center(centerX, centerY + target.centerOffsetY, target.zoom);
     });
-  }, []);
+  }, [viewportMotion]);
   const { tool, setTool, spaceHeld, selecting } = useCanvasInteraction();
   const creationMenuElement = useRef<HTMLDivElement>(null);
   const creationMenuReturnFocus = useRef<HTMLElement | null>(null);
@@ -266,7 +280,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const saveState = useCanvasStore((state) => state.saveState);
   const selectedIds = useCanvasStore((state) => state.selectedIds);
   const selectionMode = useCanvasStore((state) => state.selectionMode);
-  const multiSelecting = selectionMode === CANVAS_SELECTION_MODE.MULTIPLE || selectedIds.length > 1;
+  const multiSelecting = selectionMode === CANVAS_SELECTION_MODE.MULTIPLE || selectedIds.length > 1 || selectedIds.some((id) => canvasGroupIdFromNodeId(id) !== null);
   const updateDraft = useCanvasStore((state) => state.updateDraft);
   const clearDraft = useCanvasStore((state) => state.clearDraft);
   const setSaveState = useCanvasStore((state) => state.setSaveState);
@@ -275,10 +289,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const canvasMutationFeedback = {
     onMutate: () => setSaveState("saving"),
     onError: setSaveError,
-  };
-  const acceptCanvasSnapshot = (saved: Canvas) => {
-    queryClient.setQueryData(["canvas", projectId], saved);
-    setSaveState("saved");
   };
   const setSelectedIds = useCanvasStore((state) => state.setSelectedIds);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
@@ -303,13 +313,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     queryFn: () => listCanvasItems(projectId),
     enabled: snapshot.isSuccess,
   });
-  useEffect(() => {
-    if (!canvas.isSuccess) return;
-    const visible = new Set(canvas.data.items.map((item) => item.id));
-    const current = useCanvasStore.getState();
-    const retained = current.selectedIds.filter((id) => visible.has(id));
-    if (retained.length !== current.selectedIds.length) setSelectedIds(retained, current.selectionMode);
-  }, [canvas.data, canvas.isSuccess, setSelectedIds]);
   const canvasConnections = useQuery({
     queryKey: ["canvas-connections", projectId],
     queryFn: () => listCanvasConnections(projectId),
@@ -328,6 +331,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       height: compactAudio ? AUDIO_RESULT_CARD_HEIGHT : storedHeight,
     }, mediaRatios[item.id]);
   }, [mediaRatios]);
+  const organization = useCanvasOrganization({ projectId, items: canvas.data?.items ?? [],
+    enabled: snapshot.isSuccess, selectedIds, select: setSelectedIds, effectiveNodeSize });
+  const { editing } = organization;
+  useEffect(() => {
+    if (!canvas.isSuccess) return;
+    const visible = new Set(canvas.data.items.map((item) => item.id));
+    organization.groups.forEach((group) => visible.add(canvasGroupNodeId(group.id)));
+    const current = useCanvasStore.getState();
+    const retained = current.selectedIds.filter((id) => visible.has(id));
+    if (retained.length !== current.selectedIds.length) setSelectedIds(retained, current.selectionMode);
+  }, [canvas.data, canvas.isSuccess, organization.groups, setSelectedIds]);
   const resources = useQuery({
     queryKey: ["artifacts", projectId],
     queryFn: () => listArtifacts(projectId),
@@ -342,7 +356,28 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     });
   }, [projectId, queryClient, snapshot.isSuccess]);
 
-  const saveLayout = useCanvasLayoutSave(projectId, effectiveNodeSize);
+  const saveLayout = useCanvasLayoutSave(projectId, effectiveNodeSize, editing.execute);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = resolveCanvasEditingShortcut(event, { overlayOpen: hasOpenCanvasEditingOverlay(document) });
+      if (!action || organization.busy || saveLayout.isPending || creationMenu || paneMenu) return;
+      // Selected document text keeps native copy, even outside an editable field.
+      if (action === "copy" && window.getSelection()?.toString()) return;
+      const selected = organization.selectedItems.length > 0;
+      if ((action === "undo" && !editing.canUndo) || (action === "redo" && !editing.canRedo)
+        || (action === "paste" && !organization.canPaste)
+        || (["duplicate", "copy", "group", "ungroup"].includes(action) && !selected)) return;
+      event.preventDefault();
+      if (action === "group") organization.requestGroup();
+      else if (action === "ungroup") void organization.ungroup().catch(() => undefined);
+      else if (action === "duplicate") void organization.duplicateItems().catch(() => undefined);
+      else if (action === "copy") void organization.copyItems().catch(() => undefined);
+      else if (action === "paste") void organization.pasteItems().catch(() => undefined);
+      else void editing.replay(action === "undo" ? "UNDO" : "REDO").catch(() => undefined);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [organization, editing, saveLayout.isPending, creationMenu, paneMenu]);
   const removeItem = useMutation({
     mutationFn: (item: CanvasItem) =>
       applyCanvasCommands(projectId, [
@@ -352,47 +387,16 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     onSuccess: (saved, item) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       clearDraft(item.id);
+      editing.clearHistory();
       setSaveState("saved");
     },
   });
   const duplicateMediaItem = useMutation({
-    mutationFn: async (item: CanvasItem) => {
-      const draft = await getMediaDraft(projectId, item.id);
-      const targetItemId = crypto.randomUUID();
-      return duplicateCanvasItem(projectId, item.id, {
-        targetItemId,
-        expectedSourceVersion: item.version,
-        expectedSourceDraftVersion: draft.version,
-        x: item.x + DUPLICATE_ITEM_OFFSET,
-        y: item.y + DUPLICATE_ITEM_OFFSET,
-        width: item.width,
-        height: item.height,
-        zIndex: Math.min(MAX_CANVAS_Z_INDEX, item.zIndex + 1),
-      });
-    },
-    ...canvasMutationFeedback,
-    onSuccess: async (result) => {
-      queryClient.setQueryData(["media-draft", projectId, result.item.id], result.draft);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["canvas", projectId] }),
-        queryClient.invalidateQueries({ queryKey: ["canvas-connections", projectId] }),
-      ]);
-      setSelectedIds([result.item.id]);
-      setSaveState("saved");
-    },
+    mutationFn: (item: CanvasItem) => organization.duplicateItems([item.id]),
   });
   const toggleLocked = useMutation({
-    mutationFn: (item: CanvasItem) =>
-      applyCanvasCommands(projectId, [
-        {
-          type: "SET_LOCKED",
-          itemId: item.id,
-          expectedVersion: item.version,
-          locked: !item.locked,
-        },
-      ]),
-    ...canvasMutationFeedback,
-    onSuccess: acceptCanvasSnapshot,
+    mutationFn: (item: CanvasItem) => editing.execute({ operation: "DISPLAY",
+      itemChanges: [{ ...canvasItemPresentation(item), locked: !item.locked }] }),
   });
   const addTextCard = useMutation({
     mutationFn: async ({ point }: { point: CreationPoint }) => {
@@ -596,7 +600,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   });
   const alignSelected = useMutation({
     mutationFn: async () => {
-      const selected = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
+      const selected = organization.selectedItems;
       const layoutDrafts = useCanvasStore.getState().drafts;
       const layouts = selected.map((item) => ({ item, layout: {
         x: layoutDrafts[item.id]?.x ?? item.x, y: layoutDrafts[item.id]?.y ?? item.y,
@@ -683,12 +687,16 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
    * local removal, so a card or line only disappears from the canvas once the server projection says so.
    */
   const handleBeforeDelete = useCallback(
-    async ({ nodes: deletedNodes, edges: deletedEdges }: { nodes: CanvasNode[]; edges: Edge[] }) => {
+    async ({ nodes: deletedNodes, edges: deletedEdges }: { nodes: WorkspaceNode[]; edges: Edge[] }) => {
       // 移除卡片不动 Artifact 内容；服务端会同步清理以该卡片为端点的画布拓扑关系。
       const deletedIds = new Set(deletedNodes.map((node) => node.id));
       const relations = deletedEdges.filter((edge) =>
         !deletedIds.has(edge.source) && !deletedIds.has(edge.target));
-      for (const node of deletedNodes) removeItemMutate(node.data.item);
+      for (const node of deletedNodes) {
+        if (node.type === "canvasGroup") {
+          await organization.ungroup(node.data.groupId).catch(() => undefined);
+        } else removeItemMutate(node.data.item);
+      }
       for (const edge of relations) {
         const removal = canvasRelationRemoval(canvasConnections.data?.items ?? [], edge);
         if (removal?.kind === "mediaConnection") removeMediaConnectionMutate(removal);
@@ -696,7 +704,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       return false;
     },
     [canvas.data?.items, canvasConnections.data?.items,
-      removeItemMutate, removeMediaConnectionMutate],
+      removeItemMutate, removeMediaConnectionMutate, organization],
   );
   /**
    * A drop lands on the card under the pointer, so a big card does not require aiming at its left port.
@@ -763,12 +771,28 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setSelectedIds(current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId],
       CANVAS_SELECTION_MODE.MULTIPLE);
   }, [setSelectedIds]);
-  const nodes = useMemo<CanvasNode[]>(
-    () =>
-      (canvas.data?.items ?? [])
-        .map((item) => {
+  const lockedItemIds = useMemo(() => new Set((canvas.data?.items ?? []).filter((item) => item.locked).map((item) => item.id)), [canvas.data?.items]);
+  const nodes = useMemo<WorkspaceNode[]>(
+    () => [
+      ...organization.projection.groups.map((entry): CanvasGroupFlowNode => ({
+        id: entry.id, type: "canvasGroup", position: entry.position,
+        initialWidth: entry.width, initialHeight: entry.height,
+        measured: { width: entry.width, height: entry.height },
+        style: { width: entry.width, height: entry.height, pointerEvents: "none" }, zIndex: entry.group.collapsed ? 1001 : 0,
+        dragHandle: ".canvas-group-drag-handle", selected: selectedIds.includes(entry.id),
+        draggable: selecting && !organization.busy && !saveLayout.isPending && entry.memberIds.every((id) => !lockedItemIds.has(id)),
+        data: { groupId: entry.group.id, name: entry.group.name, collapsed: entry.group.collapsed,
+          memberCount: entry.memberIds.length, disabled: organization.busy || saveLayout.isPending,
+          onRename: organization.renameGroup,
+          onToggle: (id) => { void organization.toggleGroup(id).catch(() => undefined); },
+          onDuplicate: (id) => { void organization.duplicateGroup(id).catch(() => undefined); },
+          onUngroup: (id) => { void organization.ungroup(id).catch(() => undefined); } },
+      })),
+      ...(canvas.data?.items ?? [])
+        .map((item): CanvasNode => {
           const draft = drafts[item.id];
           const { width, height } = effectiveNodeSize(item, draft);
+          const member = organization.projection.members.get(item.id);
           return {
             id: item.id,
             type: "canvasCard",
@@ -779,9 +803,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             // Preserve measured dimensions across controlled-node projections so React Flow
             // keeps its DOM-measured handle bounds for edges and drag-to-connect.
             measured: { width, height },
-            style: { width, height },
-            draggable: selecting && !item.locked,
-            selected: selectedIds.includes(item.id),
+            style: { width, height, ...member?.style }, zIndex: item.zIndex + 1,
+            draggable: selecting && !item.locked && !member?.collapsed && !organization.busy && !saveLayout.isPending,
+            selectable: selecting && !member?.collapsed, focusable: selecting && !member?.collapsed,
+            selected: !member?.collapsed && selectedIds.includes(item.id),
             data: {
               item,
               projectId,
@@ -806,8 +831,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             },
           };
         }),
+    ],
     [
       canvas.data?.items,
+      organization,
+      lockedItemIds,
+      saveLayout.isPending,
       bindingsByItem,
       characters.data,
       drafts,
@@ -865,12 +894,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (!first) return;
       const { width, height } = effectiveNodeSize(first);
       const instance = flow.current;
-      void instance?.setCenter(first.x + width / 2, first.y + height / 2,
-        { zoom: instance.getZoom() });
+      if (instance) viewportMotion.center(first.x + width / 2, first.y + height / 2, instance.getZoom());
     },
   });
-  const relationEdges = useMemo(() => displayCanvasRelations(projectedRelations, selectedIds, selectedEdgeIds,
-    displaySettings.preferences), [projectedRelations, selectedIds, selectedEdgeIds, displaySettings.preferences]);
+  const relationEdges = useMemo(() => remapCollapsedCanvasEdges(displayCanvasRelations(
+    projectedRelations, [...selectedIds, ...organization.selectedItems.map((item) => item.id)], selectedEdgeIds,
+    displaySettings.preferences), organization.projection.collapsedNodeByMemberId), [projectedRelations, organization.projection.collapsedNodeByMemberId,
+      organization.selectedItems, selectedIds, selectedEdgeIds, displaySettings.preferences]);
   const handleEdgesChange = useCallback((changes: EdgeChange<Edge>[]) => {
     setSelectedEdgeIds((current) => {
       const next = new Set(current);
@@ -889,14 +919,21 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
    * 受控 nodes 更新后，React Flow 仍会同步内部选中标记；移除回写不代表内部标记不会更新。
    */
   const handleNodesChange = useCallback(
-    (changes: NodeChange<CanvasNode>[]) => {
+    (changes: NodeChange<WorkspaceNode>[]) => {
       const selectChanges = changes.filter((change) => change.type === "select");
       if (selectChanges.length) {
         const { selectedIds: current, selectionMode: mode } = useCanvasStore.getState();
         const next = new Set(current);
         for (const change of selectChanges) {
-          if (change.selected) next.add(change.id);
-          else next.delete(change.id);
+          if (change.selected) {
+            const groupId = canvasGroupIdFromNodeId(change.id);
+            if (groupId) (canvas.data?.items ?? []).filter((item) => item.groupId === groupId).forEach((item) => next.delete(item.id));
+            else {
+              const member = canvas.data?.items.find((item) => item.id === change.id);
+              if (member?.groupId) next.delete(canvasGroupNodeId(member.groupId));
+            }
+            next.add(change.id);
+          } else next.delete(change.id);
         }
         const ids = [...next];
         // A box gesture becomes multi-select only after React Flow actually selects a node.
@@ -910,14 +947,20 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       }
       for (const change of changes) {
         if (change.type === "position" && change.position) {
-          updateDraft(change.id, change.position);
+          if (canvasGroupIdFromNodeId(change.id)) {
+            const origin = groupDragOrigins.current.get(change.id);
+            if (origin) for (const member of origin.members) {
+              updateDraft(member.id, { x: member.x + change.position.x - origin.x,
+                y: member.y + change.position.y - origin.y });
+            }
+          } else updateDraft(change.id, change.position);
         } else if (change.type === "dimensions" && change.dimensions && change.resizing) {
           // DOM measurements reflect the current projection; only a resize gesture is a draft.
           updateDraft(change.id, change.dimensions);
         }
       }
     },
-    [setSelectedIds, updateDraft],
+    [setSelectedIds, updateDraft, canvas.data?.items],
   );
   /** 移动或缩放画布即放弃当前焦点；程序化的 fitView（event 为 null）不参与，否则会上演选中后立刻被清掉。 */
   const clearSelection = useCallback(() => {
@@ -994,7 +1037,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     }
   }
 
-  const selectedItems = (canvas.data?.items ?? []).filter((item) => selectedIds.includes(item.id));
+  const selectedItems = organization.selectedItems;
   const selectedVideos = selectedItems.filter((item) => item.artifact.kind === "VIDEO");
   const compositionUnavailable = !selectedVideos.length ? t("canvas.workspace.compositionVideoRequired")
     : selectedItems.some((item) => !item.selectedVersionId) ? t("canvas.workspace.compositionResultRequired")
@@ -1019,7 +1062,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const existing = ids.filter((id) => canvas.data?.items.some((item) => item.id === id));
     if (!existing.length) return;
     setSelectedIds(existing);
-    void flow.current?.fitView({ nodes: existing.map((id) => ({ id })), padding: 0.2, maxZoom: 1 });
+    viewportMotion.fit({ nodes: existing.map((id) => ({ id })), padding: 0.2, maxZoom: 1 });
   }
   function feedbackTitle(action: string, ids: (string | null | undefined)[]) {
     const titles = ids.flatMap((id) => {
@@ -1044,7 +1087,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   if (currentUser.isError) return <Navigate to="/login" replace />;
 
   return (
-    <main className="workspace-shell text-[var(--ink)]">
+    <CanvasEditingContext.Provider value={editing.execute}><main className="workspace-shell text-[var(--ink)]">
       <input ref={uploadInput} type="file" hidden aria-label={t("canvas.context.upload")}
         accept={`${MEDIA_FILE_ACCEPT.IMAGE},${MEDIA_FILE_ACCEPT.VIDEO},${MEDIA_FILE_ACCEPT.AUDIO}`}
         onChange={(event) => {
@@ -1127,6 +1170,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       </aside> : null}
 
       <section className={`workspace-canvas${selecting ? " is-select-tool" : " is-hand-tool"}${multiSelecting ? " is-multi-select" : ""}`} aria-label={t("canvas.workspace.canvasTitle")} ref={canvasElement}
+        onPointerDownCapture={cancelCameraMotion}
+        onWheelCapture={cancelCameraMotion}
+        onKeyDownCapture={(event) => {
+          if (["Escape", " ", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)
+              && !(event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']"))) {
+            cancelCameraMotion();
+          }
+        }}
         onDoubleClickCapture={(event) => {
           if (selecting && (event.target as HTMLElement).classList.contains("react-flow__pane")) {
             openCreationMenu(event.clientX, event.clientY);
@@ -1137,6 +1188,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {snapshot.error ? <CanvasErrorNotice error={snapshot.error} title={t("canvas.feedback.loadSnapshot")} message={workspaceErrorMessage(snapshot.error)}>
             <Button variant="ghost" size="xs" type="button" onClick={() => void snapshot.refetch()}>{t("common.retryRead")}</Button>
           </CanvasErrorNotice> : null}
+          {organization.editor.error ? <CanvasErrorNotice error={organization.editor.error}
+            title={t("canvas.edit.loadGroups")} message={organization.editor.error.message}>
+            <Button variant="ghost" size="xs" onClick={() => void organization.editor.refetch()}>{t("common.retryRead")}</Button>
+          </CanvasErrorNotice> : null}
+          {editing.error ? <CanvasErrorNotice error={editing.error} title={t("canvas.edit.failed")} message={editing.error.message}>
+            <Button variant="ghost" size="xs" disabled={editing.busy} onClick={() => {
+              void editing.retry().then(() => { saveLayout.reset(); organization.clearActionError(); }).catch(() => undefined);
+            }}>{t("canvas.edit.retry")}</Button>
+            <Button variant="ghost" size="xs" disabled={editing.busy} onClick={() => {
+              editing.discardPending(); saveLayout.discardFailed(); organization.clearActionError();
+              void queryClient.invalidateQueries({ queryKey: ["canvas", projectId] });
+              void queryClient.invalidateQueries({ queryKey: ["canvas-editor", projectId] });
+            }}>{t("canvas.edit.discardPending")}</Button>
+          </CanvasErrorNotice> : organization.actionError ? <CanvasErrorNotice error={organization.actionError}
+            title={t("canvas.edit.failed")} message={organization.actionError.message}>
+            <Button variant="ghost" size="xs" onClick={organization.clearActionError}>{t("common.close")}</Button>
+          </CanvasErrorNotice> : null}
+          {organization.busy ? <div className="canvas-message" role="status">{t("canvas.edit.pending")}</div> : null}
           {canvas.error ? <CanvasErrorNotice error={canvas.error} title={t("canvas.feedback.loadCanvas")} message={workspaceErrorMessage(canvas.error)}>
             <Button variant="ghost" size="xs" type="button" onClick={() => void canvas.refetch()}>{t("common.retryRead")}</Button>
           </CanvasErrorNotice> : null}
@@ -1166,7 +1235,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {toggleLocked.error ? <CanvasErrorNotice error={toggleLocked.error} title={feedbackTitle(t("canvas.feedback.lock"), [toggleLocked.variables?.id])} message={workspaceErrorMessage(toggleLocked.error)}
             onLocate={canvas.data?.items.some((item) => item.id === toggleLocked.variables?.id) ? () => locateFeedbackNodes([toggleLocked.variables!.id]) : undefined} /> : null}
         </div>
-        <ReactFlow<CanvasNode>
+        <ReactFlow<WorkspaceNode>
           colorMode="dark"
           connectOnClick={false}
           connectionLineType={ConnectionLineType.Bezier}
@@ -1175,7 +1244,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           edges={relationEdges}
           edgeTypes={edgeTypes}
           fitView
-          fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
+          fitViewOptions={{ padding: 0.2, maxZoom: 1, nodes: nodes.filter((node) => node.style?.visibility !== "hidden").map(({ id }) => ({ id })) }}
           isValidConnection={(connection) => isCanvasConnectionValid(canvas.data?.items ?? [], connection)}
           minZoom={CANVAS_MIN_ZOOM}
           nodes={nodes}
@@ -1192,18 +1261,40 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           onConnectEnd={handleConnectEnd}
           onConnectStart={handleConnectStart}
           selectNodesOnDrag={false}
-          onNodeDragStart={(_, node, moving) => { setDraggingIds((moving?.length ? moving : [node]).map((item) => item.id)); }}
+          onNodeDragStart={(_, node, moving) => {
+            const origins = new Map<string, { x: number; y: number; members: { id: string; x: number; y: number }[] }>();
+            const ids = new Set<string>();
+            for (const current of moving?.length ? moving : [node]) {
+              const groupId = canvasGroupIdFromNodeId(current.id);
+              if (groupId) {
+                const members = (canvas.data?.items ?? []).filter((item) => item.groupId === groupId).map((item) => ({
+                  id: item.id, x: useCanvasStore.getState().drafts[item.id]?.x ?? item.x,
+                  y: useCanvasStore.getState().drafts[item.id]?.y ?? item.y,
+                }));
+                origins.set(current.id, { ...current.position, members });
+                members.forEach((member) => ids.add(member.id));
+              } else ids.add(current.id);
+            }
+            groupDragOrigins.current = origins;
+            setDraggingIds([...ids]);
+          }}
           onNodeDragStop={(_, node, moving) => {
-            const updates = (moving?.length ? moving : [node]).flatMap((moved) => {
-              const item = canvas.data?.items.find((candidate) => candidate.id === moved.id);
-              if (!item) return [];
-              const patch = { x: moved.position.x, y: moved.position.y, ...effectiveNodeSize(item) };
-              updateDraft(item.id, patch);
-              return [{ item, patch }];
-            });
-            setDraggingIds([]);
-            clearSelection();
-            if (updates.length) saveLayout.mutate(updates);
+            const updates = new Map<string, { item: CanvasItem; patch: LayoutPatch }>();
+            for (const moved of moving?.length ? moving : [node]) {
+              const origin = groupDragOrigins.current.get(moved.id);
+              const members = origin ? origin.members.map((member) => ({ id: member.id,
+                x: member.x + moved.position.x - origin.x, y: member.y + moved.position.y - origin.y }))
+                : [{ id: moved.id, ...moved.position }];
+              for (const member of members) {
+                const item = canvas.data?.items.find((candidate) => candidate.id === member.id);
+                if (!item) continue;
+                const patch = { x: member.x, y: member.y, ...effectiveNodeSize(item) };
+                updateDraft(item.id, patch); updates.set(item.id, { item, patch });
+              }
+            }
+            groupDragOrigins.current.clear();
+            setDraggingIds([]); clearSelection();
+            if (updates.size) void saveLayout.saveInBatches([...updates.values()]).catch(() => undefined);
           }}
           onNodeClick={(event, node) => {
             if (!selecting || event.metaKey || event.ctrlKey || event.shiftKey) return;
@@ -1212,7 +1303,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             )) return;
             // An ordinary click explicitly focuses a card, even if it was the only box-selected card.
             setSelectedIds([node.id]);
-            focusNodeForEditing(node);
+            if (node.type === "canvasCard") focusNodeForEditing(node);
           }}
           onPaneClick={clearSelection}
           onSelectionStart={() => {
@@ -1232,14 +1323,14 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           }}
           onNodesChange={handleNodesChange}
           onNodeDoubleClick={(event, node) => {
-            if (!selecting || (event.target instanceof Element &&
+            if (node.type !== "canvasCard" || !selecting || (event.target instanceof Element &&
               event.target.closest("button, a, input, textarea, select, summary"))) return;
             setSelectedIds([node.id]);
             window.requestAnimationFrame(focusArtifactEditor);
           }}
           onEdgesChange={handleEdgesChange}
           onInit={(instance) => { flow.current = instance; }}
-          onMoveStart={(event) => { if (event) clearSelection(); }}
+          onMoveStart={(event) => { if (event) { cancelCameraMotion(); clearSelection(); } }}
           selectionOnDrag={selecting}
           ariaLabelConfig={{
             "controls.ariaLabel": t("canvas.workspace.viewportControls"), "controls.zoomIn.ariaLabel": t("canvas.workspace.zoomIn"),
@@ -1273,7 +1364,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               </CanvasEditorOverlay>
             </NodeToolbar> : null}
           <Background color="var(--ui-canvas-dot)" gap={24} size={1} />
-          <CanvasViewportControls hasNodes={nodes.length > 0} />
+          <CanvasViewportControls hasNodes={nodes.length > 0} navigation={viewportMotion} />
         </ReactFlow>
         {canvas.isSuccess && nodes.length === 0 && !snapshot.isPending && !creationMenu && !paneMenu ?
           <Empty className="canvas-empty-state">
@@ -1302,8 +1393,22 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           onArrange={() => { setPaneMenu(null); clearSelection(); organizeCanvas.mutate(); }}
           arranging={organizeCanvas.isPending || saveLayout.isPending || alignSelected.isPending}
           canArrange={canvas.isSuccess && canvasConnections.isSuccess &&
-            nodes.some((node) => !node.data.item.locked)} />
+            (canvas.data?.items ?? []).some((item) => !item.locked)}
+          canPaste={organization.canPaste && !organization.busy}
+          onPaste={() => { const point = paneMenu?.point; setPaneMenu(null); void organization.pasteItems(point).catch(() => undefined); }} />
         <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={openDockCreationMenu}>
+          <Button variant="ghost" size="icon-sm" aria-label={t("canvas.edit.undo")} aria-keyshortcuts="Control+Z Meta+Z"
+            title={t("canvas.edit.undo") + " · Ctrl/⌘ Z · " + t("canvas.edit.historyHint")}
+            disabled={!editing.canUndo || saveLayout.isPending || organization.busy}
+            onClick={() => void editing.replay("UNDO").catch(() => undefined)}><ArrowCounterClockwise /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label={t("canvas.edit.redo")} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y"
+            title={t("canvas.edit.redo") + " · Ctrl/⌘ Shift Z"}
+            disabled={!editing.canRedo || saveLayout.isPending || organization.busy}
+            onClick={() => void editing.replay("REDO").catch(() => undefined)}><ArrowClockwise /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label={t("canvas.group.create")} title={t("canvas.group.create") + " · Ctrl/⌘ G"}
+            disabled={!selectedItems.length || selectedItems.length > CANVAS_EDIT_ITEM_LIMIT || organization.busy || saveLayout.isPending || !organization.editor.isSuccess}
+            onClick={organization.requestGroup}><FolderSimple /></Button>
+
           <Button variant="ghost" size="icon-sm" aria-label={t("director.title")} title={t("director.title")}
             disabled={addBlankMedia.isPending || !canvas.isSuccess} onClick={() => {
               const center = canvasCenter();
@@ -1318,7 +1423,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           // Panel drafts live in Zustand and remain available after editing this one production node.
           setStoryboardOpen(false); setSelectedIds([item.id], CANVAS_SELECTION_MODE.SINGLE);
           const node = nodes.find((candidate) => candidate.id === item.id);
-          if (node) focusNodeForEditing(node);
+          if (node?.type === "canvasCard") focusNodeForEditing(node);
           window.requestAnimationFrame(focusArtifactEditor);
         }} /> : null}
         {directorItem ? <DirectorWorkbench key={directorItem.id} projectId={projectId} artifactId={directorItem.artifact.id}
@@ -1344,6 +1449,21 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           <span className="workspace-selection-count"><SelectionAll aria-hidden />{t("canvas.selection.count", { "0": selectedItems.length })}</span>
           <Separator orientation="vertical" className="data-[orientation=vertical]:h-5" />
           <div className="workspace-selection-actions">
+            <Button variant="ghost" size="sm" disabled={organization.busy || selectedItems.length > CANVAS_EDIT_ITEM_LIMIT || saveLayout.isPending}
+              onClick={() => void organization.duplicateItems().catch(() => undefined)}><CopySimple data-icon="inline-start" />{t("canvas.edit.duplicate")}</Button>
+            <Button variant="ghost" size="sm" disabled={organization.busy || selectedItems.length > CANVAS_EDIT_ITEM_LIMIT || saveLayout.isPending}
+              onClick={() => void organization.copyItems().catch(() => undefined)}>{t("canvas.edit.copy")}</Button>
+            <Button variant="ghost" size="sm" disabled={organization.busy || selectedItems.length > CANVAS_EDIT_ITEM_LIMIT || selectedItems.some((item) => item.locked) || saveLayout.isPending}
+              onClick={organization.requestGroup}>{t("canvas.group.create")}</Button>
+            {organization.groups.length ? <DropdownMenu><DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" disabled={organization.busy || selectedItems.length > CANVAS_EDIT_ITEM_LIMIT || saveLayout.isPending}>{t("canvas.group.actions")}</Button>
+            </DropdownMenuTrigger><DropdownMenuContent><DropdownMenuGroup>
+              {organization.groups.map((group) => <DropdownMenuItem key={group.id}
+                onSelect={() => void organization.moveToGroup(group.id).catch(() => undefined)}>{group.name}</DropdownMenuItem>)}
+              <DropdownMenuItem disabled={!selectedItems.some((item) => item.groupId)}
+                onSelect={() => void organization.ungroup().catch(() => undefined)}>{t("canvas.group.ungroup")}</DropdownMenuItem>
+            </DropdownMenuGroup></DropdownMenuContent></DropdownMenu> : null}
+
             <Button variant="ghost" size="sm" className="rounded-full" disabled={Boolean(compositionUnavailable)}
               title={compositionUnavailable ?? t("canvas.workspace.compositionHint")}
               onClick={() => requestVideoComposition(selectedItems)} type="button"><Sparkle data-icon="inline-start" />{t("canvas.workspace.composeVideo")}</Button>
@@ -1358,7 +1478,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         </div> : null}
         <AgentChatDock open={agentChatOpen} onOpenChange={openAgentChat}
           data={director ? { agent: director, projectId, activeRun: snapshot.data?.activeRun ?? null,
-            canvasNodeCount: nodes.length, selectedNodeCount: selectedItems.length,
+            canvasNodeCount: canvas.data?.items.length ?? 0, selectedNodeCount: selectedItems.length,
             runRequest: agentRunRequest,
             onRunRequestHandled: (id) => setAgentRunRequest((request) => request?.id === id ? null : request),
             onUpdateAgent: handleUpdateAgent,
@@ -1368,10 +1488,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           error={ensureDirector.error ?? snapshot.error}
           onRetry={() => { if (snapshot.isError) void snapshot.refetch(); else ensureDirector.mutate(); }} />
       </section>
+      {organization.dialog ? <CanvasGroupRenameDialog
+        key={organization.dialog.mode === "rename" ? organization.dialog.group.id : "create-group"}
+        initialName={organization.dialog.mode === "rename" ? organization.dialog.group.name : ""}
+        mode={organization.dialog.mode} busy={organization.busy} retrying={Boolean(editing.error)}
+        onSave={organization.saveGroup} onClose={organization.closeDialog} /> : null}
       {charactersOpen ? <CharacterManagerDialog projectId={projectId} onClose={() => setCharactersOpen(false)} /> : null}
       {videoEditIds ? <VideoEditDialog projectId={projectId} items={canvas.data?.items ?? []} initialIds={videoEditIds} onClose={() => setVideoEditIds(null)} /> : null}
       <div className="workspace-narrow-warning">{t("canvas.workspace.viewportHint")}</div>
-    </main>
+    </main></CanvasEditingContext.Provider>
   );
 }
 
@@ -1404,14 +1529,14 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
         ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor}
           onDuplicate={() => data.onDuplicate(data.item)} onMakeMV={() => data.onMakeMV(data.item)}
           onComposeVideo={() => data.onComposeVideo(data.item)} onEditVideo={() => data.onEditVideo(data.item)} compositionDisabledReason={data.compositionDisabledReason} />
-        : <ContentCanvasCard {...cardProps} />}
+        : <ContentCanvasCard {...cardProps} onDuplicate={() => data.onDuplicate(data.item)} />}
       {data.characterLabel ? <div className="pointer-events-none absolute bottom-1 left-1 flex max-w-full flex-wrap gap-1"><Badge variant="secondary" className="max-w-full truncate">{data.characterLabel}</Badge>{data.characterNeedsReview ? <Badge variant="outline">{t("character.needsReview")}</Badge> : null}</div> : null}
     </>
   );
 });
 
 
-const nodeTypes = { canvasCard: CanvasCardNode };
+const nodeTypes = { canvasCard: CanvasCardNode, canvasGroup: CanvasGroupNode };
 
 function SaveBadge({ state }: { state: "saved" | "saving" | "failed" | "conflict" }) {
   useLocale();

@@ -16,6 +16,7 @@ import dev.agenvas.db.tables.Asset;
 import dev.agenvas.db.tables.CallLog;
 import dev.agenvas.db.tables.CanvasCharacterBindingMember;
 import dev.agenvas.db.tables.CanvasConnection;
+import dev.agenvas.db.tables.CanvasEditReceipt;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
@@ -58,6 +59,7 @@ public class Indexes {
     // INDEX definitions
     // -------------------------------------------------------------------------
 
+    public static final Index CANVAS_EDIT_RECEIPT_RETENTION_IDX = Internal.createIndex(DSL.name("canvas_edit_receipt_retention_idx"), CanvasEditReceipt.CANVAS_EDIT_RECEIPT, new OrderField[] { CanvasEditReceipt.CANVAS_EDIT_RECEIPT.PROJECT_ID, CanvasEditReceipt.CANVAS_EDIT_RECEIPT.CREATED_AT.desc(), CanvasEditReceipt.CANVAS_EDIT_RECEIPT.ID }, false);
     public static final Index IX_AGENT_INSTANCE_PROJECT = Internal.createIndex(DSL.name("ix_agent_instance_project"), AgentInstance.AGENT_INSTANCE, new OrderField[] { AgentInstance.AGENT_INSTANCE.PROJECT_ID, AgentInstance.AGENT_INSTANCE.CREATED_AT, AgentInstance.AGENT_INSTANCE.ID }, false);
     public static final Index IX_AGENT_MEDIA_APPROVAL_OUTSTANDING = Internal.createIndex(DSL.name("ix_agent_media_approval_outstanding"), AgentMediaApproval.AGENT_MEDIA_APPROVAL, new OrderField[] { AgentMediaApproval.AGENT_MEDIA_APPROVAL.ID }, false);
     public static final Index IX_AGENT_MEDIA_APPROVAL_RUN = Internal.createIndex(DSL.name("ix_agent_media_approval_run"), AgentMediaApproval.AGENT_MEDIA_APPROVAL, new OrderField[] { AgentMediaApproval.AGENT_MEDIA_APPROVAL.PROJECT_ID, AgentMediaApproval.AGENT_MEDIA_APPROVAL.RUN_ID, AgentMediaApproval.AGENT_MEDIA_APPROVAL.CREATED_AT, AgentMediaApproval.AGENT_MEDIA_APPROVAL.ID }, false);

@@ -35,6 +35,16 @@ public class CanvasItemQueryService {
                         && item.subjectId().equals(artifactId)).toList();
     }
 
+    /** Content revisions deliberately exclude layout/title CAS so presentation undo composes. */
+    @Transactional(readOnly = true)
+    public MediaCopyGuard mediaCopyGuard(UUID ownerId, UUID projectId, UUID itemId) {
+        requireArtifactItem(ownerId, projectId, itemId);
+        return new MediaCopyGuard(canvasItems.mediaSelectionEpoch(ownerId, projectId, itemId),
+                canvasItems.mediaVersionIds(ownerId, projectId, itemId));
+    }
+
+    public record MediaCopyGuard(long mediaSelectionEpoch, List<UUID> mediaVersionIds) {}
+
     private ApiProblemException notFound() {
         return new ApiProblemException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND",
                 ApiMessage.of("api.creative-artifact-tool-service.canvas-card-does-not-exist"), ApiMessage.of("api.canvas-service.the-canvas-card-does-not-exist-or-the-current-user"), false);

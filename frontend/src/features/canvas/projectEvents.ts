@@ -8,6 +8,7 @@ const supportedTypes = [
   "media.draft.changed",
   "asset.ready",
   "canvas.items.changed",
+  "canvas.edited",
   "canvas.item.selected_version.changed",
   "canvas.connection.created",
   "canvas.connection.deleted",

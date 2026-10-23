@@ -38,6 +38,8 @@ public interface ArtifactRepository {
 
     /** Replace draft fields under its independent optimistic version. */
     boolean updateMediaDraft(MediaDraft draft, long expectedVersion);
+    /** Fences deleted/recreated copy incarnations without replaying edits or changing their content. */
+    boolean advanceMediaDraftCopyVersion(UUID projectId, UUID canvasItemId, long expectedVersion, long targetVersion);
 
     /** Replace the complete ordered input set and all source rows in the draft transaction. */
     void replaceMediaInputs(UUID projectId, UUID canvasItemId,

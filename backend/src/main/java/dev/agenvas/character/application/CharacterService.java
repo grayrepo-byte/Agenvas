@@ -211,6 +211,67 @@ public class CharacterService {
         events.append(owner, project, event("character.bindings.changed", targetItem, 1));
     }
 
+    /** Internal undo guard includes persisted binding revisions and referenced profile revisions.
+     * This detects applying/reverting a binding and updating/reverting a profile alike.
+     */
+    @Transactional(readOnly = true)
+    public JsonNode canvasCopyGuard(UUID owner, UUID project, UUID item) {
+        projects.get(owner, project);
+        BindingRow row = repository.binding(project, item).orElse(null);
+        if (row == null) return tools.jackson.databind.node.NullNode.getInstance();
+        ObjectNode guard = mapper.createObjectNode();
+        guard.set("binding", mapper.valueToTree(row));
+        var profiles = guard.putArray("profiles");
+        row.snapshots().stream().map(CharacterSnapshot::characterId).distinct().sorted().forEach(id -> {
+            CharacterProfile profile = repository.profile(project, id).orElse(null);
+            ObjectNode value = profiles.addObject().put("id", id.toString());
+            if (profile == null) value.put("missing", true);
+            else value.put("version", profile.version()).put("archived", profile.archived());
+        });
+        return guard;
+    }
+
+    /** Prepares independent removal ownership using only contributions exclusively owned at copy time. */
+    @Transactional(readOnly = true)
+    public JsonNode prepareCanvasCopy(UUID owner, UUID project, UUID sourceItem, MediaDraft target) {
+        projects.get(owner, project);
+        BindingRow source = repository.binding(project, sourceItem).orElse(null);
+        if (source == null || source.snapshots().isEmpty()) return tools.jackson.databind.node.NullNode.getInstance();
+        MediaDraft sourceDraft = drafts.get(owner, project, sourceItem);
+        if (!applicable(owner, source, sourceDraft)) return tools.jackson.databind.node.NullNode.getInstance();
+        Set<UUID> transferable = sourceDraft.mediaInputs().stream()
+                .filter(input -> whollyOwned(input, source.state().ownedReferenceSources().get(input.versionId())))
+                .map(MediaDraft.MediaInput::versionId).collect(java.util.stream.Collectors.toSet());
+        DraftState state = new DraftState(java.util.Map.copyOf(targetOwnership(target, transferable)),
+                source.state().promptBlock(), source.state().speakerId());
+        return mapper.valueToTree(new BindingRow(project, target.canvasItemId(), 1, target.version(),
+                source.snapshots(), state, true, null, null, null, clock.instant()));
+    }
+
+    /** Installs the already-frozen binding in the outer canvas event transaction without appending an event. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void installCanvasCopyWithinChange(UUID owner, UUID project, UUID targetItem,
+            JsonNode snapshot, long minimumVersion) {
+        if (snapshot == null || snapshot.isNull()) return;
+        projects.requireActiveProject(owner, project);
+        requireMedia(owner, project, targetItem);
+        BindingRow frozen = mapper.treeToValue(snapshot, BindingRow.class);
+        if (!frozen.projectId().equals(project) || !frozen.canvasItemId().equals(targetItem)
+                || repository.binding(project, targetItem).isPresent()) throw conflict();
+        MediaDraft draft = drafts.get(owner, project, targetItem);
+        // Frozen source IDs are valid only if the exact manual sources were restored with the draft.
+        for (var entry : frozen.state().ownedReferenceSources().entrySet()) {
+            MediaDraft.MediaInput input = draft.mediaInputs().stream()
+                    .filter(value -> value.versionId().equals(entry.getKey())).findFirst().orElseThrow(this::conflict);
+            if (entry.getValue().isEmpty() || !input.sources().stream()
+                    .allMatch(source -> source.type() == MediaDraft.SourceType.MANUAL && entry.getValue().contains(source.id()))
+                    || input.sources().size() != entry.getValue().size()) throw conflict();
+        }
+        BindingRow restored = new BindingRow(project, targetItem, Math.max(frozen.version(), minimumVersion),
+                draft.version(), frozen.snapshots(), frozen.state(), true, null, null, null, clock.instant());
+        if (!repository.saveBinding(restored, 0)) throw conflict();
+    }
+
     /** Restores accepted historical continuity on a late extra output without reading a live source binding. */
     @Transactional
     public void copyFrozenBindingsWithinChange(UUID owner, UUID project, UUID targetItem, JsonNode frozenMediaInput) {

@@ -1,6 +1,7 @@
 package dev.agenvas.canvas.infrastructure;
 
 import static dev.agenvas.db.Tables.CANVAS_ITEM;
+import static dev.agenvas.db.Tables.CANVAS_GROUP;
 import static dev.agenvas.db.Tables.CANVAS_ITEM_MEDIA_VERSION;
 import static dev.agenvas.db.Tables.PROJECT;
 
@@ -67,15 +68,37 @@ public class JooqCanvasItemRepository implements CanvasItemRepository {
                 .fetchOptional(row -> map(row.into(CANVAS_ITEM)));
     }
 
+    @Override
+    public boolean groupExists(UUID ownerId, UUID projectId, UUID groupId) {
+        if (groupId == null) return true;
+        return dsl.fetchExists(dsl.selectOne().from(CANVAS_GROUP).join(PROJECT)
+                .on(PROJECT.ID.eq(CANVAS_GROUP.PROJECT_ID)).where(CANVAS_GROUP.PROJECT_ID.eq(projectId))
+                .and(CANVAS_GROUP.ID.eq(groupId)).and(CANVAS_GROUP.DELETED.isFalse()).and(PROJECT.OWNER_ID.eq(ownerId)));
+    }
+
     /** 新建画布项；重复 ID 不覆盖已有空间展示状态。 */
     @Override
     public boolean create(CanvasItem item) {
+        // Existing Agent output groups historically had only a UUID tag. Internal placement
+        // now materializes their default metadata; external commands validate groupExists first.
+        if (item.groupId() != null) {
+            dsl.insertInto(CANVAS_GROUP).set(CANVAS_GROUP.PROJECT_ID, item.projectId()).set(CANVAS_GROUP.ID, item.groupId())
+                    .set(CANVAS_GROUP.NAME, "Group").set(CANVAS_GROUP.COLLAPSED, false).set(CANVAS_GROUP.DELETED, false)
+                    .set(CANVAS_GROUP.VERSION, 0L).set(CANVAS_GROUP.CREATED_AT, atUtc(item.createdAt()))
+                    .set(CANVAS_GROUP.UPDATED_AT, atUtc(item.updatedAt()))
+                    .onConflict(CANVAS_GROUP.PROJECT_ID, CANVAS_GROUP.ID).doUpdate()
+                    .set(CANVAS_GROUP.DELETED, false).set(CANVAS_GROUP.COLLAPSED, false)
+                    .set(CANVAS_GROUP.VERSION, CANVAS_GROUP.VERSION.plus(1))
+                    .set(CANVAS_GROUP.UPDATED_AT, atUtc(item.updatedAt()))
+                    .where(CANVAS_GROUP.DELETED.isTrue()).execute();
+        }
         return dsl.insertInto(CANVAS_ITEM)
                 .set(CANVAS_ITEM.ID, item.id())
                 .set(CANVAS_ITEM.PROJECT_ID, item.projectId())
                 .set(CANVAS_ITEM.SUBJECT_TYPE, item.subjectType().name())
                 .set(CANVAS_ITEM.SUBJECT_ID, item.subjectId())
                 .set(CANVAS_ITEM.SELECTED_VERSION_ID, item.selectedVersionId())
+                .set(CANVAS_ITEM.MEDIA_SELECTION_EPOCH, item.version())
                 .set(CANVAS_ITEM.TITLE, item.title())
                 .set(CANVAS_ITEM.ARTIFACT_ID, item.subjectId())
                 .set(CANVAS_ITEM.X, item.x())

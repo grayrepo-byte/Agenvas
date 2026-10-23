@@ -19,6 +19,8 @@ import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.application.CanvasEditService;
+import dev.agenvas.canvas.application.CanvasEditModels;
 import dev.agenvas.canvas.domain.CanvasConnection;
 import dev.agenvas.character.application.CharacterService;
 import dev.agenvas.character.application.CharacterModels.*;
@@ -88,6 +90,7 @@ class ProjectExportManifestPostgresIT {
     @Autowired private AssetService assets;
     @Autowired private ArtifactService artifacts;
     @Autowired private CanvasService canvas;
+    @Autowired private CanvasEditService canvasEdits;
     @Autowired private MediaDraftService mediaDrafts;
     @Autowired private CanvasConnectionService connections;
     @Autowired private LlmProviderConfigService llmConfigs;
@@ -210,6 +213,16 @@ class ProjectExportManifestPostgresIT {
                         "A traveler arrives.", "Welcome back.", new BigDecimal("8"), null,
                         List.of(frameVersionId), List.of(frameBinding))), null));
 
+        UUID groupId = UUID.randomUUID();
+        var grouped = canvas.list(owner.userId(), project.id()).stream()
+                .map(CanvasService.CanvasEntry::item).filter(item -> item.id().equals(sourceItemId)).findFirst().orElseThrow();
+        canvasEdits.edit(owner.userId(), project.id(), new CanvasEditModels.Edit(UUID.randomUUID(),
+                CanvasEditModels.Operation.GROUP,
+                List.of(new CanvasEditModels.ItemChange(grouped.id(), grouped.version(), grouped.title(),
+                        grouped.x(), grouped.y(), grouped.width(), grouped.height(), grouped.zIndex(), groupId, grouped.locked())),
+                List.of(new CanvasEditModels.GroupChange(CanvasEditModels.GroupChangeType.UPSERT,
+                        groupId, 0, "Arrival references", true)), List.of()));
+
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
         String path = "/api/v1/projects/" + project.id() + "/export-manifest";
         MockHttpSession session = new MockHttpSession(null,
@@ -223,6 +236,12 @@ class ProjectExportManifestPostgresIT {
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
         assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(declaredManifestSchemaVersion());
+        var exportedGroup = java.util.stream.StreamSupport.stream(manifest.path("canvasGroups").spliterator(), false)
+                .filter(group -> group.path("id").asText().equals(groupId.toString())).findFirst().orElseThrow();
+        assertThat(exportedGroup.path("name").asText()).isEqualTo("Arrival references");
+        assertThat(exportedGroup.path("collapsed").asBoolean()).isTrue();
+        assertThat(exportedGroup.has("requestHash")).isFalse();
+        assertThat(exportedGroup.has("receiptId")).isFalse();
         assertThat(manifest.path("characters").path("characters")).hasSize(1);
         assertThat(manifest.path("characters").path("characters").get(0).path("id").asText())
                 .isEqualTo(characterId.toString());

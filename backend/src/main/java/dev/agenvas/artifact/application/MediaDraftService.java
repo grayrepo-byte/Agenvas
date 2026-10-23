@@ -342,6 +342,35 @@ public class MediaDraftService {
         return duplicate;
     }
 
+    /** Installs a server-authored copy snapshot without consulting its original source.
+     * Exact manual source IDs survive redo so character removal never claims unrelated inputs.
+     * A restored draft advances beyond its deleted incarnation to fence old autosaves.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public MediaDraft installCopyWithinChange(UUID ownerId, UUID projectId, UUID targetItemId,
+            MediaDraft snapshot, long minimumVersion) {
+        projects.requireActiveProject(ownerId, projectId);
+        requireMediaCanvas(ownerId, projectId, targetItemId);
+        if (!snapshot.projectId().equals(projectId) || !snapshot.canvasItemId().equals(targetItemId)
+                || artifacts.findMediaDraft(projectId, targetItemId).isPresent()
+                || snapshot.mediaInputs().stream().flatMap(input -> input.sources().stream())
+                        .anyMatch(source -> source.type() != MediaDraft.SourceType.MANUAL || source.connectionId() != null)) {
+            throw new IllegalStateException("Invalid canvas copy draft snapshot");
+        }
+        Instant now = clock.instant();
+        artifacts.createMediaDraft(projectId, targetItemId, "", snapshot.displayMode(), now);
+        MediaDraft restored = new MediaDraft(projectId, targetItemId, snapshot.prompt(),
+                snapshot.parameters().deepCopy(), snapshot.durationSeconds(), snapshot.capabilityId(),
+                snapshot.styleId(), snapshot.videoInputMode(), List.copyOf(snapshot.mediaInputs()),
+                List.copyOf(snapshot.mentions()), snapshot.displayMode(), Math.max(snapshot.version(), minimumVersion),
+                snapshot.createdAt(), now);
+        if (!artifacts.updateMediaDraft(restored, 0)) throw new IllegalStateException("Canvas copy draft install failed");
+        if (restored.version() > 1 && !artifacts.advanceMediaDraftCopyVersion(projectId, targetItemId, 1, restored.version()))
+            throw new IllegalStateException("Canvas copy draft incarnation advance failed");
+        artifacts.replaceMediaInputs(projectId, targetItemId, restored.mediaInputs(), now);
+        return restored;
+    }
+
     /** A batch result copies the accepted draft, never the user's newer working draft. */
     public void initializeFrozenWithinChange(UUID projectId, UUID canvasItemId, Artifact.Kind kind, JsonNode frozen) {
         initializeWithinChange(projectId, canvasItemId, false);
