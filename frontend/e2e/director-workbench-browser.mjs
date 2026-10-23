@@ -47,16 +47,47 @@ async function click(selector) {
   await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
   await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
 }
+async function clickNamed(selector, name) {
+  await waitFor((query, label) => [...document.querySelectorAll(query)].some((control) =>
+    (control.getAttribute("aria-label") ?? control.textContent?.replace(/\s+/g, " ").trim()) === label), selector, name);
+  const point = await page((query, label) => {
+    const candidates = [...document.querySelectorAll(query)].filter((control) =>
+      (control.getAttribute("aria-label") ?? control.textContent?.replace(/\s+/g, " ").trim()) === label);
+    if (candidates.length !== 1) throw new Error(`Expected one ${query} named ${label}, found ${candidates.length}`);
+    const control = candidates[0];
+    control.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const bounds = control.getBoundingClientRect();
+    const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
+    return { x, y, reachable: control.contains(document.elementFromPoint(x, y)) };
+  }, selector, name);
+  assert.equal(point.reachable, true, `Control can be reached by pointer: ${name}`);
+  const { x, y } = point;
+  await cdp("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", clickCount: 1 });
+  await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+}
 async function selectValue(selector, value) {
   await click(selector);
   await waitFor((option) => Boolean(document.querySelector(`[role="option"][data-value="${option}"]`)), value);
   await click(`[role="option"][data-value="${value}"]`);
 }
+async function orbitViewport() {
+  const center = await page(() => {
+    const bounds = document.querySelector(".director-viewport__canvas").getBoundingClientRect();
+    // The default object tool now moves subjects; orbit from empty space in this fixed synthetic scene.
+    return { x: bounds.x + bounds.width * 0.18, y: bounds.y + bounds.height * 0.18 };
+  });
+  await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...center, button: "left", clickCount: 1 });
+  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: center.x + 70, y: center.y + 20, button: "left", buttons: 1 });
+  await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x: center.x + 70, y: center.y + 20, button: "left", clickCount: 1 });
+}
 async function checkControlReachability() {
-  const count = await page(() => document.querySelectorAll(".director-workbench button:not(:disabled), .director-inspector input:not(:disabled), .director-inspector textarea").length);
+  // Inspect every visible panel, toolbar and footer; hidden tabs and file inputs are not pointer controls.
+  const count = await page(() => [...document.querySelectorAll(".director-workbench button:not(:disabled), .director-workbench input:not(:disabled):not([type=file]), .director-workbench textarea:not(:disabled)")]
+    .filter((control) => control.getClientRects().length && !control.closest("[hidden]") && getComputedStyle(control).visibility !== "hidden").length);
   for (let index = 0; index < count; index++) {
     const reachable = await page((controlIndex) => {
-      const control = document.querySelectorAll(".director-workbench button:not(:disabled), .director-inspector input:not(:disabled), .director-inspector textarea")[controlIndex];
+      const control = [...document.querySelectorAll(".director-workbench button:not(:disabled), .director-workbench input:not(:disabled):not([type=file]), .director-workbench textarea:not(:disabled)")]
+        .filter((candidate) => candidate.getClientRects().length && !candidate.closest("[hidden]") && getComputedStyle(candidate).visibility !== "hidden")[controlIndex];
       control.scrollIntoView({ block: "nearest", inline: "nearest" });
       const bounds = control.getBoundingClientRect();
       const x = bounds.x + bounds.width / 2, y = bounds.y + bounds.height / 2;
@@ -66,7 +97,8 @@ async function checkControlReachability() {
     assert.ok(reachable.reachable && reachable.width > 0 && reachable.height > 0, `Control remains accessible after scrolling: ${JSON.stringify(reachable)}`);
   }
 }
-const captureButton = ".director-header .director-actions > button:nth-last-child(2)";
+const captureButton = '[data-director-action="capture"]';
+const generateButton = '[data-director-action="generate-angle"]';
 async function ready() { await waitFor((selector) => document.querySelector(selector)?.disabled === false, captureButton); }
 
 try {
@@ -105,48 +137,74 @@ try {
       const canvas = document.querySelector(".director-viewport__canvas").getBoundingClientRect();
       return { left: dialog.left, top: dialog.top, right: dialog.right, bottom: dialog.bottom, width: innerWidth, height: innerHeight,
         overflow: document.documentElement.scrollWidth > innerWidth, canvasWidth: canvas.width, canvasHeight: canvas.height,
-        body: document.querySelector(".director-body").getBoundingClientRect().toJSON() };
+        body: document.querySelector(".director-body").getBoundingClientRect().toJSON(),
+        regions: [...document.querySelector(".director-body").children].map((region) => ({
+          name: region.className, bounds: region.getBoundingClientRect().toJSON(),
+        })) };
     });
     assert.ok(layout.left >= -1 && layout.top >= -1 && layout.right <= layout.width + 1 && layout.bottom <= layout.height + 1, JSON.stringify(layout));
     assert.equal(layout.overflow, false, "No horizontal document overflow");
     assert.ok(layout.canvasWidth > 100 && layout.canvasHeight > 100, "WebGL composition has useful dimensions");
+    for (const { name, bounds } of layout.regions) {
+      assert.ok(bounds.width > 0 && bounds.height > 0 && bounds.left >= layout.left - 1 && bounds.right <= layout.right + 1,
+        `Workspace region stays within the dialog width: ${name} ${JSON.stringify(bounds)}`);
+    }
     await screenshot(`workbench-${viewport.width}x${viewport.height}`);
     await checkControlReachability();
     await click('button[aria-label="添加物体"]');
-    await click('[role="option"][data-value="BOX"]');
-    assert.equal(await page(() => document.querySelector("#director-name").value), "方体 2");
+    await clickNamed('[role="menuitem"]', "方体");
+    await clickNamed('[role="tab"]', "物体");
+    assert.equal(await page(() => [...document.querySelectorAll("label")]
+      .find((label) => label.textContent.trim() === "物体名称")?.control?.value), "方体 2");
     await click('input[aria-label="位置 X"]');
     await page(() => document.querySelector('input[aria-label="位置 X"]').select());
     await cdp("Input.insertText", { text: "1.5" });
     await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab" });
     await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab" });
-    await click('.director-inspector button[role="radio"]:nth-child(2)');
-    await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent.includes("生成换视角图片")));
-    await page(() => document.querySelector(".director-inspector").scrollTo(0, 10000));
+    await clickNamed('[role="radio"]', "图片换视角");
+    await waitFor((selector) => Boolean(document.querySelector(selector)), generateButton);
+    assert.equal(await page((selector) => Boolean(document.querySelector(selector)), captureButton), false,
+      "Angle mode presents its explicit generation action instead of local capture");
     await screenshot(`workbench-angle-${viewport.width}x${viewport.height}`);
     await checkControlReachability();
-    await click('.director-inspector button[role="radio"]:first-child');
+    await clickNamed('[role="radio"]', "场景摆位");
     await click('button[aria-label="关闭"]');
-    await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent.includes("继续编辑")));
-    await page(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("继续编辑")).click());
+    await clickNamed("button", "继续编辑");
   }
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   await cdp("Page.navigate", { url: new URL(route, baseUrl).href }); await ready();
+  assert.equal(await page(() => document.querySelector(".director-viewport").dataset.viewMode), "director",
+    "The workbench opens in the director observation view");
+  await clickNamed("button", "高级机位");
+  const readCameraDraft = () => page(() => Object.fromEntries([...document.querySelectorAll('.director-inspector input[type="number"]')]
+    .map((input) => [input.getAttribute("aria-label"), Number(input.value)])));
+  const observationDraft = await readCameraDraft();
+  assert.equal(Object.keys(observationDraft).length, 7, "Observation check includes the camera position target");
+  await orbitViewport();
+  assert.deepEqual(await readCameraDraft(), observationDraft, "Orbiting the director observation view does not alter the scene camera");
+  await clickNamed('[role="radio"]', "摄影机视图");
+  assert.equal(await page(() => document.querySelector(".director-viewport").dataset.viewMode), "camera");
+  assert.deepEqual(await readCameraDraft(), observationDraft, "Switching to the camera view preserves the scene camera");
+  await clickNamed('[role="radio"]', "导演视图");
+  assert.equal(await page(() => document.querySelector(".director-viewport").dataset.viewMode), "director");
+  assert.deepEqual(await readCameraDraft(), observationDraft, "Switching back to the director view preserves the scene camera");
+  assert.deepEqual(await page(() => {
+    const evidence = JSON.parse(document.querySelector("#director-browser-evidence").textContent);
+    return { uploads: evidence.uploads.length, scenes: evidence.scenes.length, angles: evidence.angles.length };
+  }), { uploads: 0, scenes: 0, angles: 0 }, "Observation and view switching do not submit capture or generation requests");
+  await clickNamed('[role="radio"]', "摄影机视图");
   const before = await page(() => Number(document.querySelector('input[aria-label="水平角度 (°)"]').value));
-  const center = await page(() => { const bounds = document.querySelector("canvas").getBoundingClientRect(); return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }; });
-  await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...center, button: "left", clickCount: 1 });
-  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: center.x + 70, y: center.y + 20, button: "left", buttons: 1 });
-  await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x: center.x + 70, y: center.y + 20, button: "left", clickCount: 1 });
+  await orbitViewport();
   await waitFor((previous) => Number(document.querySelector('input[aria-label="水平角度 (°)"]').value) !== previous, before);
   await page(() => document.querySelector("canvas").getContext("webgl2").getExtension("WEBGL_lose_context").loseContext());
-  await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent.includes("重试 3D 预览")));
+  await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent.trim() === "重试 3D 预览"));
   assert.equal(await page((selector) => document.querySelector(selector).disabled, captureButton), true, "Context loss blocks capture");
-  await page(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("重试 3D 预览")).click());
+  await clickNamed("button", "重试 3D 预览");
   await ready();
   assert.notEqual(await page(() => Number(document.querySelector('input[aria-label="水平角度 (°)"]').value)), before, "WebGL retry retains the camera draft");
   const sizes = [["16:9", 1600, 900], ["9:16", 900, 1600], ["1:1", 1600, 1600], ["4:3", 1600, 1200]];
   for (const [ratio, width, height] of sizes) {
-    await selectValue("#director-ratio", ratio);
+    await selectValue('button[role="combobox"][aria-label="画幅"]', ratio);
     await click(captureButton);
     await waitFor(() => !document.querySelector(".director-workbench"));
     const evidence = await page(() => JSON.parse(document.querySelector("#director-browser-evidence").textContent));
@@ -165,10 +223,9 @@ try {
     await writeFile(join(screenshots, `captured-frame-${ratio.replace(":", "x")}.png`), Buffer.from(capturedPng.split(",")[1], "base64"), { mode: 0o600 });
     await click("#open-director-fixture"); await ready();
   }
-  await click('.director-inspector button[role="radio"]:nth-child(2)');
-  await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent.includes("生成换视角图片")));
-  const generateSelector = ".director-fields > button:last-child";
-  await click(generateSelector);
+  await clickNamed('[role="radio"]', "图片换视角");
+  await waitFor((selector) => document.querySelector(selector)?.disabled === false, generateButton);
+  await click(generateButton);
   await waitFor(() => !document.querySelector(".director-workbench"));
   const angleEvidence = await page(() => JSON.parse(document.querySelector("#director-browser-evidence").textContent));
   assert.equal(angleEvidence.angles.length, 1, "Exactly one explicit synthetic angle submission");
@@ -179,7 +236,8 @@ try {
   assert.equal(angleEvidence.uploads.length, 4, "Angle submission does not recapture or upload a fake source frame");
   assert.deepEqual(runtimeErrors, [], "No uncaught browser errors");
   console.log(JSON.stringify({ result: "passed", renderer: "Chrome WebGL (SwiftShader allowed)", screenshots,
-    checks: ["three viewport sizes", "reachable object and camera controls", "angle configuration", "dirty close", "mouse orbit synchronization",
+    checks: ["three viewport sizes", "reachable object and camera controls", "angle configuration", "dirty close", "director observation preserves the scene camera",
+      "view switching does not submit requests", "camera view mouse orbit synchronization",
       "WebGL loss and retained-draft retry", "four exact PNG dimensions with actual colored scene pixels", "scene upload metadata",
       "explicit existing angle task submission with exact source and camera guidance"] }, null, 2));
 } finally {

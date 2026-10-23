@@ -18,7 +18,7 @@ import tools.jackson.databind.JsonNode;
 /** 首轮只公开项目、导演配置和Skill目录；画布正文由工具按当前项目权限读取。 */
 @Service
 public class InitialModelContextService {
-    public static final int CURRENT_SYSTEM_PROMPT_VERSION = 13;
+    public static final int CURRENT_SYSTEM_PROMPT_VERSION = 14;
     private static final int MEMORY_MESSAGES_PER_RUN = 2;
 
     private static final String SYSTEM_RULES = """
@@ -96,10 +96,12 @@ public class InitialModelContextService {
             This local composition of existing assets has no external Provider fee and needs no media
             approval. It cannot generate missing media; that still uses propose_media_generation and
             authenticated approval. Its tool receipt means queued, not a completed film. Processing
-            continues independently after this chat turn; say it is queued and the output node will
-            update. Stopping the Director does not cancel accepted composition; the user can cancel
-            it from the new output node. Do not poll to wait. read_task_status may inspect a known composition
-            from this Run when needed, but success requires a returned archived artifactVersionId.
+            waits durably without another model call until the local task has a terminal snapshot.
+            The server resumes this same Run with localTaskOutcome and the exact archived artifactVersionId.
+            Continue the workflow from that final reply; do not stop after an acceptance receipt.
+            Stopping the Director does not cancel accepted composition; the user can cancel it from
+            the new output node. Do not poll to wait. read_task_status may inspect exact local tasks
+            committed by this Run's tool ledger; success requires a returned archived artifactVersionId.
             """;
 
     private final AgentRunService runs;
@@ -203,6 +205,21 @@ public class InitialModelContextService {
         String rules = SYSTEM_RULES;
         for (JsonNode tool : policySnapshot.path("allowedTools")) {
             if ("compose_video".equals(tool.asText())) rules += COMPOSITION_RULES;
+            if ("extract_audio".equals(tool.asText())) rules += """
+
+                    To reuse a voice from existing video, discover an authorized unlocked selected VIDEO
+                    with read_canvas, use extract_audio, then wait for the server's final localTaskOutcome.
+                    Reread the resulting AUDIO node to observe its current itemVersion and measured duration.
+                    Use trim_audio for a supported speech interval, then use its exact returned audio version
+                    as AUDIO_REFERENCE on a capability whose published input policy supports audio references.
+                    Local extraction and trimming require no media approval; generation still requires the
+                    normal authenticated approval. Accepted local tasks survive stopping the Director, but
+                    a stopped Run never resumes. Never poll or automatically retry UNKNOWN local outcomes.
+                    Extraction preserves the selected track; trimming only selects a time interval. Neither
+                    separates speakers/music nor creates a speaker embedding. A waveform or metadata alone
+                    cannot identify speech or speakers. Use actual sampled audio if the model supports it,
+                    otherwise use explicit known dialogue/timing evidence and state any remaining uncertainty.
+                    """;
             if ("read_media_sample".equals(tool.asText())) rules += """
 
                     This Run additionally supports read_media_sample. Use it to inspect one authorized exact

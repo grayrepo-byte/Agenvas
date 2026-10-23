@@ -207,7 +207,7 @@ public class UsageService {
                 reservation.costSource(), "media:" + task.id() + ":settle", reservation.providerConfigVersion(), archivedImageCount, archivedVideoSeconds));
     }
 
-    /** 调用方确认任务未到达提交检查点后，释放媒体任务的预留。 */
+    /** 调用方确认生成未提交，或零费用本地处理已失败/取消后释放预留；不推断未知外部费用。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void releaseUnsubmittedMediaTask(UUID ownerId, Task task) {
         if ((task.kind() != Task.Kind.AUDIO_GENERATION && task.kind() != Task.Kind.IMAGE_GENERATION
@@ -226,6 +226,8 @@ public class UsageService {
                                         && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(task.errorCode())
                                         && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(task.errorCode())
                                         && !"VIDEO_AUDIO_TRACK_MISSING".equals(task.errorCode())
+                                        && !"AUDIO_TRIM_INVALID".equals(task.errorCode())
+                                        && !"AUDIO_TRIM_OUTPUT_TOO_LARGE".equals(task.errorCode())
                                         && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(task.errorCode())
                                         && !"MEDIA_RELAY_REQUIRED".equals(task.errorCode())
                                         && !ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED.equals(task.errorCode())

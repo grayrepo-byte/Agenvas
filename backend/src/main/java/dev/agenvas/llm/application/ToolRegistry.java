@@ -44,6 +44,26 @@ public class ToolRegistry {
                          "AUDIO_REFERENCE","VIDEO_REFERENCE"]}}}}}}}}}
             """;
 
+    private static final String EXTRACT_AUDIO_SCHEMA = """
+            {"type":"object","additionalProperties":false,
+             "required":["canvasItemId","sourceVersionId","expectedCanvasItemVersion"],
+             "properties":{"canvasItemId":{"type":"string","format":"uuid"},
+               "sourceVersionId":{"type":"string","format":"uuid"},
+               "expectedCanvasItemVersion":{"type":"integer","minimum":0},
+               "format":{"type":"string","enum":["WAV","MP3"],"default":"WAV"},
+               "trackIndex":{"type":"integer","minimum":0,"maximum":31,"default":0}}}
+            """;
+    private static final String TRIM_AUDIO_SCHEMA = """
+            {"type":"object","additionalProperties":false,
+             "required":["canvasItemId","sourceVersionId","expectedCanvasItemVersion","startMs","endMs"],
+             "properties":{"canvasItemId":{"type":"string","format":"uuid"},
+               "sourceVersionId":{"type":"string","format":"uuid"},
+               "expectedCanvasItemVersion":{"type":"integer","minimum":0},
+               "startMs":{"type":"integer","minimum":0,"maximum":599900},
+               "endMs":{"type":"integer","minimum":100,"maximum":600000},
+               "format":{"type":"string","enum":["WAV","MP3"],"default":"WAV"}}}
+            """;
+
     /** 文本产物只允许标题、正文和格式字段。 */
     private static final String CREATE_TEXT_SCHEMA = """
             {"type":"object","additionalProperties":false,
@@ -131,15 +151,21 @@ public class ToolRegistry {
                         + "Media DUPLICATE also needs mediaDraft.version as expectedDraftVersion. REMOVE keeps the underlying artifact and history.", MANAGE_CANVAS_SCHEMA),
                 definition("update_media_draft", "Edit an authorized unlocked IMAGE, VIDEO or AUDIO node's working draft without generating. "
                         + "Use mediaDraft.version as expectedVersion. Omitted fields retain their existing values; replacing prompt clears old structured mentions unless mentions is supplied. U+FFFC markers require matching mentions. Media references must be exact authorized versions.", UPDATE_MEDIA_DRAFT_SCHEMA),
+                definition("extract_audio", "Extract the chosen audio track from an exact selected VIDEO version into a new AUDIO node, using a fixed local processor with no Provider charge or approval. "
+                        + "Observe canvasItemId, sourceVersionId and itemVersion through read_canvas; source must be unlocked. WAV default, MP3 optional, trackIndex is zero-based. "
+                        + "The server waits durably then resumes this Run with the archived audio version. Never poll or claim completion from its acceptance receipt. No ASR, voice isolation or speaker embedding is performed.", EXTRACT_AUDIO_SCHEMA),
+                definition("trim_audio", "Create an immutable audio segment in a derived node from an exact selected AUDIO version and observed itemVersion. "
+                        + "Use integer startMs/endMs within measured source duration, at least 100 ms; WAV default, MP3 optional. This fixed local command has no Provider charge or approval. "
+                        + "The server waits durably then resumes with the archived version, usable as AUDIO_REFERENCE. It does not remove music or identify speakers; choose the interval from actual evidence. Never poll or resubmit UNKNOWN.", TRIM_AUDIO_SCHEMA),
                 definition("compose_video", "Queue local video trimming, joining and dubbing from authorized exact VIDEO/AUDIO versions. Zero dialogue is allowed. Optional shot speed/fades, KEEP original sound, music, timed subtitles and output shape are supported. "
                         + "First read storyboard/script text and immutable media prompts plus mediaMetadata.durationMs; infer shot order and match each spoken line from that evidence. "
                         + "rationale is a short public edit summary, never private reasoning. shots are playback order; lines are spoken order. "
                         + "sourceStartMs defaults to zero and omitted durationMs uses the remaining source video. startMs is optional, relative to the selected shot, only for an evidenced story anchor; "
                         + "omit it for automatic waveform/silence placement. At most 12 shots, 30 total lines and 60000 ms total. "
                         + "MUTE replaces original sound; BACKGROUND keeps it quietly beneath dialogue. The local renderer allows at most 1.15x dialogue speed and fails rather than cutting speech. "
-                        + "No external media generation or media approval occurs. The receipt confirms queuing only: processing continues independently in the background. "
+                        + "No external media generation or media approval occurs. The receipt confirms acceptance only: the server durably waits for completion and resumes this same Run with the archived version. "
                         + "Stopping the Director does not cancel an accepted composition; the user can cancel it from the new output node. "
-                        + "Report queued status and do not poll or claim completion, semantic audio understanding or lip synchronization.", COMPOSE_VIDEO_SCHEMA),
+                        + "Continue from the final localTaskOutcome reply; do not poll or claim completion from acceptance, semantic audio understanding or lip synchronization.", COMPOSE_VIDEO_SCHEMA),
                 definition("read_project_summary",
                         "Read the current project's bounded metadata and pinned Run limits",
                         READ_PROJECT_SUMMARY_SCHEMA),

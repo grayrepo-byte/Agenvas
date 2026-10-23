@@ -355,6 +355,13 @@ public class AgentRunService {
         return runs.blockedRecoveryCandidates(afterId, limit);
     }
 
+    /** A missed local-task event must not leave an otherwise finished tool round waiting forever. */
+    @Transactional(readOnly = true)
+    public List<WaitingRunCandidate> waitingRecoveryCandidates(UUID afterId, int limit) {
+        if (limit < 1 || limit > MAX_RECOVERY_BATCH_SIZE) throw new IllegalArgumentException("Invalid recovery batch size");
+        return runs.waitingRecoveryCandidates(afterId, limit);
+    }
+
     /** 会话归属核验先于分页；游标为单调消息序号，不由墙钟时间决定顺序。 */
     @Transactional(readOnly = true)
     public RunPage listConversation(UUID ownerId, UUID projectId, UUID agentId, UUID conversationId,

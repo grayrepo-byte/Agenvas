@@ -62,7 +62,7 @@ class VideoCompositionCancellationTest {
     void unsubmittedCompositionCancellationClosesAndReleasesReservation(Task.Status status) {
         Task current = task(status, true, false), canceled = task(Task.Status.CANCELED, true, true);
         when(repository.find(owner, project, id)).thenReturn(Optional.of(current), Optional.of(canceled));
-        when(repository.cancelVideoComposition(current, NOW)).thenReturn(true);
+        when(repository.cancelLocalProcessing(current, NOW)).thenReturn(true);
         assertThat(service.cancelQueued(owner, project, id)).isEqualTo(canceled);
         verify(usage).releaseUnsubmittedMediaTask(owner, canceled);
         verify(repository, never()).cancelQueuedDirect(any(), any(), any());
@@ -71,10 +71,10 @@ class VideoCompositionCancellationTest {
     @Test void submittingCompositionSignalsRendererWithoutReleasingAnActiveReservation() {
         Task current = task(Task.Status.SUBMITTING, true, false), requested = task(Task.Status.SUBMITTING, true, true);
         when(repository.find(owner, project, id)).thenReturn(Optional.of(current), Optional.of(requested));
-        when(repository.cancelVideoComposition(current, NOW)).thenReturn(true);
+        when(repository.cancelLocalProcessing(current, NOW)).thenReturn(true);
         assertThat(service.cancelQueued(owner, project, id)).isEqualTo(requested);
         assertThat(service.cancelQueued(owner, project, id)).isEqualTo(requested);
-        verify(repository).cancelVideoComposition(current, NOW);
+        verify(repository).cancelLocalProcessing(current, NOW);
         verifyNoInteractions(usage);
     }
 
@@ -85,7 +85,7 @@ class VideoCompositionCancellationTest {
         when(repository.find(owner, project, id)).thenReturn(Optional.of(external));
         assertThatThrownBy(() -> service.cancelQueued(owner, project, id)).isInstanceOf(ApiProblemException.class);
         verify(repository).cancelQueuedDirect(project, id, NOW);
-        verify(repository, never()).cancelVideoComposition(any(), any());
+        verify(repository, never()).cancelLocalProcessing(any(), any());
         verifyNoInteractions(usage);
     }
 
@@ -93,6 +93,25 @@ class VideoCompositionCancellationTest {
         when(repository.find(owner, project, id)).thenReturn(Optional.of(task(Task.Status.SUBMITTING, true, false)));
         assertThatThrownBy(() -> service.cancelQueued(owner, project, id)).isInstanceOf(ApiProblemException.class);
         verifyNoInteractions(usage);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Task.Status.class, names = {"READY", "RUNNING", "SUBMITTING"})
+    void audioTrimUsesTheSameFencedLocalCancellation(Task.Status status) {
+        var input = mapper.createObjectNode();
+        input.putObject("audioTrim");
+        var current = new Task(id, project, null, "audio-trim", Task.Kind.AUDIO_GENERATION, status, false,
+                input, "hash", null, null, 1, NOW, "worker", NOW.plusSeconds(30), 1, 0, null, NOW, NOW, null);
+        var resultingStatus = status == Task.Status.SUBMITTING ? status : Task.Status.CANCELED;
+        var canceled = new Task(id, project, null, "audio-trim", Task.Kind.AUDIO_GENERATION, resultingStatus, true,
+                input, "hash", null, null, 1, NOW, "worker", NOW.plusSeconds(30), 1, 1, null, NOW, NOW,
+                resultingStatus == Task.Status.CANCELED ? NOW : null);
+        when(repository.find(owner, project, id)).thenReturn(Optional.of(current), Optional.of(canceled));
+        when(repository.cancelLocalProcessing(current, NOW)).thenReturn(true);
+        assertThat(service.cancelQueued(owner, project, id)).isEqualTo(canceled);
+        verify(repository, never()).cancelQueuedDirect(any(), any(), any());
+        if (resultingStatus == Task.Status.CANCELED) verify(usage).releaseUnsubmittedMediaTask(owner, canceled);
+        else verifyNoInteractions(usage);
     }
 
     private Task task(Task.Status status, boolean composition, boolean cancel) {

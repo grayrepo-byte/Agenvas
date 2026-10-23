@@ -4,6 +4,7 @@ import dev.agenvas.event.application.ProjectEventRecorded;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.llm.domain.AgentMediaApproval;
 import dev.agenvas.run.application.AgentRunService;
+import dev.agenvas.run.application.WaitingRunCandidate;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
@@ -27,6 +28,7 @@ public class AgentMediaOutcomeService {
     private static final List<String> OUTPUT_FIELDS = List.of("artifactId", "artifactVersionId",
             "selected", "additionalResults");
     private final AgentMediaApprovalRepository approvals;
+    private final ToolExecutionRepository toolExecutions;
     private final AgentRunService runs;
     private final TaskService tasks;
     private final ProjectEventService events;
@@ -34,8 +36,10 @@ public class AgentMediaOutcomeService {
     private final Clock clock;
 
     public AgentMediaOutcomeService(AgentMediaApprovalRepository approvals, AgentRunService runs,
-            TaskService tasks, ProjectEventService events, ObjectMapper mapper, Clock clock) {
+            TaskService tasks, ProjectEventService events, ObjectMapper mapper, Clock clock,
+            ToolExecutionRepository toolExecutions) {
         this.approvals = approvals;
+        this.toolExecutions = toolExecutions;
         this.runs = runs;
         this.tasks = tasks;
         this.events = events;
@@ -51,6 +55,9 @@ public class AgentMediaOutcomeService {
         if ("task.status.changed".equals(event.type())) {
             approvals.findByTaskId(event.projectId(), event.aggregateId()).ifPresent(approval ->
                     reconcile(recorded.ownerId(), approval.projectId(), approval.runId(), approval.id()));
+            Task task = tasks.get(recorded.ownerId(), event.projectId(), event.aggregateId());
+            if (task.agentLocalRunId() != null)
+                reconcileLocalTasks(recorded.ownerId(), event.projectId(), task.agentLocalRunId());
         } else if ("agent.run.changed".equals(event.type())
                 && ("CANCELED".equals(event.payload().path("status").asText())
                     || "CANCEL_REQUESTED".equals(event.payload().path("status").asText())
@@ -72,18 +79,29 @@ public class AgentMediaOutcomeService {
     /** A whole tool round waits until every proposal in it has a final reply. */
     public boolean hasOutstanding(UUID projectId, UUID runId, int stepIndex) {
         return approvals.listByRun(projectId, runId).stream().anyMatch(approval ->
-                approval.stepIndex() == stepIndex && !approval.status().terminal());
+                approval.stepIndex() == stepIndex && !approval.status().terminal())
+                || toolExecutions.localTaskExecutions(projectId, runId).stream().anyMatch(execution ->
+                        execution.stepIndex() == stepIndex && !AgentLocalTaskOutcome.resolved(execution.result()));
     }
 
     /** Pending approvals can have no Tasks yet; they still prevent ending a blocked Run. */
     @Transactional(readOnly = true)
     public boolean hasOutstanding(UUID projectId, UUID runId) {
-        return approvals.listByRun(projectId, runId).stream().anyMatch(approval -> !approval.status().terminal());
+        return approvals.listByRun(projectId, runId).stream().anyMatch(approval -> !approval.status().terminal())
+                || toolExecutions.localTaskExecutions(projectId, runId).stream()
+                        .anyMatch(execution -> !AgentLocalTaskOutcome.resolved(execution.result()));
     }
 
     /** Preserve the original tool receipt, then append its immutable final approval/task outcome. */
     public JsonNode finalToolResult(UUID projectId, UUID runId, int stepIndex,
             String toolCallId, JsonNode receipt) {
+        if (AgentLocalTaskOutcome.awaits(receipt)) {
+            ToolExecution execution = toolExecutions.find(projectId, runId, stepIndex, toolCallId)
+                    .orElseThrow(() -> new IllegalStateException("Local tool receipt is missing"));
+            if (execution.status() != ToolExecution.Status.COMPLETED || !AgentLocalTaskOutcome.awaits(execution.result()))
+                throw new IllegalStateException("Local tool receipt is not committed");
+            return AgentLocalTaskOutcome.forModel(execution.result());
+        }
         var approval = approvals.findByToolCall(projectId, runId, stepIndex, toolCallId).orElse(null);
         if (approval == null) return receipt;
         if (!approval.status().terminal() || approval.result() == null) {
@@ -99,6 +117,34 @@ public class AgentMediaOutcomeService {
     @Transactional(readOnly = true)
     public List<AgentMediaApproval> recoveryCandidates(UUID afterId, int limit) {
         return approvals.listOutstandingAfter(afterId, limit);
+    }
+
+    /** Waiting Runs include the crash window after freezing an outcome but before scheduling its continuation. */
+    @Transactional(readOnly = true)
+    public List<WaitingRunCandidate> localRecoveryCandidates(UUID afterId, int limit) {
+        return runs.waitingRecoveryCandidates(afterId, limit);
+    }
+
+    /** Local processing remains independent after Run cancellation; only active Runs can continue. */
+    @Transactional
+    public void reconcileLocalTasks(UUID ownerId, UUID projectId, UUID runId) {
+        events.recordChange(ownerId, projectId, () -> {
+            AgentRun run = runs.get(ownerId, projectId, runId);
+            for (ToolExecution execution : toolExecutions.localTaskExecutions(projectId, runId)) {
+                if (AgentLocalTaskOutcome.resolved(execution.result())) continue;
+                Task task = tasks.get(ownerId, projectId, AgentLocalTaskOutcome.taskId(execution.result()));
+                // Both identities are server-created and must agree; JSON flags alone never grant ownership.
+                if (task.runId() != null || !runId.equals(task.agentLocalRunId())
+                        || !execution.id().equals(task.agentLocalOperationId()))
+                    throw new IllegalStateException("Local tool receipt does not own its task");
+                if (!RESOLVED.contains(task.status())) continue;
+                if (!toolExecutions.appendLocalTaskOutcome(execution.id(), AgentLocalTaskOutcome.freeze(task, mapper)))
+                    throw new IllegalStateException("Locked local tool outcome changed unexpectedly");
+            }
+            if (run.status() == AgentRun.Status.WAITING_TASKS && run.nextStepIndex() > 0)
+                resumeIfReady(ownerId, projectId, runId, run.nextStepIndex() - 1);
+            return ProjectEventService.Change.unchanged(null);
+        });
     }
 
     @Transactional

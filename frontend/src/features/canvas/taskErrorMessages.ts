@@ -51,6 +51,8 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get LLM_RATE_LIMITED() { return t("agent.retry.rateLimited"); },
   get LLM_SERVICE_UNAVAILABLE() { return t("agent.retry.unavailable"); },
   get LLM_CALL_TIMEOUT() { return t("agent.retry.timeout"); },
+  get LLM_INSUFFICIENT_CREDITS() { return t("agent.failure.insufficientCredits"); },
+  get LLM_MEDIA_INPUT_UNSUPPORTED() { return t("agent.failure.mediaInputUnsupported"); },
   get EXECUTION_HISTORY_CLEANED() { return t("tasks.errors.executionExpired"); },
   get PROVIDER_POLL_RETRY_EXHAUSTED() { return t("tasks.errors.pollRetryExhausted"); },
   // 措辞保持中性：连接超时也走这个码，那时请求可能根本没发出去，
@@ -115,6 +117,11 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get LOCAL_VIDEO_COMPOSITION_FAILED() { return t("tasks.errors.compositionFailed"); },
   get LOCAL_VIDEO_COMPOSITION_TIMEOUT() { return t("tasks.errors.compositionTimeout"); },
   get LOCAL_VIDEO_COMPOSITION_CANCELED() { return t("tasks.errors.compositionCanceled"); },
+  get AUDIO_TRIM_INVALID() { return t("audio.trim.invalid"); },
+  get AUDIO_TRIM_OUTPUT_TOO_LARGE() { return t("audio.trim.outputTooLarge"); },
+  get LOCAL_AUDIO_TRIM_FAILED() { return t("audio.trim.processingFailed"); },
+  get LOCAL_AUDIO_TRIM_TIMEOUT() { return t("audio.trim.timeout"); },
+  get LOCAL_AUDIO_TRIM_CANCELED() { return t("audio.trim.canceled"); },
   get LOCAL_IMAGE_PROCESSING_FAILED() { return t("tasks.errors.localProcessingFailed"); },
   get LOCAL_IMAGE_ENCODING_FAILED() { return t("tasks.errors.localEncodingFailed"); },
 };

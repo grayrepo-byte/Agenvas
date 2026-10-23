@@ -28,7 +28,7 @@ const PREFLIGHT: RunPreflight = {
   agentInstruction: AGENT.instruction, modelAvailable: true,
   conversationId: CONVERSATION_ID, conversationVersion: 0, conversationTurnCount: 0, memoryTruncated: false, creativeSkills: [],
   providerAdapter: "Mock", modelId: "mock-storyboard-v1", toolCalling: true,
-  policySnapshot: { schemaVersion: 7, toolPolicyVersion: 5, systemPromptVersion: 13, allowedTools: ["read_canvas"],
+  policySnapshot: { schemaVersion: 7, toolPolicyVersion: 6, systemPromptVersion: 14, allowedTools: ["read_canvas"],
     modelConfigSource: "mock", modelConfigVersion: 7, maxModelTurns: null,
     maxToolExecutions: null },
 };
@@ -423,7 +423,7 @@ describe("AgentChatPanel", () => {
     expect(screen.queryByRole("button", { name: "确认开始" })).not.toBeInTheDocument();
     expect(requests[0]).toEqual({ agentId: AGENT_ID, conversationId: CONVERSATION_ID, expectedConversationVersion: 0, instruction: TASK_TEXT,
       expectedAgentVersion: AGENT_VERSION, expectedModelConfigSource: "mock",
-      expectedModelConfigVersion: 7, expectedSystemPromptVersion: 13,
+      expectedModelConfigVersion: 7, expectedSystemPromptVersion: 14,
       selectedItemIds: ["selected-image-1"], skillSelection: {mode:"NONE",skills:[]} });
     await waitFor(() => expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue(""));
     expect(screen.queryByRole("article", { name: "待发送" })).not.toBeInTheDocument();

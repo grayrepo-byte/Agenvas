@@ -56,9 +56,9 @@ public class VideoCompositionService {
     }
 
     /** Called only after the built-in tool has checked the Run's current content scope. */
-    public Task runFromAgent(UUID owner, UUID project, UUID run, JsonNode request, String commandKey) {
-        if (run == null) throw invalid();
-        return accept(owner, project, request, commandKey, run, null, null);
+    public Task runFromAgent(UUID owner, UUID project, UUID run, UUID operation, JsonNode request, String commandKey) {
+        if (run == null || operation == null) throw invalid();
+        return accept(owner, project, request, commandKey, run, null, operation);
     }
 
     /** External operation/token identities come from the authenticated MCP command ledger. */
@@ -121,6 +121,8 @@ public class VideoCompositionService {
             for (JsonNode subtitle : composition.path("subtitles"))
                 if (subtitle.path("endMs").asInt() > duration) throw invalid();
             var binding = catalog.resolve(CAPABILITY_ID, Task.Kind.VIDEO_GENERATION, (duration + 999) / 1000);
+            if (run != null && !dev.agenvas.provider.domain.MediaAdapterRegistry.LOCAL_VIDEO_COMPOSITOR.equals(binding.adapterId()))
+                throw invalid();
             frozen.put("capabilityId", binding.capabilityId().toString()).put("capabilityVersion", binding.capabilityVersion());
             frozen.putObject("parameters").set("videoComposition", composition.deepCopy());
             var target = artifacts.createTaskMediaIdentityWithinChange(owner, project, Artifact.Kind.VIDEO, request.path("title").asText());
@@ -134,8 +136,11 @@ public class VideoCompositionService {
                     .put("sourceDurationMs", duration).put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
             input.set("videoCompositionRequest", request); input.set("videoComposition", composition);
             input.set("compositionOrigin", origin); input.set("mediaInput", frozen);
-            if (run != null) input.put("compositionRunId", run.toString());
-            if (operation != null) input.put("initiator", Task.Initiator.EXTERNAL_MCP.name())
+            if (run != null) {
+                input.put("compositionRunId", run.toString());
+                input.putObject("agentLocalOrigin").put("runId", run.toString()).put("operationId", operation.toString());
+            }
+            if (token != null && operation != null) input.put("initiator", Task.Initiator.EXTERNAL_MCP.name())
                     .put("mcpOperationId", operation.toString()).put("mcpTokenId", token.toString());
             var now = clock.instant();
             Task task = new Task(UUID.randomUUID(), project, null, key, Task.Kind.VIDEO_GENERATION,

@@ -524,8 +524,8 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     }
 
     @Override
-    public boolean cancelVideoComposition(Task current, Instant now) {
-        if (!current.isVideoComposition() || current.runId() != null || current.providerRequestId() != null
+    public boolean cancelLocalProcessing(Task current, Instant now) {
+        if (!current.isCancelableLocalProcessing() || current.runId() != null || current.providerRequestId() != null
                 || !List.of(Task.Status.READY, Task.Status.RUNNING, Task.Status.SUBMITTING).contains(current.status())) return false;
         var update = dsl.update(TASK).set(TASK.CANCEL_REQUESTED, true)
                 .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1));
@@ -539,12 +539,14 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         return update.where(TASK.ID.eq(current.id())).and(TASK.PROJECT_ID.eq(current.projectId()))
                 .and(TASK.VERSION.eq(current.version())).and(TASK.STATUS.eq(current.status().name()))
                 .and(TASK.RUN_ID.isNull()).and(TASK.PROVIDER_REQUEST_ID.isNull())
-                .and(videoCompositionCondition()).execute() == 1;
+                .and(cancelableLocalProcessingCondition()).execute() == 1;
     }
 
-    private Condition videoCompositionCondition() {
+    private Condition cancelableLocalProcessingCondition() {
         return TASK.KIND.eq(Task.Kind.VIDEO_GENERATION.name())
-                .and(DSL.condition("jsonb_typeof({0}->'videoComposition') = 'object'", TASK.INPUT_JSON));
+                .and(DSL.condition("jsonb_typeof({0}->'videoComposition') = 'object'", TASK.INPUT_JSON))
+                .or(TASK.KIND.eq(Task.Kind.AUDIO_GENERATION.name())
+                        .and(DSL.condition("jsonb_typeof({0}->'audioTrim') = 'object'", TASK.INPUT_JSON)));
     }
 
     /** 按所有者、项目和任务 ID 读取，避免暴露其他项目资源。 */
@@ -1084,7 +1086,7 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         return true;
     }
 
-    /** Local composition submission is also safe to stop; ordinary Provider UNKNOWN remains untouched. */
+    /** Fixed local editing is also safe to stop; ordinary Provider UNKNOWN remains untouched. */
     @Override
     public List<ExpiredSubmission> findExpiredCanceledRunning(Instant now, int limit) {
         return dsl.select(TASK.ID, TASK.PROJECT_ID, PROJECT.OWNER_ID)
@@ -1117,11 +1119,11 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     }
 
     private Condition expiredCanceledWork(Instant now) {
-        Condition composition = videoCompositionCondition().and(TASK.RUN_ID.isNull()).and(TASK.PROVIDER_REQUEST_ID.isNull());
+        Condition localProcessing = cancelableLocalProcessingCondition().and(TASK.RUN_ID.isNull()).and(TASK.PROVIDER_REQUEST_ID.isNull());
         return TASK.STATUS.eq(Task.Status.RUNNING.name()).and(TASK.LEASE_UNTIL.le(utc(now)))
-                .or(composition.and(TASK.STATUS.eq(Task.Status.SUBMITTING.name())).and(TASK.LEASE_UNTIL.le(utc(now))))
+                .or(localProcessing.and(TASK.STATUS.eq(Task.Status.SUBMITTING.name())).and(TASK.LEASE_UNTIL.le(utc(now))))
                 // The submission recovery scan may win first and clear the expired local lease.
-                .or(composition.and(TASK.STATUS.eq(Task.Status.UNKNOWN.name())).and(TASK.LEASE_UNTIL.isNull()));
+                .or(localProcessing.and(TASK.STATUS.eq(Task.Status.UNKNOWN.name())).and(TASK.LEASE_UNTIL.isNull()));
     }
 
     /** 将晚到输出按 taskId 与 epoch 唯一保存到旁路历史，不覆盖主任务输出。 */

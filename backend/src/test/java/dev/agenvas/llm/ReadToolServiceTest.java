@@ -32,8 +32,9 @@ class ReadToolServiceTest {
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final AssetService assets = mock(AssetService.class);
     private final ObjectMapper mapper = new ObjectMapper();
+    private final dev.agenvas.llm.application.ToolExecutionRepository ledger = mock(dev.agenvas.llm.application.ToolExecutionRepository.class);
     private final ReadToolService reader = new ReadToolService(
-            mock(ProjectService.class), artifacts, assets, tasks, mapper, mock(dev.agenvas.llm.application.ToolExecutionRepository.class), mock(dev.agenvas.llm.application.AgentMediaSampleService.class));
+            mock(ProjectService.class), artifacts, assets, tasks, mapper, ledger, mock(dev.agenvas.llm.application.AgentMediaSampleService.class));
     private final TrustedToolContext context = new TrustedToolContext(
             UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
 
@@ -128,8 +129,8 @@ class ReadToolServiceTest {
         Task composition = mock(Task.class);
         when(tasks.get(context.ownerId(), context.projectId(), taskId)).thenReturn(composition);
         when(composition.id()).thenReturn(taskId);
-        when(composition.isVideoComposition()).thenReturn(true);
-        when(composition.compositionRunId()).thenReturn(context.runId());
+        when(ledger.ownsLocalTask(context.projectId(), context.runId(), taskId)).thenReturn(true);
+        when(composition.agentLocalRunId()).thenReturn(context.runId());
         when(composition.kind()).thenReturn(Task.Kind.VIDEO_GENERATION);
         when(composition.status()).thenReturn(Task.Status.SUCCEEDED);
         when(composition.updatedAt()).thenReturn(java.time.Instant.EPOCH);
@@ -142,11 +143,11 @@ class ReadToolServiceTest {
         assertThat(reply.at("/data/0/artifactVersionId").asText()).isEqualTo("result-version");
         assertThat(reply.toString()).doesNotContain("DO_NOT_DISCLOSE");
 
-        when(composition.compositionRunId()).thenReturn(UUID.randomUUID());
+        when(composition.agentLocalRunId()).thenReturn(UUID.randomUUID());
         assertThatThrownBy(() -> reader.taskStatus(context, UUID.randomUUID(), arguments))
                 .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("TASK_NOT_FOUND");
-        when(composition.compositionRunId()).thenReturn(context.runId());
-        when(composition.isVideoComposition()).thenReturn(false);
+        when(composition.agentLocalRunId()).thenReturn(context.runId());
+        when(ledger.ownsLocalTask(context.projectId(), context.runId(), taskId)).thenReturn(false);
         assertThatThrownBy(() -> reader.taskStatus(context, UUID.randomUUID(), arguments))
                 .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("TASK_NOT_FOUND");
     }

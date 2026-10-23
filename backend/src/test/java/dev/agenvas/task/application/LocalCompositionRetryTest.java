@@ -48,7 +48,11 @@ class LocalCompositionRetryTest {
         var input = mapper.createObjectNode().put("durationSeconds", 3).put("sourceDurationMs", 3000);
         input.putObject("videoComposition").putArray("shots").addObject().put("videoVersionId", UUID.randomUUID().toString());
         input.putObject("compositionOrigin").put("runId", "original-source");
-        if (initiator == Task.Initiator.BUILTIN_AGENT) input.put("compositionRunId", UUID.randomUUID().toString());
+        if (initiator == Task.Initiator.BUILTIN_AGENT) {
+            String runId = UUID.randomUUID().toString();
+            input.put("compositionRunId", runId);
+            input.putObject("agentLocalOrigin").put("runId", runId).put("operationId", UUID.randomUUID().toString());
+        }
         if (initiator == Task.Initiator.EXTERNAL_MCP) input.put("initiator", "EXTERNAL_MCP")
                 .put("mcpTokenId", UUID.randomUUID().toString()).put("mcpOperationId", UUID.randomUUID().toString());
         var original = new Task(taskId, project, null, "original", Task.Kind.VIDEO_GENERATION, Task.Status.UNKNOWN,
@@ -72,6 +76,8 @@ class LocalCompositionRetryTest {
 
         assertThat(replacement.initiator()).isEqualTo(Task.Initiator.USER_DIRECT);
         assertThat(replacement.compositionRunId()).isNull();
+        assertThat(replacement.agentLocalRunId()).isNull();
+        assertThat(replacement.input().has("agentLocalOrigin")).isFalse();
         assertThat(replacement.input().has("mcpOperationId")).isFalse();
         assertThat(replacement.input().at("/compositionOrigin/runId").isNull()).isTrue();
         assertThat(replacement.input().path("videoComposition")).isEqualTo(input.path("videoComposition"));

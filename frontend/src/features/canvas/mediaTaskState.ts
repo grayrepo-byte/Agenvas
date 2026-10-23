@@ -16,6 +16,12 @@ export function isVideoCompositionTask(task: Task): boolean {
     && typeof composition === "object" && !Array.isArray(composition);
 }
 
+export function isAudioTrimTask(task: Task): boolean {
+  const trim = task.input.audioTrim;
+  return task.kind === "AUDIO_GENERATION" && trim != null
+    && typeof trim === "object" && !Array.isArray(trim);
+}
+
 /** UNKNOWN and accepted-but-blocked requests still occupy the card, without a running animation. */
 export function occupiesMediaCard(task: Task): boolean {
   return isMediaTaskRunning(task) || task.status === "UNKNOWN"

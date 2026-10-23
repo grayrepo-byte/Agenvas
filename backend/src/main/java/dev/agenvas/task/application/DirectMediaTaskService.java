@@ -1216,7 +1216,7 @@ public class DirectMediaTaskService {
         throw invalid(ApiMessage.of("api.direct-media-task-service.there-is-no-corresponding-image-input-for-the-prompt-word"));
     }
 
-    /** External generation stops only while queued; local composition can additionally signal its current renderer. */
+    /** External generation stops only while queued; fixed local editing can additionally signal its current process. */
     @Transactional
     public Task cancelQueued(UUID ownerId, UUID projectId, UUID taskId) {
         return events.recordChange(ownerId, projectId, () -> {
@@ -1229,11 +1229,11 @@ public class DirectMediaTaskService {
             if (current.status() == Task.Status.CANCELED) {
                 return ProjectEventService.Change.unchanged(current);
             }
-            if (current.isVideoComposition() && current.cancelRequested()) {
+            if (current.isCancelableLocalProcessing() && current.cancelRequested()) {
                 return ProjectEventService.Change.unchanged(current);
             }
-            boolean changed = current.isVideoComposition()
-                    ? tasks.cancelVideoComposition(current, clock.instant())
+            boolean changed = current.isCancelableLocalProcessing()
+                    ? tasks.cancelLocalProcessing(current, clock.instant())
                     : tasks.cancelQueuedDirect(projectId, taskId, clock.instant());
             if (!changed) {
                 throw conflict(ApiMessage.of("api.direct-media-task-service.the-task-submission-has-started-please-check-the-cancellation-option"));

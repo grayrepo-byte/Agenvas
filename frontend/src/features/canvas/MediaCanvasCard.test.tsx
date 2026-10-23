@@ -54,6 +54,56 @@ function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
 }
 
 describe("MediaCanvasCard", () => {
+  describe("audio trimming", () => {
+    beforeEach(() => {
+      vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+      server.use(
+        http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode: "RESULT", version: 0 })),
+        http.get("/api/v1/projects/project-1/assets/:assetId", ({ params }) => HttpResponse.json({ id: params.assetId, durationMs: 23_456 })),
+        http.get("/api/v1/projects/project-1/assets/:assetId/content", () => HttpResponse.error()),
+        http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      );
+    });
+    function audioArtifact(): Artifact {
+      return { ...artifact, kind: "AUDIO", resourceDefaultVersionId: "audio-version", resourceDefaultVersion: {
+        id: "audio-version", versionNo: 1, schemaVersion: 1, content: { sourceType: "UPLOAD", assetId: "audio-asset" },
+        inputReferences: [], createdByKind: "USER", runId: null, createdAt: artifact.createdAt,
+      } };
+    }
+
+    it("pins the opened source, item version and asset when the card selection changes", async () => {
+      let request: unknown;
+      server.use(http.post("/api/v1/projects/project-1/artifacts/image-1/audio-trims", async ({ request: incoming }) => {
+        request = await incoming.json(); return HttpResponse.json({ id: "trim-task", status: "READY" });
+      }));
+      const shown = audioArtifact(); const view = showCard(shown);
+      await waitFor(() => expect(screen.getByRole("button", { name: "裁剪音频" })).toBeEnabled());
+      vi.mocked(HTMLMediaElement.prototype.pause).mockClear();
+      await clickControl(screen.getByRole("button", { name: "裁剪音频" }));
+      expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+      const dialog = screen.getByRole("dialog", { name: "裁剪音频" });
+      fireEvent.change(within(dialog).getByRole("spinbutton", { name: "入点（秒）" }), { target: { value: "1.234" } });
+      act(() => view.setItem({ ...itemFor(shown), selectedVersionId: "new-version", version: 9,
+        selectedVersion: { ...shown.resourceDefaultVersion!, id: "new-version", content: { sourceType: "UPLOAD", assetId: "new-audio-asset" } } }));
+      expect(within(dialog).getByLabelText("湖边 的音频")).toHaveAttribute("src", "/api/v1/projects/project-1/assets/audio-asset/content");
+      act(() => view.setToolbarState(false));
+      expect(dialog).toBeVisible();
+      await clickControl(within(dialog).getByRole("button", { name: "创建音频片段" }));
+      await waitFor(() => expect(request).toEqual({ canvasItemId: "item-1", sourceVersionId: "audio-version",
+        expectedCanvasItemVersion: 0, startMs: 1234, endMs: 15000, format: "WAV" }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "裁剪音频" })).not.toBeInTheDocument());
+    });
+
+    it("requires a selected audio result and valid duration before opening", async () => {
+      const shown = audioArtifact();
+      server.use(http.get("/api/v1/projects/project-1/assets/audio-asset", () => HttpResponse.json({ id: "audio-asset", durationMs: null })));
+      const view = showCard(shown);
+      expect(screen.getByRole("button", { name: "裁剪音频" })).toBeDisabled();
+      act(() => view.setItem({ ...itemFor(shown), selectedVersionId: null, selectedVersion: null }));
+      expect(screen.getByRole("button", { name: "裁剪音频" })).toBeDisabled();
+    });
+  });
+
   describe("video tools", () => {
     beforeEach(() => {
       server.use(

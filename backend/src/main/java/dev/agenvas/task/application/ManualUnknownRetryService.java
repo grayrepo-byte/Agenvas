@@ -148,6 +148,11 @@ public class ManualUnknownRetryService {
             replacementInput.remove("mcpTokenId");
             replacementInput.remove("mcpOperationId");
         }
+        if (original.agentLocalRunId() != null) {
+            // Explicit user retry is a new attempt, never a continuation of a frozen tool outcome.
+            replacementInput.put("initiator", Task.Initiator.USER_DIRECT.name());
+            replacementInput.remove("agentLocalOrigin");
+        }
         if (original.isVideoComposition()) {
             // A website retry is the user's new delegation, independent of the original Director or MCP token.
             // The immutable replacement relation retains the complete original provenance.

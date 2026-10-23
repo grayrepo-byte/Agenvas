@@ -37,9 +37,11 @@ public final class MediaAdapterRegistry {
     public static final String LOCAL_VIDEO_PROCESSOR = "LOCAL_VIDEO_PROCESSOR";
     public static final String LOCAL_VIDEO_AUDIO_EXTRACTOR = "LOCAL_VIDEO_AUDIO_EXTRACTOR";
     public static final String LOCAL_VIDEO_COMPOSITOR = "LOCAL_VIDEO_COMPOSITOR";
+    public static final String LOCAL_AUDIO_TRIMMER = "LOCAL_AUDIO_TRIMMER";
     public static boolean localProcessor(String adapterId) {
         return LOCAL_IMAGE_PROCESSOR.equals(adapterId) || LOCAL_VIDEO_PROCESSOR.equals(adapterId)
-                || LOCAL_VIDEO_AUDIO_EXTRACTOR.equals(adapterId) || LOCAL_VIDEO_COMPOSITOR.equals(adapterId);
+                || LOCAL_VIDEO_AUDIO_EXTRACTOR.equals(adapterId) || LOCAL_VIDEO_COMPOSITOR.equals(adapterId)
+                || LOCAL_AUDIO_TRIMMER.equals(adapterId);
     }
     public static final String OPENAI_GPT_IMAGE_2 = "OPENAI_GPT_IMAGE_2";
     public static final String GOOGLE_NANO_BANANA_2 = "GOOGLE_NANO_BANANA_2";
@@ -84,6 +86,7 @@ public final class MediaAdapterRegistry {
             Map.entry(LOCAL_VIDEO_PROCESSOR, video(MediaPlatform.LOCAL, 0, 30, false, 0,
                     Set.of("GENERAL_REFERENCE"), "GENERAL_REFERENCE", false)),
             Map.entry(LOCAL_VIDEO_AUDIO_EXTRACTOR, audio(MediaPlatform.LOCAL)),
+            Map.entry(LOCAL_AUDIO_TRIMMER, audio(MediaPlatform.LOCAL)),
             Map.entry(LOCAL_VIDEO_COMPOSITOR, video(MediaPlatform.LOCAL, 1, 60, false, 0,
                     Set.of("GENERAL_REFERENCE"), "GENERAL_REFERENCE", false)),
             Map.entry(RUNNINGHUB_IMAGE, runningHub(Task.Kind.IMAGE_GENERATION)),

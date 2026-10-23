@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import tools.jackson.databind.ObjectMapper;
 
 class UsageMediaPricingTest {
@@ -92,6 +94,28 @@ class UsageMediaPricingTest {
         assertThat(entries.getFirst().estimatedCost()).isZero();
         assertThat(entries.getFirst().actualCost()).isZero();
         assertThat(entries.getFirst().costStatus()).isEqualTo(UsageEntry.CostStatus.KNOWN);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"BLOCKED,AUDIO_TRIM_INVALID", "BLOCKED,AUDIO_TRIM_OUTPUT_TOO_LARGE",
+            "FAILED,LOCAL_AUDIO_TRIM_TIMEOUT", "FAILED,LOCAL_VIDEO_COMPOSITION_FAILED"})
+    void confirmedLocalFailureReleasesKnownZeroWithoutSettlement(Task.Status status, String code) {
+        UsageService service = service();
+        UUID owner = UUID.randomUUID();
+        Task original = task(Task.Kind.AUDIO_GENERATION, null);
+        service.reserveMediaTask(owner, original, "LOCAL_NO_COST", 1);
+        when(ledger.findByOperationKey("media:" + original.id() + ":settle")).thenReturn(Optional.empty());
+        Task failed = new Task(original.id(), original.projectId(), null, original.stepKey(), original.kind(), status,
+                false, original.input(), original.inputHash(), null, null, 1, NOW, null, null, 1, 1, code, NOW, NOW, NOW);
+        service.releaseUnsubmittedMediaTask(owner, failed);
+        assertThat(entries).extracting(UsageEntry::entryType)
+                .containsExactly(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.RELEASE);
+        assertThat(entries).allSatisfy(entry -> {
+            assertThat(entry.costSource()).isEqualTo("LOCAL_NO_COST");
+            assertThat(entry.costStatus()).isEqualTo(UsageEntry.CostStatus.KNOWN);
+            assertThat(entry.actualCost()).isZero();
+            assertThat(entry.estimatedCost()).isZero();
+        });
     }
 
     @Test

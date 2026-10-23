@@ -28,7 +28,7 @@ function snapshot(activeRunId: string | null = null): ProjectSnapshot {
       nextStepIndex: 0, version: 0, createdAt, updatedAt: createdAt,
       contextSnapshot: { agentId: "agent-1", agentVersion: 0, profileKey: "creator",
         profileVersion: 1,  },
-      policySnapshot: { schemaVersion: 7, toolPolicyVersion: 5, systemPromptVersion: 13, allowedTools: ["read_canvas"], modelConfigSource: "MOCK", modelConfigVersion: 0,
+      policySnapshot: { schemaVersion: 7, toolPolicyVersion: 6, systemPromptVersion: 14, allowedTools: ["read_canvas"], modelConfigSource: "MOCK", modelConfigVersion: 0,
         maxModelTurns: null, maxToolExecutions: null },
     } : null,
   };

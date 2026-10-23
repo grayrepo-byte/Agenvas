@@ -16,6 +16,7 @@ public class AgentMediaRecoveryScheduler {
     private static final int BATCH_SIZE = 100;
     private final AgentMediaOutcomeService outcomes;
     private UUID cursor;
+    private UUID localCursor;
 
     public AgentMediaRecoveryScheduler(AgentMediaOutcomeService outcomes) { this.outcomes = outcomes; }
 
@@ -31,5 +32,15 @@ public class AgentMediaRecoveryScheduler {
             cursor = approval.id();
         }
         if (candidates.size() < BATCH_SIZE) cursor = null;
+        var localCandidates = outcomes.localRecoveryCandidates(localCursor, BATCH_SIZE);
+        for (var candidate : localCandidates) {
+            try {
+                outcomes.reconcileLocalTasks(candidate.ownerId(), candidate.projectId(), candidate.runId());
+            } catch (RuntimeException failure) {
+                LOGGER.warn("Local media tool recovery failed: {}", failure.getClass().getSimpleName());
+            }
+            localCursor = candidate.runId();
+        }
+        if (localCandidates.size() < BATCH_SIZE) localCursor = null;
     }
 }

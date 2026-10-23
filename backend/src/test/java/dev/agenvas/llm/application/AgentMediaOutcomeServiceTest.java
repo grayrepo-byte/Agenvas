@@ -44,7 +44,7 @@ class AgentMediaOutcomeServiceTest {
     private final ProjectEventService events = mock(ProjectEventService.class);
     private final JsonMapper mapper = new JsonMapper();
     private final AgentMediaOutcomeService service = new AgentMediaOutcomeService(approvals, runs,
-            tasks, events, mapper, Clock.fixed(NOW, ZoneOffset.UTC));
+            tasks, events, mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(ToolExecutionRepository.class));
 
     @ParameterizedTest
     @EnumSource(value = Task.Status.class, names = {"SUCCEEDED", "FAILED", "CANCELED", "BLOCKED", "UNKNOWN"})

@@ -7,6 +7,7 @@ import static dev.agenvas.db.Tables.PROJECT;
 import dev.agenvas.db.tables.records.AgentRunRecord;
 import dev.agenvas.run.application.AgentRunRepository;
 import dev.agenvas.run.application.BlockedRunCandidate;
+import dev.agenvas.run.application.WaitingRunCandidate;
 import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.idempotency.IdempotencyState;
 import java.time.Instant;
@@ -36,6 +37,18 @@ public class JooqAgentRunRepository implements AgentRunRepository {
                 .and(afterId == null ? DSL.noCondition() : AGENT_RUN.ID.gt(afterId))
                 .orderBy(AGENT_RUN.ID).limit(limit)
                 .fetch(row -> new BlockedRunCandidate(row.get(PROJECT.OWNER_ID),
+                        row.get(AGENT_RUN.PROJECT_ID), row.get(AGENT_RUN.ID)));
+    }
+
+    @Override
+    public List<WaitingRunCandidate> waitingRecoveryCandidates(UUID afterId, int limit) {
+        return dsl.select(PROJECT.OWNER_ID, AGENT_RUN.PROJECT_ID, AGENT_RUN.ID)
+                .from(AGENT_RUN).join(PROJECT).on(PROJECT.ID.eq(AGENT_RUN.PROJECT_ID))
+                .where(AGENT_RUN.STATUS.eq(AgentRun.Status.WAITING_TASKS.name()))
+                .and(PROJECT.ACTIVE_RUN_ID.eq(AGENT_RUN.ID))
+                .and(afterId == null ? DSL.noCondition() : AGENT_RUN.ID.gt(afterId))
+                .orderBy(AGENT_RUN.ID).limit(limit)
+                .fetch(row -> new WaitingRunCandidate(row.get(PROJECT.OWNER_ID),
                         row.get(AGENT_RUN.PROJECT_ID), row.get(AGENT_RUN.ID)));
     }
 

@@ -283,6 +283,8 @@ public class AgentTurnWorker {
                 return problem.code();
             }
         }
+        if (LlmBillingFailures.matches(failure)) return LlmBillingFailures.ERROR_CODE;
+        if (LlmMediaInputFailures.matches(failure)) return LlmMediaInputFailures.ERROR_CODE;
         String retryCode = AgentModelRetryPolicy.retryableCode(failure);
         if (retryCode != null) return retryCode;
         return LlmCallTimeouts.isTimeout(failure) ? LlmCallTimeouts.ERROR_CODE : "AGENT_TURN_FAILED";

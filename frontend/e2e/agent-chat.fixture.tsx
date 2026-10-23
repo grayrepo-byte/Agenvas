@@ -17,7 +17,7 @@ const history = new URLSearchParams(location.search).has("history");
 const runs = history ? Array.from({ length: 12 }, (_, index) => ({ id: `synthetic-run-${index}`,
   projectId: agent.projectId, agentInstanceId: agent.id, conversationId: "synthetic-conversation",
   conversationTurn: index + 1, status: "SUCCEEDED", instruction: `第 ${index + 1} 轮：帮我整理画布中的创意。`,
-  contextSnapshot: {}, policySnapshot: { schemaVersion: 7, toolPolicyVersion: 5, systemPromptVersion: 13, allowedTools: ["read_canvas"],
+  contextSnapshot: {}, policySnapshot: { schemaVersion: 7, toolPolicyVersion: 6, systemPromptVersion: 14, allowedTools: ["read_canvas"],
     modelConfigSource: "MOCK", modelConfigVersion: 0, maxModelTurns: null, maxToolExecutions: null }, createdAt: now, updatedAt: now })) : [];
 window.fetch = async input => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href);

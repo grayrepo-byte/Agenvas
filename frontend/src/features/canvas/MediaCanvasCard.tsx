@@ -35,6 +35,7 @@ import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText } from "./artifactContent";
 import { AudioPlayer } from "./AudioPlayer";
+import { AudioTrimDialog } from "./AudioTrimDialog";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
 import { DirectorWorkbench } from "./DirectorWorkbench";
 import { ImageResizePanel } from "./ImageResizePanel";
@@ -106,6 +107,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const [operationOpen, setOperationOpen] = useState<ImageTool | null>(null);
   const [reversePrompt, setReversePrompt] = useState<{ assetId: string; sourceVersionId: string; expectedCanvasItemVersion: number; open: boolean } | null>(null);
   const [videoOperationOpen, setVideoOperationOpen] = useState<VideoOperation | null>(null);
+  const [audioTrim, setAudioTrim] = useState<{ assetId: string; sourceVersionId: string; expectedCanvasItemVersion: number; durationMs: number } | null>(null);
   const videoCommand = useRef<{ payload: string; key: string; input: RunVideoOperationRequest } | null>(null);
   const [threeViewType, setThreeViewType] = useState<ThreeViewType | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -133,7 +135,9 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const isImage = artifact.kind === "IMAGE";
   const isAudio = artifact.kind === "AUDIO";
   const isVideo = artifact.kind === "VIDEO";
-  const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, isImage || artifact.kind === "VIDEO" ? assetId : null));
+  const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, assetId));
+  const audioDurationMs = metadata.data?.durationMs;
+  const canTrimAudio = Number.isSafeInteger(audioDurationMs) && (audioDurationMs ?? 0) > 0;
   const settings = useQuery({ queryKey: ["settings", "media"], queryFn: getMediaSettings,
     enabled: isImage && Boolean(assetId) });
   const functions = useQuery({ queryKey: MEDIA_FUNCTIONS_QUERY_KEY, queryFn: getMediaFunctions,
@@ -227,7 +231,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     titleIcon={isImage ? <ImageIcon size={16} /> : isAudio ? <MusicNotes size={16} /> : <VideoCamera size={16} />}
     className={isAudio && assetId ? "audio-canvas-card" : undefined}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible}
-    toolbarRaised={directorOpen || menuOpen || operationOpen !== null || videoOperationOpen !== null || Boolean(reversePrompt?.open)}
+    toolbarRaised={directorOpen || menuOpen || operationOpen !== null || videoOperationOpen !== null || Boolean(reversePrompt?.open) || audioTrim !== null}
     editableTitle={{ projectId: artifact.projectId, item }}
     toolbarLabel={t("media.card.toolbarLabel")} toolbar={<>
         <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={!assetId} />
@@ -333,6 +337,12 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             onSubmit={(input) => videoOperation.mutate({ ...input, operation: videoOperationOpen,
               canvasItemId: item.id, sourceVersionId: item.selectedVersionId ?? "", expectedCanvasItemVersion: item.version })} /> : null}
         </> : null}
+        {isAudio ? <Button variant="ghost" type="button"
+          disabled={locked || !assetId || !item.selectedVersionId || Boolean(busy) || !canTrimAudio}
+          title={!canTrimAudio ? t("audio.trim.durationRequired") : undefined}
+          onClick={() => { if (assetId && item.selectedVersionId && metadata.data?.durationMs) setAudioTrim({ assetId,
+            sourceVersionId: item.selectedVersionId, expectedCanvasItemVersion: item.version, durationMs: metadata.data.durationMs }); }}>
+          <Scissors data-icon="inline-start" />{t("audio.trim.title")}</Button> : null}
         {isAudio && assetId && onMakeMV ? <Button variant="ghost" type="button" onClick={onMakeMV}><VideoCamera size={17} />{t("media.card.musicVideo")}</Button> : null}
         <Button variant="ghost" type="button" onClick={onEdit} title={t("media.card.regenerateHint")}>
           <ArrowClockwise size={17} />{item.selectedVersionId ? t("media.card.regenerate") : t("media.card.editDraft")}</Button>
@@ -343,6 +353,10 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           aria-label={isImage ? t("media.card.downloadImage") : isAudio ? t("media.card.downloadAudio") : t("media.card.downloadVideo")}><DownloadSimple size={19} /></a> : null}
     </>}>
       {children}
+      {audioTrim ? <AudioTrimDialog projectId={artifact.projectId} artifactId={artifact.id}
+        source={{ canvasItemId: item.id, sourceVersionId: audioTrim.sourceVersionId, expectedCanvasItemVersion: audioTrim.expectedCanvasItemVersion }}
+        src={assetContentUrl(artifact.projectId, audioTrim.assetId)} title={item.title} durationMs={audioTrim.durationMs}
+        onClose={() => setAudioTrim(null)} /> : null}
       {/* A modal editing session outlives toolbar visibility and selection changes. */}
       {isImage && directorOpen ? <DirectorWorkbench key={item.id} projectId={artifact.projectId} artifactId={artifact.id}
         canvasItemId={item.id} expectedVersion={item.version} sourceVersionId={item.selectedVersionId}
@@ -358,15 +372,15 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           if (selectedFile) setUploadFile(selectedFile);
         }} /> : null}
       {assetId ? <><MediaPreview key={assetId} assetId={assetId} artifact={artifact}
-        title={item.title} audioDescription={readContentText(content, "prompt")} demo={demo} selected={selected}
+        title={item.title} audioDescription={readContentText(content, "prompt")} demo={demo} selected={selected} audioEditing={audioTrim !== null}
         width={metadata.data?.width ?? undefined} height={metadata.data?.height ?? undefined}
         contentType={metadata.data?.contentType} />
         {metadata.error ? <p className="media-card-error media-card-size-error nodrag" role="alert">
-          {metadata.data
+          {isAudio ? t("audio.trim.metadataFailed") : metadata.data
             ? isImage ? t("media.card.imageDimensionsRefreshFailed") : t("media.card.videoDimensionsRefreshFailed")
             : isImage ? t("media.card.imageDimensionsLoadFailed") : t("media.card.videoDimensionsLoadFailed")}
           <Button variant="ghost" type="button" onClick={() => void metadata.refetch()} disabled={metadata.isFetching}>
-            {metadata.isFetching ? t("common.retrying") : t("media.card.retryDimensions")}</Button></p> : null}</>
+            {metadata.isFetching ? t("common.retrying") : isAudio ? t("audio.trim.retryMetadata") : t("media.card.retryDimensions")}</Button></p> : null}</>
         : <div className="media-card-empty">
           {busy ? <CanvasLoadingState label={status ?? t("media.card.generating")} /> : <>
             {isImage ? <ImageIcon className="media-empty-icon" size={44} />
@@ -520,8 +534,9 @@ function ImageOperationPanel({ operation, initialThreeViewType, capabilities, bu
  * preview is kept for later list-style surfaces and is not used here. Videos load only their
  * cover frame until the pointer enters the preview.
  */
-function MediaPreview({ artifact, assetId, title, audioDescription, demo, selected, width, height, contentType }: {
+function MediaPreview({ artifact, assetId, title, audioDescription, demo, selected, audioEditing, width, height, contentType }: {
   artifact: Artifact; assetId: string; title: string; audioDescription: string; demo: boolean; selected: boolean;
+  audioEditing?: boolean;
   width?: number; height?: number; contentType?: string;
 }) {
   useLocale();
@@ -529,7 +544,7 @@ function MediaPreview({ artifact, assetId, title, audioDescription, demo, select
   const [expanded, setExpanded] = useState(false);
 
   if (artifact.kind === "AUDIO") return <AudioPlayer key={assetId} src={assetContentUrl(artifact.projectId, assetId)} title={title}
-    description={audioDescription || title} selected={selected} demo={demo} />;
+    description={audioDescription || title} selected={selected} demo={demo} playbackResetKey={audioEditing ? "editing" : "preview"} />;
   if (artifact.kind === "VIDEO") return <VideoPreview key={assetId} title={title} demo={demo}
     src={assetContentUrl(artifact.projectId, assetId)} posterSrc={assetThumbnailUrl(artifact.projectId, assetId)}
     width={width} height={height} contentType={contentType} />;

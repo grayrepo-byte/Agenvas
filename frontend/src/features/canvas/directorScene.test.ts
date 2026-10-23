@@ -17,8 +17,45 @@ describe("director scene persistence", () => {
     if (!parsed) throw new Error("Expected a valid scene");
     parsed.camera.target.x = 5;
     parsed.objects[0]!.position.y = 3;
+    parsed.objects[0]!.scale.x = 2;
     expect(raw.camera.target.x).toBe(0);
     expect(raw.objects[0]?.position.y).toBe(0);
+    expect(raw.objects[0]?.scale.x).toBe(1);
+  });
+
+  it("upgrades scalar v1 objects into detached v2 axes without changing their appearance or archived data", () => {
+    const current = createDirectorScene();
+    const legacy = { ...current, schemaVersion: 1, objects: current.objects.map((item) => ({ ...item, scale: 2.5 })) };
+    const parsed = parseDirectorScene(legacy);
+    expect(parsed).toEqual({ ...current, objects: current.objects.map((item) => ({ ...item, scale: { x: 2.5, y: 2.5, z: 2.5 } })) });
+    expect(legacy.schemaVersion).toBe(1);
+    expect(legacy.objects[0]?.scale).toBe(2.5);
+    expect(parsed?.objects[0]?.position).not.toBe(legacy.objects[0]?.position);
+  });
+
+  it("preserves independent local dimensions for every object kind through export and import", () => {
+    const scene = createDirectorScene();
+    scene.objects = (["ACTOR", "BOX", "SPHERE", "CYLINDER"] as const).map((kind, index) => ({
+      ...scene.objects[0]!, id: String(index), kind, rotation: 45, scale: { x: 0.1, y: 2.5, z: 5 },
+    }));
+    expect(parseDirectorScene(JSON.parse(JSON.stringify(scene)))).toEqual(scene);
+  });
+
+  it.each([
+    {}, { x: 1, y: 1 }, { x: 1, y: 1, z: 1, w: 1 },
+    { x: 0, y: 1, z: 1 }, { x: 1, y: -1, z: 1 }, { x: 1, y: 1, z: 5.01 },
+    { x: Number.NaN, y: 1, z: 1 }, { x: 1, y: Number.POSITIVE_INFINITY, z: 1 },
+    null, [], 1, "1",
+  ])("rejects malformed v2 dimensions: %j", (scale) => {
+    const scene = createDirectorScene();
+    expect(parseDirectorScene({ ...scene, objects: [{ ...scene.objects[0], scale }] })).toBeNull();
+  });
+
+  it("enforces each scene version's scale shape", () => {
+    const scene = createDirectorScene();
+    expect(parseDirectorScene({ ...scene, schemaVersion: 1 })).toBeNull();
+    expect(parseDirectorScene({ ...scene, objects: [{ ...scene.objects[0], scale: 1 }] })).toBeNull();
+    expect(parseDirectorScene({ ...scene, schemaVersion: 1, objects: [{ ...scene.objects[0], scale: 0 }] })).toBeNull();
   });
 
   it("rejects unknown fields at every scene boundary", () => {
@@ -30,7 +67,7 @@ describe("director scene persistence", () => {
   });
 
   it.each([
-    null, [], {}, { ...createDirectorScene(), schemaVersion: 2 },
+    null, [], {}, { ...createDirectorScene(), schemaVersion: 3 },
     { ...createDirectorScene(), aspectRatio: "21:9" },
     { ...createDirectorScene(), objects: Array.from({ length: 33 }, (_, i) => ({ ...createDirectorScene().objects[0], id: String(i) })) },
   ])("rejects unsupported or oversized scene data: %j", (value) => {

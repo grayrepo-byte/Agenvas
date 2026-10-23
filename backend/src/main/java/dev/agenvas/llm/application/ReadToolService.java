@@ -332,8 +332,9 @@ public class ReadToolService {
         ArrayNode items = output.putArray("data");
         for (UUID taskId : taskIds) {
             Task task = tasks.get(context.ownerId(), context.projectId(), taskId);
-            boolean compositionFromRun = task.isVideoComposition() && context.runId().equals(task.compositionRunId());
-            if (!context.runId().equals(task.runId()) && !compositionFromRun) {
+            boolean localFromRun = context.runId().equals(task.agentLocalRunId())
+                    && ledger.ownsLocalTask(context.projectId(), context.runId(), task.id());
+            if (!context.runId().equals(task.runId()) && !localFromRun) {
                 throw new ApiProblemException(HttpStatus.NOT_FOUND, "TASK_NOT_FOUND",
                         ApiMessage.of("api.read-tool-service.task-does-not-exist"), ApiMessage.of("api.read-tool-service.task-is-not-accessible-to-this-run"), false);
             }
@@ -350,7 +351,7 @@ public class ReadToolService {
             if (task.completedAt() != null) {
                 item.put("completedAt", task.completedAt().toString());
             }
-            if (compositionFromRun && task.output() != null) {
+            if (localFromRun && task.output() != null) {
                 for (String field : List.of("artifactId", "artifactVersionId", "selected")) {
                     if (task.output().has(field)) item.set(field, task.output().get(field));
                 }

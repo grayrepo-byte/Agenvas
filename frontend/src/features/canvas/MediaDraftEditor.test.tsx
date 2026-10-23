@@ -1402,6 +1402,43 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
 
+  it("uses the derived audio node's trimmed version as H3 voice reference instead of its resource default", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "autodl", adapterId: "AUTODL_COMFY_VIDEO",
+      name: "H3 mixed", minimumSeconds: 1, maximumSeconds: 15, maxReferenceImages: 6, maxReferenceAudios: 3, maxReferenceVideos: 0,
+      supportedVideoInputModes: ["GENERAL_REFERENCE"], defaultVideoInputMode: "GENERAL_REFERENCE", supportsEndFrame: false,
+      settings: { workflowId: "minimax_h3_z0903", videoResolution: "480p" } };
+    const audioSource = { ...artifact, id: "reference-audio", kind: "AUDIO", title: "完整原声", resourceDefaultVersionId: "full-audio-v1" };
+    const trimmedVersion = { id: "trimmed-audio-v2", versionNo: 2, content: { assetId: "trimmed-asset", parameters: { audioTrim: { startMs: 1000, endMs: 4000 } } } };
+    const run = vi.fn();
+    const { saves } = setup({ kind: "VIDEO", settings: { connections: [{ ...settings.connections[0]!, platform: "AUTODL", capabilities: [capability] }],
+      defaults: [{ kind: "VIDEO_GENERATION", capabilityId: capability.id, version: 0 }] },
+      draft: { ...initialDraft, capabilityId: capability.id, videoInputMode: "GENERAL_REFERENCE", durationSeconds: 10,
+        parameters: { aspectRatio: "16:9", videoResolution: "480p" },
+        mediaInputs: [{ versionId: "character-image-v1", artifactId: "character-image", order: 0, role: "REFERENCE", color: "#67C7F3", sources: [] }] },
+      handlers: [
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [audioSource,
+          { ...artifact, id: "character-image", title: "人物参考", resourceDefaultVersionId: "character-image-v1" }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/character-image/versions`, () => HttpResponse.json({ items: [
+          { id: "character-image-v1", versionNo: 1, content: { assetId: "character-asset" } }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-audio/versions`, () => HttpResponse.json({ items: [trimmedVersion,
+          { id: "full-audio-v1", versionNo: 1, content: { assetId: "full-asset" } }] })),
+        http.get(`/api/v1/projects/${PROJECT_ID}/canvas/items`, () => HttpResponse.json({ items: [{ id: "trimmed-audio-node",
+          subjectType: "ARTIFACT", title: "清晰对白片段", artifact: audioSource, selectedVersion: trimmedVersion }] })),
+        http.post(`${BASE}/run`, () => { run(); return HttpResponse.json({ ...task("READY"), kind: "VIDEO_GENERATION" }); }),
+      ] });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "添加图片或音频输入" }));
+    await user.click(screen.getByRole("menuitem", { name: "从画布选择" }));
+    await user.click(await screen.findByRole("button", { name: "使用画布音频 清晰对白片段" }));
+    await waitFor(() => expect(saves.at(-1)?.mediaInputs).toEqual([
+      expect.objectContaining({ versionId: "character-image-v1", role: "REFERENCE" }),
+      expect.objectContaining({ versionId: "trimmed-audio-v2", role: "AUDIO_REFERENCE" }),
+    ]));
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(run, document.body.textContent ?? "").toHaveBeenCalledOnce());
+  });
+
   it("selects a searchable audio voice, persists its controls and allows audio generation without video duration", async () => {
     const { saves } = setup({ kind: "AUDIO", settings: audioSettings });
     expect(await screen.findByRole("textbox", { name: "音频提示词" })).toBeVisible();
@@ -2220,6 +2257,26 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByText("正在本地合成配音视频")).toBeVisible();
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     expect(requests).toHaveBeenCalledOnce();
+  });
+
+  it.each(["READY", "RUNNING", "SUBMITTING"] as const)("cancels local audio trimming in %s without consulting the Provider queue", async (status) => {
+    const trimming: Task = { ...task(status), kind: "AUDIO_GENERATION", input: { audioTrim: { startMs: 1000, endMs: 4000 } } };
+    const queueRequests = vi.fn();
+    const state = setup({ kind: "AUDIO", settings: audioSettings, tasks: [trimming], handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/queue`, () => { queueRequests(); return HttpResponse.json({}); }),
+      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/task-direct/cancel-queued`, () => {
+        const canceling = { ...trimming, cancelRequested: true };
+        state.setTasks([canceling]); return HttpResponse.json(canceling);
+      }),
+    ] });
+    await userEvent.setup().click(await screen.findByRole("button", { name: "取消音频裁剪" }));
+    expect(await screen.findByText("已请求停止音频裁剪，等待任务确认。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "正在停止裁剪…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    expect(queueRequests).not.toHaveBeenCalled();
+    act(() => state.client.setQueryData(["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID], [{ ...trimming, status: "CANCELED" }]));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "正在停止裁剪…" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
   });
 
   it.each(["RUNNING", "SUBMITTING"] as const)("does not expose cancellation for external generation in %s", async (status) => {

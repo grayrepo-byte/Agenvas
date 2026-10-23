@@ -9,7 +9,9 @@ describe("taskErrorMessages", () => {
       for (const locale of SUPPORTED_LOCALES) {
         setLocale(locale);
         for (const code of ["VIDEO_COMPOSITION_INVALID", "VIDEO_COMPOSITION_AUDIO_OVERFLOW", "LOCAL_VIDEO_COMPOSITION_FAILED",
-          "LOCAL_VIDEO_COMPOSITION_TIMEOUT", "LOCAL_VIDEO_COMPOSITION_CANCELED"]) {
+          "LOCAL_VIDEO_COMPOSITION_TIMEOUT", "LOCAL_VIDEO_COMPOSITION_CANCELED", "AUDIO_TRIM_INVALID",
+          "AUDIO_TRIM_OUTPUT_TOO_LARGE", "LOCAL_AUDIO_TRIM_FAILED", "LOCAL_AUDIO_TRIM_TIMEOUT", "LOCAL_AUDIO_TRIM_CANCELED",
+          "LLM_INSUFFICIENT_CREDITS", "LLM_MEDIA_INPUT_UNSUPPORTED"]) {
           expect(taskErrorMessage(code), `${locale}: ${code}`).toBeTruthy();
           expect(taskErrorMessage(code)).not.toContain(code);
         }

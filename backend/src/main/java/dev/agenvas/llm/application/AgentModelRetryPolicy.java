@@ -32,6 +32,8 @@ public final class AgentModelRetryPolicy {
             if (cause instanceof ApiProblemException) return null;
         }
         if (!modelBoundary) return null;
+        // Quota exhaustion can also use HTTP 429, but waiting cannot replenish the account.
+        if (LlmBillingFailures.matches(failure)) return null;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof OpenAIServiceException service) {
                 int status = service.statusCode();

@@ -2064,6 +2064,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/artifacts/{artifactId}/audio-trims": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 裁剪固定音频片段并创建独立派生节点
+         * @description 使用整数毫秒的起止位置截取当前选用音频，返回持久本地Task。来源最多10分钟/50MiB，片段至少100ms且必须完整落在来源内；输出固定双声道48kHz，WAV为PCM16、MP3为192kbps。WAV超过50MiB预算时受理前拒绝，可缩短片段或改用MP3。结果追加到同一Artifact的独立派生音频节点，使用空白草稿和精确来源；原节点及资源默认版本不变。取消或目标改变后结果仅归档，不重建已删除节点。无Provider调用或费用，同键同参重放原Task，同键异参冲突。裁剪结果可经现有AUDIO_REFERENCE用于音色参考，所选模型的格式/时长限制仍独立校验；裁剪不执行人声分离或创建声纹模型。
+         */
+        post: operations["runAudioTrim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/video-operations": {
         parameters: {
             query?: never;
@@ -2084,7 +2113,7 @@ export interface paths {
         put?: never;
         /**
          * 按功能设置固定来源视频并创建独立处理结果节点与任务
-         * @description 深度视频和视频高清派生同一视频产物的独立节点；音频分离创建独立音频产物/节点和来源视频产物的无声视频派生节点，同一任务提交两个结果。所有结果使用空白草稿及可删除派生线，来源选择不变。固定功能设置版本、能力版本、来源视频版本及参数；同键异参冲突。视频高清只执行管理员绑定的兼容 AI 能力。本地深度输出最长边 518px、12fps、无音轨的相对深度视频；本地音频分离读取第一音轨为双声道 48kHz PCM WAV，并直接复制原视频流、移除音轨为无声 MP4；云端音频输出也配套本地无声视频。两个目标独立核对选择 epoch/草稿版本，目标删除不重建，归档重试不重新生成。两类本地输入限 30 秒、200MiB、3840×2160 像素数。RunningHub 使用已发布的单视频输入契约，不接受任意工作流或请求。
+         * @description 深度视频和视频高清派生同一视频产物的独立节点；音频分离创建独立音频产物/节点和来源视频产物的无声视频派生节点，同一任务提交两个结果。所有结果使用空白草稿及可删除派生线，来源选择不变。固定功能设置版本、能力版本、来源视频版本及参数；同键异参冲突。视频高清只执行管理员绑定的兼容 AI 能力。本地深度输出最长边 518px、12fps、无音轨的相对深度视频；本地音频分离默认读取第一音轨，可选择音轨索引和WAV/MP3，输出双声道48kHz PCM WAV或192kbps MP3，并直接复制原视频流、移除音轨为无声MP4；云端音频输出也配套本地无声视频。两个目标独立核对选择epoch/草稿版本，目标删除不重建，归档重试不重新生成。本地深度输入限30秒、200MiB、3840×2160像素数；本地音频提取输入限10分钟、500MiB、4000万像素，输出音频限50MiB，WAV超预算受理前拒绝。RunningHub 使用已发布的单视频输入契约，不接受任意工作流或请求。
          */
         post: operations["runVideoOperation"];
         delete?: never;
@@ -2164,7 +2193,7 @@ export interface paths {
         put?: never;
         /**
          * 取消排队的直接媒体任务，或请求停止本地配音合成
-         * @description 外部媒体生成仅允许排队状态取消；本地配音合成允许READY/RUNNING立即取消，SUBMITTING设置cancelRequested并由后台停止。取消后晚到的本地成片只保留历史，不自动选用。
+         * @description 外部媒体生成仅允许排队状态取消；本地配音合成及音频裁剪允许READY/RUNNING立即取消，SUBMITTING设置cancelRequested并由后台停止。取消后晚到的本地结果只保留历史，不自动选用。
          */
         post: operations["cancelQueuedDirectMediaTask"];
         delete?: never;
@@ -4790,6 +4819,23 @@ export interface components {
                 }[];
             }[];
         };
+        RunAudioTrimRequest: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            sourceVersionId: string;
+            /** Format: int64 */
+            expectedCanvasItemVersion: number;
+            /** @description 包含此起点，单位毫秒 */
+            startMs: number;
+            /** @description 不包含此终点，至少比起点晚100ms，且不超过来源时长 */
+            endMs: number;
+            /**
+             * @default WAV
+             * @enum {string}
+             */
+            format: "WAV" | "MP3";
+        };
         RunVideoOperationRequest: {
             /** Format: uuid */
             canvasItemId: string;
@@ -5066,28 +5112,55 @@ export interface components {
             directorScene?: components["schemas"]["DirectorScene"];
             content: components["schemas"]["WritableArtifactContent"];
         };
-        DirectorScene: {
+        /** @description 新场景使用 v2 三轴缩放；v1 统一缩放场景保留原样提交与重放，不改写既有版本。 */
+        DirectorScene: components["schemas"]["DirectorSceneV1"] | components["schemas"]["DirectorSceneV2"];
+        DirectorSceneV1: {
             /** @enum {integer} */
             schemaVersion: 1;
             /** @enum {string} */
             aspectRatio: "16:9" | "9:16" | "1:1" | "4:3";
-            camera: {
-                azimuth: number;
-                elevation: number;
-                distance: number;
-                target: components["schemas"]["DirectorVector3"];
-                focalLength: number;
+            camera: components["schemas"]["DirectorCamera"];
+            objects: components["schemas"]["DirectorObjectV1"][];
+        };
+        DirectorSceneV2: {
+            /** @enum {integer} */
+            schemaVersion: 2;
+            /** @enum {string} */
+            aspectRatio: "16:9" | "9:16" | "1:1" | "4:3";
+            camera: components["schemas"]["DirectorCamera"];
+            objects: components["schemas"]["DirectorObjectV2"][];
+        };
+        DirectorCamera: {
+            azimuth: number;
+            elevation: number;
+            distance: number;
+            target: components["schemas"]["DirectorVector3"];
+            focalLength: number;
+        };
+        DirectorObjectV1: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "ACTOR" | "BOX" | "SPHERE" | "CYLINDER";
+            position: components["schemas"]["DirectorVector3"];
+            rotation: number;
+            scale: number;
+            color: string;
+        };
+        DirectorObjectV2: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "ACTOR" | "BOX" | "SPHERE" | "CYLINDER";
+            position: components["schemas"]["DirectorVector3"];
+            rotation: number;
+            /** @description 独立轴缩放倍率，X 为宽、Y 为高、Z 为深；每轴作用于对象的基础几何尺寸。 */
+            scale: {
+                x: number;
+                y: number;
+                z: number;
             };
-            objects: {
-                id: string;
-                name: string;
-                /** @enum {string} */
-                kind: "ACTOR" | "BOX" | "SPHERE" | "CYLINDER";
-                position: components["schemas"]["DirectorVector3"];
-                rotation: number;
-                scale: number;
-                color: string;
-            }[];
+            color: string;
         };
         DirectorVector3: {
             x: number;
@@ -5405,15 +5478,15 @@ export interface components {
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description Policies are schema v7 with systemPromptVersion=13 and toolPolicyVersion=5; retired protocols are rejected. The director manages the entire current project canvas, including nodes added or changed during a Run. read_canvas, manage_canvas_node and update_media_draft share project ownership, current selected-version checks, locks and optimistic CAS with normal application services. Explicit Skill inputs grant exact-version read access only. Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. */
+        /** @description Policies are schema v7 with systemPromptVersion=14 and toolPolicyVersion=6; retired protocols are rejected. The director manages the entire current project canvas, including nodes added or changed during a Run. read_canvas, manage_canvas_node and update_media_draft share project ownership, current selected-version checks, locks and optimistic CAS with normal application services. Explicit Skill inputs grant exact-version read access only. Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval. extract_audio and trim_audio accept the current canvasItemId, exact sourceVersionId and observed expectedCanvasItemVersion; they create immutable local audio results through the same authorized application services, with no external generation or media approval. extract_audio uses a fixed local processor, independent of administrator-configured cloud function routes. These tools and compose_video persist their task receipts and wait in WAITING_TASKS until the server freezes their terminal outcomes. The original tool reply then supplies the archived artifactVersionId or actual failure; acceptance alone does not mean completion and the model must not poll. Local tasks remain independent after acceptance: canceling the Run stops subsequent model turns but does not cancel these tasks. Task reads require the same Run's committed local-tool receipt; UNKNOWN and late results never trigger automatic regeneration or rewrite a frozen outcome. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. */
         RunPolicySnapshot: {
             /** @constant */
             schemaVersion: 7;
             /** @constant */
-            toolPolicyVersion: 5;
+            toolPolicyVersion: 6;
             allowedTools: string[];
             /** @constant */
-            systemPromptVersion: 13;
+            systemPromptVersion: 14;
             modelConfigSource: string;
             modelConfigVersion: number;
             /** @description No model-turn count limit. */
@@ -10266,6 +10339,46 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    runAudioTrim: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunAudioTrimRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理或重放的裁剪Task，不代表处理完成 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     runVideoOperation: {

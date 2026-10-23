@@ -23,6 +23,51 @@ class DirectorSceneValidatorTest {
     }
 
     @Test
+    void acceptsIndependentAxisScaleForEveryKindWithoutNormalizingV1OrV2() {
+        for (String kind : List.of("ACTOR", "BOX", "SPHERE", "CYLINDER")) {
+            ObjectNode legacy = scene();
+            item(legacy).put("kind", kind).put("scale", 2.5);
+            ObjectNode originalLegacy = legacy.deepCopy();
+            assertThatCode(() -> DirectorSceneValidator.validate(legacy)).doesNotThrowAnyException();
+            org.assertj.core.api.Assertions.assertThat(legacy).isEqualTo(originalLegacy);
+
+            ObjectNode current = axisScene();
+            item(current).put("kind", kind);
+            ObjectNode originalCurrent = current.deepCopy();
+            assertThatCode(() -> DirectorSceneValidator.validate(current)).doesNotThrowAnyException();
+            org.assertj.core.api.Assertions.assertThat(current).isEqualTo(originalCurrent);
+        }
+        ObjectNode empty = axisScene();
+        empty.putArray("objects");
+        assertThatCode(() -> DirectorSceneValidator.validate(empty)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsUnknownVersionsAndMismatchedScaleRepresentations() {
+        assertInvalid(scene().put("schemaVersion", 0));
+        assertInvalid(scene().put("schemaVersion", 3));
+        assertInvalid(scene().put("schemaVersion", 2));
+        assertInvalid(axisScene().put("schemaVersion", 1));
+    }
+
+    @Test
+    void axisScaleRequiresExactlyThreeFiniteBoundedNumbers() {
+        List<Consumer<ObjectNode>> invalid = List.of(
+                s -> scale(s).put("x", 0.09), s -> scale(s).put("y", 5.01),
+                s -> scale(s).put("z", -1), s -> scale(s).put("x", Double.NaN),
+                s -> scale(s).put("y", Double.POSITIVE_INFINITY),
+                s -> scale(s).put("z", Double.NEGATIVE_INFINITY),
+                s -> scale(s).put("x", "1"), s -> scale(s).putNull("y"),
+                s -> scale(s).remove("z"), s -> scale(s).put("w", 1),
+                s -> item(s).putNull("scale"), s -> item(s).putArray("scale").add(1).add(2).add(3));
+        for (Consumer<ObjectNode> change : invalid) {
+            ObjectNode scene = axisScene();
+            change.accept(scene);
+            assertInvalid(scene);
+        }
+    }
+
+    @Test
     void rejectsUnknownFieldsAtEveryLevelAndMalformedRequiredFields() {
         List<Consumer<ObjectNode>> invalid = List.of(
                 s -> s.put("assetUrl", "https://example.invalid/model.glb"),
@@ -85,4 +130,10 @@ class DirectorSceneValidatorTest {
 
     private ObjectNode camera(ObjectNode scene) { return (ObjectNode) scene.path("camera"); }
     private ObjectNode item(ObjectNode scene) { return (ObjectNode) scene.path("objects").get(0); }
+    private ObjectNode scale(ObjectNode scene) { return (ObjectNode) item(scene).path("scale"); }
+    private ObjectNode axisScene() {
+        ObjectNode scene = scene().put("schemaVersion", 2);
+        item(scene).set("scale", mapper.createObjectNode().put("x", 0.1).put("y", 5).put("z", 1.75));
+        return scene;
+    }
 }

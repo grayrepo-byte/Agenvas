@@ -15,6 +15,15 @@ public interface ToolExecutionRepository {
     /** Returns committed main-file activation and attachment read metadata for frozen approval provenance. */
     List<JsonNode> skillReads(UUID projectId, UUID runId);
 
+    /** Server-authored receipts for asynchronous local tools; old queue-only receipts are excluded. */
+    List<ToolExecution> localTaskExecutions(UUID projectId, UUID runId);
+
+    /** A task ID alone grants no access: the current Run must own its committed local-tool receipt. */
+    boolean ownsLocalTask(UUID projectId, UUID runId, UUID taskId);
+
+    /** Append one immutable terminal projection, preserving the original acceptance receipt and completion time. */
+    boolean appendLocalTaskOutcome(UUID id, JsonNode outcome);
+
     /** 仅在项目作用域内读取精确工具调用。 */
     Optional<ToolExecution> find(UUID projectId, UUID runId, int stepIndex, String toolCallId);
 

@@ -54,12 +54,13 @@ public class AgentVideoCompositionToolService {
             }
         }
         if (request.has("music")) requireSource(context, run, request.path("music").path("audioVersionId"), Artifact.Kind.AUDIO);
-        var task = compositions.runFromAgent(context.ownerId(), context.projectId(), context.runId(),
+        var task = compositions.runFromAgent(context.ownerId(), context.projectId(), context.runId(), operationId,
                 request, "agent-video-composition:" + operationId);
         String artifactId = task.input().path("artifactId").asText();
         String canvasItemId = task.input().path("canvasItemId").asText();
         ObjectNode result = mapper.createObjectNode().put("status", ToolResultStatus.SUCCEEDED.name())
-                .put("operationId", operationId.toString()).put("userVisibleSummary", "已提交本地配音合成任务，将在后台独立执行，可在新节点取消；成片尚未完成");
+                .put("operationId", operationId.toString()).put("userVisibleSummary", "已受理本地视频合成，完成后导演将自动继续");
+        result.put("awaitingLocalTask", true);
         result.putArray("createdIds").add(artifactId);
         result.putArray("createdCanvasItemIds").add(canvasItemId);
         result.putArray("updatedIds");

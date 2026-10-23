@@ -725,7 +725,7 @@ public class TaskService {
                 || current.status() == Task.Status.SUBMITTING
                 || current.status() == Task.Status.WAITING_PROVIDER
                 || current.status() == Task.Status.UNKNOWN
-                || current.status() == Task.Status.CANCELED && current.isVideoComposition() && current.cancelRequested();
+                || current.status() == Task.Status.CANCELED && current.isCancelableLocalProcessing() && current.cancelRequested();
         boolean acknowledgedPoll = current.status() == Task.Status.RUNNING
                 && current.providerRequestId() != null
                 && current.providerRequestId().equals(lease.providerRequestId());
@@ -743,7 +743,7 @@ public class TaskService {
             TaskRepository.ArtifactTarget target, JsonNode content, boolean selectResult) {
         ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
                 ownerId, lease.projectId(), target.artifactId(),
-                lease.compositionRunId() == null ? lease.runId() : lease.compositionRunId(),
+                lease.originatingRunId(),
                 target.expectedCurrentVersionId(), target.expectedArtifactVersion(), content,
                 lease.input().has("mediaInput") ? lease.input().path("mediaInput") : null,
                 selectResult && target.canvasItemId() == null);
@@ -778,7 +778,7 @@ public class TaskService {
                 extraArtifact = artifacts.createTaskMediaIdentityWithinChange(ownerId, lease.projectId(), extra.kind(),
                         "RunningHub " + extra.kind() + " " + (outputIndex + 1));
             }
-            var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(), lease.runId(), null,
+            var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(), lease.originatingRunId(), null,
                     extraArtifact.version(), extra.content(), lease.input().path("mediaInput"), false);
             var extraCard = canvas.placeTaskMediaOutputWithinChange(ownerId, lease.projectId(), target.canvasItemId(), extraArtifact.id(),
                     outputIndex++, lease.input().path("mediaInput"));
@@ -800,7 +800,7 @@ public class TaskService {
         UUID itemId = UUID.fromString(silent.path("canvasItemId").asText());
         UUID parent = UUID.fromString(silent.path("parentVersionId").asText());
         var version = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(),
-                artifactId, lease.runId(), parent, silent.path("artifactVersion").asLong(),
+                artifactId, lease.originatingRunId(), parent, silent.path("artifactVersion").asLong(),
                 extra.content(), lease.input().path("mediaInput"), false);
         canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(), itemId, artifactId, version.versionId());
         boolean selected = allowTargetSelection && canvas.selectTaskResultWithinChange(ownerId, lease.projectId(),
@@ -918,6 +918,8 @@ public class TaskService {
                 && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(errorCode)
                 && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(errorCode)
                 && !"VIDEO_AUDIO_TRACK_MISSING".equals(errorCode)
+                && !"AUDIO_TRIM_INVALID".equals(errorCode)
+                && !"AUDIO_TRIM_OUTPUT_TOO_LARGE".equals(errorCode)
                 && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(errorCode)
                 && !"MEDIA_RELAY_REQUIRED".equals(errorCode)
                 && !ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED.equals(errorCode)
@@ -949,7 +951,7 @@ public class TaskService {
         });
     }
 
-    /** 仅将 Provider 明确拒绝记为提交失败；超时或断线属于待核对，不能调用此方法。 */
+    /** Provider 明确拒绝或本地编辑已确定停止时记为失败；不确定的外部超时/断线仍须核对。 */
     @Transactional
     public void rejectSubmission(Task lease, String workerId, String errorCode) {
         String normalizedCode = validateErrorCode(errorCode);
@@ -960,7 +962,10 @@ public class TaskService {
                 throw leaseLost();
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
-            if (updated.isVideoComposition() && updated.status() == Task.Status.CANCELED)
+            // A local editor's confirmed failure or cancellation cannot have consumed a Provider request.
+            // External rejections keep their existing accounting boundary.
+            if (updated.isCancelableLocalProcessing()
+                    && (updated.status() == Task.Status.CANCELED || updated.status() == Task.Status.FAILED))
                 usage.releaseUnsubmittedMediaTask(ownerId, updated);
             events.append(ownerId, lease.projectId(), taskEvent(updated, true));
             blockWaitingRunForMedia(ownerId, updated);
@@ -1273,6 +1278,17 @@ public class TaskService {
      */
     private boolean pinnedMediaInputsCurrent(UUID ownerId, Task task) {
         JsonNode input = task.input();
+        if (task.isAudioTrim()) {
+            try {
+                UUID sourceId = UUID.fromString(input.path("audioTrim").path("sourceVersionId").asText());
+                var version = artifacts.requireMediaVersionForTask(ownerId, task.projectId(), sourceId, Artifact.Kind.AUDIO);
+                var references = input.path("mediaInput").path("audios");
+                return references.isArray() && references.size() == 1
+                        && sourceId.toString().equals(references.get(0).path("versionId").asText())
+                        && version.artifactId().toString().equals(references.get(0).path("artifactId").asText())
+                        && artifacts.get(ownerId, task.projectId(), version.artifactId()).artifact().archivedAt() == null;
+            } catch (ApiProblemException | IllegalArgumentException unavailable) { return false; }
+        }
         if (task.isVideoComposition()) {
             try {
                 for (String field : List.of("videos", "audios")) {

@@ -13,6 +13,9 @@ public interface AgentRunRepository {
     /** Bounded identity scan only; callers must recheck whether a blocked Run can safely end. */
     List<BlockedRunCandidate> blockedRecoveryCandidates(UUID afterId, int limit);
 
+    /** Active waiting Runs are also the durable repair queue for local tool completion notifications. */
+    List<WaitingRunCandidate> waitingRecoveryCandidates(UUID afterId, int limit);
+
     /** Caller holds project/run locks and has confirmed abandoning these expired units. */
     List<AgentRun> stopForHistoryCleanup(List<UUID> runIds, Instant now);
 

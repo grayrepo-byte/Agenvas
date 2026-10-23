@@ -309,6 +309,57 @@ class CanvasMediaContextPostgresIT {
         mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
                         .content(changedDirector.toString()))
                 .andExpect(status().isConflict());
+
+        // V2 preserves independent dimensions; the immutable V1 command remains replayable verbatim.
+        var axisScene = ((tools.jackson.databind.node.ObjectNode) directorScene.deepCopy())
+                .put("schemaVersion", 2);
+        ((tools.jackson.databind.node.ObjectNode) axisScene.path("objects").get(0)).set("scale",
+                mapper.createObjectNode().put("x", 2.5).put("y", 0.75).put("z", 1.25));
+        UUID axisTarget = UUID.randomUUID();
+        var axisRequest = directorRequest.deepCopy().put("targetItemId", axisTarget.toString());
+        axisRequest.set("directorScene", axisScene);
+        JsonNode axisSaved = mapper.readTree(mvc.perform(post(directorUrl)
+                        .with(auth).with(csrf()).contentType("application/json").content(axisRequest.toString()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(axisSaved.path("selectedVersion").path("frozenInput").path("directorScene"))
+                .isEqualTo(axisScene);
+        assertThat(axisSaved.path("selectedVersion").path("baseVersionId").asText())
+                .isEqualTo(firstVersion.toString());
+        assertThat(savedDirectorScene(read(mvc, auth, base + "/canvas/items"), axisTarget))
+                .isEqualTo(axisScene);
+        assertThat(savedDirectorScene(read(mvc, auth, base + "/snapshot").path("canvas"), axisTarget))
+                .isEqualTo(axisScene);
+        JsonNode axisReplay = mapper.readTree(mvc.perform(post(directorUrl)
+                        .with(auth).with(csrf()).contentType("application/json").content(axisRequest.toString()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(axisReplay.path("selectedVersionId")).isEqualTo(axisSaved.path("selectedVersionId"));
+        for (String axis : List.of("x", "y", "z")) {
+            var changedAxisRequest = axisRequest.deepCopy();
+            ((tools.jackson.databind.node.ObjectNode) changedAxisRequest.path("directorScene")
+                    .path("objects").get(0).path("scale")).put(axis, 3.5);
+            mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
+                            .content(changedAxisRequest.toString()))
+                    .andExpect(status().isConflict());
+        }
+        var invalidAxisRequest = axisRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString());
+        ((tools.jackson.databind.node.ObjectNode) invalidAxisRequest.path("directorScene")
+                .path("objects").get(0).path("scale")).put("x", 0);
+        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
+                        .content(invalidAxisRequest.toString()))
+                .andExpect(status().isBadRequest());
+        var mismatchedVersionRequest = axisRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString());
+        ((tools.jackson.databind.node.ObjectNode) mismatchedVersionRequest.path("directorScene"))
+                .put("schemaVersion", 1);
+        mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
+                        .content(mismatchedVersionRequest.toString()))
+                .andExpect(status().isBadRequest());
+        JsonNode legacyReplayAfterV2 = mapper.readTree(mvc.perform(post(directorUrl)
+                        .with(auth).with(csrf()).contentType("application/json").content(directorRequest.toString()))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(legacyReplayAfterV2.path("selectedVersionId")).isEqualTo(directed.path("selectedVersionId"));
+        assertThat(legacyReplayAfterV2.path("selectedVersion").path("frozenInput").path("directorScene"))
+                .isEqualTo(directorScene);
+
         mvc.perform(post(directorUrl).with(auth).with(csrf()).contentType("application/json")
                         .content(directorRequest.deepCopy().put("targetItemId", UUID.randomUUID().toString())
                                 .put("expectedVersion", 99).toString()))
@@ -354,7 +405,7 @@ class CanvasMediaContextPostgresIT {
         UUID directorArtifactId = UUID.fromString(directorResource.path("id").asText());
         UUID emptyDirector = UUID.randomUUID();
         place(mvc, auth, base, emptyDirector, directorArtifactId, 4);
-        var emptyDirectorRequest = directorRequest.deepCopy().put("targetItemId", emptyDirector.toString());
+        var emptyDirectorRequest = axisRequest.deepCopy().put("targetItemId", emptyDirector.toString());
         emptyDirectorRequest.putNull("sourceVersionId");
         String emptyDirectorUrl = base + "/canvas-items/" + emptyDirector + "/upload-version";
         JsonNode filledDirector = mapper.readTree(mvc.perform(post(emptyDirectorUrl)
@@ -365,7 +416,7 @@ class CanvasMediaContextPostgresIT {
         assertThat(filledDirector.path("title").asText()).isEqualTo("New scene");
         assertThat(filledDirector.path("selectedVersion").path("baseVersionId").isNull()).isTrue();
         assertThat(filledDirector.path("selectedVersion").path("frozenInput").path("directorScene"))
-                .isEqualTo(directorScene);
+                .isEqualTo(axisScene);
         JsonNode emptyDirectorReplay = mapper.readTree(mvc.perform(post(emptyDirectorUrl)
                         .with(auth).with(csrf()).contentType("application/json")
                         .content(emptyDirectorRequest.toString()))
@@ -465,6 +516,15 @@ class CanvasMediaContextPostgresIT {
         for (JsonNode item : canvas.path("items")) {
             if (itemId.toString().equals(item.path("id").asText())) {
                 return item.path("selectedVersionId").asText();
+            }
+        }
+        throw new AssertionError("CanvasItem missing: " + itemId);
+    }
+
+    private JsonNode savedDirectorScene(JsonNode canvas, UUID itemId) {
+        for (JsonNode item : canvas.path("items")) {
+            if (itemId.toString().equals(item.path("id").asText())) {
+                return item.path("selectedVersion").path("frozenInput").path("directorScene");
             }
         }
         throw new AssertionError("CanvasItem missing: " + itemId);

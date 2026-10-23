@@ -7,12 +7,12 @@ import tools.jackson.databind.JsonNode;
 /** Pins definitions and execution to the same Run policy, without retired protocol fallbacks. */
 public final class RunToolPolicy {
     public static final int CURRENT_SCHEMA_VERSION = 7;
-    public static final int CURRENT_VERSION = 5;
+    public static final int CURRENT_VERSION = 6;
     public static final List<String> CURRENT = List.of("read_project_summary", "read_selection",
             "read_artifacts", "read_media_sample", "read_task_status", "create_text", "revise_artifact",
             "arrange_items", "list_media_capabilities", "propose_media_generation",
             "read_skill_resource", "read_skill", "read_skill_asset", "read_canvas",
-            "manage_canvas_node", "update_media_draft", "compose_video");
+            "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio", "trim_audio");
 
     private RunToolPolicy() {}
 

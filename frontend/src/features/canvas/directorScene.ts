@@ -2,6 +2,8 @@ import type { RunImageOperationRequest } from "../../shared/api/client";
 
 export const DIRECTOR_OBJECT_KINDS = ["ACTOR", "BOX", "SPHERE", "CYLINDER"] as const;
 export const DIRECTOR_ASPECT_RATIOS = ["16:9", "9:16", "1:1", "4:3"] as const;
+export const DIRECTOR_SCENE_SCHEMA_VERSION = 2;
+export const DIRECTOR_SCALE_LIMITS = { min: 0.1, max: 5 } as const;
 
 export interface DirectorVector { x: number; y: number; z: number }
 export interface DirectorObject {
@@ -11,11 +13,12 @@ export interface DirectorObject {
   position: DirectorVector;
   /** Rotation around the world Y axis, in degrees. Characters face +Z at zero. */
   rotation: number;
-  scale: number;
+  /** Independent local X width, Y height and Z depth ratios; 1 preserves the original model. */
+  scale: DirectorVector;
   color: string;
 }
 export interface DirectorScene {
-  schemaVersion: 1;
+  schemaVersion: typeof DIRECTOR_SCENE_SCHEMA_VERSION;
   aspectRatio: typeof DIRECTOR_ASPECT_RATIOS[number];
   camera: {
     /** Zero is +Z; positive azimuth moves the camera toward +X. */
@@ -38,11 +41,11 @@ export const DIRECTOR_CAPTURE_SIZES: Record<DirectorScene["aspectRatio"], { widt
 /** An original local blocking scene, with no model download or provider call. */
 export function createDirectorScene(): DirectorScene {
   return {
-    schemaVersion: 1,
+    schemaVersion: DIRECTOR_SCENE_SCHEMA_VERSION,
     aspectRatio: "16:9",
     camera: { azimuth: 25, elevation: 12, distance: 7, target: { x: 0, y: 0.9, z: 0 }, focalLength: 35 },
     objects: [{ id: crypto.randomUUID(), name: "Actor 1", kind: "ACTOR", position: { x: 0, y: 0, z: 0 },
-      rotation: 0, scale: 1, color: "#D9A35F" }],
+      rotation: 0, scale: { x: 1, y: 1, z: 1 }, color: "#D9A35F" }],
   };
 }
 
@@ -59,34 +62,46 @@ function vector(value: unknown): value is DirectorVector {
   return record(value) && keys(value, ["x", "y", "z"])
     && finite(value.x, -20, 20) && finite(value.y, -20, 20) && finite(value.z, -20, 20);
 }
-function object(value: unknown): value is DirectorObject {
+type LegacyDirectorObject = Omit<DirectorObject, "scale"> & { scale: number };
+function scaleVector(value: unknown): value is DirectorVector {
+  return record(value) && keys(value, ["x", "y", "z"])
+    && finite(value.x, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max)
+    && finite(value.y, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max)
+    && finite(value.z, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max);
+}
+function object(value: unknown, version: 1 | 2): value is DirectorObject | LegacyDirectorObject {
   return record(value) && keys(value, ["id", "name", "kind", "position", "rotation", "scale", "color"])
     && typeof value.id === "string" && value.id.trim().length > 0 && value.id.length <= 64
     && typeof value.name === "string" && value.name.trim().length > 0 && value.name.length <= 80
     && DIRECTOR_OBJECT_KINDS.some((kind) => kind === value.kind) && vector(value.position)
-    && finite(value.rotation, -180, 180) && finite(value.scale, 0.1, 5)
+    && finite(value.rotation, -180, 180)
+    && (version === 1 ? finite(value.scale, DIRECTOR_SCALE_LIMITS.min, DIRECTOR_SCALE_LIMITS.max) : scaleVector(value.scale))
     && typeof value.color === "string" && /^#[\da-f]{6}$/i.test(value.color);
 }
 
-/** Validate persisted JSON before allocating geometry; return a detached editing draft. */
+/** Validate before allocating geometry. Upgrade a detached v1 draft without rewriting archived scene data. */
 export function parseDirectorScene(value: unknown): DirectorScene | null {
-  if (!record(value) || !keys(value, ["schemaVersion", "aspectRatio", "camera", "objects"]) || value.schemaVersion !== 1
+  if (!record(value) || !keys(value, ["schemaVersion", "aspectRatio", "camera", "objects"])
+    || (value.schemaVersion !== 1 && value.schemaVersion !== DIRECTOR_SCENE_SCHEMA_VERSION)
     || !DIRECTOR_ASPECT_RATIOS.some((ratio) => ratio === value.aspectRatio)
     || !record(value.camera) || !Array.isArray(value.objects) || value.objects.length > 32) return null;
+  const version = value.schemaVersion;
   const camera = value.camera;
   if (!keys(camera, ["azimuth", "elevation", "distance", "target", "focalLength"])
     || !finite(camera.azimuth, -180, 180) || !finite(camera.elevation, -80, 80)
     || !finite(camera.distance, 1, 50) || !vector(camera.target) || !finite(camera.focalLength, 18, 120)
-    || !value.objects.every(object) || new Set(value.objects.map((item) => item.id)).size !== value.objects.length) return null;
+    || !value.objects.every((item): item is DirectorObject | LegacyDirectorObject => object(item, version))
+    || new Set(value.objects.map((item) => item.id)).size !== value.objects.length) return null;
   const aspectRatio = DIRECTOR_ASPECT_RATIOS.find((ratio) => ratio === value.aspectRatio);
   if (!aspectRatio) return null;
   return {
-    schemaVersion: 1,
+    schemaVersion: DIRECTOR_SCENE_SCHEMA_VERSION,
     aspectRatio,
     camera: { azimuth: camera.azimuth, elevation: camera.elevation, distance: camera.distance,
       target: { x: camera.target.x, y: camera.target.y, z: camera.target.z }, focalLength: camera.focalLength },
     objects: value.objects.map((item) => ({ id: item.id, name: item.name, kind: item.kind,
-      position: { ...item.position }, rotation: item.rotation, scale: item.scale, color: item.color })),
+      position: { ...item.position }, rotation: item.rotation,
+      scale: typeof item.scale === "number" ? { x: item.scale, y: item.scale, z: item.scale } : { ...item.scale }, color: item.color })),
   };
 }
 

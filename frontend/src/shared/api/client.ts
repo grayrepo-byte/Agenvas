@@ -68,6 +68,7 @@ export type VideoOperation = components["schemas"]["VideoOperation"];
 export type MediaFunction = components["schemas"]["MediaFunction"];
 export type MediaFunctionSetting = components["schemas"]["MediaFunctionSetting"];
 export type RunVideoOperationRequest = components["schemas"]["RunVideoOperationRequest"];
+export type RunAudioTrimRequest = components["schemas"]["RunAudioTrimRequest"];
 export type RunTextGenerationRequest = components["schemas"]["RunTextGenerationRequest"];
 export type DirectMediaQueueStatus = components["schemas"]["DirectMediaQueueStatus"];
 export type Asset = components["schemas"]["Asset"];
@@ -234,7 +235,7 @@ export function assetContentUrl(projectId: string, assetId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/content`;
 }
 
-/** Retrieves persisted, owner-scoped metadata before constructing a video trim interval. */
+/** Retrieves persisted, owner-scoped metadata before preparing media edits. */
 export async function getAssetMetadata(projectId: string, assetId: string): Promise<Asset> {
   return readJson<Asset>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}`,
@@ -639,6 +640,13 @@ export function runVideoOperation(projectId: string, artifactId: string, input: 
   return writeJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/video-operations`, {
     method: "POST", headers: { "Idempotency-Key": commandKey }, body: JSON.stringify(input),
   });
+}
+
+/** Creates a derived audio node from a fixed source version and exact millisecond range. */
+export function runAudioTrim(projectId: string, artifactId: string, input: RunAudioTrimRequest, commandKey: string): Promise<Task> {
+  return writeJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/audio-trims`, {
+    method: "POST", headers: { "Idempotency-Key": commandKey }, body: JSON.stringify(input),
+  }, t("audio.trim.failed"));
 }
 
 /** Card media history includes direct requests and user-approved Agent tasks. */

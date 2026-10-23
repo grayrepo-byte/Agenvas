@@ -382,7 +382,7 @@ describe("ProjectWorkspacePage", () => {
       profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
     const creates = vi.fn();
     const requests: CreateRunRequest[] = [];
-    const policy = { schemaVersion: 7, toolPolicyVersion: 5, systemPromptVersion: 13, allowedTools: ["compose_video"],
+    const policy = { schemaVersion: 7, toolPolicyVersion: 6, systemPromptVersion: 14, allowedTools: ["compose_video"],
       modelConfigSource: "mock", modelConfigVersion: 1, maxModelTurns: null, maxToolExecutions: null };
     const selectedItemIds = singleVideo ? [video.id] : [script.id, video.id];
     useCanvasStore.setState({ selectedIds: selectedItemIds,
@@ -1723,7 +1723,7 @@ describe("ProjectWorkspacePage", () => {
           modelAvailable, providerAdapter: modelAvailable ? "FakeChatModel" : null,
           modelId: modelAvailable ? "fixture-model" : null,
           toolCalling: true,
-          policySnapshot: { schemaVersion: 7, toolPolicyVersion: 5, systemPromptVersion: 13, allowedTools: ["read_canvas"], modelConfigSource: "fixture",
+          policySnapshot: { schemaVersion: 7, toolPolicyVersion: 6, systemPromptVersion: 14, allowedTools: ["read_canvas"], modelConfigSource: "fixture",
             modelConfigVersion: 7, maxModelTurns: null, maxToolExecutions: null },
         });
       }),
@@ -1744,7 +1744,7 @@ describe("ProjectWorkspacePage", () => {
         expect(body).toMatchObject({ agentId, instruction: "规划三个镜头",
           conversationId: `conversation-${agentId}`, expectedConversationVersion: 0,
           expectedAgentVersion: 1, expectedModelConfigSource: "fixture",
-          expectedModelConfigVersion: 7, expectedSystemPromptVersion: 13 });
+          expectedModelConfigVersion: 7, expectedSystemPromptVersion: 14 });
         expect(Array.isArray(body.selectedItemIds)).toBe(true);
         idempotencyKeys.push(request.headers.get("Idempotency-Key") ?? "");
         starts += 1;

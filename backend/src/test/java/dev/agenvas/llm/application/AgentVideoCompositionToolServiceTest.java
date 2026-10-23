@@ -50,7 +50,7 @@ class AgentVideoCompositionToolServiceTest {
         UUID artifactId = UUID.randomUUID(), canvasItemId = UUID.randomUUID();
         when(task.input()).thenReturn(mapper.createObjectNode().put("artifactId", artifactId.toString())
                 .put("canvasItemId", canvasItemId.toString()));
-        when(compositions.runFromAgent(eq(context.ownerId()), eq(context.projectId()), eq(context.runId()),
+        when(compositions.runFromAgent(eq(context.ownerId()), eq(context.projectId()), eq(context.runId()), eq(operation),
                 any(), eq("agent-video-composition:" + operation))).thenReturn(task);
 
         var result = tools.compose(context, run, operation, request.toString());
@@ -59,8 +59,9 @@ class AgentVideoCompositionToolServiceTest {
         ordered.verify(artifacts).requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, video);
         ordered.verify(artifacts).requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, audio);
         ordered.verify(artifacts).requireAgentReadableVersion(context.ownerId(), context.projectId(), snapshot, secondAudio);
-        ordered.verify(compositions).runFromAgent(context.ownerId(), context.projectId(), context.runId(), request,
+        ordered.verify(compositions).runFromAgent(context.ownerId(), context.projectId(), context.runId(), operation, request,
                 "agent-video-composition:" + operation);
+        assertThat(result.path("awaitingLocalTask").asBoolean()).isTrue();
         assertThat(result.path("status").asText()).isEqualTo("SUCCEEDED");
         assertThat(result.at("/data/status").asText()).isEqualTo("READY");
         assertThat(result.at("/data/completed").asBoolean()).isFalse();

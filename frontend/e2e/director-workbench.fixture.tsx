@@ -2,14 +2,33 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DirectorWorkbench } from "../src/features/canvas/DirectorWorkbench";
+import { createDirectorScene } from "../src/features/canvas/directorScene";
 import type { UploadCanvasItemVersionRequest } from "../src/shared/api/client";
-import { setLocale } from "../src/shared/i18n";
+import { resolveLocale, setLocale } from "../src/shared/i18n";
 import { Button } from "../src/shared/ui/primitives/button";
-import { imageFunctionsFixture, imageFunctionSettings } from "../src/test/imageFunctionsFixture";
+import { imageFunctionsFixture, imageFunctionSettings, imageWorkflowCapability } from "../src/test/imageFunctionsFixture";
 import "../src/styles.css";
 
 // Synthetic browser evidence only: actual local WebGL and PNG bytes, no backend or Provider.
-setLocale("zh");
+setLocale(resolveLocale(new URL(location.href).searchParams.get("locale")) ?? "zh");
+const workflowFixture = new URL(location.href).searchParams.has("workflow");
+const restoreFixture = new URL(location.href).searchParams.has("restore");
+const legacyFixture = new URL(location.href).searchParams.has("legacy");
+const legacyBase = createDirectorScene();
+const legacyScene = legacyFixture ? { ...legacyBase, schemaVersion: 1,
+  objects: legacyBase.objects.map((object) => ({ ...object, name: "旧版人偶", scale: 1.6 })) } : undefined;
+const mediaSettings = imageFunctionsFixture();
+if (workflowFixture) {
+  const capability = imageWorkflowCapability();
+  capability.id = "synthetic-angle-workflow";
+  const definition = capability.settings.runningHub;
+  if (definition) definition.fields.push(...Array.from({ length: 8 }, (_, index) => ({
+    key: `synthetic-field-${index}`, label: `合成参数 ${index + 1}`, type: "STRING" as const,
+    required: false, advanced: false, nodeId: String(index + 10), fieldName: "value",
+  })));
+  const connection = mediaSettings.connections[1];
+  if (connection) mediaSettings.connections.push({ ...connection, id: "synthetic-workflow", platform: "RUNNINGHUB", capabilities: [capability] });
+}
 const evidence = { uploads: [] as { width: number; height: number; bytes: number; colors: number }[],
   scenes: [] as UploadCanvasItemVersionRequest[], angles: [] as unknown[] };
 let capturedImageUrl: string | undefined;
@@ -23,8 +42,8 @@ window.fetch = async (input, init) => {
   if (!url.pathname.startsWith("/api/")) return originalFetch(input, init);
   let response: unknown;
   if (url.pathname.endsWith("/auth/csrf")) response = { headerName: "X-XSRF-TOKEN", token: "synthetic-token" };
-  else if (url.pathname.endsWith("/media-functions")) response = imageFunctionSettings();
-  else if (url.pathname.endsWith("/media-connections")) response = imageFunctionsFixture();
+  else if (url.pathname.endsWith("/media-functions")) response = imageFunctionSettings(workflowFixture ? "synthetic-angle-workflow" : undefined);
+  else if (url.pathname.endsWith("/media-connections")) response = mediaSettings;
   else if (url.pathname.endsWith("/assets")) {
     if (!(init?.body instanceof FormData)) throw new Error("Expected a real multipart PNG upload");
     const file = init.body.get("file");
@@ -66,12 +85,21 @@ function Fixture() {
   return <main style={{ padding: 24 }}>
     <Button id="open-director-fixture" onClick={() => setOpen(true)}>打开合成导演台</Button>
     <output id="director-browser-evidence" className="sr-only">{JSON.stringify(evidence)}</output>
-    <img id="director-browser-capture" alt="Synthetic captured PNG evidence" hidden />
+    <img id="director-browser-capture" alt="Synthetic captured PNG evidence" hidden={open || evidence.uploads.length === 0}
+      style={{ display: open || evidence.uploads.length === 0 ? "none" : "block", maxWidth: "100%", maxHeight: "80dvh", marginTop: 16 }} />
     {open && <DirectorWorkbench projectId="synthetic-project" artifactId="synthetic-artifact" canvasItemId="synthetic-item"
       expectedVersion={2} sourceVersionId="synthetic-source" sourceTitle="Synthetic source image"
+      initialScene={restoreFixture ? evidence.scenes.at(-1)?.directorScene ?? legacyScene : legacyScene}
       sourceUrl={sourceCanvas.toDataURL("image/png")} onClose={() => setOpen(false)} />}
   </main>;
 }
-createRoot(document.getElementById("root")!).render(<QueryClientProvider client={new QueryClient({
+const fixtureRoot = createRoot(document.getElementById("root")!);
+fixtureRoot.render(<QueryClientProvider client={new QueryClient({
   defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
 })}><Fixture /></QueryClientProvider>);
+if (import.meta.hot) import.meta.hot.dispose(() => {
+  // A fixture entry can rerun during HMR; release its WebGL viewport and synthetic fetch first.
+  fixtureRoot.unmount();
+  window.fetch = originalFetch;
+  if (capturedImageUrl) URL.revokeObjectURL(capturedImageUrl);
+});

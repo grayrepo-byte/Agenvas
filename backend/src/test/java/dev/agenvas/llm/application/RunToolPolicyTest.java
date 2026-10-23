@@ -77,7 +77,23 @@ class RunToolPolicyTest {
                 .contains("audioVersionId").doesNotContain("startMs");
         assertThat(definition.inputSchema()).contains("videoVersionId", "audioVersionId", "rationale", "BACKGROUND")
                 .doesNotContain("ownerId", "projectId", "runId", "url", "ffmpeg");
-        assertThat(definition.description()).contains("queuing only", "do not poll", "1.15x");
+        assertThat(definition.description()).contains("acceptance only", "durably waits", "do not poll", "1.15x");
+    }
+    @Test void localAudioSchemasExposeExactCanvasVersionsWithoutAuthorityOrRawCommands() {
+        var policy = policy();
+        policy.putArray("allowedTools").add("extract_audio").add("trim_audio");
+        assertThat(names(policy)).containsExactly("extract_audio", "trim_audio");
+        for (var callback : registry.modelDefinitions(policy)) {
+            var definition = callback.getToolDefinition();
+            JsonNode schema = mapper.readTree(definition.inputSchema());
+            assertThat(schema.path("additionalProperties").asBoolean()).isFalse();
+            assertThat(schema.path("required").toString()).contains("canvasItemId", "sourceVersionId", "expectedCanvasItemVersion");
+            assertThat(definition.inputSchema()).doesNotContain("runId", "ownerId", "projectId", "url", "ffmpeg");
+            assertThat(definition.description()).contains("no Provider charge", "resumes");
+            if (definition.name().equals("extract_audio"))
+                assertThat(schema.at("/properties/trackIndex/maximum").asInt()).isEqualTo(31);
+            else assertThat(schema.path("required").toString()).contains("startMs", "endMs");
+        }
     }
     private tools.jackson.databind.node.ObjectNode policy() {
         return mapper.createObjectNode().put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)

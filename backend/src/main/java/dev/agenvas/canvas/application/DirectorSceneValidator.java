@@ -15,13 +15,16 @@ final class DirectorSceneValidator {
     private static final Set<String> VECTOR_FIELDS = Set.of("x", "y", "z");
     private static final Set<String> ASPECT_RATIOS = Set.of("16:9", "9:16", "1:1", "4:3");
     private static final Set<String> KINDS = Set.of("ACTOR", "BOX", "SPHERE", "CYLINDER");
+    private static final int UNIFORM_SCALE_VERSION = 1;
+    private static final int AXIS_SCALE_VERSION = 2;
 
     private DirectorSceneValidator() {}
 
     static void validate(JsonNode scene) {
         object(scene, SCENE_FIELDS);
         JsonNode schemaVersion = scene.path("schemaVersion");
-        if (!schemaVersion.isIntegralNumber() || !schemaVersion.canConvertToInt() || schemaVersion.asInt() != 1
+        if (!schemaVersion.isIntegralNumber() || !schemaVersion.canConvertToInt()
+                || (schemaVersion.asInt() != UNIFORM_SCALE_VERSION && schemaVersion.asInt() != AXIS_SCALE_VERSION)
                 || !ASPECT_RATIOS.contains(text(scene.path("aspectRatio"), 4))) throw invalid();
         JsonNode camera = scene.path("camera");
         object(camera, CAMERA_FIELDS);
@@ -40,7 +43,14 @@ final class DirectorSceneValidator {
             if (!KINDS.contains(text(item.path("kind"), 8))) throw invalid();
             vector(item.path("position"));
             number(item.path("rotation"), -180, 180);
-            number(item.path("scale"), 0.1, 5);
+            // Keep the original payload intact: old accepted commands still replay their v1 scalar.
+            if (schemaVersion.asInt() == UNIFORM_SCALE_VERSION) {
+                number(item.path("scale"), 0.1, 5);
+            } else {
+                JsonNode scale = item.path("scale");
+                object(scale, VECTOR_FIELDS);
+                for (String field : VECTOR_FIELDS) number(scale.path(field), 0.1, 5);
+            }
             if (!text(item.path("color"), 7).matches("#[0-9a-fA-F]{6}")) throw invalid();
         }
     }

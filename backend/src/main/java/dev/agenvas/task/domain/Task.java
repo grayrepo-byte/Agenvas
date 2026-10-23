@@ -60,11 +60,37 @@ public record Task(
         return kind == Kind.VIDEO_GENERATION && input.path("videoComposition").isObject();
     }
 
+    public boolean isAudioTrim() {
+        return kind == Kind.AUDIO_GENERATION && input.path("audioTrim").isObject();
+    }
+
+    /** Only fixed local editors can stop an active process; external generation keeps its existing boundary. */
+    public boolean isCancelableLocalProcessing() { return isVideoComposition() || isAudioTrim(); }
+
     /** Local composition runs independently after acceptance; this is its trusted initiating conversation. */
     public UUID compositionRunId() {
         if (!isVideoComposition() || !input.path("compositionRunId").isString()) return null;
         try { return UUID.fromString(input.path("compositionRunId").asText()); }
         catch (IllegalArgumentException invalid) { return null; }
+    }
+
+    /** Only trusted local tool entry points write this association; the tool ledger checks it again. */
+    public UUID agentLocalRunId() { return localOriginId("runId"); }
+    public UUID agentLocalOperationId() { return localOriginId("operationId"); }
+
+    private UUID localOriginId(String field) {
+        if (runId != null || !(isVideoComposition() || isAudioTrim()
+                || kind == Kind.AUDIO_GENERATION && "EXTRACT_AUDIO".equals(input.path("videoOperation").path("name").asText()))) return null;
+        JsonNode value = input.path("agentLocalOrigin").path(field);
+        if (!value.isTextual()) return null;
+        try { return UUID.fromString(value.asText()); }
+        catch (IllegalArgumentException malformed) { return null; }
+    }
+
+    /** Provenance does not couple independent accepted local tasks to Run cancellation. */
+    public UUID originatingRunId() {
+        if (agentLocalRunId() != null) return agentLocalRunId();
+        return compositionRunId() == null ? runId : compositionRunId();
     }
 
     /** Image analysis produces text in the Task result without mutating a media draft or Artifact. */
@@ -89,7 +115,7 @@ public record Task(
         if (Initiator.EXTERNAL_MCP.name().equals(input.path("initiator").asText())
                 && runId == null && input.path("mcpOperationId").isString()
                 && input.path("mcpTokenId").isString()) return Initiator.EXTERNAL_MCP;
-        return runId == null && compositionRunId() == null ? Initiator.USER_DIRECT : Initiator.BUILTIN_AGENT;
+        return originatingRunId() == null ? Initiator.USER_DIRECT : Initiator.BUILTIN_AGENT;
     }
 
     /** Worker 可以认领的受限任务类别。 */

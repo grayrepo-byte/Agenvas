@@ -58,7 +58,7 @@ import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { VoiceLibrary } from "./VoiceLibrary";
 import { readContentText } from "./artifactContent";
 import { fieldsFromMediaDraft, useMediaDraftSession, useMediaDraftSessionLifecycle } from "./useMediaDraftSession";
-import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard,isMediaTaskRunning,isVideoCompositionTask } from "./mediaTaskState";
+import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard,isMediaTaskRunning,isVideoCompositionTask,isAudioTrimTask } from "./mediaTaskState";
 import { taskErrorDetail } from "./taskErrorMessages";
 import { VOICES } from "./voiceCatalog";
 import { ASPECT_RATIO_OPTIONS, VIDEO_ASPECT_RATIO_OPTIONS, RESOLUTION_OPTIONS, QUALITY_OPTIONS,
@@ -190,10 +190,12 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS });
   const latestTask = latestMediaTask(directTasks.data);
   const localComposition = latestTask && isVideoCompositionTask(latestTask);
+  const localAudioTrim = latestTask && isAudioTrimTask(latestTask);
+  const localProcessing = localComposition || localAudioTrim;
   const queue = useQuery({
     queryKey: ["direct-media-queue", artifact.projectId, latestTask?.id],
     queryFn: () => getDirectMediaQueueStatus(artifact.projectId, latestTask!.id),
-    enabled: latestTask?.status === "READY" && latestTask.runId === null && !localComposition,
+    enabled: latestTask?.status === "READY" && latestTask.runId === null && !localProcessing,
     refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS,
   });
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
@@ -1401,14 +1403,14 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         || chosenCapability?.adapterId === "WAN_VIDEO" && videoCount + audioCount > 0) ? <EditorFeedbackRow>{t("media.editor.videoRelayHint")}</EditorFeedbackRow> : null}
       {latestTask && (latestTask.status === "FAILED" || latestTask.status === "BLOCKED")
         ? <EditorFeedbackRow tone="danger">{t("media.editor.generationIncomplete", { "0": taskErrorDetail(latestTask.errorCode) })}</EditorFeedbackRow> : null}
-      {localComposition && latestTask.runId === null && ["READY", "RUNNING", "SUBMITTING"].includes(latestTask.status)
+      {localProcessing && latestTask.runId === null && ["READY", "RUNNING", "SUBMITTING"].includes(latestTask.status)
         ? <EditorFeedbackRow tone="neutral" action={
           <Button variant="ghost" size="xs" type="button" disabled={cancel.isPending || latestTask.cancelRequested}
             onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending || latestTask.cancelRequested
-              ? t("media.editor.compositionStopping") : t("media.editor.cancelComposition")}</Button>
-        }>{latestTask.cancelRequested ? t("media.editor.compositionStopRequested")
-          : latestTask.status === "READY" ? t("media.editor.compositionQueued") : t("media.editor.compositionRunning")}</EditorFeedbackRow> : null}
-      {!localComposition && latestTask?.status === "READY" && latestTask.runId === null ? <EditorFeedbackRow tone={queue.error ? "warning" : "neutral"} action={
+              ? t(localAudioTrim ? "audio.trim.stopping" : "media.editor.compositionStopping") : t(localAudioTrim ? "audio.trim.cancelTask" : "media.editor.cancelComposition")}</Button>
+        }>{latestTask.cancelRequested ? t(localAudioTrim ? "audio.trim.stopRequested" : "media.editor.compositionStopRequested")
+          : latestTask.status === "READY" ? t(localAudioTrim ? "audio.trim.queued" : "media.editor.compositionQueued") : t(localAudioTrim ? "audio.trim.running" : "media.editor.compositionRunning")}</EditorFeedbackRow> : null}
+      {!localProcessing && latestTask?.status === "READY" && latestTask.runId === null ? <EditorFeedbackRow tone={queue.error ? "warning" : "neutral"} action={
         <Button variant="ghost" size="xs" type="button" disabled={cancel.isPending} onClick={() => cancel.mutate(latestTask.id)}>{cancel.isPending ? t("media.editor.canceling") : t("media.editor.cancelQueue")}</Button>
       }>{queue.error ? t("media.editor.queuePositionUnavailable") : queue.data
         ? t("media.editor.queuePosition", { "0": queue.data.waitingAhead, "1": QUEUE_LABELS[queue.data.reason] })

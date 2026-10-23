@@ -105,7 +105,7 @@ class VideoCompositionLifecyclePostgresIT {
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         failure -> assertThat(failure.code()).isEqualTo("TASK_LEASE_LOST"));
         assertThat(tasks.listProviderAttempts(owner.userId(), fixture.project(), accepted.id())).isEmpty();
-        assertThat(repository.cancelVideoComposition(lease, java.time.Instant.now())).isFalse();
+        assertThat(repository.cancelLocalProcessing(lease, java.time.Instant.now())).isFalse();
         assertThat(usage.listProject(owner.userId(), fixture.project())).filteredOn(e -> e.taskId().equals(accepted.id()))
                 .extracting(UsageEntry::entryType).containsExactlyInAnyOrder(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.RELEASE);
 
@@ -193,7 +193,7 @@ class VideoCompositionLifecyclePostgresIT {
         Fixture fixture = fixture();
         var agent = dev.agenvas.testing.AgentFixture.configureDirector(agents, owner.userId(), fixture.project(), "Director", "Compose");
         var run = runs.create(owner.userId(), fixture.project(), agent.id(), "Compose", "retry-director").run();
-        Task original = compositions.runFromAgent(owner.userId(), fixture.project(), run.id(), request(fixture), "director-composition");
+        Task original = compositions.runFromAgent(owner.userId(), fixture.project(), run.id(), UUID.randomUUID(), request(fixture), "director-composition");
         Task lease = tasks.claimBoundMedia("interrupted-local-worker", 1).getFirst();
         tasks.beginSubmission(lease, "interrupted-local-worker");
         jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id").param("id", original.id()).update();

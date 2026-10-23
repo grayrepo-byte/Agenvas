@@ -24,6 +24,8 @@ import tools.jackson.databind.ObjectMapper;
 @Repository
 public class JooqToolExecutionRepository implements ToolExecutionRepository {
 
+    private static final List<String> LOCAL_TASK_TOOLS = List.of("extract_audio", "trim_audio", "compose_video");
+
     /** 执行工具执行账本的查询与条件更新。 */
     private final DSLContext dsl;
     /** 将已完成工具结果从 JSONB 还原为结果树。 */
@@ -67,6 +69,40 @@ public class JooqToolExecutionRepository implements ToolExecutionRepository {
                 .and(DSL.jsonbGetAttributeAsText(TOOL_EXECUTION.RESULT_JSON, "status").eq("SUCCEEDED"))
                 .orderBy(TOOL_EXECUTION.STEP_INDEX, TOOL_EXECUTION.CREATED_AT, TOOL_EXECUTION.ID)
                 .fetch(row -> mapper.readTree(row.get(TOOL_EXECUTION.RESULT_JSON).data()).path("data"));
+    }
+
+    @Override
+    public List<ToolExecution> localTaskExecutions(UUID projectId, UUID runId) {
+        return dsl.selectFrom(TOOL_EXECUTION)
+                .where(TOOL_EXECUTION.PROJECT_ID.eq(projectId)).and(TOOL_EXECUTION.RUN_ID.eq(runId))
+                .and(localTaskReceipt())
+                .orderBy(TOOL_EXECUTION.STEP_INDEX, TOOL_EXECUTION.CREATED_AT, TOOL_EXECUTION.ID)
+                .fetch(this::map);
+    }
+
+    @Override
+    public boolean ownsLocalTask(UUID projectId, UUID runId, UUID taskId) {
+        return dsl.fetchExists(dsl.selectOne().from(TOOL_EXECUTION)
+                .where(TOOL_EXECUTION.PROJECT_ID.eq(projectId)).and(TOOL_EXECUTION.RUN_ID.eq(runId))
+                .and(localTaskReceipt())
+                .and(DSL.condition("{0}->'taskIds' @> {1}", TOOL_EXECUTION.RESULT_JSON,
+                        DSL.val(JSONB.valueOf("[\"" + taskId + "\"]")))));
+    }
+
+    @Override
+    public boolean appendLocalTaskOutcome(UUID id, JsonNode outcome) {
+        return dsl.update(TOOL_EXECUTION)
+                .set(TOOL_EXECUTION.RESULT_JSON, DSL.field("jsonb_set({0}, '{localTaskOutcome}', {1}, true)",
+                        JSONB.class, TOOL_EXECUTION.RESULT_JSON, DSL.val(JSONB.valueOf(outcome.toString()))))
+                .where(TOOL_EXECUTION.ID.eq(id)).and(localTaskReceipt())
+                .and(DSL.condition("{0}->'localTaskOutcome' is null", TOOL_EXECUTION.RESULT_JSON))
+                .execute() == 1;
+    }
+
+    private org.jooq.Condition localTaskReceipt() {
+        return TOOL_EXECUTION.STATUS.eq(ToolExecution.Status.COMPLETED.name())
+                .and(TOOL_EXECUTION.TOOL_NAME.in(LOCAL_TASK_TOOLS))
+                .and(DSL.condition("{0}->'awaitingLocalTask' = 'true'::jsonb", TOOL_EXECUTION.RESULT_JSON));
     }
 
     @Override
