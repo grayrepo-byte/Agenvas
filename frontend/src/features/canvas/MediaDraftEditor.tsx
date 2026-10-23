@@ -3,7 +3,7 @@ import { ToggleGroup, ToggleGroupItem } from "../../shared/ui/primitives/toggle-
 import { FieldSet, FieldLegend } from "../../shared/ui/primitives/field";
 import { Switch } from "../../shared/ui/primitives/switch";
 import {
-ArrowUp,CaretDown,Check,Coins,Cube,
+ArrowUp,Camera,CaretDown,Check,Coins,Cube,
 ImageSquare,
 MusicNotes,
 PaintBrush,SlidersHorizontal,VideoCamera,
@@ -11,7 +11,7 @@ X
 } from "@/shared/ui/icons";
 import { useMutation,useQueries,useQuery,useQueryClient } from "@tanstack/react-query";
 import type { CSSProperties,FormEvent } from "react";
-import { useCallback, useEffect,useId,useLayoutEffect,useRef,useState } from "react";
+import { lazy, Suspense, useCallback, useEffect,useId,useLayoutEffect,useRef,useState } from "react";
 import {
 HTTP_STATUS,ApiError,assetContentUrl,cancelQueuedDirectMediaTask,createArtifact,getDirectMediaQueueStatus,
 assetThumbnailUrl,
@@ -24,6 +24,7 @@ uploadAudioAsset,
 uploadImageAsset,
 uploadVideoAsset,
 type Artifact,
+type MediaCapability,
 type MediaDraft,
 type SaveMediaDraftRequest
 } from "../../shared/api/client";
@@ -70,6 +71,10 @@ import { promptForMediaInputs, removePromptReferences } from "./mediaPrompt";
 import { mediaStylesQueryOptions } from "../../shared/mediaStyles";
 import { MediaStylePicker } from "./MediaStylePicker";
 import { CharacterBindingsDialog } from "../characters/CharacterBindingsDialog";
+import { appendVideoPrompt } from "./videoPromptAppend";
+
+const VideoPromptPresetsDialog = lazy(() => import("./VideoPromptPresetsDialog")
+  .then((module) => ({ default: module.VideoPromptPresetsDialog })));
 
 const MAX_PROMPT_LENGTH = 20000;
 const MAX_AUDIO_PROMPT_LENGTH = 3000;
@@ -115,6 +120,16 @@ function imageAssetId(content: unknown) {
 function uploadArtifactTitle(file: File) {
   const withoutExtension = file.name.replace(/\.[^.]+$/, "").trim();
   return (withoutExtension || t("media.uploadImage")).slice(0, MAX_ARTIFACT_TITLE_LENGTH);
+}
+
+/** Conditional prompt availability must use the same effective duration as the visible workflow. */
+function mediaDraftDuration(fields: DraftFields, capability: MediaCapability | undefined,
+  workflow: ReturnType<typeof workflowDefinition>) {
+  const declaredInputs = capability?.settings.nativeInputs ?? capability?.settings.klingInputs;
+  if (declaredInputs && !declaredInputs.some((field) => field.source === "DURATION_SECONDS")) return null;
+  const workflowDuration = workflow?.fields.find((field) => field.source === "DURATION_SECONDS")?.defaultValue;
+  return fields.durationSeconds ?? capability?.settings.defaultDurationSeconds
+    ?? (typeof workflowDuration === "number" ? workflowDuration : null);
 }
 
 function MediaReferenceThumbnail({ index, color, thumbnailUrl, accessibleLabel, connected, audio = false,
@@ -200,6 +215,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     refetchInterval: MEDIA_TASK_REFRESH_INTERVAL_MS,
   });
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
+  const [cameraPresetsOpen, setCameraPresetsOpen] = useState(false);
   const [extendedParametersOpen, setExtendedParametersOpen] = useState(false);
   const [workflowUploading, setWorkflowUploading] = useState(false);
   const workflowUploads = useRef(new Set<string>());
@@ -428,6 +444,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     setWorkflowPickerFieldKey(null);
     setReferenceSourcesOpen(false);
     setStylePickerOpen(false);
+    setCameraPresetsOpen(false);
     setTemplateOpen(false);
     setSubmissionTipOpen(false);
     draggedReferenceIndex.current = null;
@@ -523,6 +540,15 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     triggerRef.current?.focus();
   }
 
+  useEffect(() => {
+    if (!cameraPresetsOpen) return;
+    const promptField = workflow?.fields.find((field) => field.source === "PROMPT");
+    const promptAvailable = !workflow || Boolean(fields && promptField
+      && evaluateWorkflowFields(workflow, workflowDraftValues(chosenCapability, fields), fields.prompt,
+        mediaDraftDuration(fields, chosenCapability, workflow)).activeFields.includes(promptField));
+    if (artifact.kind !== "VIDEO" || !fields || !promptAvailable) setCameraPresetsOpen(false);
+  }, [artifact.kind, cameraPresetsOpen, chosenCapability, fields, workflow]);
+
   if (!fields) return <div className="media-draft-editor media-draft-initial" aria-label={t("media.editor.title")}>
     {draft.error ? <div role="alert">{t("media.editor.draftFailed", { "0": draft.error.message })}<Button variant="ghost" className="media-draft-text-action" disabled={draft.isFetching}
         onClick={() => void draft.refetch()} type="button">{t("media.editor.retryDraft")}</Button></div>
@@ -576,10 +602,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       : effectiveMode === "GENERAL_REFERENCE" ? fields.mediaInputs.length > 0 && withinCapacity
         && (chosenCapability?.adapterId !== "ARK_SEEDANCE_2_I2V" || imageCount + videoCount > 0) : false;
   const occupied = latestTask ? occupiesMediaCard(latestTask) : false;
-  const workflowDuration = workflow?.fields.find((field) => field.source === "DURATION_SECONDS")?.defaultValue;
-  const duration = declaredNativeInputs && !declaredNativeInputs.some((field) => field.source === "DURATION_SECONDS") ? null
-    : fields.durationSeconds ?? chosenCapability?.settings.defaultDurationSeconds
-      ?? (typeof workflowDuration === "number" ? workflowDuration : null);
+  const duration = mediaDraftDuration(fields, chosenCapability, workflow);
   const validDuration = duration != null && Number.isInteger(duration)
     && duration >= Math.max(MIN_VIDEO_SECONDS, chosenCapability?.minimumSeconds ?? MIN_VIDEO_SECONDS)
     && duration <= Math.min(MAX_VIDEO_SECONDS, chosenCapability?.maximumSeconds ?? MAX_VIDEO_SECONDS);
@@ -632,6 +655,24 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const promptEnabled = !workflow || Boolean(promptField && evaluatedWorkflow?.activeFields.includes(promptField));
   const promptValue = promptField ? evaluatedWorkflow?.effectiveValues[promptField.key] : fields.prompt;
   const displayedPrompt = promptEnabled && typeof promptValue === "string" ? promptValue : fields.prompt;
+  const cameraPresetsBusy = commitAssetReferences.isPending || removeConnectedInput.isPending
+    || libraryBusy || templateBusy || characterOpen || characterBusy || uploading || workflowUploading;
+
+  function applyCameraPreset(presetPrompt: string) {
+    const latest = session.getLatest().fields;
+    if (!latest || session.isReadOnly() || cameraPresetsBusy) return false;
+    const currentPromptField = workflow?.fields.find((field) => field.source === "PROMPT");
+    const evaluation = workflow ? evaluateWorkflowFields(workflow, workflowDraftValues(chosenCapability, latest),
+      latest.prompt, mediaDraftDuration(latest, chosenCapability, workflow)) : undefined;
+    if (workflow && (!currentPromptField || !evaluation?.activeFields.includes(currentPromptField))) return false;
+    // An untouched mapped default is visible in the editor and must survive appending a preset.
+    const effectivePrompt = currentPromptField ? evaluation?.effectiveValues[currentPromptField.key] : latest.prompt;
+    const nextPrompt = appendVideoPrompt(typeof effectivePrompt === "string" ? effectivePrompt : latest.prompt, presetPrompt);
+    if (nextPrompt.length > (currentPromptField?.maxLength ?? MAX_PROMPT_LENGTH)) return false;
+    edit({ prompt: nextPrompt });
+    setCameraPresetsOpen(false);
+    return true;
+  }
   const supportsStyle = !isAudio && promptEnabled;
   const selectedStyle = styles.data?.find((style) => style.id === fields.styleId);
   const styleAvailable = !fields.styleId || supportsStyle && styles.isSuccess && Boolean(selectedStyle?.enabled);
@@ -1021,12 +1062,19 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   return <div className="media-draft-editor" aria-label={t("media.editor.title")}>
     {stylePickerOpen ? <MediaStylePicker selected={fields.styleId ?? null} onClose={() => setStylePickerOpen(false)}
       onSelect={(styleId) => edit({ styleId })} /> : null}
+    {cameraPresetsOpen && artifact.kind === "VIDEO" && promptEnabled ? <Suspense fallback={<CanvasLoadingState compact label={t("common.loading")} />}><VideoPromptPresetsDialog
+      prompt={displayedPrompt} maxLength={promptField?.maxLength ?? MAX_PROMPT_LENGTH}
+      onApply={applyCameraPreset} onClose={() => setCameraPresetsOpen(false)} /></Suspense> : null}
     {workflow ? <WorkflowParametersDialog open={extendedParametersOpen} onOpenChange={setExtendedParametersOpen}
       definition={workflow} values={workflowValues} prompt={fields.prompt} durationSeconds={duration}
       disabled={editorReadOnly || run.isPending} onChange={changeDynamicField} /> : null}
     <fieldset className="media-draft-controls" disabled={editorReadOnly}>
     <div className="media-draft-header">
       <span className="media-draft-tab-active">Prompt</span>
+      {artifact.kind === "VIDEO" && promptEnabled ? <Button variant="ghost" className="media-draft-tab" type="button"
+        disabled={cameraPresetsBusy || editorReadOnly || run.isPending}
+        onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setCameraPresetsOpen(true); }}>
+        <Camera data-icon="inline-start" aria-hidden="true" />{t("video.presets.entry")}</Button> : null}
       <Button variant="ghost" className="media-draft-tab" type="button" disabled={characterBusy || templateBusy || libraryBusy || run.isPending}
         onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setCharacterOpen(true); }}>{t("character.bindingsTitle")}</Button>
       {(artifact.kind === "IMAGE" || artifact.kind === "VIDEO") ? <Button variant="ghost" className="media-draft-tab" type="button"

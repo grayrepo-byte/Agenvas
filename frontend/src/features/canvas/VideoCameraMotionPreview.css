@@ -1,0 +1,35 @@
+.video-camera-preview { margin-bottom: 20px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); overflow: hidden; background: var(--ui-field); }
+.video-camera-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ui-border); }
+.video-camera-preview-heading > span:first-child { display: flex; align-items: center; gap: 6px; color: var(--ui-text-secondary); font-size: var(--ui-text-xs); }
+.video-camera-preview-heading > span:first-child > svg { width: 14px; height: 14px; color: var(--ui-accent-text); }
+.video-camera-frame { position: relative; width: 100%; max-width: 400px; margin-inline: auto; aspect-ratio: 16 / 9; overflow: hidden; }
+.video-camera-preview canvas { display: block; width: 100%; height: 100%; }
+.video-camera-view-label { position: absolute; left: 10px; top: 8px; color: var(--ui-text-subtle); font-size: 9px; pointer-events: none; }
+.video-camera-frame-ratio { position: absolute; right: 10px; top: 8px; color: var(--ui-text-subtle); font-size: 9px; }
+.video-camera-frame-guides { position: absolute; inset: 26px 16px 16px; border: 1px solid color-mix(in srgb, var(--ui-text-subtle) 12%, transparent); pointer-events: none; }
+.video-camera-frame-guides::after { content: ""; position: absolute; left: calc(50% - 4px); top: calc(50% - 4px); width: 8px; height: 8px; border: 1px solid color-mix(in srgb, var(--ui-text-subtle) 32%, transparent); border-radius: 50%; }
+.video-camera-plan-row { display: grid; grid-template-columns: minmax(116px, 1fr) minmax(130px, 1fr); border-top: 1px solid var(--ui-border); background: var(--ui-surface); }
+.video-camera-plan { position: relative; min-height: 108px; height: 108px; border-right: 1px solid var(--ui-border); }
+.video-camera-measurements { min-width: 0; padding: 12px; }
+.video-camera-plan-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; color: var(--ui-text-subtle); font-size: 9px; }
+.video-camera-plan-legend > span { display: flex; align-items: center; gap: 4px; }
+.video-camera-plan-legend > span:first-child { color: var(--ui-accent-text); }
+.video-camera-plan-legend svg { width: 12px; height: 12px; }
+.video-camera-measurements dl { display: flex; flex-direction: column; gap: 7px; margin: 0; }
+.video-camera-measurements dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.video-camera-measurements dt { font-size: 10px; color: var(--ui-text-subtle); }
+.video-camera-measurements dd { margin: 0; color: var(--ui-text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.video-camera-playback { display: flex; align-items: center; gap: 5px; padding: 6px; border-top: 1px solid var(--ui-border); }
+.video-camera-timeline { min-width: 24px; flex: 1; }
+.video-camera-timeline input[type="range"] { display: block; height: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; accent-color: var(--ui-accent); cursor: pointer; }
+.video-camera-playback output { flex: none; color: var(--ui-text-muted); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.video-camera-preview-caption { margin: 0; padding: 2px 12px 10px; color: var(--ui-text-subtle); font-size: 10px; line-height: 1.7; }
+@media (max-width: 900px) and (min-width: 701px) {
+  .video-camera-plan-row { grid-template-columns: 1fr; }
+  .video-camera-plan { height: 110px; min-height: 110px; border-right: 0; border-bottom: 1px solid var(--ui-border); }
+  .video-camera-measurements { padding: 8px 10px; }
+  .video-camera-plan-legend { margin-bottom: 8px; }
+  .video-camera-measurements dl { flex-direction: row; flex-wrap: wrap; gap: 6px 12px; }
+  .video-camera-playback { flex-wrap: wrap; }
+}
+@media (prefers-reduced-motion: reduce) { .video-camera-preview * { scroll-behavior: auto; } }

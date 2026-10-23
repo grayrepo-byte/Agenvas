@@ -10,6 +10,10 @@ import { klingField, klingProfiles } from "../../test/klingProfiles";
 import { nativeCapability, nativePlatform, nativeProfiles } from "../../test/nativeProfiles";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { useCanvasStore } from "./canvasStore";
+import { appendVideoPrompt, VIDEO_PROMPT_PRESETS } from "./videoPromptPresets";
+
+// Camera drawing has its own lifecycle and projection tests; these cases verify the persistent draft boundary.
+vi.mock("./VideoCameraMotionPreview", () => ({ VideoCameraMotionPreview: () => null }));
 
 const NOW = "2026-09-26T00:00:00Z";
 const AUTOSAVE_SETTLE_MS = 750;
@@ -135,6 +139,154 @@ describe("MediaDraftEditor", () => {
     // Closing can flush a debounced save; let it settle before the shared HTTP handlers reset.
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
+  });
+  it.each(["IMAGE", "AUDIO"] as const)("does not expose video camera presets on %s nodes", async (kind) => {
+    setup({ kind, ...(kind === "AUDIO" ? { settings: audioSettings } : {}) });
+    await screen.findByRole("textbox", { name: kind === "IMAGE" ? "图片提示词" : "音频提示词" });
+    expect(screen.queryByRole("button", { name: "运镜" })).not.toBeInTheDocument();
+  });
+
+  it("appends camera direction while preserving the current prompt, mentions, fixed references and autosave CAS", async () => {
+    const original: MediaDraft = { ...initialDraft, prompt: "使用 \uFFFC 保持人物身份。", capabilityId: videoCapability.id,
+      durationSeconds: 5, videoInputMode: "START_END", parameters: { aspectRatio: "AUTO" },
+      mediaInputs: [{ versionId: "hero-v1", artifactId: "reference-image", role: "START_FRAME", order: 0,
+        color: "#F15CAF", sources: [{ id: "manual-hero", type: "MANUAL", connectionId: null }] }],
+      mentions: [{ versionId: "hero-v1", role: "START_FRAME" }] };
+    const { saves } = setup({ kind: "VIDEO", draft: original, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, id: "reference-image", title: "主角", resourceDefaultVersionId: "hero-v1" }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () =>
+        HttpResponse.json({ items: [{ id: "hero-v1", versionNo: 1, content: { assetId: "hero-asset" } }] })),
+    ] });
+    const user = userEvent.setup();
+    const entry = await screen.findByRole("button", { name: "运镜" });
+    await waitFor(() => expect(entry).toBeEnabled());
+    await user.click(entry);
+    const dialog = await screen.findByRole("dialog", { name: "镜头语言库" });
+    await user.click(within(dialog).getByRole("button", { name: "追加到提示词" }));
+    const preset = VIDEO_PROMPT_PRESETS.find((item) => item.id === "over-the-shoulder")!;
+    await waitFor(() => expect(saves.at(-1)?.prompt).toBe(appendVideoPrompt(original.prompt, preset.prompt)));
+    expect(saves.at(-1)).toMatchObject({ expectedVersion: original.version, capabilityId: original.capabilityId,
+      parameters: original.parameters, durationSeconds: original.durationSeconds, videoInputMode: original.videoInputMode,
+      mentions: original.mentions, mediaInputs: original.mediaInputs.map(({ versionId, role, color }) => ({ versionId, role, color })) });
+    expect(screen.queryByRole("dialog", { name: "镜头语言库" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "视频提示词" })).toHaveTextContent(preset.prompt);
+  });
+
+  it("retains the mapped prompt default and uses the effective duration for conditional camera preset availability", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "preset-workflow", adapterId: "RUNNINGHUB_VIDEO", settings: { defaultDurationSeconds: 8, runningHub: {
+      schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [{ key: "positive", label: "正向提示词", type: "STRING", source: "PROMPT", nodeId: "1", fieldName: "text",
+        required: false, advanced: false, defaultValue: "Synthetic default camera scene", maxLength: 2000,
+        enabledWhen: { field: "seconds", value: 8 } },
+      { key: "seconds", label: "时长", type: "INTEGER", source: "DURATION_SECONDS", nodeId: "1", fieldName: "seconds",
+        required: false, advanced: false, defaultValue: 3 }],
+      outputs: [{ kind: "VIDEO", primary: true, maxCount: 1 }],
+    } } };
+    const { saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, prompt: "", capabilityId: capability.id },
+      settings: { connections: [{ ...settings.connections[0]!, platform: "RUNNINGHUB", capabilities: [capability] }],
+        defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] } });
+    const user = userEvent.setup();
+    const entry = await screen.findByRole("button", { name: "运镜" });
+    await waitFor(() => expect(entry).toBeEnabled());
+    expect(screen.getByRole("textbox", { name: "视频提示词" })).toHaveTextContent("Synthetic default camera scene");
+    await user.click(entry);
+    await user.click(screen.getByRole("button", { name: "追加到提示词" }));
+    const preset = VIDEO_PROMPT_PRESETS.find((item) => item.id === "over-the-shoulder")!;
+    await waitFor(() => expect(saves.at(-1)?.prompt).toBe(appendVideoPrompt("Synthetic default camera scene", preset.prompt)));
+    expect(saves.at(-1)?.mentions).toEqual([]);
+  });
+
+  it("allows camera presets during an ordinary save and saves the latest text against the returned version", async () => {
+    const original: MediaDraft = { ...initialDraft, capabilityId: videoCapability.id,
+      videoInputMode: "START_END", durationSeconds: 5, parameters: { aspectRatio: "AUTO" } };
+    const requests: SaveMediaDraftRequest[] = [];
+    let release: () => void = () => {};
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    setup({ kind: "VIDEO", draft: original, handlers: [http.put(DRAFT_URL, async ({ request }) => {
+      const input = await request.json() as SaveMediaDraftRequest;
+      requests.push(input);
+      const version = requests.length;
+      if (version === 1) await pending;
+      return HttpResponse.json({ ...original, ...input, version });
+    })] });
+    const user = userEvent.setup();
+    const prompt = await screen.findByRole("textbox", { name: "视频提示词" });
+    await waitFor(() => expect(prompt).toHaveAttribute("aria-readonly", "false"));
+    prompt.textContent = "The latest unsaved scene"; fireEvent.input(prompt);
+    await waitFor(() => expect(requests).toHaveLength(1));
+    try {
+      const entry = screen.getByRole("button", { name: "运镜" });
+      expect(entry).toBeEnabled();
+      await user.click(entry);
+      await user.click(screen.getByRole("button", { name: "追加到提示词" }));
+    } finally { release(); }
+    const preset = VIDEO_PROMPT_PRESETS.find((item) => item.id === "over-the-shoulder")!;
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]).toMatchObject({ expectedVersion: 1,
+      prompt: appendVideoPrompt("The latest unsaved scene", preset.prompt) });
+  });
+
+  it("does not offer camera presets when the video workflow has no prompt field", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "promptless-video", adapterId: "COMFY_VIDEO_V1", settings: { comfyInputs: [
+      { key: "seed", label: "随机种子", type: "INTEGER", nodeId: "3", fieldName: "seed", required: false, advanced: false, defaultValue: 42 },
+    ] } };
+    setup({ kind: "VIDEO", draft: { ...initialDraft, prompt: "", capabilityId: capability.id },
+      settings: { connections: [{ ...settings.connections[0]!, platform: "COMFYUI", capabilities: [capability] }],
+        defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] } });
+    expect(await screen.findByRole("textbox", { name: "视频提示词" })).toHaveAttribute("aria-readonly", "true");
+    expect(screen.queryByRole("button", { name: "运镜" })).not.toBeInTheDocument();
+  });
+
+  it("rejects camera presets exceeding the mapped prompt limit without changing or saving the draft", async () => {
+    const capability: MediaCapability = { ...videoCapability, id: "short-prompt-video", adapterId: "RUNNINGHUB_VIDEO", settings: { runningHub: {
+      schemaVersion: 1, protocolVersion: "V2", targetType: "AI_APP", targetId: "123", usePersonalQueue: false, addMetadata: false,
+      fields: [{ key: "positive", label: "正向提示词", type: "STRING", source: "PROMPT", nodeId: "1", fieldName: "text",
+        required: false, advanced: false, maxLength: 40 }], outputs: [{ kind: "VIDEO", primary: true, maxCount: 1 }],
+    } } };
+    const { saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, capabilityId: capability.id },
+      settings: { connections: [{ ...settings.connections[0]!, platform: "RUNNINGHUB", capabilities: [capability] }],
+        defaults: [{ kind: capability.kind, capabilityId: capability.id, version: 0 }] } });
+    const user = userEvent.setup();
+    const entry = await screen.findByRole("button", { name: "运镜" });
+    await waitFor(() => expect(entry).toBeEnabled());
+    await user.click(entry);
+    expect(screen.getByRole("button", { name: "追加到提示词" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getByRole("textbox", { name: "视频提示词" })).toHaveTextContent(initialDraft.prompt);
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, AUTOSAVE_SETTLE_MS)); });
+    expect(saves).toHaveLength(0);
+  });
+
+  it("closes and locks camera presets when a video task starts", async () => {
+    const { client, saves } = setup({ kind: "VIDEO", draft: { ...initialDraft, capabilityId: videoCapability.id,
+      videoInputMode: "START_END", durationSeconds: 5, parameters: { aspectRatio: "AUTO" } } });
+    const user = userEvent.setup();
+    const entry = await screen.findByRole("button", { name: "运镜" });
+    await waitFor(() => expect(entry).toBeEnabled());
+    await user.click(entry);
+    expect(screen.getByRole("dialog", { name: "镜头语言库" })).toBeVisible();
+    act(() => client.setQueryData(["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID], [{ ...task("RUNNING"), kind: "VIDEO_GENERATION" }]));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "镜头语言库" })).not.toBeInTheDocument());
+    expect(entry).toBeDisabled();
+    expect(saves).toHaveLength(0);
+  });
+
+  it("preserves appended camera direction locally after saving fails", async () => {
+    setup({ kind: "VIDEO", draft: { ...initialDraft, capabilityId: videoCapability.id,
+      videoInputMode: "START_END", durationSeconds: 5, parameters: { aspectRatio: "AUTO" } },
+      handlers: [http.put(DRAFT_URL, () => HttpResponse.json({ detail: "保存失败" }, { status: 503 }))] });
+    const user = userEvent.setup();
+    const entry = await screen.findByRole("button", { name: "运镜" });
+    await waitFor(() => expect(entry).toBeEnabled());
+    await user.click(entry);
+    await user.click(screen.getByRole("button", { name: "追加到提示词" }));
+    await screen.findByRole("button", { name: "重试保存" });
+    const preset = VIDEO_PROMPT_PRESETS.find((item) => item.id === "over-the-shoulder")!;
+    const expectedPrompt = appendVideoPrompt(initialDraft.prompt, preset.prompt);
+    expect(screen.getByRole("textbox", { name: "视频提示词" })).toHaveTextContent(preset.prompt);
+    cleanup();
+    expect(useCanvasStore.getState().mediaDraftRecoveries[`${PROJECT_ID}:${CANVAS_ITEM_ID}`]?.request.prompt).toBe(expectedPrompt);
   });
   it("runs one Wan request with finite image count and keeps sequential cost unknown", async () => {
     const capability = nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "WAN_IMAGE")!);
