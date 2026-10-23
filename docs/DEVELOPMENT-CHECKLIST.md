@@ -2724,3 +2724,11 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 应用内浏览器使用既有隔离合成 HTTP 夹具、真实 Canvas2D，检查 1440×900、390×844、844×390：产品+对焦+微距组合、切换不匹配场景禁用追加并移除预览、一键恢复、人物对话筛选、手机滚动场景栏、追逐+FPV 搜索、横屏详情滚动到播放控件并实际播放、固定追加栏可达；无页面横向溢出，截图保存于仓库外，未修改真实项目。
 - [x] 同步当前 develop 后，在 Node 24.12.0 复验五个运镜定向文件 49 项，以及编辑器 `camera` 9 项，共 58 项通过；其余 146 项编辑器测试按筛选跳过。类型、完整 ESLint、四语言、主题、生产构建和提交差异空白检查通过；开发清单的追加冲突保留两边记录，未改动上游业务实现。
 - [ ] 全量测试、其余编辑器用例、后端测试、真实 Provider 效果、其他浏览器和部署未运行。
+
+## 2026-10-24 CI 跳过项核查
+
+- [x] 核对 develop 托管 CI 的 7 项跳过记录：`AutoDlRealProviderPostgresIT`、`RunningHubRealProviderIT` 和 `McpRealServiceIT` 需要显式开启真实服务验收，可能提交收费生成；`RunningHubRealUsageIT`、`RunningHubRealResultArchiveIT` 只查询或归档原任务，但仍需私有凭据与回执；`LocalVideoCompositionRealMediaIT` 需要仓库外真实素材及配置。六类默认不启用，保留真实验收与合成回归的边界。
+- [x] `LocalImageProcessorAdapterTest.runsConfiguredDepthAnythingModel` 在普通单测中因未提供 ONNX 权重跳过；同一提交的 server amd64、arm64 镜像构建均启用 `VERIFY_DEPTH_MODEL=true`，实际执行该方法，均为 1 项通过、零失败/错误/跳过。不存在深度推理被整条 CI 遗漏的问题。
+- [x] 修复只读 RunningHub 用量验收仍要求旧两任务回执、从名称推断目标并使用旧目标 ID 的问题：读取回执保存的目标身份，接受非空任务集合，在读取密钥及查询前校验全部任务已成功、原任务 ID 完整。只把直出视频与原用量交给生产 manifest 归一化，附属 ZIP 不下载；仅 ZIP 的响应明确不适用于本专项，ZIP 解码仍由独立归档验收负责。真实服务显式开启条件保持。
+- [x] 当前单目标合成回执先复现旧逻辑“预期 2 条、实际 1 条”失败；修复后新增回执、非法输入、ZIP 前置不下载与原查询状态回归共 23 项，既有 RunningHub 适配器回归 14 项，合计 37 项通过，零失败/错误/跳过。全部测试源码编译、差异空白检查通过；仅修改测试侧文件及验收记录，无生产代码、合约、迁移或依赖变化。
+- [ ] 本轮真实 Provider、私有素材验收、全量测试与部署未运行；不以合成回执证明真实 Provider 已通过。
