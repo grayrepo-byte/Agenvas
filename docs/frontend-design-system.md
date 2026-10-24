@@ -59,6 +59,8 @@
 
 使用 `primitives/dropdown-menu.tsx` 的 Root、Trigger、Content、Group、Item 和 Sub 组合。模型、版本和工具菜单由 Radix 管理键盘、禁用、Portal、外部关闭及焦点恢复；异步保存继续由调用方控制关闭时机。引用补全和画布添加卡片使用 `Command`、`CommandList`、`CommandGroup`、`CommandItem`，由编辑器保留文字光标与活动引用。
 
+画布四类内容的工具栏版本菜单复用 `features/canvas/CanvasVersionMenu.tsx` 与配套样式，统一数量摘要、富信息版本行、当前选用标记、创建时间、状态区和视口内滚动。`MediaVersionPicker` 提供图片/视频缩略图或音频图标，`TextVersionPicker` 提供正文摘要和来源；视频审片入口独立置底。查询、编号、脏草稿保护和 CAS 仍由各业务选择器负责，不将文字的资源默认版本和媒体的节点选用版本混为同一状态。
+
 引用来源菜单保留悬停入口，指针进入 Portal 后取消延迟关闭。参数/资源选择器包含专用编辑逻辑，仍使用 `ui-popover-surface`；画布通过 `isolation` 将 React Flow 工具栏限制在自身层级中，使 body Portal 的组件可正常显示。
 
 ESLint 禁止公共 Select 之外的原生 `<select>`，禁止以普通 `<div role="menu/listbox">` 新建菜单；必须复用上述组件。检查命令：在 `frontend` 执行 `./node_modules/.bin/eslint . --max-warnings=0`。

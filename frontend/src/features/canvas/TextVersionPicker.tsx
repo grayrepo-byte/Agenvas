@@ -7,13 +7,10 @@ setArtifactResourceDefaultVersion
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
-import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
+import { DropdownMenu,DropdownMenuGroup,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
+import { readContentText } from "./artifactContent";
+import { CanvasVersionMenuContent,CanvasVersionMenuError,CanvasVersionMenuNotice,CanvasVersionMenuOption,CanvasVersionMenuStatus,VERSION_SOURCE_LABELS } from "./CanvasVersionMenu";
 import type { VersionedArtifact } from "./versionedArtifact";
-
-const VERSION_SOURCE_LABELS = {
-  USER: "artifacts.versions.sourceUser", AGENT: "artifacts.versions.sourceAgent",
-  TASK: "artifacts.versions.sourceTask", EXTERNAL_TOOL: "artifacts.versions.sourceExternalTool",
-} as const;
 
 /** Selects the actual Artifact version used by the card and by new outgoing connections. */
 export function TextVersionPicker({ artifact, disabled = false }: {
@@ -49,18 +46,29 @@ export function TextVersionPicker({ artifact, disabled = false }: {
       {t("artifacts.versions.versionLabel", { "0": ` v${artifact.resourceDefaultVersion.versionNo}` })}
       <CaretDown data-icon="inline-end" aria-hidden />
     </Button></DropdownMenuTrigger>
-    {open ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="text-card-version-menu" role="menu" aria-label={t("text.versions.title")}><DropdownMenuGroup>
-      {disabled ? <p>{t("text.versions.saveBeforeSelection")}</p> : null}
-      {history.isPending ? <p>{t("common.versionLoading")}</p> : null}
-      {history.error ? <p role="alert">{history.error instanceof ApiError
-        ? history.error.message : t("artifacts.versions.loadFailed")}</p> : null}
-      {history.data?.items.map((version) => <DropdownMenuItem className="text-card-version-option" disabled={disabled || select.isPending || version.id === artifact.resourceDefaultVersionId} aria-current={version.id === artifact.resourceDefaultVersionId ? "true" : undefined} role="menuitem" key={version.id} onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }}>
-        <span>v{version.versionNo}</span>
-        <small>{version.id === artifact.resourceDefaultVersionId ? t("artifacts.versions.selected") : t(VERSION_SOURCE_LABELS[version.createdByKind])}</small>
-      </DropdownMenuItem>)}
-      {select.error ? <p role="alert">{select.error instanceof ApiError && select.error.status === HTTP_STATUS.CONFLICT
+    {open ? <CanvasVersionMenuContent className="text-card-version-menu" aria-label={t("text.versions.title")}
+      heading={t("artifacts.versions.title")} count={history.data?.items.length}
+      footer={<p className="canvas-version-hint">{t("artifacts.versions.selectionHint")}</p>}>
+      {disabled ? <CanvasVersionMenuNotice>{t("text.versions.saveBeforeSelection")}</CanvasVersionMenuNotice> : null}
+      {history.isPending ? <CanvasVersionMenuStatus label={t("common.versionLoading")} /> : null}
+      {history.error ? <CanvasVersionMenuError message={history.error instanceof ApiError
+        ? history.error.message : t("artifacts.versions.loadFailed")} action={
+        <Button variant="ghost" size="sm" type="button" disabled={history.isFetching}
+          onClick={() => void history.refetch()}>{t("common.retryRead")}</Button>} /> : null}
+      <DropdownMenuGroup className="canvas-version-list">
+        {history.data?.items.map((version) => <CanvasVersionMenuOption key={version.id}
+          className="canvas-version-option--text" versionNo={version.versionNo}
+          selected={version.id === artifact.resourceDefaultVersionId}
+          summary={readContentText(version.content, "text") || t("text.card.emptyHint")}
+          source={t(VERSION_SOURCE_LABELS[version.createdByKind])} createdAt={version.createdAt}
+          disabled={disabled || select.isPending || version.id === artifact.resourceDefaultVersionId}
+          onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }} />)}
+      </DropdownMenuGroup>
+      {history.isSuccess && history.data.items.length === 0 ? <p className="canvas-version-empty">{t("text.card.noVersion")}</p> : null}
+      {select.isPending ? <CanvasVersionMenuStatus label={t("artifacts.versions.selecting")} /> : null}
+      {select.error ? <CanvasVersionMenuError message={select.error instanceof ApiError && select.error.status === HTTP_STATUS.CONFLICT
         ? t("text.versions.selectionConflict")
-        : select.error instanceof ApiError ? select.error.message : t("artifacts.versions.selectFailed")}</p> : null}
-    </DropdownMenuGroup></DropdownMenuContent> : null}
+        : select.error instanceof ApiError ? select.error.message : t("artifacts.versions.selectFailed")} /> : null}
+    </CanvasVersionMenuContent> : null}
   </div></DropdownMenu>;
 }

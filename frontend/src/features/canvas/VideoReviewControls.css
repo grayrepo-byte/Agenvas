@@ -19,10 +19,6 @@
 .video-comparison-summary { color: var(--ui-text-secondary); font-size: var(--ui-text-sm); }
 .video-comparison-summary p { margin: var(--ui-space-2) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .video-comparison-summary pre { max-height: 180px; overflow: auto; font-size: var(--ui-text-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
-.media-version-video-row { gap: var(--ui-space-3); }
-.media-version-video-row img { width: 72px; height: 44px; object-fit: cover; border-radius: var(--ui-radius-sm); background: var(--ui-surface-raised); }
-.media-version-video-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: var(--ui-space-1); }
-.media-version-video-copy small { display: block; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .video-range-editor { display: flex; flex-direction: column; min-width: 0; gap: var(--ui-space-3); }
 .video-range-editor > video { width: 100%; max-height: 260px; background: var(--ui-bg); object-fit: contain; }
 .video-range-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-3); }
