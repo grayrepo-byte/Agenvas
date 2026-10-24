@@ -41,14 +41,15 @@ public class VideoCompositionService {
     private final UsageService usage;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final dev.agenvas.provider.application.LocalVideoCompositionProcessor processor;
 
     public VideoCompositionService(TaskRepository tasks, ArtifactService artifacts, AssetService assets,
             CanvasService canvas, MediaDraftService drafts, ProjectService projects,
             MediaCapabilityService catalog, ProjectEventService events, UsageService usage,
-            ObjectMapper mapper, Clock clock) {
+            ObjectMapper mapper, Clock clock, dev.agenvas.provider.application.LocalVideoCompositionProcessor processor) {
         this.tasks = tasks; this.artifacts = artifacts; this.assets = assets; this.canvas = canvas;
         this.drafts = drafts; this.projects = projects; this.catalog = catalog; this.events = events;
-        this.usage = usage; this.mapper = mapper; this.clock = clock;
+        this.usage = usage; this.mapper = mapper; this.clock = clock; this.processor = processor;
     }
 
     public Task run(UUID owner, UUID project, JsonNode request, String commandKey) {
@@ -83,43 +84,9 @@ public class VideoCompositionService {
                             ApiMessage.of("api.media-function.conflict"), ApiMessage.of("api.media-function.conflict"), false);
                 return ProjectEventService.Change.unchanged(prior);
             }
-            ObjectNode composition = request.deepCopy();
-            ObjectNode frozen = mapper.createObjectNode();
-            frozen.put("mode", "GENERAL_REFERENCE").put("prompt", request.path("rationale").asText())
-                    .put("renderedPrompt", request.path("rationale").asText());
-            frozen.putArray("images"); frozen.putArray("mentions");
-            ArrayNode videos = frozen.putArray("videos"), audios = frozen.putArray("audios");
-            Set<UUID> seenVideos = new HashSet<>(), seenAudios = new HashSet<>(), seenAssets = new HashSet<>();
-            long[] bytes = {0}; int duration = 0, totalFrames = 0;
-            for (JsonNode value : composition.path("shots")) {
-                ObjectNode shot = (ObjectNode) value;
-                var metadata = source(owner, project, uuid(shot, "videoVersionId"), Artifact.Kind.VIDEO,
-                        videos, seenVideos, seenAssets, bytes);
-                int start = shot.path("sourceStartMs").asInt();
-                int length = shot.has("durationMs") ? shot.path("durationMs").asInt() : metadata.durationMs() - start;
-                if (length < 100 || start + (long) length > metadata.durationMs()) throw invalid();
-                shot.put("durationMs", length);
-                double speed = shot.path("speed").asDouble(1);
-                int outputFrames = (int) Math.floor(length * 30.0 / (1000 * speed));
-                int outputLength = outputFrames * 1000 / 30;
-                if (shot.path("fadeMs").asInt() * 2 > outputLength) throw invalid();
-                totalFrames += outputFrames;
-                duration = totalFrames * 1000 / 30;
-                if (duration > MAX_DURATION_MS) throw invalid();
-                for (JsonNode line : shot.path("lines")) {
-                    source(owner, project, uuid(line, "audioVersionId"), Artifact.Kind.AUDIO,
-                            audios, seenAudios, seenAssets, bytes);
-                    if (line.has("startMs") && line.path("startMs").asInt() >= outputLength) throw invalid();
-                }
-            }
-            if (composition.has("music")) {
-                JsonNode music = composition.path("music");
-                var metadata = source(owner, project, uuid(music, "audioVersionId"), Artifact.Kind.AUDIO,
-                        audios, seenAudios, seenAssets, bytes);
-                if (music.path("sourceStartMs").asInt() >= metadata.durationMs()) throw invalid();
-            }
-            for (JsonNode subtitle : composition.path("subtitles"))
-                if (subtitle.path("endMs").asInt() > duration) throw invalid();
+            var prepared = prepare(owner, project, request);
+            ObjectNode composition = prepared.composition(), frozen = prepared.frozen();
+            int duration = prepared.durationMs();
             var binding = catalog.resolve(CAPABILITY_ID, Task.Kind.VIDEO_GENERATION, (duration + 999) / 1000);
             if (run != null && !dev.agenvas.provider.domain.MediaAdapterRegistry.LOCAL_VIDEO_COMPOSITOR.equals(binding.adapterId()))
                 throw invalid();
@@ -154,6 +121,56 @@ public class VideoCompositionService {
             events.append(owner, project, new ProjectEventService.EventDraft("task.status.changed", 1, task.id(), task.version(), payload));
             return ProjectEventService.Change.unchanged(task);
         }).value();
+    }
+
+    /** Read-only planning: no task, event, usage reservation or media result is created.
+     * FFmpeg analysis happens after authorized metadata reads, outside any change transaction. */
+    public JsonNode preview(UUID owner, UUID project, JsonNode raw) {
+        projects.requireActiveProject(owner, project);
+        var prepared = prepare(owner, project, normalize(raw));
+        return processor.preview(owner, project, prepared.composition(), prepared.frozen());
+    }
+
+    private record Prepared(ObjectNode composition, ObjectNode frozen, int durationMs) {}
+    private Prepared prepare(UUID owner, UUID project, ObjectNode request) {
+        ObjectNode composition = request.deepCopy();
+        ObjectNode frozen = mapper.createObjectNode();
+        frozen.put("mode", "GENERAL_REFERENCE").put("prompt", request.path("rationale").asText())
+                .put("renderedPrompt", request.path("rationale").asText());
+        frozen.putArray("images"); frozen.putArray("mentions");
+        ArrayNode videos = frozen.putArray("videos"), audios = frozen.putArray("audios");
+        Set<UUID> seenVideos = new HashSet<>(), seenAudios = new HashSet<>(), seenAssets = new HashSet<>();
+        long[] bytes = {0}; int duration = 0, totalFrames = 0;
+        for (JsonNode value : composition.path("shots")) {
+            ObjectNode shot = (ObjectNode) value;
+            var metadata = source(owner, project, uuid(shot, "videoVersionId"), Artifact.Kind.VIDEO,
+                    videos, seenVideos, seenAssets, bytes);
+            int start = shot.path("sourceStartMs").asInt();
+            int length = shot.has("durationMs") ? shot.path("durationMs").asInt() : metadata.durationMs() - start;
+            if (length < 100 || start + (long) length > metadata.durationMs()) throw invalid();
+            shot.put("durationMs", length);
+            double speed = shot.path("speed").asDouble(1);
+            int outputFrames = (int) Math.floor(length * 30.0 / (1000 * speed));
+            int outputLength = outputFrames * 1000 / 30;
+            if (shot.path("fadeMs").asInt() * 2 > outputLength) throw invalid();
+            totalFrames += outputFrames;
+            duration = totalFrames * 1000 / 30;
+            if (duration > MAX_DURATION_MS) throw invalid();
+            for (JsonNode line : shot.path("lines")) {
+                source(owner, project, uuid(line, "audioVersionId"), Artifact.Kind.AUDIO,
+                        audios, seenAudios, seenAssets, bytes);
+                if (line.has("startMs") && line.path("startMs").asInt() >= outputLength) throw invalid();
+            }
+        }
+        if (composition.has("music")) {
+            JsonNode music = composition.path("music");
+            var metadata = source(owner, project, uuid(music, "audioVersionId"), Artifact.Kind.AUDIO,
+                    audios, seenAudios, seenAssets, bytes);
+            if (music.path("sourceStartMs").asInt() >= metadata.durationMs()) throw invalid();
+        }
+        for (JsonNode subtitle : composition.path("subtitles"))
+            if (subtitle.path("endMs").asInt() > duration) throw invalid();
+        return new Prepared(composition, frozen, duration);
     }
 
     private dev.agenvas.asset.domain.Asset source(UUID owner, UUID project, UUID versionId, Artifact.Kind kind,

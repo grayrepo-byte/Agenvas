@@ -86,8 +86,45 @@ public class LocalVideoCompositionProcessor {
         }
     }
 
+    private final java.util.concurrent.Semaphore previews = new java.util.concurrent.Semaphore(2);
+
+    /** Authorizes pinned sources exactly as export does, but only returns timing, never paths or media bytes. */
+    public JsonNode preview(UUID owner, UUID project, JsonNode composition, JsonNode mediaInput) {
+        if (!previews.tryAcquire()) throw previewProblem(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS,
+                "VIDEO_PREVIEW_BUSY", "api.video-preview.busy");
+        Path scratch = null;
+        try {
+            var sources = resolve(owner, project, composition, mediaInput);
+            scratch = Files.createTempDirectory("agenvas-video-preview-",
+                    PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+            return renderer.preview(composition, sources, scratch);
+        } catch (VideoCompositionPlanner.DoesNotFit overflow) {
+            throw previewProblem(org.springframework.http.HttpStatus.UNPROCESSABLE_CONTENT, "VIDEO_COMPOSITION_AUDIO_OVERFLOW", "api.video-preview.overflow");
+        } catch (IllegalArgumentException invalid) {
+            throw previewProblem(org.springframework.http.HttpStatus.BAD_REQUEST, "VIDEO_COMPOSITION_INVALID", "api.video-composition.invalid");
+        } catch (IOException | MediaToolRunner.MediaToolException failure) {
+            throw previewProblem(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_PREVIEW_FAILED", "api.video-preview.failed");
+        } finally {
+            if (scratch != null) {
+                try (var paths = Files.walk(scratch)) {
+                    for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+                } catch (IOException failure) {
+                    org.slf4j.LoggerFactory.getLogger(LocalVideoCompositionProcessor.class).warn("Video preview scratch cleanup failed");
+                }
+            }
+            previews.release();
+        }
+    }
+    private static dev.agenvas.shared.error.ApiProblemException previewProblem(org.springframework.http.HttpStatus status, String code, String message) {
+        var text = dev.agenvas.shared.i18n.ApiMessage.of(message);
+        return new dev.agenvas.shared.error.ApiProblemException(status, code, text, text, false);
+    }
+
     private Map<UUID, LocalVideoCompositionRenderer.Source> resolve(AttemptContext context) {
-        JsonNode composition = context.lease().input().path("videoComposition");
+        return resolve(context.ownerId(), context.lease().projectId(), context.lease().input().path("videoComposition"), context.lease().input().path("mediaInput"));
+    }
+
+    private Map<UUID, LocalVideoCompositionRenderer.Source> resolve(UUID owner, UUID project, JsonNode composition, JsonNode mediaInput) {
         if (!composition.isObject() || !composition.path("shots").isArray() || composition.path("shots").isEmpty()
                 || composition.path("shots").size() > 12 || !Set.of("MUTE", "BACKGROUND", "KEEP").contains(composition.path("originalAudioMode").asText()))
             throw new IllegalArgumentException("Invalid frozen composition");
@@ -122,13 +159,13 @@ public class LocalVideoCompositionProcessor {
         long bytes = 0;
         for (var entry : required.entrySet()) {
             UUID id = entry.getKey();
-            var version = artifacts.requireMediaVersionForTask(context.ownerId(), context.lease().projectId(), id, entry.getValue());
+            var version = artifacts.requireMediaVersionForTask(owner, project, id, entry.getValue());
             String group = entry.getValue() == Artifact.Kind.VIDEO ? "videos" : "audios";
-            long matching = context.lease().input().path("mediaInput").path(group).valueStream().filter(reference ->
+            long matching = mediaInput.path(group).valueStream().filter(reference ->
                     id.toString().equals(reference.path("versionId").asText())
                             && version.artifactId().toString().equals(reference.path("artifactId").asText())).count();
             if (matching != 1) throw new IllegalArgumentException("Composition input was not pinned");
-            var file = assets.get(context.ownerId(), context.lease().projectId(), UUID.fromString(version.content().path("assetId").asText()));
+            var file = assets.get(owner, project, UUID.fromString(version.content().path("assetId").asText()));
             Asset asset = file.asset();
             if (!asset.mediaKind().name().equals(entry.getValue().name()) || asset.durationMs() == null
                     || asset.durationMs() < 1 || asset.durationMs() > 600_000 || asset.byteSize() < 1)

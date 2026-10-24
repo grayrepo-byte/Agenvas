@@ -24,8 +24,8 @@ function playableDuration(video: HTMLVideoElement | null): number {
 }
 
 /** Review state belongs to this mounted review, never to a media draft or immutable result. */
-export function VideoReviewControls({ video, partner = null, markers = true }: {
-  video: HTMLVideoElement | null; partner?: HTMLVideoElement | null; markers?: boolean;
+export function VideoReviewControls({ video, partner = null, markers = true, compact = false, disabled = false }: {
+  video: HTMLVideoElement | null; partner?: HTMLVideoElement | null; markers?: boolean; compact?: boolean; disabled?: boolean;
 }) {
   useLocale();
   const id = useId();
@@ -123,7 +123,7 @@ export function VideoReviewControls({ video, partner = null, markers = true }: {
       video.pause(); partner?.pause(); setPlaying(false); setError(true);
     } else setPlaying(true);
   }
-  const ready = Boolean(video) && duration > 0;
+  const ready = Boolean(video) && duration > 0 && !disabled;
   return <div className="video-review-controls nodrag nowheel nopan" onClick={(event) => event.stopPropagation()}
     onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key !== "Tab") event.stopPropagation(); }}>
     <div className="video-review-transport">
@@ -135,19 +135,19 @@ export function VideoReviewControls({ video, partner = null, markers = true }: {
         disabled={!ready} value={Math.min(position, duration)} aria-valuetext={`${videoTimeLabel(position)} / ${videoTimeLabel(duration)}`}
         onChange={(event) => seek(Number(event.target.value))} />
       <span className="video-review-time">{videoTimeLabel(position)} / {videoTimeLabel(duration)}</span>
-      <Button type="button" variant="ghost" size="icon-sm" disabled={!video} aria-label={t(muted ? "video.review.unmute" : "video.review.mute")}
+      <Button type="button" variant="ghost" size="icon-sm" disabled={!video || disabled} aria-label={t(muted ? "video.review.unmute" : "video.review.mute")}
         onClick={() => { if (video) { video.muted = !video.muted; setMuted(video.muted); } }}>{muted ? <SpeakerSlash /> : <SpeakerHigh />}</Button>
     </div>
-    <FieldGroup className="video-review-options">
+    {!compact ? <><FieldGroup className="video-review-options">
       <Field><FieldLabel htmlFor={`${id}-speed`}>{t("video.review.speed")}</FieldLabel>
-        <Select id={`${id}-speed`} value={rate} disabled={!video} onChange={(event) => {
+        <Select id={`${id}-speed`} value={rate} disabled={!video || disabled} onChange={(event) => {
           const next = Number(event.target.value); if (video) video.playbackRate = next; if (partner) partner.playbackRate = next; setRate(next);
         }}>{PLAYBACK_RATES.map((value) => <option key={value} value={value}>{value}×</option>)}</Select></Field>
       <Field><FieldLabel htmlFor={`${id}-frame-rate`}>{t("video.review.frameRate")}</FieldLabel>
-        <Select id={`${id}-frame-rate`} value={frameRate} aria-describedby={`${id}-frame-hint`} onChange={(event) => setFrameRate(Number(event.target.value))}>
+        <Select id={`${id}-frame-rate`} value={frameRate} disabled={disabled} aria-describedby={`${id}-frame-hint`} onChange={(event) => setFrameRate(Number(event.target.value))}>
           {STEP_FRAME_RATES.map((value) => <option key={value} value={value}>{value} fps</option>)}</Select></Field>
     </FieldGroup>
-    <p className="video-review-hint" id={`${id}-frame-hint`}>{t("video.review.frameHint")}</p>
+    <p className="video-review-hint" id={`${id}-frame-hint`}>{t("video.review.frameHint")}</p></> : null}
     {error ? <Alert variant="destructive"><AlertDescription>{t("video.review.playFailed")}</AlertDescription></Alert> : null}
     {markers ? <>
       <FieldGroup className="video-review-marker-form"><Field><FieldLabel htmlFor={`${id}-note`}>{t("video.review.note")}</FieldLabel>

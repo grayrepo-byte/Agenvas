@@ -53,4 +53,25 @@ describe("VideoRangeEditor", () => {
     expect(next).not.toBe(video);
     expect(next).toHaveAttribute("src", "/precise-source.mp4");
   });
+
+  it("keeps the studio player mounted while the inspector mounts and unmounts its trim controls", () => {
+    const container = document.createElement("div"); document.body.append(container);
+    const onChange = vi.fn();
+    const props = { src: "/precise-source.mp4", title: "片段", startMs: 1000, endMs: 4000, onChange, studio: true };
+    const view = render(<VideoRangeEditor {...props} controlsContainer={container} />);
+    const video = loaded();
+    expect(video).not.toHaveAttribute("controls");
+    expect(screen.queryByRole("combobox", { name: "播放速度" })).not.toBeInTheDocument();
+    expect(container.querySelector("fieldset")).toBeInTheDocument();
+    video.currentTime = 2.125;
+    fireEvent.click(screen.getByRole("button", { name: "将当前位置设为入点" }));
+    expect(onChange).toHaveBeenCalledWith({ startMs: 2125, endMs: 4000 });
+    view.rerender(<VideoRangeEditor {...props} controlsContainer={null} />);
+    expect(container.querySelector("fieldset")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("片段")).toBe(video);
+    view.rerender(<VideoRangeEditor {...props} controlsContainer={container} />);
+    expect(screen.getByRole("spinbutton", { name: "入点（秒）" })).toHaveValue(1);
+    expect(screen.getByRole("button", { name: "预览所选片段" })).toBeEnabled();
+    view.unmount(); container.remove();
+  });
 });

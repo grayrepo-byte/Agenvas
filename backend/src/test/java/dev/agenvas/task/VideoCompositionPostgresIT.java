@@ -63,6 +63,7 @@ class VideoCompositionPostgresIT {
     @Autowired AssetService assets;
     @Autowired CanvasService canvas;
     @Autowired VideoCompositionService compositions;
+    @Autowired org.jooq.DSLContext db;
     @Autowired dev.agenvas.task.application.DirectMediaTaskService direct;
     @Autowired org.springframework.web.context.WebApplicationContext webContext;
     @Autowired MediaExecutionWorker worker;
@@ -150,6 +151,47 @@ class VideoCompositionPostgresIT {
             assertThat(canvas.list(owner.userId(), fixture.project())).hasSize(3);
             direct.cancelQueued(owner.userId(), fixture.project(), task.id());
         }
+    }
+
+    @Test void previewRequiresAuthAndCsrfAndDoesNotCreateBusinessState() throws Exception {
+        var fixture = fixture();
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup(webContext)
+                .apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+        var auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(owner, "unused",
+                List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")));
+        String url = "/api/v1/projects/" + fixture.project() + "/video-compositions/preview";
+        var post = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url)
+                .contentType("application/json").content(request(fixture).toString());
+        mvc.perform(post.with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
+        mvc.perform(post.with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().useInvalidToken()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isForbidden());
+        var tables = List.of("task", "artifact", "asset", "project_event");
+        var counts = tables.stream().map(table -> db.fetchCount(org.jooq.impl.DSL.table(table))).toList();
+        var response = mvc.perform(post.with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication(auth))
+                        .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk()).andReturn();
+        var plan = mapper.readTree(response.getResponse().getContentAsString());
+        assertThat(plan.propertyNames()).containsExactlyInAnyOrder("durationMs", "frames", "fontFamily", "shots");
+        assertThat(plan.path("frames").asInt()).isEqualTo(90);
+        assertThat(plan.path("durationMs").asInt()).isEqualTo(3000);
+        var shot = plan.path("shots").get(0);
+        assertThat(shot.propertyNames()).containsExactlyInAnyOrder("videoVersionId", "timelineStartMs", "durationMs", "lines");
+        assertThat(shot.path("videoVersionId").asText()).isEqualTo(fixture.video().toString());
+        var line = shot.path("lines").get(0);
+        assertThat(line.propertyNames()).containsExactlyInAnyOrder("audioVersionId", "startMs", "endMs", "trimStartMs", "trimEndMs", "speed");
+        assertThat(line.path("startMs").asInt()).isBetween(900, 1100);
+        assertThat(tables.stream().map(table -> db.fetchCount(org.jooq.impl.DSL.table(table))).toList()).isEqualTo(counts);
+        assertThat(canvas.list(owner.userId(), fixture.project())).hasSize(2);
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(() -> compositions.preview(owner.userId(), fixture.project(), request(fixture)));
+            var second = executor.submit(() -> compositions.preview(owner.userId(), fixture.project(), request(fixture)));
+            assertThat(first.get(30, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(second.get(30, java.util.concurrent.TimeUnit.SECONDS));
+        }
+        assertThat(tables.stream().map(table -> db.fetchCount(org.jooq.impl.DSL.table(table))).toList()).isEqualTo(counts);
+        var another = projects.create(owner.userId(), "Other preview project", Project.AspectRatio.LANDSCAPE_16_9);
+        assertThatThrownBy(() -> compositions.preview(owner.userId(), another.id(), request(fixture))).isInstanceOf(ApiProblemException.class);
     }
 
     @Test void restRequiresSessionAndCsrfAndUsesTheSameValidatedContract() throws Exception {

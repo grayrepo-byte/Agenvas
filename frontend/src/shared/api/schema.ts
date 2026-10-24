@@ -2140,6 +2140,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/video-compositions/preview": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 只读分析剪辑配音的精确时间表
+         * @description 复用导出的取源授权、声音活动分析与配音排布，不创建任务、节点、事件或费用；在事务外执行有界FFmpeg分析，每实例最多两个并发预览。仅返回时间与字体，不返回本机路径或媒体正文。浏览器以此同步配音，修改镜头后需重新读取；字幕、配乐与画幅变化无需重新分析。规划端点不执行最终atempo编码，实际导出保留其完整音频边界校验。
+         */
+        post: operations["previewVideoComposition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/audio-trims": {
         parameters: {
             query?: never;
@@ -5356,6 +5384,26 @@ export interface components {
             capabilityId: string | null;
             /** Format: int64 */
             version: number;
+        };
+        VideoCompositionPreview: {
+            durationMs: number;
+            frames: number;
+            fontFamily: string;
+            shots: {
+                /** Format: uuid */
+                videoVersionId: string;
+                timelineStartMs: number;
+                durationMs: number;
+                lines: {
+                    /** Format: uuid */
+                    audioVersionId: string;
+                    startMs: number;
+                    endMs: number;
+                    trimStartMs: number;
+                    trimEndMs: number;
+                    speed: number;
+                }[];
+            }[];
         };
         VideoCompositionRequest: {
             title: string;
@@ -11235,6 +11283,45 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    previewVideoComposition: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoCompositionRequest"];
+            };
+        };
+        responses: {
+            /** @description 当前输入的只读预览时间表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoCompositionPreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
+            429: components["responses"]["ValidationError"];
+            503: components["responses"]["ValidationError"];
         };
     };
     runAudioTrim: {

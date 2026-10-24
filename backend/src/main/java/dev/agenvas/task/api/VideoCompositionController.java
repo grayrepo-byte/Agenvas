@@ -13,6 +13,11 @@ public class VideoCompositionController {
     private final VideoCompositionService compositions;
     public VideoCompositionController(VideoCompositionService compositions) { this.compositions = compositions; }
 
+    @PostMapping("/preview")
+    public JsonNode preview(@AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId, @RequestBody JsonNode request) {
+        return compositions.preview(principal.userId(), projectId, request);
+    }
+
     @PostMapping
     public TaskController.TaskResponse run(@AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId, @RequestHeader("Idempotency-Key") String key, @RequestBody JsonNode request) {

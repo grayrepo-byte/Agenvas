@@ -109,6 +109,13 @@ export function cancelImagePrompt(projectId: string, artifactId: string, taskId:
   }, t("image.reversePrompt.cancelFailed"));
 }
 export type VideoCompositionRequest = components["schemas"]["VideoCompositionRequest"];
+export type VideoCompositionPreview = components["schemas"]["VideoCompositionPreview"];
+/** Read-only analysis shares export authorization and never creates a task or reserves usage. */
+export function previewVideoComposition(projectId: string, input: VideoCompositionRequest, signal?: AbortSignal): Promise<VideoCompositionPreview> {
+  return writeJson(`/api/v1/projects/${projectId}/video-compositions/preview`, {
+    method: "POST", body: JSON.stringify(input), signal,
+  }, t("video.edit.previewFailed"));
+}
 export function composeVideo(projectId: string, input: VideoCompositionRequest, commandKey: string): Promise<Task> {
   return writeJson(`/api/v1/projects/${projectId}/video-compositions`, {
     method: "POST", headers: { "Idempotency-Key": commandKey }, body: JSON.stringify(input),

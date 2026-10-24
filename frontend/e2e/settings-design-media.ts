@@ -59,7 +59,7 @@ function sendProblem(response: ServerResponse, method: string, status: number, d
 }
 
 /** Single byte ranges let native media controls read metadata and seek without a real API. */
-function sendMedia(request: IncomingMessage, response: ServerResponse, bytes: Buffer, type: string) {
+export function sendMedia(request: IncomingMessage, response: ServerResponse, bytes: Buffer, type: string) {
   response.setHeader("Content-Type", type);
   response.setHeader("Accept-Ranges", "bytes");
   const range = request.headers.range;
