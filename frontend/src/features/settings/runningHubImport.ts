@@ -28,16 +28,16 @@ export function importedRunningHubSelection(current: RunningHubDefinition | unde
   const target = (nodeId: string, fieldName: string) => `${nodeId}:${fieldName}`;
   const configured = new Set(current?.fields.map((field) => target(field.nodeId, field.fieldName)) ?? []);
   const recommended = new Set(recommendedFieldKeys);
-  const suggestedTargets = new Set(imported.fields.filter((field) => recommended.has(field.key)).map((field) => target(field.nodeId, field.fieldName)));
+  const suggestedFields = new Map(imported.fields.filter((field) => recommended.has(field.key))
+    .map((field) => [target(field.nodeId, field.fieldName), field]));
   const nodeIds = new Set(current ? selectedNodeIds : []);
   const fieldKeys = new Set(current ? selectedFieldKeys : []);
   for (const field of next.fields) {
     const identity = target(field.nodeId, field.fieldName);
-    if (configured.has(identity) || !suggestedTargets.has(identity)) continue;
+    const suggestion = suggestedFields.get(identity);
+    if (configured.has(identity) || !suggestion) continue;
     // A preserved prompt elsewhere must not silently turn a second text candidate into an exposed parameter.
-    if (!field.source || field.source === "PARAMETER") {
-      if (!["IMAGE", "AUDIO", "VIDEO"].includes(field.type)) continue;
-    }
+    if (suggestion.source === "PROMPT" && field.source !== "PROMPT") continue;
     fieldKeys.add(field.key);
     nodeIds.add(field.nodeId);
   }

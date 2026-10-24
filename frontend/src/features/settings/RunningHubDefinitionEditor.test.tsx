@@ -66,9 +66,22 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     { key: "image", required: false, advanced: false, label: "参考图", type: "IMAGE", source: "PARAMETER", nodeId: "20", fieldName: "image" },
     { key: "steps", required: false, advanced: false, label: "采样步数", type: "INTEGER", source: "PARAMETER", nodeId: "30", fieldName: "steps", defaultValue: 20 },
   ] };
-  function discovery() {
+  const creationInputs: RunningHubDefinition = { ...initialDefinition, fixedBindings: [], fields: [
+    discovered.fields[0]!, discovered.fields[2]!,
+    { key: "duration", label: "片段时长", type: "NUMBER", source: "PARAMETER", nodeId: "30", fieldName: "duration", defaultValue: 5.5,
+      minimum: 1, maximum: 60, required: false, advanced: false },
+    { key: "ratio", label: "画幅", type: "SELECT", source: "PARAMETER", nodeId: "40", fieldName: "aspect_ratio", defaultValue: "16:9",
+      options: [{ label: "横屏", value: "16:9" }, { label: "竖屏", value: "9:16" }], required: false, advanced: false },
+    { key: "width", label: "图片宽度", type: "INTEGER", nodeId: "40", fieldName: "width", defaultValue: 1024,
+      minimum: 64, maximum: 4096, required: false, advanced: false },
+    { key: "height", label: "图片高度", type: "INTEGER", nodeId: "40", fieldName: "height", defaultValue: 576,
+      minimum: 64, maximum: 4096, required: false, advanced: false },
+    { key: "sound", label: "保留声音", type: "BOOLEAN", source: "PARAMETER", nodeId: "50", fieldName: "sound", defaultValue: false,
+      required: false, advanced: false },
+  ] };
+  function discovery(definition = discovered, recommendedFieldKeys = ["prompt", "image"]) {
     server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
-      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({ definition: discovered, warnings: [], recommendedFieldKeys: ["prompt", "image"] })));
+      http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({ definition, warnings: [], recommendedFieldKeys })));
   }
   it("exposes only suggested inputs, including individual fields within a selected node", async () => {
     discovery();
@@ -86,6 +99,47 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     await clickControl(within(steps).getByRole("checkbox", { name: "暴露参数 · 采样步数" }));
     expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["prompt", "image", "steps"]);
     expect(currentDefinition().fields).toEqual(discovered.fields);
+  });
+  it("exposes suggested creation parameters with their imported types, defaults and options", async () => {
+    discovery(creationInputs, creationInputs.fields.map((field) => field.key));
+    await mount(false, { ...initialDefinition, fields: [], fixedBindings: [] });
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    await screen.findByRole("row", { name: "片段时长" });
+    for (const field of creationInputs.fields) {
+      const row = screen.getByRole("row", { name: field.label });
+      expect(within(row).getByRole("checkbox", { name: `暴露参数 · ${field.label}` })).toBeChecked();
+      expect(within(row).getByRole("combobox", { name: "类型" })).toHaveValue(field.type);
+    }
+    expect(publishedDefinition().fields).toEqual(creationInputs.fields);
+    await clickControl(screen.getByText("创作者表单预览 · 离线"));
+    const preview = screen.getByLabelText("能力专属参数");
+    expect(within(preview).getByRole("spinbutton", { name: "片段时长" })).toHaveValue(5.5);
+    expect(within(preview).getByRole("combobox", { name: "画幅" })).toHaveValue("0");
+    expect(within(preview).getByRole("spinbutton", { name: "图片宽度" })).toHaveValue(1024);
+    expect(within(preview).getByRole("spinbutton", { name: "图片高度" })).toHaveValue(576);
+    expect(within(preview).getByRole("combobox", { name: "保留声音" })).toHaveValue("false");
+  });
+  it("preserves deselected creation parameters and their edited types, defaults and constraints on rediscovery", async () => {
+    discovery(creationInputs, creationInputs.fields.map((field) => field.key));
+    await mount(false, creationInputs);
+    const duration = screen.getByRole("row", { name: "片段时长" });
+    await selectValue(within(duration).getByRole("combobox", { name: "类型" }), "INTEGER");
+    const defaultValue = within(duration).getByRole("textbox", { name: "默认值" });
+    fireEvent.change(defaultValue, { target: { value: "7" } }); fireEvent.blur(defaultValue);
+    await clickControl(within(duration).getByRole("button", { name: "更多设置" }));
+    const constraints = screen.getByRole("row", { name: "更多设置 · 片段时长" });
+    fireEvent.change(within(constraints).getByRole("spinbutton", { name: "最小值" }), { target: { value: "3" } });
+    fireEvent.change(within(constraints).getByRole("spinbutton", { name: "最大值" }), { target: { value: "20" } });
+    await clickControl(within(screen.getByRole("row", { name: "画幅" })).getByRole("checkbox", { name: "暴露参数 · 画幅" }));
+    await showNodes("10", "20", "30", "40");
+    const configured = currentDefinition();
+    expect(configured.fields.find((field) => field.key === "duration")).toMatchObject({ type: "INTEGER", defaultValue: 7, minimum: 3, maximum: 20 });
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "自动发现参数" })).toBeEnabled());
+    expect(currentDefinition().fields).toEqual(configured.fields);
+    expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["prompt", "image", "duration", "width", "height"]);
+    expect(within(screen.getByRole("row", { name: "画幅" })).getByRole("checkbox", { name: "暴露参数 · 画幅" })).not.toBeChecked();
+    expect(screen.queryByRole("row", { name: "保留声音" })).not.toBeInTheDocument();
   });
   it("keeps manual deselection, scalar drafts and renamed exposed keys when rediscovering the same target", async () => {
     discovery();

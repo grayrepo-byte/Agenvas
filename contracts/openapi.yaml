@@ -6279,7 +6279,7 @@ components:
           type: array
           maxItems: 1024
           uniqueItems: true
-          description: Suggested exposed candidate keys for the editor (unambiguous canvas prompt and media inputs). Other fields remain available for manual exposure. Editor selection only; never stored in a capability or used to authorize execution.
+          description: Suggested creator-facing candidate keys (unambiguous canvas prompt, media, negative prompt, duration, aspect ratio, dimensions, resolution, frame rate and quality). Types, bounds and valid defaults use declared input and widget metadata; sampler/model internals and ambiguous fields remain manual. Existing administrator mappings and selections take precedence when importing again. Editor selection only; never stored in a capability or used to authorize execution.
           items: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"}
         warnings:
           type: array
