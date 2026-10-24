@@ -62,8 +62,11 @@ public interface TaskRepository {
     /** Image analysis has no output Artifact target; its immutable input identifies the source card. */
     List<Task> listImagePrompts(UUID ownerId, UUID projectId, UUID canvasItemId);
 
-    /** Stops queued or running image analysis with CAS; this cannot promise provider cancellation. */
-    boolean cancelImagePrompt(Task current, Instant now);
+    /** Text-only assistance is identified by its frozen purpose and source CanvasItem. */
+    List<Task> listPromptTasks(UUID ownerId, UUID projectId, UUID canvasItemId, String purpose);
+
+    /** Stops queued or running prompt assistance with CAS; this cannot promise provider cancellation. */
+    boolean cancelPromptTask(Task current, Instant now);
 
     /** Recent media requests for one CanvasItem, including approved Agent work, newest first. */
     List<Task> listMediaForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId);

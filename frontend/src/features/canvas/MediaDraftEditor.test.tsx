@@ -146,6 +146,47 @@ describe("MediaDraftEditor", () => {
     expect(screen.queryByRole("button", { name: "运镜" })).not.toBeInTheDocument();
   });
 
+  it("applies an optimized prompt through autosave while preserving exact media references", async () => {
+    const original: MediaDraft = { ...initialDraft, prompt: "使用 \uFFFC 保持人物身份。", capabilityId: videoCapability.id,
+      durationSeconds: 5, videoInputMode: "START_END", parameters: { aspectRatio: "AUTO" },
+      mediaInputs: [{ versionId: "hero-v1", artifactId: "reference-image", role: "START_FRAME", order: 0,
+        color: "#F15CAF", sources: [{ id: "manual-hero", type: "MANUAL", connectionId: null }] }],
+      mentions: [{ versionId: "hero-v1", role: "START_FRAME" }] };
+    const optimized: Task = { ...task("SUCCEEDED"), kind: "TEXT_GENERATION", input: { prompt: "使用 [[REF_1]] 保持人物身份。" },
+      output: { prompt: "镜头缓缓推进，[[REF_1]] 保持人物身份。", mock: false } };
+    const { saves } = setup({ kind: "VIDEO", draft: original, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/video-prompt-optimizations`, () => HttpResponse.json([optimized])),
+      http.get("/api/v1/skills", () => HttpResponse.json({ items: [], nextCursor: null, total: 0 })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [
+        { ...artifact, id: "reference-image", title: "主角", resourceDefaultVersionId: "hero-v1" }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/reference-image/versions`, () =>
+        HttpResponse.json({ items: [{ id: "hero-v1", versionNo: 1, content: { assetId: "hero-asset" } }] })),
+    ] });
+    await userEvent.click(await screen.findByRole("button", { name: "提示词优化" }));
+    await screen.findByRole("textbox", { name: "优化结果" });
+    await userEvent.click(screen.getByRole("button", { name: "应用到草稿" }));
+    await waitFor(() => expect(saves.at(-1)?.prompt).toBe("镜头缓缓推进，\uFFFC 保持人物身份。"));
+    expect(saves.at(-1)).toMatchObject({ expectedVersion: original.version, mentions: original.mentions,
+      parameters: original.parameters, mediaInputs: original.mediaInputs.map(({ versionId, role, color }) => ({ versionId, role, color })) });
+  });
+
+  it("preserves edits made while prompt optimization is open", async () => {
+    const original: MediaDraft = { ...initialDraft, capabilityId: videoCapability.id, videoInputMode: "TEXT", durationSeconds: 5 };
+    setup({ kind: "VIDEO", draft: original, handlers: [
+      http.get(`/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/video-prompt-optimizations`, () => HttpResponse.json([
+        { ...task("SUCCEEDED"), kind: "TEXT_GENERATION", input: { prompt: original.prompt }, output: { prompt: "Optimized scene", mock: false } },
+      ])), http.get("/api/v1/skills", () => HttpResponse.json({ items: [], nextCursor: null, total: 0 })),
+    ] });
+    const editor = await screen.findByRole("textbox", { name: "视频提示词" });
+    await userEvent.click(screen.getByRole("button", { name: "提示词优化" }));
+    await screen.findByRole("textbox", { name: "优化结果" });
+    editor.textContent = "Later typing";
+    fireEvent.input(editor);
+    await userEvent.click(screen.getByRole("button", { name: "应用到草稿" }));
+    expect(await screen.findByText(/草稿已变化、引用标记不完整/)).toBeVisible();
+    expect(editor).toHaveTextContent("Later typing");
+  });
+
   it("appends camera direction while preserving the current prompt, mentions, fixed references and autosave CAS", async () => {
     const original: MediaDraft = { ...initialDraft, prompt: "使用 \uFFFC 保持人物身份。", capabilityId: videoCapability.id,
       durationSeconds: 5, videoInputMode: "START_END", parameters: { aspectRatio: "AUTO" },

@@ -120,7 +120,7 @@ public class ImagePromptTaskService {
                     .filter(task -> artifact.toString().equals(task.input().path("artifactId").asText()))
                     .orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "not-found", false));
             if (current.status() == Task.Status.CANCELED) return ProjectEventService.Change.unchanged(current);
-            if (!tasks.cancelImagePrompt(current, clock.instant()))
+            if (!tasks.cancelPromptTask(current, clock.instant()))
                 throw problem(HttpStatus.CONFLICT, "IMAGE_PROMPT_CONFLICT", "conflict", false);
             Task canceled = tasks.find(owner, project, taskId).orElseThrow();
             if (current.output() == null) usage.releaseDirectTextTask(owner, canceled);
