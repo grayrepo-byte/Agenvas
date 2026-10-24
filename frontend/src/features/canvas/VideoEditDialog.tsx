@@ -170,7 +170,6 @@ export function VideoEditDialog({ projectId, items, initialIds, onClose }: {
   return <Dialog open onOpenChange={(open) => { if (!open && !submit.isPending) onClose(); }}>
     <DialogContent className="video-edit-dialog nodrag nowheel nopan" showCloseButton={false}
       onEscapeKeyDown={(event) => { if (trimming) event.preventDefault(); }}
-      onOpenAutoFocus={(event) => { event.preventDefault(); }}
       onKeyDown={(event) => { if (event.key !== "Tab") event.stopPropagation(); }}>
       <TooltipProvider delayDuration={300}>
         <header className="video-edit-header">
@@ -221,7 +220,7 @@ export function VideoEditDialog({ projectId, items, initialIds, onClose }: {
               captions={captions} fontFamily={voicePreview.fontFamily} resolution={resolution} aspectRatio={aspectRatio} disabled={submit.isPending} />
               : <Empty><EmptyHeader><EmptyMedia variant="icon"><FilmStrip /></EmptyMedia><EmptyTitle>{t("video.edit.emptyTitle")}</EmptyTitle>
                 <EmptyDescription>{t("video.edit.emptyHint")}</EmptyDescription></EmptyHeader></Empty>}
-            {voicePreview.pending ? <p className="video-edit-preview-note" role="status">{t("video.edit.preparingVoices")}</p> : null}
+            {voicePreview.pending ? <p className="video-edit-preview-note" role="status">{t("video.edit.preparingPreview")}</p> : null}
             {voicePreview.error ? <Alert variant="destructive"><AlertDescription>{voicePreview.error.message}<Button type="button" variant="outline" size="sm" disabled={submit.isPending || voicePreview.pending} onClick={() => void voicePreview.retry()}>{t("common.retryRead")}</Button></AlertDescription></Alert> : null}
             <p className="video-edit-preview-note"><Info aria-hidden="true" />{t("video.edit.livePreviewHint")}</p>
           </section>

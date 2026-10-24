@@ -47,6 +47,14 @@ function setNumber(name: string, value: number, root: HTMLElement = screen.getBy
 }
 
 describe("VideoEditDialog", () => {
+  it("moves initial keyboard focus into the editor and keeps Tab navigation inside it", async () => {
+    setup();
+    const user = userEvent.setup();
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "关闭" })).toHaveFocus());
+    await user.tab(); expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    await user.tab({ shift: true }); expect(within(dialog).getByRole("button", { name: "关闭" })).toHaveFocus();
+  });
   it("submits ordered exact clips with trims, speed, fades, voices, music, output and timed subtitles", async () => {
     const requests: VideoCompositionRequest[] = [];
     server.use(http.post("/api/v1/projects/project-1/video-compositions", async ({ request }) => {

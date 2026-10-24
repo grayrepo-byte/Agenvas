@@ -9,9 +9,9 @@ const source = { selectedVersionId: 'voice', selectedVersion: { content: { asset
 const shot = { videoVersionId: 'video', sourceStartMs: 0, durationMs: 3000, speed: 1, fadeMs: 0, lines: [{ audioVersionId: 'voice' }] };
 const result: VideoCompositionPreview = { durationMs: 3000, frames: 90, fontFamily: 'Noto Sans CJK SC', shots: [{ videoVersionId: 'video', timelineStartMs: 0, durationMs: 3000,
   lines: [{ audioVersionId: 'voice', startMs: 1000, endMs: 2000, trimStartMs: 100, trimEndMs: 1100, speed: 1 }] }] };
-function setup() {
+function setup(shots = [shot]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return renderHook(({ shots }) => useCompositionVoices('project', shots, [source], true), { initialProps: { shots: [shot] }, wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+  return renderHook(({ shots }) => useCompositionVoices('project', shots, [source], true), { initialProps: { shots }, wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
 }
 describe('composition voice preview', () => {
   it('uses server timing and never plays an old voice plan after the input changes', async () => {
@@ -22,7 +22,22 @@ describe('composition voice preview', () => {
     act(() => view.rerender({ shots: [{ ...shot, speed: 2 }] }));
     expect(view.result.current.blocked).toBe(true); expect(view.result.current.voices).toEqual([]);
     act(() => view.rerender({ shots: [{ ...shot, lines: [] }] }));
-    expect(view.result.current.blocked).toBe(false); expect(view.result.current.voices).toEqual([]);
+    expect(view.result.current.voices).toEqual([]);
+    await waitFor(() => expect(view.result.current.blocked).toBe(false));
+  });
+  it('reads the configured font without voices and reuses it across trim and speed changes', async () => {
+    const requests: unknown[] = [];
+    server.use(http.get('/api/v1/auth/csrf', () => HttpResponse.json({ headerName: 'X-CSRF-TOKEN', token: 'synthetic' })),
+      http.post('/api/v1/projects/project/video-compositions/preview', async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json({ ...result, durationMs: 100, frames: 3, fontFamily: 'Synthetic Configured Font', shots: [] });
+      }));
+    const view = setup([{ ...shot, lines: [] }]);
+    await waitFor(() => expect(view.result.current.fontFamily).toBe('Synthetic Configured Font'));
+    expect(requests).toEqual([{ title: 'Preview', originalAudioMode: 'MUTE', shots: [{ videoVersionId: 'video', sourceStartMs: 0, durationMs: 100, speed: 1, fadeMs: 0, lines: [] }] }]);
+    act(() => view.rerender({ shots: [{ ...shot, sourceStartMs: 1000, durationMs: 2000, speed: 2, lines: [] }] }));
+    expect(view.result.current).toMatchObject({ fontFamily: 'Synthetic Configured Font', blocked: false, voices: [] });
+    expect(requests).toHaveLength(1);
   });
   it('keeps errors explicit and only retries a failed read when requested', async () => {
     let calls = 0;

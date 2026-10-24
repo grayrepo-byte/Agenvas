@@ -3171,7 +3171,7 @@
   "video.edit.trimEnd": "调整片段 {0} 出点",
   "video.edit.trimHint": "点击标尺跳转 · 拖动两端裁切 · 拖动片段排序",
   "video.edit.livePreviewHint": "按当前裁切、变速、淡黑、混音、字幕和画幅预览；字体与音频处理可能因浏览器略有差异。",
-  "video.edit.preparingVoices": "正在同步自动配音时间表…",
+  "video.edit.preparingPreview": "正在准备成片预览…",
   "video.optimize.title": "提示词优化",
   "video.optimize.hint": "用文字模型优化当前视频提示词，预览并确认后回填草稿。关闭窗口不会取消任务。",
   "video.optimize.source": "当前提示词",

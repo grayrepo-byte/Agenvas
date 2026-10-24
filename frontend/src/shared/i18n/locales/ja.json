@@ -3171,7 +3171,7 @@
   "video.edit.trimEnd": "クリップ {0} の終了を調整",
   "video.edit.trimHint": "目盛りで移動・両端でトリミング・クリップで並べ替え",
   "video.edit.livePreviewHint": "トリミング・速度・フェード・音声・字幕・画角を反映。フォントと音声処理はブラウザによって多少異なります。",
-  "video.edit.preparingVoices": "ナレーションのタイミングを同期中…",
+  "video.edit.preparingPreview": "完成動画のプレビューを準備中…",
   "video.optimize.title": "プロンプトを最適化",
   "video.optimize.hint": "現在の動画プロンプトをテキストモデルで最適化し、確認してから下書きに適用します。閉じてもタスクは継続します。",
   "video.optimize.source": "現在のプロンプト",
