@@ -8,6 +8,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { ToggleGroup, ToggleGroupItem } from "../../shared/ui/primitives/toggle-group";
+import { Slider } from "../../shared/ui/primitives/slider";
 import { AudioPlayer } from "./AudioPlayer";
 import "./AudioTrimDialog.css";
 
@@ -128,6 +129,20 @@ export function AudioTrimDialog({ projectId, artifactId, source, src, title, dur
         }
       }} />
     <FieldGroup>
+      <div className="audio-trim-timeline">
+        <div className="audio-trim-timeline-heading"><strong>{t("media.tools.trimRange")}</strong>
+          <span>{!invalid ? t("media.tools.selectedDuration", { 0: ((endMs - startMs) / 1000).toFixed(3) }) : t("audio.trim.rangeInvalid")}</span></div>
+        <Slider min={0} max={Math.max(MIN_TRIM_MS, session.durationMs)} step={1} minStepsBetweenThumbs={MIN_TRIM_MS}
+          value={invalid ? [0, Math.min(15_000, Math.max(MIN_TRIM_MS, session.durationMs))] : [startMs, endMs]}
+          disabled={mutation.isPending || session.durationMs < MIN_TRIM_MS}
+          thumbLabels={[t("audio.trim.start"), t("audio.trim.end")]}
+          formatValue={(value) => `${(value / 1000).toFixed(3)} s`}
+          onValueChange={([nextStart, nextEnd]) => {
+            if (nextStart === undefined || nextEnd === undefined) return;
+            stopPreview(); setPlaybackError(false); setStart(String(nextStart / 1000)); setEnd(String(nextEnd / 1000));
+          }} />
+        <div className="audio-trim-time-ruler"><span>0:00</span><span>{(session.durationMs / 1000).toFixed(3)} s</span></div>
+      </div>
       <FieldDescription>{t("audio.trim.referenceHint")}</FieldDescription>
       <FieldGroup className="audio-trim-range">
         <Field data-invalid={invalid} data-disabled={mutation.isPending}>

@@ -401,7 +401,7 @@ describe("MediaCanvasCard", () => {
       await screen.findByRole("img", { name: "湖边 的预览" });
       await clickControl(screen.getByRole("button", { name: "扩展" }));
       await clickControl(screen.getByRole("menuitem", { name: /高清放大.*本地/ }));
-      await changeControl(screen.getByRole("combobox", { name: "放大倍数" }), { target: { value: "4" } });
+      await clickControl(screen.getByRole("radio", { name: /4×/ }));
       await clickControl(screen.getByRole("button", { name: "开始处理" }));
       expect(await screen.findByRole("alert")).toHaveTextContent("模拟处理失败");
       closeToolbar();
@@ -409,7 +409,7 @@ describe("MediaCanvasCard", () => {
       await clickControl(screen.getByRole("button", { name: "扩展" }));
       await clickControl(screen.getByRole("menuitem", { name: /高清放大.*本地/ }));
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-      expect(screen.getByRole("combobox", { name: "放大倍数" })).toHaveValue("2");
+      expect(screen.getByRole("radio", { name: /2×/ })).toBeChecked();
     });
 
     it("dismisses the panel without losing or resubmitting an in-flight operation", async () => {
@@ -856,9 +856,7 @@ describe("MediaCanvasCard", () => {
     expect(await screen.findByText("Transparent model", { selector: "p" })).toBeVisible();
     expect(screen.queryByRole("combobox", { name: "图片能力" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Opaque model" })).not.toBeInTheDocument();
-    await changeControl(screen.getByRole("combobox", { name: "输出图层" }), {
-      target: { value: "BACKGROUND" },
-    });
+    await clickControl(screen.getByRole("radio", { name: /背景层/ }));
     expect(screen.getByText("Transparent model", { selector: "p" })).toBeVisible();
     expect(screen.queryByRole("combobox", { name: "图片能力" })).not.toBeInTheDocument();
   });

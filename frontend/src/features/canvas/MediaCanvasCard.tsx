@@ -1,7 +1,7 @@
 import {
 ArrowClockwise,
 ArrowsOutSimple,
-Buildings,CaretDown,
+CaretDown,
 CopySimple,
 Crop,Cube,
 HighDefinition,
@@ -10,17 +10,16 @@ Eraser,Image as ImageIcon,
 MagicWand,
 MusicNotes,
 PaintBrush,
-PersonSimple,Play,Scissors,SlidersHorizontal,Smiley,
+Play,Scissors,SlidersHorizontal,Smiley,
 Stack,
 Sun,UploadSimple,
-VideoCamera,
-X
+VideoCamera
 } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState,type ReactNode } from "react";
 import {
-ApiError,assetContentUrl,assetThumbnailUrl,getMediaSettings,getMediaFunctions,listDirectMediaTasks,
-runImageOperation,runVideoOperation,type Artifact,type CanvasItem,type MediaCapability,
+assetContentUrl,assetThumbnailUrl,getMediaSettings,getMediaFunctions,listDirectMediaTasks,
+runImageOperation,runVideoOperation,type Artifact,type CanvasItem,
 type RunImageOperationRequest,type RunVideoOperationRequest,type VideoOperation,type Task
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -29,8 +28,6 @@ import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState
 import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuSub,DropdownMenuSubContent,DropdownMenuSubTrigger,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Input } from "../../shared/ui/primitives/input";
-import { Textarea } from "../../shared/ui/primitives/textarea";
-import { Select } from "../../shared/ui/Select";
 import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText } from "./artifactContent";
@@ -38,6 +35,8 @@ import { AudioPlayer } from "./AudioPlayer";
 import { AudioTrimDialog } from "./AudioTrimDialog";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
 import { DirectorWorkbench } from "./DirectorWorkbench";
+import { ImageOperationPanel } from "./ImageOperationPanel";
+import { THREE_VIEW_OPTIONS, type ThreeViewType } from "./imageOperationOptions";
 import { ImageResizePanel } from "./ImageResizePanel";
 import { ImageReversePromptDialog } from "./ImageReversePromptDialog";
 import { CropPanel } from "./CropPanel";
@@ -62,19 +61,7 @@ const TASK_LABELS: Partial<Record<Task["status"], string>> = {
 };
 type ImageOperation = RunImageOperationRequest["operation"];
 type ImageTool = ImageOperation | "BRUSH_MARKUP";
-type ThreeViewType = NonNullable<RunImageOperationRequest["parameters"]["threeViewType"]>;
-type AspectRatio = NonNullable<RunImageOperationRequest["parameters"]["aspectRatio"]>;
-const THREE_VIEW_OPTIONS = [
-  { value: "CHARACTER", get label() { return t("media.card.characterViews"); }, get summary() { return t("media.card.characterViewsHint"); }, icon: PersonSimple,
-    aspectRatio: "16:9" },
-  { value: "FACE", get label() { return t("media.card.faceViews"); }, get summary() { return t("media.card.faceViewsHint"); }, icon: Smiley,
-    aspectRatio: "16:9" },
-  { value: "PROP", get label() { return t("media.card.objectViews"); }, get summary() { return t("media.card.objectViewsHint"); }, icon: Cube,
-    aspectRatio: "16:9" },
-  { value: "SCENE_GRID", get label() { return t("media.card.sceneGrid"); }, get summary() { return t("media.card.sceneViewsHint"); }, icon: Buildings,
-    aspectRatio: "1:1" },
-] as const satisfies readonly { value: ThreeViewType; label: string; summary: string;
-  icon: typeof Cube; aspectRatio: "1:1" | "16:9" }[];
+
 const EXTENSIONS = [
   { get label() { return t("media.card.threeView"); }, icon: Cube, operation: "THREE_VIEW", submenu: true },
   { get label() { return t("media.card.splitLayers"); }, icon: Stack, operation: "LAYER_SPLIT", submenu: false },
@@ -295,6 +282,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
                   busy={operation.isPending} error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
                   onSubmit={(parameters, instruction) => submit(parameters, instruction)} />
                 : operationOpen === "RESIZE" ? <ImageResizePanel key={item.selectedVersionId}
+                  sourceUrl={assetContentUrl(artifact.projectId, assetId)} sourceTitle={item.title}
                   sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height}
                   loading={metadata.isPending} metadataError={metadata.error} onRetryMetadata={() => void metadata.refetch()}
                   busy={operation.isPending} error={operation.error} extraControls={controls} submitDisabled={submitDisabled}
@@ -302,7 +290,9 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
                 : operationOpen === "CROP" ? <CropPanel sourceUrl={assetContentUrl(artifact.projectId, assetId)}
                   sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height} busy={operation.isPending}
                   error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }} onSubmit={(parameters) => submit(parameters)} />
-                : <ImageOperationPanel operation={operationOpen} initialThreeViewType={threeViewType ?? undefined}
+                : <ImageOperationPanel operation={operationOpen}
+                  sourceUrl={assetContentUrl(artifact.projectId, assetId)} sourceTitle={item.title}
+                  sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height} initialThreeViewType={threeViewType ?? undefined}
                   capabilities={[capability]} extraControls={controls} submitDisabled={submitDisabled}
                   busy={operation.isPending} error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
                   onSubmit={(parameters, instruction) => submit(parameters, instruction)} />}
@@ -332,6 +322,8 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             </DropdownMenuGroup></DropdownMenuContent>
           </DropdownMenu>
           {videoOperationOpen && item.selectedVersionId ? <VideoOperationPanel operation={videoOperationOpen}
+            sourceUrl={assetId ? assetContentUrl(artifact.projectId, assetId) : undefined}
+            posterUrl={assetId ? assetThumbnailUrl(artifact.projectId, assetId) : undefined}
             sourceVersionId={item.selectedVersionId} sourceTitle={item.title} busy={videoPending} error={videoOperation.error}
             onClose={() => { setVideoOperationOpen(null); videoOperation.reset(); }}
             onSubmit={(input) => videoOperation.mutate({ ...input, operation: videoOperationOpen,
@@ -407,126 +399,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           {tasks.error ? <p className="media-card-error" role="alert">{t("media.card.statusUnavailable")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void tasks.refetch()}>{t("media.card.retryStatus")}</Button></p> : null}
         </div>}
   </ArtifactCardFrame>;
-}
-
-const OPERATION_TITLES: Record<ImageOperation, string> = {
-  get SMART_EDIT() { return t("media.card.smartEdit"); }, get RELIGHT() { return t("media.card.lighting"); }, get OUTPAINT() { return t("media.card.outpaint"); },
-  get THREE_VIEW() { return t("media.card.threeView"); }, get LAYER_SPLIT() { return t("media.card.splitLayers"); }, get EXPRESSION_EDIT() { return t("media.card.changeExpression"); },
-  get REMOVE_BACKGROUND() { return t("media.card.removeBackground"); },
-  get OBJECT_REMOVE() { return t("media.card.removeObject"); }, get VIEW_ANGLE() { return t("media.card.changeAngle"); },
-  get DEPTH_MAP() { return t("media.card.extractDepth"); }, get UPSCALE() { return t("media.card.upscaleTitle"); }, get CROP() { return t("media.card.crop"); },
-  get RESIZE() { return t("image.resize.title"); },
-  get ROTATE() { return t("media.card.rotate"); }, get FLIP_HORIZONTAL() { return t("media.card.flipHorizontal"); }, get FLIP_VERTICAL() { return t("media.card.flipVertical"); },
-};
-
-const INSTRUCTION_COPY: Partial<Record<ImageOperation, { label: string; placeholder: string;
-  required?: boolean }>> = {
-  SMART_EDIT: { get label() { return t("media.card.editInstruction"); }, get placeholder() { return t("media.card.editInstructionPlaceholder"); }, required: true },
-  OUTPAINT: { get label() { return t("media.card.additionalInstruction"); }, get placeholder() { return t("media.card.outpaintInstructionPlaceholder"); } },
-  THREE_VIEW: { get label() { return t("media.card.subjectInstruction"); }, get placeholder() { return t("media.card.threeViewInstructionPlaceholder"); } },
-  LAYER_SPLIT: { get label() { return t("media.card.layerInstruction"); }, get placeholder() { return t("media.card.layerInstructionPlaceholder"); } },
-  EXPRESSION_EDIT: { get label() { return t("media.card.expression"); }, get placeholder() { return t("media.card.expressionInstructionPlaceholder"); }, required: true },
-  REMOVE_BACKGROUND: { get label() { return t("media.card.subjectInstruction"); }, get placeholder() { return t("media.card.backgroundInstructionPlaceholder"); } },
-  OBJECT_REMOVE: { get label() { return t("media.card.removeInstruction"); }, get placeholder() { return t("media.card.removeInstructionPlaceholder"); }, required: true },
-  VIEW_ANGLE: { get label() { return t("media.card.additionalInstruction"); }, get placeholder() { return t("media.card.angleInstructionPlaceholder"); } },
-};
-
-const VIEW_ANGLE_OPTIONS = [
-  ["FRONT", "media.card.front"], ["LEFT_THREE_QUARTER", "media.card.leftThreeQuarter"],
-  ["RIGHT_THREE_QUARTER", "media.card.rightThreeQuarter"], ["LEFT_PROFILE", "media.card.leftProfile"],
-  ["RIGHT_PROFILE", "media.card.rightProfile"], ["HIGH_ANGLE", "media.card.highAngle"],
-  ["LOW_ANGLE", "media.card.lowAngle"], ["BACK", "media.card.back"],
-] as const;
-
-function ImageOperationPanel({ operation, initialThreeViewType, capabilities, busy, error, extraControls, submitDisabled,
-  onClose, onSubmit }: {
-  operation: ImageOperation; capabilities: MediaCapability[]; busy: boolean; error: Error | null;
-  initialThreeViewType?: ThreeViewType; extraControls: ReactNode; submitDisabled: boolean;
-  onClose: () => void;
-  onSubmit: (parameters: RunImageOperationRequest["parameters"], instruction?: string,
-    capabilityId?: string) => void;
-}) {
-  useLocale();
-  const cloud = capabilities[0]?.adapterId !== "LOCAL_IMAGE_PROCESSOR";
-  const [instruction, setInstruction] = useState("");
-  const capabilityId = capabilities[0]?.id ?? "";
-  const [scale, setScale] = useState<2 | 4>(2);
-  const initialThreeView = initialThreeViewType ?? "CHARACTER";
-  const [threeViewType, setThreeViewType] = useState<ThreeViewType>(initialThreeView);
-  const [ratio, setRatio] = useState<AspectRatio>(THREE_VIEW_OPTIONS.find(
-    (option) => option.value === initialThreeView)?.aspectRatio ?? "16:9");
-  const [layerTarget, setLayerTarget] = useState<"FOREGROUND" | "BACKGROUND">("FOREGROUND");
-  const [viewAngle, setViewAngle] = useState<typeof VIEW_ANGLE_OPTIONS[number][0]>("FRONT");
-  const transparentOutput = operation === "REMOVE_BACKGROUND"
-    || operation === "LAYER_SPLIT" && layerTarget === "FOREGROUND";
-  const eligibleCapabilities = capabilities.filter((capability) =>
-    !transparentOutput || capability.supportsTransparentBackground);
-  const selectedCapabilityId = eligibleCapabilities.some((capability) => capability.id === capabilityId)
-    ? capabilityId : eligibleCapabilities[0]?.id ?? "";
-  const instructionCopy = INSTRUCTION_COPY[operation];
-  const canSubmit = !busy && !submitDisabled && (!cloud || Boolean(selectedCapabilityId))
-    && (!instructionCopy?.required || instruction.trim().length > 0);
-
-  function submit() {
-    if (!canSubmit) return;
-    const parameters: RunImageOperationRequest["parameters"] = operation === "UPSCALE"
-      ? capabilities[0]?.settings.runningHub ? {} : { scale } : operation === "THREE_VIEW"
-        ? { aspectRatio: ratio, threeViewType }
-        : operation === "OUTPAINT" ? { aspectRatio: ratio }
-        : operation === "LAYER_SPLIT" ? { layerTarget }
-          : operation === "VIEW_ANGLE" ? { viewAngle }
-            : operation === "ROTATE" ? { quarterTurns: 1 } : {};
-    onSubmit(parameters, instruction.trim(), selectedCapabilityId || undefined);
-  }
-
-  const threeViewLabel = THREE_VIEW_OPTIONS.find((option) => option.value === threeViewType)?.label;
-  return <div className="media-operation-panel nodrag nowheel nopan" role="dialog"
-    aria-label={operation === "THREE_VIEW" ? threeViewLabel : OPERATION_TITLES[operation]}
-    onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
-    <header><div><strong>{operation === "THREE_VIEW" ? threeViewLabel : OPERATION_TITLES[operation]}</strong>
-      <span>{cloud ? t("media.card.cloudProcessingHint") : t("media.card.localProcessingHint")}</span></div>
-      <Button variant="ghost" type="button" aria-label={t("media.card.closeOperation")} onClick={onClose}><X size={16} /></Button>
-    </header>
-    {operation === "THREE_VIEW" ? <fieldset className="media-three-view-types">
-      <legend>{t("media.card.outputType")}</legend>
-      {THREE_VIEW_OPTIONS.map((option) => <label key={option.value}
-        className={threeViewType === option.value ? "is-selected" : ""}>
-        <input type="radio" name="three-view-type" value={option.value}
-          checked={threeViewType === option.value} onChange={() => {
-            setThreeViewType(option.value); setRatio(option.aspectRatio);
-          }} />
-        <option.icon size={18} /><span><strong>{option.label}</strong><small>{option.summary}</small></span>
-      </label>)}
-    </fieldset> : null}
-    {operation === "LAYER_SPLIT" ? <label>{t("media.card.outputLayer")}<Select value={layerTarget}
-      onChange={(event) => setLayerTarget(event.target.value as "FOREGROUND" | "BACKGROUND")}>
-      <option value="FOREGROUND">{t("media.card.foregroundLayer")}</option>
-      <option value="BACKGROUND">{t("media.card.backgroundLayer")}</option>
-    </Select></label> : null}
-    {operation === "VIEW_ANGLE" ? <label>{t("media.card.viewAngle")}<Select value={viewAngle}
-      onChange={(event) => setViewAngle(event.target.value as typeof viewAngle)}>
-      {VIEW_ANGLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
-    </Select></label> : null}
-    {instructionCopy
-      ? <label>{instructionCopy.label}
-        <Textarea value={instruction} maxLength={4000}
-          placeholder={instructionCopy.placeholder}
-          onChange={(event) => setInstruction(event.target.value)} /></label> : null}
-    {operation === "UPSCALE" && !capabilities[0]?.settings.runningHub ? <label>{t("media.card.upscaleFactor")}<Select value={scale}
-      onChange={(event) => setScale(Number(event.target.value) as 2 | 4)}>
-      <option value={2}>{t("media.card.upscaleDouble")}</option><option value={4}>{t("media.card.upscaleQuadruple")}</option>
-    </Select></label> : null}
-    {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>{t("media.card.aspectRatio")}<Select value={ratio}
-      onChange={(event) => setRatio(event.target.value as AspectRatio)}>
-      {["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"].filter((value) =>
-        !capabilities[0]?.supportedImageAspectRatios?.length || capabilities[0].supportedImageAspectRatios.some((ratio) => ratio === value)).map((value) =>
-        <option key={value} value={value}>{value}</option>)}</Select></label> : null}
-    {extraControls}
-    {error ? <p role="alert">{error instanceof ApiError ? error.message : t("media.card.operationFailed")}</p> : null}
-    <footer><Button variant="ghost" type="button" onClick={onClose}>{t("common.cancel")}</Button>
-      <Button variant="ghost" type="button" className="is-primary" disabled={!canSubmit} onClick={submit}>
-        {busy ? t("media.card.accepting") : t("media.card.startOperation")}</Button></footer>
-  </div>;
 }
 
 /**

@@ -1,4 +1,10 @@
 .media-operation-panel.video-operation-panel { gap: var(--ui-space-3); }
+.media-tool-workspace .video-operation-cost { margin: auto 8px auto 0; color: var(--ui-text-muted); font-size: 11px; }
+.media-tool-workspace .video-operation-method { margin: 0; color: var(--ui-text-secondary); font-size: 12px; }
+.media-tool-workspace .video-operation-result-hint { margin: 0; color: var(--ui-text-muted); font-size: 11px; line-height: 1.7; }
+.video-tool-outputs { display: flex; flex-direction: column; gap: 10px; padding-top: 18px; border-top: 1px solid var(--ui-border); }
+.video-tool-outputs > span { display: flex; align-items: center; gap: 9px; color: var(--ui-text-secondary); font-size: 12px; }
+.video-tool-outputs svg { width: 17px; height: 17px; color: var(--ui-accent-text); }
 .video-operation-panel .video-operation-source { overflow-wrap: anywhere; }
 .video-operation-panel .video-operation-method { color: var(--ui-text); font-size: var(--ui-text-sm); font-weight: 500; overflow-wrap: anywhere; }
 .video-operation-panel .video-operation-fields { padding-block: var(--ui-space-3); border-block: 1px solid var(--ui-border); }

@@ -42,6 +42,23 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe("AudioTrimDialog", () => {
+  it("keeps keyboard range handles and exact time fields synchronized", async () => {
+    show();
+    const inHandle = screen.getByRole("slider", { name: "入点（秒）" });
+    const outHandle = screen.getByRole("slider", { name: "出点（秒）" });
+    fireEvent.focus(inHandle);
+    fireEvent.keyDown(inHandle, { key: "ArrowRight" });
+    expect(start()).toHaveValue(0.001);
+    expect(inHandle).toHaveAttribute("aria-valuetext", "0.001 s");
+    fireEvent.focus(outHandle);
+    fireEvent.keyDown(outHandle, { key: "ArrowLeft" });
+    expect(end()).toHaveValue(14.999);
+    change(start(), "1.234");
+    expect(inHandle).toHaveAttribute("aria-valuenow", "1234");
+    expect(screen.getByText("已选 13.765 秒")).toBeVisible();
+    await act(async () => {});
+  });
+
   it("uses decoded waveform and defaults to the first fifteen seconds or the shorter source", async () => {
     const view = show(6_432);
     expect(start()).toHaveValue(0);

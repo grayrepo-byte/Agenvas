@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { VideoOperation } from "../../shared/api/client";
-import { selectValue } from "../../test/controls";
+import { clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { videoFunctionsFixture } from "../../test/videoFunctionsFixture";
 import { VideoOperationPanel } from "./VideoOperationPanel";
@@ -26,7 +26,7 @@ function setup(operation: VideoOperation = "EXTRACT_AUDIO") {
 describe("VideoOperationPanel audio extraction", () => {
   it("submits the explicit MP3 format and selected track with pinned method versions", async () => {
     const { submit } = setup();
-    await selectValue(await screen.findByRole("combobox", { name: "音频输出格式" }), "MP3");
+    await clickControl(await screen.findByRole("radio", { name: /MP3/ }));
     fireEvent.change(screen.getByRole("spinbutton", { name: "音轨索引（从0开始）" }), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "开始处理" }));
     expect(submit).toHaveBeenCalledWith({ expectedFunctionVersion: 3, expectedCapabilityVersion: 1, prompt: "", parameters: { format: "MP3", trackIndex: 2 } });
@@ -34,23 +34,23 @@ describe("VideoOperationPanel audio extraction", () => {
 
   it.each(["-1", "32", "0.5", ""])("blocks invalid track index %s and preserves the format through errors", async (value) => {
     const view = setup();
-    await selectValue(await screen.findByRole("combobox", { name: "音频输出格式" }), "MP3");
+    await clickControl(await screen.findByRole("radio", { name: /MP3/ }));
     const track = screen.getByRole("spinbutton", { name: "音轨索引（从0开始）" });
     fireEvent.change(track, { target: { value } });
     expect(screen.getByRole("button", { name: "开始处理" })).toBeDisabled();
     expect(track).toHaveAttribute("aria-invalid", "true");
     view.rerender(false, new Error("音轨不存在，输入已保留"));
     expect(screen.getByText("音轨不存在，输入已保留")).toBeVisible();
-    expect(screen.getByRole("combobox", { name: "音频输出格式" })).toHaveTextContent("MP3");
+    expect(screen.getByRole("radio", { name: /MP3/ })).toBeChecked();
     fireEvent.change(track, { target: { value: "31" } });
     expect(screen.getByRole("button", { name: "开始处理" })).toBeEnabled();
   });
 
   it("locks both local controls while a command is being accepted", async () => {
     const view = setup();
-    await screen.findByRole("combobox", { name: "音频输出格式" });
+    await screen.findByRole("radio", { name: /MP3/ });
     view.rerender(true);
-    expect(screen.getByRole("combobox", { name: "音频输出格式" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /MP3/ })).toBeDisabled();
     expect(screen.getByRole("spinbutton", { name: "音轨索引（从0开始）" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /正在/ })).toBeDisabled();
   });
