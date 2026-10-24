@@ -1,0 +1,24 @@
+.ui-range[data-slot="range"] {
+  --ui-range-progress: 0%;
+  --ui-range-track: var(--ui-slider-track-size);
+  --ui-range-thumb: var(--ui-slider-thumb-size);
+  --ui-range-fill: var(--ui-accent);
+  --ui-range-background: linear-gradient(to right, var(--ui-range-fill) var(--ui-range-progress), var(--ui-border-strong) var(--ui-range-progress));
+  appearance: none; display: block; width: 100%; min-width: 0; height: var(--ui-control-height-compact);
+  margin: 0; padding: 0; border: 0; border-radius: var(--ui-radius-sm); box-shadow: none; background: transparent;
+  cursor: pointer; outline: none; transition: none;
+}
+.ui-range[data-variant="media"] { --ui-range-track: var(--ui-media-track-size); --ui-range-thumb: var(--ui-media-thumb-size); --ui-range-fill: var(--ui-text-secondary); height: 24px; }
+.ui-range[data-variant="temperature"] { --ui-range-background: linear-gradient(to right, var(--ui-light-temperature-warm), var(--ui-light-temperature-neutral), var(--ui-light-temperature-cool)); }
+.ui-range::-webkit-slider-runnable-track { height: var(--ui-range-track); border-radius: 999px; background: var(--ui-range-background); }
+.ui-range::-moz-range-track { height: var(--ui-range-track); border-radius: 999px; background: var(--ui-range-background); }
+.ui-range::-webkit-slider-thumb { appearance: none; width: var(--ui-range-thumb); height: var(--ui-range-thumb); margin-top: calc((var(--ui-range-track) - var(--ui-range-thumb)) / 2); border: 0; border-radius: 50%; background: var(--ui-text); box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-bg) 50%, transparent); transition: transform var(--ui-duration); }
+.ui-range::-moz-range-thumb { width: var(--ui-range-thumb); height: var(--ui-range-thumb); border: 0; border-radius: 50%; background: var(--ui-text); box-shadow: 0 1px 3px color-mix(in srgb, var(--ui-bg) 50%, transparent); transition: transform var(--ui-duration); }
+.ui-range:enabled:is(:hover, :active, :focus-visible)::-webkit-slider-thumb { transform: scale(1.25); }
+.ui-range:enabled:is(:hover, :active, :focus-visible)::-moz-range-thumb { transform: scale(1.25); }
+.ui-range[data-slot="range"]:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+.ui-range[data-slot="range"]:disabled { opacity: .4; cursor: not-allowed; }
+/* A real audio waveform is the visible track; this input supplies its hit area and keys. */
+.ui-range[data-variant="waveform"], .ui-range[data-variant="waveform"]:disabled { opacity: 0; }
+@media (pointer: coarse) { .ui-range[data-slot="range"] { min-height: var(--ui-control-height-compact); } }
+@media (prefers-reduced-motion: reduce) { .ui-range::-webkit-slider-thumb { transition: none; } .ui-range::-moz-range-thumb { transition: none; } }

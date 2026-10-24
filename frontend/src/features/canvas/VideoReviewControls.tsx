@@ -1,3 +1,4 @@
+import { Range } from "../../shared/ui/Range";
 import { ArrowLeft, ArrowRight, BookmarkSimple, Pause, Play, SpeakerHigh, SpeakerSlash, X } from "@/shared/ui/icons";
 import { useEffect, useId, useState } from "react";
 import { t, useLocale } from "../../shared/i18n";
@@ -131,7 +132,7 @@ export function VideoReviewControls({ video, partner = null, markers = true, com
         onClick={() => void togglePlayback()}>{playing ? <Pause /> : <Play />}</Button>
       <Button type="button" variant="ghost" size="icon-sm" disabled={!ready} aria-label={t("video.review.previousFrame")} onClick={() => step(-1)}><ArrowLeft /></Button>
       <Button type="button" variant="ghost" size="icon-sm" disabled={!ready} aria-label={t("video.review.nextFrame")} onClick={() => step(1)}><ArrowRight /></Button>
-      <input type="range" aria-label={t("video.review.progress")} min={0} max={duration} step={0.001}
+      <Range variant="media" aria-label={t("video.review.progress")} min={0} max={duration} step={0.001}
         disabled={!ready} value={Math.min(position, duration)} aria-valuetext={`${videoTimeLabel(position)} / ${videoTimeLabel(duration)}`}
         onChange={(event) => seek(Number(event.target.value))} />
       <span className="video-review-time">{videoTimeLabel(position)} / {videoTimeLabel(duration)}</span>

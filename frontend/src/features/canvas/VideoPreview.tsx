@@ -1,3 +1,4 @@
+import { Range } from "../../shared/ui/Range";
 import { ArrowClockwise,ArrowsOutSimple,SpeakerHigh,SpeakerSlash,VideoCamera } from "@/shared/ui/icons";
 import { useEffect,useRef,useState,type SyntheticEvent } from "react";
 import { t,useLocale } from "../../shared/i18n";
@@ -116,7 +117,7 @@ export function VideoPreview({ src, posterSrc, title, demo, width, height, conte
       <Button variant="ghost" type="button" className="video-preview-mute" onClick={() => setMuted((value) => !value)}
         aria-label={muted ? t("media.card.unmuteVideo") : t("media.card.muteVideo")}>
         {muted ? <SpeakerSlash size={16} /> : <SpeakerHigh size={16} />}</Button>
-      <input className="video-preview-seek" type="range" aria-label={t("media.card.videoProgressLabel")}
+      <Range variant="media" className="video-preview-seek" aria-label={t("media.card.videoProgressLabel")}
         aria-valuetext={`${timeLabel(position)} / ${timeLabel(duration)}`} min={0} max={duration}
         step={SEEK_STEP_SECONDS} value={Math.min(position, duration)} disabled={duration <= 0}
         onChange={(event) => {

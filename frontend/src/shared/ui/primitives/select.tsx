@@ -3,6 +3,7 @@ import { cn } from "cn"
 import { Select as SelectPrimitive } from "radix-ui"
 import * as React from "react"
 import { OptionContent } from "../OptionContent"
+import "../Dropdown.css"
 
 function Select({
   ...props
@@ -48,7 +49,7 @@ function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDownIcon className="size-4 opacity-50" />
+        <ChevronDownIcon data-slot="select-chevron" aria-hidden="true" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -72,6 +73,8 @@ function SelectContent({
     <SelectPrimitive.Portal container={portalContainer ?? undefined}>
       <SelectPrimitive.Content
         data-slot="select-content"
+        data-presentation={presentation}
+        data-variant={variant}
         className={cn(
           "relative z-[var(--ui-z-popup)] max-h-(--radix-select-content-available-height) min-w-[8rem] origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-md data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
           presentation === "rich" && "rounded-xl",
@@ -85,6 +88,7 @@ function SelectContent({
       >
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
+          data-slot="select-viewport"
           className={cn(
             presentation === "rich" ? "p-3" : variant === "ghost" ? "p-2" : "p-1",
             position === "popper" &&

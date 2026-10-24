@@ -1,3 +1,4 @@
+import { AudioPlayer } from "./AudioPlayer";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { cn } from "cn";
@@ -120,7 +121,7 @@ function ProductionEditor({ projectId, role, production, items, review, disabled
     </div> : null}
     {preview && role !== "AUDIO" ? <MediaPreviewDialog kind={role === "KEYFRAME" ? "image" : "video"} title={item?.title ?? ""} sourceUrl={sourceUrl} onClose={() => setPreview(null)} /> : null}
     {preview && role === "AUDIO" ? <Dialog open onOpenChange={(open) => { if (!open) setPreview(null); }}><DialogContent className="app-page" aria-describedby={undefined}>
-      <DialogHeader><DialogTitle>{item?.title}</DialogTitle></DialogHeader><audio controls src={sourceUrl} />
+      <DialogHeader><DialogTitle>{item?.title}</DialogTitle></DialogHeader><AudioPlayer src={sourceUrl} title={item?.title ?? ""} />
     </DialogContent></Dialog> : null}
   </section>;
 }

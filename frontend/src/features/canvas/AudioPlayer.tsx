@@ -1,3 +1,4 @@
+import { Range } from "../../shared/ui/Range";
 import { ArrowClockwise,Pause,Play } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback,useEffect,useRef,useState } from "react";
@@ -92,7 +93,7 @@ export function AudioPlayer({ src, title, description = title, selected = true, 
           style={{ height: `${Math.max(3, amplitude * 80)}%` }} />)
           : <span className="audio-player-waveform-placeholder" />}
       </div>
-      <input className="audio-player-seek" type="range" aria-label={t("audio.player.progressLabel")} min={0}
+      <Range variant="waveform" className="audio-player-seek" aria-label={t("audio.player.progressLabel")} min={0}
         max={duration || 1} step={0.01} value={Math.min(position, duration || 1)} disabled={duration <= 0}
         onChange={(event) => { const value = Number(event.target.value); if (audio.current) audio.current.currentTime = value; setPosition(value); }} />
     </div>

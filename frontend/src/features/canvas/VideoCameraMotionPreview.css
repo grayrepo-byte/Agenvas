@@ -21,19 +21,6 @@
 .video-camera-measurements dd { margin: 0; color: var(--ui-text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .video-camera-playback { display: flex; align-items: center; gap: 5px; padding: 6px; border-top: 1px solid var(--ui-border); }
 .video-camera-timeline { min-width: 24px; flex: 1; }
-.video-camera-timeline input[type="range"] { --video-camera-progress: 0%; appearance: none; -webkit-appearance: none; display: block; height: 28px; min-height: 28px; margin: 0; padding: 0; border: 0; border-radius: 4px; box-shadow: none; background: transparent; cursor: pointer; }
-/* Keep the full hit area while the neutral track stays secondary to the rehearsal image. */
-.video-camera-timeline input[type="range"]::-webkit-slider-runnable-track { height: 2px; border-radius: 999px; background: linear-gradient(to right, var(--ui-text-subtle) var(--video-camera-progress), var(--ui-border-strong) var(--video-camera-progress)); }
-.video-camera-timeline input[type="range"]::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 6px; height: 6px; margin-top: -2px; border: 0; border-radius: 50%; background: var(--ui-text-secondary); box-shadow: none; }
-.video-camera-timeline input[type="range"]::-moz-range-track { height: 2px; border-radius: 999px; background: var(--ui-border-strong); }
-.video-camera-timeline input[type="range"]::-moz-range-progress { height: 2px; border-radius: 999px; background: var(--ui-text-subtle); }
-.video-camera-timeline input[type="range"]::-moz-range-thumb { width: 6px; height: 6px; border: 0; border-radius: 50%; background: var(--ui-text-secondary); box-shadow: none; }
-.video-camera-timeline input[type="range"]:is(:hover, :focus-visible, :active)::-webkit-slider-thumb { transform: scale(1.333); }
-.video-camera-timeline input[type="range"]:is(:hover, :focus-visible, :active)::-moz-range-thumb { transform: scale(1.333); }
-@media (pointer: coarse) {
-  .video-camera-timeline input[type="range"]::-webkit-slider-thumb { transform: scale(1.333); }
-  .video-camera-timeline input[type="range"]::-moz-range-thumb { transform: scale(1.333); }
-}
 .video-camera-playback output { flex: none; color: var(--ui-text-muted); font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .video-camera-preview-caption { margin: 0; padding: 2px 12px 10px; color: var(--ui-text-subtle); font-size: 10px; line-height: 1.7; }
 @media (max-width: 900px) and (min-width: 701px) {

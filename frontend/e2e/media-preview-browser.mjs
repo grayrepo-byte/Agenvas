@@ -124,6 +124,7 @@ async function layout(viewport, kind, ratio) {
         label: button.getAttribute("aria-label"), bounds: bounds(button),
       })),
       controls: document.querySelector(mediaSelector).controls,
+      sharedProgress: root.querySelectorAll('[data-slot="range"]').length,
     };
   }, dialog, kind === "image" ? image : video);
   for (const bounds of [result.media, ...result.buttons.map((button) => button.bounds)]) {
@@ -133,7 +134,10 @@ async function layout(viewport, kind, ratio) {
   }
   assert.ok(Math.abs(result.media.width / result.media.height - ratio) < 0.02,
     `The complete ${kind} must retain its aspect ratio`);
-  if (kind === "video") assert.ok(result.controls, "Native playback controls must be available");
+  if (kind === "video") {
+    assert.equal(result.controls, false, "The viewer uses shared playback controls");
+    assert.equal(result.sharedProgress, 1, "The shared review progress must be available");
+  }
   return result.media;
 }
 

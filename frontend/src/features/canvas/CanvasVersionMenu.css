@@ -7,11 +7,6 @@
   max-height: min(600px, var(--radix-dropdown-menu-content-available-height));
   padding: 0;
   overflow: hidden;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-lg);
-  background: var(--ui-surface);
-  color: var(--ui-text);
-  box-shadow: var(--ui-menu-shadow);
   color-scheme: dark;
 }
 
