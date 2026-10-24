@@ -174,18 +174,12 @@ public class InitialModelContextService {
                     .append(" description=").append(required(selected, "description")).append('\n');
         }
         messages.add(new UserMessage(catalog.toString()));
-        StringBuilder availableMedia = new StringBuilder("Published media capabilities for this project:\n");
-        List<MediaCapabilityService.Candidate> published = capabilities.publishedCandidates();
-        for (var candidate : published.stream().limit(40).toList()) {
-            availableMedia.append("capabilityId=").append(candidate.binding().capabilityId())
-                    .append(" kind=").append(candidate.kind())
-                    .append(" connection=").append(candidate.connectionName())
-                    .append(" capability=").append(candidate.capabilityName())
-                    .append(" durationSeconds=").append(candidate.minimumSeconds())
-                    .append("..").append(candidate.maximumSeconds()).append('\n');
-        }
-        if (published.size() > 40) availableMedia.append("Additional capabilities are omitted.\n");
-        messages.add(new UserMessage(availableMedia.toString()));
+        messages.add(new UserMessage("Published media capabilities for this project (at most 40):\n"
+                + capabilities.planningSummary() + "\nPrefer the configured isDefault capability and its "
+                + "defaultParameters/defaultDurationSeconds unless the user requests otherwise or the inputs "
+                + "require another capability. Use published fields and resolution options only. If the default "
+                + "cannot satisfy the task, explain the choice of an alternative. The user may revise the pending "
+                + "proposal's capability and generation parameters before approving; final tool outcomes reflect that choice."));
         messages.add(new UserMessage("Current project canvas: call read_canvas(offset, limit) for live node metadata, "
                 + "selected versions and CAS values. No canvas content or image pixels are included initially."));
         JsonNode selection = snapshot.path("selection");

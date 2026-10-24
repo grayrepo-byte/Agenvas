@@ -173,6 +173,7 @@ export type AgentConversationList = components["schemas"]["AgentConversationList
 export type RunAction = components["schemas"]["RunAction"];
 export type AgentMediaApproval = components["schemas"]["AgentMediaApproval"];
 export type AgentMediaApprovalDecision = components["schemas"]["AgentMediaApprovalDecisionRequest"];
+export type AgentMediaApprovalRevision = components["schemas"]["AgentMediaApprovalRevisionRequest"];
 export type AssistantTurnStreamProjection = components["schemas"]["AssistantTurnStream"];
 export type AgentTurnStreamEventPayload = components["schemas"]["AgentTurnStreamEventPayload"];
 export type RunPreflight = components["schemas"]["RunPreflight"];
@@ -936,6 +937,12 @@ export async function listRunMediaApprovals(projectId: string, runId: string): P
     `/api/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}/media-approvals`,
     t("api.errors.actionsUnavailable"),
   );
+}
+
+export function reviseRunMediaApproval(projectId: string, runId: string, approvalId: string,
+  body: AgentMediaApprovalRevision): Promise<AgentMediaApproval> {
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}`
+    + `/media-approvals/${encodeURIComponent(approvalId)}`, { method: "PUT", body: JSON.stringify(body) });
 }
 
 /** An explicit user decision authorizes one frozen batch under CAS and command deduplication. */

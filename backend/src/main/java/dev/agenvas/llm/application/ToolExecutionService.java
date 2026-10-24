@@ -30,7 +30,6 @@ public class ToolExecutionService {
 
     /** {@code create_text} 允许模型提供的字段；所有服务端管理字段均不在此集合中。 */
     private static final Set<String> CREATE_TEXT_FIELDS = Set.of("title", "text", "format");
-    private static final int MAX_MEDIA_CAPABILITIES = 40;
 
     /** 以项目和所有者范围锁定 Run，并核对其当前执行状态。 */
     private final AgentRunRepository runs;
@@ -260,21 +259,7 @@ public class ToolExecutionService {
         }
         var result = mapper.createObjectNode().put("status", ToolResultStatus.SUCCEEDED.name())
                 .put("operationId", operationId.toString()).put("userVisibleSummary", "已读取可用媒体能力");
-        var available = result.putArray("capabilities");
-        for (var candidate : capabilities.publishedCandidates().stream().limit(MAX_MEDIA_CAPABILITIES).toList()) {
-            var entry = available.addObject().put("capabilityId", candidate.binding().capabilityId().toString())
-                    .put("name", candidate.capabilityName()).put("kind", candidate.kind().name())
-                    .put("minimumSeconds", candidate.minimumSeconds()).put("maximumSeconds", candidate.maximumSeconds());
-            var policy = capabilities.inputPolicy(candidate.binding());
-            entry.set("inputPolicy", mapper.valueToTree(policy));
-            var definition = capabilities.runningHubDefinition(candidate.binding());
-            if (definition != null) {
-                // Only published scalar field/slot definitions; never forward Provider settings.
-                entry.set("fields", mapper.valueToTree(definition.fields()));
-            } else if (candidate.settings().has(dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY)) {
-                entry.set("fields", candidate.settings().get(dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY));
-            }
-        }
+        result.set("capabilities", capabilities.planningCatalog());
         return result;
     }
 

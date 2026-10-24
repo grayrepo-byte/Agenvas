@@ -12,6 +12,14 @@ Agent 通过安全工具提出一批 1–6 项独立的图片、视频或音频�
 
 `WAITING_TASKS` 同时表示审批等待和媒体等待，保持现有 Run 状态集合。审批具有独立状态和版本；后端首阶段使用鉴权 API 批准或拒绝，随后在 Agent 对话内接入整批审批卡并按权威 OpenAPI 重新生成前端类型。
 
+## 审批前的视频参数修订
+
+`PUT /projects/{projectId}/runs/{runId}/media-approvals/{approvalId}` 接收 `expectedVersion`、`outputIndex`、`capabilityId`、完整 `parameters`、可空 `durationSeconds` 与 `videoInputMode`。只允许所属用户修改当前 Run 未过期的 PENDING 视频输出；不开放给模型工具。前端复用媒体能力切换与已发布参数字段，普通视频展示时长/画幅及受支持的分辨率，原生模型和工作流展示其声明的参数。
+
+修订在项目锁和审批行锁内核对目标、草稿与镜头修订，保留提示词、精确素材、风格、Skill 和角色来源，按目标协议转换素材角色并完整预检。成功后更新请求及目标 JSONB、草稿版本、固定能力版本和费用摘要，审批 CAS 增加一次；失败整体回滚，不受理 Task、不调用供应商、不延长期限。前端保存失败保留编辑值，保存成功展示新摘要，再另行整批批准；旧版本批准返回冲突。
+
+原模型参数及命令哈希保留在工具/模型账本；提案幂等哈希不随用户修订变化。最终媒体续接使用修订后的固定目标与参数，用户不需要另开一次导演运行。已批准任务、终态和 UNKNOWN 仍不能通过修订变为新生成。此规则补充原固定批次：批准覆盖当前修订，批准后输入不可修改。见 [ADR 0062](adr/0062-revisable-video-media-approvals.md)。
+
 ## 工具输入与作用域
 
 `list_media_capabilities` 返回当前用户可使用的安全能力目录、输入契约及已发布的 RunningHub / ComfyUI 输入字段摘要，不暴露工作流图、固定图文本、endpoint、Key、上传/下载地址或供应商原始响应。模型只能选择目录内的能力；权限、项目和 Run 身份由可信服务端上下文注入。
@@ -26,7 +34,7 @@ outputs: 1–6 项
   expectedDraftVersion?: 指定既有目标时必填的媒体草稿版本
   title: 输出标题
   prompt: 生成提示词
-  capabilityId?: 已配置能力 ID；缺省使用对应类型默认能力
+  capabilityId?: 已配置能力 ID；缺省使用对应类型默认能力；目录显式标记 isDefault 并携带默认参数与时长
   parameters?: 能力支持的结构化参数
   durationSeconds?: 视频时长；音频使用所选能力支持的 parameters
   videoInputMode?: TEXT | START_END | GENERAL_REFERENCE；仅视频

@@ -3195,5 +3195,10 @@
   "canvas.group.dropToJoin": "松开以加入分组",
   "video.edit.frameZoom": "逐帧",
   "video.edit.dragPlayhead": "拖动播放头",
-  "video.edit.framesFailed": "部分帧预览读取失败，编辑已保留。请检查素材权限后重试。"
+  "video.edit.framesFailed": "部分帧预览读取失败，编辑已保留。请检查素材权限后重试。",
+  "agent.approval.editSettings": "调整模型与参数",
+  "agent.approval.editTitle": "调整视频生成设置",
+  "agent.approval.editHint": "保留提示词与参考素材。保存后重新校验并更新费用，确认后再批准生成。",
+  "agent.approval.saveSettings": "保存并重新估算",
+  "agent.approval.incompatibleInputs": "该模型无法保留全部参考素材，请选择兼容模型或让导演重新提出方案。"
 }

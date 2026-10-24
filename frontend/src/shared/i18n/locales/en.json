@@ -3195,5 +3195,10 @@
   "canvas.group.dropToJoin": "Drop to join group",
   "video.edit.frameZoom": "Frame by frame",
   "video.edit.dragPlayhead": "Drag playhead",
-  "video.edit.framesFailed": "Some frame previews could not be loaded. Your edits are preserved. Check media access and retry."
+  "video.edit.framesFailed": "Some frame previews could not be loaded. Your edits are preserved. Check media access and retry.",
+  "agent.approval.editSettings": "Edit model and parameters",
+  "agent.approval.editTitle": "Video generation settings",
+  "agent.approval.editHint": "Keep the prompt and references. Save to validate and update the cost, then review and approve generation.",
+  "agent.approval.saveSettings": "Save and recalculate",
+  "agent.approval.incompatibleInputs": "This model cannot preserve every reference. Choose a compatible model or ask the director for a new proposal."
 }

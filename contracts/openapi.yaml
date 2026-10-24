@@ -3550,6 +3550,27 @@ paths:
         in: path
         required: true
         schema: {type: string, format: uuid}
+    put:
+      operationId: reviseAgentMediaApproval
+      summary: 修改待审批视频的能力与生成参数并重新估算费用
+      description: 仅 PENDING 且未过期批次可修改。保留提示词、精确素材、目标及镜头依据；输入不兼容则事务回滚。不创建 Task，不延长期限。保存后以返回的新版本另行批准。
+      tags: [Runs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AgentMediaApprovalRevisionRequest"}
+      responses:
+        "200":
+          description: 已重新校验的待审批批次与费用摘要
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AgentMediaApproval"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/ValidationError"}
     get:
       operationId: getAgentMediaApproval
       summary: 获取媒体审批、固定输出与最终结果
@@ -7749,6 +7770,17 @@ components:
       properties:
         expectedVersion: {type: integer, format: int64, minimum: 0}
         decision: {type: string, enum: [APPROVE, REJECT]}
+    AgentMediaApprovalRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedVersion, outputIndex, capabilityId, parameters, videoInputMode]
+      properties:
+        expectedVersion: {type: integer, format: int64, minimum: 0}
+        outputIndex: {type: integer, minimum: 0, maximum: 5}
+        capabilityId: {type: string, format: uuid}
+        parameters: {$ref: "#/components/schemas/ImageGenerationParameters"}
+        durationSeconds: {type: [integer, "null"], minimum: 1, maximum: 60}
+        videoInputMode: {type: string, enum: [TEXT, START_END, GENERAL_REFERENCE]}
     AgentMediaApprovalOutput:
       type: object
       additionalProperties: false

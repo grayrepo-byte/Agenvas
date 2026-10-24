@@ -1,6 +1,6 @@
 import { CheckCircle, Clock, WarningCircle } from "@/shared/ui/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { ApiError, decideRunMediaApproval, type AgentMediaApproval, type AgentMediaApprovalDecision } from "../../shared/api/client";
 import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
@@ -8,6 +8,7 @@ import { AgentChatApproval } from "./AgentChatPrimitives";
 import { CreativeSkillSource } from "../skills/CreativeSkillSource";
 import { taskErrorDetail } from "./taskErrorMessages";
 import { outputStoryboard } from "./storyboardMedia";
+import { AgentMediaApprovalEditor } from "./AgentMediaApprovalEditor";
 
 const STATUS_LABELS: Record<AgentMediaApproval["status"], () => string> = {
   PENDING: () => t("agent.approval.pending"), APPROVED: () => t("agent.approval.approved"),
@@ -48,7 +49,7 @@ function priceLabel(preview: Readonly<Record<string, unknown>>): string {
   return t("agent.approval.price", { "0": currency, "1": amount, "2": text(price.unit) });
 }
 
-/** Review only the frozen safe summary; neither arbitrary Task JSON nor Provider receipts reach this view. */
+/** Review the current safe revision; generation still requires a separate explicit decision. */
 export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = false }: {
   projectId: string;
   runId: string;
@@ -58,6 +59,7 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
   useLocale();
   const client = useQueryClient();
   const pending = useRef(false);
+  const [editing, setEditing] = useState<{ index: number; version: number; output: AgentMediaApproval["outputs"][number] } | null>(null);
   const decisionKeys = useRef(new Map<string, string>());
   const queryKey = ["run-media-approvals", projectId, runId];
   const decision = useMutation({
@@ -81,7 +83,7 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
     },
   });
   const submit = (choice: AgentMediaApprovalDecision["decision"]) => {
-    if (pending.current || disabled || approval.status !== "PENDING") return;
+    if (pending.current || editing || disabled || approval.status !== "PENDING") return;
     const operation = `${approval.version}:${choice}`;
     let key = decisionKeys.current.get(operation);
     if (!key) { key = crypto.randomUUID(); decisionKeys.current.set(operation, key); }
@@ -102,9 +104,9 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
       <p>{t("agent.approval.expiresAt", { "0": new Date(approval.expiresAt).toLocaleString(getFormatLocale()) })}</p>
       <div className="agent-media-approval__buttons">
         <Button variant="ghost" size="sm" className="agent-chat-panel-secondary" type="button"
-          disabled={disabled || decision.isPending} onClick={() => submit("REJECT")}>{t("agent.approval.reject")}</Button>
+          disabled={disabled || decision.isPending || !!editing} onClick={() => submit("REJECT")}>{t("agent.approval.reject")}</Button>
         <Button variant="ghost" size="sm" className="agent-chat-panel-primary" type="button"
-          disabled={disabled || decision.isPending} onClick={() => submit("APPROVE")}>{decision.isPending ? t("agent.approval.submitting") : t("agent.approval.approve")}</Button>
+          disabled={disabled || decision.isPending || !!editing} onClick={() => submit("APPROVE")}>{decision.isPending ? t("agent.approval.submitting") : t("agent.approval.approve")}</Button>
       </div>
     </div> : undefined}>
     <p className="agent-media-approval__status" role="status"><Icon size={STATUS_ICON_SIZE} aria-hidden="true" />{status}</p>
@@ -117,6 +119,9 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
       const characterSnapshots = output.preview.characterBindings ?? [];
       return <details key={output.canvasItemId} className="agent-media-approval__output" open={reviewing && approval.outputs.length === 1}>
         <summary><span>{index + 1}. {output.title}</span><small>{KIND_LABELS[output.kind]?.()}</small></summary>
+        {reviewing && output.kind === "VIDEO" ? <Button type="button" variant="outline" size="sm"
+          disabled={disabled || decision.isPending || !!editing}
+          onClick={() => setEditing({ index, version: approval.version, output })}>{t("agent.approval.editSettings")}</Button> : null}
         {storyboard ? <p>{t("storyboard.candidate.frozenShot", { "0": storyboard.shotCode, "1": storyboard.shotRevision })}</p> : null}
         <CreativeSkillSource source={preview.creativeSkill} />
         {characterSnapshots.length ? <div className="agent-media-approval__inputs"><strong>{t("character.appliedVersions")}</strong><ul>{characterSnapshots.map((snapshot, snapshotIndex) => <li key={`${text(snapshot.characterId)}-${snapshotIndex}`}>
@@ -147,5 +152,17 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
         <span>{RESULT_LABELS[text(task.status)]?.() ?? text(task.status)}{taskErrorDetail(text(task.errorCode))}</span></li>)}</ul> : null}
     {decision.error ? <p className="agent-media-approval__error" role="alert">{decision.error instanceof ApiError && decision.error.status === 409
       ? t("agent.approval.conflict") : decision.error.message || t("agent.approval.decisionFailed")}</p> : null}
+    {editing && reviewing ? <AgentMediaApprovalEditor projectId={projectId} runId={runId} approvalId={approval.id}
+      version={editing.version} outputIndex={editing.index} output={editing.output} onClose={() => setEditing(null)}
+      onSaved={(updated) => {
+        client.setQueryData<AgentMediaApproval[]>(queryKey, (previous) => previous?.map((item) => item.id === updated.id ? updated : item));
+        client.setQueriesData<{ items: AgentMediaApproval[] }>({ queryKey: ["storyboard-media-approvals", projectId] },
+          (previous) => previous ? { ...previous, items: previous.items.map((item) => item.id === updated.id ? updated : item) } : previous);
+        setEditing(null);
+        void client.invalidateQueries({ queryKey });
+        void client.invalidateQueries({ queryKey: ["storyboard-media-approvals", projectId] });
+        void client.invalidateQueries({ queryKey: ["media-draft", projectId, editing.output.canvasItemId] });
+        void client.invalidateQueries({ queryKey: ["snapshot", projectId] });
+      }} /> : null}
   </AgentChatApproval>;
 }

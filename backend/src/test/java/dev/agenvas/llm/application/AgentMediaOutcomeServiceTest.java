@@ -86,6 +86,28 @@ class AgentMediaOutcomeServiceTest {
     }
 
     @Test
+    void finalReplyUsesTheUserRevisedCapabilityAndParametersInsteadOfTheOriginalToolReceipt() {
+        var receipt = mapper.createObjectNode().put("approvalId", approvalId.toString()).put("awaitingMedia", true);
+        receipt.putObject("data").putArray("outputs").addObject().put("kind", "VIDEO").putObject("preview")
+                .put("capabilityId", "model-original").putObject("parameters").put("videoResolution", "768p");
+        var revised = approval(AgentMediaApproval.Status.APPROVED, NOW.plusSeconds(60))
+                .transition(AgentMediaApproval.Status.FAILED, List.of(taskId), mapper.createObjectNode().put("status", "FAILED"),
+                        NOW.plusSeconds(60), "approved", "hash");
+        var output = (tools.jackson.databind.node.ObjectNode) revised.targets().path("outputs").get(0);
+        output.put("kind", "VIDEO").put("title", "Revised video");
+        output.putObject("preview").put("capabilityId", "user-chosen-model")
+                .putObject("parameters").put("videoResolution", "1440p");
+        when(approvals.findByToolCall(project, runId, 0, "call-1")).thenReturn(Optional.of(revised));
+
+        var result = service.finalToolResult(project, runId, 0, "call-1", receipt);
+
+        assertThat(result.at("/data/outputs/0/preview/capabilityId").asText()).isEqualTo("user-chosen-model");
+        assertThat(result.at("/data/outputs/0/preview/parameters/videoResolution").asText()).isEqualTo("1440p");
+        assertThat(result.toString()).doesNotContain("model-original", "768p");
+        assertThat(receipt.at("/data/outputs/0/preview/capabilityId").asText()).isEqualTo("model-original");
+    }
+
+    @Test
     void toolReplyIsUnavailableUntilFinalAndKeepsTheOriginalReceiptImmutable() {
         var receipt = mapper.createObjectNode().put("approvalId", approvalId.toString()).put("awaitingMedia", true);
         var preview = receipt.putObject("data").putArray("outputs").addObject().put("kind", "IMAGE").putObject("preview");

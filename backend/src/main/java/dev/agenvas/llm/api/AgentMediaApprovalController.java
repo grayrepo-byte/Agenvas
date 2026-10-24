@@ -11,12 +11,13 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-/** The authenticated owner approves or rejects an entire fixed media batch in one command. */
+/** The owner may revise pending video input, then approve or reject the whole current batch. */
 @RestController
 @RequestMapping("/api/v1/projects/{projectId}/runs/{runId}/media-approvals")
 public class AgentMediaApprovalController {
@@ -49,6 +50,21 @@ public class AgentMediaApprovalController {
         return approvals.decide(principal.userId(), projectId, runId, approvalId,
                 request.expectedVersion(), request.decision(), idempotencyKey);
     }
+
+    @PutMapping("/{approvalId}")
+    public AgentMediaApprovalService.ApprovalView revise(
+            @AuthenticationPrincipal AdminPrincipal principal, @PathVariable UUID projectId,
+            @PathVariable UUID runId, @PathVariable UUID approvalId,
+            @Valid @RequestBody RevisionRequest request) {
+        return approvals.revise(principal.userId(), projectId, runId, approvalId, request.expectedVersion(),
+                request.outputIndex(), request.capabilityId(), request.parameters(), request.durationSeconds(), request.videoInputMode());
+    }
+
+    public record RevisionRequest(@NotNull @PositiveOrZero Long expectedVersion,
+            @NotNull @PositiveOrZero Integer outputIndex, @NotNull UUID capabilityId,
+            @NotNull tools.jackson.databind.JsonNode parameters,
+            @jakarta.validation.constraints.Min(1) @jakarta.validation.constraints.Max(60) Integer durationSeconds,
+            @NotNull dev.agenvas.artifact.domain.MediaDraft.VideoInputMode videoInputMode) {}
 
     public record DecisionRequest(@NotNull @PositiveOrZero Long expectedVersion,
             @NotNull AgentMediaApprovalService.Decision decision) {}

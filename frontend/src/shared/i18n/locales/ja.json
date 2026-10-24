@@ -3195,5 +3195,10 @@
   "canvas.group.dropToJoin": "ドロップしてグループに追加",
   "video.edit.frameZoom": "コマ単位",
   "video.edit.dragPlayhead": "再生ヘッドをドラッグ",
-  "video.edit.framesFailed": "一部のフレームを読み込めませんでした。編集内容は保持されています。素材へのアクセスを確認して再試行してください。"
+  "video.edit.framesFailed": "一部のフレームを読み込めませんでした。編集内容は保持されています。素材へのアクセスを確認して再試行してください。",
+  "agent.approval.editSettings": "モデルとパラメータを調整",
+  "agent.approval.editTitle": "動画生成設定",
+  "agent.approval.editHint": "プロンプトと参照素材を保持します。保存後に入力と費用を再確認してから生成を承認してください。",
+  "agent.approval.saveSettings": "保存して再見積もり",
+  "agent.approval.incompatibleInputs": "このモデルはすべての参照素材を保持できません。互換性のあるモデルを選ぶか、監督に新しい提案を依頼してください。"
 }
