@@ -66,6 +66,25 @@ class LocalVideoCompositionRendererTest {
         assertThat(rms(pcm, 1850, 1950)).isLessThan(0.0001);
     }
 
+    @Test void previewSharesExportTimingAndDoesNotRenderAnOutput() throws Exception {
+        Path source = video("preview-source.mp4", "6", true, "if(between(t,1,2)+between(t,4,5),1,0)");
+        Path voice = audio("preview-voice.wav", "0.9", "if(between(t,0.2,0.7),1,0)");
+        UUID videoId = UUID.randomUUID(), audioId = UUID.randomUUID();
+        ObjectNode request = request("KEEP");
+        addShot(request, videoId, 6000).put("speed", 2).withArray("lines").addObject().put("audioVersionId", audioId.toString());
+        var sources = Map.of(videoId, source(source, 6000), audioId, source(voice, 900));
+        Path previewDir = scratch("preview-only");
+        var preview = renderer.preview(request, sources, previewDir);
+        try (var files = Files.list(previewDir)) { assertThat(files.toList()).isEmpty(); }
+        var output = renderer.render(request, sources, scratch("matching-export"), () -> false, () -> {});
+        assertThat(preview.path("frames").asInt()).isEqualTo(90);
+        var expected = output.schedule().path("shots").get(0).path("lines").get(0);
+        var actual = preview.path("shots").get(0).path("lines").get(0);
+        for (String field : List.of("audioVersionId", "startMs", "trimStartMs", "trimEndMs", "speed"))
+            assertThat(actual.path(field)).isEqualTo(expected.path(field));
+        assertThat(Math.abs(actual.path("endMs").asInt() - expected.path("endMs").asInt())).isLessThanOrEqualTo(40);
+    }
+
     @Test void sixCroppedClipsHaveExactlySixtySecondsIncludingTheAacTail() throws Exception {
         Path source = video("fractional-source.mp4", "10.125", false, null);
         UUID videoId = UUID.randomUUID();

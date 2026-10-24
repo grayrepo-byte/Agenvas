@@ -45,37 +45,9 @@ public class LocalVideoCompositionRenderer {
     Result render(JsonNode request, Map<UUID, Source> sources, Path scratch,
             BooleanSupplier canceled, Runnable heartbeat) throws IOException {
         Budget budget = new Budget(scratch, canceled, heartbeat);
-        List<VideoCompositionPlanner.Shot> requested = new ArrayList<>();
-        Map<UUID, AudioActivityAnalyzer.Analysis> audioAnalysis = new HashMap<>();
-        List<Boolean> sourceHasAudio = new ArrayList<>();
-        int sequence = 0;
-        for (JsonNode shot : request.path("shots")) {
-            UUID video = UUID.fromString(shot.path("videoVersionId").asText());
-            Source source = require(sources, video);
-            int start = shot.path("sourceStartMs").asInt(0), duration = shot.path("durationMs").asInt();
-            if (start < 0 || duration <= 0 || (long) start + duration > source.durationMs())
-                throw new IllegalArgumentException("VIDEO_COMPOSITION_INVALID");
-            budget.check();
-            boolean hasAudio = hasAudio(source.path());
-            sourceHasAudio.add(hasAudio);
-            AudioActivityAnalyzer.Analysis activity = hasAudio && !shot.path("lines").isEmpty()
-                    ? analyze(source.path(), start, duration, true, scratch.resolve("source-" + sequence++ + ".pcm"), budget) : null;
-            List<VideoCompositionPlanner.Line> lines = new ArrayList<>();
-            for (JsonNode line : shot.path("lines")) {
-                UUID audio = UUID.fromString(line.path("audioVersionId").asText());
-                AudioActivityAnalyzer.Analysis analyzed = audioAnalysis.get(audio);
-                if (analyzed == null) {
-                    Source voice = require(sources, audio);
-                    analyzed = analyze(voice.path(), 0, voice.durationMs(), false,
-                            scratch.resolve("voice-" + sequence++ + ".pcm"), budget);
-                    audioAnalysis.put(audio, analyzed);
-                }
-                Integer anchor = line.hasNonNull("startMs") ? line.path("startMs").intValue() : null;
-                lines.add(new VideoCompositionPlanner.Line(audio, anchor, analyzed));
-            }
-            requested.add(new VideoCompositionPlanner.Shot(video, start, duration, shot.path("speed").asDouble(1), activity, List.copyOf(lines)));
-        }
-        var plan = planner.plan(requested);
+        var prepared = prepare(request, sources, scratch, budget);
+        var plan = prepared.plan();
+        var sourceHasAudio = prepared.hasAudio();
         var outputSettings = outputSettings(request.path("output"));
         List<String> arguments = arguments();
         List<String> graph = new ArrayList<>();
@@ -208,6 +180,58 @@ public class LocalVideoCompositionRenderer {
         schedule.put("durationMs", Math.round(actualSeconds * 1000));
         budget.check();
         return new Result(output, schedule);
+    }
+
+    private record Prepared(VideoCompositionPlanner.Plan plan, List<Boolean> hasAudio) {}
+    private Prepared prepare(JsonNode request, Map<UUID, Source> sources, Path scratch, Budget budget) throws IOException {
+        List<VideoCompositionPlanner.Shot> requested = new ArrayList<>();
+        Map<UUID, AudioActivityAnalyzer.Analysis> audioAnalysis = new HashMap<>();
+        List<Boolean> sourceHasAudio = new ArrayList<>();
+        int sequence = 0;
+        for (JsonNode shot : request.path("shots")) {
+            UUID video = UUID.fromString(shot.path("videoVersionId").asText());
+            Source source = require(sources, video);
+            int start = shot.path("sourceStartMs").asInt(0), duration = shot.path("durationMs").asInt();
+            if (start < 0 || duration <= 0 || (long) start + duration > source.durationMs())
+                throw new IllegalArgumentException("VIDEO_COMPOSITION_INVALID");
+            budget.check();
+            boolean hasAudio = hasAudio(source.path());
+            sourceHasAudio.add(hasAudio);
+            AudioActivityAnalyzer.Analysis activity = hasAudio && !shot.path("lines").isEmpty()
+                    ? analyze(source.path(), start, duration, true, scratch.resolve("source-" + sequence++ + ".pcm"), budget) : null;
+            List<VideoCompositionPlanner.Line> lines = new ArrayList<>();
+            for (JsonNode line : shot.path("lines")) {
+                UUID audio = UUID.fromString(line.path("audioVersionId").asText());
+                AudioActivityAnalyzer.Analysis analyzed = audioAnalysis.get(audio);
+                if (analyzed == null) {
+                    Source voice = require(sources, audio);
+                    analyzed = analyze(voice.path(), 0, voice.durationMs(), false,
+                            scratch.resolve("voice-" + sequence++ + ".pcm"), budget);
+                    audioAnalysis.put(audio, analyzed);
+                }
+                Integer anchor = line.hasNonNull("startMs") ? line.path("startMs").intValue() : null;
+                lines.add(new VideoCompositionPlanner.Line(audio, anchor, analyzed));
+            }
+            requested.add(new VideoCompositionPlanner.Shot(video, start, duration, shot.path("speed").asDouble(1), activity, List.copyOf(lines)));
+        }
+        var plan = planner.plan(requested);
+        return new Prepared(plan, List.copyOf(sourceHasAudio));
+    }
+
+    JsonNode preview(JsonNode request, Map<UUID, Source> sources, Path scratch) throws IOException {
+        var plan = prepare(request, sources, scratch, new Budget(scratch, () -> Thread.currentThread().isInterrupted(), () -> {})).plan();
+        ObjectNode response = mapper.createObjectNode().put("durationMs", plan.durationMs()).put("frames", plan.frames())
+                .put("fontFamily", properties.fontFamily());
+        var shots = response.putArray("shots");
+        for (var shot : plan.shots()) {
+            var output = shots.addObject().put("videoVersionId", shot.videoVersionId().toString())
+                    .put("timelineStartMs", shot.timelineStartMs()).put("durationMs", shot.durationMs());
+            var lines = output.putArray("lines");
+            for (var line : shot.lines()) lines.addObject().put("audioVersionId", line.audioVersionId().toString())
+                    .put("startMs", line.startMs()).put("endMs", line.endMs()).put("trimStartMs", line.trimStartMs())
+                    .put("trimEndMs", line.trimEndMs()).put("speed", line.speed());
+        }
+        return response;
     }
 
     private record OutputSettings(String resolution, String aspectRatio, int width, int height) {}
