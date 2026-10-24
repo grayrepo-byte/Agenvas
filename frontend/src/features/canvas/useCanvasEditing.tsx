@@ -11,10 +11,14 @@ import { flushCanvasEditors } from "./canvasEditingGuards";
 
 export const canvasEditorKey = (projectId: string) => ["canvas-editor", projectId] as const;
 type EditInput = Omit<CanvasEditRequest, "commandId"> & { commandId?: string };
-type Pending = { type: "EDIT"; request: CanvasEditRequest; onAccepted?: (saved: CanvasEditResponse) => void } | {
+type EditFeedback = { showPendingNotice?: boolean };
+type Pending = { type: "EDIT"; request: CanvasEditRequest; onAccepted?: (saved: CanvasEditResponse) => void;
+  showPendingNotice?: boolean } | {
   type: "REPLAY"; receiptId: string; request: CanvasEditReplayRequest;
 };
-export type CanvasEditExecutor = (input: EditInput, onAccepted?: (saved: CanvasEditResponse) => void) => Promise<CanvasEditResponse>;
+/** Layout saves can suppress the transient notice while keeping busy state and failure recovery. */
+export type CanvasEditExecutor = (input: EditInput, onAccepted?: (saved: CanvasEditResponse) => void,
+  feedback?: EditFeedback) => Promise<CanvasEditResponse>;
 export const CanvasEditingContext = createContext<CanvasEditExecutor | null>(null);
 export const useCanvasEditingExecutor = () => useContext(CanvasEditingContext);
 
@@ -31,7 +35,8 @@ export function useCanvasEditing(projectId: string) {
   const historyRef = useRef(history);
   const pending = useRef<Pending | null>(null);
   const busyRef = useRef(false);
-  const [busy, setBusy] = useState(false);
+  const [active, setActive] = useState<EditFeedback | null>(null);
+  const busy = active !== null;
   const [error, setError] = useState<Error | null>(null);
   const updateHistory = useCallback((next: CanvasHistory) => {
     historyRef.current = next;
@@ -62,7 +67,7 @@ export function useCanvasEditing(projectId: string) {
   const run = useCallback(async (intent: Pending) => {
     if (busyRef.current) throw new Error(t("canvas.edit.pending"));
     busyRef.current = true;
-    setBusy(true);
+    setActive({ showPendingNotice: intent.type === "REPLAY" || intent.showPendingNotice !== false });
     setError(null);
     pending.current = intent;
     useCanvasStore.getState().setSaveState("saving");
@@ -88,12 +93,13 @@ export function useCanvasEditing(projectId: string) {
       throw reason;
     } finally {
       busyRef.current = false;
-      setBusy(false);
+      setActive(null);
     }
   }, [accept, projectId, updateHistory]);
-  const execute = useCallback<CanvasEditExecutor>(async (input, onAccepted) => {
+  const execute = useCallback<CanvasEditExecutor>(async (input, onAccepted, feedback) => {
     if (pending.current) throw new Error(t("canvas.edit.failed"));
-    return run({ type: "EDIT", request: { ...input, commandId: input.commandId ?? crypto.randomUUID() }, onAccepted });
+    return run({ type: "EDIT", request: { ...input, commandId: input.commandId ?? crypto.randomUUID() },
+      onAccepted, showPendingNotice: feedback?.showPendingNotice });
   }, [run]);
   const replay = useCallback(async (direction: "UNDO" | "REDO") => {
     if (pending.current) throw new Error(t("canvas.edit.failed"));
@@ -110,6 +116,7 @@ export function useCanvasEditing(projectId: string) {
   const discardPending = useCallback(() => { if (!busyRef.current) { pending.current = null; setError(null); } }, []);
   const clearHistory = useCallback(() => updateHistory(emptyCanvasHistory()), [updateHistory]);
   return { execute, replay, retry, discardPending, clearHistory, busy, error,
+    showPendingNotice: active?.showPendingNotice === true,
     canUndo: Boolean(history.undo.length) && !busy && !error,
     canRedo: Boolean(history.redo.length) && !busy && !error };
 }

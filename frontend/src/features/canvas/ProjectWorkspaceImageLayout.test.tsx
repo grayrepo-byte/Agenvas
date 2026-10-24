@@ -302,6 +302,49 @@ describe("workspace media dimensions", () => {
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
   });
 
+  it.each(["drag", "resize"])("saves a %s without a pending canvas edit notice", async (gesture) => {
+    let finishSave: (() => void) | undefined;
+    saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
+    const { client } = showWorkspace();
+    try {
+      await screen.findByTestId("image-card");
+      await clickControl(screen.getByRole("button", { name: `${gesture} image-card` }));
+      await waitFor(() => expect(commands).toHaveLength(1));
+      expect(useCanvasStore.getState().saveState).toBe("saving");
+      expect(screen.queryByText("正在保存画布编辑…")).not.toBeInTheDocument();
+      finishSave?.();
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+      expect(useCanvasStore.getState().drafts["image-card"]).toBeUndefined();
+      expect(screen.queryByText("正在保存画布编辑…")).not.toBeInTheDocument();
+    } finally {
+      finishSave?.();
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+    }
+  });
+
+  it("keeps drag conflicts visible and retries without a pending canvas edit notice", async () => {
+    conflict = true;
+    const { client } = showWorkspace();
+    await screen.findByTestId("image-card");
+    await clickControl(screen.getByRole("button", { name: "drag image-card" }));
+    await screen.findByText("内容有冲突，当前修改未保存");
+    expect(useCanvasStore.getState().drafts["image-card"]).toMatchObject({ x: 140, y: 180 });
+    let finishSave: (() => void) | undefined;
+    saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
+    conflict = false;
+    try {
+      await clickControl(screen.getByRole("button", { name: "重试本次操作" }));
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saving"));
+      expect(screen.queryByText("正在保存画布编辑…")).not.toBeInTheDocument();
+      finishSave?.();
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+      expect(useCanvasStore.getState().drafts["image-card"]).toBeUndefined();
+    } finally {
+      finishSave?.();
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+    }
+  });
+
   it("keeps a newer move after an older resize acknowledgement and saves it with the returned version", async () => {
     let finishSave: (() => void) | undefined;
     saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
@@ -373,7 +416,7 @@ describe("workspace media dimensions", () => {
       await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("failed"));
       const newerDraft = useCanvasStore.getState().drafts["image-card"];
       expect(submitted).toHaveLength(1);
-      expect(await screen.findByText("正在保存画布编辑…")).toBeVisible();
+      expect(screen.queryByText("正在保存画布编辑…")).not.toBeInTheDocument();
       // A concurrent server edit is already in the Query projection when the first response arrives.
       items = items.map((item) => ({ ...item, version: 2, x: 600 }));
       act(() => client.setQueryData(["canvas", "project-1"], { items }));
@@ -447,7 +490,7 @@ describe("workspace media dimensions", () => {
       await clickControl(screen.getByRole("button", { name: "drag second-card" }));
       await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("failed"));
       expect(submitted).toHaveLength(1);
-      expect(await screen.findByText("正在保存画布编辑…")).toBeVisible();
+      expect(screen.queryByText("正在保存画布编辑…")).not.toBeInTheDocument();
       const failedDraft = useCanvasStore.getState().drafts["second-card"];
       finishSave?.();
       await waitFor(() => expect(client.isMutating()).toBe(0));

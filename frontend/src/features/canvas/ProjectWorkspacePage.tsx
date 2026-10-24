@@ -1235,7 +1235,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             title={t("canvas.edit.failed")} message={organization.actionError.message}>
             <Button variant="ghost" size="xs" onClick={organization.clearActionError}>{t("common.close")}</Button>
           </CanvasErrorNotice> : null}
-          {organization.busy ? <div className="canvas-message" role="status">{t("canvas.edit.pending")}</div> : null}
+          {organization.showPendingNotice ? <div className="canvas-message" role="status">{t("canvas.edit.pending")}</div> : null}
           {canvas.error ? <CanvasErrorNotice error={canvas.error} title={t("canvas.feedback.loadCanvas")} message={workspaceErrorMessage(canvas.error)}>
             <Button variant="ghost" size="xs" type="button" onClick={() => void canvas.refetch()}>{t("common.retryRead")}</Button>
           </CanvasErrorNotice> : null}

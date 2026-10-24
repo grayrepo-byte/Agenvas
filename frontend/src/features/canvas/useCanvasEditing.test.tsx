@@ -38,6 +38,39 @@ beforeEach(() => {
 });
 
 describe("canvas editing receipts over HTTP", () => {
+  it("keeps pending feedback for a title edit and its undo", async () => {
+    const pendingEdit = gate();
+    const pendingUndo = gate();
+    server.use(
+      http.post(URL, async ({ request }) => {
+        const input = await request.json() as CanvasEditRequest;
+        await pendingEdit.promise;
+        return HttpResponse.json(response(input));
+      }),
+      http.post(`${URL}/:receiptId/replay`, async ({ params }) => {
+        await pendingUndo.promise;
+        return HttpResponse.json({ items: [item], groups: [], receipt: {
+          id: params.receiptId, operation: "DISPLAY", revision: 1, state: "UNDONE" } });
+      }),
+    );
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useCanvasEditing(PROJECT), { wrapper });
+    let saving: Promise<unknown> | undefined;
+    try {
+      act(() => { saving = result.current.execute(display()); });
+      expect(result.current.busy).toBe(true);
+      expect(result.current.showPendingNotice).toBe(true);
+      await act(async () => { pendingEdit.release(); await saving; });
+      expect(result.current.busy).toBe(false);
+      expect(result.current.showPendingNotice).toBe(false);
+      act(() => { saving = result.current.replay("UNDO"); });
+      expect(result.current.busy).toBe(true);
+      expect(result.current.showPendingNotice).toBe(true);
+      await act(async () => { pendingUndo.release(); await saving; });
+      expect(result.current.showPendingNotice).toBe(false);
+    } finally { pendingEdit.release(); pendingUndo.release(); await saving; }
+  });
+
   it("retries a grouped drop with frozen membership and position, then undoes both together", async () => {
     const requests: CanvasEditRequest[] = [];
     server.use(
@@ -196,6 +229,8 @@ describe("canvas editing receipts over HTTP", () => {
     act(() => { saving = result.current.layout.mutateAsync({ item, patch }); });
     try {
       await waitFor(() => expect(requests).toHaveLength(1));
+      expect(result.current.editing.busy).toBe(true);
+      expect(result.current.editing.showPendingNotice).toBe(false);
       act(() => {
         useCanvasStore.getState().updateDraft(item.id, patch);
         client.setQueryData<Canvas>(["canvas", PROJECT], { items: [{ ...item, x: 900, version: 5 }] });
