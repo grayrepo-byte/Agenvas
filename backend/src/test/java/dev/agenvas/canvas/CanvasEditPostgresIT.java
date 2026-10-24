@@ -101,6 +101,49 @@ class CanvasEditPostgresIT {
         assertThatThrownBy(() -> jdbc.sql("update canvas_item set group_id=:group where id=:item")
                 .param("group", foreignGroup.id()).param("item", first.id()).update()).isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
+
+    @Test void directGroupCreationIsAtomicAndRetryableAtTheMemberLimit() {
+        CanvasItem source = text("Synthetic group source");
+        UUID group = UUID.randomUUID();
+        edits.edit(owner.userId(), project.id(), new Edit(UUID.randomUUID(), Operation.GROUP,
+                List.of(change(source, source.title(), group)),
+                List.of(new GroupChange(GroupChangeType.UPSERT, group, 0, "Direct creation", false)), List.of()));
+        List<CanvasService.PlaceArtifact> placements = java.util.stream.IntStream.range(0, 99).mapToObj(index ->
+                new CanvasService.PlaceArtifact(UUID.randomUUID(), source.subjectId(), BigDecimal.TEN, new BigDecimal("400"),
+                        source.width(), source.height(), 1, group, false)).toList();
+        canvas.apply(owner.userId(), project.id(), placements);
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(100);
+        long seq = events.replayWindow(owner.userId(), project.id()).latestSequence();
+        canvas.apply(owner.userId(), project.id(), List.of(placements.getLast()));
+        assertThat(events.replayWindow(owner.userId(), project.id()).latestSequence()).isEqualTo(seq);
+        var overflow = new CanvasService.PlaceArtifact(UUID.randomUUID(), source.subjectId(), BigDecimal.TEN, new BigDecimal("400"),
+                source.width(), source.height(), 1, group, false);
+        assertThatThrownBy(() -> canvas.apply(owner.userId(), project.id(), List.of(overflow)))
+                .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("CANVAS_EDIT_LIMIT"));
+        assertThat(canvas.list(owner.userId(), project.id())).hasSize(100);
+        assertThat(events.replayWindow(owner.userId(), project.id()).latestSequence()).isEqualTo(seq);
+    }
+
+    @Test void droppingIntoAGroupReplaysPositionAndMembershipTogetherWithoutChangingContent() {
+        CanvasItem member = text("Existing member"), incoming = text("Incoming body");
+        UUID group = UUID.randomUUID();
+        edits.edit(owner.userId(), project.id(), new Edit(UUID.randomUUID(), Operation.GROUP,
+                List.of(change(member, member.title(), group)),
+                List.of(new GroupChange(GroupChangeType.UPSERT, group, 0, "Drop target", false)), List.of()));
+        UUID content = currentVersion(incoming);
+        var drop = new ItemChange(incoming.id(), incoming.version(), incoming.title(), new BigDecimal("120"), new BigDecimal("360"),
+                incoming.width(), incoming.height(), incoming.zIndex(), group, incoming.locked());
+        var saved = edits.edit(owner.userId(), project.id(), new Edit(UUID.randomUUID(), Operation.DISPLAY, List.of(drop), List.of(), List.of()));
+        assertThat(item(incoming.id()).groupId()).isEqualTo(group);
+        assertThat(item(incoming.id()).x()).isEqualByComparingTo("120");
+        edits.replay(owner.userId(), project.id(), saved.receipt().id(), new Replay(UUID.randomUUID(), 0, Direction.UNDO));
+        assertThat(item(incoming.id()).groupId()).isNull();
+        assertThat(item(incoming.id()).x()).isEqualByComparingTo(incoming.x());
+        edits.replay(owner.userId(), project.id(), saved.receipt().id(), new Replay(UUID.randomUUID(), 1, Direction.REDO));
+        assertThat(item(incoming.id()).groupId()).isEqualTo(group);
+        assertThat(item(incoming.id()).y()).isEqualByComparingTo("360");
+        assertThat(currentVersion(item(incoming.id()))).isEqualTo(content);
+    }
     @Test void textCopiesHaveIndependentBodiesAndFixedRedoWhileRetriesCreateOneBranch() {
         CanvasItem source = text("Before"); UUID target = UUID.randomUUID();
         var copyRequest = copyRequest(source, target);

@@ -3190,5 +3190,7 @@
   "video.optimize.start": "Start optimization",
   "video.optimize.loadFailed": "Could not load prompt optimization tasks.",
   "video.optimize.failed": "Prompt optimization failed. Check the text model configuration and retry.",
-  "video.optimize.referenceInvalid": "Reference markers are incomplete or contain reserved tokens. Correct them first."
+  "video.optimize.referenceInvalid": "Reference markers are incomplete or contain reserved tokens. Correct them first.",
+  "canvas.group.addNode": "Create node in group",
+  "canvas.group.dropToJoin": "Drop to join group"
 }

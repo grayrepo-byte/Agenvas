@@ -83,7 +83,7 @@ describe("canvas group name form", () => {
 
 const nodeTypes = { canvasGroup: CanvasGroupNode };
 function renderGroup(data: Partial<CanvasGroupNodeData> = {}) {
-  const callbacks = { onRename: vi.fn(), onToggle: vi.fn(), onDuplicate: vi.fn(), onUngroup: vi.fn() };
+  const callbacks = { onAdd: vi.fn(), onRename: vi.fn(), onToggle: vi.fn(), onDuplicate: vi.fn(), onUngroup: vi.fn() };
   const node: CanvasGroupFlowNode = { id: canvasGroupNodeId("group-1"), type: "canvasGroup", position: { x: 0, y: 0 },
     width: 400, height: 300, selected: true, data: { groupId: "group-1", name: "镜头组", memberCount: 3, collapsed: false,
       ...callbacks, ...data } };
@@ -98,6 +98,9 @@ describe("canvas group node", () => {
     await clickControl(await screen.findByRole("button", { name: t("canvas.group.collapse") }));
     expect(callbacks.onToggle).toHaveBeenCalledWith("group-1");
     expect(screen.getByLabelText(t("canvas.group.memberCount", { count: 3 }))).toBeInTheDocument();
+    const add = screen.getByRole("button", { name: t("canvas.group.addNode") });
+    await clickControl(add);
+    expect(callbacks.onAdd).toHaveBeenCalledWith("group-1", add);
     for (const [key, callback] of [["canvas.group.rename", callbacks.onRename], ["canvas.group.duplicate", callbacks.onDuplicate],
       ["canvas.group.ungroup", callbacks.onUngroup]] as const) {
       await clickControl(screen.getByRole("button", { name: t("canvas.group.actions") }));
@@ -110,6 +113,7 @@ describe("canvas group node", () => {
     renderGroup({ collapsed: true, disabled: true });
     expect(await screen.findByRole("button", { name: t("canvas.group.expand") })).toBeDisabled();
     expect(screen.getByRole("button", { name: t("canvas.group.actions") })).toBeDisabled();
+    expect(screen.getByRole("button", { name: t("canvas.group.addNode") })).toBeDisabled();
     expect(document.querySelector(`[data-handleid='${CANVAS_GROUP_INPUT_HANDLE}']`)).toBeInTheDocument();
     expect(document.querySelector(`[data-handleid='${CANVAS_GROUP_OUTPUT_HANDLE}']`)).toBeInTheDocument();
     expect(document.querySelectorAll(".canvas-group__relation-handle.connectable")).toHaveLength(0);

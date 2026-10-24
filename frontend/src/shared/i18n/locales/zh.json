@@ -3190,5 +3190,7 @@
   "video.optimize.start": "开始优化",
   "video.optimize.loadFailed": "无法读取提示词优化任务。",
   "video.optimize.failed": "提示词优化失败，请检查文字模型配置后重试。",
-  "video.optimize.referenceInvalid": "提示词的引用标记不完整或包含保留标记，请先修正。"
+  "video.optimize.referenceInvalid": "提示词的引用标记不完整或包含保留标记，请先修正。",
+  "canvas.group.addNode": "组内新建节点",
+  "canvas.group.dropToJoin": "松开以加入分组"
 }

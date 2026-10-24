@@ -16,6 +16,7 @@ const screenshots = await mkdtemp(join(tmpdir(), "agenvas-canvas-editing-proof-"
 await chmod(profile, 0o700); await chmod(screenshots, 0o700);
 const production = !process.argv.includes("--dev");
 const motionOnly = process.argv.includes("--motion-only");
+const groupEntryOnly = process.argv.includes("--group-entry-only");
 const dragCase = process.argv.includes("--hand-drag-only") ? "hand"
   : process.argv.includes("--text-node-drag-only") ? "node" : process.argv.includes("--drag-diagnostics") ? "diagnostics" : null;
 const catalogs = Object.fromEntries(await Promise.all(["zh", "ru"].map(async (locale) => [locale,
@@ -100,14 +101,14 @@ async function screenshot(name) {
   const image = await cdp("Page.captureScreenshot", { format: "png" });
   await writeFile(join(screenshots, `${name}.png`), Buffer.from(image.data, "base64"), { mode: 0o600 });
 }
-async function ready(expected = dragCase || motionOnly ? 4 : 100) {
+async function ready(expected = groupEntryOnly ? 3 : dragCase || motionOnly ? 4 : 100) {
   await waitFor((expected) => document.querySelectorAll(".react-flow__node-canvasCard").length === expected
     && window.__agenvasCanvasEditingFixture.evidence().requests.some((request) => request.path.endsWith("/canvas/editor")), expected);
   assert.equal((await evidence()).unexpected.length, 0);
 }
 async function navigate(baseUrl, nextLocale = "zh", { motionLarge = false } = {}) {
   locale = nextLocale;
-  await cdp("Page.navigate", { url: new URL(`${route}?locale=${locale}${dragCase || motionOnly ? "&hand-drag=1" : ""}${motionLarge ? "&motion-large=1" : ""}`, baseUrl).href });
+  await cdp("Page.navigate", { url: new URL(`${route}?locale=${locale}${dragCase || motionOnly ? "&hand-drag=1" : ""}${groupEntryOnly ? "&group-entry=1" : ""}${motionLarge ? "&motion-large=1" : ""}`, baseUrl).href });
   await ready(motionLarge ? 100 : undefined);
 }
 async function zoomToFirstCard() {
@@ -166,6 +167,82 @@ async function checkLayout() {
     assert.ok(region.scrollWidth <= region.clientWidth + 1, `Workspace controls have no horizontal overflow: ${JSON.stringify(region)}`);
     if (region.selector === ".ui-dialog-footer") assert.ok(region.top >= 0 && region.bottom <= layout.height + 1, "Dialog footer stays visible");
   }
+}
+
+async function runGroupEntryRegression(baseUrl) {
+  await navigate(baseUrl);
+  const groupId = await createGroup("Synthetic group entry");
+  await click(`button[aria-label=${JSON.stringify(message("canvas.workspace.fitView"))}]`);
+  await waitForStableViewport();
+  const original = (await evidence()).items.find((item) => item.id === "synthetic-card-2");
+  const start = await point(`${card(original.id)} .artifact-card-title-icon`);
+  const delta = await page((selector, groupSelector) => {
+    const node = document.querySelector(selector).getBoundingClientRect();
+    const frame = document.querySelector(groupSelector).getBoundingClientRect();
+    return { x: frame.x + frame.width / 2 - node.x - node.width / 2,
+      y: frame.y + frame.height / 2 - node.y - node.height / 2 };
+  }, card(original.id), group(groupId));
+  await page(() => window.__agenvasCanvasEditingFixture.failNextEdit(503));
+  await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...start });
+  await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...start, button: "left", clickCount: 1 });
+  for (let step = 1; step <= 10; step++) {
+    await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: start.x + delta.x * step / 10,
+      y: start.y + delta.y * step / 10, button: "left", buttons: 1 });
+    await pause(20);
+  }
+  await waitFor((selector) => document.querySelector(selector)?.classList.contains("canvas-group--drop-target"), group(groupId));
+  await screenshot("group-drop-highlight");
+  await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x: start.x + delta.x, y: start.y + delta.y, button: "left", clickCount: 1 });
+  await waitFor(() => Boolean(document.querySelector(".canvas-error-notice")));
+  const failed = await evidence();
+  assert.equal(failed.layoutDrafts[original.id].groupId, groupId, "Failed drops retain their membership draft");
+  assert.equal(failed.items.find((item) => item.id === original.id).groupId, null);
+  const failedRequest = failed.edits.at(-1);
+  await clickNamed(".canvas-feedback button", "canvas.edit.retry");
+  await waitFor((id, target) => {
+    const saved = window.__agenvasCanvasEditingFixture.evidence();
+    return saved.items.find((item) => item.id === id)?.groupId === target && !saved.layoutDrafts[id]
+      && !document.querySelector(".canvas-error-notice");
+  }, original.id, groupId);
+  const joined = await evidence();
+  assert.deepEqual(joined.edits.at(-1), failedRequest, "Drop retry retains its command, group and position");
+  assert.deepEqual(joined.layoutDrafts, {});
+  await click(`button[aria-label=${JSON.stringify(message("canvas.edit.undo"))}]`);
+  await waitFor((id, x) => { const item = window.__agenvasCanvasEditingFixture.evidence().items.find((item) => item.id === id);
+    return item.groupId === null && item.x === x; }, original.id, original.x);
+  await click(`button[aria-label=${JSON.stringify(message("canvas.edit.redo"))}]`);
+  await waitFor((id, target) => window.__agenvasCanvasEditingFixture.evidence().items.find((item) => item.id === id)?.groupId === target, original.id, groupId);
+
+  for (const [kind, label] of [["TEXT", "common.text"], ["IMAGE", "common.image"], ["AUDIO", "common.audio"], ["VIDEO", "common.video"]]) {
+    await click(`button[aria-label=${JSON.stringify(message("canvas.workspace.fitView"))}]`);
+    await waitForStableViewport();
+    if (kind === "TEXT") {
+      await click(`${group(groupId)} button[aria-label=${JSON.stringify(message("canvas.group.collapse"))}]`);
+      await waitFor((id) => window.__agenvasCanvasEditingFixture.evidence().groups.find((group) => group.id === id)?.collapsed, groupId);
+    }
+    const before = await evidence();
+    const memberBottom = Math.max(...before.items.filter((item) => item.groupId === groupId).map((item) => item.y + item.height));
+    await click(`${group(groupId)} button[aria-label=${JSON.stringify(message("canvas.group.addNode"))}]`);
+    if (kind === "IMAGE") await page(() => window.__agenvasCanvasEditingFixture.failNextPlacement(503));
+    await clickNamed('[role="option"]', label);
+    if (kind === "IMAGE") {
+      await waitFor(() => Boolean(document.querySelector(".canvas-error-notice")));
+      await clickNamed(".canvas-feedback button", "common.retry");
+    }
+    await waitFor((count) => window.__agenvasCanvasEditingFixture.evidence().items.length === count
+      && !document.querySelector(".canvas-error-notice"), before.items.length + 1);
+    const after = await evidence();
+    const added = after.items.find((item) => !before.items.some((previous) => item.id === previous.id));
+    assert.equal(added.artifact.kind, kind); assert.equal(added.groupId, groupId);
+    assert.ok(added.y > memberBottom, "Creation leaves room below existing members");
+    assert.equal(after.groups.find((group) => group.id === groupId).collapsed, false, "Creation expands folded groups");
+    if (kind === "IMAGE") assert.deepEqual(after.placements.at(-1), after.placements.at(-2), "Lost placement response reuses the node, group and coordinates");
+  }
+  await click(`button[aria-label=${JSON.stringify(message("canvas.workspace.fitView"))}]`);
+  await waitForStableViewport(); await checkLayout(); await screenshot("group-direct-creation");
+  assert.deepEqual((await evidence()).unexpected, []);
+  assert.deepEqual(runtimeErrors, []);
+  console.log(`Group entry browser passed: native drop highlight, atomic membership/position history, failure retry, all four creation kinds, folded creation and lost placement response. Synthetic screenshots: ${screenshots}`);
 }
 async function openTextEditor(itemId) {
   await click(`${card(itemId)} .content-card-body`, { clicks: 2 });
@@ -471,7 +548,8 @@ try {
   await cdp("Page.enable"); await cdp("Runtime.enable");
   const baseUrl = server.resolvedUrls.local[0];
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  if (motionOnly) await runMotionRegression(baseUrl);
+  if (groupEntryOnly) await runGroupEntryRegression(baseUrl);
+  else if (motionOnly) await runMotionRegression(baseUrl);
   else if (dragCase) await runDragRegression(baseUrl);
   else {
   await navigate(baseUrl);

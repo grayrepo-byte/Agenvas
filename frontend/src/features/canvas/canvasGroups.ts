@@ -56,6 +56,28 @@ export function canvasGroupIdFromNodeId(nodeId: string): string | null {
     ? nodeId.slice(GROUP_NODE_PREFIX.length) : null;
 }
 
+/** Freeze group rectangles at drag start: moving a member must not move its own drop target.
+ * All dragged centers must fit the same expanded frame. Overlapping frames prefer the
+ * smallest area, then stable identity; moving whole groups never invokes this operation. */
+export function canvasGroupDropTarget(groups: readonly CanvasGroupProjection[], moving: readonly CanvasGroupMemberLayout[]) {
+  if (!moving.length) return undefined;
+  return groups.filter((entry) => !entry.group.collapsed
+    && moving.some((item) => item.groupId !== entry.group.id)
+    && moving.every((item) => {
+      const x = item.x + item.width / 2, y = item.y + item.height / 2;
+      return x >= entry.position.x && x <= entry.position.x + entry.width
+        && y >= entry.position.y && y <= entry.position.y + entry.height;
+    }))
+    .sort((left, right) => left.width * left.height - right.width * right.height || left.id.localeCompare(right.id))[0];
+}
+
+/** Append below existing members, leaving room for the new card's title/actions. */
+export function canvasGroupCreationPoint(items: readonly CanvasGroupMemberLayout[]) {
+  if (!items.length) return undefined;
+  return { x: Math.min(...items.map((item) => item.x)),
+    y: Math.max(...items.map((item) => item.y + item.height)) + CANVAS_GROUP_LAYOUT.memberChromeSpace + CANVAS_GROUP_LAYOUT.padding };
+}
+
 /** Absolute member coordinates remain the persisted layout. Callers overlay unsaved layout
  * drafts before projecting, so a group follows an in-progress drag without relative positions. */
 export function projectCanvasGroups(groups: readonly CanvasGroupModel[], items: readonly CanvasGroupMemberLayout[]) {

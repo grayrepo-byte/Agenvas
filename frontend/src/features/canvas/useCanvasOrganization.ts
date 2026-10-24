@@ -26,10 +26,11 @@ export function useCanvasOrganization({ projectId, items, enabled, selectedIds, 
     enabled, retry: false });
   const groups = useMemo(() => editor.data?.groups ?? [], [editor.data?.groups]);
   const drafts = useCanvasStore((state) => state.drafts);
-  const projection = useMemo(() => projectCanvasGroups(groups, items.map((item) => ({
-    id: item.id, groupId: item.groupId, x: drafts[item.id]?.x ?? item.x,
-    y: drafts[item.id]?.y ?? item.y, ...effectiveNodeSize(item),
-  }))), [groups, items, drafts, effectiveNodeSize]);
+  const projection = useMemo(() => projectCanvasGroups(groups, items.map((item) => {
+    const draft = drafts[item.id];
+    return { id: item.id, groupId: draft?.groupId !== undefined ? draft.groupId : item.groupId,
+      x: draft?.x ?? item.x, y: draft?.y ?? item.y, ...effectiveNodeSize(item) };
+  })), [groups, items, drafts, effectiveNodeSize]);
   const selectedItems = useMemo(() => {
     const ids = new Set(selectedIds);
     const groupIds = new Set(selectedIds.map(canvasGroupIdFromNodeId).filter((id): id is string => id !== null));

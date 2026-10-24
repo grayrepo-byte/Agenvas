@@ -8,7 +8,7 @@ import { canvasItemPresentation, type CanvasEditExecutor } from "./useCanvasEdit
 /** The existing canvas command API accepts at most 100 commands per transaction. */
 const CANVAS_LAYOUT_BATCH_SIZE = 100;
 
-type LayoutPatch = Pick<CanvasItem, "x" | "y" | "width" | "height">;
+type LayoutPatch = Pick<CanvasItem, "x" | "y" | "width" | "height" | "groupId">;
 type LayoutUpdate = { item: CanvasItem; patch: Partial<LayoutPatch> };
 type LayoutInput = LayoutUpdate | LayoutUpdate[];
 type NodeSize = Pick<CanvasItem, "width" | "height">;
@@ -32,7 +32,8 @@ export function useCanvasLayoutSave(projectId: string,
         type: "UPDATE_LAYOUT", itemId: item.id, expectedVersion: item.version,
         x: patch.x ?? draft?.x ?? item.x, y: patch.y ?? draft?.y ?? item.y,
         ...persistableNodeSize(effectiveNodeSize(item, patch)),
-        zIndex: item.zIndex, groupId: item.groupId,
+        zIndex: item.zIndex,
+        groupId: patch.groupId !== undefined ? patch.groupId : draft?.groupId !== undefined ? draft.groupId : item.groupId,
       };
     });
     return { input, commands, submitted };

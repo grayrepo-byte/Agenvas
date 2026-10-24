@@ -1,6 +1,6 @@
 import type { Edge } from "@xyflow/react";
 import { describe, expect, it } from "vitest";
-import { CANVAS_GROUP_INPUT_HANDLE, CANVAS_GROUP_LAYOUT, CANVAS_GROUP_OUTPUT_HANDLE, canvasGroupIdFromNodeId,
+import { CANVAS_GROUP_INPUT_HANDLE, CANVAS_GROUP_LAYOUT, CANVAS_GROUP_OUTPUT_HANDLE, canvasGroupCreationPoint, canvasGroupDropTarget, canvasGroupIdFromNodeId,
   canvasGroupNodeId, projectCanvasGroups, remapCollapsedCanvasEdges, type CanvasGroupMemberLayout, type CanvasGroupModel } from "./canvasGroups";
 
 function group(id: string, collapsed = false): CanvasGroupModel {
@@ -52,6 +52,31 @@ describe("canvas group projection", () => {
     expect(canvasGroupIdFromNodeId(canvasGroupNodeId("a"))).toBe("a");
     expect(canvasGroupIdFromNodeId("a")).toBeNull();
     expect(canvasGroupIdFromNodeId("canvas-group:")).toBeNull();
+  });
+});
+
+describe("group creation and drop targets", () => {
+  const frames = projectCanvasGroups([group("a"), group("b")], items).groups;
+  const moving = { id: "unassigned", groupId: null, x: 0, y: 200, width: 200, height: 200 };
+
+  it("joins only when every moved node center enters the same expanded group", () => {
+    expect(canvasGroupDropTarget(frames, [moving])?.group.id).toBe("a");
+    expect(canvasGroupDropTarget(frames, [moving, { ...moving, id: "outside", x: 900 }])).toBeUndefined();
+    expect(canvasGroupDropTarget(frames, [{ ...moving, x: -340 }])).toBeUndefined();
+    expect(canvasGroupDropTarget(frames, [{ ...moving, groupId: "a" }])).toBeUndefined();
+    expect(canvasGroupDropTarget(frames, [])).toBeUndefined();
+  });
+
+  it("excludes folded groups and prefers the smaller frame when expanded frames overlap", () => {
+    const small = { ...frames[0]!, group: group("small"), id: canvasGroupNodeId("small"), width: 500, height: 500 };
+    expect(canvasGroupDropTarget([...frames, small], [moving])?.group.id).toBe("small");
+    expect(canvasGroupDropTarget([{ ...small, group: group("small", true) }], [moving])).toBeUndefined();
+    expect(canvasGroupDropTarget(frames, [{ ...moving, groupId: "other" }])?.group.id).toBe("a");
+  });
+
+  it("places a new member below effective card bounds with room for its title and toolbar", () => {
+    expect(canvasGroupCreationPoint(items.filter((item) => item.groupId === "a"))).toEqual({ x: -200, y: 892 });
+    expect(canvasGroupCreationPoint([])).toBeUndefined();
   });
 });
 

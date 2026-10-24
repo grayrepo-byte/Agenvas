@@ -15,6 +15,23 @@
 
 .canvas-group--selected .canvas-group__name { color: var(--ui-accent-text); }
 
+.canvas-group--drop-target {
+  border-color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+  box-shadow: 0 0 0 2px var(--ui-accent);
+}
+
+.canvas-group__drop-hint {
+  position: absolute;
+  top: 56px;
+  left: 20px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--ui-canvas-chrome);
+  color: var(--ui-accent-text);
+  font-size: 12px;
+}
+
 .canvas-group__header {
   box-sizing: border-box;
   display: flex;

@@ -38,6 +38,40 @@ beforeEach(() => {
 });
 
 describe("canvas editing receipts over HTTP", () => {
+  it("retries a grouped drop with frozen membership and position, then undoes both together", async () => {
+    const requests: CanvasEditRequest[] = [];
+    server.use(
+      http.post(URL, async ({ request }) => {
+        const input = await request.json() as CanvasEditRequest;
+        requests.push(input);
+        return requests.length === 1 ? HttpResponse.error()
+          : HttpResponse.json(response(input, [{ ...item, ...input.itemChanges![0], version: 4 }]));
+      }),
+      http.post(`${URL}/:receiptId/replay`, ({ params }) => HttpResponse.json({ items: [{ ...item, version: 5 }], groups: [],
+        receipt: { id: params.receiptId, operation: "DISPLAY", revision: 1, state: "UNDONE" } })),
+    );
+    const { wrapper, client } = setup();
+    const { result } = renderHook(() => {
+      const editing = useCanvasEditing(PROJECT);
+      const layout = useCanvasLayoutSave(PROJECT, (current) => current, editing.execute);
+      return { editing, layout };
+    }, { wrapper });
+    const patch = { x: 400, y: 300, groupId: "target-group" };
+    act(() => useCanvasStore.getState().updateDraft(item.id, patch));
+    await act(async () => { await expect(result.current.layout.mutateAsync({ item, patch })).rejects.toThrow(); });
+    expect(useCanvasStore.getState().drafts[item.id]).toMatchObject(patch);
+    expect(result.current.editing.canUndo).toBe(false);
+    await act(async () => { await result.current.editing.retry(); });
+    expect(requests[1]).toEqual(requests[0]);
+    expect(requests[1]?.itemChanges?.[0]).toMatchObject(patch);
+    expect(useCanvasStore.getState().drafts[item.id]).toBeUndefined();
+    expect(client.getQueryData<Canvas>(["canvas", PROJECT])?.items[0]).toMatchObject(patch);
+    await act(async () => { await result.current.editing.replay("UNDO"); });
+    expect(client.getQueryData<Canvas>(["canvas", PROJECT])?.items[0]).toMatchObject({ x: 20, y: 40, groupId: null });
+    expect(result.current.editing.canUndo).toBe(false);
+    expect(result.current.editing.canRedo).toBe(true);
+  });
+
   it("retries a committed duplicate with the same command and target IDs and records it once", async () => {
     const requests: CanvasEditRequest[] = [];
     const replayRequests: CanvasEditReplayRequest[] = [];

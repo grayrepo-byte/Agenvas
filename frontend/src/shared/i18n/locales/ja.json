@@ -3190,5 +3190,7 @@
   "video.optimize.start": "最適化を開始",
   "video.optimize.loadFailed": "最適化タスクを読み込めません。",
   "video.optimize.failed": "最適化に失敗しました。テキストモデルの設定を確認してください。",
-  "video.optimize.referenceInvalid": "参照マーカーが不完全か予約済みマーカーを含んでいます。修正してください。"
+  "video.optimize.referenceInvalid": "参照マーカーが不完全か予約済みマーカーを含んでいます。修正してください。",
+  "canvas.group.addNode": "グループ内にノードを作成",
+  "canvas.group.dropToJoin": "ドロップしてグループに追加"
 }

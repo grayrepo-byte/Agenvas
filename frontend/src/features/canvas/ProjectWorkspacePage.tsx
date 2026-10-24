@@ -98,15 +98,16 @@ import { Badge } from "../../shared/ui/primitives/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { CanvasGroupNode, type CanvasGroupFlowNode } from "./CanvasGroupNode";
 import { CanvasGroupRenameDialog } from "./CanvasGroupActions";
-import { canvasGroupIdFromNodeId, canvasGroupNodeId, remapCollapsedCanvasEdges } from "./canvasGroups";
+import { canvasGroupCreationPoint, canvasGroupDropTarget, canvasGroupIdFromNodeId, canvasGroupNodeId,
+  remapCollapsedCanvasEdges, type CanvasGroupMemberLayout, type CanvasGroupProjection } from "./canvasGroups";
 import { hasOpenCanvasEditingOverlay, resolveCanvasEditingShortcut } from "./canvasEditingShortcuts";
 import { CanvasEditingContext, canvasItemPresentation } from "./useCanvasEditing";
 import { CANVAS_EDIT_ITEM_LIMIT, useCanvasOrganization } from "./useCanvasOrganization";
 
-type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height">;
+type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height"> & { groupId?: string | null };
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
 type DrawerKind = "ALIGN";
-type CreationPoint = { x: number; y: number };
+type CreationPoint = { x: number; y: number; groupId?: string };
 type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
   zIndex: number; assetId?: string; artifactId?: string };
 type CreationMenu = { x: number; y: number; point: CreationPoint; centerAtPoint: boolean };
@@ -277,6 +278,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     itemId: string; artifactId?: string } | null>(null);
   const drafts = useCanvasStore((state) => state.drafts);
   const [draggingIds, setDraggingIds] = useState<string[]>([]);
+  const [groupDropTargetId, setGroupDropTargetId] = useState<string | null>(null);
+  const dragGroupFrames = useRef<CanvasGroupProjection[]>([]);
   const saveState = useCanvasStore((state) => state.saveState);
   const selectedIds = useCanvasStore((state) => state.selectedIds);
   const selectionMode = useCanvasStore((state) => state.selectionMode);
@@ -422,7 +425,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           y: point.y,
           ...DEFAULT_ARTIFACT_CARD_SIZES.TEXT,
           zIndex: pending.zIndex,
-          locked: false,
+          locked: false, groupId: point.groupId,
         },
       ]);
       return { saved, itemId: pending.itemId };
@@ -483,7 +486,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const index = canvas.data?.items.length ?? 0;
       const saved = await applyCanvasCommands(projectId, [{
         type: "PLACE_ARTIFACT", itemId: pending.itemId, artifactId: pending.artifactId,
-        x: point.x, y: point.y, ...DEFAULT_ARTIFACT_CARD_SIZES[kind], zIndex: index, locked: false,
+        x: point.x, y: point.y, groupId: point.groupId, ...DEFAULT_ARTIFACT_CARD_SIZES[kind], zIndex: index, locked: false,
       }]);
       return { saved, itemId: pending.itemId, director };
     },
@@ -772,6 +775,33 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       CANVAS_SELECTION_MODE.MULTIPLE);
   }, [setSelectedIds]);
   const lockedItemIds = useMemo(() => new Set((canvas.data?.items ?? []).filter((item) => item.locked).map((item) => item.id)), [canvas.data?.items]);
+  const openCreationMenu = useCallback((clientX: number, clientY: number, placement?: CreationPoint) => {
+    const rect = canvasElement.current?.getBoundingClientRect();
+    if (!rect) return;
+    const point = placement ?? flow.current?.screenToFlowPosition({ x: clientX, y: clientY })
+      ?? { x: clientX - rect.left, y: clientY - rect.top };
+    const x = Math.max(CREATION_MENU_MARGIN, Math.min(clientX - rect.left,
+      rect.width - CREATION_MENU_WIDTH - CREATION_MENU_MARGIN));
+    const y = Math.max(CREATION_MENU_MARGIN, Math.min(clientY - rect.top,
+      rect.height - CREATION_MENU_HEIGHT - CREATION_MENU_MARGIN));
+    creationMenuReturnFocus.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement : null;
+    setPaneMenu(null);
+    setCreationMenu({ x, y, point, centerAtPoint: placement !== undefined && placement.groupId === undefined });
+  }, []);
+  const openGroupCreationMenu = useCallback((groupId: string, anchor: HTMLElement) => {
+    const members = (canvas.data?.items ?? []).filter((item) => item.groupId === groupId).map((item) => ({
+      ...item, ...useCanvasStore.getState().drafts[item.id], ...effectiveNodeSize(item),
+    }));
+    const point = canvasGroupCreationPoint(members);
+    if (!point) return;
+    const rect = anchor.getBoundingClientRect();
+    openCreationMenu(rect.left, rect.bottom, { ...point, groupId });
+  }, [canvas.data?.items, effectiveNodeSize, openCreationMenu]);
+  const draggedMemberLayouts = useCallback((moving: readonly WorkspaceNode[]): CanvasGroupMemberLayout[] => moving.flatMap((node) => {
+    const item = canvas.data?.items.find((candidate) => candidate.id === node.id);
+    return item && !item.locked ? [{ id: item.id, groupId: item.groupId, ...node.position, ...effectiveNodeSize(item) }] : [];
+  }), [canvas.data?.items, effectiveNodeSize]);
   const nodes = useMemo<WorkspaceNode[]>(
     () => [
       ...organization.projection.groups.map((entry): CanvasGroupFlowNode => ({
@@ -780,9 +810,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         measured: { width: entry.width, height: entry.height },
         style: { width: entry.width, height: entry.height, pointerEvents: "none" }, zIndex: entry.group.collapsed ? 1001 : 0,
         dragHandle: ".canvas-group-drag-handle", selected: selectedIds.includes(entry.id),
-        draggable: selecting && !organization.busy && !saveLayout.isPending && entry.memberIds.every((id) => !lockedItemIds.has(id)),
+        draggable: selecting && !editing.error && !organization.busy && !saveLayout.isPending && entry.memberIds.every((id) => !lockedItemIds.has(id)),
         data: { groupId: entry.group.id, name: entry.group.name, collapsed: entry.group.collapsed,
           memberCount: entry.memberIds.length, disabled: organization.busy || saveLayout.isPending,
+          dropTarget: groupDropTargetId === entry.group.id,
+          creationDisabled: Boolean(editing.error) || addTextCard.isPending || addBlankMedia.isPending || entry.memberIds.length >= CANVAS_EDIT_ITEM_LIMIT,
+          onAdd: openGroupCreationMenu,
           onRename: organization.renameGroup,
           onToggle: (id) => { void organization.toggleGroup(id).catch(() => undefined); },
           onDuplicate: (id) => { void organization.duplicateGroup(id).catch(() => undefined); },
@@ -804,7 +837,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             // keeps its DOM-measured handle bounds for edges and drag-to-connect.
             measured: { width, height },
             style: { width, height, ...member?.style }, zIndex: item.zIndex + 1,
-            draggable: selecting && !item.locked && !member?.collapsed && !organization.busy && !saveLayout.isPending,
+            draggable: selecting && !item.locked && !member?.collapsed && !editing.error && !organization.busy && !saveLayout.isPending,
             selectable: selecting && !member?.collapsed, focusable: selecting && !member?.collapsed,
             selected: !member?.collapsed && selectedIds.includes(item.id),
             data: {
@@ -836,6 +869,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       canvas.data?.items,
       organization,
       lockedItemIds,
+      groupDropTargetId,
+      openGroupCreationMenu,
+      editing.error,
+      addTextCard.isPending,
+      addBlankMedia.isPending,
       saveLayout.isPending,
       bindingsByItem,
       characters.data,
@@ -968,20 +1006,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setSelectedIds([]);
     setSelectedEdgeIds([]);
   }, [setSelectedEdgeIds, setSelectedIds]);
-  function openCreationMenu(clientX: number, clientY: number, placement?: CreationPoint) {
-    const rect = canvasElement.current?.getBoundingClientRect();
-    if (!rect) return;
-    const point = placement ?? flow.current?.screenToFlowPosition({ x: clientX, y: clientY })
-      ?? { x: clientX - rect.left, y: clientY - rect.top };
-    const x = Math.max(CREATION_MENU_MARGIN, Math.min(clientX - rect.left,
-      rect.width - CREATION_MENU_WIDTH - CREATION_MENU_MARGIN));
-    const y = Math.max(CREATION_MENU_MARGIN, Math.min(clientY - rect.top,
-      rect.height - CREATION_MENU_HEIGHT - CREATION_MENU_MARGIN));
-    creationMenuReturnFocus.current = document.activeElement instanceof HTMLElement
-      ? document.activeElement : null;
-    setPaneMenu(null);
-    setCreationMenu({ x, y, point, centerAtPoint: placement !== undefined });
-  }
+
 
   useEffect(() => {
     if (creationMenu) creationMenuElement.current?.focus();
@@ -1029,12 +1054,17 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setCreationMenu(null);
     setPaneMenu(null);
     setResourcesOpen(false);
-    if (kind === "TEXT") {
-      setToolsKind(null);
-      if (!addTextCard.isPending) addTextCard.mutate({ point: origin });
-    } else if (kind === "IMAGE" || kind === "VIDEO" || kind === "AUDIO") {
-      addBlankMedia.mutate({ kind, point: origin });
-    }
+    const create = () => {
+      if (kind === "TEXT") {
+        setToolsKind(null);
+        if (!addTextCard.isPending) addTextCard.mutate({ point: origin });
+      } else addBlankMedia.mutate({ kind, point: origin });
+    };
+    // Creating inside a folded group first expands it through the ordinary edit command.
+    // Failure stops creation; retries of placement keep the original group and coordinates.
+    const group = organization.groups.find((candidate) => candidate.id === point.groupId);
+    if (group?.collapsed) void organization.toggleGroup(group.id).then(create).catch(() => undefined);
+    else create();
   }
 
   const selectedItems = organization.selectedItems;
@@ -1225,7 +1255,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {openAudioConversation.error ? <CanvasErrorNotice error={openAudioConversation.error}
             title={feedbackTitle(t("media.editor.agentConversation"), [openAudioConversation.variables?.id])} message={workspaceErrorMessage(openAudioConversation.error)}
             onLocate={canvas.data?.items.some((item) => item.id === openAudioConversation.variables?.id) ? () => locateFeedbackNodes([openAudioConversation.variables!.id]) : undefined} /> : null}
-          {addBlankMedia.error ? <CanvasErrorNotice error={addBlankMedia.error} title={`${t("canvas.feedback.createCard")} · ${addBlankMedia.variables ? ARTIFACT_LABELS[addBlankMedia.variables.kind] : ""}`} message={workspaceErrorMessage(addBlankMedia.error)} /> : null}
+          {addBlankMedia.error ? <CanvasErrorNotice error={addBlankMedia.error} title={`${t("canvas.feedback.createCard")} · ${addBlankMedia.variables ? ARTIFACT_LABELS[addBlankMedia.variables.kind] : ""}`} message={workspaceErrorMessage(addBlankMedia.error)}>
+            <Button variant="ghost" size="xs" type="button" disabled={addBlankMedia.isPending}
+              onClick={() => { if (addBlankMedia.variables) addBlankMedia.mutate(addBlankMedia.variables); }}>{t("common.retry")}</Button>
+          </CanvasErrorNotice> : null}
           {saveLayout.error ? <CanvasErrorNotice error={saveLayout.error} title={feedbackTitle(t("canvas.feedback.saveLayout"), layoutErrorIds)} message={workspaceErrorMessage(saveLayout.error)}
             onLocate={layoutErrorIds.some((id) => canvas.data?.items.some((item) => item.id === id)) ? () => locateFeedbackNodes(layoutErrorIds) : undefined} /> : null}
           {connectInput.error ? <CanvasErrorNotice error={connectInput.error} title={feedbackTitle(t("canvas.feedback.connect"), connectionErrorIds)} message={workspaceErrorMessage(connectInput.error)}
@@ -1276,9 +1309,18 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               } else ids.add(current.id);
             }
             groupDragOrigins.current = origins;
+            dragGroupFrames.current = organization.projection.groups;
+            setGroupDropTargetId(null);
             setDraggingIds([...ids]);
           }}
+          onNodeDrag={(_, node, moving) => {
+            const target = groupDragOrigins.current.size ? undefined
+              : canvasGroupDropTarget(dragGroupFrames.current, draggedMemberLayouts(moving?.length ? moving : [node]));
+            setGroupDropTargetId(target?.group.id ?? null);
+          }}
           onNodeDragStop={(_, node, moving) => {
+            const target = groupDragOrigins.current.size ? undefined
+              : canvasGroupDropTarget(dragGroupFrames.current, draggedMemberLayouts(moving?.length ? moving : [node]));
             const updates = new Map<string, { item: CanvasItem; patch: LayoutPatch }>();
             for (const moved of moving?.length ? moving : [node]) {
               const origin = groupDragOrigins.current.get(moved.id);
@@ -1287,12 +1329,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                 : [{ id: moved.id, ...moved.position }];
               for (const member of members) {
                 const item = canvas.data?.items.find((candidate) => candidate.id === member.id);
-                if (!item) continue;
-                const patch = { x: member.x, y: member.y, ...effectiveNodeSize(item) };
+                if (!item || item.locked) continue;
+                const patch = { x: member.x, y: member.y, ...effectiveNodeSize(item),
+                  ...(target ? { groupId: target.group.id } : {}) };
                 updateDraft(item.id, patch); updates.set(item.id, { item, patch });
               }
             }
             groupDragOrigins.current.clear();
+            dragGroupFrames.current = [];
+            setGroupDropTargetId(null);
             setDraggingIds([]); clearSelection();
             if (updates.size) void saveLayout.saveInBatches([...updates.values()]).catch(() => undefined);
           }}
@@ -1438,7 +1483,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {creationMenu ? <Command loop shouldFilter={false} tabIndex={-1} className="workspace-create-menu h-auto"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>
-          <CommandList label={t("canvas.tools.addCard")}><CommandGroup heading={t("canvas.tools.addCard")}>
+          <CommandList label={t("canvas.tools.addCard")}><CommandGroup heading={t(creationMenu.point.groupId ? "canvas.group.addNode" : "canvas.tools.addCard")}>
           {CREATION_KINDS.map(({ kind, label, icon: CreationIcon }) => <CommandItem key={kind} value={kind}
             disabled={kind === "TEXT" && addTextCard.isPending}
             onSelect={() => chooseCreationKind(kind, creationMenu?.point)}>

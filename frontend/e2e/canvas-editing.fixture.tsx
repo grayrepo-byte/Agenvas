@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ProjectWorkspacePage } from "../src/features/canvas/ProjectWorkspacePage";
 import { useCanvasStore } from "../src/features/canvas/canvasStore";
-import type { Artifact, CanvasEditReceipt, CanvasEditReplayRequest, CanvasEditRequest, CanvasEditResponse,
+import type { Artifact, CanvasCommand, CreateArtifactRequest, CanvasEditReceipt, CanvasEditReplayRequest, CanvasEditRequest, CanvasEditResponse,
   CanvasEditorState, CanvasGroup, CanvasItem, ProjectSnapshot, ReviseArtifactRequest } from "../src/shared/api/client";
 import { resolveLocale, setLocale } from "../src/shared/i18n";
 import "../src/styles.css";
@@ -31,6 +31,7 @@ function textItem(index: number): CanvasItem {
     artifact, version: 0 };
 }
 let items: CanvasItem[] = Array.from({ length: 100 }, (_, index) => textItem(index));
+if (options.has("group-entry")) items = items.slice(0, 3);
 if (options.has("hand-drag")) {
   const empty = textItem(1);
   empty.artifact.resourceDefaultVersion!.content = { format: "PLAIN_TEXT", text: "" };
@@ -55,6 +56,8 @@ const requests: Array<{ method: string; path: string }> = [];
 const edits: CanvasEditRequest[] = [];
 const replays: CanvasEditReplayRequest[] = [];
 const textSaves: Array<{ artifactId: string; request: ReviseArtifactRequest }> = [];
+const placements: CanvasCommand[] = [];
+const createdArtifacts = new Map<string, Artifact>();
 const unexpected: string[] = [];
 type ReceiptRecord = { receipt: CanvasEditReceipt; before: CanvasEditorState; after: CanvasEditorState };
 const receipts = new Map<string, ReceiptRecord>();
@@ -62,15 +65,17 @@ const editCommands = new Map<string, CanvasEditResponse>();
 const replayCommands = new Map<string, CanvasEditResponse>();
 let nextEditFailure: number | null = null;
 let nextTextFailure: number | null = null;
+let nextPlacementFailure: number | null = null;
 const copy = <T,>(value: T): T => structuredClone(value);
 const state = (): CanvasEditorState => copy({ items, groups });
 const diagnostics = {
-  evidence: () => copy({ items, groups, requests, edits, replays, textSaves, unexpected,
+  evidence: () => copy({ items, groups, requests, edits, replays, textSaves, placements, unexpected,
     layoutDrafts: useCanvasStore.getState().drafts,
     mediaDraftRecoveryCount: Object.keys(useCanvasStore.getState().mediaDraftRecoveries).length,
     receipts: [...receipts.values()].map(({ receipt }) => receipt) }),
   failNextEdit: (status: number) => { nextEditFailure = status; },
   failNextTextSave: (status: number) => { nextTextFailure = status; },
+  failNextPlacement: (status: number) => { nextPlacementFailure = status; },
 };
 Object.assign(window, { __agenvasCanvasEditingFixture: diagnostics });
 function problem(status: number, detail: string) {
@@ -177,6 +182,31 @@ window.fetch = async (input, init) => {
   } else if (/\/canvas\/edits\/[^/]+\/replay$/.test(path) && method === "POST") {
     const request = JSON.parse(String(init?.body)) as CanvasEditReplayRequest; replays.push(copy(request));
     value = replay(path.split("/").at(-2)!, request);
+  } else if (path.endsWith("/artifacts") && method === "POST") {
+    const request = JSON.parse(String(init?.body)) as CreateArtifactRequest;
+    const id = crypto.randomUUID();
+    const version: Artifact["resourceDefaultVersion"] = request.content ? { id: crypto.randomUUID(), versionNo: 1,
+      schemaVersion: 1, content: request.content, inputReferences: [], createdByKind: "USER", runId: null, createdAt: now } : null;
+    const artifact: Artifact = { id, projectId, kind: request.kind, title: request.title ?? "Synthetic new node", version: 0,
+      resourceDefaultVersion: version, resourceDefaultVersionId: version?.id ?? null, createdAt: now, updatedAt: now };
+    createdArtifacts.set(id, artifact); value = artifact;
+  } else if (path.endsWith("/canvas/commands") && method === "POST") {
+    const request = JSON.parse(String(init?.body)) as { commands: CanvasCommand[] };
+    placements.push(...copy(request.commands));
+    for (const command of request.commands) {
+      if (command.type !== "PLACE_ARTIFACT") return problem(400, "Unsupported synthetic placement");
+      const artifact = createdArtifacts.get(command.artifactId);
+      if (!artifact) return problem(404, "Missing synthetic artifact");
+      if (!items.some((item) => item.id === command.itemId)) items.push({ id: command.itemId, subjectType: "ARTIFACT",
+        subjectId: artifact.id, title: artifact.title, artifact, x: command.x, y: command.y, width: command.width,
+        height: command.height, zIndex: command.zIndex, groupId: command.groupId ?? null, locked: false, version: 0,
+        selectedVersionId: artifact.resourceDefaultVersionId, selectedVersion: artifact.resourceDefaultVersion });
+    }
+    if (nextPlacementFailure !== null) {
+      const status = nextPlacementFailure; nextPlacementFailure = null;
+      return problem(status, "Synthetic lost placement response");
+    }
+    value = { items };
   } else if (/\/artifacts\/[^/]+\/revisions$/.test(path) && method === "POST") {
     const artifactId = path.split("/").at(-2)!;
     const request = JSON.parse(String(init?.body)) as ReviseArtifactRequest; textSaves.push({ artifactId, request });
@@ -185,7 +215,7 @@ window.fetch = async (input, init) => {
     if (!item || item.artifact.version !== request.expectedVersion) return problem(409, "Synthetic text version conflict");
     const version: NonNullable<Artifact["resourceDefaultVersion"]> = { id: crypto.randomUUID(), versionNo: (item.artifact.resourceDefaultVersion?.versionNo ?? 0) + 1,
       schemaVersion: 1, content: request.content, inputReferences: [], createdByKind: "USER", runId: null, createdAt: now };
-    item.artifact = { ...item.artifact, title: request.title, version: item.artifact.version + 1,
+    item.artifact = { ...item.artifact, title: request.title ?? item.artifact.title, version: item.artifact.version + 1,
       resourceDefaultVersionId: version.id, resourceDefaultVersion: version };
     item.selectedVersion = version; item.selectedVersionId = version.id;
     value = item.artifact;

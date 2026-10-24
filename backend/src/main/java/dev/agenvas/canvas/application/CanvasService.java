@@ -34,6 +34,7 @@ public class CanvasService {
 
     /** 一次画布提交允许的最大命令数。 */
     private static final int MAX_COMMANDS = 100;
+    private static final int MAX_GROUP_MEMBERS = 100;
     /** 卡片展示标题允许的最大字符数。 */
     private static final int MAX_TITLE_LENGTH = 160;
     private static final String DERIVATION_TITLE_SEPARATOR = " · ";
@@ -753,6 +754,16 @@ public class CanvasService {
     /** 核验产物权限和坐标后创建卡片；客户端 ID 只允许完全相同的布局重放。 */
     private void placeArtifact(UUID ownerId, UUID projectId, PlaceArtifact command) {
         if (command.groupId() != null && !canvasItems.groupExists(ownerId, projectId, command.groupId())) throw conflict();
+        if (command.groupId() != null) {
+            // Direct creation uses this placement path too. Check under the project event lock,
+            // but allow an identical placement retry even when the group has reached its limit.
+            List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
+            if (existing.stream().noneMatch(item -> item.id().equals(command.itemId()))
+                    && existing.stream().filter(item -> command.groupId().equals(item.groupId())).count() >= MAX_GROUP_MEMBERS) {
+                throw new ApiProblemException(HttpStatus.BAD_REQUEST, "CANVAS_EDIT_LIMIT",
+                        ApiMessage.of("api.canvas-controller.canvas-command-is-invalid"), ApiMessage.of("api.canvas-edit.limit"), false);
+            }
+        }
         validateGeometry(
                 command.x(),
                 command.y(),
