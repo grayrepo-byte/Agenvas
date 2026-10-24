@@ -60,6 +60,7 @@ public class JooqProjectRepository implements ProjectRepository {
                 .from(PROJECT)
                 .where(PROJECT.ID.eq(projectId))
                 .and(PROJECT.OWNER_ID.eq(ownerId))
+                .and(PROJECT.STATUS.ne(Project.Status.DELETED.name()))
                 .fetchOptional(row -> new SnapshotAnchor(
                         row.get(PROJECT.EVENT_SEQ),
                         row.get(PROJECT.ACTIVE_RUN_ID)));
@@ -114,9 +115,8 @@ public class JooqProjectRepository implements ProjectRepository {
             UUID beforeId,
             int limit) {
         var query = dsl.selectFrom(PROJECT)
-                .where(PROJECT.OWNER_ID.eq(ownerId));
-        // 原查询写作 (:includeArchived or status = 'ACTIVE')；为真时该谓词恒真，
-        // 因此等价于仅在排除归档时附加活动状态条件。
+                .where(PROJECT.OWNER_ID.eq(ownerId))
+                .and(PROJECT.STATUS.ne(Project.Status.DELETED.name()));
         if (!includeArchived) {
             query = query.and(PROJECT.STATUS.eq(Project.Status.ACTIVE.name()));
         }
@@ -167,6 +167,20 @@ public class JooqProjectRepository implements ProjectRepository {
                 .and(PROJECT.OWNER_ID.eq(ownerId))
                 .and(PROJECT.VERSION.eq(expectedVersion))
                 .and(PROJECT.STATUS.eq(Project.Status.ACTIVE.name()))
+                .execute() == 1;
+    }
+
+    @Override
+    public boolean delete(UUID ownerId, UUID projectId, long expectedVersion, Instant deletedAt) {
+        return dsl.update(PROJECT)
+                .set(PROJECT.STATUS, Project.Status.DELETED.name())
+                .set(PROJECT.UPDATED_AT, atUtc(deletedAt))
+                .set(PROJECT.VERSION, PROJECT.VERSION.plus(1))
+                .where(PROJECT.ID.eq(projectId))
+                .and(PROJECT.OWNER_ID.eq(ownerId))
+                .and(PROJECT.STATUS.eq(Project.Status.ARCHIVED.name()))
+                .and(PROJECT.VERSION.eq(expectedVersion))
+                .and(PROJECT.ACTIVE_RUN_ID.isNull())
                 .execute() == 1;
     }
 

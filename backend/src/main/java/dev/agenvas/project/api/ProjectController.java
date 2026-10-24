@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -133,6 +134,16 @@ public class ProjectController {
             @PositiveOrZero long expectedVersion,
             @Size(min = 1, max = 120) String name,
             Project.AspectRatio aspectRatio) {}
+
+    /** 以查询参数中的版本删除归档项目；同版本命令可安全重放。 */
+    @DeleteMapping("/{projectId}")
+    public ResponseEntity<Void> delete(
+            @AuthenticationPrincipal AdminPrincipal principal,
+            @PathVariable UUID projectId,
+            @RequestParam long expectedVersion) {
+        projects.delete(principal.userId(), projectId, expectedVersion);
+        return ResponseEntity.noContent().build();
+    }
 
     /** 项目归档命令。
      * @param expectedVersion 客户端读取项目时的版本

@@ -16,6 +16,7 @@ import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.db.tables.records.ArtifactRecord;
 import dev.agenvas.db.tables.records.ArtifactVersionRecord;
 import dev.agenvas.db.tables.records.MediaDraftRecord;
+import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.idempotency.IdempotencyState;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -416,6 +417,7 @@ public class JooqArtifactRepository implements ArtifactRepository {
         var text = ARTIFACT.KIND.eq(Artifact.Kind.TEXT.name())
                 .and(DSL.jsonbGetAttributeAsText(ARTIFACT_VERSION.CONTENT_JSON, "text").likeRegex("[^[:space:]]"));
         var condition = PROJECT.OWNER_ID.eq(ownerId)
+                .and(PROJECT.STATUS.ne(Project.Status.DELETED.name()))
                 .and(projectId == null ? media : media.or(text))
                 .and(ARTIFACT.ARCHIVED_AT.isNull())
                 // Skill installation material is internal context, rather than a creation result.

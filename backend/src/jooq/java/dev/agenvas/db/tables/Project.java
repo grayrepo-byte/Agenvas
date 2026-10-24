@@ -493,10 +493,10 @@ public class Project extends TableImpl<ProjectRecord> {
     @Override
     public List<Check<ProjectRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_project_archive_time"), "(((((status)::text = 'ACTIVE'::text) AND (archived_at IS NULL)) OR (((status)::text = 'ARCHIVED'::text) AND (archived_at IS NOT NULL))))", true),
+            Internal.createCheck(this, DSL.name("ck_project_archive_time"), "(((((status)::text = 'ACTIVE'::text) AND (archived_at IS NULL)) OR (((status)::text = ANY ((ARRAY['ARCHIVED'::character varying, 'DELETED'::character varying])::text[])) AND (archived_at IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_project_aspect_ratio"), "(((aspect_ratio)::text = ANY ((ARRAY['LANDSCAPE_16_9'::character varying, 'PORTRAIT_9_16'::character varying, 'SQUARE_1_1'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_project_name_non_blank"), "((btrim((name)::text) <> ''::text))", true),
-            Internal.createCheck(this, DSL.name("ck_project_status"), "(((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'ARCHIVED'::character varying])::text[])))", true)
+            Internal.createCheck(this, DSL.name("ck_project_status"), "(((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'ARCHIVED'::character varying, 'DELETED'::character varying])::text[])))", true)
         );
     }
 
