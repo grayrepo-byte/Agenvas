@@ -314,6 +314,10 @@ docs/           规格、设计与开发文档
 
 Agenvas 内置的短剧创作 Skills 来源于 [zenstory-ai/drama-skills](https://github.com/zenstory-ai/drama-skills)。感谢该项目的作者与贡献者开源分享创作技能与工作流。
 
+视频创作与提示词方法另参考 [MiniMax-H3/skills](https://github.com/MiniMax-AI/MiniMax-H3/tree/main/skills)，已适配为画布工具和媒体审批工作流；其第三方许可见下文。
+
 ## 许可证
 
 采用 [MIT License](LICENSE)。第三方依赖、模型权重、工作流与 FFmpeg 等组件保留各自的许可证。
+
+内置 [MiniMax H3 Skill 集合](backend/src/main/resources/builtin-skills/minimax-h3/manifest.json) 的原始材料及适配内容受 [MiniMax H3 Community License](backend/src/main/resources/builtin-skills/minimax-h3/LICENSE) 约束，包含地域、商业使用与再分发条件，不重许可为 MIT；来源及改写说明见 [NOTICE](backend/src/main/resources/builtin-skills/minimax-h3/NOTICE)。原 Drama Skills 保留其 [MIT 许可证](backend/src/main/resources/builtin-skills/drama-skills/LICENSE)。

@@ -6827,6 +6827,17 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** @enum {string} */
+        SkillCategory: "STORY" | "ADVERTISING" | "ANIMATION" | "EXPLAINER" | "MUSIC" | "PROMPT";
+        BuiltinSkillSource: {
+            name: string;
+            /** Format: uri */
+            repository: string;
+            revision: string;
+            license: string;
+            /** Format: uri */
+            licenseUrl: string;
+        };
         CreativeSkill: {
             /** Format: uuid */
             id: string;
@@ -6835,6 +6846,9 @@ export interface components {
             trashed: boolean;
             /** @description Packaged read-only Skill. It can be selected and tried */
             builtin: boolean;
+            /** @description Purpose assigned by the current packaged catalogue; null for personal or retired skills. Does not change fixed versions. */
+            category?: components["schemas"]["SkillCategory"] | null;
+            builtinSource?: components["schemas"]["BuiltinSkillSource"] | null;
             /** Format: uuid */
             currentVersionId: string | null;
             /** Format: int64 */
@@ -13714,6 +13728,8 @@ export interface operations {
     listSkills: {
         parameters: {
             query?: {
+                /** @description Filter packaged skills by purpose before pagination; omitted includes personal skills. */
+                category?: components["schemas"]["SkillCategory"];
                 query?: string;
                 cursor?: string;
                 trash?: boolean;

@@ -2064,7 +2064,7 @@
   "templates.cleanupCloseHint": "Временные изображения не удалены. Повторите попытку или закройте окно, сохранив их.",
   "templates.closeKeepingImages": "Закрыть, сохранив изображения",
   "skills.builtin": "Встроенный",
-  "skills.builtinHint": "Встроенные Skills используют карточки холста для анализа оригинала, сценариев, визуальных описаний, раскадровок, промптов и проверки. Выберите их для Agent.",
+  "skills.builtinHint": "Встроенные Skill содержат творческие методы для инструментов холста. Изучите материалы и выберите Skill в Agent.",
   "skills.title": "Мои Skill",
   "skills.description": "Методы, материалы и фиксированные референсы для Agent.",
   "skills.new": "Создать Skill",
@@ -3368,5 +3368,14 @@
   "settings.director.estimateHint": "Текст, определения инструментов, результаты и запас оценки.",
   "settings.director.scope": "Область действия",
   "settings.director.scopeValue": "Все режиссёры",
-  "settings.director.scopeHint": "Общие для всех проектов; хранятся в базе данных."
+  "settings.director.scopeHint": "Общие для всех проектов; хранятся в базе данных.",
+  "skills.category": "Категория Skill",
+  "skills.category.all": "Все категории",
+  "skills.category.story": "Драмы и истории",
+  "skills.category.advertising": "Бренды и реклама",
+  "skills.category.animation": "Анимация",
+  "skills.category.explainer": "Объясняющие видео",
+  "skills.category.music": "Музыкальные клипы",
+  "skills.category.prompt": "Промпты",
+  "skills.restrictedLicense": "MiniMax H3 Community License содержит условия по территории, коммерческому использованию и распространению. Ознакомьтесь с исходной лицензией."
 }

@@ -378,7 +378,7 @@ button:disabled {
 .workspace-media-editor {
   --editor-available-width: var(--canvas-editor-available-width, calc(100vw - 2rem));
   position: relative;
-  /* Follow the canvas and visible node; cap line length rather than imposing a fixed panel width. */
+  /* Keep a compact writing surface while following the canvas and visible node. */
   width: min(max(var(--canvas-editor-node-width, 0px), calc(var(--editor-available-width) * var(--ui-canvas-editor-width-share))), var(--ui-canvas-editor-max-width));
   min-width: min(var(--ui-canvas-editor-min-width), var(--editor-available-width));
   max-width: var(--editor-available-width);

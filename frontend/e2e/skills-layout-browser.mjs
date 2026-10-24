@@ -156,9 +156,36 @@ try {
     }
     await page(() => document.querySelectorAll(".skills-resource-list details").forEach(details => { details.open = false; }));
     if (process.env.AGENVAS_SKILLS_SCREENSHOT && viewport.width === 1440) {
-      const capture = await cdp("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+      await page(async () => {
+        await document.fonts.ready;
+        await Promise.all(document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().iterations))
+          .map(animation => animation.finished.catch(() => undefined)));
+      });
+      const capture = await cdp("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
       await writeFile(process.env.AGENVAS_SKILLS_SCREENSHOT, Buffer.from(capture.data, "base64"), { mode: 0o600 });
     }
+    await page(() => document.querySelector('button[aria-label="Skill 分类"]').click());
+    await waitFor(() => Boolean(document.querySelector('[role="option"][data-value="PROMPT"]')));
+    await page(() => document.querySelector('[role="option"][data-value="PROMPT"]').click());
+    await waitFor(() => document.querySelectorAll(".skills-list button").length === 1);
+    assert.equal(await page(() => document.querySelector(".skills-list button").textContent.includes("h3-prompt-writing")), true);
+    assert.equal(await page(() => document.documentElement.scrollWidth > window.innerWidth), false, "Category filter stays within the page");
+    assert.equal(await page(() => document.querySelector(".skills-builtin-viewer").textContent.includes("视觉资产设定")), true, "Filtering retains the opened publication");
+    await page(() => document.querySelector(".skills-list button").click());
+    await waitFor(() => Boolean(document.querySelector('.skills-detail > div:not([hidden]) .skills-builtin-viewer a[href*="huggingface.co"]')));
+    assert.equal(await page(() => document.documentElement.scrollWidth > window.innerWidth), false, "Third-party attribution stays within the page");
+    if (process.env.AGENVAS_SKILLS_SCREENSHOT && [1440, 390].includes(viewport.width)) {
+      await page(async () => {
+        await Promise.all(document.getAnimations().filter(animation => Number.isFinite(animation.effect?.getComputedTiming().iterations))
+          .map(animation => animation.finished.catch(() => undefined)));
+      });
+      const capture = await cdp("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+      await writeFile(`${process.env.AGENVAS_SKILLS_SCREENSHOT}.${viewport.width}.h3.png`, Buffer.from(capture.data, "base64"), { mode: 0o600 });
+    }
+    await page(() => document.querySelector('button[aria-label="Skill 分类"]').click());
+    await waitFor(() => Boolean(document.querySelector('[role="option"][data-value=""]')));
+    await page(() => document.querySelector('[role="option"][data-value=""]').click());
+    await waitFor(() => Boolean([...document.querySelectorAll(".skills-list button")].find(button => button.getAttribute("aria-label") === "个人创作方法")));
     await page(() => [...document.querySelectorAll(".skills-list button")].find(button => button.getAttribute("aria-label") === "个人创作方法").click());
     await waitFor(() => Boolean(document.querySelector(".skills-personal-editor textarea")));
     const editorLayout = await page(() => ({ overflow: document.documentElement.scrollWidth > window.innerWidth,
@@ -172,7 +199,7 @@ try {
 
   }
   assert.deepEqual(browserErrors, [], "Skill page has no browser runtime errors");
-  console.log("Skill layout passed: long builtin/personal titles, badges, selected state, expanded resources and personal editor, five viewports; synthetic only");
+  console.log("Skill layout passed: categorized collections, filter retains publication, long titles, selected state, resources and personal editor, five viewports; synthetic only");
 
 } finally {
   socket?.close();

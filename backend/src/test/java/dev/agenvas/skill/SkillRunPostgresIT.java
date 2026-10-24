@@ -138,6 +138,44 @@ class SkillRunPostgresIT {
         auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of()));
     }
 
+    @Test void packagedH3TextGuidesLoadProgressivelyInARealRunWithoutMediaExecution() {
+        var scenario = scenario(false);
+        var skill = skills.list(owner.userId(), "h3-prompt-writing", false, null).items().getFirst();
+        UUID version = skill.currentVersionId();
+        var guide = skills.getVersion(owner.userId(), skill.id(), version).resources().stream()
+                .filter(resource -> resource.path().equals("references/base-en.txt")).findFirst().orElseThrow();
+        var selection = new SkillRunService.Selection(SkillRunService.SelectionMode.VERSIONS,
+                List.of(new SkillRunService.Choice(skill.id(), version, List.of())));
+        AgentRun run = runs.create(owner.userId(), scenario.project().id(), scenario.agent().id(),
+                "Read the H3 base guide, then report the prompt structure", "h3-guide-run", scenario.agent().version(), List.of(),
+                null, null, null, null, null, selection).run();
+        var responses = new java.util.ArrayList<AssistantMessage>();
+        responses.add(toolCall("h3-main", "read_skill", mapper.writeValueAsString(Map.of("skillVersionId", version))));
+        int total = guide.content().codePointCount(0, guide.content().length());
+        int pageSize = 4_000;
+        for (int offset = 0; offset < total; offset += pageSize) responses.add(toolCall("h3-page-" + offset,
+                "read_skill_resource", mapper.writeValueAsString(Map.of("skillVersionId", version,
+                        "path", guide.path(), "offset", offset, "limit", pageSize))));
+        responses.add(new AssistantMessage("The H3 prompt structure has been read."));
+        gateway.prepare(run.id(), responses);
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        assertThat(mapper.writeValueAsString(gateway.lastMessages)).doesNotContain(guide.content(), "references/base-en.txt");
+        var combined = new StringBuilder();
+        for (int offset = 0; offset < total; offset += pageSize) {
+            assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+            if (offset > 0) combined.append(lastResourceReply().path("content").asText());
+        }
+        // One additional turn sends the final page result to the fake model.
+        assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        combined.append(lastResourceReply().path("content").asText());
+        assertThat(combined.toString()).isEqualTo(guide.content());
+        assertThat(lastResourceReply().path("contentHash").asText()).isEqualTo(guide.contentHash());
+        assertThat(lastResourceReply().path("nextOffset").isNull()).isTrue();
+        assertThat(runs.get(owner.userId(), scenario.project().id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertThat(jdbc.sql("select count(*) from task where run_id=:run and kind <> :turnKind")
+                .param("run", run.id()).param("turnKind", Task.Kind.AGENT_TURN.name()).query(Long.class).single()).isZero();
+    }
+
     @Test void referencedResourcesPageThroughDurableTurnsAndStayFrozenAfterRepublishing() {
         var scenario = scenario(false);
         var skill = skills.create(owner.userId(), "Progressive resource test", "Read referenced text selectively");

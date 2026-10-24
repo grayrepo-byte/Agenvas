@@ -2064,7 +2064,7 @@
   "templates.cleanupCloseHint": "临时图片未清理。你可以继续重试，或关闭窗口并保留这些图片。",
   "templates.closeKeepingImages": "关闭并保留图片",
   "skills.builtin": "内置",
-  "skills.builtinHint": "内置 Skill 已适配画布卡片，提供原著分析、剧本、视觉设定、分镜、提示词和审查流程，可在 Agent 中选择使用。",
+  "skills.builtinHint": "内置 Skill 提供经过画布工具适配的创作方法，可查看资料并在 Agent 中选择使用。",
   "skills.title": "我的 Skill",
   "skills.description": "为 Agent 组织创作方法、资料与固定参考。",
   "skills.new": "新建 Skill",
@@ -3368,5 +3368,14 @@
   "settings.director.estimateHint": "包含文本、工具定义、回执及估算余量。",
   "settings.director.scope": "适用范围",
   "settings.director.scopeValue": "全局导演",
-  "settings.director.scopeHint": "所有项目共享此设置，保存在数据库。"
+  "settings.director.scopeHint": "所有项目共享此设置，保存在数据库。",
+  "skills.category": "Skill 分类",
+  "skills.category.all": "全部分类",
+  "skills.category.story": "短剧叙事",
+  "skills.category.advertising": "品牌广告",
+  "skills.category.animation": "动画创作",
+  "skills.category.explainer": "知识讲解",
+  "skills.category.music": "音乐 MV",
+  "skills.category.prompt": "提示词",
+  "skills.restrictedLicense": "MiniMax H3 Community License 含地域、商业使用与再分发条件，请查看上游许可证。"
 }
