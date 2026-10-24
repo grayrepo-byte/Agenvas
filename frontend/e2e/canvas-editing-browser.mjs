@@ -18,6 +18,8 @@ const production = !process.argv.includes("--dev");
 const motionOnly = process.argv.includes("--motion-only");
 const groupEntryOnly = process.argv.includes("--group-entry-only");
 const connectionDropOnly = process.argv.includes("--connection-drop-only");
+const selectAllOnly = process.argv.includes("--select-all-only");
+const shortcutsOnly = process.argv.includes("--shortcuts-only");
 const dragCase = process.argv.includes("--hand-drag-only") ? "hand"
   : process.argv.includes("--text-node-drag-only") ? "node" : process.argv.includes("--drag-diagnostics") ? "diagnostics" : null;
 const catalogs = Object.fromEntries(await Promise.all(["zh", "ru"].map(async (locale) => [locale,
@@ -89,8 +91,9 @@ async function clickNamed(query, key) { await click(await namedSelector(query, m
 async function waitForHistoryAction(key) {
   await waitFor((label) => [...document.querySelectorAll("button")].some((button) => button.getAttribute("aria-label") === label && !button.disabled), message(key));
 }
-async function key(key, code = `Key${key.toUpperCase()}`, modifiers = 0, windowsVirtualKeyCode = key.toUpperCase().charCodeAt(0)) {
-  for (const type of ["keyDown", "keyUp"]) await cdp("Input.dispatchKeyEvent", { type, key, code, modifiers, windowsVirtualKeyCode });
+async function key(key, code = `Key${key.toUpperCase()}`, modifiers = 0, windowsVirtualKeyCode = key.toUpperCase().charCodeAt(0), commands) {
+  for (const type of ["keyDown", "keyUp"]) await cdp("Input.dispatchKeyEvent", { type, key, code, modifiers, windowsVirtualKeyCode,
+    ...(type === "keyDown" && commands ? { commands } : {}) });
 }
 async function text(selector, value) {
   await click(selector);
@@ -585,6 +588,109 @@ async function runConnectionDropRegression(baseUrl) {
   assert.deepEqual(runtimeErrors, []);
   console.log(`Canvas connection drop passed: native Chrome drag, image/video/audio creation and persisted edges, coordinates, invalid node and Escape. Synthetic screenshots: ${screenshots}`);
 }
+async function runSelectAllRegression(baseUrl) {
+  await navigate(baseUrl);
+  await zoomToFirstCard();
+  const before = await evidence();
+  for (const modifiers of [4, 2]) {
+    await click(`${card("synthetic-card-0")} .artifact-card-title-icon`);
+    await key("a", "KeyA", modifiers, 65, ["selectAll"]);
+    await waitFor(() => document.querySelectorAll(".react-flow__node-canvasCard.selected").length === 100);
+    assert.equal(await page(() => window.getSelection()?.toString() ?? ""), "", "Select all owns nodes instead of document text");
+    assert.equal(await page(() => Boolean(document.querySelector(".workspace-selection-toolbar"))), true);
+  }
+  await screenshot("select-all-nodes");
+  await assertViewportOnly(before, "Select all");
+  const editor = await openTextEditor("synthetic-card-0");
+  const draft = "Synthetic draft stays editable with native select all.";
+  await text(editor, draft);
+  // Headless CDP needs the platform editing command to exercise the native default action.
+  await key("a", "KeyA", 4, 65, ["selectAll"]);
+  assert.deepEqual(await page((selector) => {
+    const input = document.querySelector(selector);
+    return { value: input.value, start: input.selectionStart, end: input.selectionEnd,
+      selectedNodes: document.querySelectorAll(".react-flow__node-canvasCard.selected").length };
+  }, editor), { value: draft, start: 0, end: draft.length, selectedNodes: 1 });
+  await screenshot("select-all-editor-text");
+  assert.deepEqual(runtimeErrors, []);
+  assert.deepEqual((await evidence()).unexpected, []);
+  console.log(`Canvas select all passed: native Cmd/Ctrl+A selects 100 nodes without document selection or writes; Cmd+A preserves native textarea selection and draft. Synthetic screenshots: ${screenshots}`);
+}
+async function runShortcutRegression(baseUrl) {
+  await navigate(baseUrl);
+  await waitForStableViewport();
+  await page(() => {
+    window.__syntheticShortcutEvents = [];
+    window.addEventListener("keydown", (event) => {
+      setTimeout(() => window.__syntheticShortcutEvents.push({ key: event.key, prevented: event.defaultPrevented }), 0);
+    });
+  });
+  async function shortcut(value, code, modifiers, prevented, commands) {
+    await page(() => { window.__syntheticShortcutEvents.length = 0; });
+    await key(value, code, modifiers, value === "Backspace" ? 8 : value === "Delete" ? 46 : value.toUpperCase().charCodeAt(0), commands);
+    await waitFor(() => window.__syntheticShortcutEvents.length > 0);
+    assert.equal(await page(() => window.__syntheticShortcutEvents.at(-1).prevented), prevented,
+      `${value} modifiers=${modifiers} has the correct keyboard owner`);
+  }
+  for (const [value, code, modifiers] of [["c", "KeyC", 4], ["v", "KeyV", 2], ["d", "KeyD", 4],
+    ["z", "KeyZ", 4], ["Z", "KeyZ", 12], ["y", "KeyY", 2], ["Backspace", "Backspace", 0], ["Delete", "Delete", 0]]) {
+    await shortcut(value, code, modifiers, true);
+  }
+  assert.equal((await evidence()).edits.length, 0, "Unavailable commands stay read-only");
+  assert.equal((await evidence()).removals.length, 0);
+  await zoomToFirstCard();
+  await shortcut("d", "KeyD", 4, true);
+  await waitFor(() => window.__agenvasCanvasEditingFixture.evidence().items.length === 101);
+  await waitForHistoryAction("canvas.edit.undo");
+  const firstCopy = (await evidence()).edits.at(-1).copies[0].targetItemId;
+  const reads = (await evidence()).requests.filter((request) => request.path.endsWith("/canvas/editor")).length;
+  await shortcut("c", "KeyC", 4, true);
+  await waitFor((before) => window.__agenvasCanvasEditingFixture.evidence().requests.filter((request) => request.path.endsWith("/canvas/editor")).length > before, reads);
+  await waitForHistoryAction("canvas.edit.undo");
+  await shortcut("v", "KeyV", 2, true);
+  await waitFor(() => window.__agenvasCanvasEditingFixture.evidence().items.length === 102);
+  await waitForHistoryAction("canvas.edit.undo");
+  const pasted = (await evidence()).edits.at(-1).copies[0].targetItemId;
+  for (const [value, modifiers, count, next] of [["z", 4, 101, "redo"], ["y", 2, 102, "undo"],
+    ["z", 2, 101, "redo"], ["Z", 12, 102, "undo"]]) {
+    await shortcut(value, `Key${value.toUpperCase()}`, modifiers, true, [count === 101 ? "undo" : "redo"]);
+    await waitFor((expected) => window.__agenvasCanvasEditingFixture.evidence().items.length === expected, count);
+    await waitForHistoryAction(`canvas.edit.${next}`);
+  }
+  await screenshot("shortcuts-copy-paste-history");
+  for (const [id, value, count] of [[pasted, "Backspace", 101], [firstCopy, "Delete", 100]]) {
+    await click(`${card(id)} .artifact-card-title-icon`);
+    await shortcut(value, value, 0, true);
+    await waitFor((expected) => window.__agenvasCanvasEditingFixture.evidence().items.length === expected, count);
+  }
+  assert.equal((await evidence()).removals.length, 2);
+  await zoomToFirstCard();
+  const editor = await openTextEditor("synthetic-card-0");
+  const draft = "Synthetic native text history";
+  await text(editor, draft);
+  await cdp("Input.insertText", { text: " plus" });
+  await shortcut("z", "KeyZ", 4, false, ["undo"]);
+  await waitFor((target, value) => document.querySelector(target).value === value, editor, draft);
+  await shortcut("Z", "KeyZ", 12, false, ["redo"]);
+  await waitFor((target, value) => document.querySelector(target).value === value, editor, `${draft} plus`);
+  await shortcut("Backspace", "Backspace", 0, false, ["deleteBackward"]);
+  await waitFor((target, value) => document.querySelector(target).value === value, editor, `${draft} plu`);
+  await page((target) => document.querySelector(target).setSelectionRange(0, 0), editor);
+  await shortcut("Delete", "Delete", 0, false, ["deleteForward"]);
+  await waitFor((target, value) => document.querySelector(target).value === value, editor, `${draft.slice(1)} plu`);
+  // Copy/paste keyboard ownership is checked without reading or writing the system clipboard.
+  await shortcut("c", "KeyC", 4, false);
+  await shortcut("v", "KeyV", 2, false);
+  assert.equal((await evidence()).textSaves.length, 0);
+  assert.equal((await evidence()).items.length, 100);
+  assert.equal((await evidence()).edits.length, 2);
+  assert.equal((await evidence()).replays.length, 4);
+  assert.equal((await evidence()).removals.length, 2);
+  assert.deepEqual((await evidence()).unexpected, []);
+  assert.deepEqual(runtimeErrors, []);
+  await screenshot("shortcuts-native-text-history");
+  console.log(`Canvas shortcuts passed: native Cmd/Ctrl copy, paste, duplicate, undo/redo and both delete keys; unavailable commands prevent browser defaults; textarea undo/redo/deletion and clipboard-key isolation preserve the draft. Synthetic screenshots: ${screenshots}`);
+}
 try {
   const config = { root, configFile: join(root, "vite.config.ts") };
   if (production) {
@@ -612,7 +718,9 @@ try {
   await cdp("Page.enable"); await cdp("Runtime.enable");
   const baseUrl = server.resolvedUrls.local[0];
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  if (connectionDropOnly) await runConnectionDropRegression(baseUrl);
+  if (shortcutsOnly) await runShortcutRegression(baseUrl);
+  else if (selectAllOnly) await runSelectAllRegression(baseUrl);
+  else if (connectionDropOnly) await runConnectionDropRegression(baseUrl);
   else if (groupEntryOnly) await runGroupEntryRegression(baseUrl);
   else if (motionOnly) await runMotionRegression(baseUrl);
   else if (dragCase) await runDragRegression(baseUrl);

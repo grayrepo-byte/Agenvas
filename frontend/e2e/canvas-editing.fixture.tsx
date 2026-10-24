@@ -67,6 +67,7 @@ const edits: CanvasEditRequest[] = [];
 const replays: CanvasEditReplayRequest[] = [];
 const textSaves: Array<{ artifactId: string; request: ReviseArtifactRequest }> = [];
 const placements: CanvasCommand[] = [];
+const removals: CanvasCommand[] = [];
 const createdArtifacts = new Map<string, Artifact>();
 const unexpected: string[] = [];
 type ReceiptRecord = { receipt: CanvasEditReceipt; before: CanvasEditorState; after: CanvasEditorState };
@@ -79,7 +80,7 @@ let nextPlacementFailure: number | null = null;
 const copy = <T,>(value: T): T => structuredClone(value);
 const state = (): CanvasEditorState => copy({ items, groups });
 const diagnostics = {
-  evidence: () => copy({ items, groups, connections, requests, edits, replays, textSaves, placements, unexpected,
+  evidence: () => copy({ items, groups, connections, requests, edits, replays, textSaves, placements, removals, unexpected,
     layoutDrafts: useCanvasStore.getState().drafts,
     mediaDraftRecoveryCount: Object.keys(useCanvasStore.getState().mediaDraftRecoveries).length,
     receipts: [...receipts.values()].map(({ receipt }) => receipt) }),
@@ -210,9 +211,20 @@ window.fetch = async (input, init) => {
     createdArtifacts.set(id, artifact); value = artifact;
   } else if (path.endsWith("/canvas/commands") && method === "POST") {
     const request = JSON.parse(String(init?.body)) as { commands: CanvasCommand[] };
-    placements.push(...copy(request.commands));
     for (const command of request.commands) {
+      if (command.type === "REMOVE") {
+        const item = items.find((candidate) => candidate.id === command.itemId);
+        if (!item || item.version !== command.expectedVersion) return problem(409, "Synthetic stale removal");
+        removals.push(copy(command));
+        items = items.filter((candidate) => candidate.id !== command.itemId);
+        for (let index = connections.length - 1; index >= 0; index--) {
+          const connection = connections[index]!;
+          if (connection.sourceCanvasItemId === command.itemId || connection.targetCanvasItemId === command.itemId) connections.splice(index, 1);
+        }
+        continue;
+      }
       if (command.type !== "PLACE_ARTIFACT") return problem(400, "Unsupported synthetic placement");
+      placements.push(copy(command));
       const artifact = createdArtifacts.get(command.artifactId);
       if (!artifact) return problem(404, "Missing synthetic artifact");
       if (!items.some((item) => item.id === command.itemId)) items.push({ id: command.itemId, subjectType: "ARTIFACT",

@@ -10,6 +10,10 @@ afterEach(() => document.body.replaceChildren());
 
 describe("canvas editing shortcuts", () => {
   it.each([
+    ["a", {}, "selectAll"], ["A", { ctrlKey: false, metaKey: true }, "selectAll"],
+    ["a", { repeat: true }, "selectAll"],
+    ["d", { repeat: true }, "duplicate"], ["v", { repeat: true }, "paste"], ["z", { repeat: true }, "undo"],
+    ["Backspace", { ctrlKey: false }, "delete"], ["Delete", { ctrlKey: false }, "delete"],
     ["d", {}, "duplicate"], ["c", {}, "copy"], ["v", {}, "paste"], ["z", {}, "undo"],
     ["Z", { shiftKey: true }, "redo"], ["y", {}, "redo"], ["g", {}, "group"], ["G", { shiftKey: true }, "ungroup"],
     ["d", { ctrlKey: false, metaKey: true }, "duplicate"], ["z", { ctrlKey: false, metaKey: true }, "undo"],
@@ -21,9 +25,11 @@ describe("canvas editing shortcuts", () => {
   });
 
   it.each([
-    ["d", { ctrlKey: false }], ["d", { altKey: true }], ["d", { repeat: true }],
+    ["d", { ctrlKey: false }], ["d", { altKey: true }],
     ["d", { isComposing: true }], ["c", { shiftKey: true }], ["v", { shiftKey: true }],
     ["d", { shiftKey: true }], ["y", { metaKey: true, ctrlKey: false }], ["y", { shiftKey: true }], ["x", {}],
+    ["a", { ctrlKey: false }], ["a", { altKey: true }], ["a", { shiftKey: true }], ["a", { isComposing: true }],
+    ["Delete", {}], ["Backspace", { ctrlKey: false, metaKey: true }], ["Delete", { ctrlKey: false, shiftKey: true }],
   ] as const)("ignores unsupported modifier state for %s %j", (key, options) => {
     expect(resolveCanvasEditingShortcut(event(key, options))).toBeNull();
   });
@@ -41,8 +47,13 @@ describe("canvas editing shortcuts", () => {
     if (selector === "[role='textbox']") element.setAttribute("role", "textbox");
     document.body.append(element);
     expect(resolveCanvasEditingShortcut(event("z", {}, element))).toBeNull();
+    expect(resolveCanvasEditingShortcut(event("a", {}, element))).toBeNull();
+    for (const key of ["c", "v", "z", "y", "Backspace", "Delete"]) {
+      expect(resolveCanvasEditingShortcut(event(key, { ctrlKey: key.length === 1 }, element))).toBeNull();
+    }
     const child = document.createElement("span"); element.append(child);
     expect(resolveCanvasEditingShortcut(event("g", {}, child))).toBeNull();
+    expect(resolveCanvasEditingShortcut(event("a", {}, child))).toBeNull();
   });
 
   it("also recognises editable ancestors of a text node", () => {
@@ -55,6 +66,8 @@ describe("canvas editing shortcuts", () => {
     const overlay = document.createElement("div"); overlay.setAttribute("role", role); document.body.append(overlay);
     expect(hasOpenCanvasEditingOverlay(document)).toBe(true);
     expect(resolveCanvasEditingShortcut(event("z"))).toBeNull();
+    expect(resolveCanvasEditingShortcut(event("a"))).toBeNull();
+    expect(resolveCanvasEditingShortcut(event("Delete", { ctrlKey: false }))).toBeNull();
   });
 
   it("ignores hidden/closed overlays and supports an explicit known overlay state", () => {
