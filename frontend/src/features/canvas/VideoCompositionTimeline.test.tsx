@@ -28,6 +28,8 @@ describe('composition trim handles', () => {
     expect(frames[0]).toHaveAttribute('data-source-ms', '1000');
     expect(Number(frames[1]?.getAttribute('data-source-ms'))).toBeCloseTo(1066.6666667);
     expect(frames.length).toBeLessThan(12);
+    fireEvent.click(clip, { detail: 1, clientX: 175 }); expect(controller.getSnapshot().positionMs).toBe(0);
+    fireEvent.click(clip, { detail: 1, clientX: 250 }); expect(controller.getSnapshot().positionMs).toBeCloseTo(1000 / 30);
   });
   it('scrubs the draggable playhead without modifying the trim', () => {
     const { controller, changes } = setup();

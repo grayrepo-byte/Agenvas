@@ -25,5 +25,6 @@ describe('composition filmstrip geometry', () => {
     const ruler = compositionRuler(1800, FILMSTRIP_FRAME_SCALE, viewport);
     expect(ruler.step).toBe(1); expect(ruler.ticks.length).toBeLessThan(12); expect(ruler.ticks[0]).toBeGreaterThan(1700);
     expect(compositionFilmstrip({ ...clip, startFrame: 1500 }, 70, { left: 0, width: 600 })).toEqual([]);
+    expect(compositionRuler(1800, 4, { left: 0, width: 240 }).ticks).toEqual([0, 900]);
   });
 });

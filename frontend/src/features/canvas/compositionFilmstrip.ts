@@ -29,7 +29,7 @@ export function compositionFrameLabel(frame: number) {
 }
 
 export function compositionRuler(frames: number, scale: number, viewport: FilmstripViewport) {
-  const step = scale >= FILMSTRIP_FRAME_SCALE / 2 ? 1 : scale >= 300 ? 5 : scale >= 140 ? 15 : scale >= 45 ? 30 : scale >= 20 ? 60 : 150;
+  const step = [1, 5, 15, 30, 60, 150, 300, 900].find((framesPerTick) => frameTimeMs(framesPerTick) * scale / 1000 >= 64) ?? 900;
   const first = Math.max(0, Math.floor(viewport.left / scale * COMPOSITION_FPS / step) - 1);
   const last = Math.min(Math.floor(Math.max(0, frames - 1) / step), Math.ceil((viewport.left + viewport.width) / scale * COMPOSITION_FPS / step) + 1);
   return { step, ticks: Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => (first + index) * step) };

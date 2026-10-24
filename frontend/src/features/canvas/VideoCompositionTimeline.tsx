@@ -38,6 +38,7 @@ export function VideoCompositionTimeline({ timeline, controller, activeId, onSel
   const scale = 70 * zoom, total = frameTimeMs(timeline.frames), width = Math.max(1, total * scale / 1000);
   const currentId = compositionClipAt(timeline, state.positionMs)?.id;
   const maxZoom = FILMSTRIP_FRAME_SCALE / 70;
+  const minZoom = Math.min(.2, Math.max(.01, (viewport.width - 16) / Math.max(1, total / 1000) / 70));
   const ruler = compositionRuler(timeline.frames, scale, viewport);
   const filmstrips = useMemo(() => new Map(timeline.clips.map((clip) => [clip.id, compositionFilmstrip(clip, scale, viewport)])), [timeline.clips, scale, viewport]);
   useEffect(() => {
@@ -77,13 +78,13 @@ export function VideoCompositionTimeline({ timeline, controller, activeId, onSel
   }
   return <section className="video-composition-timeline" aria-label={t('video.edit.timeline')}>
     <div className="video-edit-timeline-toolbar"><h3><FilmStrip />{t('video.edit.timeline')}</h3><p>{t('video.edit.trimHint')}</p>
-      <div className="video-composition-zoom"><Button type="button" variant="ghost" size="icon-xs" aria-label={t('video.edit.zoomOut')} disabled={zoom <= .2} onClick={() => setZoom((value) => Math.max(.2, value / 1.5))}><MagnifyingGlassMinus /></Button>
-        <Button type="button" variant="ghost" size="xs" onClick={() => setZoom(Math.min(maxZoom, Math.max(.2, ((scroll.current?.clientWidth ?? 600) - (labels.current?.clientWidth ?? 76) - 16) / Math.max(1, total / 1000) / 70)))}>{t('video.edit.fitTimeline')}</Button>
+      <div className="video-composition-zoom"><Button type="button" variant="ghost" size="icon-xs" aria-label={t('video.edit.zoomOut')} disabled={zoom <= minZoom} onClick={() => setZoom((value) => Math.max(minZoom, value / 1.5))}><MagnifyingGlassMinus /></Button>
+        <Button type="button" variant="ghost" size="xs" onClick={() => setZoom(Math.min(maxZoom, Math.max(.01, ((scroll.current?.clientWidth ?? 600) - (labels.current?.clientWidth ?? 76) - 16) / Math.max(1, total / 1000) / 70)))}>{t('video.edit.fitTimeline')}</Button>
         <Button type="button" variant="ghost" size="xs" disabled={zoom >= maxZoom} onClick={() => setZoom(maxZoom)}>{t('video.edit.frameZoom')}</Button>
         <Button type="button" variant="ghost" size="icon-xs" aria-label={t('video.edit.zoomIn')} disabled={zoom >= maxZoom} onClick={() => setZoom((value) => Math.min(maxZoom, value * 1.5))}><MagnifyingGlassPlus /></Button></div>
     </div>
     <div ref={scroll} className="video-composition-timeline-scroll">
-      <div className="video-composition-timeline-grid" style={{ minWidth: width + 92 }}>
+      <div className="video-composition-timeline-grid" style={{ minWidth: `calc(${width}px + var(--video-timeline-label-width) + 16px)` }}>
         <div ref={labels} className="video-composition-track-labels"><span>{t('video.edit.track')}</span><span><FilmStrip />{t('video.edit.videoTrack')}</span>
           <Button type="button" variant="ghost" size="xs" onClick={onAudio}><MusicNotes />{t('video.edit.audioTab')}</Button><Button type="button" variant="ghost" size="xs" onClick={onCaptions}><TextT />{t('video.edit.captionsTab')}</Button></div>
         <div ref={content} className="video-composition-time-area" style={{ minWidth: width }}>
@@ -98,7 +99,11 @@ export function VideoCompositionTimeline({ timeline, controller, activeId, onSel
               <Button type="button" variant="outline" className="video-edit-timeline-clip-body" draggable={!disabled && !trimming} disabled={disabled}
                 aria-label={t('video.edit.timelineClip', { '0': index + 1, '1': clip.title })} aria-pressed={clip.id === activeId} onClick={(event) => {
                   controller.pause(); onSelect(clip.id);
-                  if (event.detail > 0) controller.seek(clipStartMs(clip) + Math.min(frameTimeMs(clip.frames - 1), Math.max(0, event.clientX - event.currentTarget.getBoundingClientRect().left) / scale * 1000));
+                  if (event.detail > 0) {
+                    // A click inside a frame's tile selects that frame, including its right half.
+                    const frame = Math.min(clip.frames - 1, Math.floor(Math.max(0, event.clientX - event.currentTarget.getBoundingClientRect().left) / scale * COMPOSITION_FPS + 1e-8));
+                    controller.seek(clipStartMs(clip) + frameTimeMs(frame));
+                  }
                 }}
                 onDragStart={(event) => { if (disabled || trim.current) { event.preventDefault(); return; } event.dataTransfer.setData('text/plain', clip.id); event.dataTransfer.effectAllowed = 'move'; setDragged(clip.id); }}
                 onDragOver={(event) => { if (!disabled && dragged && dragged !== clip.id) { event.preventDefault(); setDrop(clip.id); } }}

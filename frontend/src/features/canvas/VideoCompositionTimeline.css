@@ -1,8 +1,8 @@
-.video-composition-timeline { flex: none; min-width: 0; border-top: 1px solid var(--ui-border); background: var(--ui-surface); padding: 0 var(--ui-space-4) var(--ui-space-3); }
+.video-composition-timeline { --video-timeline-label-width: 76px; flex: none; min-width: 0; border-top: 1px solid var(--ui-border); background: var(--ui-surface); padding: 0 var(--ui-space-4) var(--ui-space-3); }
 .video-composition-timeline .video-edit-timeline-toolbar { min-height: 40px; }
 .video-composition-zoom { display: flex; align-items: center; gap: var(--ui-space-1); margin-left: auto; }
 .video-composition-timeline-scroll { overflow-x: auto; overscroll-behavior-inline: contain; }
-.video-composition-timeline-grid { display: grid; grid-template-columns: 76px minmax(0, 1fr); min-height: 178px; }
+.video-composition-timeline-grid { display: grid; grid-template-columns: var(--video-timeline-label-width) minmax(0, 1fr); min-height: 178px; }
 .video-composition-track-labels { position: sticky; left: 0; display: grid; grid-template-rows: 26px 84px 34px 34px; background: var(--ui-surface); z-index: 3; }
 .video-composition-track-labels > span, .video-composition-track-labels > button { display: flex; align-items: center; justify-content: flex-start; gap: var(--ui-space-2); font-size: var(--ui-text-xs); color: var(--ui-text-muted); }
 .video-composition-track-labels > span svg { width: 14px; height: 14px; }
@@ -40,4 +40,8 @@
 .video-composition-playhead > button > span { display: block; width: 9px; height: 12px; border-radius: 3px 3px 5px 5px; background: var(--ui-accent); }
 .video-composition-frame-error { padding: var(--ui-space-2); margin-top: var(--ui-space-2); font-size: var(--ui-text-xs); }
 .video-composition-frame-error [data-slot="alert-description"] { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-2); }
-@media (max-width: 580px) { .video-composition-timeline { padding-inline: var(--ui-space-2); } .video-composition-timeline .video-edit-timeline-toolbar p { display: none; } .video-composition-timeline-grid { grid-template-columns: 60px minmax(0, 1fr); } }
+@media (max-width: 580px) {
+  .video-composition-timeline { --video-timeline-label-width: 60px; padding-inline: var(--ui-space-2); }
+  .video-composition-timeline .video-edit-timeline-toolbar { flex-wrap: wrap; gap: var(--ui-space-1); padding-block: var(--ui-space-1); }
+  .video-composition-timeline .video-edit-timeline-toolbar p { display: none; }
+}
