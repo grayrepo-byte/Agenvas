@@ -275,6 +275,77 @@ public class AgentMediaApprovalService {
         return view(approvals.find(projectId, runId, approvalId).orElseThrow(this::notFound));
     }
 
+    /** Reprice a pending video output atomically; never add/remove source versions or submit a Task. */
+    @Transactional
+    public ApprovalView revise(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,
+            long expectedVersion, int outputIndex, UUID capabilityId, JsonNode parameters,
+            Integer durationSeconds, MediaDraft.VideoInputMode mode) {
+        if (expectedVersion < 0 || outputIndex < 0 || capabilityId == null || parameters == null
+                || !parameters.isObject() || mode == null) throw invalid("revision");
+        return events.recordChange(ownerId, projectId, () -> {
+            AgentRun run = runs.get(ownerId, projectId, runId);
+            AgentMediaApproval approval = approvals.findForUpdate(projectId, runId, approvalId).orElseThrow(this::notFound);
+            if (approval.status() != AgentMediaApproval.Status.PENDING || approval.version() != expectedVersion
+                    || !clock.instant().isBefore(approval.expiresAt())
+                    || (run.status() != AgentRun.Status.RUNNING && run.status() != AgentRun.Status.WAITING_TASKS)
+                    || (run.nextStepIndex() != approval.stepIndex() && run.nextStepIndex() != approval.stepIndex() + 1))
+                throw conflict("AGENT_MEDIA_APPROVAL_CONFLICT", "changed");
+            if (outputIndex >= approval.request().path("outputs").size()
+                    || !"VIDEO".equals(approval.request().path("outputs").get(outputIndex).path("kind").asText()))
+                throw invalid("video-output");
+            ObjectNode request = (ObjectNode) approval.request().deepCopy();
+            ObjectNode targets = (ObjectNode) approval.targets().deepCopy();
+            ObjectNode target = (ObjectNode) targets.path("outputs").get(outputIndex);
+            UUID cardId = uuid(target.path("canvasItemId"));
+            UUID artifactId = uuid(target.path("artifactId"));
+            CanvasItem item = existingItem(ownerId, projectId, cardId);
+            if (item.locked() || !item.subjectId().equals(artifactId)
+                    || !target.path("createdByProposal").asBoolean(true) && item.version() != target.path("itemVersion").asLong(-1))
+                throw conflict("AGENT_MEDIA_APPROVAL_STALE", "target-changed");
+            if (target.path("storyboard").isObject()) storyboardLinks.requireCurrent(ownerId, projectId,
+                    mapper.treeToValue(target.path("storyboard"), StoryboardMediaLinkService.Link.class),
+                    target.path("storyboardCreativeHash").asText(null));
+            MediaDraft before = drafts.get(ownerId, projectId, cardId);
+            if (before.version() != target.path("draftVersion").asLong(-1))
+                throw conflict("AGENT_MEDIA_APPROVAL_STALE", "draft-changed");
+            var binding = capabilities.forDraft(capabilityId, Task.Kind.VIDEO_GENERATION);
+            boolean declared = capabilities.runningHubDefinition(binding) != null
+                    || capabilities.comfyWorkflowDefinition(binding) != null
+                    || capabilities.nativeProfile(binding) != null || capabilities.klingProfile(binding) != null;
+            // Roles may change with the protocol, but every exact source and its order remain present.
+            List<MediaDraftService.SaveMediaInput> inputs = new ArrayList<>();
+            int imageIndex = 0;
+            for (var input : before.mediaInputs()) {
+                var role = input.role();
+                if (role != MediaDraft.InputRole.AUDIO_REFERENCE && role != MediaDraft.InputRole.VIDEO_REFERENCE) {
+                    role = !declared && mode == MediaDraft.VideoInputMode.START_END
+                            ? imageIndex++ == 0 ? MediaDraft.InputRole.START_FRAME : MediaDraft.InputRole.END_FRAME
+                            : MediaDraft.InputRole.REFERENCE;
+                }
+                inputs.add(new MediaDraftService.SaveMediaInput(input.versionId(), role, input.color()));
+            }
+            var mentions = before.mentions().stream().map(mention -> new MediaDraft.PromptMention(mention.versionId(),
+                    inputs.stream().filter(input -> input.versionId().equals(mention.versionId())).findFirst().orElseThrow().role())).toList();
+            MediaDraft saved = drafts.save(ownerId, projectId, cardId, before.version(), before.prompt(), parameters,
+                    durationSeconds, capabilityId, mode, inputs, mentions, before.styleId());
+            var preflight = approvedPreflight(ownerId, projectId, artifactId, cardId, saved.version(), request.get("creativeSkill"));
+            if (preflight.outputCount() != OUTPUTS_PER_REQUEST) throw invalid("single-output");
+            ObjectNode output = (ObjectNode) request.path("outputs").get(outputIndex);
+            output.put("capabilityId", capabilityId.toString()).put("videoInputMode", mode.name());
+            output.set("parameters", saved.parameters().deepCopy());
+            if (durationSeconds == null) output.remove("durationSeconds"); else output.put("durationSeconds", durationSeconds);
+            var sourceInputs = output.putArray("mediaInputs");
+            saved.mediaInputs().forEach(input -> sourceInputs.addObject().put("versionId", input.versionId().toString()).put("role", input.role().name()));
+            target.put("draftVersion", saved.version()).put("frozenInputHash", preflight.frozenInputHash());
+            target.set("binding", mapper.valueToTree(preflight.binding()));
+            target.set("preview", preflight.safeSummary().deepCopy());
+            AgentMediaApproval updated = approval.revise(request, targets);
+            if (!approvals.update(updated, expectedVersion)) throw conflict("AGENT_MEDIA_APPROVAL_CONFLICT", "changed");
+            appendEvent(ownerId, updated);
+            return ProjectEventService.Change.unchanged(view(updated));
+        }).value();
+    }
+
     /** Every frozen target is rechecked before any Task is inserted; failed checks roll back all. */
     @Transactional
     public ApprovalView decide(UUID ownerId, UUID projectId, UUID runId, UUID approvalId,

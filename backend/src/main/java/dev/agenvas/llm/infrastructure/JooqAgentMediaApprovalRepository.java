@@ -198,6 +198,8 @@ public class JooqAgentMediaApprovalRepository implements AgentMediaApprovalRepos
     @Override
     public boolean update(AgentMediaApproval approval, long expectedVersion) {
         return dsl.update(AGENT_MEDIA_APPROVAL)
+                .set(AGENT_MEDIA_APPROVAL.REQUEST_JSON, json(approval.request()))
+                .set(AGENT_MEDIA_APPROVAL.TARGET_JSON, json(approval.targets()))
                 .set(AGENT_MEDIA_APPROVAL.STATUS, approval.status().name())
                 .set(AGENT_MEDIA_APPROVAL.VERSION, approval.version())
                 .set(AGENT_MEDIA_APPROVAL.TASK_IDS_JSON, jsonTasks(approval.taskIds()))

@@ -11,6 +11,7 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.task.domain.Task;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -71,6 +72,8 @@ public final class RunningHubImportService {
         RunningHubDefinition.rejectImportCredentials(source);
         List<RunningHubDefinition.Field> fields = new ArrayList<>();
         List<RunningHubInputDiscovery.PromptRole> promptPriorities = new ArrayList<>();
+        Set<String> graphRecommendations = new HashSet<>();
+        Set<String> ambiguousFieldKeys = new HashSet<>();
         List<RunningHubDefinition.NodeOption> nodeOptions = new ArrayList<>();
         List<ApiMessage> warnings = new ArrayList<>();
         warnings.add(ApiMessage.of("api.running-hub-import-service.the-imported-results-are-candidate-fields-please-confirm-the-open"));
@@ -78,6 +81,7 @@ public final class RunningHubImportService {
             if (!source.isObject()) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.workflow-requires-comfyui-api-format-object"));
             Set<String> negativeNodes = RunningHubInputDiscovery.conditioningAncestors(source, true);
             Set<String> positiveNodes = RunningHubInputDiscovery.conditioningAncestors(source, false);
+            Set<String> creativeSources = RunningHubInputDiscovery.creativeSources(source);
             for (var node : source.properties()) {
                 if (!node.getKey().matches("[0-9]{1,32}")) throw RunningHubDefinition.invalid(ApiMessage.of("api.running-hub-import-service.invalid-workflow-node-id"));
                 // Preserve names only, never the graph or connected inputs, for the output picker.
@@ -94,13 +98,22 @@ public final class RunningHubImportService {
                         continue;
                     }
                     String label = node.getValue().path("_meta").path("title").asText(node.getValue().path("class_type").asText("节点 " + node.getKey())) + " · " + input.getKey();
-                    var declaredType = value.isBoolean() ? RunningHubDefinition.FieldType.BOOLEAN : value.isIntegralNumber() ? RunningHubDefinition.FieldType.INTEGER
-                            : value.isNumber() ? RunningHubDefinition.FieldType.NUMBER : RunningHubDefinition.FieldType.STRING;
+                    var declaredType = RunningHubInputDiscovery.workflowType(value, input.getKey(), node.getValue().path("class_type").asText(""));
                     var hint = RunningHubInputDiscovery.hint(declaredType, input.getKey(), node.getValue().path("class_type").asText(""), title);
                     var priority = hint.promptPriority();
-                    if (negativeNodes.contains(node.getKey())) priority = RunningHubInputDiscovery.PromptRole.NONE;
+                    if (negativeNodes.contains(node.getKey())) {
+                        priority = RunningHubInputDiscovery.PromptRole.NONE;
+                        String key = "input" + (fields.size() + 1);
+                        if (positiveNodes.contains(node.getKey()) && hint.type() == RunningHubDefinition.FieldType.STRING)
+                            ambiguousFieldKeys.add(key);
+                        else if (hint.promptPriority() != RunningHubInputDiscovery.PromptRole.NONE)
+                            graphRecommendations.add(key);
+                    }
                     else if (priority != RunningHubInputDiscovery.PromptRole.NONE && positiveNodes.contains(node.getKey())) priority = RunningHubInputDiscovery.PromptRole.POSITIVE_CONDITIONING;
+                    boolean creativeSource = creativeSources.contains(node.getKey() + ":" + input.getKey());
+                    if (creativeSource) priority = RunningHubInputDiscovery.PromptRole.NONE;
                     promptPriorities.add(priority);
+                    if (creativeSource) graphRecommendations.add("input" + (fields.size() + 1));
                     fields.add(field(fields.size(), node.getKey(), input.getKey(), label, hint.type(), value, List.of(), null));
                 }
             }
@@ -110,34 +123,25 @@ public final class RunningHubImportService {
             for (JsonNode input : source) {
                 String node = input.path("nodeId").asText();
                 String name = input.path("fieldName").asText();
-                String typeName = input.path("fieldType").asText("STRING").toUpperCase(java.util.Locale.ROOT);
-                var fieldType = switch (typeName) {
-                    case "IMAGE" -> RunningHubDefinition.FieldType.IMAGE; case "AUDIO" -> RunningHubDefinition.FieldType.AUDIO;
-                    case "VIDEO" -> RunningHubDefinition.FieldType.VIDEO; case "NUMBER", "FLOAT" -> RunningHubDefinition.FieldType.NUMBER;
-                    case "INTEGER", "INT" -> RunningHubDefinition.FieldType.INTEGER; case "BOOLEAN", "BOOL" -> RunningHubDefinition.FieldType.BOOLEAN;
-                    case "LIST" -> RunningHubDefinition.FieldType.SELECT; default -> RunningHubDefinition.FieldType.STRING;
-                };
-                JsonNode value = input.get("fieldValue");
-                // Upload widgets also list server files (sometimes repeated); only LIST fields declare enum choices.
-                List<RunningHubDefinition.Option> options = fieldType == RunningHubDefinition.FieldType.SELECT
-                        ? options(input.get("fieldData")) : List.of();
-                if (fieldType == RunningHubDefinition.FieldType.SELECT && options.isEmpty()) {
-                    fieldType = RunningHubDefinition.FieldType.STRING;
-                    warnings.add(ApiMessage.of("api.running-hub-import-service.node-field-has-no-recognized-list-options-add-dropdown-options", node, name));
-                }
-                var hint = RunningHubInputDiscovery.hint(fieldType, name, input.path("nodeName").asText(""), appLabel(input, name));
-                fieldType = hint.type();
+                var metadata = RunningHubInputMetadata.parse(mapper, input);
+                if (metadata.missingOptions()) warnings.add(ApiMessage.of(
+                        "api.running-hub-import-service.node-field-has-no-recognized-list-options-add-dropdown-options", node, name));
+                String label = appLabel(input, name);
+                // Conflicting widget declarations must not be silently overruled by a name-based media guess.
+                var hint = metadata.ambiguousMedia()
+                        ? new RunningHubInputDiscovery.Hint(metadata.type(), RunningHubInputDiscovery.PromptRole.NONE)
+                        : RunningHubInputDiscovery.hint(metadata.type(), name, input.path("nodeName").asText(""), label);
+                if (metadata.ambiguousMedia()) ambiguousFieldKeys.add("input" + (fields.size() + 1));
+                var fieldType = hint.type();
                 promptPriorities.add(hint.promptPriority());
-                if (Set.of(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.AUDIO, RunningHubDefinition.FieldType.VIDEO).contains(fieldType)) value = null;
-                else if (value != null && fieldType == RunningHubDefinition.FieldType.STRING) value = mapper.valueToTree(value.asText());
-                else if (value != null && value.isTextual() && Set.of(RunningHubDefinition.FieldType.INTEGER, RunningHubDefinition.FieldType.NUMBER, RunningHubDefinition.FieldType.BOOLEAN).contains(fieldType)) {
-                    try { value = mapper.readTree(value.asText()); } catch (RuntimeException invalid) { value = null; }
-                }
-                if (fieldType == RunningHubDefinition.FieldType.SELECT && value != null) {
-                    JsonNode selected = value;
-                    if (options.stream().noneMatch(option -> RunningHubDefinition.scalarEquals(option.value(), selected))) value = null;
-                }
-                fields.add(field(fields.size(), node, name, appLabel(input, name), fieldType, value, options, input.path("description").asText(null)));
+                boolean media = Set.of(RunningHubDefinition.FieldType.IMAGE, RunningHubDefinition.FieldType.AUDIO,
+                        RunningHubDefinition.FieldType.VIDEO).contains(fieldType);
+                fields.add(new RunningHubDefinition.Field("input" + (fields.size() + 1), label, input.path("description").asText(null),
+                        fieldType, metadata.required(), media ? null : metadata.defaultValue(), metadata.minimum(), metadata.maximum(),
+                        metadata.maxLength(), media ? List.of() : metadata.options(), false, node, name,
+                        RunningHubDefinition.Source.PARAMETER, RunningHubDefinition.Encoding.NATIVE,
+                        media && RunningHubInputDiscovery.urlInput(name) ? RunningHubDefinition.ResourceFormat.URL
+                                : RunningHubDefinition.ResourceFormat.FILE_NAME, null));
             }
         }
         int primaryPrompt = RunningHubInputDiscovery.primaryPrompt(promptPriorities);
@@ -155,7 +159,8 @@ public final class RunningHubImportService {
                 "default", false, false, null, Sha256.hex(source.toString()),
                 type == RunningHubDefinition.TargetType.WORKFLOW ? List.copyOf(nodeOptions) : null, source.deepCopy());
         definition.validate(kind);
-        var recommended = fields.stream().filter(field -> field.media() || field.effectiveSource() == RunningHubDefinition.Source.PROMPT)
+        var recommended = fields.stream().filter(field -> !ambiguousFieldKeys.contains(field.key())
+                        && (graphRecommendations.contains(field.key()) || RunningHubInputDiscovery.recommended(field)))
                 .map(RunningHubDefinition.Field::key).toList();
         return new Preview(definition, List.copyOf(warnings), recommended, null);
     }
@@ -178,25 +183,5 @@ public final class RunningHubImportService {
         int end = RunningHubDefinition.MAX_LABEL_LENGTH;
         if (Character.isHighSurrogate(label.charAt(end - 1))) end--;
         return label.substring(0, end);
-    }
-    private List<RunningHubDefinition.Option> options(JsonNode data) {
-        if (data == null || data.isNull()) return List.of();
-        if (data.isTextual()) {
-            try { data = mapper.readTree(data.asText()); } catch (RuntimeException invalid) { return List.of(); }
-        }
-        if (data.isObject()) data = data.path("options");
-        // Some AI apps export enum widgets as ["COMBO", {"options": [...]}].
-        if (data.isArray() && data.size() == 2 && data.get(0).isTextual()
-                && "COMBO".equals(data.get(0).asText()) && data.get(1).isObject()) data = data.get(1).path("options");
-        // ComfyUI exports enum widgets as [allowedValues, widgetSettings].
-        if (data.isArray() && data.size() == 2 && data.get(0).isArray() && data.get(1).isObject()) data = data.get(0);
-        if (!data.isArray() || data.size() > RunningHubDefinition.MAX_OPTIONS) return List.of();
-        List<RunningHubDefinition.Option> options = new ArrayList<>();
-        for (JsonNode option : data) {
-            JsonNode value = option.isObject() ? option.get("value") : option;
-            if (value == null || !(value.isTextual() || value.isNumber() || value.isBoolean())) return List.of();
-            options.add(new RunningHubDefinition.Option(option.isObject() ? option.path("label").asText(value.asText()) : value.asText(), value));
-        }
-        return List.copyOf(options);
     }
 }

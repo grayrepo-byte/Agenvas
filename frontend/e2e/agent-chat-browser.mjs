@@ -203,8 +203,35 @@ try {
     await writeFile(process.env.AGENVAS_AGENT_CHAT_SCREENSHOT.replace(".png", "-history.png"),
       Buffer.from(capture.data, "base64"), { mode: 0o600 });
   }
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
+    await cdp("Page.navigate", { url: new URL(route + "?approval=1", baseUrl).href });
+    await waitFor(() => [...document.querySelectorAll("button")].some(button => button.textContent === "调整模型与参数"));
+    await page(() => [...document.querySelectorAll("button")].find(button => button.textContent === "调整模型与参数").click());
+    await waitFor(() => Boolean(document.querySelector('[role="dialog"] [aria-label="分辨率"]')));
+    const geometry = await page(() => {
+      const dialog = document.querySelector('[role="dialog"]');
+      const footer = dialog.querySelector('.ui-dialog-footer').getBoundingClientRect();
+      const rect = dialog.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: footer.bottom,
+        overflow: document.documentElement.scrollWidth - innerWidth };
+    });
+    assert.ok(geometry.left >= 0 && geometry.right <= viewport.width + 1 && geometry.top >= 0
+      && geometry.bottom <= viewport.height + 1 && geometry.overflow <= 1, `Approval settings fit ${JSON.stringify({ viewport, geometry })}`);
+    await page(() => document.querySelector('[role="dialog"] [aria-label="分辨率"]').click());
+    await waitFor(() => [...document.querySelectorAll('[role="option"]')].some(option => option.textContent === "2K"));
+    await page(() => [...document.querySelectorAll('[role="option"]')].find(option => option.textContent === "2K").click());
+    if (process.env.AGENVAS_AGENT_CHAT_SCREENSHOT && viewport.width === 1440) {
+      const capture = await cdp("Page.captureScreenshot", { format: "png" });
+      await writeFile(process.env.AGENVAS_AGENT_CHAT_SCREENSHOT.replace(".png", "-approval.png"), Buffer.from(capture.data, "base64"), { mode: 0o600 });
+    }
+    await page(() => [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent === "保存并重新估算").click());
+    await waitFor(() => !document.querySelector('[role="dialog"]') && document.body.innerText.includes("1440p"));
+    assert.ok(await page(() => [...document.querySelectorAll("button")].some(button => button.textContent === "批准并生成" && !button.disabled)),
+      "Saving revised parameters preserves a separate user approval step");
+  }
   assert.deepEqual(browserErrors, [], "Director chat has no browser runtime errors");
-  console.log("Director chat passed: five viewports, canvas interaction, selection context, expand/collapse draft retention, Escape focus, paged history anchoring and jump to latest; synthetic only");
+  console.log("Director chat passed: five viewports, canvas interaction, selection context, expand/collapse draft retention, Escape focus, paged history anchoring jump to latest and video approval resolution editing on desktop/mobile; synthetic only");
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode == null) {

@@ -37,6 +37,8 @@ class InitialModelContextServiceTest {
         });
         assertThat(messages).anySatisfy(message -> assertThat(message.getText())
                 .contains("call read_canvas", "No canvas content or image pixels"));
+        assertThat(messages).anySatisfy(message -> assertThat(message.getText())
+                .contains("isDefault", "defaultParameters/defaultDurationSeconds", "user may revise"));
         assertThat(messages).noneSatisfy(message -> assertThat(message.getText()).contains("Explicitly bound immutable inputs"));
     }
 
@@ -213,7 +215,10 @@ class InitialModelContextServiceTest {
         when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("systemPromptVersion", promptVersion));
         when(run.instruction()).thenReturn("新的用户请求");
         MediaCapabilityService capabilities = mock(MediaCapabilityService.class);
-        when(capabilities.publishedCandidates()).thenReturn(List.of());
+        when(capabilities.planningSummary()).thenReturn(mapper.readTree("""
+                [{"capabilityId":"synthetic-default-video","isDefault":true,
+                  "defaultParameters":{"videoResolution":"1440p"},"defaultDurationSeconds":7}]
+                """));
         return new InitialModelContextService(runs, capabilities)
                 .assemble(ownerId, projectId, runId);
     }

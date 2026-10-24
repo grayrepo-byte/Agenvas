@@ -2868,7 +2868,11 @@ export interface paths {
         };
         /** 获取媒体审批、固定输出与最终结果 */
         get: operations["getAgentMediaApproval"];
-        put?: never;
+        /**
+         * 修改待审批视频的能力与生成参数并重新估算费用
+         * @description 仅 PENDING 且未过期批次可修改。保留提示词、精确素材、目标及镜头依据；输入不兼容则事务回滚。不创建 Task，不延长期限。保存后以返回的新版本另行批准。
+         */
+        put: operations["reviseAgentMediaApproval"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4768,7 +4772,7 @@ export interface components {
             definition: components["schemas"]["RunningHubDefinition"];
             /** @description Optional trimmed AI app or workflow display name from read-only discovery. Null when unavailable or importing local JSON. Autofills an empty capability name only; not retained in the imported input contract. */
             targetName: string | null;
-            /** @description Suggested exposed candidate keys for the editor (unambiguous canvas prompt and media inputs). Other fields remain available for manual exposure. Editor selection only; never stored in a capability or used to authorize execution. */
+            /** @description Suggested creator-facing candidate keys (unambiguous canvas prompt, media, negative prompt, duration, aspect ratio, dimensions, resolution, frame rate and quality). Types, bounds and valid defaults use declared input and widget metadata; sampler/model internals and ambiguous fields remain manual. Existing administrator mappings and selections take precedence when importing again. Editor selection only; never stored in a capability or used to authorize execution. */
             recommendedFieldKeys: string[];
             /** @description Public discovery warnings localized using Accept-Language. Imported field labels and definition values retain their original content. */
             warnings: string[];
@@ -6039,6 +6043,17 @@ export interface components {
             expectedVersion: number;
             /** @enum {string} */
             decision: "APPROVE" | "REJECT";
+        };
+        AgentMediaApprovalRevisionRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            outputIndex: number;
+            /** Format: uuid */
+            capabilityId: string;
+            parameters: components["schemas"]["ImageGenerationParameters"];
+            durationSeconds?: number | null;
+            /** @enum {string} */
+            videoInputMode: "TEXT" | "START_END" | "GENERAL_REFERENCE";
         };
         AgentMediaApprovalOutput: {
             /** @enum {string} */
@@ -12421,6 +12436,45 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    reviseAgentMediaApproval: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                runId: string;
+                approvalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentMediaApprovalRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已重新校验的待审批批次与费用摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMediaApproval"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     decideAgentMediaApproval: {

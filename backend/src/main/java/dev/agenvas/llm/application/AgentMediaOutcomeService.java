@@ -107,6 +107,8 @@ public class AgentMediaOutcomeService {
         }
         ObjectNode result = (ObjectNode) AgentMediaToolResult.forModel(receipt).deepCopy();
         result.put("awaitingMedia", false);
+        // The original tool receipt predates the user's pending revisions; resume with actual approved input.
+        result.set("data", AgentMediaToolResult.approvalData(approval));
         result.set("mediaApproval", approval.result());
         return result;
     }

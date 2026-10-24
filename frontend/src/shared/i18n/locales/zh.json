@@ -1742,7 +1742,7 @@
   "settings.runningHub.numberInput": "数值",
   "settings.runningHub.defaultOrFormat": "默认值 / 素材格式",
   "settings.runningHub.mappingTable": "参数绑定",
-  "settings.runningHub.mappingHint": "自动识别提示词和图片、视频、音频输入并默认暴露。其他参数默认不勾选，可选择节点后逐项勾选“暴露”；更多设置可调整范围、说明和显示条件。",
+  "settings.runningHub.mappingHint": "默认推荐用途明确的提示词、图片/视频/音频素材，以及时长、画幅/尺寸、分辨率、帧率、画质等创作参数。种子、模型、采样器和步数等内部参数需手动勾选“暴露”。重新发现保留已有手工配置和勾选；更多设置可调整范围、说明和显示条件。",
   "settings.runningHub.moreSettings": "更多设置",
   "settings.runningHub.mappingActions": "操作",
   "settings.runningHub.organizeFields": "整理字段",
@@ -3195,5 +3195,10 @@
   "canvas.group.dropToJoin": "松开以加入分组",
   "video.edit.frameZoom": "逐帧",
   "video.edit.dragPlayhead": "拖动播放头",
-  "video.edit.framesFailed": "部分帧预览读取失败，编辑已保留。请检查素材权限后重试。"
+  "video.edit.framesFailed": "部分帧预览读取失败，编辑已保留。请检查素材权限后重试。",
+  "agent.approval.editSettings": "调整模型与参数",
+  "agent.approval.editTitle": "调整视频生成设置",
+  "agent.approval.editHint": "保留提示词与参考素材。保存后重新校验并更新费用，确认后再批准生成。",
+  "agent.approval.saveSettings": "保存并重新估算",
+  "agent.approval.incompatibleInputs": "该模型无法保留全部参考素材，请选择兼容模型或让导演重新提出方案。"
 }

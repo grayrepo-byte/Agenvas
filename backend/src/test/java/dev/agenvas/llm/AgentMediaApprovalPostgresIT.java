@@ -9,6 +9,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
@@ -127,6 +128,7 @@ class AgentMediaApprovalPostgresIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("agenvas.storage.root", () -> storage.toString());
+        registry.add("agenvas.credentials.master-key-base64", () -> java.util.Base64.getEncoder().encodeToString(new byte[32]));
     }
 
     private static Path privateStorage() {
@@ -1406,6 +1408,105 @@ class AgentMediaApprovalPostgresIT {
         ApprovalView approval = approvals.list(owner.userId(), project.id(), run.id()).getFirst();
         assertThat(approval.outputs().getFirst().canvasItemId()).isEqualTo(itemId);
         return new Scenario(project, run, approval);
+    }
+
+    @Test
+    void pendingVideoCanSwitchProviderAndResolutionThenRequiresTheRevisedApprovalVersion() throws Exception {
+        Scenario scenario = propose(outputs("VIDEO", "IMAGE"));
+        var initial = scenario.approval();
+        var target = initial.outputs().getFirst();
+        var connection = capabilities.createConnection("revision-" + UUID.randomUUID(), "Synthetic H3 revision", "MINIMAX",
+                "https://api.minimax.cn", "synthetic-revision-key");
+        var settings = mapper.readTree("""
+                {"defaultDurationSeconds":5,"defaultParameters":{"videoResolution":"768p"},
+                 "pricingByResolution":{"768p":{"amount":"1","currency":"CNY","unit":"SECOND"},
+                 "1440p":{"amount":"2","currency":"CNY","unit":"SECOND"}}}
+                """);
+        var capability = capabilities.publishCapability(connection.id(), "Synthetic H3", "MINIMAX_H3", settings);
+        ObjectNode revision = mapper.createObjectNode().put("expectedVersion", 0).put("outputIndex", 0)
+                .put("capabilityId", capability.id().toString()).put("durationSeconds", 5).put("videoInputMode", "TEXT");
+        revision.putObject("parameters").put("aspectRatio", "16:9").put("videoResolution", "1440p");
+        String path = base(scenario) + "/" + initial.id();
+        mvc.perform(put(path).with(auth).contentType("application/json").content(revision.toString()))
+                .andExpect(status().isForbidden());
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(revision.toString()))
+                .andExpect(status().isOk());
+        var revised = currentApproval(scenario);
+        assertThat(revised.version()).isEqualTo(1);
+        assertThat(revised.status()).isEqualTo(AgentMediaApproval.Status.PENDING);
+        assertThat(revised.expiresAt()).isEqualTo(initial.expiresAt());
+        assertThat(revised.outputs().get(1)).isEqualTo(initial.outputs().get(1));
+        JsonNode preview = revised.outputs().getFirst().preview();
+        assertThat(preview.path("capabilityId").asText()).isEqualTo(capability.id().toString());
+        assertThat(preview.at("/parameters/videoResolution").asText()).isEqualTo("1440p");
+        assertThat(preview.at("/mediaPricing/amount").asText()).isEqualTo("2");
+        assertThat(preview.toString()).doesNotContain("synthetic-revision-key", "api.minimax.cn");
+        assertThat(mediaTasks(scenario)).isEmpty();
+        assertThat(mediaUsage(scenario)).isZero();
+        mvc.perform(post(decisionPath(scenario)).with(auth).with(csrf()).header("Idempotency-Key", "old-revision")
+                .contentType("application/json").content(decision("APPROVE"))).andExpect(status().isConflict());
+        assertThat(mediaTasks(scenario)).isEmpty();
+        mvc.perform(post(decisionPath(scenario)).with(auth).with(csrf()).header("Idempotency-Key", "new-revision")
+                .contentType("application/json").content("{\"expectedVersion\":1,\"decision\":\"APPROVE\"}"))
+                .andExpect(status().isOk());
+        assertThat(mediaTasks(scenario)).hasSize(2).anySatisfy(task -> {
+            assertThat(task.kind()).isEqualTo(Task.Kind.VIDEO_GENERATION);
+            assertThat(task.input().at("/mediaInput/capabilityId").asText()).isEqualTo(capability.id().toString());
+            assertThat(task.input().at("/mediaInput/parameters/videoResolution").asText()).isEqualTo("1440p");
+        });
+        revision.put("expectedVersion", 2);
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(revision.toString()))
+                .andExpect(status().isConflict());
+        runs.cancel(owner.userId(), scenario.project().id(), scenario.run().id());
+    }
+
+    @Test
+    void invalidVideoRevisionRollsBackTheDraftAndApprovalAndCannotRefreshAnExpiredBatch() throws Exception {
+        Scenario scenario = propose(outputs("VIDEO"));
+        var output = scenario.approval().outputs().getFirst();
+        var before = drafts.get(owner.userId(), scenario.project().id(), output.canvasItemId());
+        // Mock video accepts 1..30s: preflight rejects an unsupported duration after draft save.
+        ObjectNode revision = mapper.createObjectNode().put("expectedVersion", 0).put("outputIndex", 0)
+                .put("capabilityId", before.capabilityId().toString()).put("durationSeconds", 60).put("videoInputMode", "TEXT");
+        revision.putObject("parameters").put("aspectRatio", "16:9");
+        String path = base(scenario) + "/" + scenario.approval().id();
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(revision.toString()))
+                .andExpect(status().is4xxClientError());
+        assertThat(drafts.get(owner.userId(), scenario.project().id(), output.canvasItemId())).isEqualTo(before);
+        assertThat(currentApproval(scenario)).isEqualTo(scenario.approval());
+        assertThat(mediaTasks(scenario)).isEmpty();
+        assertThat(mediaUsage(scenario)).isZero();
+        expirePending(scenario);
+        revision.put("durationSeconds", 1);
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(revision.toString()))
+                .andExpect(status().isConflict());
+        runs.cancel(owner.userId(), scenario.project().id(), scenario.run().id());
+    }
+
+    @Test
+    void concurrentVideoRevisionsAcceptExactlyOneWriterAndKeepTasksUnsubmitted() throws Exception {
+        Scenario scenario = propose(outputs("VIDEO"));
+        var output = scenario.approval().outputs().getFirst();
+        UUID capabilityId = UUID.fromString(output.preview().path("capabilityId").asText());
+        var start = new CountDownLatch(1);
+        Callable<Boolean> revise = () -> {
+            start.await(CONCURRENT_WAIT_SECONDS, TimeUnit.SECONDS);
+            try {
+                approvals.revise(owner.userId(), scenario.project().id(), scenario.run().id(), scenario.approval().id(),
+                        0, 0, capabilityId, mapper.createObjectNode().put("aspectRatio", "16:9"), 1, MediaDraft.VideoInputMode.TEXT);
+                return true;
+            } catch (ApiProblemException conflict) {
+                assertThat(conflict.code()).isEqualTo("AGENT_MEDIA_APPROVAL_CONFLICT"); return false;
+            }
+        };
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first = pool.submit(revise); var second = pool.submit(revise); start.countDown();
+            assertThat(List.of(first.get(CONCURRENT_WAIT_SECONDS, TimeUnit.SECONDS), second.get(CONCURRENT_WAIT_SECONDS, TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(true, false);
+        }
+        assertThat(currentApproval(scenario).version()).isEqualTo(1);
+        assertThat(mediaTasks(scenario)).isEmpty();
+        runs.cancel(owner.userId(), scenario.project().id(), scenario.run().id());
     }
 
     private Scenario propose(ObjectNode outputs) {
