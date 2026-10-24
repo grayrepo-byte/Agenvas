@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { ProjectWorkspacePage } from "../src/features/canvas/ProjectWorkspacePage";
 import { useCanvasStore } from "../src/features/canvas/canvasStore";
 import type { Artifact, CanvasCommand, CreateArtifactRequest, CanvasEditReceipt, CanvasEditReplayRequest, CanvasEditRequest, CanvasEditResponse,
-  CanvasEditorState, CanvasGroup, CanvasItem, ProjectSnapshot, ReviseArtifactRequest } from "../src/shared/api/client";
+  CanvasEditorState, CanvasGroup, CanvasItem, CreateCanvasConnectionRequest, ProjectSnapshot, ReviseArtifactRequest } from "../src/shared/api/client";
 import { resolveLocale, setLocale } from "../src/shared/i18n";
 import "../src/styles.css";
 
@@ -32,6 +32,16 @@ function textItem(index: number): CanvasItem {
 }
 let items: CanvasItem[] = Array.from({ length: 100 }, (_, index) => textItem(index));
 if (options.has("group-entry")) items = items.slice(0, 3);
+if (options.has("connection-drop")) {
+  const source = textItem(0);
+  const version: NonNullable<CanvasItem["selectedVersion"]> = {
+    ...source.selectedVersion!, content: { sourceType: "UPLOAD", assetId: "synthetic-image" },
+  };
+  source.title = "SYNTHETIC IMAGE SOURCE";
+  source.selectedVersion = version;
+  source.artifact = { ...source.artifact, kind: "IMAGE", title: source.title, resourceDefaultVersion: version };
+  items = [source, textItem(1)];
+}
 if (options.has("hand-drag")) {
   const empty = textItem(1);
   empty.artifact.resourceDefaultVersion!.content = { format: "PLAIN_TEXT", text: "" };
@@ -46,7 +56,7 @@ if (options.has("hand-drag")) {
   items = [textItem(0), empty, ...media, ...(options.has("motion-large") ? items.slice(4).map((item) => ({ ...item, y: item.y + 310 })) : [])];
 }
 let groups: CanvasGroup[] = [];
-const connections: ProjectSnapshot["connections"] = options.has("hand-drag") ? [] : [
+const connections: ProjectSnapshot["connections"] = options.has("hand-drag") || options.has("connection-drop") ? [] : [
   { id: "synthetic-internal-connection", projectId, sourceCanvasItemId: items[0]!.id, targetCanvasItemId: items[1]!.id,
     sourceArtifactVersionId: items[0]!.selectedVersionId!, relationType: "MEDIA_DERIVATION", version: 0, createdAt: now, updatedAt: now },
   { id: "synthetic-external-connection", projectId, sourceCanvasItemId: items[1]!.id, targetCanvasItemId: items[2]!.id,
@@ -69,7 +79,7 @@ let nextPlacementFailure: number | null = null;
 const copy = <T,>(value: T): T => structuredClone(value);
 const state = (): CanvasEditorState => copy({ items, groups });
 const diagnostics = {
-  evidence: () => copy({ items, groups, requests, edits, replays, textSaves, placements, unexpected,
+  evidence: () => copy({ items, groups, connections, requests, edits, replays, textSaves, placements, unexpected,
     layoutDrafts: useCanvasStore.getState().drafts,
     mediaDraftRecoveryCount: Object.keys(useCanvasStore.getState().mediaDraftRecoveries).length,
     receipts: [...receipts.values()].map(({ receipt }) => receipt) }),
@@ -177,6 +187,14 @@ window.fetch = async (input, init) => {
   else if (path.endsWith("/canvas/editor") && method === "GET") value = state();
   else if (path.endsWith("/canvas/items") && method === "GET") value = { items };
   else if (path.endsWith("/canvas/connections") && method === "GET") value = { items: connections };
+  else if (path.endsWith("/canvas/connections") && method === "POST") {
+    const request = JSON.parse(String(init?.body)) as CreateCanvasConnectionRequest;
+    const connection: ProjectSnapshot["connections"][number] = { id: crypto.randomUUID(), projectId,
+      sourceCanvasItemId: request.sourceCanvasItemId, targetCanvasItemId: request.targetCanvasItemId,
+      sourceArtifactVersionId: request.sourceVersionId, relationType: request.relationType,
+      version: 0, createdAt: now, updatedAt: now };
+    connections.push(connection); value = { connection, draft: null };
+  }
   else if (path.endsWith("/canvas/edits") && method === "POST") {
     const request = JSON.parse(String(init?.body)) as CanvasEditRequest; edits.push(copy(request)); value = persistEdit(request);
   } else if (/\/canvas\/edits\/[^/]+\/replay$/.test(path) && method === "POST") {
@@ -227,9 +245,11 @@ window.fetch = async (input, init) => {
     prompt: "", parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [], durationSeconds: null,
     capabilityId: null, displayMode: "RESULT", version: 0, createdAt: now, updatedAt: now };
   else if (path.endsWith("/media-versions") && method === "GET") value = { items: [] };
+  else if (path.endsWith("/assets/synthetic-image") && method === "GET") value = { id: "synthetic-image", width: 330, height: 240 };
   else if (path.endsWith("/settings/llm")) value = { configured: false, version: 0 };
   else if (path.endsWith("/settings/diagnostics")) value = { llmMode: "MOCK" };
   else if (path.endsWith("/settings/media-connections")) value = { connections: [], defaults: [] };
+  else if (path.endsWith("/settings/media-functions")) value = [];
   else if (method === "GET" && /\/(text-generations|run|tasks|exports|export-proposals|usage|media-approvals)$/.test(path)) value = [];
   else {
     unexpected.push(`${method} ${path}`);

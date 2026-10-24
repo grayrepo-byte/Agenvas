@@ -101,6 +101,8 @@ function snapshot(): ProjectSnapshot {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 beforeEach(() => {
+  // These callback tests have no browser layout; release hit testing sees empty space.
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => null });
   flowProps = {};
   renderRealFlow = false;
   focusProbe.center.mockClear();

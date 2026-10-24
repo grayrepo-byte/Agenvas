@@ -2927,3 +2927,11 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 使用 Node 24.12.0 定向执行 `MediaDraftEditor.test.tsx`、`PromptMentionEditor.test.tsx`、`TextGenerationEditor.test.tsx`、`usePromptContentHeight.test.tsx`、`CanvasEditorOverlay.test.tsx`，178 项通过。类型检查、完整 lint（含四语言/主题）和生产构建通过；保留既有 Vite 配置及大分块提示。
 - [x] 生产构建真实 Chrome 的工作流编辑器专项和反馈专项通过：2560×1179、1440×900、390×844、844×390，覆盖普通图片/视频、ComfyUI/RunningHub、素材来源/选择、十槽位、UNKNOWN/失败/排队/运行状态。新增几何断言验证宽度上限、三行输入及模型图标从左内边距开始；截图目视确认，证据保存在仓库外私有目录。仅使用合成数据。
 - [ ] 全量测试、后端测试、真实 Provider 和部署：未运行；本次仅调整前端呈现与菜单定位。
+
+## 2026-10-24 空白处松线创建并连接
+
+- [x] 连线在空白画布松开时复用双击创建菜单，按最终松手坐标创建媒体节点并在放置确认后保存输入关系；菜单边缘避让不改变节点落点。取消不写入，已有节点、分组和画布外不转为创建。文字目标及没有选用媒体结果的来源沿用既有合法性限制，不发起生成；来源版本固定于拖线开始，切换结果后拒绝建连。
+- [x] 创建失败重试保留原身份、落点及待连来源；连接失败保留新节点并提供只重试连线的入口。复用现有 API、Query 投影、草稿 CAS 与创建幂等逻辑，无合约、数据库迁移或依赖变化；规格 §6.2 和 ADR 0005 同步。
+- [x] 使用 Node 24.12.0 执行 `CanvasConnectionDrop.test.tsx`、`canvasRelations.test.ts`、`CanvasSelectionClearing.test.tsx`、`ProjectWorkspacePage.test.tsx` 和 `CanvasPaneMenu.test.tsx`，145 项通过，覆盖媒体类型、坐标与边缘、触摸松手、取消后普通创建、无效/过期节点、最终命中、创建/连接失败重试及来源切换。此前一次视频悬停计时断言失败，单独复跑与最终整组定向复跑均通过；保留 jsdom 媒体 pause 未实现提示。
+- [x] 完整前端和包含浏览器夹具的 TypeScript 检查、6 个改动源码/测试/夹具文件的 ESLint、生产构建及差异空白检查通过。`node e2e/canvas-editing-browser.mjs --connection-drop-only` 使用生产构建、真实 Chrome 和隔离合成 HTTP 验证图片/视频/音频创建、持久连线投影、坐标、无效节点与 Esc；截图保存在仓库外私有目录并目视检查。保留既有 Vite 配置与大分块提示。
+- [ ] 全量测试、真实后端/Provider、移动浏览器及部署：未运行；触摸坐标仅由组件测试验证。

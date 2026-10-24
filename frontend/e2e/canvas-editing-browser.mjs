@@ -17,6 +17,7 @@ await chmod(profile, 0o700); await chmod(screenshots, 0o700);
 const production = !process.argv.includes("--dev");
 const motionOnly = process.argv.includes("--motion-only");
 const groupEntryOnly = process.argv.includes("--group-entry-only");
+const connectionDropOnly = process.argv.includes("--connection-drop-only");
 const dragCase = process.argv.includes("--hand-drag-only") ? "hand"
   : process.argv.includes("--text-node-drag-only") ? "node" : process.argv.includes("--drag-diagnostics") ? "diagnostics" : null;
 const catalogs = Object.fromEntries(await Promise.all(["zh", "ru"].map(async (locale) => [locale,
@@ -101,14 +102,14 @@ async function screenshot(name) {
   const image = await cdp("Page.captureScreenshot", { format: "png" });
   await writeFile(join(screenshots, `${name}.png`), Buffer.from(image.data, "base64"), { mode: 0o600 });
 }
-async function ready(expected = groupEntryOnly ? 3 : dragCase || motionOnly ? 4 : 100) {
+async function ready(expected = connectionDropOnly ? 2 : groupEntryOnly ? 3 : dragCase || motionOnly ? 4 : 100) {
   await waitFor((expected) => document.querySelectorAll(".react-flow__node-canvasCard").length === expected
     && window.__agenvasCanvasEditingFixture.evidence().requests.some((request) => request.path.endsWith("/canvas/editor")), expected);
   assert.equal((await evidence()).unexpected.length, 0);
 }
 async function navigate(baseUrl, nextLocale = "zh", { motionLarge = false } = {}) {
   locale = nextLocale;
-  await cdp("Page.navigate", { url: new URL(`${route}?locale=${locale}${dragCase || motionOnly ? "&hand-drag=1" : ""}${groupEntryOnly ? "&group-entry=1" : ""}${motionLarge ? "&motion-large=1" : ""}`, baseUrl).href });
+  await cdp("Page.navigate", { url: new URL(`${route}?locale=${locale}${dragCase || motionOnly ? "&hand-drag=1" : ""}${groupEntryOnly ? "&group-entry=1" : ""}${connectionDropOnly ? "&connection-drop=1" : ""}${motionLarge ? "&motion-large=1" : ""}`, baseUrl).href });
   await ready(motionLarge ? 100 : undefined);
 }
 async function zoomToFirstCard() {
@@ -521,6 +522,69 @@ async function runMotionRegression(baseUrl) {
   await screenshot("motion-100-nodes-after");
   console.log(`Canvas motion check passed. Synthetic frame traces and screenshots: ${screenshots}`);
 }
+async function runConnectionDropRegression(baseUrl) {
+  async function releaseAt(destination) {
+    const source = card("synthetic-card-0");
+    await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...await point(`${source} .artifact-card-title`) });
+    const start = await point(`${source} .canvas-handle--out`);
+    await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...start });
+    await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...start, button: "left", clickCount: 1 });
+    for (let step = 1; step <= 8; step++) {
+      await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: start.x + (destination.x - start.x) * step / 8,
+        y: start.y + (destination.y - start.y) * step / 8, button: "left", buttons: 1 });
+    }
+    await waitFor(() => Boolean(document.querySelector(".react-flow__connection")));
+    await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...destination, button: "left", clickCount: 1 });
+  }
+  for (const kind of ["IMAGE", "VIDEO", "AUDIO"]) {
+    await navigate(baseUrl);
+    await waitForStableViewport();
+    const destination = await page(() => {
+      const bounds = document.querySelector(".react-flow").getBoundingClientRect();
+      return { x: bounds.right - 180, y: bounds.top + 180 };
+    });
+    await releaseAt(destination);
+    await waitFor(() => Boolean(document.querySelector(".workspace-create-menu")));
+    assert.equal((await evidence()).placements.length, 0, "Releasing only opens the menu");
+    assert.equal(await page(() => document.querySelector('.workspace-create-menu [data-value="TEXT"]').getAttribute("aria-disabled")), "true");
+    const expected = await page((destination) => {
+      const flowBounds = document.querySelector(".react-flow").getBoundingClientRect();
+      const matrix = new DOMMatrix(getComputedStyle(document.querySelector(".react-flow__viewport")).transform).inverse();
+      const point = matrix.transformPoint(new DOMPoint(destination.x - flowBounds.left, destination.y - flowBounds.top));
+      return { x: point.x, y: point.y };
+    }, destination);
+    await click(`.workspace-create-menu [data-value="${kind}"]`);
+    await waitFor(() => window.__agenvasCanvasEditingFixture.evidence().connections.length === 1
+      && Boolean(document.querySelector(".react-flow__edge-canvasRelation")));
+    const result = await evidence();
+    assert.equal(result.items.length, 3);
+    assert.equal(result.placements.length, 1);
+    assert.ok(Math.abs(result.placements[0].x - expected.x) < 0.1);
+    assert.ok(Math.abs(result.placements[0].y - expected.y) < 0.1);
+    assert.equal(result.connections[0].sourceCanvasItemId, "synthetic-card-0");
+    assert.equal(result.connections[0].targetCanvasItemId, result.placements[0].itemId);
+    assert.equal(result.connections[0].sourceArtifactVersionId, "synthetic-card-0-v1");
+    assert.deepEqual(result.unexpected, []);
+    await screenshot(`connection-drop-${kind.toLowerCase()}`);
+  }
+  await navigate(baseUrl);
+  await waitForStableViewport();
+  await releaseAt(await point(`${card("synthetic-card-1")} .artifact-card-title`));
+  assert.equal(await page(() => Boolean(document.querySelector(".workspace-create-menu"))), false,
+    "Releasing on an incompatible node does not open creation");
+  const destination = await page(() => {
+    const bounds = document.querySelector(".react-flow").getBoundingClientRect();
+    return { x: bounds.right - 180, y: bounds.top + 180 };
+  });
+  await releaseAt(destination);
+  await waitFor(() => Boolean(document.querySelector(".workspace-create-menu")));
+  await key("Escape", "Escape", 0, 27);
+  await waitFor(() => !document.querySelector(".workspace-create-menu"));
+  assert.equal((await evidence()).placements.length, 0);
+  assert.equal((await evidence()).connections.length, 0);
+  assert.deepEqual(runtimeErrors, []);
+  console.log(`Canvas connection drop passed: native Chrome drag, image/video/audio creation and persisted edges, coordinates, invalid node and Escape. Synthetic screenshots: ${screenshots}`);
+}
 try {
   const config = { root, configFile: join(root, "vite.config.ts") };
   if (production) {
@@ -548,7 +612,8 @@ try {
   await cdp("Page.enable"); await cdp("Runtime.enable");
   const baseUrl = server.resolvedUrls.local[0];
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  if (groupEntryOnly) await runGroupEntryRegression(baseUrl);
+  if (connectionDropOnly) await runConnectionDropRegression(baseUrl);
+  else if (groupEntryOnly) await runGroupEntryRegression(baseUrl);
   else if (motionOnly) await runMotionRegression(baseUrl);
   else if (dragCase) await runDragRegression(baseUrl);
   else {
