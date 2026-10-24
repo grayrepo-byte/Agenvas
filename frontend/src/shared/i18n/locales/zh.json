@@ -3169,7 +3169,7 @@
   "video.edit.timelinePosition": "时间线播放头",
   "video.edit.trimStart": "调整片段 {0} 入点",
   "video.edit.trimEnd": "调整片段 {0} 出点",
-  "video.edit.trimHint": "点击标尺跳转 · 拖动两端裁切 · 拖动片段排序",
+  "video.edit.trimHint": "点击画面或标尺定位 · 拖动两端裁切 · 拖动片段排序",
   "video.edit.livePreviewHint": "按当前裁切、变速、淡黑、混音、字幕和画幅预览；字体与音频处理可能因浏览器略有差异。",
   "video.edit.preparingPreview": "正在准备成片预览…",
   "video.optimize.title": "提示词优化",
@@ -3192,5 +3192,8 @@
   "video.optimize.failed": "提示词优化失败，请检查文字模型配置后重试。",
   "video.optimize.referenceInvalid": "提示词的引用标记不完整或包含保留标记，请先修正。",
   "canvas.group.addNode": "组内新建节点",
-  "canvas.group.dropToJoin": "松开以加入分组"
+  "canvas.group.dropToJoin": "松开以加入分组",
+  "video.edit.frameZoom": "逐帧",
+  "video.edit.dragPlayhead": "拖动播放头",
+  "video.edit.framesFailed": "部分帧预览读取失败，编辑已保留。请检查素材权限后重试。"
 }

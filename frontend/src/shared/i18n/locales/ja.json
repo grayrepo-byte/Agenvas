@@ -3169,7 +3169,7 @@
   "video.edit.timelinePosition": "タイムラインの再生ヘッド",
   "video.edit.trimStart": "クリップ {0} の開始を調整",
   "video.edit.trimEnd": "クリップ {0} の終了を調整",
-  "video.edit.trimHint": "目盛りで移動・両端でトリミング・クリップで並べ替え",
+  "video.edit.trimHint": "フレームや目盛りをクリックして移動 · 両端でトリミング · クリップをドラッグして並べ替え",
   "video.edit.livePreviewHint": "トリミング・速度・フェード・音声・字幕・画角を反映。フォントと音声処理はブラウザによって多少異なります。",
   "video.edit.preparingPreview": "完成動画のプレビューを準備中…",
   "video.optimize.title": "プロンプトを最適化",
@@ -3192,5 +3192,8 @@
   "video.optimize.failed": "最適化に失敗しました。テキストモデルの設定を確認してください。",
   "video.optimize.referenceInvalid": "参照マーカーが不完全か予約済みマーカーを含んでいます。修正してください。",
   "canvas.group.addNode": "グループ内にノードを作成",
-  "canvas.group.dropToJoin": "ドロップしてグループに追加"
+  "canvas.group.dropToJoin": "ドロップしてグループに追加",
+  "video.edit.frameZoom": "コマ単位",
+  "video.edit.dragPlayhead": "再生ヘッドをドラッグ",
+  "video.edit.framesFailed": "一部のフレームを読み込めませんでした。編集内容は保持されています。素材へのアクセスを確認して再試行してください。"
 }
