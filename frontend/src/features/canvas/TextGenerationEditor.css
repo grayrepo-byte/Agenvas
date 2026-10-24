@@ -5,5 +5,5 @@
   max-height: var(--ui-canvas-editor-prompt-limit);
   margin-top: var(--ui-space-3);
 }
-.text-generation-model { flex: 1 1 14ch; min-width: 0; margin-right: auto; cursor: default; }
+.text-generation-model { flex: 1 1 14ch; min-width: 0; margin-right: auto; justify-content: flex-start; text-align: left; cursor: default; }
 .text-generation-model > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

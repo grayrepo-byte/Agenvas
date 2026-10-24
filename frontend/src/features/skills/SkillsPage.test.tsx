@@ -26,13 +26,14 @@ beforeEach(()=>{server.use(
 );});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
 it("shows builtin content read-only with attribution and permits trying its fixed version",async()=>{
-  const builtin={...SKILL,title:"分集剧本 · short-drama-write",builtin:true};let draftReads=0;
+  const builtin:CreativeSkill={...SKILL,title:"分集剧本 · short-drama-write",builtin:true,category:"STORY",builtinSource:{name:"Drama Skills",repository:"https://github.com/zenstory-ai/drama-skills",revision:"synthetic-revision",license:"MIT",licenseUrl:"https://github.com/zenstory-ai/drama-skills/blob/synthetic-revision/LICENSE"}};let draftReads=0;
   server.use(http.get("/api/v1/skills",()=>HttpResponse.json({items:[builtin],nextCursor:null,total:1})),
     http.get(`/api/v1/skills/${SKILL_ID}/draft`,()=>{draftReads++;return HttpResponse.json(INITIAL);}),
     http.get("/api/v1/projects",()=>HttpResponse.json({items:[],nextCursor:null,total:0})));
   mount();await userEvent.click(await screen.findByRole("button",{name:builtin.title}));
   expect(await screen.findByText(/# Method/)).toHaveTextContent("name: warm-art");
-  expect(screen.getByRole("link",{name:"Drama Skills · MIT"})).toHaveAttribute("href","https://github.com/zenstory-ai/drama-skills");
+  expect(screen.getByRole("link",{name:"Drama Skills"})).toHaveAttribute("href","https://github.com/zenstory-ai/drama-skills");
+  expect(screen.getByRole("link",{name:"MIT"})).toHaveAttribute("href",builtin.builtinSource!.licenseUrl);
   expect(screen.queryByRole("button",{name:"发布版本"})).not.toBeInTheDocument();
   expect(screen.queryByRole("button",{name:"移入回收站"})).not.toBeInTheDocument();
   expect(screen.queryByRole("textbox",{name:"Skill 正文"})).not.toBeInTheDocument();
@@ -42,6 +43,28 @@ it("shows builtin content read-only with attribution and permits trying its fixe
 });
 async function openEditor(){mount();await userEvent.click(await screen.findByRole("button",{name:"温暖手绘"}));return screen.findByRole("textbox",{name:"Skill 正文"});}
 describe("Skill editing and publishing",()=>{
+  it("filters the catalogue on the server while retaining an opened personal draft",async()=>{
+    const story:CreativeSkill={...SKILL,id:"story",title:"短剧方法",builtin:true,category:"STORY"};
+    const ad:CreativeSkill={...SKILL,id:"ad",title:"品牌宣传",builtin:true,category:"ADVERTISING"};
+    const requests:URL[]=[];
+    server.use(http.get("/api/v1/skills",({request})=>{
+      const url=new URL(request.url);requests.push(url);
+      const category=url.searchParams.get("category");
+      const items=category ? [story,ad].filter((skill)=>skill.category===category):[SKILL,story,ad];
+      return HttpResponse.json({items,total:items.length,nextCursor:null});
+    }));
+    const body=await openEditor();
+    expect(screen.getByRole("region",{name:"内置 · 短剧叙事"})).toBeInTheDocument();
+    expect(screen.getByRole("region",{name:"内置 · 品牌广告"})).toBeInTheDocument();
+    fireEvent.change(body,{target:{value:INITIAL.skillMd+"\nLocal unsaved thought"}});
+    await userEvent.click(screen.getByRole("combobox",{name:"Skill 分类"}));
+    await userEvent.click(await screen.findByRole("option",{name:"品牌广告"}));
+    await waitFor(()=>expect(screen.queryByRole("button",{name:story.title})).not.toBeInTheDocument());
+    expect(screen.getByRole("button",{name:ad.title})).toBeInTheDocument();
+    expect(body).toHaveValue(INITIAL.skillMd+"\nLocal unsaved thought");
+    expect(requests.at(-1)?.searchParams.get("category")).toBe("ADVERTISING");
+    expect(requests.at(-1)?.searchParams.has("cursor")).toBe(false);
+  });
   it("saves a selected reference image for model context without a provider usage selector",async()=>{
     const reference:LibraryEntry={id:"library-image",name:"水彩风格参考",category:"OTHER",kind:"IMAGE",textContent:null,contentType:"image/png",byteSize:120,
       width:8,height:8,durationMs:null,hasThumbnail:false,source:{},favorite:false,trashedAt:null,version:7,createdAt:NOW,updatedAt:NOW};
@@ -167,7 +190,7 @@ describe("Skill editing and publishing",()=>{
   it("opens the project director with a fixed Skill version without selecting an Agent or submitting a Run",async()=>{
     const run=vi.fn();server.use(http.post("/api/v1/projects/:id/runs",()=>{run();return HttpResponse.json({});}),
       http.get("/api/v1/projects",()=>HttpResponse.json({items:[{id:"project-1",name:"Mock canvas",status:"ACTIVE"}],nextCursor:null})));
-    await openEditor();const native=document.querySelector<HTMLSelectElement>('select[aria-hidden="true"]');expect(native).not.toBeNull();fireEvent.change(native!,{target:{value:VERSION_ID}});
+    await openEditor();const native=screen.getByRole("option",{name:"版本 1",hidden:true}).closest("select");expect(native).not.toBeNull();fireEvent.change(native!,{target:{value:VERSION_ID}});
     await userEvent.click(await screen.findByRole("button",{name:"在导演中试用"}));
     const project=screen.getByRole("combobox",{name:"项目"});await userEvent.click(project);await userEvent.click(await screen.findByRole("option",{name:"Mock canvas"}));
     expect(within(screen.getByRole("dialog",{name:"在导演中试用"})).getAllByRole("combobox")).toHaveLength(1);

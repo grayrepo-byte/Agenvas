@@ -40,13 +40,37 @@ describe("VideoPromptOptimizationDialog", () => {
     await waitFor(() => expect(start).toBeEnabled());
     expect(calls).toBe(0);
     await screen.findByRole("option", { name: "运镜方法", hidden: true });
-    fireEvent.change(document.querySelector<HTMLSelectElement>("select")!, { target: { value: "s" } });
+    fireEvent.change(screen.getByRole("option", { name: "运镜方法", hidden: true }).closest("select")!, { target: { value: "s" } });
     await screen.findByRole("option", { name: "版本 1", hidden: true });
-    fireEvent.change(document.querySelectorAll("select")[1]!, { target: { value: "v1" } });
+    fireEvent.change(screen.getByRole("option", { name: "版本 1", hidden: true }).closest("select")!, { target: { value: "v1" } });
     await userEvent.dblClick(start);
     await waitFor(() => expect(body).toEqual({ prompt, maxLength: 20000, skill: { skillId: "s", skillVersionId: "v1" } }));
     expect(calls).toBe(1);
     expect(screen.getByRole("button", { name: "重新优化" })).toBeDisabled();
+  });
+  it("retains a selected publication when changing category and combines search with the category", async () => {
+    let body: unknown;
+    const requests: URL[] = [];
+    server.use(http.get("/api/v1/skills", ({ request }) => {
+      const url = new URL(request.url); requests.push(url);
+      const items = url.searchParams.has("category") ? [] : [{ id: "s", title: "H3 提示词", description: "提示词方法", builtin: true, category: "PROMPT", currentVersionId: "v2", trashed: false }];
+      return HttpResponse.json({ items, total: items.length, nextCursor: null });
+    }), http.get("/api/v1/skills/s/versions", () => HttpResponse.json([{ id: "v2", versionNumber: 2 }, { id: "v1", versionNumber: 1 }])),
+    http.post(path, async ({ request }) => { body = await request.json(); return HttpResponse.json(task()); }));
+    show(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("combobox", { name: "创作 Skill（可选）" }));
+    await user.click(await screen.findByRole("option", { name: "H3 提示词" }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "发布版本" })).toBeEnabled());
+    await user.click(screen.getByRole("combobox", { name: "发布版本" }));
+    await user.click(await screen.findByRole("option", { name: "版本 1" }));
+    await user.click(screen.getByRole("combobox", { name: "Skill 分类" }));
+    await user.click(await screen.findByRole("option", { name: "知识讲解" }));
+    await user.type(screen.getByRole("searchbox", { name: "搜索 Skill" }), "paper");
+    await waitFor(() => expect(requests.at(-1)?.searchParams.get("query")).toBe("paper"));
+    expect(requests.at(-1)?.searchParams.get("category")).toBe("EXPLAINER");
+    expect(screen.getByRole("combobox", { name: "发布版本" })).toHaveTextContent("版本 1");
+    await user.click(screen.getByRole("button", { name: "开始优化" }));
+    await waitFor(() => expect(body).toEqual({ prompt, maxLength: 20000, skill: { skillId: "s", skillVersionId: "v1" } }));
   });
   it("replays the original key and selection when acceptance is uncertain", async () => {
     const keys: (string | null)[] = [];

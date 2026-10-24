@@ -7,7 +7,7 @@ import {afterEach,expect,it,vi} from "vitest";
 import {createQueryClient} from "../../app/queryClient";
 import type {Agent,SaveAgentSkillBindingRequest,SkillSelection} from "../../shared/api/client";
 import {server} from "../../test/server";
-import {AgentRunSkillControls,AgentSkillSettings,useAgentSkillSelection} from "./AgentSkillControls";
+import {AgentRunSkillControls,AgentSkillSettings,SkillVersionPicker,useAgentSkillSelection} from "./AgentSkillControls";
 
 const agent:Agent={id:"agent-1",projectId:"project-1",profileKey:"creator",profileVersion:1,name:"Agent",instruction:"Create",version:3,createdAt:"2026-10-02T00:00:00Z",updatedAt:"2026-10-02T00:00:00Z"};
 afterEach(()=>{cleanup();window.history.replaceState(null,"","/");});
@@ -35,6 +35,23 @@ it("keeps the edit's original CAS baseline when SSE brings a newer Agent configu
 
 const skill={id:"skill-1",title:"温暖手绘",description:"柔和线条与暖色",currentVersionId:"version-1",trashed:false,version:1,createdAt:agent.createdAt,updatedAt:agent.updatedAt};
 const skillVersion={id:"version-1",skillId:skill.id,versionNumber:1,name:"warm-art",description:skill.description,bundleHash:"synthetic-hash",skillMd:"# Synthetic method",outputKinds:["IMAGE"],inputSlots:[],resources:[],assets:[],createdAt:agent.createdAt};
+it("retains the default binding's selected publication when filtering its version picker",async()=>{
+  server.use(http.get("/api/v1/skills",({request})=>{
+    const items=new URL(request.url).searchParams.has("category") ? [] : [{...skill,builtin:true,category:"STORY"}];
+    return HttpResponse.json({items,total:items.length,nextCursor:null});
+  }),http.get("/api/v1/skills/skill-1",()=>HttpResponse.json({...skill,builtin:true,category:"STORY"})),
+  http.get("/api/v1/skills/skill-1/versions",()=>HttpResponse.json([skillVersion])));
+  const onChange=vi.fn();const client=createQueryClient();
+  render(<QueryClientProvider client={client}><SkillVersionPicker skillId={skill.id} versionId={skillVersion.id} onChange={onChange} /></QueryClientProvider>);
+  const user=userEvent.setup();
+  await waitFor(()=>expect(screen.getByRole("combobox",{name:"选择 Skill"})).toHaveTextContent(skill.title));
+  await user.click(screen.getByRole("combobox",{name:"Skill 分类"}));
+  await user.click(await screen.findByRole("option",{name:"品牌广告"}));
+  await screen.findByText("还没有 Skill");
+  await waitFor(()=>expect(screen.getByRole("combobox",{name:"选择 Skill"})).toHaveTextContent(skill.title));
+  expect(screen.getByRole("combobox",{name:"发布版本"})).toHaveTextContent("版本 1");
+  expect(onChange).not.toHaveBeenCalled();
+});
 function showRunPicker(value=agent,initial?:SkillSelection) {
   const onChanged=vi.fn();
   function Subject(){const state=useAgentSkillSelection(value.projectId,value,initial);return <>
@@ -50,6 +67,26 @@ function publishedSkillHandlers(){return [
   http.get("/api/v1/skills/skill-1/versions",()=>HttpResponse.json([skillVersion])),
   http.get("/api/v1/skills/skill-1/versions/version-1",()=>HttpResponse.json(skillVersion)),
 ];}
+it("keeps selected fixed versions when a category hides them and searches the complete catalogue",async()=>{
+  const requests:URL[]=[];
+  server.use(http.get("/api/v1/skills",({request})=>{
+    const url=new URL(request.url);requests.push(url);
+    const items=url.searchParams.get("category")==="ADVERTISING" || url.searchParams.get("query") ? [] : [{...skill,builtin:true,category:"STORY"}];
+    return HttpResponse.json({items,total:items.length,nextCursor:null});
+  }),...publishedSkillHandlers());
+  showRunPicker();const user=userEvent.setup();
+  await user.click(screen.getByRole("button",{name:"选择 Skill"}));
+  await user.click(await screen.findByRole("button",{name:skill.title}));
+  await user.click(screen.getByRole("combobox",{name:"Skill 分类"}));
+  await user.click(await screen.findByRole("option",{name:"品牌广告"}));
+  await waitFor(()=>expect(screen.queryByRole("button",{name:skill.title})).not.toBeInTheDocument());
+  expect(screen.getByRole("status")).toHaveTextContent("1 / 100");
+  await user.type(screen.getByRole("searchbox",{name:"搜索 Skill"}),"other");
+  await waitFor(()=>expect(requests.at(-1)?.searchParams.get("query")).toBe("other"));
+  expect(requests.at(-1)?.searchParams.get("category")).toBe("ADVERTISING");
+  await user.click(screen.getByRole("button",{name:"使用 Skill"}));
+  expect(screen.getByLabelText("active selection")).toHaveTextContent('"skillId":"skill-1","skillVersionId":"version-1"');
+});
 it("preselects the fixed Skill version from a director try URL without an Agent selector",async()=>{
   server.use(...publishedSkillHandlers());
   window.history.replaceState(null,"","/projects/project-1?skillId=skill-1&skillVersionId=version-1");

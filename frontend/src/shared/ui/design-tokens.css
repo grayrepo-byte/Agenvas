@@ -100,9 +100,9 @@
   --ui-canvas-control-size: 36px;
   --ui-canvas-gutter: 20px;
   --ui-canvas-toolbar-radius: 10px;
-  --ui-canvas-editor-width-share: 0.64;
-  --ui-canvas-editor-min-width: 48ch;
-  --ui-canvas-editor-max-width: 120ch;
+  --ui-canvas-editor-width-share: 0.56;
+  --ui-canvas-editor-min-width: 36rem;
+  --ui-canvas-editor-max-width: 48rem;
   --ui-canvas-editor-prompt-limit: 40dvh;
   --ui-canvas-minimap-node: #53647d;
   --ui-canvas-minimap-mask: #10161fb8;

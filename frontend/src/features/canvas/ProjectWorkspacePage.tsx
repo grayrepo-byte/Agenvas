@@ -79,7 +79,7 @@ import { CANVAS_POINTER_THRESHOLD,useCanvasInteraction } from "./canvasInteracti
 import { arrangeCanvas,CANVAS_ARRANGE_GAP } from "./arrangeCanvas";
 import {
 canvasRelationRemoval,
-isCanvasConnectionValid,mediaInputConnection,projectCanvasRelations,
+isCanvasConnectionValid,mediaInputConnection,mediaInputSource,projectCanvasRelations,
 type CanvasRelationRemoval
 } from "./canvasRelations";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
@@ -108,7 +108,10 @@ type DrawerKind = "ALIGN";
 type CreationPoint = { x: number; y: number; groupId?: string };
 type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
   zIndex: number; assetId?: string; artifactId?: string };
-type CreationMenu = { x: number; y: number; point: CreationPoint; centerAtPoint: boolean };
+type ConnectionSource = NonNullable<ReturnType<typeof mediaInputSource>>;
+type CreationMenu = { x: number; y: number; point: CreationPoint; centerAtPoint: boolean;
+  /** undefined is ordinary creation; null is a gesture without a usable media result. */
+  connectionSource?: ConnectionSource | null };
 /** Card under the pointer during a connection gesture; the drop lands on the card, not on an exact port. */
 type ConnectionTarget = { itemId: string; targetHandle: "artifact-input"; valid: boolean };
 const EDITOR_NODE_GAP = 32;
@@ -461,8 +464,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
   });
   const addBlankMedia = useMutation({
-    mutationFn: async ({ kind, point, director = false }: { kind: "IMAGE" | "VIDEO" | "AUDIO"; point: CreationPoint; director?: boolean }) => {
-      const fingerprint = JSON.stringify({ projectId, kind, point, director });
+    mutationFn: async ({ kind, point, director = false, connectionSource }: {
+      kind: "IMAGE" | "VIDEO" | "AUDIO"; point: CreationPoint; director?: boolean; connectionSource?: ConnectionSource;
+    }) => {
+      const fingerprint = JSON.stringify({ projectId, kind, point, director, connectionSource });
       if (mediaProgress.current?.fingerprint !== fingerprint) {
         mediaProgress.current = { fingerprint, createKey: crypto.randomUUID(),
           itemId: crypto.randomUUID() };
@@ -481,13 +486,18 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       return { saved, itemId: pending.itemId, director };
     },
     ...canvasMutationFeedback,
-    onSuccess: ({ saved, itemId, director }) => {
+    onSuccess: ({ saved, itemId, director }, { connectionSource }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
       setSelectedIds([itemId]);
       if (director) setDirectorItem(saved.items.find((item) => item.id === itemId) ?? null);
       mediaProgress.current = null;
       setSaveState("saved");
+      // Placement is already confirmed. A failed connection retries only the relation,
+      // while a failed placement keeps this frozen source in the creation variables.
+      if (connectionSource) connectInput.mutate({ source: connectionSource.sourceCanvasItemId,
+        sourceHandle: "artifact-output", target: itemId, targetHandle: "artifact-input",
+        sourceVersionId: connectionSource.sourceVersionId });
     },
   });
   const mvProgress = useRef(new Map<string, PreparedMediaNode>());
@@ -555,9 +565,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
   });
   const connectInput = useMutation({
-    mutationFn: async (connection: Connection) => {
-      const media = mediaInputConnection(canvas.data?.items ?? [], connection);
-      if (!media) throw new CanvasConnectionError(t("canvas.workspace.unsupportedConnection"));
+    mutationFn: async (connection: Connection & { sourceVersionId?: string }) => {
+      // Creation updates the cache before React renders again; resolve its new target
+      // from the confirmed projection rather than the previous render's item list.
+      const items = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items ?? [];
+      const media = mediaInputConnection(items, connection);
+      if (!media || (connection.sourceVersionId && media.sourceVersionId !== connection.sourceVersionId))
+        throw new CanvasConnectionError(t("canvas.workspace.unsupportedConnection"));
       const targetDraft = await getMediaDraft(projectId, media.targetCanvasItemId);
       await createCanvasConnection(projectId, { ...media, relationType: "MEDIA_INPUT",
         expectedTargetDraftVersion: targetDraft.version });
@@ -687,7 +701,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
   const [connectGesture, setConnectGesture] = useState(false);
   const nodeActionsVisible = draggingIds.length === 0 && !connectGesture;
-  const connectionSource = useRef<{ nodeId: string; handleId: string | null } | null>(null);
+  const connectionSource = useRef<{ nodeId: string; handleId: string | null; media: ConnectionSource | null } | null>(null);
   const connectionTargetRef = useRef<ConnectionTarget | null>(null);
   const trackConnectionTarget = useCallback((candidate: ConnectionTarget | null) => {
     const current = connectionTargetRef.current;
@@ -722,21 +736,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const handleConnectStart = useCallback((_: unknown,
     params: { nodeId: string | null; handleId: string | null }) => {
     connectionSource.current = params.nodeId
-      ? { nodeId: params.nodeId, handleId: params.handleId }
+      ? { nodeId: params.nodeId, handleId: params.handleId,
+        media: mediaInputSource(canvas.data?.items ?? [], params.nodeId, params.handleId) }
       : null;
     trackConnectionTarget(null);
     setConnectGesture(true);
-  }, [trackConnectionTarget]);
-  const handleConnectEnd = useCallback((_: unknown, state: { toHandle?: unknown }) => {
-    const source = connectionSource.current;
-    const target = connectionTargetRef.current;
-    connectionSource.current = null;
-    trackConnectionTarget(null);
-    setConnectGesture(false);
-    if (state.toHandle || !source || !target?.valid) return;
-    connectInputMutate({ source: source.nodeId, sourceHandle: source.handleId,
-      target: target.itemId, targetHandle: target.targetHandle });
-  }, [connectInputMutate, trackConnectionTarget]);
+  }, [canvas.data?.items, trackConnectionTarget]);
 
   const handleToggleSelection = useCallback((itemId: string) => {
     const current = useCanvasStore.getState().selectedIds;
@@ -744,7 +749,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       CANVAS_SELECTION_MODE.MULTIPLE);
   }, [setSelectedIds]);
   const lockedItemIds = useMemo(() => new Set((canvas.data?.items ?? []).filter((item) => item.locked).map((item) => item.id)), [canvas.data?.items]);
-  const openCreationMenu = useCallback((clientX: number, clientY: number, placement?: CreationPoint) => {
+  const openCreationMenu = useCallback((clientX: number, clientY: number, placement?: CreationPoint,
+    connectionSource?: ConnectionSource | null) => {
     const rect = canvasElement.current?.getBoundingClientRect();
     if (!rect) return;
     const point = placement ?? flow.current?.screenToFlowPosition({ x: clientX, y: clientY })
@@ -756,8 +762,30 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     creationMenuReturnFocus.current = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
     setPaneMenu(null);
-    setCreationMenu({ x, y, point, centerAtPoint: placement !== undefined && placement.groupId === undefined });
+    setCreationMenu({ x, y, point, centerAtPoint: placement !== undefined && placement.groupId === undefined,
+      connectionSource });
   }, []);
+  const handleConnectEnd = useCallback((event: MouseEvent | TouchEvent, state: { toHandle?: unknown }) => {
+    const source = connectionSource.current;
+    const pointer = event && ("changedTouches" in event ? event.changedTouches[0] : event);
+    // The release may land somewhere other than the last mousemove, including after auto-pan.
+    if (pointer) trackPointerTarget(pointer.clientX, pointer.clientY);
+    const target = connectionTargetRef.current;
+    connectionSource.current = null;
+    trackConnectionTarget(null);
+    setConnectGesture(false);
+    if (state.toHandle || !source) return;
+    if (target?.valid) {
+      connectInputMutate({ source: source.nodeId, sourceHandle: source.handleId,
+        target: target.itemId, targetHandle: target.targetHandle });
+      return;
+    }
+    if (!pointer) return;
+    const hit = document.elementFromPoint(pointer.clientX, pointer.clientY);
+    // Invalid cards, groups and floating controls are not empty canvas creation targets.
+    if (hit?.closest(".react-flow__node") || !hit?.closest(".react-flow__pane")) return;
+    openCreationMenu(pointer.clientX, pointer.clientY, undefined, source.media);
+  }, [connectInputMutate, openCreationMenu, trackConnectionTarget, trackPointerTarget]);
   const openGroupCreationMenu = useCallback((groupId: string, anchor: HTMLElement) => {
     const members = (canvas.data?.items ?? []).filter((item) => item.groupId === groupId).map((item) => ({
       ...item, ...useCanvasStore.getState().drafts[item.id], ...effectiveNodeSize(item),
@@ -1015,6 +1043,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   function chooseCreationKind(kind: CreationKind, point = creationMenu?.point, centerAtPoint = creationMenu?.centerAtPoint ?? false) {
     if (!point) return;
+    const source = creationMenu?.connectionSource;
+    if (source === null || (source && kind === "TEXT")) return;
     // Center toolbar/empty-state creations without moving the viewport. Pointer placements
     // retain their original top-left anchor so double-clicking remains spatially predictable.
     const size = DEFAULT_ARTIFACT_CARD_SIZES[kind];
@@ -1026,7 +1056,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (kind === "TEXT") {
         setToolsKind(null);
         if (!addTextCard.isPending) addTextCard.mutate({ point: origin });
-      } else addBlankMedia.mutate({ kind, point: origin });
+      } else if (!addBlankMedia.isPending) addBlankMedia.mutate({ kind, point: origin, connectionSource: source });
     };
     // Creating inside a folded group first expands it through the ordinary edit command.
     // Failure stops creation; retries of placement keep the original group and coordinates.
@@ -1189,7 +1219,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             title={t("canvas.edit.failed")} message={organization.actionError.message}>
             <Button variant="ghost" size="xs" onClick={organization.clearActionError}>{t("common.close")}</Button>
           </CanvasErrorNotice> : null}
-          {organization.busy ? <div className="canvas-message" role="status">{t("canvas.edit.pending")}</div> : null}
+          {organization.showPendingNotice ? <div className="canvas-message" role="status">{t("canvas.edit.pending")}</div> : null}
           {canvas.error ? <CanvasErrorNotice error={canvas.error} title={t("canvas.feedback.loadCanvas")} message={workspaceErrorMessage(canvas.error)}>
             <Button variant="ghost" size="xs" type="button" onClick={() => void canvas.refetch()}>{t("common.retryRead")}</Button>
           </CanvasErrorNotice> : null}
@@ -1216,7 +1246,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {saveLayout.error ? <CanvasErrorNotice error={saveLayout.error} title={feedbackTitle(t("canvas.feedback.saveLayout"), layoutErrorIds)} message={workspaceErrorMessage(saveLayout.error)}
             onLocate={layoutErrorIds.some((id) => canvas.data?.items.some((item) => item.id === id)) ? () => locateFeedbackNodes(layoutErrorIds) : undefined} /> : null}
           {connectInput.error ? <CanvasErrorNotice error={connectInput.error} title={feedbackTitle(t("canvas.feedback.connect"), connectionErrorIds)} message={workspaceErrorMessage(connectInput.error)}
-            onLocate={connectionErrorIds.some((id) => canvas.data?.items.some((item) => item.id === id)) ? () => locateFeedbackNodes(connectionErrorIds) : undefined} /> : null}
+            onLocate={connectionErrorIds.some((id) => canvas.data?.items.some((item) => item.id === id)) ? () => locateFeedbackNodes(connectionErrorIds) : undefined}>
+            <Button variant="ghost" size="xs" type="button" disabled={connectInput.isPending}
+              onClick={() => { if (connectInput.variables) connectInput.mutate(connectInput.variables); }}>{t("common.retry")}</Button>
+          </CanvasErrorNotice> : null}
           {removeItem.error ? <CanvasErrorNotice error={removeItem.error} title={feedbackTitle(t("canvas.feedback.remove"), [removeItem.variables?.id])} message={workspaceErrorMessage(removeItem.error)}
             onLocate={canvas.data?.items.some((item) => item.id === removeItem.variables?.id) ? () => locateFeedbackNodes([removeItem.variables!.id]) : undefined} /> : null}
           {toggleLocked.error ? <CanvasErrorNotice error={toggleLocked.error} title={feedbackTitle(t("canvas.feedback.lock"), [toggleLocked.variables?.id])} message={workspaceErrorMessage(toggleLocked.error)}
@@ -1437,9 +1470,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {creationMenu ? <Command loop shouldFilter={false} tabIndex={-1} className="workspace-create-menu h-auto"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>
-          <CommandList label={t("canvas.tools.addCard")}><CommandGroup heading={t(creationMenu.point.groupId ? "canvas.group.addNode" : "canvas.tools.addCard")}>
+          <CommandList label={t("canvas.tools.addCard")}><CommandGroup heading={t(creationMenu.connectionSource === null
+            ? "canvas.workspace.unsupportedConnection" : creationMenu.point.groupId ? "canvas.group.addNode" : "canvas.tools.addCard")}>
           {CREATION_KINDS.map(({ kind, label, icon: CreationIcon }) => <CommandItem key={kind} value={kind}
-            disabled={kind === "TEXT" && addTextCard.isPending}
+            disabled={creationMenu.connectionSource === null || (creationMenu.connectionSource !== undefined && kind === "TEXT")
+              || (kind === "TEXT" ? addTextCard.isPending : addBlankMedia.isPending)}
             onSelect={() => chooseCreationKind(kind, creationMenu?.point)}>
             <CreationIcon size={20} aria-hidden="true" /><span>{label}</span>
           </CommandItem>)}

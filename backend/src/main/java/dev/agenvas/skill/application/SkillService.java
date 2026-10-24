@@ -50,7 +50,7 @@ public final class SkillService {
         reads.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
     }
     public record SkillResponse(UUID id, String title, String description, boolean trashed, boolean builtin, UUID currentVersionId,
-            long version, Instant createdAt, Instant updatedAt) {}
+            long version, Instant createdAt, Instant updatedAt, BuiltinSkillCatalogue.Category category, BuiltinSkillCatalogue.Source builtinSource) {}
     public record Page(List<SkillResponse> items, String nextCursor, int total) {}
     public record DraftResponse(UUID skillId, long version, String skillMd, List<Artifact.Kind> outputKinds,
             List<SkillContent.InputSlot> inputSlots, List<SkillContent.Resource> resources, List<SkillContent.DraftAsset> assets) {}
@@ -65,14 +65,19 @@ public final class SkillService {
             String errorCode, String errorDetail) {}
 
     public Page list(UUID owner, String query, boolean trash, String cursor) {
+        return list(owner, query, trash, cursor, null);
+    }
+    public Page list(UUID owner, String query, boolean trash, String cursor, BuiltinSkillCatalogue.Category category) {
         format.text(query == null ? "" : query, SkillFormat.MAX_TITLE_LENGTH, false);
         SkillRepository.Cursor parsed = parseCursor(cursor);
         ensureBuiltins(owner);
+        // Apply categories before count and cursor pagination, including when personal entries fill an earlier page.
+        var keys = category == null ? builtins.keys() : builtins.keys(category);
         return reads.execute(status -> {
-            var rows = repository.list(owner, query, trash, parsed, PAGE_SIZE + 1, builtins.keys());
+            var rows = repository.list(owner, query, trash, parsed, PAGE_SIZE + 1, keys, category == null);
             var items = rows.stream().limit(PAGE_SIZE).toList();
             String next = rows.size() > PAGE_SIZE ? cursor(items.getLast()) : null;
-            return new Page(items.stream().map(this::response).toList(), next, repository.count(owner, query, trash, builtins.keys()));
+            return new Page(items.stream().map(this::response).toList(), next, repository.count(owner, query, trash, keys, category == null));
         });
     }
     public SkillResponse create(UUID owner, String title, String description) {
@@ -372,8 +377,12 @@ public final class SkillService {
         if (!value.payloadHash().equals(hash)) throw problem(HttpStatus.CONFLICT, "IDEMPOTENCY_KEY_REUSED", ApiMessage.of("api.skill.key-conflict"));
         return response(value);
     }
-    private SkillResponse response(SkillContent.Catalogue value) { return new SkillResponse(value.id(), value.title(), value.description(),
-            value.trashedAt() != null, value.builtinKey() != null, value.currentVersionId(), value.version(), value.createdAt(), value.updatedAt()); }
+    private SkillResponse response(SkillContent.Catalogue value) {
+        var entry = builtins.find(value.builtinKey());
+        return new SkillResponse(value.id(), value.title(), value.description(), value.trashedAt() != null, value.builtinKey() != null,
+                value.currentVersionId(), value.version(), value.createdAt(), value.updatedAt(),
+                entry == null ? null : entry.category(), entry == null ? null : entry.source());
+    }
     private DraftResponse response(SkillContent.Draft value) { var content = value.content(); return new DraftResponse(value.skillId(), value.version(),
             content.skillMd(), content.outputKinds(), content.inputSlots(), content.resources(), content.assets()); }
     private VersionSummary summary(SkillContent.Version value) { return new VersionSummary(value.id(), value.skillId(), value.versionNumber(),

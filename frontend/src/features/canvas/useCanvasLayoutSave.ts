@@ -50,7 +50,7 @@ export function useCanvasLayoutSave(projectId: string,
           width: command.width!, height: command.height!, zIndex: command.zIndex!, groupId: command.groupId };
       }) }, () => {
         for (const { itemId, draft } of submitted) useCanvasStore.getState().clearDraftIfUnchanged(itemId, draft);
-      });
+      }, { showPendingNotice: false });
       return { items: result.items };
     },
     onMutate: () => useCanvasStore.getState().setSaveState("saving"),

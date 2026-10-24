@@ -292,13 +292,23 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     if (popover !== "assetReferences" && popover !== "canvasReferences" && popover !== "libraryReferences") return;
     function fitPicker() {
       const anchor = referencePickerAnchorRef.current;
-      if (!anchor) return;
+      const picker = popoverRef.current;
+      if (!anchor || !picker) return;
       const space = anchor.getBoundingClientRect().top - REFERENCE_PICKER_GAP_PX - PICKER_VIEWPORT_MARGIN_PX;
       if (space > 0) anchor.style.setProperty("--media-reference-picker-space", `${space}px`);
+      // Fixed menus escape the scrolling editor; clamp the menu itself when its
+      // preferred upward position would leave the viewport. Keep the editor anchored.
+      picker.style.translate = "";
+      const bounds = picker.getBoundingClientRect();
+      const left = Math.max(PICKER_VIEWPORT_MARGIN_PX, Math.min(bounds.left, window.innerWidth - PICKER_VIEWPORT_MARGIN_PX - bounds.width));
+      const top = Math.max(PICKER_VIEWPORT_MARGIN_PX, Math.min(bounds.top, window.innerHeight - PICKER_VIEWPORT_MARGIN_PX - bounds.height));
+      picker.style.translate = `${left - bounds.left}px ${top - bounds.top}px`;
     }
     fitPicker();
+    const observer = new ResizeObserver(fitPicker);
+    if (popoverRef.current) observer.observe(popoverRef.current);
     window.addEventListener("resize", fitPicker);
-    return () => window.removeEventListener("resize", fitPicker);
+    return () => { observer.disconnect(); window.removeEventListener("resize", fitPicker); };
   }, [popover]);
 
   useEffect(() => {

@@ -177,5 +177,6 @@ export function useCanvasOrganization({ projectId, items, enabled, selectedIds, 
     toggleGroup, ungroup, moveToGroup, duplicateItems, copyItems, pasteItems,
     duplicateGroup: (groupId: string) => duplicateItems(items.filter((item) => item.groupId === groupId).map((item) => item.id)),
     copiedCount, canPaste: Boolean(clipboard.current), actionError,
-    clearActionError: () => setActionError(null), busy: editing.busy || preparing };
+    clearActionError: () => setActionError(null), busy: editing.busy || preparing,
+    showPendingNotice: editing.showPendingNotice || preparing };
 }

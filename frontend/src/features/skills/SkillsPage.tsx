@@ -4,7 +4,7 @@ import { useEffect,useRef,useState,type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { ApiError,HTTP_STATUS,copySkill,copySkillVersion,createSkill,getSkill,getSkillDraft,getSkillOperation,getSkillVersion,
   listProjects,listSkills,listSkillVersions,publishSkillVersion,retrySkillOperation,saveSkillDraft,skillAssetThumbnailUrl,updateSkill,
-  type CreativeSkill,type LibraryEntry,type SaveSkillDraftRequest,type SkillDraft,type SkillOperation,type SkillVersion } from "../../shared/api/client";
+  type CreativeSkill,type LibraryEntry,type SaveSkillDraftRequest,type SkillDraft,type SkillOperation,type SkillVersion,type SkillCategory } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
@@ -20,6 +20,8 @@ import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitive
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { ToggleGroup,ToggleGroupItem } from "../../shared/ui/primitives/toggle-group";
 import { LibraryBrowser } from "../library/LibraryBrowser";
+import { SkillCategoryFilter } from "./SkillCategoryFilter";
+import { skillCatalogueGroups } from "./skillCategories";
 import "./Skills.css";
 
 const AUTOSAVE_DELAY_MS = 650;
@@ -30,6 +32,7 @@ const MAX_RESOURCES = 8;
 const MAX_ASSETS = 14;
 const MAX_SLOTS = 14;
 const MAX_TITLE_LENGTH = 160;
+const H3_LICENSE = "MiniMax H3 Community License";
 const EMPTY_SKILL_MD = "---\nname: new-skill\ndescription: Describe when this Skill should be used.\n---\n\n# Creative method\n";
 const operationPending = (operation?: SkillOperation) => operation?.status === "ACCEPTED" || operation?.status === "ARCHIVING";
 function editable(draft: SkillDraft): Omit<SaveSkillDraftRequest,"expectedVersion"> {
@@ -40,24 +43,25 @@ export function SkillsPage() {
   const client = useQueryClient();
   const [query,setQuery] = useState("");
   const [trash,setTrash] = useState(false);
+  const [category,setCategory] = useState<SkillCategory>();
   const [selected,setSelected] = useState<CreativeSkill | null>(null);
   const [opened,setOpened] = useState<CreativeSkill[]>([]);
   function openSkill(skill:CreativeSkill) {setSelected(skill);setOpened((current)=>current.some((entry)=>entry.id===skill.id) ? current.map((entry)=>entry.id===skill.id ? skill:entry) : [...current,skill]);}
   const [newTitle,setNewTitle] = useState("");
-  const list = useInfiniteQuery({ queryKey: ["skills",query,trash], initialPageParam: undefined as string | undefined,
-    queryFn: ({pageParam}) => listSkills(query,pageParam,trash), getNextPageParam: (page) => page.nextCursor ?? undefined });
+  const list = useInfiniteQuery({ queryKey: ["skills",query,trash,category], initialPageParam: undefined as string | undefined,
+    queryFn: ({pageParam}) => listSkills(query,pageParam,trash,trash ? undefined:category), getNextPageParam: (page) => page.nextCursor ?? undefined });
   const create = useMutation({ mutationFn: () => createSkill(newTitle.trim()), onSuccess: (skill) => {
     openSkill(skill); setNewTitle(""); void client.invalidateQueries({queryKey:["skills"]});
   }});
   const loadedSkills = list.data?.pages.flatMap((page)=>page.items) ?? [];
   const catalogueGroups = trash
     ? [{label:t("skills.trash"),items:loadedSkills}]
-    : [{label:t("skills.builtin"),items:loadedSkills.filter((skill)=>skill.builtin)},
-      {label:t("skills.title"),items:loadedSkills.filter((skill)=>!skill.builtin)}];
+    : skillCatalogueGroups(loadedSkills);
   return <PageShell title={t("skills.title")} description={t("skills.description")}>
     <div className="skills-layout skills-workspace"><Panel title={trash ? t("skills.trash") : t("skills.active")} className="skills-sidebar" actions={list.data ? <Badge variant="secondary">{list.data.pages[0]?.total ?? 0}</Badge> : undefined}>
       <ToggleGroup className="skills-catalogue-tabs" type="single" variant="outline" size="sm" value={trash ? "trash":"active"} onValueChange={(value)=>{if(value)setTrash(value==="trash");}} aria-label={t("skills.title")}><ToggleGroupItem value="active"><BookOpen aria-hidden />{t("skills.active")}</ToggleGroupItem><ToggleGroupItem value="trash"><Trash aria-hidden />{t("skills.trash")}</ToggleGroupItem></ToggleGroup>
       <FieldGroup className="skills-search"><Field><FieldLabel className="sr-only" htmlFor="skill-search">{t("skills.search")}</FieldLabel><div className="skills-search-control"><MagnifyingGlass aria-hidden /><Input id="skill-search" placeholder={t("skills.search")} value={query} onChange={(event)=>setQuery(event.target.value)} /></div></Field></FieldGroup>
+      {!trash ? <SkillCategoryFilter value={category} onChange={setCategory} /> : null}
       {create.error ? <SkillError error={create.error} /> : null}
       {list.isPending ? <LoadingState label={t("common.loading")} /> : null}
       {list.error ? <SkillError error={list.error} onRefresh={()=>void list.refetch()} /> : null}
@@ -87,7 +91,11 @@ function BuiltinSkillViewer({skill}:{skill:CreativeSkill}) {
   const version=useQuery({queryKey:["skill-version",skill.id,skill.currentVersionId],queryFn:()=>getSkillVersion(skill.id,skill.currentVersionId!),enabled:Boolean(skill.currentVersionId)});
   const [tryOpen,setTryOpen]=useState(false);
   return <Panel title={skill.title} description={skill.description} className="skills-detail-panel skills-builtin-viewer" actions={<StatusBadge>{t("skills.builtin")}</StatusBadge>}>
-    <Notice><p>{t("skills.builtinHint")}</p><a href="https://github.com/zenstory-ai/drama-skills" target="_blank" rel="noreferrer">Drama Skills · MIT</a></Notice>
+    <Notice><p>{t("skills.builtinHint")}</p>{skill.builtinSource ? <>
+      <p><a href={skill.builtinSource.repository} target="_blank" rel="noreferrer">{skill.builtinSource.name}</a>{" · "}
+      <a href={skill.builtinSource.licenseUrl} target="_blank" rel="noreferrer">{skill.builtinSource.license}</a></p>
+      {skill.builtinSource.license === H3_LICENSE ? <p>{t("skills.restrictedLicense")}</p> : null}
+    </> : null}</Notice>
     {version.isPending ? <LoadingState label={t("common.loading")} /> : null}
     {version.error ? <SkillError error={version.error} onRefresh={()=>void version.refetch()} /> : null}
     {version.data ? <SkillVersionPreview version={version.data} actions={<Button onClick={()=>setTryOpen(true)}><ArrowUpRight data-icon="inline-start" />{t("skills.try")}</Button>} /> : null}

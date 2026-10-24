@@ -2,7 +2,7 @@ import { MagicWand } from "@/shared/ui/icons";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
 import { ApiError, cancelVideoPromptOptimization, listSkills, listSkillVersions, listVideoPromptTasks, runVideoPromptOptimization,
-  type Task, type VideoPromptOptimizationRequest } from "../../shared/api/client";
+  type CreativeSkill, type SkillCategory, type Task, type VideoPromptOptimizationRequest } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { Select } from "../../shared/ui/Select";
@@ -11,6 +11,9 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../shared/ui/primitives/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Textarea } from "../../shared/ui/primitives/textarea";
+import { Input } from "../../shared/ui/primitives/input";
+import { SkillCategoryFilter } from "../skills/SkillCategoryFilter";
+import { skillCatalogueGroups } from "../skills/skillCategories";
 import { isMediaTaskRunning, MEDIA_TASK_REFRESH_INTERVAL_MS } from "./mediaTaskState";
 import { taskErrorMessage } from "./taskErrorMessages";
 
@@ -25,16 +28,19 @@ export function VideoPromptOptimizationDialog({ projectId, canvasItemId, prompt,
   const queryKey = ["video-prompt-tasks", projectId, canvasItemId] as const;
   const [skillId, setSkillId] = useState("");
   const [versionId, setVersionId] = useState("");
+  const [category, setCategory] = useState<SkillCategory>();
+  const [search, setSearch] = useState("");
+  const [chosenSkill, setChosenSkill] = useState<CreativeSkill>();
   const [edited, setEdited] = useState<{ taskId: string; value: string } | null>(null);
   const [applyError, setApplyError] = useState(false);
   const command = useRef<{ key: string; request: VideoPromptOptimizationRequest } | null>(null);
   const history = useQuery({ queryKey, queryFn: () => listVideoPromptTasks(projectId, canvasItemId), retry: false,
     refetchInterval: (query) => query.state.data?.some(isMediaTaskRunning) ? MEDIA_TASK_REFRESH_INTERVAL_MS : false });
-  const skills = useInfiniteQuery({ queryKey: ["skills", "video-prompt-picker"], initialPageParam: undefined as string | undefined,
-    queryFn: ({ pageParam }) => listSkills("", pageParam), getNextPageParam: (page) => page.nextCursor ?? undefined, retry: false });
+  const skills = useInfiniteQuery({ queryKey: ["skills", "video-prompt-picker", search, category], initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) => listSkills(search, pageParam, false, category), getNextPageParam: (page) => page.nextCursor ?? undefined, retry: false });
   const choices = skills.data?.pages.flatMap((page) => page.items).filter((skill) => !skill.trashed && skill.currentVersionId) ?? [];
   const versions = useQuery({ queryKey: ["skill-versions", skillId], queryFn: () => listSkillVersions(skillId), enabled: !!skillId, retry: false });
-  const selectedSkill = choices.find((skill) => skill.id === skillId);
+  const selectedSkill = choices.find((skill) => skill.id === skillId) ?? chosenSkill;
   const selectedVersionId = versionId || selectedSkill?.currentVersionId || "";
   const active = history.data?.find(isMediaTaskRunning);
   const latest = history.data?.find((task) => task.input.prompt === prompt);
@@ -67,11 +73,15 @@ export function VideoPromptOptimizationDialog({ projectId, canvasItemId, prompt,
       <FieldGroup>
         <Field><FieldLabel htmlFor={`${id}-source`}>{t("video.optimize.source")}</FieldLabel>
           <Textarea id={`${id}-source`} value={prompt} readOnly rows={3} className="max-h-40" /></Field>
+        <Field><FieldLabel className="sr-only" htmlFor={`${id}-skill-search`}>{t("skills.search")}</FieldLabel>
+          <Input id={`${id}-skill-search`} type="search" placeholder={t("skills.search")} value={search} disabled={busy || uncertain} onChange={(event)=>setSearch(event.target.value)} /></Field>
+        <SkillCategoryFilter value={category} onChange={setCategory} disabled={busy || uncertain} />
         <Field><FieldLabel htmlFor={`${id}-skill`}>{t("video.optimize.skill")}</FieldLabel>
           <Select id={`${id}-skill`} value={skillId} disabled={busy || uncertain || skills.isPending}
-            onChange={(event) => { setSkillId(event.target.value); setVersionId(""); }}>
+            onChange={(event) => { setSkillId(event.target.value); setVersionId(""); setChosenSkill(choices.find((skill)=>skill.id===event.target.value)); }}>
             <option value="">{t("video.optimize.noSkill")}</option>
-            {choices.map((skill) => <option key={skill.id} value={skill.id}>{skill.title}</option>)}
+            {chosenSkill && !choices.some((skill)=>skill.id===chosenSkill.id) ? <option value={chosenSkill.id}>{chosenSkill.title}</option> : null}
+            {skillCatalogueGroups(choices).map((group)=><optgroup key={group.label} label={group.label}>{group.items.map((skill)=><option key={skill.id} value={skill.id}>{skill.title}</option>)}</optgroup>)}
           </Select><FieldDescription>{t("video.optimize.textOnlySkill")}</FieldDescription></Field>
         {skills.isPending ? <LoadingState compact label={t("common.loading")} /> : null}
         {skills.isSuccess && !choices.length ? <p role="status">{t("video.optimize.noPublishedSkills")}</p> : null}

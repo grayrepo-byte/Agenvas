@@ -15,6 +15,7 @@ const MENTION_MENU_OFFSET = 8;
 const MENTION_MENU_MARGIN = 16;
 const MENTION_MENU_HEIGHT_LIMIT = 300;
 const MENTION_ICON_SIZE = 28;
+const MIN_PROMPT_ROWS = 3;
 const PROMPT_DELIMITERS = new RegExp(`(${MENTION_MARKER}|\n)`, "u");
 
 function readPromptEditor(root: HTMLElement) {
@@ -106,7 +107,7 @@ export function PromptMentionEditor({ id, label, placeholder, prompt, mentions, 
     }
   }, [prompt, mentions, references]);
 
-  usePromptContentHeight(editorRef);
+  usePromptContentHeight(editorRef, MIN_PROMPT_ROWS);
 
   useLayoutEffect(() => {
     if (readOnly) {

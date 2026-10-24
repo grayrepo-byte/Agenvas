@@ -220,8 +220,12 @@ function editorLayout() {
   const tileBox = box(tile);
   const rowBox = box(row);
   const promptBox = box(prompt);
+  const model = editor.querySelector(".media-draft-model-trigger");
   const tiles = Array.from(row.querySelectorAll(".workflow-media-tile"), box);
   return { editor: editorBox, toolbar: box(toolbar), prompt: promptBox,
+    minimumPromptHeight: parseFloat(getComputedStyle(prompt).lineHeight) * 3
+      + parseFloat(getComputedStyle(prompt).paddingTop) + parseFloat(getComputedStyle(prompt).paddingBottom),
+    model: { button: box(model), icon: box(model.querySelector("svg")), padding: parseFloat(getComputedStyle(model).paddingLeft) },
     inlineParameters: editor.querySelectorAll("input[type=number]").length,
     geometry: { editorWidth: editorBox.width, editorHeight: editorBox.height,
       tileX: tileBox.x - editorBox.x, tileY: tileBox.y - editorBox.y, tileWidth: tileBox.width, tileHeight: tileBox.height,
@@ -286,6 +290,12 @@ try {
     await cdp("Page.navigate", { url: new URL(`${route}?openai`, baseUrl).href });
     await waitFor(() => Boolean(document.querySelector(".media-draft-reference-add")));
     const ordinary = await page(editorLayout);
+    assert.ok(ordinary.editor.width <= Math.min(768, viewport.width - 32) + tolerance,
+      "The writing panel stays compact on wide canvases and fits narrow screens");
+    assert.ok(ordinary.prompt.height >= ordinary.minimumPromptHeight - tolerance,
+      "A short media prompt keeps three lines of writing space");
+    assert.ok(Math.abs(ordinary.model.icon.x - ordinary.model.button.x - ordinary.model.padding) <= tolerance,
+      "Model content starts at the left padding instead of centering inside its trigger");
     const ordinaryMenu = await openReferenceMenu(".media-draft-reference-add", viewport);
     await dismissPicker();
     for (const workflowQuery of ["", "runninghub"]) {

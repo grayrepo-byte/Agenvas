@@ -18,7 +18,7 @@ Docker Desktop 是让 Agenvas 运行的软件环境；WSL 2 是它在 Windows �
 
 ## 手动安装
 
-Docker Desktop 已就绪时，可以直接使用 [README 中的 CMD 或 PowerShell 一键命令](../../README.md#快速开始)。如果想自行下载部署文件，按下面的步骤操作。
+Docker Desktop 已就绪时，可以直接使用 [README 中的 CMD 或 PowerShell 一键命令](../../README.zh-CN.md#快速开始)。如果想自行下载部署文件，按下面的步骤操作。
 
 ### 1. 安装并打开 Docker Desktop
 

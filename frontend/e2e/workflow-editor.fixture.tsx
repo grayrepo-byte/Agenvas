@@ -95,6 +95,7 @@ window.fetch = async (input, init) => {
   else if (path.endsWith("/queue")) value = { waitingAhead: 2, reason: "WAITING_WORKER" };
   else if (path.endsWith("/run")) value = query.has("task") ? [{
     id: "synthetic-task", projectId, runId: null, kind: capability.kind,
+    input: {}, output: null, attemptNo: 1, cancelRequested: false,
     status: query.get("task"), version: 0, createdAt: now, updatedAt: now,
     errorCode: query.has("longError") ? "Synthetic detail ".repeat(18) : "PROVIDER_SUBMISSION_UNKNOWN",
   }] : [];
