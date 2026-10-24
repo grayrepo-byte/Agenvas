@@ -1,5 +1,5 @@
-import { ArrowLeft, ArrowRight, CircleNotch, Pause, Play, SpeakerHigh, SpeakerSlash } from '@/shared/ui/icons';
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { CaretLeft, CaretRight, CircleNotch, Pause, Play, SpeakerHigh, SpeakerSlash } from '@/shared/ui/icons';
+import { type CSSProperties, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { t, useLocale } from '../../shared/i18n';
 import { Alert, AlertDescription } from '../../shared/ui/primitives/alert';
 import { Button } from '../../shared/ui/primitives/button';
@@ -35,6 +35,9 @@ export function VideoCompositionPlayer({ controller, model, captions, resolution
   const displayPosition = Math.min(state.positionMs, Math.max(0, total - frameTimeMs(1)));
   const text = visibleCompositionCaptions(captions, displayPosition);
   const ready = !disabled && model.timeline.valid && !model.blocked && !state.error;
+  const progressStyle: CSSProperties & { '--playback-progress': string } = {
+    '--playback-progress': `${total > 0 ? Math.min(100, Math.max(0, state.positionMs / total * 100)) : 0}%`,
+  };
   return <div className="video-composition-player">
     <div ref={area} className="video-composition-stage">
       <div className="video-composition-frame" style={{ width: output.width * scale, height: output.height * scale }}>
@@ -50,16 +53,23 @@ export function VideoCompositionPlayer({ controller, model, captions, resolution
     </div>
     <audio ref={music} preload="auto" data-composition-audio="music" /><audio ref={voice} preload="auto" data-composition-audio="voice" />
     <div className="video-composition-transport">
-      <Button type="button" variant="outline" size="icon-sm" aria-label={t(state.playing ? 'video.edit.pauseComposition' : 'video.edit.playComposition')} disabled={!ready}
-        onClick={controller.toggle}>{state.playing ? <Pause /> : <Play />}</Button>
-      <Button type="button" variant="ghost" size="icon-sm" aria-label={t('video.review.previousFrame')} disabled={!ready} onClick={() => { controller.pause(); controller.seek(state.positionMs - frameTimeMs(1)); }}><ArrowLeft /></Button>
-      <Button type="button" variant="ghost" size="icon-sm" aria-label={t('video.review.nextFrame')} disabled={!ready} onClick={() => { controller.pause(); controller.seek(state.positionMs + frameTimeMs(1)); }}><ArrowRight /></Button>
-      <input type="range" aria-label={t('video.edit.compositionProgress')} min={0} max={model.timeline.frames} step={1} value={Math.min(model.timeline.frames, Math.round(state.positionMs * COMPOSITION_FPS / 1000))} disabled={!ready}
+      <input data-slot="video-composition-scrubber" className="video-composition-scrubber" style={progressStyle} type="range" aria-label={t('video.edit.compositionProgress')} min={0} max={model.timeline.frames} step={1} value={Math.min(model.timeline.frames, Math.round(state.positionMs * COMPOSITION_FPS / 1000))} disabled={!ready}
         aria-valuetext={`${videoTimeLabel(state.positionMs / 1000)} / ${videoTimeLabel(total / 1000)}`}
         onChange={(event) => controller.seek(frameTimeMs(event.target.valueAsNumber))} />
-      <span className="video-review-time">{videoTimeLabel(state.positionMs / 1000)} / {videoTimeLabel(total / 1000)}</span>
-      <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={t(state.muted ? 'video.review.unmute' : 'video.review.mute')}
-        onClick={() => controller.setMuted(!state.muted)}>{state.muted ? <SpeakerSlash /> : <SpeakerHigh />}</Button>
+      <div className="video-composition-transport-row">
+        <div className="video-composition-time"><span>{videoTimeLabel(state.positionMs / 1000)}</span><span className="video-composition-time-total">/ {videoTimeLabel(total / 1000)}</span></div>
+        <div className="video-composition-playback-buttons">
+          <Button type="button" variant="ghost" size="icon-sm" title={t('video.review.previousFrame')} aria-label={t('video.review.previousFrame')} disabled={!ready}
+            onClick={() => { controller.pause(); controller.seek(state.positionMs - frameTimeMs(1)); }}><CaretLeft weight="fill" /></Button>
+          <Button className="video-composition-play-button" type="button" variant="secondary" size="icon-sm" title={t(state.playing ? 'video.edit.pauseComposition' : 'video.edit.playComposition')}
+            aria-label={t(state.playing ? 'video.edit.pauseComposition' : 'video.edit.playComposition')} disabled={!ready}
+            onClick={controller.toggle}>{state.playing ? <Pause weight="fill" /> : <Play weight="fill" />}</Button>
+          <Button type="button" variant="ghost" size="icon-sm" title={t('video.review.nextFrame')} aria-label={t('video.review.nextFrame')} disabled={!ready}
+            onClick={() => { controller.pause(); controller.seek(state.positionMs + frameTimeMs(1)); }}><CaretRight weight="fill" /></Button>
+        </div>
+        <Button className="video-composition-volume" type="button" variant="ghost" size="icon-sm" disabled={disabled} title={t(state.muted ? 'video.review.unmute' : 'video.review.mute')}
+          aria-label={t(state.muted ? 'video.review.unmute' : 'video.review.mute')} onClick={() => controller.setMuted(!state.muted)}>{state.muted ? <SpeakerSlash /> : <SpeakerHigh />}</Button>
+      </div>
     </div>
     {state.error ? <Alert variant="destructive"><AlertDescription>{t('video.edit.previewFailed')}
       <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={controller.retry}>{t('media.preview.retry')}</Button></AlertDescription></Alert> : null}
