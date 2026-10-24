@@ -1,4 +1,6 @@
 export const CANVAS_EDITING_ACTION = {
+  SELECT_ALL: "selectAll",
+  DELETE: "delete",
   DUPLICATE: "duplicate", COPY: "copy", PASTE: "paste", UNDO: "undo", REDO: "redo", GROUP: "group", UNGROUP: "ungroup",
 } as const;
 export type CanvasEditingAction = typeof CANVAS_EDITING_ACTION[keyof typeof CANVAS_EDITING_ACTION];
@@ -26,13 +28,17 @@ export function hasOpenCanvasEditingOverlay(document: Document): boolean {
 /** Recognise the user's intent only; listeners decide availability and perform/prevent IO. */
 export function resolveCanvasEditingShortcut(event: ShortcutEvent,
   options: { overlayOpen?: boolean } = {}): CanvasEditingAction | null {
-  if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.repeat || event.altKey
-    || (!event.metaKey && !event.ctrlKey)) return null;
+  if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || event.altKey) return null;
   const target = event.target instanceof Element ? event.target
     : event.target instanceof Node ? event.target.parentElement : null;
   if (target?.closest(EDITABLE_TARGETS)) return null;
   if (options.overlayOpen ?? hasOpenCanvasEditingOverlay(target?.ownerDocument ?? document)) return null;
+  if (event.key === "Backspace" || event.key === "Delete") {
+    return event.metaKey || event.ctrlKey || event.shiftKey ? null : CANVAS_EDITING_ACTION.DELETE;
+  }
+  if (!event.metaKey && !event.ctrlKey) return null;
   switch (event.key.toLowerCase()) {
+    case "a": return event.shiftKey ? null : CANVAS_EDITING_ACTION.SELECT_ALL;
     case "d": return event.shiftKey ? null : CANVAS_EDITING_ACTION.DUPLICATE;
     case "c": return event.shiftKey ? null : CANVAS_EDITING_ACTION.COPY;
     case "v": return event.shiftKey ? null : CANVAS_EDITING_ACTION.PASTE;

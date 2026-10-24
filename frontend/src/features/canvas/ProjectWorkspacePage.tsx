@@ -137,8 +137,6 @@ const AUDIO_PLACEHOLDER_HEIGHTS = new Set([240, AUDIO_CARD_HEIGHT]);
 const MIN_ARTIFACT_CARD_SIZE = 120;
 /** Drop tolerance around a hidden target handle, in flow units: it keeps the same feel on screen at any zoom. */
 const CANVAS_CONNECTION_RADIUS = 80;
-/** Delete and Backspace both delete the selected cards and relation lines; React Flow ignores both while typing in a field. */
-const CANVAS_DELETE_KEY_CODES = ["Backspace", "Delete"];
 const ARTIFACT_LABELS: Record<Artifact["kind"], string> = {
   get TEXT() { return t("common.text"); }, get IMAGE() { return t("common.image"); }, get VIDEO() { return t("common.video"); }, get AUDIO() { return t("common.audio"); },
 };
@@ -206,6 +204,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     members: { id: string; x: number; y: number }[] }>());
   const editorFocusFrame = useRef<number | null>(null);
   const boxSelectionActive = useRef(false);
+  const keyboardDeletionPending = useRef(false);
   const canvasElement = useRef<HTMLElement>(null);
   const viewportMotion = useCanvasViewportMotion(flow, canvasElement);
   const cancelCameraMotion = useCallback(() => {
@@ -353,27 +352,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }, [projectId, queryClient, snapshot.isSuccess]);
 
   const saveLayout = useCanvasLayoutSave(projectId, effectiveNodeSize, editing.execute);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const action = resolveCanvasEditingShortcut(event, { overlayOpen: hasOpenCanvasEditingOverlay(document) });
-      if (!action || organization.busy || saveLayout.isPending || creationMenu || paneMenu) return;
-      // Selected document text keeps native copy, even outside an editable field.
-      if (action === "copy" && window.getSelection()?.toString()) return;
-      const selected = organization.selectedItems.length > 0;
-      if ((action === "undo" && !editing.canUndo) || (action === "redo" && !editing.canRedo)
-        || (action === "paste" && !organization.canPaste)
-        || (["duplicate", "copy", "group", "ungroup"].includes(action) && !selected)) return;
-      event.preventDefault();
-      if (action === "group") organization.requestGroup();
-      else if (action === "ungroup") void organization.ungroup().catch(() => undefined);
-      else if (action === "duplicate") void organization.duplicateItems().catch(() => undefined);
-      else if (action === "copy") void organization.copyItems().catch(() => undefined);
-      else if (action === "paste") void organization.pasteItems().catch(() => undefined);
-      else void editing.replay(action === "undo" ? "UNDO" : "REDO").catch(() => undefined);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [organization, editing, saveLayout.isPending, creationMenu, paneMenu]);
   const removeItem = useMutation({
     mutationFn: (item: CanvasItem) =>
       applyCanvasCommands(projectId, [
@@ -638,7 +616,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const removeItemMutate = removeItem.mutate;
   const toggleLockedMutate = toggleLocked.mutate;
   const editAgentMutate = editAgent.mutate;
-  const removeMediaConnectionMutate = removeMediaConnection.mutate;
+  const removeItemMutateAsync = removeItem.mutateAsync;
+  const removeMediaConnectionMutateAsync = removeMediaConnection.mutateAsync;
   const connectInputMutate = connectInput.mutate;
 
   const handleResizeEnd = useCallback(
@@ -678,19 +657,23 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const deletedIds = new Set(deletedNodes.map((node) => node.id));
       const relations = deletedEdges.filter((edge) =>
         !deletedIds.has(edge.source) && !deletedIds.has(edge.target));
+      // Group edits share one history executor, so ungroup each frame in order.
       for (const node of deletedNodes) {
-        if (node.type === "canvasGroup") {
-          await organization.ungroup(node.data.groupId).catch(() => undefined);
-        } else removeItemMutate(node.data.item);
+        if (node.type === "canvasGroup") await organization.ungroup(node.data.groupId).catch(() => undefined);
       }
+      const removals: Promise<unknown>[] = deletedNodes.flatMap((node) =>
+        node.type === "canvasGroup" ? [] : [removeItemMutateAsync(node.data.item)]);
       for (const edge of relations) {
         const removal = canvasRelationRemoval(canvasConnections.data?.items ?? [], edge);
-        if (removal?.kind === "mediaConnection") removeMediaConnectionMutate(removal);
+        if (removal?.kind === "mediaConnection") removals.push(removeMediaConnectionMutateAsync(removal));
       }
+      // Keep the keyboard gesture pending until every server request settles. Errors
+      // remain on their mutation notices, and React Flow never removes entities locally.
+      await Promise.allSettled(removals);
       return false;
     },
     [canvas.data?.items, canvasConnections.data?.items,
-      removeItemMutate, removeMediaConnectionMutate, organization],
+      removeItemMutateAsync, removeMediaConnectionMutateAsync, organization],
   );
   /**
    * A drop lands on the card under the pointer, so a big card does not require aiming at its left port.
@@ -1005,6 +988,56 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }, [setSelectedEdgeIds, setSelectedIds]);
 
   useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = resolveCanvasEditingShortcut(event, { overlayOpen: hasOpenCanvasEditingOverlay(document) });
+      if (!action || creationMenu || paneMenu) return;
+      // Selected document text keeps native copy, even outside an editable field.
+      if (action === "copy" && window.getSelection()?.toString()) return;
+      // Canvas ownership does not depend on availability. Empty history/clipboard,
+      // pending saves and held keys must never fall through to browser commands.
+      event.preventDefault();
+      if (event.repeat && action !== "selectAll") return;
+      if (action === "selectAll") {
+        if (!canvas.data) return;
+        window.getSelection()?.removeAllRanges();
+        cancelCameraMotion();
+        // Collapsed groups stand in for hidden members, so later group drags
+        // process each card once. Offscreen and locked cards stay selectable.
+        const ids = [...new Set(canvas.data.items.map((item) =>
+          organization.projection.collapsedNodeByMemberId.get(item.id) ?? item.id))];
+        setSelectedIds(ids, ids.length ? CANVAS_SELECTION_MODE.MULTIPLE : CANVAS_SELECTION_MODE.SINGLE);
+        setSelectedEdgeIds([]);
+        return;
+      }
+      if (organization.busy || saveLayout.isPending || removeItem.isPending || removeMediaConnection.isPending
+        || keyboardDeletionPending.current) return;
+      if (action === "delete") {
+        const instance = flow.current;
+        const selectedNodes = nodes.filter((node) => node.selected);
+        const selectedEdges = relationEdges.filter((edge) => edge.selected);
+        if (!instance || (!selectedNodes.length && !selectedEdges.length)) return;
+        keyboardDeletionPending.current = true;
+        void instance.deleteElements({ nodes: selectedNodes, edges: selectedEdges })
+          .catch(() => undefined).finally(() => { keyboardDeletionPending.current = false; });
+        return;
+      }
+      const selected = organization.selectedItems.length > 0;
+      if ((action === "undo" && !editing.canUndo) || (action === "redo" && !editing.canRedo)
+        || (action === "paste" && !organization.canPaste)
+        || (["duplicate", "copy", "group", "ungroup"].includes(action) && !selected)) return;
+      if (action === "group") organization.requestGroup();
+      else if (action === "ungroup") void organization.ungroup().catch(() => undefined);
+      else if (action === "duplicate") void organization.duplicateItems().catch(() => undefined);
+      else if (action === "copy") void organization.copyItems().catch(() => undefined);
+      else if (action === "paste") void organization.pasteItems().catch(() => undefined);
+      else void editing.replay(action === "undo" ? "UNDO" : "REDO").catch(() => undefined);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [organization, editing, saveLayout.isPending, removeItem.isPending, removeMediaConnection.isPending,
+    creationMenu, paneMenu, canvas.data, cancelCameraMotion, setSelectedIds, nodes, relationEdges]);
+
+  useEffect(() => {
     if (creationMenu) creationMenuElement.current?.focus();
   }, [creationMenu]);
 
@@ -1260,7 +1293,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           connectOnClick={false}
           connectionLineType={ConnectionLineType.Bezier}
           connectionRadius={CANVAS_CONNECTION_RADIUS}
-          deleteKeyCode={CANVAS_DELETE_KEY_CODES}
+          deleteKeyCode={null}
           edges={relationEdges}
           edgeTypes={edgeTypes}
           fitView

@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -104,8 +104,11 @@ async function selectNode(id: string) {
     .toHaveClass("selected"));
 }
 
-function press(key: string) {
-  fireEvent.keyDown(document, { key, code: key });
+function press(key: string, options: KeyboardEventInit = {}, target: Document | HTMLElement = document) {
+  const shortcut = createEvent.keyDown(target, { key, code: key, ...options });
+  fireEvent(target, shortcut);
+  fireEvent.keyUp(target, { key, code: key, ...options });
+  return shortcut;
 }
 
 describe("canvas keyboard deletion", () => {
@@ -113,7 +116,7 @@ describe("canvas keyboard deletion", () => {
     canvasCommands.length = 0;
     agentPatches.length = 0;
     revisions.length = 0;
-    useCanvasStore.setState({ selectedIds: [] });
+    useCanvasStore.setState({ selectedIds: [], drafts: {}, saveState: "saved" });
   });
 
   it("removes the selected card through the canvas command API on Backspace", async () => {
@@ -143,5 +146,75 @@ describe("canvas keyboard deletion", () => {
     // 移除卡片保留 Artifact，绑定与引用仍然有效：级联与被选中的关系线都不能写业务关系。
     expect(agentPatches).toHaveLength(0);
     expect(revisions).toHaveLength(0);
+  });
+
+  it("consumes held deletion keys without starting another removal", async () => {
+    stubProject(() => items(true));
+    renderWorkspace();
+    await selectNode("image-card");
+    expect(press("Backspace", { repeat: true }).defaultPrevented).toBe(true);
+    await act(async () => {});
+    expect(canvasCommands).toHaveLength(0);
+    expect(press("Delete").defaultPrevented).toBe(true);
+    await waitFor(() => expect(canvasCommands).toHaveLength(1));
+  });
+
+  it("waits for the server and ignores fresh delete gestures while removal is pending", async () => {
+    stubProject(() => items(true));
+    let finish: () => void = () => {};
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    server.use(http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+      const body = await request.json() as { commands: Array<Record<string, unknown>> };
+      canvasCommands.push(...body.commands);
+      await pending;
+      return HttpResponse.json({ items: items(false).filter((item) => item.id !== "image-card") });
+    }));
+    renderWorkspace();
+    await selectNode("image-card");
+    press("Backspace");
+    await waitFor(() => expect(canvasCommands).toHaveLength(1));
+    expect(document.querySelector(".react-flow__node[data-id='image-card']")).toBeInTheDocument();
+    expect(press("Delete").defaultPrevented).toBe(true);
+    expect(press("Backspace", { repeat: true }).defaultPrevented).toBe(true);
+    await act(async () => {});
+    expect(canvasCommands).toHaveLength(1);
+    finish();
+    await waitFor(() => expect(document.querySelector(".react-flow__node[data-id='image-card']")).not.toBeInTheDocument());
+  });
+
+  it("retains the selected node after failed deletion and never retries on held keys", async () => {
+    stubProject(() => items(true));
+    server.use(http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+      const body = await request.json() as { commands: Array<Record<string, unknown>> };
+      canvasCommands.push(...body.commands);
+      return HttpResponse.json({ code: "SYNTHETIC_FAILURE", title: "Synthetic deletion unavailable" }, { status: 503 });
+    }));
+    renderWorkspace();
+    await selectNode("image-card");
+    expect(press("Delete").defaultPrevented).toBe(true);
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("failed"));
+    expect(document.querySelector(".react-flow__node[data-id='image-card']")).toHaveClass("selected");
+    expect(press("Delete", { repeat: true }).defaultPrevented).toBe(true);
+    await act(async () => {});
+    expect(canvasCommands).toHaveLength(1);
+  });
+
+  it.each(["textarea", "contenteditable"])("preserves native text shortcuts in %s with a node selected", async (kind) => {
+    stubProject(() => items(true));
+    renderWorkspace();
+    await selectNode("image-card");
+    const input = document.createElement(kind === "textarea" ? "textarea" : "div");
+    if (kind === "contenteditable") input.setAttribute("contenteditable", "true");
+    document.querySelector(".workspace-canvas")!.append(input);
+    try {
+      for (const key of ["c", "v", "z", "y", "Backspace", "Delete"]) {
+        expect(press(key, { ctrlKey: key.length === 1 }, input).defaultPrevented).toBe(false);
+      }
+      expect(press("z", { metaKey: true, shiftKey: true }, input).defaultPrevented).toBe(false);
+      expect(press("Backspace", { isComposing: true }, document).defaultPrevented).toBe(false);
+      await act(async () => {});
+      expect(canvasCommands).toHaveLength(0);
+      expect(useCanvasStore.getState().selectedIds).toEqual(["image-card"]);
+    } finally { input.remove(); }
   });
 });
