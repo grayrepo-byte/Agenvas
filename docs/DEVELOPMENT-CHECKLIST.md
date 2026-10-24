@@ -2764,3 +2764,13 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 后端 12 类单测 85 项、真实 PostgreSQL 定向方法 2 项通过，零失败/错误/跳过。前端 6 文件 154 项通过，目录收尾 29 项复验通过（重复用例不累加）；定向 ESLint 与完整前端类型检查通过。CI/release Python 32 项、源码更新脚本 9 项、Node i18n 脚本 6 项通过；Node 24.12.0 下音频节点、3D 导演台及导演聊天工作区三套真实 Chrome 合成验收通过，聊天覆盖四个视口；改动浏览器脚本/夹具 ESLint、夹具独立类型检查及差异空白检查通过。
 - [x] 保留 MCP 受审工具白名单、历史格式/迁移目标、CAS、权限、幂等、协议上限、明确的视觉一致性和具备业务依据的顺序/数量约束。同步规格 §22.1；最终只修改测试、验收夹具及测试规范，没有生产代码、合约、迁移、生成代码或依赖变更。
 - [ ] 本轮全量测试、远端 CI、真实 Provider、其他浏览器及部署未运行；浏览器数据和媒体验证均为隔离合成输入，不操作真实项目。
+
+## 视频节点提示词优化与 Skill 选择
+
+- [x] 视频提示词编辑栏新增优化入口，支持不用 Skill 或选择一个个人/内置 Skill 的固定发布版本。选择与查询不调用模型；结果可编辑，用户明确应用后进入原草稿自动保存/CAS 流程。保留精确媒体提及和输入，草稿或可编辑状态变化时拒绝覆盖并保留结果。
+- [x] 优化只处理文字：冻结所选主说明及全部文字附件，不读取 Skill 图片、输入槽位或其他画布内容，不调用 Agent 工具、不创建媒体结果。界面展示文字使用范围和结果所用 Skill 版本；Mock 显示演示标记。
+- [x] 复用 `TEXT_GENERATION` 的租约、用量、任务事件、响应检查点与取消 fencing；同键重放、异参冲突、同节点活动任务互锁、受理不确定时原命令重试、重新打开恢复状态。API 隐藏 Skill 正文与模型完整响应，新增 V40 仅初始化 `video.optimize-prompt` 功能提示词；无表结构或 jOOQ 变化。
+- [x] 后端 `DirectTextGenerationWorkerTest` 20 项和 `MessageCatalogTest` 2 项通过。真实 PostgreSQL + 假模型的 `VideoPromptPostgresIT` 6 项与 `ImagePromptPostgresIT` 6 项通过，覆盖 Skill/功能提示词固定、回收站禁止新选、无草稿/产物副作用、用量、并发幂等、鉴权/CSRF、取消晚到响应、检查点恢复、引用输出校验及 V39→V40 升级保留旧提示词编辑。
+- [x] 前端 `videoPromptOptimization.test.ts` 6 项、`VideoPromptOptimizationDialog.test.tsx` 5 项、`ImageReversePromptDialog.test.tsx` 7 项通过；`MediaDraftEditor.test.tsx` 原 155 项整文件回归和新增 2 项定向通过，共 175 项唯一用例。验证 Skill/版本提交、显式启动、原命令重试、恢复/取消、读取错误、编辑结果、精确引用回填和并发编辑保护。
+- [x] OpenAPI 生成 TypeScript、类型检查、完整 lint（含四语言/主题检查）、生产构建、差异空白检查通过。同步规格、Skill 设计、领域词汇及 [ADR 0060](adr/0060-video-prompt-optimization.md)。构建保留既有 Vite 配置与大分块提示。
+- [ ] 全量测试、真实模型优化质量、浏览器端到端和部署未运行。假模型与合成 HTTP 验证不能证明真实 Provider 已接通。

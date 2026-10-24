@@ -55,6 +55,7 @@ public record Task(
     public static final String MODEL_RETRY_PROPERTY = "modelRetry";
     public static final String APPROVAL_INPUT_PROPERTY = "agentApprovalId";
     public static final String REQUIRE_EXPLICIT_SELECTION_PROPERTY = "requireExplicitResultSelection";
+    public static final String VIDEO_PROMPT_PURPOSE = "VIDEO_PROMPT_OPTIMIZATION";
     public static final String IMAGE_PROMPT_PURPOSE = "IMAGE_REVERSE_PROMPT";
 
     public boolean isVideoComposition() {
@@ -99,6 +100,13 @@ public record Task(
         return kind == Kind.TEXT_GENERATION && IMAGE_PROMPT_PURPOSE.equals(input.path("purpose").asText());
     }
 
+    /** Prompt assistance returns text without creating a content version or changing the media draft. */
+    public boolean isVideoPromptOptimization() {
+        return kind == Kind.TEXT_GENERATION && VIDEO_PROMPT_PURPOSE.equals(input.path("purpose").asText());
+    }
+
+    public boolean isPromptAssistance() { return isImagePrompt() || isVideoPromptOptimization(); }
+
     /** Only the approval application entry point attaches this server-created identity. */
     public boolean approvedMedia() {
         if (runId == null || kind != Kind.IMAGE_GENERATION
@@ -123,7 +131,7 @@ public record Task(
     public enum Kind {
         /** 调用模型并恢复受控工具回合。 */
         AGENT_TURN,
-        /** 用户直接调用文字模型，生成文字版本或图片反推提示词。 */
+        /** 用户直接调用文字模型，生成文字版本、图片反推或视频优化提示词。 */
         TEXT_GENERATION,
         /** 生成并归档图片。 */
         IMAGE_GENERATION,

@@ -108,6 +108,31 @@ class DirectTextGenerationWorkerTest {
         verify(execution).checkActive();
     }
 
+    @Test
+    void videoPromptAssistanceReturnsTextWithoutCreatingAnArtifact() {
+        input.put("schemaVersion", 4).put("purpose", Task.VIDEO_PROMPT_PURPOSE).put("maxLength", 20000);
+        input.putObject("skillContext").put("name", "Synthetic method").put("skillMd", "Camera guidance");
+        worker.runOnce(WORKER);
+        ArgumentCaptor<JsonNode> output = ArgumentCaptor.forClass(JsonNode.class);
+        verify(tasks).succeed(eq(lease), eq(WORKER), output.capture());
+        assertThat(output.getValue().path("result").path("prompt").asText()).isEqualTo("Finished text");
+        assertThat(output.getValue().path("result").path("mock").asBoolean()).isTrue();
+        verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
+        ArgumentCaptor<List<Message>> messages = ArgumentCaptor.captor();
+        verify(gateway).call(messages.capture(), eq(List.of()), eq(java.util.Map.of()), eq(pinned));
+        assertThat(messages.getValue().get(1).getText()).contains("Camera guidance", "untrusted");
+    }
+
+    @Test
+    void videoPromptAssistanceRejectsAlteredReferenceTokens() {
+        input.put("schemaVersion", 4).put("purpose", Task.VIDEO_PROMPT_PURPOSE).put("maxLength", 20000)
+                .put("prompt", "[[REF_1]] walks");
+        worker.runOnce(WORKER);
+        verify(tasks).fail(lease, WORKER, "MODEL_OUTPUT_INVALID");
+        verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
+        verify(tasks, never()).succeed(any(), anyString(), any());
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {1, 2})
     void callsThePinnedModelWithTheFrozenSchemaSpecificPromptBeforeCheckpointing(int schema) {
