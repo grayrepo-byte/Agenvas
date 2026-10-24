@@ -144,4 +144,4 @@
 .video-edit-range-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-2); }
 .video-edit-range-buttons > button { min-height: 32px; height: auto; font-size: var(--ui-text-xs); padding-inline: 4px; white-space: normal; }
 .video-edit-range-buttons > button:last-child { grid-column: 1 / -1; }
-@media (max-width: 580px) { .video-edit-monitor { height: 275px; min-height: 275px; } }
+@media (max-width: 580px) { .video-edit-monitor { height: auto; min-height: 295px; } }
