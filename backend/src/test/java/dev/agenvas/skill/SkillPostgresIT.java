@@ -83,6 +83,7 @@ class SkillPostgresIT {
     }
     @Autowired IdentityService identities;
     @Autowired SkillService skills;
+    @Autowired dev.agenvas.skill.application.BuiltinSkillCatalogue catalogue;
     @Autowired dev.agenvas.skill.infrastructure.SkillRepository repository;
     @Autowired org.springframework.transaction.support.TransactionTemplate transactions;
     @Autowired LibraryService library;
@@ -100,7 +101,7 @@ class SkillPostgresIT {
         mvc = webAppContextSetup(context).apply(springSecurity()).build();
     }
 
-    @Test void concurrentFirstReadsRegisterEightBuiltinsOnceWithoutChangingPersonalSkills() throws Exception {
+    @Test void concurrentFirstReadsRegisterPackagedBuiltinsOnceWithoutChangingPersonalSkills() throws Exception {
         UUID account = UUID.randomUUID();
         jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
                 .param("id", account).param("login", "builtin-" + account).update();
@@ -114,7 +115,7 @@ class SkillPostgresIT {
             assertThat(second.get().items()).extracting(SkillService.SkillResponse::id)
                     .containsExactlyElementsOf(first.get().items().stream().map(SkillService.SkillResponse::id).toList());
         }
-        assertThat(jdbc.sql("select count(*) from skill_version where owner_id=:owner").param("owner", account).query(Integer.class).single()).isEqualTo(8);
+        assertThat(jdbc.sql("select count(*) from skill_version where owner_id=:owner").param("owner", account).query(Integer.class).single()).isEqualTo(catalogue.entries().size());
         assertThat(skills.getDraft(account, personal.id()).version()).isZero();
         assertThat(skills.get(account, personal.id()).builtin()).isFalse();
         var one = skills.list(account, "short-drama-write", false, null).items().getFirst();
@@ -124,6 +125,40 @@ class SkillPostgresIT {
                 problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
         assertThatThrownBy(() -> skills.getBundle(owner.userId(), one.id(), one.currentVersionId())).isInstanceOfSatisfying(ApiProblemException.class,
                 problem -> assertThat(problem.code()).isEqualTo("SKILL_NOT_FOUND"));
+    }
+
+    @Test void purposeFiltersBeforePaginationAndReturnsCurrentSourceWithoutChangingVersions() throws Exception {
+        UUID account = UUID.randomUUID();
+        jdbc.sql("insert into app_user(id,login_name,password_hash,status,created_at) values (:id,:login,'synthetic-hash','DISABLED',now())")
+                .param("id", account).param("login", "categories-" + account).update();
+        var first = skills.list(account, "", false, null);
+        var h3 = first.items().stream().filter(item -> item.title().contains("h3-prompt-writing")).findFirst().orElseThrow();
+        for (int index = 0; index < 45; index++) skills.create(account, "Recent personal " + index, "Personal method");
+        var filtered = skills.list(account, "", false, null, dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING);
+        assertThat(filtered.total()).isEqualTo(2);
+        assertThat(filtered.nextCursor()).isNull();
+        assertThat(filtered.items()).allSatisfy(item -> {
+            assertThat(item.builtin()).isTrue();
+            assertThat(item.category()).isEqualTo(dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING);
+            assertThat(item.builtinSource().name()).isEqualTo("MiniMax H3");
+        });
+        assertThat(skills.list(account, "可审核", false, null, dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING).total()).isEqualTo(1);
+        assertThat(skills.list(account, "", true, null, dev.agenvas.skill.application.BuiltinSkillCatalogue.Category.ADVERTISING).total()).isZero();
+        assertThat(skills.get(account, h3.id()).currentVersionId()).isEqualTo(h3.currentVersionId());
+        assertThat(skills.getVersion(account, h3.id(), h3.currentVersionId()).resources()).extracting(SkillContent.PublishedResource::path)
+                .contains("references/base-en.txt", "references/ref-en.txt");
+        var accountAuth = authentication(new UsernamePasswordAuthenticationToken(
+                new AdminPrincipal(account, "synthetic-category-user"), null, List.of()));
+        String json = mvc.perform(get("/api/v1/skills").param("category", "PROMPT").with(accountAuth))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var result = mapper.readTree(json);
+        assertThat(result.path("total").asInt()).isEqualTo(1);
+        assertThat(result.at("/items/0/category").asText()).isEqualTo("PROMPT");
+        assertThat(result.at("/items/0/builtinSource/license").asText()).isEqualTo("MiniMax H3 Community License");
+        mvc.perform(get("/api/v1/skills").param("category", "INVALID").with(auth)).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/skills").param("category", "PROMPT")).andExpect(status().isUnauthorized());
+        assertThatThrownBy(() -> skills.getDraft(account, h3.id())).isInstanceOfSatisfying(ApiProblemException.class,
+                problem -> assertThat(problem.code()).isEqualTo("SKILL_BUILTIN_READ_ONLY"));
     }
 
     @Test void immutableVersionReadsUseOneQueryAndKeepPublicationOrderAndAccountScope() {

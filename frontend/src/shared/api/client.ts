@@ -1241,6 +1241,7 @@ function apiFetch(path: string, init: RequestInit): Promise<Response> {
 }
 
 export type CreativeSkill = components["schemas"]["CreativeSkill"];
+export type SkillCategory = components["schemas"]["SkillCategory"];
 export type SkillDraft = components["schemas"]["SkillDraft"];
 export type SkillVersion = components["schemas"]["SkillVersion"];
 export type SkillVersionSummary = components["schemas"]["SkillVersionSummary"];
@@ -1250,10 +1251,11 @@ export type AgentSkillBinding = components["schemas"]["AgentSkillBinding"];
 export type SaveAgentSkillBindingRequest = components["schemas"]["SaveAgentSkillBindingRequest"];
 export type SaveSkillDraftRequest = NonNullable<paths["/api/v1/skills/{skillId}/draft"]["put"]["requestBody"]>["content"]["application/json"];
 
-export function listSkills(query = "", cursor?: string, trash = false) {
+export function listSkills(query = "", cursor?: string, trash = false, category?: SkillCategory) {
   const params = new URLSearchParams({ query });
   if (cursor) params.set("cursor", cursor);
   if (trash) params.set("trash", "true");
+  if (category) params.set("category", category);
   return readJson<components["schemas"]["SkillPage"]>(`/api/v1/skills?${params}`, t("api.errors.requestFailed"));
 }
 export function createSkill(title: string) {

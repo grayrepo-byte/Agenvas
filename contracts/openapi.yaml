@@ -4427,6 +4427,7 @@ paths:
     get:
       operationId: listSkills
       parameters:
+        - {name: category, in: query, description: Filter packaged skills by purpose before pagination; omitted includes personal skills., schema: {$ref: "#/components/schemas/SkillCategory"}}
         - {name: query, in: query, schema: {type: string, maxLength: 160}}
         - {name: cursor, in: query, schema: {type: string, maxLength: 1000}}
         - {name: trash, in: query, schema: {type: boolean, default: false}}
@@ -8599,6 +8600,19 @@ components:
             properties:
               field: {type: string}
               message: {type: string}
+    SkillCategory:
+      type: string
+      enum: [STORY, ADVERTISING, ANIMATION, EXPLAINER, MUSIC, PROMPT]
+    BuiltinSkillSource:
+      type: object
+      additionalProperties: false
+      required: [name, repository, revision, license, licenseUrl]
+      properties:
+        name: {type: string}
+        repository: {type: string, format: uri}
+        revision: {type: string}
+        license: {type: string}
+        licenseUrl: {type: string, format: uri}
     CreativeSkill:
       type: object
       additionalProperties: false
@@ -8609,6 +8623,15 @@ components:
         description: {type: string}
         trashed: {type: boolean}
         builtin: {type: boolean, description: Packaged read-only Skill. It can be selected and tried, but has no editable draft or copy operation.}
+        category:
+          description: Purpose assigned by the current packaged catalogue; null for personal or retired skills. Does not change fixed versions.
+          anyOf:
+            - {$ref: "#/components/schemas/SkillCategory"}
+            - {type: "null"}
+        builtinSource:
+          anyOf:
+            - {$ref: "#/components/schemas/BuiltinSkillSource"}
+            - {type: "null"}
         currentVersionId: {type: [string, "null"], format: uuid}
         version: {type: integer, format: int64, minimum: 0}
         createdAt: {type: string, format: date-time}

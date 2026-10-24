@@ -2064,7 +2064,7 @@
   "templates.cleanupCloseHint": "一時画像を削除できませんでした。再試行するか、画像を保持して閉じられます。",
   "templates.closeKeepingImages": "画像を保持して閉じる",
   "skills.builtin": "内蔵",
-  "skills.builtinHint": "内蔵 Skill はキャンバスカードで原作分析、脚本、ビジュアル設定、絵コンテ、プロンプト、レビューを進めます。Agent で選択できます。",
+  "skills.builtinHint": "内蔵 Skill はキャンバスツール向けの創作手法を提供します。資料を確認し、Agent で選択できます。",
   "skills.title": "マイ Skill",
   "skills.description": "Agent の創作方法、資料、固定参照を管理します。",
   "skills.new": "Skill を作成",
@@ -3368,5 +3368,14 @@
   "settings.director.estimateHint": "テキスト、ツール定義、結果、推定余裕を含みます。",
   "settings.director.scope": "適用範囲",
   "settings.director.scopeValue": "全ディレクター",
-  "settings.director.scopeHint": "全プロジェクトで共有し、データベースに保存します。"
+  "settings.director.scopeHint": "全プロジェクトで共有し、データベースに保存します。",
+  "skills.category": "Skill の分類",
+  "skills.category.all": "すべての分類",
+  "skills.category.story": "ドラマ・物語",
+  "skills.category.advertising": "ブランド・広告",
+  "skills.category.animation": "アニメーション",
+  "skills.category.explainer": "知識解説",
+  "skills.category.music": "ミュージックビデオ",
+  "skills.category.prompt": "プロンプト",
+  "skills.restrictedLicense": "MiniMax H3 Community License には地域、商用利用、再配布に関する条件があります。上流のライセンスを確認してください。"
 }
