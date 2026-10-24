@@ -24,6 +24,65 @@ class RunningHubDefinitionTest {
         var input = mapper.readTree("{\"dynamicValues\":{\"person\":\"a07a49a9-cca1-4730-92ee-b6c3c7c8ab94\"}}");
         assertThat(definition.values(mapper, input, "", null, true).path("strength").asDouble()).isEqualTo(0.5);
     }
+    @Test void optionalCreatorGroupsRoundTripWithoutChangingFieldIdentityOrExecutionValues() {
+        var schema = schema();
+        ((ObjectNode) schema.path("fields").get(0)).put("group", "基础生成");
+        ((ObjectNode) schema.path("fields").get(1)).put("group", "放大输出");
+        var definition = RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION);
+        assertThat(definition.fields()).extracting(RunningHubDefinition.Field::group).containsExactly("基础生成", "放大输出");
+        var roundTrip = RunningHubDefinition.parse(mapper, mapper.valueToTree(definition), Task.Kind.IMAGE_GENERATION);
+        // The JSON contract preserves numeric values, not Jackson's concrete numeric node class.
+        assertThat(mapper.writeValueAsString(roundTrip)).isEqualTo(mapper.writeValueAsString(definition));
+        for (var contract : java.util.List.of(definition, roundTrip)) {
+            var strength = contract.fields().getFirst();
+            assertThat(strength.key()).isEqualTo("strength");
+            assertThat(strength.nodeId()).isEqualTo("3");
+            assertThat(strength.fieldName()).isEqualTo("denoise");
+            assertThat(strength.group()).isEqualTo("基础生成");
+            assertThat(strength.defaultValue().decimalValue()).isEqualByComparingTo("0.5");
+            assertThat(contract.values(mapper, mapper.readTree("{\"dynamicValues\":{\"strength\":0.3}}"), "", null, false))
+                    .isEqualTo(mapper.readTree("{\"strength\":0.3}"));
+        }
+        var parsedFields = RunningHubDefinition.parseFields(mapper, schema.path("fields"));
+        assertThat(mapper.writeValueAsString(parsedFields)).isEqualTo(mapper.writeValueAsString(definition.fields()));
+    }
+    @Test void creatorGroupsAcceptEightyCharactersAndRejectLongOrNonTextValues() {
+        var schema = schema();
+        var field = (ObjectNode) schema.path("fields").get(0);
+        field.put("group", "组".repeat(80));
+        assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).fields().getFirst().group()).hasSize(80);
+        field.put("group", "组".repeat(81));
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        field.put("group", 42);
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+        assertThatThrownBy(() -> RunningHubDefinition.parseFields(mapper, schema.path("fields")))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+    }
+    @Test void publishedFieldsAccept1024AndReject1025() {
+        var schema = schema();
+        var fields = schema.putArray("fields");
+        for (int index = 1; index <= 1024; index++)
+            fields.addObject().put("key", "field" + index).put("label", "Parameter " + index)
+                    .put("nodeId", Integer.toString(index)).put("fieldName", "steps").put("type", "INTEGER");
+        assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).fields()).hasSize(1024);
+        fields.addObject().put("key", "overflow").put("label", "Overflow")
+                .put("nodeId", "1025").put("fieldName", "steps").put("type", "INTEGER");
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+    }
+    @Test void fixedBindingsAccept1024AndReject1025() {
+        var schema = schema();
+        schema.putArray("fields");
+        var bindings = schema.putArray("fixedBindings");
+        for (int index = 1; index <= 1024; index++)
+            bindings.addObject().put("nodeId", Integer.toString(index)).put("fieldName", "steps").put("value", 20);
+        assertThat(RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION).fixedBindings()).hasSize(1024);
+        bindings.addObject().put("nodeId", "1025").put("fieldName", "steps").put("value", 20);
+        assertThatThrownBy(() -> RunningHubDefinition.parse(mapper, schema, Task.Kind.IMAGE_GENERATION))
+                .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+    }
     @Test void serverPromptCompositionKeepsTheDefaultAndRechecksFinalLengths() {
         ObjectNode schema = schema();
         var fields = schema.putArray("fields");

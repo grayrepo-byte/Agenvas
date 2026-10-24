@@ -120,6 +120,29 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     }
 
     @Override
+    public boolean recordProviderFailure(Task current, String workerId, JsonNode output, Instant now) {
+        return dsl.update(TASK).set(TASK.OUTPUT_JSON, JSONB.valueOf(output.toString()))
+                .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1))
+                .where(currentWorkerLease(current.id(), workerId, current.leaseEpoch(), now))
+                .and(TASK.PROJECT_ID.eq(current.projectId())).and(TASK.VERSION.eq(current.version()))
+                .and(TASK.STATUS.in(Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name()))
+                .and(TASK.CANCEL_REQUESTED.isFalse()).execute() == 1;
+    }
+
+    @Override
+    public boolean refreshProviderResultUrls(Task lease, String workerId,
+            dev.agenvas.provider.domain.ProviderResultManifest expected,
+            dev.agenvas.provider.domain.ProviderResultManifest refreshed, Instant now) {
+        return dsl.update(TASK)
+                .set(TASK.PROVIDER_RESULT_MANIFEST, JSONB.valueOf(objectMapper.writeValueAsString(refreshed)))
+                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
+                .and(TASK.PROJECT_ID.eq(lease.projectId())).and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .and(TASK.PROVIDER_REQUEST_ID.isNotNull())
+                .and(TASK.PROVIDER_RESULT_MANIFEST.eq(JSONB.valueOf(objectMapper.writeValueAsString(expected))))
+                .execute() == 1;
+    }
+
+    @Override
     public void bindMediaTask(UUID taskId, MediaCapabilityBinding binding) {
         int changed = dsl.update(TASK)
                 .set(TASK.CAPABILITY_ID, binding.capabilityId())
@@ -415,19 +438,24 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
 
     @Override
     public List<Task> listImagePrompts(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        return listPromptTasks(ownerId, projectId, canvasItemId, Task.IMAGE_PROMPT_PURPOSE);
+    }
+
+    @Override
+    public List<Task> listPromptTasks(UUID ownerId, UUID projectId, UUID canvasItemId, String purpose) {
         return dsl.select(TASK.fields()).from(TASK)
                 .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
                 .where(PROJECT.OWNER_ID.eq(ownerId)).and(TASK.PROJECT_ID.eq(projectId))
                 .and(TASK.RUN_ID.isNull()).and(TASK.KIND.eq(Task.Kind.TEXT_GENERATION.name()))
-                .and(DSL.field("{0}->>'purpose'", String.class, TASK.INPUT_JSON).eq(Task.IMAGE_PROMPT_PURPOSE))
+                .and(DSL.field("{0}->>'purpose'", String.class, TASK.INPUT_JSON).eq(purpose))
                 .and(DSL.field("{0}->>'canvasItemId'", String.class, TASK.INPUT_JSON).eq(canvasItemId.toString()))
                 .orderBy(TASK.CREATED_AT.desc(), TASK.ID.desc()).limit(RECENT_TARGET_TASK_LIMIT)
                 .fetch(row -> mapTask(row.into(TASK)));
     }
 
     @Override
-    public boolean cancelImagePrompt(Task current, Instant now) {
-        if (!current.isImagePrompt()) return false;
+    public boolean cancelPromptTask(Task current, Instant now) {
+        if (!current.isPromptAssistance()) return false;
         return dsl.update(TASK).set(TASK.STATUS, Task.Status.CANCELED.name())
                 .set(TASK.CANCEL_REQUESTED, true).set(TASK.COMPLETED_AT, utc(now))
                 .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1))
@@ -443,6 +471,24 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         return listForTarget(ownerId, projectId, TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID,
                 canvasItemId, TASK.KIND.in(Task.Kind.IMAGE_GENERATION.name(),
                         Task.Kind.VIDEO_GENERATION.name(), Task.Kind.AUDIO_GENERATION.name()));
+    }
+
+    @Override
+    public boolean hasCanvasOwnership(UUID ownerId, UUID projectId, UUID canvasItemId, UUID textArtifactId) {
+        Condition ownership = TASK_ARTIFACT_TARGET.CANVAS_ITEM_ID.eq(canvasItemId)
+                .or(canvasIdentityIn(TASK.INPUT_JSON, canvasItemId))
+                .or(canvasIdentityIn(TASK.OUTPUT_JSON, canvasItemId));
+        if (textArtifactId != null) ownership = ownership.or(TASK_ARTIFACT_TARGET.ARTIFACT_ID.eq(textArtifactId));
+        return dsl.fetchExists(dsl.selectOne().from(TASK)
+                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
+                .leftJoin(TASK_ARTIFACT_TARGET).on(TASK_ARTIFACT_TARGET.TASK_ID.eq(TASK.ID))
+                .where(PROJECT.OWNER_ID.eq(ownerId)).and(TASK.PROJECT_ID.eq(projectId)).and(ownership));
+    }
+
+    private Condition canvasIdentityIn(Field<JSONB> json, UUID itemId) {
+        return DSL.condition("jsonb_path_exists({0}, '$.**.canvasItemId ? (@ == $item)', jsonb_build_object('item', {1}))"
+                        + " or jsonb_path_exists({0}, '$.**.sourceCanvasItemId ? (@ == $item)', jsonb_build_object('item', {1}))",
+                json, DSL.val(itemId.toString()));
     }
 
     private List<Task> listForTarget(UUID ownerId, UUID projectId,
@@ -521,6 +567,32 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .and(TASK.STATUS.eq(Task.Status.READY.name()))
                 .and(TASK.PROVIDER_REQUEST_ID.isNull())
                 .execute() == 1;
+    }
+
+    @Override
+    public boolean cancelLocalProcessing(Task current, Instant now) {
+        if (!current.isCancelableLocalProcessing() || current.runId() != null || current.providerRequestId() != null
+                || !List.of(Task.Status.READY, Task.Status.RUNNING, Task.Status.SUBMITTING).contains(current.status())) return false;
+        var update = dsl.update(TASK).set(TASK.CANCEL_REQUESTED, true)
+                .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1));
+        if (current.status() != Task.Status.SUBMITTING) {
+            // No render may start after cancellation. A claimed pre-submit worker loses its fencing epoch.
+            update = update.set(TASK.STATUS, Task.Status.CANCELED.name()).set(TASK.COMPLETED_AT, utc(now))
+                    .setNull(TASK.LEASE_OWNER).setNull(TASK.LEASE_UNTIL)
+                    .set(TASK.LEASE_EPOCH, TASK.LEASE_EPOCH.plus(1));
+        }
+        // A submitting renderer keeps its epoch so a completion racing cancellation can be archived as history.
+        return update.where(TASK.ID.eq(current.id())).and(TASK.PROJECT_ID.eq(current.projectId()))
+                .and(TASK.VERSION.eq(current.version())).and(TASK.STATUS.eq(current.status().name()))
+                .and(TASK.RUN_ID.isNull()).and(TASK.PROVIDER_REQUEST_ID.isNull())
+                .and(cancelableLocalProcessingCondition()).execute() == 1;
+    }
+
+    private Condition cancelableLocalProcessingCondition() {
+        return TASK.KIND.eq(Task.Kind.VIDEO_GENERATION.name())
+                .and(DSL.condition("jsonb_typeof({0}->'videoComposition') = 'object'", TASK.INPUT_JSON))
+                .or(TASK.KIND.eq(Task.Kind.AUDIO_GENERATION.name())
+                        .and(DSL.condition("jsonb_typeof({0}->'audioTrim') = 'object'", TASK.INPUT_JSON)));
     }
 
     /** 按所有者、项目和任务 ID 读取，避免暴露其他项目资源。 */
@@ -1060,15 +1132,14 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
         return true;
     }
 
-    /** 查找已请求取消且 RUNNING 租约过期的本地任务，不推断 Provider 已取消。 */
+    /** Fixed local editing is also safe to stop; ordinary Provider UNKNOWN remains untouched. */
     @Override
     public List<ExpiredSubmission> findExpiredCanceledRunning(Instant now, int limit) {
         return dsl.select(TASK.ID, TASK.PROJECT_ID, PROJECT.OWNER_ID)
                 .from(TASK)
                 .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
-                .where(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .where(expiredCanceledWork(now))
                 .and(TASK.CANCEL_REQUESTED.isTrue())
-                .and(TASK.LEASE_UNTIL.le(utc(now)))
                 .orderBy(TASK.LEASE_UNTIL, TASK.ID)
                 .limit(limit)
                 .fetch(record -> new ExpiredSubmission(
@@ -1088,10 +1159,17 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .set(TASK.UPDATED_AT, utc(now))
                 .set(TASK.VERSION, TASK.VERSION.plus(1))
                 .where(TASK.ID.eq(taskId))
-                .and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .and(expiredCanceledWork(now))
                 .and(TASK.CANCEL_REQUESTED.isTrue())
-                .and(TASK.LEASE_UNTIL.le(utc(now)))
                 .execute() == 1;
+    }
+
+    private Condition expiredCanceledWork(Instant now) {
+        Condition localProcessing = cancelableLocalProcessingCondition().and(TASK.RUN_ID.isNull()).and(TASK.PROVIDER_REQUEST_ID.isNull());
+        return TASK.STATUS.eq(Task.Status.RUNNING.name()).and(TASK.LEASE_UNTIL.le(utc(now)))
+                .or(localProcessing.and(TASK.STATUS.eq(Task.Status.SUBMITTING.name())).and(TASK.LEASE_UNTIL.le(utc(now))))
+                // The submission recovery scan may win first and clear the expired local lease.
+                .or(localProcessing.and(TASK.STATUS.eq(Task.Status.UNKNOWN.name())).and(TASK.LEASE_UNTIL.isNull()));
     }
 
     /** 将晚到输出按 taskId 与 epoch 唯一保存到旁路历史，不覆盖主任务输出。 */
@@ -1115,6 +1193,16 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
                 .onConflict(TASK_LATE_RESULT.TASK_ID, TASK_LATE_RESULT.LEASE_EPOCH)
                 .doNothing()
                 .execute() == 1;
+    }
+
+    @Override
+    public List<JsonNode> lateResults(UUID ownerId, UUID projectId, UUID taskId) {
+        return dsl.select(TASK_LATE_RESULT.OUTPUT_JSON).from(TASK_LATE_RESULT)
+                .join(TASK).on(TASK.ID.eq(TASK_LATE_RESULT.TASK_ID).and(TASK.PROJECT_ID.eq(TASK_LATE_RESULT.PROJECT_ID)))
+                .join(PROJECT).on(PROJECT.ID.eq(TASK.PROJECT_ID))
+                .where(PROJECT.OWNER_ID.eq(ownerId)).and(TASK.PROJECT_ID.eq(projectId)).and(TASK.ID.eq(taskId))
+                .orderBy(TASK_LATE_RESULT.CREATED_AT, TASK_LATE_RESULT.ID)
+                .fetch(row -> objectMapper.readTree(row.value1().data()));
     }
 
     private Field<JSONB> interruptedAgentOutput() {

@@ -23,6 +23,14 @@ public interface TaskRepository {
     boolean checkpointProviderResults(Task lease, String workerId,
             dev.agenvas.provider.domain.ProviderResultManifest manifest, Instant now);
 
+    /** Safe diagnostics are public progress; protect concurrent updates with both version and worker epoch. */
+    boolean recordProviderFailure(Task current, String workerId, JsonNode output, Instant now);
+
+    /** Replace transport URLs only after the application verifies the frozen result identities. */
+    boolean refreshProviderResultUrls(Task lease, String workerId,
+            dev.agenvas.provider.domain.ProviderResultManifest expected,
+            dev.agenvas.provider.domain.ProviderResultManifest refreshed, Instant now);
+
     /** 写入应用层已校验的 READY 任务。 */
     void create(Task task);
 
@@ -62,11 +70,17 @@ public interface TaskRepository {
     /** Image analysis has no output Artifact target; its immutable input identifies the source card. */
     List<Task> listImagePrompts(UUID ownerId, UUID projectId, UUID canvasItemId);
 
-    /** Stops queued or running image analysis with CAS; this cannot promise provider cancellation. */
-    boolean cancelImagePrompt(Task current, Instant now);
+    /** Text-only assistance is identified by its frozen purpose and source CanvasItem. */
+    List<Task> listPromptTasks(UUID ownerId, UUID projectId, UUID canvasItemId, String purpose);
+
+    /** Stops queued or running prompt assistance with CAS; this cannot promise provider cancellation. */
+    boolean cancelPromptTask(Task current, Instant now);
 
     /** Recent media requests for one CanvasItem, including approved Agent work, newest first. */
     List<Task> listMediaForCanvasItem(UUID ownerId, UUID projectId, UUID canvasItemId);
+
+    /** All historical ownership, including replaced/terminal tasks and secondary output targets. */
+    boolean hasCanvasOwnership(UUID ownerId, UUID projectId, UUID canvasItemId, UUID textArtifactId);
 
     /** All nonterminal direct work, independent of the project's AgentRun slot. */
     List<Task> listActiveDirect(UUID ownerId, UUID projectId);
@@ -77,8 +91,14 @@ public interface TaskRepository {
     /** Cancel an unsubmitted direct task; submitted work requires provider reconciliation. */
     boolean cancelQueuedDirect(UUID projectId, UUID taskId, Instant now);
 
+    /** Cancel only a fixed local editor: fence pre-submit work, or signal the current renderer without losing late-result history. */
+    boolean cancelLocalProcessing(Task current, Instant now);
+
     /** 按所有者和项目共同限定任务读取。 */
     Optional<Task> find(UUID ownerId, UUID projectId, UUID taskId);
+
+    /** Owned exact archives received after cancellation; these do not replace the task's original outcome. */
+    List<JsonNode> lateResults(UUID ownerId, UUID projectId, UUID taskId);
 
     /** 在所有者作用域内读取原任务的外部提交尝试。 */
     List<ProviderAttempt> listProviderAttempts(UUID ownerId, UUID projectId, UUID taskId);

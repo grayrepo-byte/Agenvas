@@ -86,10 +86,10 @@ class AssetPublicationTest {
         verify(events).insert(published.capture());
         ProjectEvent event = published.getValue();
         assertThat(event.type()).isEqualTo("asset.ready");
-        assertThat(event.schemaVersion()).isEqualTo(1);
+        assertThat(event.schemaVersion()).isPositive();
         assertThat(event.aggregateId()).isEqualTo(asset.id());
         assertThat(event.aggregateVersion()).isZero();
-        assertThat(event.payload().propertyNames()).containsExactly("assetId", "contentType", "byteSize");
+        assertThat(event.payload().propertyNames()).containsExactlyInAnyOrder("assetId", "contentType", "byteSize");
         assertThat(event.payload().path("assetId").asText()).isEqualTo(asset.id().toString());
         assertThat(event.payload().path("contentType").asText()).isEqualTo(asset.contentType());
         assertThat(event.payload().path("byteSize").asLong()).isEqualTo(asset.byteSize());

@@ -41,6 +41,20 @@ describe("App routes", () => {
     expect(screen.getByRole("link", { name: "调用日志" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("loads the director settings route and its persisted defaults", async () => {
+    window.history.replaceState({}, "", "/settings/director");
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/director", () => HttpResponse.json({ contextWindowTokens: 1_000_000,
+        compactionThresholdPercent: 50, responseReserveTokens: 8192, summaryTokens: 2048, recentToolRounds: 4,
+        recoveryWindowMinutes: 1440, maxModelRetries: 288, retryMaxDelaySeconds: 300, maxRepairAttempts: 4, version: 1 })),
+    );
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "导演设置" }, { timeout: ROUTE_LOAD_TIMEOUT_MS })).toBeInTheDocument();
+    expect(await screen.findByLabelText("上下文窗口（Token）")).toHaveValue(1_000_000);
+    expect(screen.getByRole("link", { name: "导演设置" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("loads the system logs route and marks its navigation active", async () => {
     window.history.replaceState({}, "", "/settings/logs");
     server.use(

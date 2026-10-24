@@ -19,6 +19,7 @@ import dev.agenvas.task.domain.VideoOperation;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.ProviderResultManifest;
+import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -466,7 +467,17 @@ public class TaskService {
     }
 
     private JsonNode interruptedAgentOutput(Task task) {
-        if (task.kind() != Task.Kind.AGENT_TURN || task.output() == null) return null;
+        if (task.output() == null) return null;
+        if (task.kind() != Task.Kind.AGENT_TURN) {
+            // Media failures retain only the bounded public diagnostic, never an unfinished result payload.
+            if (java.util.Set.of(Task.Kind.IMAGE_GENERATION, Task.Kind.VIDEO_GENERATION, Task.Kind.AUDIO_GENERATION)
+                    .contains(task.kind()) && task.output().hasNonNull("providerFailure")) {
+                ObjectNode diagnostic = objectMapper.createObjectNode();
+                diagnostic.set("providerFailure", task.output().get("providerFailure").deepCopy());
+                return diagnostic;
+            }
+            return null;
+        }
         ObjectNode output = (ObjectNode) task.output().deepCopy();
         JsonNode progress = output.path(AGENT_STREAM_PROPERTY);
         if (progress.isObject() && progress.path("status").asText().equals(AgentStreamStatus.STREAMING.name())) {
@@ -564,7 +575,8 @@ public class TaskService {
             JsonNode finalOutput = output;
             if (current.kind() == Task.Kind.AGENT_TURN && output != null && output.isObject()) {
                 ObjectNode combined = (ObjectNode) output.deepCopy();
-                if (stream(current).isObject()) combined.set(AGENT_STREAM_PROPERTY, stream(current).deepCopy());
+                if (stream(current).isObject() && !stream(current).isEmpty())
+                    combined.set(AGENT_STREAM_PROPERTY, stream(current).deepCopy());
                 if (current.output() != null && current.output().has(Task.MODEL_RETRY_PROPERTY)) {
                     combined.set(Task.MODEL_RETRY_PROPERTY, current.output().get(Task.MODEL_RETRY_PROPERTY).deepCopy());
                 }
@@ -591,6 +603,61 @@ public class TaskService {
     public Optional<ProviderResultManifest> providerResultManifest(Task lease) {
         if (tasks.findById(lease.id()).filter(task -> task.projectId().equals(lease.projectId())).isEmpty()) throw notFound();
         return tasks.providerResultManifest(lease.id());
+    }
+
+    /** A diagnostic never changes task state or grants permission to retry a billable request.
+     * Losing a lease is a best-effort miss here so UNKNOWN recovery can still classify the request. */
+    @Transactional
+    public boolean recordProviderFailure(Task lease, String workerId, ProviderFailure failure) {
+        if (failure == null) return false;
+        String worker = validateWorkerId(workerId);
+        if (tasks.mediaBinding(lease.id()).filter(binding ->
+                MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())).isEmpty()) return false;
+        UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
+        return events.recordChange(ownerId, lease.projectId(), () -> {
+            Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            if (!current.projectId().equals(lease.projectId()) || current.leaseEpoch() != lease.leaseEpoch())
+                return ProjectEventService.Change.unchanged(false);
+            ObjectNode output = current.output() != null && current.output().isObject()
+                    ? (ObjectNode) current.output().deepCopy() : objectMapper.createObjectNode();
+            output.set("providerFailure", objectMapper.valueToTree(failure));
+            if (!tasks.recordProviderFailure(current, worker, output, clock.instant()))
+                return ProjectEventService.Change.unchanged(false);
+            Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            events.append(ownerId, lease.projectId(), taskEvent(updated, updated.providerRequestId() != null));
+            return ProjectEventService.Change.unchanged(true);
+        }).value();
+    }
+
+    /** The result set is immutable; an authenticated query may refresh only its expiring transport URLs.
+     * CAS checks the original private checkpoint, preventing a stale worker from replacing a newer refresh. */
+    @Transactional
+    public void refreshProviderResultUrls(Task lease, String workerId,
+            ProviderResultManifest frozen, ProviderResultManifest refreshed) {
+        if (frozen == null || refreshed == null || frozen.schemaVersion() != refreshed.schemaVersion()
+                || frozen.schemaVersion() != ProviderResultManifest.SCHEMA_VERSION
+                || frozen.results() == null || refreshed.results() == null || frozen.results().isEmpty()
+                || frozen.results().size() != refreshed.results().size()
+                || !java.util.Objects.equals(frozen.usage(), refreshed.usage()))
+            throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
+        for (int index = 0; index < frozen.results().size(); index++) {
+            var original = frozen.results().get(index);
+            var next = refreshed.results().get(index);
+            if (original == null || next == null || original.ordinal() != index || next.ordinal() != index
+                    || !java.util.Objects.equals(original.nodeId(), next.nodeId())
+                    || original.kind() != next.kind() || original.primary() != next.primary()
+                    || !java.util.Objects.equals(original.archiveEntry(), next.archiveEntry())
+                    || !java.util.Objects.equals(original.providerMetadata(), next.providerMetadata())
+                    || next.url() == null || next.url().isBlank())
+                throw validation(ApiMessage.of("api.task-service.the-result-list-has-an-invalid-order-or-media-type"));
+        }
+        if (refreshed.results().stream().mapToLong(result -> result.url().length()).sum() > 96L * 1024 * 1024)
+            throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
+        if (tasks.mediaBinding(lease.id()).filter(binding ->
+                MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())).isEmpty())
+            throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
+        if (!tasks.refreshProviderResultUrls(lease, validateWorkerId(workerId), frozen, refreshed, clock.instant()))
+            throw leaseLost();
     }
 
     /** Immutable download checkpoint under the same fencing epoch, before any result bytes are archived. */
@@ -649,7 +716,9 @@ public class TaskService {
                             lease.input().path("canvasItemId").asText())) {
                 throw validation(ApiMessage.of("api.task-service.card-targets-for-the-media-task-were-inconsistent-with-fixed"));
             }
-            boolean allowTargetSelection = !canceled && !projectArchived && pinnedMediaInputsCurrent(ownerId, lease);
+            boolean explicitSelection = lease.approvedMedia()
+                    && lease.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean(false);
+            boolean allowTargetSelection = !explicitSelection && !canceled && !projectArchived && pinnedMediaInputsCurrent(ownerId, lease);
             boolean selectResult = allowTargetSelection
                     && (lease.runId() != null || canvasItemId != null);
             boolean acknowledgedPoll = requireMediaResultLease(current, lease, workerId, canceled, now);
@@ -664,7 +733,7 @@ public class TaskService {
             output.put("artifactVersionId", result.versionId().toString());
             output.put("selected", result.selected());
             // New output cards have no previous selection or draft to compare with the pinned input.
-            boolean allowAdditionalSelection = !canceled && !projectArchived;
+            boolean allowAdditionalSelection = !explicitSelection && !canceled && !projectArchived;
             output.set("additionalResults", archiveAdditionalResults(ownerId, lease, target, results,
                     allowTargetSelection, allowAdditionalSelection));
             if (providerUsage != null) output.set("providerUsage", providerUsage.deepCopy());
@@ -724,7 +793,8 @@ public class TaskService {
         boolean activeOrUnknown = current.status() == Task.Status.RUNNING
                 || current.status() == Task.Status.SUBMITTING
                 || current.status() == Task.Status.WAITING_PROVIDER
-                || current.status() == Task.Status.UNKNOWN;
+                || current.status() == Task.Status.UNKNOWN
+                || current.status() == Task.Status.CANCELED && current.isCancelableLocalProcessing() && current.cancelRequested();
         boolean acknowledgedPoll = current.status() == Task.Status.RUNNING
                 && current.providerRequestId() != null
                 && current.providerRequestId().equals(lease.providerRequestId());
@@ -741,7 +811,8 @@ public class TaskService {
     private ArtifactService.TaskVersionResult archivePrimaryResult(UUID ownerId, Task lease,
             TaskRepository.ArtifactTarget target, JsonNode content, boolean selectResult) {
         ArtifactService.TaskVersionResult result = artifacts.appendTaskVersionWithinChange(
-                ownerId, lease.projectId(), target.artifactId(), lease.runId(),
+                ownerId, lease.projectId(), target.artifactId(),
+                lease.originatingRunId(),
                 target.expectedCurrentVersionId(), target.expectedArtifactVersion(), content,
                 lease.input().has("mediaInput") ? lease.input().path("mediaInput") : null,
                 selectResult && target.canvasItemId() == null);
@@ -776,7 +847,7 @@ public class TaskService {
                 extraArtifact = artifacts.createTaskMediaIdentityWithinChange(ownerId, lease.projectId(), extra.kind(),
                         "RunningHub " + extra.kind() + " " + (outputIndex + 1));
             }
-            var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(), lease.runId(), null,
+            var extraVersion = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(), extraArtifact.id(), lease.originatingRunId(), null,
                     extraArtifact.version(), extra.content(), lease.input().path("mediaInput"), false);
             var extraCard = canvas.placeTaskMediaOutputWithinChange(ownerId, lease.projectId(), target.canvasItemId(), extraArtifact.id(),
                     outputIndex++, lease.input().path("mediaInput"));
@@ -798,7 +869,7 @@ public class TaskService {
         UUID itemId = UUID.fromString(silent.path("canvasItemId").asText());
         UUID parent = UUID.fromString(silent.path("parentVersionId").asText());
         var version = artifacts.appendTaskVersionWithinChange(ownerId, lease.projectId(),
-                artifactId, lease.runId(), parent, silent.path("artifactVersion").asLong(),
+                artifactId, lease.originatingRunId(), parent, silent.path("artifactVersion").asLong(),
                 extra.content(), lease.input().path("mediaInput"), false);
         canvas.recordTaskMediaVersionWithinChange(ownerId, lease.projectId(), itemId, artifactId, version.versionId());
         boolean selected = allowTargetSelection && canvas.selectTaskResultWithinChange(ownerId, lease.projectId(),
@@ -916,6 +987,8 @@ public class TaskService {
                 && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(errorCode)
                 && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(errorCode)
                 && !"VIDEO_AUDIO_TRACK_MISSING".equals(errorCode)
+                && !"AUDIO_TRIM_INVALID".equals(errorCode)
+                && !"AUDIO_TRIM_OUTPUT_TOO_LARGE".equals(errorCode)
                 && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(errorCode)
                 && !"MEDIA_RELAY_REQUIRED".equals(errorCode)
                 && !ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED.equals(errorCode)
@@ -947,7 +1020,7 @@ public class TaskService {
         });
     }
 
-    /** 仅将 Provider 明确拒绝记为提交失败；超时或断线属于待核对，不能调用此方法。 */
+    /** Provider 明确拒绝或本地编辑已确定停止时记为失败；不确定的外部超时/断线仍须核对。 */
     @Transactional
     public void rejectSubmission(Task lease, String workerId, String errorCode) {
         String normalizedCode = validateErrorCode(errorCode);
@@ -958,6 +1031,11 @@ public class TaskService {
                 throw leaseLost();
             }
             Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            // A local editor's confirmed failure or cancellation cannot have consumed a Provider request.
+            // External rejections keep their existing accounting boundary.
+            if (updated.isCancelableLocalProcessing()
+                    && (updated.status() == Task.Status.CANCELED || updated.status() == Task.Status.FAILED))
+                usage.releaseUnsubmittedMediaTask(ownerId, updated);
             events.append(ownerId, lease.projectId(), taskEvent(updated, true));
             blockWaitingRunForMedia(ownerId, updated);
             return ProjectEventService.Change.unchanged(null);
@@ -1269,6 +1347,31 @@ public class TaskService {
      */
     private boolean pinnedMediaInputsCurrent(UUID ownerId, Task task) {
         JsonNode input = task.input();
+        if (task.isAudioTrim()) {
+            try {
+                UUID sourceId = UUID.fromString(input.path("audioTrim").path("sourceVersionId").asText());
+                var version = artifacts.requireMediaVersionForTask(ownerId, task.projectId(), sourceId, Artifact.Kind.AUDIO);
+                var references = input.path("mediaInput").path("audios");
+                return references.isArray() && references.size() == 1
+                        && sourceId.toString().equals(references.get(0).path("versionId").asText())
+                        && version.artifactId().toString().equals(references.get(0).path("artifactId").asText())
+                        && artifacts.get(ownerId, task.projectId(), version.artifactId()).artifact().archivedAt() == null;
+            } catch (ApiProblemException | IllegalArgumentException unavailable) { return false; }
+        }
+        if (task.isVideoComposition()) {
+            try {
+                for (String field : List.of("videos", "audios")) {
+                    var kind = field.equals("videos") ? Artifact.Kind.VIDEO : Artifact.Kind.AUDIO;
+                    for (JsonNode source : input.path("mediaInput").path(field)) {
+                        var version = artifacts.requireMediaVersionForTask(ownerId, task.projectId(),
+                                UUID.fromString(source.path("versionId").asText()), kind);
+                        if (artifacts.get(ownerId, task.projectId(), version.artifactId()).artifact().archivedAt() != null)
+                            return false;
+                    }
+                }
+                return true;
+            } catch (ApiProblemException | IllegalArgumentException unavailable) { return false; }
+        }
         if (input.has("videoOperation")) {
             try {
                 artifacts.requireMediaVersionForTask(ownerId, task.projectId(), UUID.fromString(

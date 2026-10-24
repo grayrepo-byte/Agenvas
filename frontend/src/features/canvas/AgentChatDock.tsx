@@ -1,4 +1,4 @@
-import { useEffect,useId,useRef,useState,type ReactNode } from "react";
+import { useEffect,useId,useRef,useState } from "react";
 import { cn } from "cn";
 import { ArrowsInSimple,ArrowsOutSimple,Sparkle,X } from "@/shared/ui/icons";
 import { t,useLocale } from "../../shared/i18n";
@@ -16,11 +16,10 @@ export type AgentChatDockProps = {
   loading?: boolean;
   error?: Error | null;
   onRetry?: () => void;
-  controls?: ReactNode;
 };
 
 /** A nonmodal workspace companion: collapsing preserves its drafts and ongoing work. */
-export function AgentChatDock({ data,open,onOpenChange,loading = false,error,onRetry,controls }: AgentChatDockProps) {
+export function AgentChatDock({ data,open,onOpenChange,loading = false,error,onRetry }: AgentChatDockProps) {
   useLocale();
   const panelId = useId();
   const launcher = useRef<HTMLButtonElement>(null);
@@ -29,17 +28,6 @@ export function AgentChatDock({ data,open,onOpenChange,loading = false,error,onR
   const [hasOpened,setHasOpened] = useState(open);
   const wasOpen = useRef(open);
   const previousFocus = useRef<HTMLElement | null>(null);
-  // Each visited Agent keeps its own conversation drafts, configuration CAS base,
-  // and Skill selection. Hidden panels still receive the project's current Run.
-  const cachedPanels = useRef(new Map<string,AgentChatPanelData>());
-  const cachedProject = useRef<string | null>(null);
-  if (data && hasOpened) {
-    if (cachedProject.current !== data.projectId) {
-      cachedPanels.current.clear();
-      cachedProject.current = data.projectId;
-    }
-    cachedPanels.current.set(data.agent.id,data);
-  }
   useEffect(() => {
     if (open) {
       if (!wasOpen.current) previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -87,14 +75,11 @@ export function AgentChatDock({ data,open,onOpenChange,loading = false,error,onR
         }
       }}>
       {hasOpened ? <>
-        {controls && !data ? <div className="agent-chat-dock-controls">{controls}</div> : null}
         {data && loading ? <LoadingState compact label={t("agent.chat.loadingDirector")} /> : null}
         {data && error ? <Alert variant="destructive"><AlertDescription><p>{t("agent.chat.requestFailed")}</p>{onRetry ? <Button variant="outline" size="sm" onClick={onRetry} type="button">{t("common.retry")}</Button> : null}</AlertDescription></Alert> : null}
-        {[...cachedPanels.current.values()].map((cached) => <div key={cached.agent.id} className="agent-chat-dock-agent" hidden={cached.agent.id !== data?.agent.id}>
-          <AgentChatPanel data={cached.agent.id === data?.agent.id ? data : { ...cached,
-            activeRun: data?.activeRun ?? null,canvasNodeCount: data?.canvasNodeCount ?? cached.canvasNodeCount,selectedNodeCount: 0 }} headerActions={headerActions}
-            headingControls={cached.agent.id === data?.agent.id ? controls : undefined} />
-        </div>)}
+        {data ? <div className="agent-chat-dock-agent">
+          <AgentChatPanel key={`${data.projectId}:${data.agent.id}`} data={data} headerActions={headerActions} />
+        </div> : null}
         {!data ? <>
           <header className="agent-chat-dock-loading-header"><h2>{t("agent.chat.directorTitle")}</h2>{headerActions}</header>
           {loading ? <LoadingState label={t("agent.chat.loadingDirector")} /> : error ? <Alert variant="destructive"><AlertDescription>

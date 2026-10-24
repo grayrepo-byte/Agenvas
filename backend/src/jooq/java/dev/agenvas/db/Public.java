@@ -19,12 +19,18 @@ import dev.agenvas.db.tables.AuditDebugSettings;
 import dev.agenvas.db.tables.AuditLogRetentionSettings;
 import dev.agenvas.db.tables.CallLog;
 import dev.agenvas.db.tables.CallLogDebug;
+import dev.agenvas.db.tables.CanvasCharacterBinding;
+import dev.agenvas.db.tables.CanvasCharacterBindingMember;
 import dev.agenvas.db.tables.CanvasConnection;
+import dev.agenvas.db.tables.CanvasEditCommand;
+import dev.agenvas.db.tables.CanvasEditReceipt;
+import dev.agenvas.db.tables.CanvasGroup;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
 import dev.agenvas.db.tables.CanvasItemMediaVersion;
 import dev.agenvas.db.tables.CreativeSkill;
+import dev.agenvas.db.tables.DirectorSettings;
 import dev.agenvas.db.tables.IdempotencyRecord;
 import dev.agenvas.db.tables.InstallationLock;
 import dev.agenvas.db.tables.LibraryCleanup;
@@ -35,6 +41,10 @@ import dev.agenvas.db.tables.LibraryImport;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmProviderConfigCounter;
 import dev.agenvas.db.tables.LlmTurn;
+import dev.agenvas.db.tables.McpAccessToken;
+import dev.agenvas.db.tables.McpOperation;
+import dev.agenvas.db.tables.McpOperationTask;
+import dev.agenvas.db.tables.McpOperationVersion;
 import dev.agenvas.db.tables.MediaCapability;
 import dev.agenvas.db.tables.MediaCapabilityCreateKey;
 import dev.agenvas.db.tables.MediaCapabilityVersion;
@@ -53,6 +63,9 @@ import dev.agenvas.db.tables.MediaTemplateImportCommand;
 import dev.agenvas.db.tables.MediaTemplateImportImage;
 import dev.agenvas.db.tables.MediaTemplateImportSource;
 import dev.agenvas.db.tables.Project;
+import dev.agenvas.db.tables.ProjectCharacter;
+import dev.agenvas.db.tables.ProjectCharacterCommand;
+import dev.agenvas.db.tables.ProjectCharacterRevision;
 import dev.agenvas.db.tables.ProjectEvent;
 import dev.agenvas.db.tables.PromptDefinition;
 import dev.agenvas.db.tables.ProviderAttempt;
@@ -66,6 +79,8 @@ import dev.agenvas.db.tables.SpringSession;
 import dev.agenvas.db.tables.SpringSessionAttributes;
 import dev.agenvas.db.tables.StorageProfile;
 import dev.agenvas.db.tables.StorageSettings;
+import dev.agenvas.db.tables.Storyboard;
+import dev.agenvas.db.tables.StoryboardRevision;
 import dev.agenvas.db.tables.Task;
 import dev.agenvas.db.tables.TaskArtifactTarget;
 import dev.agenvas.db.tables.TaskLateResult;
@@ -104,7 +119,7 @@ public class Public extends SchemaImpl {
     public final AgentConversation AGENT_CONVERSATION = AgentConversation.AGENT_CONVERSATION;
 
     /**
-     * 项目助手配置及会话身份，不作为画布节点或持久素材授权
+     * 项目唯一导演配置；会话、Run 和 Skill 通过稳定身份关联，配置修改使用 CAS
      */
     public final AgentInstance AGENT_INSTANCE = AgentInstance.AGENT_INSTANCE;
 
@@ -175,9 +190,35 @@ public class Public extends SchemaImpl {
     public final CallLogDebug CALL_LOG_DEBUG = CallLogDebug.CALL_LOG_DEBUG;
 
     /**
+     * Applied character snapshots and independent shot review state.
+     */
+    public final CanvasCharacterBinding CANVAS_CHARACTER_BINDING = CanvasCharacterBinding.CANVAS_CHARACTER_BINDING;
+
+    /**
+     * Relational same project revision references and impact lookup for applied
+     * snapshots.
+     */
+    public final CanvasCharacterBindingMember CANVAS_CHARACTER_BINDING_MEMBER = CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER;
+
+    /**
      * 画布卡片关系；输入来源和派生线不代表执行依赖
      */
     public final CanvasConnection CANVAS_CONNECTION = CanvasConnection.CANVAS_CONNECTION;
+
+    /**
+     * 持久紧凑的编辑命令幂等墓碑；历史快照过期后仍拒绝迟到重试重新执行
+     */
+    public final CanvasEditCommand CANVAS_EDIT_COMMAND = CanvasEditCommand.CANVAS_EDIT_COMMAND;
+
+    /**
+     * 每项目最近100次展示编辑的撤销重做凭据；不承担内容或任务回放
+     */
+    public final CanvasEditReceipt CANVAS_EDIT_RECEIPT = CanvasEditReceipt.CANVAS_EDIT_RECEIPT;
+
+    /**
+     * 项目内命名、折叠的画布展示分组；解组保留墓碑以避免身份和版本重用
+     */
+    public final CanvasGroup CANVAS_GROUP = CanvasGroup.CANVAS_GROUP;
 
     /**
      * 画布空间卡片及卡片独立的标题、版本选择与内容选择 epoch
@@ -203,6 +244,11 @@ public class Public extends SchemaImpl {
      * 用户创作 Skill 身份、当前发布版本和回收站状态
      */
     public final CreativeSkill CREATIVE_SKILL = CreativeSkill.CREATIVE_SKILL;
+
+    /**
+     * 管理员维护的全局导演上下文、压缩与恢复设置；新请求读取当前值，已有检查点不改写
+     */
+    public final DirectorSettings DIRECTOR_SETTINGS = DirectorSettings.DIRECTOR_SETTINGS;
 
     /**
      * 按可信身份和作用域记录命令摘要与响应，拒绝同键不同载荷
@@ -253,6 +299,30 @@ public class Public extends SchemaImpl {
      * 固定模型配置版本的持久模型回合，保存完整响应后才执行工具
      */
     public final LlmTurn LLM_TURN = LlmTurn.LLM_TURN;
+
+    /**
+     * User-owned revocable MCP credentials; only the secret hash is stored,
+     * never a project-specific grant.
+     */
+    public final McpAccessToken MCP_ACCESS_TOKEN = McpAccessToken.MCP_ACCESS_TOKEN;
+
+    /**
+     * Committed external write commands; results, business changes and project
+     * events share one transaction.
+     */
+    public final McpOperation MCP_OPERATION = McpOperation.MCP_OPERATION;
+
+    /**
+     * All media tasks accepted by an external command, including every batch
+     * output.
+     */
+    public final McpOperationTask MCP_OPERATION_TASK = McpOperationTask.MCP_OPERATION_TASK;
+
+    /**
+     * Typed provenance for externally created text and archived media versions,
+     * without fake Agent runs.
+     */
+    public final McpOperationVersion MCP_OPERATION_VERSION = McpOperationVersion.MCP_OPERATION_VERSION;
 
     /**
      * 管理员媒体能力身份、可用状态和当前不可变版本
@@ -347,6 +417,22 @@ public class Public extends SchemaImpl {
     public final Project PROJECT = Project.PROJECT;
 
     /**
+     * Stable project characters with independently versioned immutable content.
+     */
+    public final ProjectCharacter PROJECT_CHARACTER = ProjectCharacter.PROJECT_CHARACTER;
+
+    /**
+     * Durable character and binding command replay without repeating draft
+     * mutations.
+     */
+    public final ProjectCharacterCommand PROJECT_CHARACTER_COMMAND = ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND;
+
+    /**
+     * Immutable revisions used by fixed character shot snapshots.
+     */
+    public final ProjectCharacterRevision PROJECT_CHARACTER_REVISION = ProjectCharacterRevision.PROJECT_CHARACTER_REVISION;
+
+    /**
      * 与业务变化同事务提交的项目事件，项目内序号作为 SSE 水位
      */
     public final ProjectEvent PROJECT_EVENT = ProjectEvent.PROJECT_EVENT;
@@ -411,6 +497,16 @@ public class Public extends SchemaImpl {
      * 当前存储配置选择及并发控制版本；已有资产保留原路由
      */
     public final StorageSettings STORAGE_SETTINGS = StorageSettings.STORAGE_SETTINGS;
+
+    /**
+     * 项目分镜制作台的当前修订指针；内容只存在不可变修订中
+     */
+    public final Storyboard STORYBOARD = Storyboard.STORYBOARD;
+
+    /**
+     * 追加式分镜板修订，冻结镜头、精确版本引用与人工复核状态
+     */
+    public final StoryboardRevision STORYBOARD_REVISION = StoryboardRevision.STORYBOARD_REVISION;
 
     /**
      * 持久执行单元；短事务认领、租约及 fencing epoch 保护所有状态写入
@@ -493,12 +589,18 @@ public class Public extends SchemaImpl {
             AuditLogRetentionSettings.AUDIT_LOG_RETENTION_SETTINGS,
             CallLog.CALL_LOG,
             CallLogDebug.CALL_LOG_DEBUG,
+            CanvasCharacterBinding.CANVAS_CHARACTER_BINDING,
+            CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER,
             CanvasConnection.CANVAS_CONNECTION,
+            CanvasEditCommand.CANVAS_EDIT_COMMAND,
+            CanvasEditReceipt.CANVAS_EDIT_RECEIPT,
+            CanvasGroup.CANVAS_GROUP,
             CanvasItem.CANVAS_ITEM,
             CanvasItemMediaInput.CANVAS_ITEM_MEDIA_INPUT,
             CanvasItemMediaInputSource.CANVAS_ITEM_MEDIA_INPUT_SOURCE,
             CanvasItemMediaVersion.CANVAS_ITEM_MEDIA_VERSION,
             CreativeSkill.CREATIVE_SKILL,
+            DirectorSettings.DIRECTOR_SETTINGS,
             IdempotencyRecord.IDEMPOTENCY_RECORD,
             InstallationLock.INSTALLATION_LOCK,
             LibraryCleanup.LIBRARY_CLEANUP,
@@ -509,6 +611,10 @@ public class Public extends SchemaImpl {
             LlmProviderConfig.LLM_PROVIDER_CONFIG,
             LlmProviderConfigCounter.LLM_PROVIDER_CONFIG_COUNTER,
             LlmTurn.LLM_TURN,
+            McpAccessToken.MCP_ACCESS_TOKEN,
+            McpOperation.MCP_OPERATION,
+            McpOperationTask.MCP_OPERATION_TASK,
+            McpOperationVersion.MCP_OPERATION_VERSION,
             MediaCapability.MEDIA_CAPABILITY,
             MediaCapabilityCreateKey.MEDIA_CAPABILITY_CREATE_KEY,
             MediaCapabilityVersion.MEDIA_CAPABILITY_VERSION,
@@ -527,6 +633,9 @@ public class Public extends SchemaImpl {
             MediaTemplateImportImage.MEDIA_TEMPLATE_IMPORT_IMAGE,
             MediaTemplateImportSource.MEDIA_TEMPLATE_IMPORT_SOURCE,
             Project.PROJECT,
+            ProjectCharacter.PROJECT_CHARACTER,
+            ProjectCharacterCommand.PROJECT_CHARACTER_COMMAND,
+            ProjectCharacterRevision.PROJECT_CHARACTER_REVISION,
             ProjectEvent.PROJECT_EVENT,
             PromptDefinition.PROMPT_DEFINITION,
             ProviderAttempt.PROVIDER_ATTEMPT,
@@ -540,6 +649,8 @@ public class Public extends SchemaImpl {
             SpringSessionAttributes.SPRING_SESSION_ATTRIBUTES,
             StorageProfile.STORAGE_PROFILE,
             StorageSettings.STORAGE_SETTINGS,
+            Storyboard.STORYBOARD,
+            StoryboardRevision.STORYBOARD_REVISION,
             Task.TASK,
             TaskArtifactTarget.TASK_ARTIFACT_TARGET,
             TaskLateResult.TASK_LATE_RESULT,

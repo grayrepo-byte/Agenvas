@@ -1,4 +1,4 @@
-import { render,screen } from "@testing-library/react";
+import { render,screen,within } from "@testing-library/react";
 import { useState } from "react";
 import { describe,expect,it } from "vitest";
 import type { RunningHubDefinition } from "../../shared/api/client";
@@ -21,6 +21,20 @@ function Form() {
     <output>{JSON.stringify(values)}</output></>;
 }
 describe("RunningHubForm", () => {
+  it("keeps stage groups, independent duplicate-purpose fields and conditional advanced controls", async () => {
+    const staged: RunningHubDefinition = { ...definition, fields: [
+      { ...definition.fields[0]!, group: "基础生成" },
+      { ...definition.fields[1]!, group: "基础生成" },
+      { ...definition.fields[1]!, key: "outputSound", nodeId: "8", group: "放大输出" },
+      { ...definition.fields[2]!, group: "放大输出" },
+    ] };
+    render(<RunningHubForm definition={staged} values={{ mode: 2 }} prompt="" durationSeconds={null} choices={[]} onChange={() => {}} />);
+    expect(within(screen.getByRole("group", { name: "基础生成" })).getByRole("combobox", { name: "模式 *" })).toBeInTheDocument();
+    expect(screen.getAllByRole("combobox", { name: "保留声音 *" })).toHaveLength(2);
+    expect(within(screen.getAllByRole("group", { name: "放大输出" })[0]!).getByRole("combobox", { name: "保留声音 *" })).toBeInTheDocument();
+    await clickControl(screen.getByText("高级参数"));
+    expect(screen.getByRole("spinbutton", { name: "变化强度 *" })).toBeInTheDocument();
+  });
   it("uses descriptions to distinguish identical node types in saved contracts, keeping technical names on hover", async () => {
     const saved: RunningHubDefinition = { ...definition, fields: [
       { key: "sound", label: "PrimitiveBoolean", description: "是否有声音", type: "BOOLEAN", nodeId: "2", fieldName: "value", required: false, advanced: false, defaultValue: true },

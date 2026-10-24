@@ -14,20 +14,33 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 class GoogleVideoModelsTest {
+    private static final String VEO_MODEL = "veo-3.1-generate-preview";
     private final ObjectMapper mapper = new ObjectMapper();
     private final GoogleVideoModels models = new GoogleVideoModels();
-    @Test void publishesOnlyCurrentModelsAndCompilesOperationSpecificCapabilities() {
-        assertThat(models.profiles()).hasSize(8);
-        assertThat(models.profiles()).extracting(NativeMediaProtocol.Profile::model)
-                .containsOnly("veo-3.1-generate-preview", "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview", "gemini-omni-1.1-flash");
-        assertThat(models.profiles().stream().filter(p -> p.model().contains("lite"))).singleElement()
-                .satisfies(p -> assertThat(models.inputs(p)).noneMatch(f -> f.key().equals("base_video") || f.key().equals("image_1")));
+    @Test void publishesUniqueSupportedProfilesAndCompilesOperationSpecificCapabilities() {
+        assertThat(models.profiles()).isNotEmpty().doesNotHaveDuplicates();
+        for (String model : List.of(VEO_MODEL, "veo-3.1-fast-generate-preview", "veo-3.1-lite-generate-preview")) {
+            assertThat(models.profiles()).contains(new NativeMediaProtocol.Profile(
+                    GoogleVideoModels.VEO, model, "GENERATE", Task.Kind.VIDEO_GENERATION));
+        }
+        for (String model : List.of(VEO_MODEL, "veo-3.1-fast-generate-preview")) {
+            assertThat(models.profiles()).contains(new NativeMediaProtocol.Profile(
+                    GoogleVideoModels.VEO, model, "EXTEND", Task.Kind.VIDEO_GENERATION));
+        }
+        for (String operation : List.of("GENERATE", "EDIT", "EXTEND")) {
+            assertThat(models.profiles()).contains(new NativeMediaProtocol.Profile(
+                    GoogleVideoModels.OMNI, "gemini-omni-1.1-flash", operation, Task.Kind.VIDEO_GENERATION));
+        }
+        var lite = new NativeMediaProtocol.Profile(GoogleVideoModels.VEO, "veo-3.1-lite-generate-preview", "GENERATE", Task.Kind.VIDEO_GENERATION);
+        assertThat(models.inputs(lite)).noneMatch(f -> f.key().equals("base_video") || f.key().equals("image_1"));
+        assertThat(models.profiles()).doesNotContain(new NativeMediaProtocol.Profile(
+                GoogleVideoModels.VEO, lite.model(), "EXTEND", Task.Kind.VIDEO_GENERATION));
         assertThat(models.profiles()).allMatch(p -> models.resultCount(p, mapper.createObjectNode()) == 1);
         assertThat(models.profiles()).allMatch(p -> models.inputs(p).stream().noneMatch(f -> models.usesMediaUrl(p, f)));
         assertThat(models.profiles()).allMatch(p -> !models.declaration(p).originRequired());
     }
     @Test void keepsIncompleteDurationButChecksVeoNativeCombinationsAtAcceptance() {
-        var selected = selected(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var selected = selected(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         ObjectNode values = values(selected, mapper.createObjectNode());
         values.put("durationSeconds", 60);
         NativeMediaProfiles.validateValues(selected, values, false);
@@ -80,14 +93,14 @@ class GoogleVideoModelsTest {
                 .put("video_3", UUID.randomUUID().toString()));
         assertThat(models.renderMention(selected.profile(), values, "image_5")).isEqualTo("<IMAGE_REF_0>");
         assertThat(models.renderMention(selected.profile(), values, "video_3")).isEqualTo("<VIDEO_REF_0>");
-        var veo = selected(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var veo = selected(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         var veoValues = values(veo, mapper.createObjectNode().put("image_3", UUID.randomUUID().toString()));
         assertThat(models.renderMention(veo.profile(), veoValues, "image_3")).isEqualTo("reference image 1");
         values.put("seed", 1.5);
         assertThatThrownBy(() -> NativeMediaProfiles.validateValues(selected, values, true)).isInstanceOf(RuntimeException.class);
     }
     @Test void veoExtensionRequiresImmutableTaskProvenanceAndCannotTrustUserMetadata() {
-        var veo = selected(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "EXTEND").profile();
+        var veo = selected(GoogleVideoModels.VEO, VEO_MODEL, "EXTEND").profile();
         models.validateSource(veo, "base_video", version(ArtifactVersion.CreatedByKind.TASK));
         for (var origin : List.of(ArtifactVersion.CreatedByKind.USER, ArtifactVersion.CreatedByKind.AGENT))
             assertThatThrownBy(() -> models.validateSource(veo, "base_video", version(origin))).isInstanceOf(NativeMediaFailure.class);
@@ -116,7 +129,7 @@ class GoogleVideoModelsTest {
         // Even generated-shaped user content cannot assert the immutable database origin.
         var content = mapper.createObjectNode();
         content.putObject("parameters").putObject("nativeProviderResult").put("adapterId", GoogleVideoModels.VEO)
-                .put("model", GoogleVideoModels.VEO_MODELS.getFirst()).put("connectionId", UUID.randomUUID().toString())
+                .put("model", VEO_MODEL).put("connectionId", UUID.randomUUID().toString())
                 .put("connectionVersion", 1).put("fileName", "files/synthetic-video");
         return new ArtifactVersion(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 1, 1, null, null,
                 content, List.of(), kind, null, Instant.now());

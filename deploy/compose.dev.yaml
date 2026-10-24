@@ -111,6 +111,7 @@ services:
       AGENVAS_DB_PASSWORD_FILE: /run/agenvas/credentials/installation/database-password
       AGENVAS_LLM_MODE: mock
       AGENVAS_LLM_SCHEDULER_ENABLED: "true"
+      # Agent budgets are deployment settings; adjust to the selected model's actual context window.
       AGENVAS_LLM_ALLOW_LOOPBACK_HTTP: "false"
       AGENVAS_CREDENTIAL_MASTER_KEY_FILE: /run/agenvas/credentials/installation/credential-master-key
       AGENVAS_CREDENTIAL_KEY_VERSION: "1"
@@ -120,6 +121,7 @@ services:
       AGENVAS_STORAGE_ROOT: /opt/agenvas/data/assets
       AGENVAS_TASK_LEASE_DURATION: PT30M
       AGENVAS_RECOVERY_MODE: "false"
+      AGENVAS_MCP_ENABLED: "true"
       AGENVAS_SECURE_COOKIES: "false"
     depends_on:
       postgres:

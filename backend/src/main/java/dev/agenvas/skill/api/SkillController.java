@@ -32,8 +32,9 @@ public final class SkillController {
     @GetMapping public SkillService.Page list(@AuthenticationPrincipal AdminPrincipal principal,
             @RequestParam(defaultValue = "") @Size(max = SkillFormat.MAX_TITLE_LENGTH) String query,
             @RequestParam(defaultValue = "false") boolean trash,
-            @RequestParam(required = false) @Size(max = MAX_CURSOR_LENGTH) String cursor) {
-        return skills.list(principal.userId(), query, trash, cursor);
+            @RequestParam(required = false) @Size(max = MAX_CURSOR_LENGTH) String cursor,
+            @RequestParam(required = false) dev.agenvas.skill.application.BuiltinSkillCatalogue.Category category) {
+        return skills.list(principal.userId(), query, trash, cursor, category);
     }
     @PostMapping @ResponseStatus(HttpStatus.CREATED)
     public SkillService.SkillResponse create(@AuthenticationPrincipal AdminPrincipal principal, @Valid @RequestBody CreateRequest request) {

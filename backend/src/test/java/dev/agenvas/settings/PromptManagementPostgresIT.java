@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -78,8 +80,8 @@ class PromptManagementPostgresIT {
 
     @Test void administratorCanCreateAndReadDistinctRecordsAndTheSingletonTableDoesNotExist() throws Exception {
         assertThat(jdbc.sql("select to_regclass('public.agent_default_prompt') is null").query(Boolean.class).single()).isTrue();
-        var payload = mapper.createObjectNode().put("key", "agent.researcher").put("kind", "AGENT")
-                .put("name", "Synthetic researcher").put("content", "Research synthetic inputs").toString();
+        var payload = mapper.createObjectNode().put("key", "feature.analysis")
+                .put("name", "Synthetic analysis").put("content", "Analyze synthetic inputs").toString();
         mvc.perform(post(PATH).with(authentication(asUser("ROLE_ADMIN"))).contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isForbidden());
         mvc.perform(post(PATH).with(authentication(asUser("ROLE_USER"))).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isForbidden());
         var created = mapper.readTree(mvc.perform(post(PATH).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())
@@ -88,35 +90,39 @@ class PromptManagementPostgresIT {
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"));
         mvc.perform(post(PATH).with(authentication(asUser("ROLE_ADMIN"))).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(payload)).andExpect(status().isConflict());
         assertThat(created.path("builtIn").asBoolean()).isFalse();
+        assertThat(created.path("kind").asText()).isEqualTo("FUNCTION");
         mvc.perform(get(PATH + "/" + UUID.randomUUID()).with(authentication(asUser("ROLE_ADMIN")))).andExpect(status().isNotFound());
     }
 
-    @Test void multipleAgentAndFunctionPromptsHaveUniquePurposesAndSafeDeletion() throws Exception {
-        var writer = defaults.create("agent.writer", PromptService.Kind.AGENT, "Synthetic writer", "Text workflow", "Write synthetic drafts");
-        var function = defaults.create("feature.summary", PromptService.Kind.FUNCTION, "Synthetic summary", "Summarization", "Summarize synthetic inputs");
-        var project = projects.create(owner.userId(), "Synthetic presets", Project.AspectRatio.LANDSCAPE_16_9);
-        String creation = mapper.createObjectNode().put("promptKey", writer.key()).toString();
-        var agent = mapper.readTree(mvc.perform(post("/api/v1/projects/" + project.id() + "/agents").with(authentication(asUser("ROLE_USER"))).with(csrf())
-                .contentType(MediaType.APPLICATION_JSON).content(creation)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
-        assertThat(agent.path("name").asText()).isEqualTo(writer.name());
-        assertThat(agent.path("instruction").asText()).isEqualTo(writer.content());
-        assertThatThrownBy(() -> agents.create(owner.userId(), project.id(), null, null, function.key())).isInstanceOf(ApiProblemException.class);
-        assertThatThrownBy(() -> defaults.create(writer.key(), PromptService.Kind.FUNCTION, "duplicate", "", "content"))
+    @Test void functionsHaveUniquePurposesAndCasDeletionWhileTheDirectorCannotBeDeleted() throws Exception {
+        var function = defaults.createFunction("feature.summary", "Synthetic summary", "Summarization", "Summarize synthetic inputs");
+        assertThat(function.kind()).isEqualTo(PromptService.Kind.FUNCTION);
+        assertThat(defaults.list().stream().filter(prompt -> prompt.kind() == PromptService.Kind.AGENT))
+                .extracting(PromptService.Prompt::key).containsExactly(PromptService.DIRECTOR_KEY);
+        assertThatThrownBy(() -> defaults.createFunction(function.key(), "duplicate", "", "content"))
                 .isInstanceOf(ApiProblemException.class);
-        String presets = mvc.perform(get("/api/v1/agent-presets").with(authentication(asUser("ROLE_USER")))).andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
-        assertThat(presets).contains(writer.key()).doesNotContain(function.key(), writer.content(), "content");
-        mvc.perform(get("/api/v1/agent-presets")).andExpect(status().isUnauthorized());
-        defaults.update(writer.id(), writer.version(), "Writer edited", writer.description(), "Updated writer prompt");
-        assertThatThrownBy(() -> defaults.delete(writer.id(), writer.version())).isInstanceOf(ApiProblemException.class);
-        defaults.delete(writer.id(), writer.version() + 1);
-        assertThat(agents.get(owner.userId(), project.id(), UUID.fromString(agent.path("id").asText())).instruction()).isEqualTo(writer.content());
-        assertThat(defaults.agentPresets()).noneMatch(value -> value.key().equals(writer.key()));
+        var changed = defaults.update(function.id(), function.version(), "Summary edited", function.description(), "Updated summary prompt");
+        assertThatThrownBy(() -> defaults.delete(function.id(), function.version())).isInstanceOf(ApiProblemException.class);
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(PATH + "/" + function.id())
-                .param("expectedVersion", Long.toString(function.version())).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())).andExpect(status().isNoContent());
+                .param("expectedVersion", Long.toString(changed.version())).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())).andExpect(status().isNoContent());
         var director = defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT);
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(PATH + "/" + director.id())
                 .param("expectedVersion", Long.toString(director.version())).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())).andExpect(status().isConflict());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"kind", "preset", "presetKey", "promptKey"})
+    void retiredAgentPresetFieldsAreRejectedOnCreationAndUpdate(String field) throws Exception {
+        var create = mapper.createObjectNode().put("key", "feature.rejected").put("name", "Synthetic function")
+                .put("content", "Synthetic content").put(field, "AGENT");
+        mvc.perform(post(PATH).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(create.toString())).andExpect(status().isBadRequest());
+        var director = defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT);
+        var update = mapper.createObjectNode().put("expectedVersion", director.version()).put("name", director.name())
+                .put("content", director.content()).put(field, "AGENT");
+        mvc.perform(put(PATH + "/" + director.id()).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content(update.toString())).andExpect(status().isBadRequest());
+        assertThat(defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT).version()).isEqualTo(director.version());
     }
 
     @Test void administratorSettingsRequireCsrfAndCasAndRejectBlankPrompts() throws Exception {
@@ -135,44 +141,34 @@ class PromptManagementPostgresIT {
         mvc.perform(put(PATH + "/" + defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT).id()).with(authentication(asUser("ROLE_ADMIN"))).with(csrf()).contentType(MediaType.APPLICATION_JSON).content(blank)).andExpect(status().isBadRequest());
     }
 
-    @Test void defaultsAreCopiedOnceAndCreateReplayDoesNotRecalculateOrDuplicate() throws Exception {
+    @Test void directorDefaultsOnlyAffectNewProjectsAndDoNotRewriteExistingConfiguration() {
         var project = projects.create(owner.userId(), "Synthetic defaults", Project.AspectRatio.LANDSCAPE_16_9);
         var preset = updateDirector(defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT).version(), "Synthetic director A", "Synthetic workflow A");
-        String path = "/api/v1/projects/" + project.id() + "/agents";
-        String first = mvc.perform(post(path).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())
-                .header("Idempotency-Key", "synthetic-create-director").contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
-        var original = mapper.readTree(first);
-        assertThat(original.path("name").asText()).isEqualTo(preset.name());
-        assertThat(original.path("instruction").asText()).isEqualTo(preset.content());
+        var original = agents.ensureDirector(owner.userId(), project.id());
+        assertThat(original.name()).isEqualTo(preset.name());
+        assertThat(original.instruction()).isEqualTo(preset.content());
         updateDirector(preset.version(), "Synthetic director B", "Synthetic workflow B");
-        String replay = mvc.perform(post(path).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())
-                .header("Idempotency-Key", "synthetic-create-director").contentType(MediaType.APPLICATION_JSON).content("{}"))
-                .andExpect(status().isCreated()).andExpect(header().string("Idempotency-Replayed", "true")).andReturn().getResponse().getContentAsString();
-        assertThat(mapper.readTree(replay)).isEqualTo(original);
-        assertThat(agents.list(owner.userId(), project.id())).hasSize(1);
-        mvc.perform(post(path).with(authentication(asUser("ROLE_ADMIN"))).with(csrf())
-                .header("Idempotency-Key", "synthetic-create-director").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"name\":\"Changed\"}")).andExpect(status().isConflict());
-        var next = agents.create(owner.userId(), project.id(), null, null);
+        assertThat(agents.ensureDirector(owner.userId(), project.id())).isEqualTo(original);
+        var nextProject = projects.create(owner.userId(), "Synthetic new defaults", Project.AspectRatio.LANDSCAPE_16_9);
+        var next = agents.ensureDirector(owner.userId(), nextProject.id());
         assertThat(next.instruction()).isEqualTo("Synthetic workflow B");
-        var edited = agents.update(owner.userId(), project.id(), next.id(), next.version(), "Custom director", "Custom card prompt");
+        var edited = agents.update(owner.userId(), nextProject.id(), next.id(), next.version(), "Custom director", "Custom project prompt");
         updateDirector(defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT).version(), "Synthetic director C", "Synthetic workflow C");
-        assertThat(agents.get(owner.userId(), project.id(), edited.id()).instruction()).isEqualTo("Custom card prompt");
-        assertThatThrownBy(() -> agents.createIdempotent(UUID.randomUUID(), project.id(), null, null, "synthetic-create-director"))
+        assertThat(agents.ensureDirector(owner.userId(), nextProject.id()).instruction()).isEqualTo("Custom project prompt");
+        assertThatThrownBy(() -> agents.ensureDirector(UUID.randomUUID(), project.id()))
                 .isInstanceOf(ApiProblemException.class);
     }
 
     @Test void activeRunFreezesItsCardPromptAndUsesVersionedSystemMessage() {
         var project = projects.create(owner.userId(), "Synthetic frozen director", Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Synthetic frozen director", "Original card workflow");
+        var agent = dev.agenvas.testing.AgentFixture.configureDirector(agents, owner.userId(), project.id(), "Synthetic frozen director", "Original card workflow");
         var run = runs.create(owner.userId(), project.id(), agent.id(), "Synthetic video request", "synthetic-frozen-director").run();
         agents.update(owner.userId(), project.id(), agent.id(), agent.version(), agent.name(), "Changed card workflow");
         updateDirector(defaults.require(PromptService.DIRECTOR_KEY, PromptService.Kind.AGENT).version(), "Global director", "Changed global workflow");
         var messages = contexts.assemble(owner.userId(), project.id(), run.id());
         assertThat(messages.get(2)).isInstanceOf(org.springframework.ai.chat.messages.SystemMessage.class);
         assertThat(messages.get(2).getText()).isEqualTo("Original card workflow");
-        assertThat(messages.getFirst().getText()).contains("Server-side", "approval checks")
+        assertThat(messages.getFirst().getText()).contains("server permissions", "media approval")
                 .doesNotContain("For image-to-video work", "Preserve narrative and visual continuity");
         assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
     }

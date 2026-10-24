@@ -44,6 +44,13 @@ public final class MockChatGateway implements ChatGateway {
         }
         String instruction = messages.getLast().getText();
         String reply = REPLY_PREFIX + (instruction == null ? "" : instruction);
+        if (toolContext.containsKey(dev.agenvas.llm.application.AgentContextService.CALL_PURPOSE)) {
+            reply = """
+                    {"goal":"Mock handoff; no real model reasoning or work performed",
+                     "completed":[],"decisions":[],"pending":["Continue the mock demonstration"],
+                     "nextSteps":["Return the clearly labelled mock response"],"references":[],"blockers":[]}
+                    """;
+        }
         AssistantMessage assistant = new AssistantMessage(
                 reply.substring(0, Math.min(reply.length(), MAX_REPLY_CHARS)));
         ChatResponseMetadata metadata = ChatResponseMetadata.builder()

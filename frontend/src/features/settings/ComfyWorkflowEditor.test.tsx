@@ -10,7 +10,7 @@ import { changeControl, selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { ComfyWorkflowEditor } from "./ComfyWorkflowEditor";
 import { definition, graph } from "./comfyWorkflowFixture";
-import { comfyParameterKey, comfyWorkflowProblem } from "./comfyWorkflow";
+import { comfyParameterKey, comfyReferenceCount, comfyWorkflowProblem, mapComfyInput } from "./comfyWorkflow";
 
 const stepsParameter: RunningHubField = { key: "input_14_steps", label: "采样步数", type: "INTEGER", nodeId: "14", fieldName: "steps",
   source: "PARAMETER", defaultValue: 20, required: false, advanced: false };
@@ -36,6 +36,44 @@ function Harness({ initial, adapterId = "COMFY_VIDEO_V1" }: { initial?: ComfyUiW
 
 describe("ComfyWorkflowEditor", () => {
   beforeEach(() => server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" }))));
+  it("maps video and audio files independently and reviews each media count before publishing", async () => {
+    const mixed = { ...definition, graph: { ...graph, "14": { ...graph["14"]!, inputs: {
+      ...graph["14"]!.inputs, video_file: "reference.mp4", audio_file: "reference.wav",
+    } } } };
+    render(<Harness initial={mixed} />); const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+    await selectValue(screen.getByRole("combobox", { name: "video_file 的参数来源" }), "REFERENCE_VIDEO");
+    await selectValue(screen.getByRole("combobox", { name: "audio_file 的参数来源" }), "REFERENCE_AUDIO");
+    expect(currentWorkflow().bindings).toEqual(expect.arrayContaining([
+      { nodeId: "14", inputName: "video_file", source: "REFERENCE_VIDEO", referenceIndex: 0 },
+      { nodeId: "14", inputName: "audio_file", source: "REFERENCE_AUDIO", referenceIndex: 0 },
+    ]));
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeEnabled();
+    await changeControl(screen.getByLabelText("video_file 的素材序号"), { target: { value: "2" } });
+    expect(screen.getByRole("button", { name: "Publish fixture" })).toBeDisabled();
+    await changeControl(screen.getByLabelText("video_file 的素材序号"), { target: { value: "1" } });
+    await user.click(screen.getByRole("button", { name: "检查发布配置" }));
+    expect(screen.getByText(/需要 0 张图片、1 段视频、1 段音频/)).toBeVisible();
+    expect(screen.getByRole("group", { name: "画布输入映射" })).toHaveTextContent("参考视频 #1");
+    expect(screen.getByRole("group", { name: "画布输入映射" })).toHaveTextContent("参考音频 #1");
+  });
+
+  it("validates per-kind contiguous numbers and the combined fourteen-slot bound", () => {
+    const mixedGraph = { ...graph, "14": { ...graph["14"]!, inputs: { ...graph["14"]!.inputs,
+      ...Object.fromEntries(Array.from({ length: 15 }, (_, index) => [`media_${index}`, "file"])) } } };
+    let mapped: ComfyUiWorkflowDefinition = { ...definition, graph: mixedGraph };
+    mapped = mapComfyInput(mapped, "14", "media_0", "REFERENCE_VIDEO")!;
+    mapped = mapComfyInput(mapped, "14", "media_1", "REFERENCE_AUDIO")!;
+    expect(comfyReferenceCount(mapped, "REFERENCE_VIDEO")).toBe(1);
+    expect(comfyReferenceCount(mapped, "REFERENCE_AUDIO")).toBe(1);
+    expect(comfyWorkflowProblem(mapped, true)).toBeNull();
+    const tooMany: ComfyUiWorkflowDefinition = { ...definition, graph: mixedGraph, bindings: [...definition.bindings,
+      ...Array.from({ length: 14 }, (_, index) => ({ nodeId: "14", inputName: `media_${index}`, source: "REFERENCE_IMAGE" as const, referenceIndex: index })),
+      { nodeId: "14", inputName: "media_14", source: "REFERENCE_AUDIO", referenceIndex: 0 },
+    ] };
+    expect(comfyWorkflowProblem(tooMany, true)).toContain("合计最多 14");
+  });
+
   it("searches node names, IDs and types without changing the inspected node or its fixed values", async () => {
     render(<Harness initial={definition} />); const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));

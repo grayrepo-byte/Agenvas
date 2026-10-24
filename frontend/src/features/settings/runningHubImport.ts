@@ -1,4 +1,59 @@
-import type { RunningHubDefinition } from "../../shared/api/client";
+import type { RunningHubDefinition, RunningHubField } from "../../shared/api/client";
+import { validRunningHubEditorValue } from "./runningHubEditorValidation";
+
+export const runningHubFieldIdentity = (field: Pick<RunningHubField, "nodeId" | "fieldName">) => `${field.nodeId}:${field.fieldName}`;
+export type RunningHubRemoteChange = {
+  identity: string;
+  before?: RunningHubField;
+  after?: RunningHubField;
+  changes: ("ADDED" | "REMOVED" | "TYPE" | "OPTIONS" | "CONSTRAINTS" | "RESOURCE_FORMAT")[];
+};
+export type RunningHubImportDiff = {
+  baselineAvailable: boolean;
+  fields: RunningHubRemoteChange[];
+  addedNodes: string[];
+  removedNodes: string[];
+};
+
+/** Compare source-derived candidates, never administrator labels or defaults.
+ * Without an older source, only saved bindings can be compared; omissions are not proof of a remote deletion. */
+export function compareRunningHubImports(previous: RunningHubDefinition, next: RunningHubDefinition, baselineAvailable: boolean): RunningHubImportDiff {
+  const before = new Map(previous.fields.map((field) => [runningHubFieldIdentity(field), field]));
+  const after = new Map(next.fields.map((field) => [runningHubFieldIdentity(field), field]));
+  const fields: RunningHubRemoteChange[] = [];
+  for (const [identity, field] of after) {
+    const old = before.get(identity);
+    if (!old) { fields.push({ identity, after: field, changes: ["ADDED"] }); continue; }
+    const changes: RunningHubRemoteChange["changes"] = [];
+    if (old.type !== field.type) changes.push("TYPE");
+    if (JSON.stringify(old.options ?? []) !== JSON.stringify(field.options ?? [])) changes.push("OPTIONS");
+    if (["minimum", "maximum", "maxLength", "required"].some((key) => (old[key as keyof RunningHubField] ?? null) !== (field[key as keyof RunningHubField] ?? null))) changes.push("CONSTRAINTS");
+    if ((old.resourceFormat ?? null) !== (field.resourceFormat ?? null)) changes.push("RESOURCE_FORMAT");
+    if (changes.length) fields.push({ identity, before: old, after: field, changes });
+  }
+  for (const [identity, field] of before) if (!after.has(identity)) fields.push({ identity, before: field, changes: ["REMOVED"] });
+  const oldNodes = new Set(previous.nodeOptions?.map((node) => node.nodeId) ?? []);
+  const newNodes = new Set(next.nodeOptions?.map((node) => node.nodeId) ?? []);
+  return { baselineAvailable, fields,
+    addedNodes: [...newNodes].filter((id) => !oldNodes.has(id)),
+    removedNodes: [...oldNodes].filter((id) => !newNodes.has(id)) };
+}
+
+/** Adoption is explicit and limited to remote input semantics. Stable keys and creator-facing settings stay intact. */
+export function adoptRunningHubMetadata(current: RunningHubField, remote: RunningHubField, fields: readonly RunningHubField[] = []): RunningHubField {
+  if (runningHubMetadataAdoptionConflict(current, remote, fields)) return current;
+  return { ...current, type: remote.type, options: remote.options ?? [], minimum: remote.minimum ?? null,
+    maximum: remote.maximum ?? null, maxLength: remote.maxLength ?? null, required: remote.required,
+    resourceFormat: remote.resourceFormat ?? null };
+}
+
+/** A remote type or constraint must never silently invalidate a manually configured source/default. */
+export function runningHubMetadataAdoptionConflict(current: RunningHubField, remote: RunningHubField, fields: readonly RunningHubField[] = []): "SOURCE" | "DEFAULT" | "CONDITION" | null {
+  if (current.source === "PROMPT" && remote.type !== "STRING" || current.source === "DURATION_SECONDS" && remote.type !== "INTEGER") return "SOURCE";
+  if (current.defaultValue != null && !validRunningHubEditorValue({ ...remote, source: current.source }, current.defaultValue)) return "DEFAULT";
+  if (fields.some((field) => field.enabledWhen?.field === current.key && !validRunningHubEditorValue(remote, field.enabledWhen.value))) return "CONDITION";
+  return null;
+}
 
 /** Re-parse the same target to recover candidates without discarding administrator mappings.
  * Fixed bindings stay fixed; existing keys, labels, constraints, outputs and execution options win. */
@@ -28,16 +83,16 @@ export function importedRunningHubSelection(current: RunningHubDefinition | unde
   const target = (nodeId: string, fieldName: string) => `${nodeId}:${fieldName}`;
   const configured = new Set(current?.fields.map((field) => target(field.nodeId, field.fieldName)) ?? []);
   const recommended = new Set(recommendedFieldKeys);
-  const suggestedTargets = new Set(imported.fields.filter((field) => recommended.has(field.key)).map((field) => target(field.nodeId, field.fieldName)));
+  const suggestedFields = new Map(imported.fields.filter((field) => recommended.has(field.key))
+    .map((field) => [target(field.nodeId, field.fieldName), field]));
   const nodeIds = new Set(current ? selectedNodeIds : []);
   const fieldKeys = new Set(current ? selectedFieldKeys : []);
   for (const field of next.fields) {
     const identity = target(field.nodeId, field.fieldName);
-    if (configured.has(identity) || !suggestedTargets.has(identity)) continue;
+    const suggestion = suggestedFields.get(identity);
+    if (configured.has(identity) || !suggestion) continue;
     // A preserved prompt elsewhere must not silently turn a second text candidate into an exposed parameter.
-    if (!field.source || field.source === "PARAMETER") {
-      if (!["IMAGE", "AUDIO", "VIDEO"].includes(field.type)) continue;
-    }
+    if (suggestion.source === "PROMPT" && field.source !== "PROMPT") continue;
     fieldKeys.add(field.key);
     nodeIds.add(field.nodeId);
   }

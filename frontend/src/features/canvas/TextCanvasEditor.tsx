@@ -13,6 +13,7 @@ import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { readContentText } from "./artifactContent";
 import { useArtifactRevision } from "./useArtifactRevision";
 import type { VersionedArtifact } from "./versionedArtifact";
+import { useCanvasEditingGuard } from "./canvasEditingGuards";
 
 const MAX_TEXT_LENGTH = 20_000;
 
@@ -42,6 +43,13 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
       reviseArtifact(current.projectId, current.id, revision),
   });
   const valid = Boolean(fields.text.trim());
+  useCanvasEditingGuard(artifact.projectId, canvasItemId, async () => {
+    if (status.busy || status.conflict) throw new Error(t("canvas.edit.draftsPending"));
+    if (!status.dirty) return;
+    if (!valid) throw new Error(t("canvas.edit.draftsPending"));
+    await saveAsync({ expectedVersion: base.version, title: base.title,
+      content: { format: fields.format, text: fields.text.trim() } });
+  });
   const [confirmExit, setConfirmExit] = useState(false);
   // Toolbar, footer and Escape must all preserve dirty drafts before leaving.
   function requestExit() {

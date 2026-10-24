@@ -1,0 +1,18 @@
+.video-composition-player { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; gap: var(--ui-space-3); }
+.video-composition-stage { display: flex; flex: 1; align-items: center; justify-content: center; min-width: 0; min-height: 130px; overflow: hidden; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); background: var(--ui-field); }
+.video-composition-frame { position: relative; flex: none; overflow: hidden; background: var(--ui-video-output-background); }
+.video-composition-frame > video { display: block; width: 100%; height: 100%; object-fit: contain; }
+.video-composition-captions { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 0; font-weight: 400; line-height: 1.25; text-align: center; color: var(--ui-video-subtitle-foreground); -webkit-text-stroke-color: var(--ui-video-subtitle-outline); paint-order: stroke fill; pointer-events: none; }
+.video-composition-captions > p { max-width: 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: balance; }
+.video-composition-buffering { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: var(--ui-space-2); background: color-mix(in srgb, var(--ui-video-output-background) 45%, transparent); color: var(--ui-video-subtitle-foreground); font-size: var(--ui-text-xs); }
+.video-composition-buffering svg { width: 18px; height: 18px; }
+.video-composition-transport { display: flex; flex: none; flex-direction: column; min-width: 0; container-type: inline-size; container-name: video-transport; }
+.video-composition-transport-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--ui-space-2); min-height: 32px; }
+.video-composition-time { display: flex; align-items: baseline; gap: var(--ui-space-2); color: var(--ui-text-secondary); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: var(--ui-text-xs); font-variant-numeric: tabular-nums; line-height: 1.4; white-space: nowrap; }
+.video-composition-time-total { color: var(--ui-text-subtle); }
+.video-composition-playback-buttons { display: flex; align-items: center; justify-content: center; gap: var(--ui-space-2); }
+.video-composition-playback-buttons > button { color: var(--ui-text-muted); }
+.video-composition-playback-buttons > .video-composition-play-button { border: 1px solid var(--ui-border); border-radius: 50%; background: var(--ui-surface-raised); color: var(--ui-text); }
+.video-composition-playback-buttons > .video-composition-play-button:hover { border-color: var(--ui-border-strong); background: var(--ui-hover); }
+.video-composition-volume { justify-self: end; color: var(--ui-text-muted); }
+@container video-transport (max-width: 430px) { .video-composition-time { flex-direction: column; align-items: flex-start; gap: 0; font-size: 10px; } .video-composition-playback-buttons { gap: var(--ui-space-1); } }

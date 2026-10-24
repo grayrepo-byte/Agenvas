@@ -116,6 +116,23 @@ public class ApiExceptionHandler {
                 null);
     }
 
+    /** Removed routes are client errors; they must not fall through to the generic 500 handler. */
+    @ExceptionHandler({org.springframework.web.servlet.NoHandlerFoundException.class,
+            org.springframework.web.servlet.resource.NoResourceFoundException.class})
+    ResponseEntity<ProblemDetail> handleMissingEndpoint(Exception exception, HttpServletRequest request) {
+        ApiMessage message = ApiMessage.of("api.api-exception-handler.endpoint-not-found");
+        return build(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", message, message, false, request, null);
+    }
+
+    /** Preserve HTTP method negotiation, including Allow, after an obsolete operation is removed. */
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    ResponseEntity<ProblemDetail> handleUnsupportedMethod(
+            org.springframework.web.HttpRequestMethodNotSupportedException exception, HttpServletRequest request) {
+        ApiMessage message = ApiMessage.of("api.api-exception-handler.method-not-allowed");
+        var response = build(HttpStatus.METHOD_NOT_ALLOWED, "METHOD_NOT_ALLOWED", message, message, false, request, null);
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).headers(exception.getHeaders()).body(response.getBody());
+    }
+
     /** 隐藏未预期的实现细节，并在日志中保留追踪标识。 */
     @ExceptionHandler(Exception.class)
     ResponseEntity<ProblemDetail> handleUnexpected(

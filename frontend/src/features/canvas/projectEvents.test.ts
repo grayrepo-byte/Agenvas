@@ -78,7 +78,7 @@ function snapshot(seq: number): ProjectSnapshot {
     },
     canvas: { items: [] },
     connections: [],
-    agents: [],
+    director: null,
     activeRun: null,
     activeTasks: [],
     unknownTasks: [],
@@ -87,6 +87,41 @@ function snapshot(seq: number): ProjectSnapshot {
 }
 
 describe("project event subscription", () => {
+  it("delivers character and storyboard changes on the same cursor without losing following canvas events", () => {
+    const stream = new FakeStream();
+    const changes: ProjectEvent[] = [];
+    const loadSnapshot = vi.fn(async () => snapshot(5));
+    const stop = subscribeProjectEvents(projectId, 0, {
+      onChange: (value) => changes.push(value), onSnapshot: () => {}, onStatus: () => {},
+    }, { open: () => stream, loadSnapshot,
+      schedule: (callback) => setTimeout(callback, 5_000), clearSchedule: clearTimeout });
+    const types = ["character.profile.changed", "storyboard.changed", "character.bindings.changed",
+      "agent.media.approval.changed", "canvas.edited", "canvas.items.changed"];
+    types.forEach((type, index) => stream.emit({ ...event(index + 1, 1), type }));
+    expect(changes.map((value) => value.type)).toEqual(types);
+    expect(loadSnapshot).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it("delivers storyboard revisions once and recovers a missed revision through the project cursor", async () => {
+    const stream = new FakeStream();
+    const changes: ProjectEvent[] = [];
+    const recovered: ProjectSnapshot[] = [];
+    const loadSnapshot = vi.fn(async () => snapshot(4));
+    const stop = subscribeProjectEvents(projectId, 0, {
+      onChange: (value) => changes.push(value), onSnapshot: (value) => recovered.push(value), onStatus: () => {},
+    }, { open: () => stream, loadSnapshot,
+      schedule: (callback) => setTimeout(callback, 5_000), clearSchedule: clearTimeout });
+    const saved = { ...event(1, 1), type: "storyboard.changed" };
+    stream.emit(saved);
+    stream.emit(saved);
+    expect(changes).toEqual([saved]);
+    stream.emit({ ...event(4, 3), type: "storyboard.changed" });
+    await vi.waitFor(() => expect(recovered).toEqual([snapshot(4)]));
+    expect(loadSnapshot).toHaveBeenCalledOnce();
+    stop();
+  });
+
   it("delivers approvals and every assistant stream event through the existing project cursor", () => {
     const stream = new FakeStream();
     const changes: ProjectEvent[] = [];

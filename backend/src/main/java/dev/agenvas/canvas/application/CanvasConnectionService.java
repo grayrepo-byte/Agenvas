@@ -217,6 +217,13 @@ public class CanvasConnectionService {
         return connections.list(ownerId, projectId);
     }
 
+    /** Current edges alone cannot detect connect/disconnect ABA; the database keeps its epoch. */
+    @Transactional(readOnly = true)
+    public CanvasConnectionRepository.TopologyGuard copyGuard(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        canvasItems.requireArtifactItem(ownerId, projectId, canvasItemId);
+        return connections.copyGuard(ownerId, projectId, canvasItemId);
+    }
+
     /** Removes every edge owned by a card and reference-counts downstream media inputs. */
     public void removeItemConnectionsWithinChange(UUID ownerId, UUID projectId,
             UUID canvasItemId) {

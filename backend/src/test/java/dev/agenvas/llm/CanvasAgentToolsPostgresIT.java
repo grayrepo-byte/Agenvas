@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -72,13 +74,13 @@ class CanvasAgentToolsPostgresIT {
     @Autowired ToolExecutionRepository ledger;
     @Autowired ObjectMapper mapper;
 
-    @Test void pagedCanvasScopeCommandsAndHistoricalScopeRemainIsolated() {
+    @Test void currentCanvasCommandsFollowLiveNodesAndKeepCasLockAndProjectBoundaries() {
         var owner = identities.setup("canvas-assistant-admin", "canvas-assistant-password-123");
         var project = projects.create(owner.userId(), "Canvas assistant", Project.AspectRatio.SQUARE_1_1);
         var text = artifacts.create(owner.userId(), project.id(), Artifact.Kind.TEXT, "Canvas text",
                 text("CANVAS_BODY_MUST_NOT_BE_SENT_INITIALLY"));
         var hidden = artifacts.create(owner.userId(), project.id(), Artifact.Kind.TEXT, "Off canvas", text("Hidden"));
-        var agent = agents.create(owner.userId(), project.id(), "Director", "Help on the canvas");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Director", "Help on the canvas");
         List<CanvasService.CanvasCommand> placements = new ArrayList<>();
         List<UUID> textItems = new ArrayList<>();
         for (int index = 0; index < 43; index++) {
@@ -99,10 +101,10 @@ class CanvasAgentToolsPostgresIT {
         canvas.apply(owner.userId(), project.id(), placements);
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(), "Edit this canvas", "canvas-scope-run", null, textItems).run();
         var trusted = new TrustedToolContext(owner.userId(), project.id(), queued.id());
-        assertThat(queued.contextSnapshot().at("/canvasScope/items").size()).isEqualTo(47);
-        assertThat(queued.contextSnapshot().path("bindings")).isEmpty();
+        assertThat(queued.contextSnapshot().has("canvasScope")).isFalse();
+        assertThat(queued.contextSnapshot().has("bindings")).isFalse();
         assertThat(initial.assemble(owner.userId(), project.id(), queued.id()).toString())
-                .contains("47 nodes", "read_canvas").doesNotContain("CANVAS_BODY_MUST_NOT_BE_SENT_INITIALLY");
+                .contains("read_canvas").doesNotContain("CANVAS_BODY_MUST_NOT_BE_SENT_INITIALLY");
         var first = tools.readCanvas(trusted, queued, UUID.randomUUID(), "{\"limit\":40}");
         var last = tools.readCanvas(trusted, queued, UUID.randomUUID(), "{\"offset\":40,\"limit\":40}");
         assertThat(first.path("data").size()).isEqualTo(40);
@@ -112,8 +114,8 @@ class CanvasAgentToolsPostgresIT {
         for (var node : first.path("data")) if (node.path("mediaDraft").isObject())
             assertThat(node.path("mediaDraft").has("prompt")).isFalse();
         int mediaOffset = 0;
-        for (var node : queued.contextSnapshot().at("/canvasScope/items")) {
-            if (node.path("mediaDraft").isObject()) break;
+        for (var entry : canvas.list(owner.userId(), project.id())) {
+            if (entry.artifact().artifact().kind() != Artifact.Kind.TEXT) break;
             mediaOffset++;
         }
         var fullDraft = tools.readCanvas(trusted, queued, UUID.randomUUID(), mapper.createObjectNode()
@@ -126,12 +128,21 @@ class CanvasAgentToolsPostgresIT {
                 .isEqualTo("CANVAS_BODY_MUST_NOT_BE_SENT_INITIALLY");
         assertCode(() -> reader.artifacts(trusted, queued, UUID.randomUUID(), versions(hidden)), "INPUT_SCOPE_DENIED");
 
-        ObjectNode oldSnapshot = (ObjectNode) queued.contextSnapshot().deepCopy(); oldSnapshot.remove("canvasScope");
-        AgentRun historical = new AgentRun(queued.id(), queued.projectId(), queued.agentInstanceId(), queued.conversationId(),
-                queued.conversationTurn(), queued.userId(), queued.status(), queued.instruction(), oldSnapshot,
+        // An explicit Skill input grants only that exact version's body, never a write or placement.
+        var inputSnapshot = queued.contextSnapshot().deepCopy();
+        var inputMapping = ((ObjectNode) inputSnapshot).putArray("creativeSkills").addObject().putArray("inputs").addObject();
+        inputMapping.put("artifactId", hidden.artifact().id().toString()).put("artifactVersionId", hidden.resourceDefaultVersion().id().toString());
+        var inputRun = new AgentRun(queued.id(), queued.projectId(), queued.agentInstanceId(), queued.conversationId(),
+                queued.conversationTurn(), queued.userId(), queued.status(), queued.instruction(), inputSnapshot,
                 queued.policySnapshot(), queued.profileVersion(), queued.nextStepIndex(), queued.version(), queued.createdAt(), queued.updatedAt(), queued.completedAt());
-        assertCode(() -> reader.artifacts(trusted, historical, UUID.randomUUID(), versions(text)), "INPUT_SCOPE_DENIED");
-        assertCode(() -> tools.readCanvas(trusted, historical, UUID.randomUUID(), "{}"), "INPUT_SCOPE_DENIED");
+        var explicitRead = reader.artifacts(trusted, inputRun, UUID.randomUUID(), versions(hidden)).path("data").get(0);
+        assertThat(explicitRead.path("content").path("text").asText()).isEqualTo("Hidden");
+        assertThat(explicitRead.has("expectedVersion")).isFalse();
+        var hiddenRevision = mapper.createObjectNode().put("artifactId", hidden.artifact().id().toString()).put("expectedVersion", 0);
+        hiddenRevision.set("content", text("Must not write a read-only input"));
+        assertCode(() -> creative.reviseArtifact(trusted, inputRun, UUID.randomUUID(), hiddenRevision.toString()), "INPUT_SCOPE_DENIED");
+        inputMapping.put("artifactId", text.artifact().id().toString());
+        assertCode(() -> reader.artifacts(trusted, inputRun, UUID.randomUUID(), versions(hidden)), "INPUT_SCOPE_DENIED");
 
         UUID itemId = textItems.getFirst();
         var rename = command("RENAME", itemId, 0).put("title", "Renamed");
@@ -179,8 +190,8 @@ class CanvasAgentToolsPostgresIT {
         creative.reviseArtifact(trusted, queued, UUID.randomUUID(), revision.toString());
         var current = artifacts.get(owner.userId(), project.id(), text.artifact().id());
         artifacts.revise(owner.userId(), project.id(), text.artifact().id(), current.artifact().version(), null, text("Concurrent human revision"));
-        revision.put("expectedVersion", 2);
-        assertCode(() -> creative.reviseArtifact(trusted, queued, UUID.randomUUID(), revision.toString()), "INPUT_SCOPE_DENIED");
+        revision.put("expectedVersion", 1);
+        assertCode(() -> creative.reviseArtifact(trusted, queued, UUID.randomUUID(), revision.toString()), "ARTIFACT_VERSION_CONFLICT");
         var latestText = artifacts.get(owner.userId(), project.id(), text.artifact().id());
         var refreshed = tools.readCanvas(trusted, queued, UUID.randomUUID(), "{\"limit\":40}");
         var refreshedTail = tools.readCanvas(trusted, queued, UUID.randomUUID(), "{\"offset\":40,\"limit\":40}");
@@ -189,15 +200,19 @@ class CanvasAgentToolsPostgresIT {
                 java.util.stream.StreamSupport.stream(refreshedTail.path("data").spliterator(), false))
                 .filter(node -> refreshedItemId.toString().equals(node.path("itemId").asText())).findFirst().orElseThrow();
         assertThat(refreshedNode.path("selectedVersionId").asText()).isEqualTo(latestText.resourceDefaultVersion().id().toString());
-        assertThat(refreshedNode.path("selectedVersionReadable").asBoolean()).isFalse();
-        assertThat(refreshedNode.path("frozenSelectedVersionId").asText()).isEqualTo(text.resourceDefaultVersion().id().toString());
-        assertCode(() -> reader.artifacts(trusted, queued, UUID.randomUUID(), versions(latestText)), "INPUT_SCOPE_DENIED");
+        var latestRead = reader.artifacts(trusted, queued, UUID.randomUUID(), versions(latestText));
+        assertThat(latestRead.at("/data/0/expectedVersion").asLong()).isEqualTo(2);
+        assertCode(() -> reader.artifacts(trusted, queued, UUID.randomUUID(), versions(text)), "INPUT_SCOPE_DENIED");
         var freshLayout = mapper.createObjectNode().put("layout", "VERTICAL");
         freshLayout.putArray("items").addObject().put("itemId", refreshedItemId.toString())
                 .put("versionId", latestText.resourceDefaultVersion().id().toString()).put("expectedVersion", refreshedNode.path("itemVersion").asLong());
         creative.arrangeItems(trusted, queued, UUID.randomUUID(), freshLayout.toString());
         assertThat(artifacts.get(owner.userId(), project.id(), text.artifact().id()).resourceDefaultVersion().id())
                 .isEqualTo(latestText.resourceDefaultVersion().id());
+        revision.put("expectedVersion", latestRead.at("/data/0/expectedVersion").asLong());
+        assertThat(creative.reviseArtifact(trusted, queued, UUID.randomUUID(), revision.toString())
+                .path("artifactVersions").path(text.artifact().id().toString()).asLong()).isEqualTo(3);
+
 
 
         // Record a real committed tool call: a retried copy returns the original node, and that node is a Run output.
@@ -229,7 +244,6 @@ class CanvasAgentToolsPostgresIT {
         UUID textNode = UUID.fromString(createdText.at("/data/0/itemId").asText());
         assertThat(createdText.path("createdCanvasItemIds")).singleElement()
                 .satisfies(id -> assertThat(id.asText()).isEqualTo(textNode.toString()));
-        assertThat(ledger.hasCreatedCanvasItem(project.id(), running.id(), textNode)).isTrue();
         var outputDirectory = tools.readCanvas(trusted, running, UUID.randomUUID(), "{\"offset\":47,\"limit\":40}");
         assertThat(outputDirectory.path("total").asInt()).isEqualTo(48);
         assertThat(outputDirectory.path("data")).singleElement().satisfies(node -> {
@@ -248,20 +262,18 @@ class CanvasAgentToolsPostgresIT {
                     assertThat(entry.item().groupId()).isNull();
                 });
 
-        // Generic createdIds also lists artifact IDs; only typed node result fields confer node authority.
-        UUID evidenceId = UUID.randomUUID();
-        ledger.insertExecuting(evidenceId, project.id(), running.id(), 0, "typed-node-proof",
-                "propose_media_generation", "a".repeat(64), java.time.Instant.now());
-        var evidence = mapper.createObjectNode().put("status", "SUCCEEDED");
-        evidence.putArray("createdIds").add(hidden.artifact().id().toString()).add(mediaItems.getFirst().toString());
-        evidence.putObject("data").putArray("outputs").addObject().put("canvasItemId", mediaItems.getFirst().toString());
-        ledger.complete(evidenceId, evidence, java.time.Instant.now());
-        assertThat(ledger.hasCreatedCanvasItem(project.id(), running.id(), mediaItems.getFirst())).isTrue();
-        assertThat(ledger.hasCreatedCanvasItem(project.id(), running.id(), hidden.artifact().id())).isFalse();
-        canvas.apply(owner.userId(), project.id(), List.of(place(hidden.artifact().id(), hidden.artifact().id(), 30000)));
-        assertCode(() -> tools.manageNode(trusted, running, UUID.randomUUID(), command("REMOVE", hidden.artifact().id(), 0).toString()), "INPUT_SCOPE_DENIED");
-        assertThat(tools.readCanvas(trusted, running, UUID.randomUUID(), "{\"offset\":47,\"limit\":40}")
-                .path("total").asInt()).isEqualTo(48);
+        // A node added manually after the Run starts is immediately readable and manageable.
+        UUID manualNode = UUID.randomUUID();
+        canvas.apply(owner.userId(), project.id(), List.of(place(manualNode, hidden.artifact().id(), 30000)));
+        assertThat(reader.artifacts(trusted, running, UUID.randomUUID(), versions(hidden)).at("/data/0/content/text").asText()).isEqualTo("Hidden");
+        tools.manageNode(trusted, running, UUID.randomUUID(), command("RENAME", manualNode, 0).put("title", "Added after run").toString());
+        tools.manageNode(trusted, running, UUID.randomUUID(), command("REMOVE", manualNode, 1).toString());
+        assertCode(() -> reader.artifacts(trusted, running, UUID.randomUUID(), versions(hidden)), "INPUT_SCOPE_DENIED");
+        // Agent authorship is provenance, and cannot retain access after the last node is removed.
+        tools.manageNode(trusted, running, UUID.randomUUID(), command("REMOVE", textNode, 2).toString());
+        var outputVersion = mapper.createObjectNode(); outputVersion.putArray("versionIds").add(createdText.at("/data/0/versionId").asText());
+        assertCode(() -> reader.artifacts(trusted, running, UUID.randomUUID(), outputVersion.toString()), "INPUT_SCOPE_DENIED");
+        assertThat(tools.readCanvas(trusted, running, UUID.randomUUID(), "{\"limit\":40}").path("total").asInt()).isEqualTo(47);
 
         assertThat(artifacts.get(owner.userId(), project.id(), mediaArtifact(owner.userId(), project.id(), mediaItems.getFirst()))).isNotNull();
 

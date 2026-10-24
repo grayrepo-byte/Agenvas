@@ -51,17 +51,19 @@ public class SkillRepository {
     private Condition available(List<String> builtinKeys) {
         return CREATIVE_SKILL.BUILTIN_KEY.isNull().or(CREATIVE_SKILL.BUILTIN_KEY.in(builtinKeys));
     }
-    private Condition scope(UUID owner, String query, boolean trash, List<String> builtinKeys) {
-        Condition condition = CREATIVE_SKILL.OWNER_ID.eq(owner).and(available(builtinKeys))
+    private Condition scope(UUID owner, String query, boolean trash, List<String> builtinKeys, boolean includePersonal) {
+        Condition condition = CREATIVE_SKILL.OWNER_ID.eq(owner)
+                .and(includePersonal ? available(builtinKeys) : CREATIVE_SKILL.BUILTIN_KEY.in(builtinKeys))
                 .and(trash ? CREATIVE_SKILL.TRASHED_AT.isNotNull() : CREATIVE_SKILL.TRASHED_AT.isNull());
-        if (query != null && !query.isBlank()) condition = condition.and(CREATIVE_SKILL.TITLE.containsIgnoreCase(query));
+        if (query != null && !query.isBlank()) condition = condition.and(CREATIVE_SKILL.TITLE.containsIgnoreCase(query)
+                .or(CREATIVE_SKILL.DESCRIPTION.containsIgnoreCase(query)));
         return condition;
     }
-    public int count(UUID owner, String query, boolean trash, List<String> builtinKeys) {
-        return db.fetchCount(db.selectFrom(CREATIVE_SKILL).where(scope(owner, query, trash, builtinKeys)));
+    public int count(UUID owner, String query, boolean trash, List<String> builtinKeys, boolean includePersonal) {
+        return db.fetchCount(db.selectFrom(CREATIVE_SKILL).where(scope(owner, query, trash, builtinKeys, includePersonal)));
     }
-    public List<SkillContent.Catalogue> list(UUID owner, String query, boolean trash, Cursor cursor, int limit, List<String> builtinKeys) {
-        Condition condition = scope(owner, query, trash, builtinKeys);
+    public List<SkillContent.Catalogue> list(UUID owner, String query, boolean trash, Cursor cursor, int limit, List<String> builtinKeys, boolean includePersonal) {
+        Condition condition = scope(owner, query, trash, builtinKeys, includePersonal);
         if (cursor != null) condition = condition.and(CREATIVE_SKILL.UPDATED_AT.lt(time(cursor.updatedAt()))
                 .or(CREATIVE_SKILL.UPDATED_AT.eq(time(cursor.updatedAt())).and(CREATIVE_SKILL.ID.lt(cursor.id()))));
         return db.selectFrom(CREATIVE_SKILL).where(condition).orderBy(CREATIVE_SKILL.UPDATED_AT.desc(), CREATIVE_SKILL.ID.desc())

@@ -14,7 +14,9 @@ import dev.agenvas.db.tables.ArtifactVersion;
 import dev.agenvas.db.tables.ArtifactVersionReference;
 import dev.agenvas.db.tables.Asset;
 import dev.agenvas.db.tables.CallLog;
+import dev.agenvas.db.tables.CanvasCharacterBindingMember;
 import dev.agenvas.db.tables.CanvasConnection;
+import dev.agenvas.db.tables.CanvasEditReceipt;
 import dev.agenvas.db.tables.CanvasItem;
 import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
@@ -25,6 +27,8 @@ import dev.agenvas.db.tables.LibraryCommand;
 import dev.agenvas.db.tables.LibraryEntry;
 import dev.agenvas.db.tables.LlmProviderConfig;
 import dev.agenvas.db.tables.LlmTurn;
+import dev.agenvas.db.tables.McpAccessToken;
+import dev.agenvas.db.tables.McpOperation;
 import dev.agenvas.db.tables.MediaRelayObject;
 import dev.agenvas.db.tables.MediaTemplate;
 import dev.agenvas.db.tables.Project;
@@ -55,6 +59,7 @@ public class Indexes {
     // INDEX definitions
     // -------------------------------------------------------------------------
 
+    public static final Index CANVAS_EDIT_RECEIPT_RETENTION_IDX = Internal.createIndex(DSL.name("canvas_edit_receipt_retention_idx"), CanvasEditReceipt.CANVAS_EDIT_RECEIPT, new OrderField[] { CanvasEditReceipt.CANVAS_EDIT_RECEIPT.PROJECT_ID, CanvasEditReceipt.CANVAS_EDIT_RECEIPT.CREATED_AT.desc(), CanvasEditReceipt.CANVAS_EDIT_RECEIPT.ID }, false);
     public static final Index IX_AGENT_INSTANCE_PROJECT = Internal.createIndex(DSL.name("ix_agent_instance_project"), AgentInstance.AGENT_INSTANCE, new OrderField[] { AgentInstance.AGENT_INSTANCE.PROJECT_ID, AgentInstance.AGENT_INSTANCE.CREATED_AT, AgentInstance.AGENT_INSTANCE.ID }, false);
     public static final Index IX_AGENT_MEDIA_APPROVAL_OUTSTANDING = Internal.createIndex(DSL.name("ix_agent_media_approval_outstanding"), AgentMediaApproval.AGENT_MEDIA_APPROVAL, new OrderField[] { AgentMediaApproval.AGENT_MEDIA_APPROVAL.ID }, false);
     public static final Index IX_AGENT_MEDIA_APPROVAL_RUN = Internal.createIndex(DSL.name("ix_agent_media_approval_run"), AgentMediaApproval.AGENT_MEDIA_APPROVAL, new OrderField[] { AgentMediaApproval.AGENT_MEDIA_APPROVAL.PROJECT_ID, AgentMediaApproval.AGENT_MEDIA_APPROVAL.RUN_ID, AgentMediaApproval.AGENT_MEDIA_APPROVAL.CREATED_AT, AgentMediaApproval.AGENT_MEDIA_APPROVAL.ID }, false);
@@ -71,12 +76,15 @@ public class Indexes {
     public static final Index IX_CANVAS_CONNECTION_TARGET = Internal.createIndex(DSL.name("ix_canvas_connection_target"), CanvasConnection.CANVAS_CONNECTION, new OrderField[] { CanvasConnection.CANVAS_CONNECTION.PROJECT_ID, CanvasConnection.CANVAS_CONNECTION.TARGET_CANVAS_ITEM_ID }, false);
     public static final Index IX_CANVAS_ITEM_PROJECT = Internal.createIndex(DSL.name("ix_canvas_item_project"), CanvasItem.CANVAS_ITEM, new OrderField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.Z_INDEX, CanvasItem.CANVAS_ITEM.ID }, false);
     public static final Index IX_CANVAS_ITEM_SUBJECT = Internal.createIndex(DSL.name("ix_canvas_item_subject"), CanvasItem.CANVAS_ITEM, new OrderField[] { CanvasItem.CANVAS_ITEM.PROJECT_ID, CanvasItem.CANVAS_ITEM.SUBJECT_TYPE, CanvasItem.CANVAS_ITEM.SUBJECT_ID }, false);
+    public static final Index IX_CHARACTER_MEMBER_IMPACT = Internal.createIndex(DSL.name("ix_character_member_impact"), CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER, new OrderField[] { CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER.PROJECT_ID, CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER.CHARACTER_ID, CanvasCharacterBindingMember.CANVAS_CHARACTER_BINDING_MEMBER.CANVAS_ITEM_ID }, false);
     public static final Index IX_CONVERSATION_AGENT_UPDATED = Internal.createIndex(DSL.name("ix_conversation_agent_updated"), AgentConversation.AGENT_CONVERSATION, new OrderField[] { AgentConversation.AGENT_CONVERSATION.PROJECT_ID, AgentConversation.AGENT_CONVERSATION.AGENT_INSTANCE_ID, AgentConversation.AGENT_CONVERSATION.UPDATED_AT.desc(), AgentConversation.AGENT_CONVERSATION.ID.desc() }, false);
     public static final Index IX_CREATIVE_SKILL_LIST = Internal.createIndex(DSL.name("ix_creative_skill_list"), CreativeSkill.CREATIVE_SKILL, new OrderField[] { CreativeSkill.CREATIVE_SKILL.OWNER_ID, CreativeSkill.CREATIVE_SKILL.TRASHED_AT, CreativeSkill.CREATIVE_SKILL.UPDATED_AT.desc(), CreativeSkill.CREATIVE_SKILL.ID.desc() }, false);
     public static final Index IX_IDEMPOTENCY_EXPIRY = Internal.createIndex(DSL.name("ix_idempotency_expiry"), IdempotencyRecord.IDEMPOTENCY_RECORD, new OrderField[] { IdempotencyRecord.IDEMPOTENCY_RECORD.EXPIRES_AT }, false);
     public static final Index IX_LIBRARY_COMMAND_CLAIM = Internal.createIndex(DSL.name("ix_library_command_claim"), LibraryCommand.LIBRARY_COMMAND, new OrderField[] { LibraryCommand.LIBRARY_COMMAND.STATUS, LibraryCommand.LIBRARY_COMMAND.LEASE_UNTIL, LibraryCommand.LIBRARY_COMMAND.CREATED_AT }, false);
     public static final Index IX_LIBRARY_ENTRY_LIST = Internal.createIndex(DSL.name("ix_library_entry_list"), LibraryEntry.LIBRARY_ENTRY, new OrderField[] { LibraryEntry.LIBRARY_ENTRY.OWNER_ID, LibraryEntry.LIBRARY_ENTRY.TRASHED_AT, LibraryEntry.LIBRARY_ENTRY.CATEGORY, LibraryEntry.LIBRARY_ENTRY.CREATED_AT.desc(), LibraryEntry.LIBRARY_ENTRY.ID.desc() }, false);
     public static final Index IX_LLM_TURN_PROJECT_RUN = Internal.createIndex(DSL.name("ix_llm_turn_project_run"), LlmTurn.LLM_TURN, new OrderField[] { LlmTurn.LLM_TURN.PROJECT_ID, LlmTurn.LLM_TURN.RUN_ID, LlmTurn.LLM_TURN.STEP_INDEX }, false);
+    public static final Index IX_MCP_ACCESS_TOKEN_USER = Internal.createIndex(DSL.name("ix_mcp_access_token_user"), McpAccessToken.MCP_ACCESS_TOKEN, new OrderField[] { McpAccessToken.MCP_ACCESS_TOKEN.USER_ID, McpAccessToken.MCP_ACCESS_TOKEN.CREATED_AT.desc(), McpAccessToken.MCP_ACCESS_TOKEN.ID }, false);
+    public static final Index IX_MCP_OPERATION_PROJECT = Internal.createIndex(DSL.name("ix_mcp_operation_project"), McpOperation.MCP_OPERATION, new OrderField[] { McpOperation.MCP_OPERATION.PROJECT_ID, McpOperation.MCP_OPERATION.CREATED_AT.desc(), McpOperation.MCP_OPERATION.ID }, false);
     public static final Index IX_MEDIA_TEMPLATE_LIST = Internal.createIndex(DSL.name("ix_media_template_list"), MediaTemplate.MEDIA_TEMPLATE, new OrderField[] { MediaTemplate.MEDIA_TEMPLATE.SCOPE, MediaTemplate.MEDIA_TEMPLATE.OWNER_ID, MediaTemplate.MEDIA_TEMPLATE.TARGET_KIND, MediaTemplate.MEDIA_TEMPLATE.UPDATED_AT.desc() }, false);
     public static final Index IX_PROJECT_EVENT_OCCURRED_AT = Internal.createIndex(DSL.name("ix_project_event_occurred_at"), ProjectEvent.PROJECT_EVENT, new OrderField[] { ProjectEvent.PROJECT_EVENT.OCCURRED_AT }, false);
     public static final Index IX_PROJECT_OWNER_CREATED = Internal.createIndex(DSL.name("ix_project_owner_created"), Project.PROJECT, new OrderField[] { Project.PROJECT.OWNER_ID, Project.PROJECT.CREATED_AT.desc(), Project.PROJECT.ID.desc() }, false);

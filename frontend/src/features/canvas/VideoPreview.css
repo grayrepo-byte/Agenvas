@@ -22,16 +22,6 @@
   background: transparent;
   color: inherit;
 }
-.video-preview-seek {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--ui-accent);
-  cursor: pointer;
-}
-.video-preview-seek:disabled { cursor: progress; }
-.video-preview-seek:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); }
+.video-preview-seek { flex: 1; min-width: 0; }
 .video-preview-time { flex: none; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .video-card-preview .media-demo-badge { top: 8px; bottom: auto; }

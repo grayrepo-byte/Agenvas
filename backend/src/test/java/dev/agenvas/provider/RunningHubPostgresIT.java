@@ -1,5 +1,7 @@
 package dev.agenvas.provider;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.sun.net.httpserver.HttpServer;
@@ -20,6 +22,7 @@ import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.ProviderResultManifest;
+import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.application.DirectMediaTaskService;
 import dev.agenvas.task.application.TaskService;
@@ -102,7 +105,7 @@ class RunningHubPostgresIT {
     @Test void invalidAgentProposalRollsBackDraftsAndReturnsARepairableInputError() throws Exception {
         try (var provider = new Fake(1, false, false)) {
             Fixture fixture = fixture(provider, Artifact.Kind.IMAGE, "AI_APP", false);
-            var agent = agents.create(owner, fixture.project().id(), "Synthetic creator", "Propose an image");
+            var agent = configureDirector(agents, owner, fixture.project().id(), "Synthetic creator", "Propose an image");
             var run = runs.create(owner, fixture.project().id(), agent.id(), "Propose an image", "invalid-proposal-run").run();
             String worker = "proposal-input-test";
             Task lease = tasks.claimAgentTurns(worker, 1).getFirst();
@@ -286,6 +289,91 @@ class RunningHubPostgresIT {
         }
     }
 
+    @Test void expiredRunningHubLinksRefreshTheOriginalTaskAndReuseArchivedAssetsAcrossReorderedResults() throws Exception {
+        try (var provider = new Fake(2, false, false)) {
+            provider.refreshExpiredLinks = true;
+            provider.reorderRefreshed = true;
+            var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
+            Task task = accept(fixture, "Refresh existing output");
+            worker.submitOnce("rh-refresh-submit");
+            UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:provider-output:v1:" + task.id() + ":0").getBytes(StandardCharsets.UTF_8));
+            var first = assets.archiveTaskImage(owner, fixture.project.id(), archiveId, () -> new ByteArrayInputStream(provider.imageBytes));
+            due(task.id());
+
+            assertThat(worker.pollOnce("rh-refresh-poll")).isEqualTo(1);
+
+            var completed = tasks.get(owner, fixture.project.id(), task.id());
+            assertThat(completed.status()).isEqualTo(Task.Status.SUCCEEDED);
+            var version = artifacts.requireMediaVersionForTask(owner, fixture.project.id(),
+                    UUID.fromString(completed.output().path("artifactVersionId").asText()), Artifact.Kind.IMAGE);
+            assertThat(version.content().path("assetId").asText()).isEqualTo(first.id().toString());
+            var frozen = tasks.providerResultManifest(task).orElseThrow();
+            assertThat(frozen.results()).extracting(ProviderResultManifest.Result::ordinal).containsExactly(0, 1);
+            assertThat(frozen.results()).extracting(ProviderResultManifest.Result::url).containsExactly(
+                    provider.origin() + "/first.png?token=fresh", provider.origin() + "/second.png?token=fresh");
+            assertThat(provider.queryTaskId.get()).isEqualTo("original-task");
+            assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(2);
+            assertThat(provider.firstDownloads).hasValue(0); assertThat(provider.secondDownloads).hasValue(2);
+            assertThat(mapper.writeValueAsString(completed)).doesNotContain("token=", provider.origin(), "fake-runninghub-key");
+        }
+    }
+
+    @Test void refreshedZipLinksKeepFrozenMemberHashesAndRejectChangedBytesWithoutResubmitting() throws Exception {
+        for (boolean changed : new boolean[]{false, true}) try (var provider = new Fake(1, false, false)) {
+            provider.zipOnly = true; provider.refreshExpiredLinks = true;
+            provider.zipBytes = zip(new String[]{"result.png"}, new byte[][]{provider.imageBytes});
+            if (changed) provider.refreshedZipBytes = zip(new String[]{"result.png"}, new byte[][]{"changed bytes".getBytes(StandardCharsets.UTF_8)});
+            var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
+            Task task = accept(fixture, "Refresh existing ZIP"); worker.submitOnce("rh-refresh-zip-submit");
+            due(task.id()); worker.pollOnce("rh-refresh-zip-poll");
+            var completed = tasks.get(owner, fixture.project.id(), task.id());
+            assertThat(completed.status()).isEqualTo(changed ? Task.Status.BLOCKED : Task.Status.SUCCEEDED);
+            if (changed) assertThat(completed.errorCode()).isEqualTo("RUNNINGHUB_PROTOCOL_INVALID");
+            var frozen = tasks.providerResultManifest(task).orElseThrow();
+            assertThat(frozen.results().getFirst().archiveEntry().name()).isEqualTo("result.png");
+            assertThat(frozen.results().getFirst().archiveEntry().sha256()).isEqualTo(
+                    java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(provider.imageBytes)));
+            assertThat(provider.submits).hasValue(1); assertThat(provider.queries).hasValue(2);
+            assertThat(provider.queryTaskId.get()).isEqualTo("original-task");
+            assertThat(provider.zipDownloads).hasValue(3);
+        }
+    }
+
+    @Test void providerDiagnosticsAndUrlRefreshUseEpochAndFrozenManifestCasWithoutChangingIdentity() throws Exception {
+        try (var provider = new Fake(1, false, false)) {
+            var fixture = fixture(provider, Artifact.Kind.IMAGE, "WORKFLOW", false);
+            Task task = accept(fixture, ""); worker.submitOnce("rh-checkpoint-submit"); due(task.id());
+            Task lease = tasks.claimBoundMediaPolls("rh-checkpoint-worker", 1).getFirst();
+            var failure = new ProviderFailure(ProviderFailure.Stage.DOWNLOAD, ProviderFailure.Category.DOWNLOAD_EXPIRED,
+                    403, null, null, null);
+            assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", failure)).isTrue();
+            var visible = tasks.get(owner, fixture.project.id(), task.id());
+            assertThat(visible.output().path("providerFailure").path("httpStatus").asInt()).isEqualTo(403);
+            assertThat(visible.errorCode()).isEqualTo(lease.errorCode());
+            var entry = new ProviderResultManifest.ArchiveEntry("result.png", "a".repeat(64));
+            var original = new ProviderResultManifest(1, List.of(new ProviderResultManifest.Result(0, "9",
+                    RunningHubDefinition.OutputKind.IMAGE, true, provider.origin() + "/result.zip?old", entry)), null);
+            var refreshed = new ProviderResultManifest(1, List.of(new ProviderResultManifest.Result(0, "9",
+                    RunningHubDefinition.OutputKind.IMAGE, true, provider.origin() + "/result.zip?new", entry)), null);
+            tasks.checkpointProviderResults(lease, "rh-checkpoint-worker", original);
+            tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", original, refreshed);
+            assertThat(tasks.providerResultManifest(lease)).contains(refreshed);
+            assertThatThrownBy(() -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", original, refreshed))
+                    .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+            var changedHash = new ProviderResultManifest(1, List.of(new ProviderResultManifest.Result(0, "9",
+                    RunningHubDefinition.OutputKind.IMAGE, true, provider.origin() + "/result.zip?other",
+                    new ProviderResultManifest.ArchiveEntry("result.png", "b".repeat(64)))), null);
+            assertThatThrownBy(() -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", refreshed, changedHash))
+                    .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+            jdbc.sql("update task set lease_epoch=lease_epoch+1 where id=:id").param("id", task.id()).update();
+            assertThat(tasks.recordProviderFailure(lease, "rh-checkpoint-worker", failure)).isFalse();
+            assertThatThrownBy(() -> tasks.refreshProviderResultUrls(lease, "rh-checkpoint-worker", refreshed, original))
+                    .isInstanceOf(dev.agenvas.shared.error.ApiProblemException.class);
+            assertThat(tasks.providerResultManifest(lease)).contains(refreshed);
+            jdbc.sql("update task set lease_owner=null,lease_until=null,next_action_at=now()+interval '1 day' where id=:id").param("id", task.id()).update();
+        }
+    }
+
     @Test void zipMixedMediaUsesExistingAssetValidationAndCreatesDifferentArtifactKinds() throws Exception {
         try (var provider = new Fake(2, false, false)) {
             var audio = Files.createTempFile("rh-zip-audio-", ".wav");
@@ -453,10 +541,16 @@ class RunningHubPostgresIT {
                     new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "rh-admin"), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
             String url = "/api/v1/settings/media-connections/" + connection.id() + "/runninghub/preview";
             String body = """
-                {"targetType":"AI_APP","targetId":"123","kind":"IMAGE_GENERATION","source":{"nodeInfoList":[
+                {"targetType":"AI_APP","targetId":"123","kind":"VIDEO_GENERATION","source":{"nodeInfoList":[
                   {"nodeId":"516","fieldName":"sampling_mode.top_p","fieldType":"NUMBER","fieldValue":0.9},
                   {"nodeId":"1","nodeName":"Text","fieldName":"text","fieldType":"STRING","fieldValue":"synthetic scene"},
-                  {"nodeId":"2","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE"}]}}
+                  {"nodeId":"2","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE",
+                   "fieldData":[["synthetic.png","None","synthetic.png"],{"image_upload":true}]},
+                  {"nodeId":"3","fieldName":"value","fieldType":"FLOAT","description":"时长（秒）","fieldValue":"12.5",
+                   "fieldData":["FLOAT",{"min":0.1,"max":30,"default":6}]},
+                  {"nodeId":"4","fieldName":"aspect_ratio","fieldType":"LIST","fieldValue":"16:9","fieldData":["1:1","16:9"]},
+                  {"nodeId":"5","fieldName":"megapixels","fieldType":"FLOAT","fieldValue":"1.5",
+                   "fieldData":["FLOAT",{"min":0.1,"max":16,"default":1}]}]}}
                 """;
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body)
                     .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
@@ -471,15 +565,40 @@ class RunningHubPostgresIT {
             assertThat(mapper.readTree(response).path("targetName").isNull()).isTrue();
             assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(0).asText()).isEqualTo("input2");
             assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(1).asText()).isEqualTo("input3");
-            assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(3);
+            assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(6);
+            assertThat(mapper.readTree(response).path("fieldInsights")).hasSize(6);
+            assertThat(mapper.readTree(response).path("fieldInsights").get(3).path("confidence").asText()).isEqualTo("DECLARED");
+            assertThat(mapper.readTree(response).path("definition").path("fields").get(2).path("options")).isEmpty();
+            assertThat(mapper.readTree(response).path("recommendedFieldKeys"))
+                    .extracting(tools.jackson.databind.JsonNode::asText).containsExactly("input2", "input3", "input4", "input5", "input6");
+            var duration = mapper.readTree(response).path("definition").path("fields").get(3);
+            assertThat(duration.path("type").asText()).isEqualTo("NUMBER");
+            assertThat(duration.path("defaultValue").asDouble()).isEqualTo(12.5);
+            assertThat(duration.path("minimum").asDouble()).isEqualTo(0.1);
+            assertThat(duration.path("maximum").asDouble()).isEqualTo(30);
             assertThat(mapper.readTree(response).path("definition").path("fields").get(0).path("fieldName").asText())
                     .isEqualTo("sampling_mode.top_p");
             var discoveryCalls = new AtomicInteger();
             var graph = mapper.readTree("{\"1\":{\"class_type\":\"Text\",\"inputs\":{\"text\":\"synthetic scene\"}}}");
+            var appInputs = mapper.createArrayNode();
+            appInputs.addObject().put("nodeId", "1").put("fieldName", "text").put("fieldType", "STRING").put("fieldValue", "scene");
+            // Exercise the full automatic HTTP discovery path at the published field limit.
+            for (int index = 2; index <= 1024; index++) {
+                var node = ((ObjectNode) graph).putObject(Integer.toString(index));
+                node.put("class_type", index == 2 ? "PrimitiveFloat" : "SyntheticSampler")
+                        .putObject("inputs").put(index == 2 ? "value" : "steps", 20);
+                if (index == 2) node.putObject("_meta").put("title", "Float (Duration)");
+                appInputs.addObject().put("nodeId", Integer.toString(index)).put("fieldName", "steps")
+                        .put("fieldType", "INTEGER").put("fieldValue", 20);
+            }
+            var appResponse = mapper.createObjectNode().put("code", 0);
+            appResponse.putObject("data").put("id", "123").put("name", " Synthetic app ")
+                    .put("curl", "fake-runninghub-key").putObject("owner").put("name", "Private owner");
+            ((ObjectNode) appResponse.path("data")).set("inputNodes", appInputs);
             var workflowResponse = mapper.createObjectNode().put("code", 0);
             workflowResponse.putObject("data").put("prompt", graph.toString());
             for (var entry : java.util.Map.of(
-                    "/api/webapp/detail", "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic app \",\"inputNodes\":[{\"nodeId\":\"1\",\"fieldName\":\"text\",\"fieldType\":\"STRING\",\"fieldValue\":\"scene\"}],\"owner\":{\"name\":\"Private owner\"},\"curl\":\"fake-runninghub-key\"}}",
+                    "/api/webapp/detail", appResponse.toString(),
                     "/api/openapi/getJsonApiFormat", workflowResponse.toString(),
                     "/api/portal/workflow/detail", "{\"code\":0,\"data\":{\"id\":\"123\",\"name\":\" Synthetic workflow \",\"owner\":{\"name\":\"Private owner\"}}}").entrySet()) {
                 provider.server.createContext(entry.getKey(), exchange -> {
@@ -503,7 +622,13 @@ class RunningHubPostgresIT {
                         .andReturn().getResponse().getContentAsString();
                 var preview = mapper.readTree(automatic);
                 assertThat(preview.path("targetName").asText()).isEqualTo(targetType.equals("AI_APP") ? "Synthetic app" : "Synthetic workflow");
-                assertThat(preview.path("definition").path("fields")).hasSize(1);
+                assertThat(preview.path("definition").path("fields")).hasSize(1024);
+                assertThat(preview.path("fieldInsights")).hasSize(1024);
+                if (targetType.equals("WORKFLOW")) {
+                    assertThat(preview.path("definition").path("fields").get(1).path("type").asText()).isEqualTo("NUMBER");
+                    assertThat(preview.path("recommendedFieldKeys")).extracting(tools.jackson.databind.JsonNode::asText)
+                            .contains("input2");
+                }
                 assertThat(preview.path("definition").path("importSource").toString()).doesNotContain("Synthetic app", "Synthetic workflow");
                 assertThat(automatic).doesNotContain("Private owner", "fake-runninghub-key", "curl");
             }
@@ -547,14 +672,19 @@ class RunningHubPostgresIT {
             var original = catalog.capabilitySnapshot(fixture.capability);
             ObjectNode settings = (ObjectNode) mapper.readTree(original.specJson()).path("settings").deepCopy();
             var source = mapper.readTree("""
-                {"1":{"class_type":"SyntheticInput","inputs":{"text":"private-import-literal"}},
+                {"1":{"class_type":"SyntheticInput","inputs":{"text":"private-import-literal","strength":0.5}},
                  "9":{"class_type":"SaveImage","inputs":{"images":["1",0]}}}
                 """);
             ((ObjectNode) settings.path("runningHub")).set("importSource", source);
+            ((ObjectNode) settings.path("runningHub")).withArray("fields").addObject()
+                    .put("key", "strength").put("label", "变化强度").put("type", "NUMBER")
+                    .put("nodeId", "1").put("fieldName", "strength").put("defaultValue", 0.5).put("group", "基础生成");
             catalog.updateCapability(original.connection().id(), fixture.capability, original.capability().version(),
                     "Saved import", true, "RUNNINGHUB_IMAGE", settings);
             var updated = catalog.capabilitySnapshot(fixture.capability);
             assertThat(catalog.administratorSettings(updated).path("runningHub").path("importSource")).isEqualTo(source);
+            assertThat(catalog.administratorSettings(updated).path("runningHub").path("fields").get(0).path("group").asText())
+                    .isEqualTo("基础生成");
             assertThat(mapper.readTree(original.specJson()).path("settings").path("runningHub").path("importSource").isNull()).isTrue();
             assertThat(catalog.candidates(Task.Kind.IMAGE_GENERATION, 0).stream()
                     .filter(candidate -> candidate.binding().capabilityId().equals(fixture.capability)).findFirst().orElseThrow()
@@ -563,6 +693,8 @@ class RunningHubPostgresIT {
             assertThat(dev.agenvas.task.api.TaskController.TaskResponse.from(task).input().toString())
                     .doesNotContain("private-import-literal", "SyntheticInput");
             assertThat(task.input().path("mediaInput").path("runningHubContract").path("importSource").isNull()).isTrue();
+            assertThat(task.input().path("mediaInput").path("runningHubContract").path("fields").get(0).path("group").asText())
+                    .isEqualTo("基础生成");
             assertThat(provider.submits).hasValue(0);
         }
     }
@@ -652,13 +784,15 @@ class RunningHubPostgresIT {
         final AtomicInteger zipDownloads = new AtomicInteger();
         final AtomicReference<String> submitted = new AtomicReference<>();
         final AtomicReference<String> submissionPath = new AtomicReference<>();
+        final AtomicReference<String> queryTaskId = new AtomicReference<>();
         volatile String secondType = "png";
         volatile String firstType = "png";
         volatile byte[] firstBytes;
         volatile byte[] secondBytes;
         final byte[] imageBytes;
         volatile byte[] zipBytes;
-        volatile boolean zipOnly, failZipArchiveOnce;
+        volatile byte[] refreshedZipBytes;
+        volatile boolean zipOnly, failZipArchiveOnce, refreshExpiredLinks, reorderRefreshed;
         Fake(int resultCount, boolean failSecondOnce, boolean uncertain) throws Exception {
             this.resultCount = resultCount;
             var bytes = new ByteArrayOutputStream(); ImageIO.write(new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB), "png", bytes);
@@ -674,11 +808,15 @@ class RunningHubPostgresIT {
                     status = uncertain ? 503 : 200; exchange.getResponseHeaders().set("Retry-After", "0");
                     response = "{\"taskId\":\"original-task\",\"status\":\"QUEUED\"}".getBytes(StandardCharsets.UTF_8);
                 } else if (path.equals("/openapi/v2/query")) {
-                    queries.incrementAndGet();
+                    int query = queries.incrementAndGet();
+                    queryTaskId.set(new ObjectMapper().readTree(exchange.getRequestBody().readAllBytes()).path("taskId").asText());
+                    String suffix = refreshExpiredLinks ? "?token=" + (query > 1 ? "fresh" : "expired") : "";
+                    String first = "{\"nodeId\":\"9\",\"outputType\":\"" + firstType + "\",\"url\":\"" + origin() + "/first.png" + suffix + "\"}";
+                    String second = "{\"nodeId\":\"9\",\"outputType\":\"" + secondType + "\",\"url\":\"" + origin() + "/second.png" + suffix + "\"}";
                     response = ("{\"status\":\"SUCCESS\",\"results\":["
-                            + (zipOnly ? "" : "{\"nodeId\":\"9\",\"outputType\":\"" + firstType + "\",\"url\":\"" + origin() + "/first.png\"}"
-                                + (resultCount > 1 ? ",{\"nodeId\":\"9\",\"outputType\":\"" + secondType + "\",\"url\":\"" + origin() + "/second.png\"}" : "") + ",")
-                            + "{\"nodeId\":\"99\",\"outputType\":\"zip\",\"url\":\"" + origin() + "/companion.zip\"}"
+                            + (zipOnly ? "" : (resultCount > 1 && reorderRefreshed && query > 1 ? second + "," + first
+                                    : first + (resultCount > 1 ? "," + second : "")) + ",")
+                            + "{\"nodeId\":\"99\",\"outputType\":\"zip\",\"url\":\"" + origin() + "/companion.zip" + suffix + "\"}"
                             + "],\"usage\":{\"consumeMoney\":null,\"consumeCoins\":0.25,\"taskCostTime\":3}}").getBytes(StandardCharsets.UTF_8);
                 } else if (path.equals("/task/openapi/upload")) {
                     uploads.incrementAndGet(); exchange.getRequestBody().readAllBytes();
@@ -687,7 +825,10 @@ class RunningHubPostgresIT {
                     if (path.equals("/first.png")) firstDownloads.incrementAndGet();
                     else if (path.equals("/companion.zip") && zipDownloads.incrementAndGet() == 2 && failZipArchiveOnce) status = 503;
                     else if (path.equals("/second.png") && secondDownloads.incrementAndGet() == 1 && failSecondOnce) status = 503;
-                    response = path.equals("/companion.zip") ? zipBytes : path.equals("/second.png") && secondBytes != null
+                    if (refreshExpiredLinks && "token=expired".equals(exchange.getRequestURI().getRawQuery())
+                            && (!path.equals("/companion.zip") || zipDownloads.get() >= 2)) status = 403;
+                    response = path.equals("/companion.zip") ? refreshedZipBytes != null && "token=fresh".equals(exchange.getRequestURI().getRawQuery())
+                            ? refreshedZipBytes : zipBytes : path.equals("/second.png") && secondBytes != null
                             ? secondBytes : path.equals("/first.png") && firstBytes != null ? firstBytes : imageBytes;
                 }
                 exchange.sendResponseHeaders(status, response.length); exchange.getResponseBody().write(response); exchange.close();

@@ -1,4 +1,0 @@
-.workspace-agent-controls { display: flex; align-items: center; gap: 0.375rem; min-width: 0; }
-.workspace-agent-controls > .ui-select { flex: 1; min-width: 0; }
-.workspace-agent-controls .ui-select button { min-width: 0; }
-.workspace-agent-controls .ui-select [data-slot="select-value"] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

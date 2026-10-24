@@ -1,5 +1,7 @@
 package dev.agenvas.task;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -78,7 +80,7 @@ class TaskArtifactSelectionPostgresIT {
         mediaProjectId = project.id();
         ArtifactService.ArtifactView image = artifacts.create(owner.userId(), project.id(),
                 Artifact.Kind.IMAGE, "Shot image", media(UUID.randomUUID(), "seed"));
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Create");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create three shots", "selection-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),

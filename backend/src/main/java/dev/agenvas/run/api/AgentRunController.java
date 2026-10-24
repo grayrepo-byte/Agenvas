@@ -55,20 +55,6 @@ public class AgentRunController {
     }
     public record PreflightRequest(@NotNull UUID agentId, UUID conversationId, @Valid SkillRunService.Selection skillSelection) {}
 
-    /** 按一个 Agent 的所有者范围返回有界历史页和不透明续页游标。 */
-    @GetMapping
-    public RunListResponse list(
-            @AuthenticationPrincipal AdminPrincipal principal,
-            @PathVariable UUID projectId,
-            @RequestParam UUID agentId,
-            @RequestParam(required = false) String cursor,
-            @RequestParam(required = false) Integer limit) {
-        AgentRunService.RunPage page = runs.list(principal.userId(), projectId,
-                agentId, cursor, limit);
-        return new RunListResponse(page.items().stream().map(RunSummary::from).toList(),
-                page.nextCursor());
-    }
-
     /** 固定请求键与用户预览版本，原子占用项目活动槽位并返回持久化 Run。 */
     @PostMapping
     public ResponseEntity<RunResponse> create(
@@ -115,7 +101,7 @@ public class AgentRunController {
      * 创建 Run 时客户端可提交的指令与预览版本。
      * 身份、执行策略、预算和授权上下文均由服务端构造，不接受客户端提供。
      *
-     * @param agentId 用户选择的项目助手
+     * @param agentId 项目唯一导演的稳定身份
      * @param instruction 本次 Run 指令，最多 20,000 字符
      * @param expectedAgentVersion 用户预览时的 Agent 配置版本
      * @param selectedItemIds 可选画布选择，只作为意图

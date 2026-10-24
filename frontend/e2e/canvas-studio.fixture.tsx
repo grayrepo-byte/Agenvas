@@ -52,9 +52,8 @@ window.fetch = async (input, init) => {
   let value: unknown;
   if (path.endsWith("/auth/me")) value = { id: "preview", loginName: "Mock", role: "ADMIN" };
   else if (path.endsWith("/csrf")) value = { headerName: "X-XSRF-TOKEN", token: "mock" };
-  else if (path.endsWith("/agent-presets")) value = { items: [{ key: "agent.director", name: "导演 Agent" }] };
   else if (path.endsWith("/snapshot")) value = { project, canvas: { items }, connections: items.length ? connections : [],
-    agents: [agent], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
+    director: agent, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
   else if (path.endsWith("/canvas/commands")) {
     const request = JSON.parse(String(init?.body)) as { commands: CanvasCommand[] };
     for (const command of request.commands) {
@@ -104,8 +103,6 @@ window.fetch = async (input, init) => {
       value = created;
     } else value = { items: artifacts, nextCursor: null };
   }
-  else if (path.endsWith("/agents")) value = { items: [agent] };
-  else if (path.endsWith("/outputs")) value = { canvasItemIds: [] };
   else if (path.endsWith("/skill-binding")) value = { agentVersion: 0, skills: [] };
   else if (/\/(run|tasks|text-generations|media-styles|actions|plans)$/.test(path)) value = [];
   else value = { items: [], nextCursor: null };

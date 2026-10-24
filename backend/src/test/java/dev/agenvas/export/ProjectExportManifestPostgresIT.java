@@ -1,5 +1,7 @@
 package dev.agenvas.export;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -17,7 +19,11 @@ import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.application.CanvasService;
+import dev.agenvas.canvas.application.CanvasEditService;
+import dev.agenvas.canvas.application.CanvasEditModels;
 import dev.agenvas.canvas.domain.CanvasConnection;
+import dev.agenvas.character.application.CharacterService;
+import dev.agenvas.character.application.CharacterModels.*;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.library.application.LibraryService;
@@ -30,14 +36,20 @@ import dev.agenvas.skill.application.SkillRunService;
 import dev.agenvas.skill.application.SkillService;
 import dev.agenvas.skill.domain.SkillContent;
 import dev.agenvas.task.application.DirectMediaTaskService;
+import dev.agenvas.storyboard.application.StoryboardService;
+import dev.agenvas.storyboard.domain.Storyboard;
 import dev.agenvas.testing.ImageAssetFixture;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Base64;
 import java.util.UUID;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.YamlMapFactoryBean;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -78,6 +90,7 @@ class ProjectExportManifestPostgresIT {
     @Autowired private AssetService assets;
     @Autowired private ArtifactService artifacts;
     @Autowired private CanvasService canvas;
+    @Autowired private CanvasEditService canvasEdits;
     @Autowired private MediaDraftService mediaDrafts;
     @Autowired private CanvasConnectionService connections;
     @Autowired private LlmProviderConfigService llmConfigs;
@@ -87,6 +100,8 @@ class ProjectExportManifestPostgresIT {
     @Autowired private SkillRunService skillRuns;
     @Autowired private LibraryService library;
     @Autowired private DirectMediaTaskService directMedia;
+    @Autowired private StoryboardService storyboards;
+    @Autowired private CharacterService characters;
     @Autowired private ObjectMapper mapper;
     @Autowired private WebApplicationContext context;
 
@@ -148,7 +163,7 @@ class ProjectExportManifestPostgresIT {
         UUID skillVersionId = skills.getOperation(owner.userId(), publication.id()).resultVersionId();
         var builtin = skills.list(owner.userId(), "short-drama-write", false, null).items().getFirst();
         var builtinVersion = skills.getVersion(owner.userId(), builtin.id(), builtin.currentVersionId());
-        var agent = agents.create(owner.userId(), project.id(), "Export Creator", "Use the selected method");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Export Creator", "Use the selected method");
         skillRuns.saveBinding(owner.userId(), project.id(), agent.id(), agent.version(), List.of(
                 new SkillRunService.VersionRef(skill.id(), skillVersionId),
                 new SkillRunService.VersionRef(builtin.id(), builtin.currentVersionId())), "manifest-agent-binding");
@@ -160,21 +175,53 @@ class ProjectExportManifestPostgresIT {
         var secondPublication = skills.publish(owner.userId(), skill.id(), secondDraft.version(), "manifest-skill-publish-next");
         assertThat(skills.processNext()).isTrue();
         UUID secondVersionId = skills.getOperation(owner.userId(), secondPublication.id()).resultVersionId();
-        var secondAgent = agents.create(owner.userId(), project.id(), "Future Creator", "Use a different fixed version");
-        skillRuns.saveBinding(owner.userId(), project.id(), secondAgent.id(), secondAgent.version(), List.of(new SkillRunService.VersionRef(skill.id(), secondVersionId)), "manifest-second-agent-binding");
         assertThat(skillRuns.preview(owner.userId(), project.id(), agent.id(), null).getFirst().skillVersionId()).isEqualTo(skillVersionId);
-        assertThat(skillRuns.preview(owner.userId(), project.id(), secondAgent.id(), null).getFirst().skillVersionId()).isEqualTo(secondVersionId);
         var otherProject = projects.create(owner.userId(), "Other project", Project.AspectRatio.LANDSCAPE_16_9);
-        var otherAgent = agents.create(owner.userId(), otherProject.id(), "Other Creator", "Keep this binding private to the other project");
+        var otherAgent = configureDirector(agents, owner.userId(), otherProject.id(), "Other Creator", "Keep this binding private to the other project");
         skillRuns.saveBinding(owner.userId(), otherProject.id(), otherAgent.id(), otherAgent.version(), List.of(new SkillRunService.VersionRef(skill.id(), secondVersionId)), "other-project-agent-binding");
         ObjectNode skillSource = mapper.createObjectNode().put("schemaVersion", 1)
                 .put("skillId", skill.id().toString()).put("skillVersionId", skillVersionId.toString())
                 .put("bundleHash", skills.getVersion(owner.userId(), skill.id(), skillVersionId).bundleHash());
+        // The same project must retain character profiles/bindings alongside its board history.
+        UUID characterId = UUID.randomUUID(), lookId = UUID.randomUUID();
+        characters.save(owner.userId(), project.id(), characterId,
+                new SaveCharacter(UUID.randomUUID(), 0, new CharacterContent("Traveler", "Returning home",
+                        List.of(new CharacterLook(lookId, "Station outfit", "Blue coat", "Calm", "Synthetic look", List.of())), null)));
+        var selections = List.of(new CharacterBindingSelection(characterId, 1, lookId, true, false));
+        long beforeCharacterDraftVersion = mediaDrafts.get(owner.userId(), project.id(), targetItemId).version();
+        var characterPreview = characters.preview(owner.userId(), project.id(), targetItemId,
+                new PreviewCharacterBindings(0, beforeCharacterDraftVersion, selections, ClearMode.REMOVE_OWNED));
+        characters.apply(owner.userId(), project.id(), targetItemId,
+                new ApplyCharacterBindings(UUID.randomUUID(), 0, beforeCharacterDraftVersion, selections,
+                        ClearMode.REMOVE_OWNED, characterPreview.previewHash()));
         long draftVersion = mediaDrafts.get(owner.userId(), project.id(), targetItemId).version();
         var styledPreflight = directMedia.preflightApproved(owner.userId(), project.id(), video.artifact().id(),
                 targetItemId, draftVersion, skillSource);
         assertThat(styledPreflight.safeSummary().path("styleId").asText()).isEqualTo(style.id().toString());
         assertThat(styledPreflight.safeSummary().path("creativeSkill")).isEqualTo(skillSource);
+
+        UUID shotId = UUID.randomUUID();
+        UUID frameVersionId = revisedImage.resourceDefaultVersion().id();
+        var frameBinding = new StoryboardService.ProductionInput(Storyboard.Role.KEYFRAME,
+                sourceItemId, frameVersionId, false);
+        storyboards.save(owner.userId(), project.id(), new StoryboardService.Save(0,
+                List.of(new StoryboardService.ShotInput(shotId, "SHOT-001", "SC-01", "Arrival",
+                        "A traveler arrives.", "Hello.", new BigDecimal("6"), null,
+                        List.of(frameVersionId), List.of(frameBinding))), null));
+        storyboards.save(owner.userId(), project.id(), new StoryboardService.Save(1,
+                List.of(new StoryboardService.ShotInput(shotId, "SHOT-001", "SC-01", "Arrival",
+                        "A traveler arrives.", "Welcome back.", new BigDecimal("8"), null,
+                        List.of(frameVersionId), List.of(frameBinding))), null));
+
+        UUID groupId = UUID.randomUUID();
+        var grouped = canvas.list(owner.userId(), project.id()).stream()
+                .map(CanvasService.CanvasEntry::item).filter(item -> item.id().equals(sourceItemId)).findFirst().orElseThrow();
+        canvasEdits.edit(owner.userId(), project.id(), new CanvasEditModels.Edit(UUID.randomUUID(),
+                CanvasEditModels.Operation.GROUP,
+                List.of(new CanvasEditModels.ItemChange(grouped.id(), grouped.version(), grouped.title(),
+                        grouped.x(), grouped.y(), grouped.width(), grouped.height(), grouped.zIndex(), groupId, grouped.locked())),
+                List.of(new CanvasEditModels.GroupChange(CanvasEditModels.GroupChangeType.UPSERT,
+                        groupId, 0, "Arrival references", true)), List.of()));
 
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
         String path = "/api/v1/projects/" + project.id() + "/export-manifest";
@@ -188,7 +235,30 @@ class ProjectExportManifestPostgresIT {
                         "attachment; filename=\"agenvas-project-" + project.id() + ".json\""))
                 .andReturn().getResponse().getContentAsString();
         JsonNode manifest = mapper.readTree(json);
-        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(7);
+        assertThat(manifest.path("schemaVersion").asInt()).isEqualTo(declaredManifestSchemaVersion());
+        var exportedGroup = java.util.stream.StreamSupport.stream(manifest.path("canvasGroups").spliterator(), false)
+                .filter(group -> group.path("id").asText().equals(groupId.toString())).findFirst().orElseThrow();
+        assertThat(exportedGroup.path("name").asText()).isEqualTo("Arrival references");
+        assertThat(exportedGroup.path("collapsed").asBoolean()).isTrue();
+        assertThat(exportedGroup.has("requestHash")).isFalse();
+        assertThat(exportedGroup.has("receiptId")).isFalse();
+        assertThat(manifest.path("characters").path("characters")).hasSize(1);
+        assertThat(manifest.path("characters").path("characters").get(0).path("id").asText())
+                .isEqualTo(characterId.toString());
+        assertThat(manifest.path("characters").path("bindings")).hasSize(1);
+        assertThat(manifest.path("characters").path("bindings").get(0).path("canvasItemId").asText())
+                .isEqualTo(targetItemId.toString());
+        assertThat(manifest.path("characters").path("bindings").get(0).path("snapshots").get(0)
+                .path("characterId").asText()).isEqualTo(characterId.toString());
+        assertThat(manifest.path("storyboard").path("projectId").asText()).isEqualTo(project.id().toString());
+        assertThat(manifest.path("storyboard").path("version").asLong()).isEqualTo(2);
+        assertThat(manifest.path("storyboard").path("shots").get(0).path("dialogue").asText())
+                .isEqualTo("Welcome back.");
+        assertThat(manifest.path("storyboardRevisions")).hasSize(2);
+        assertThat(manifest.path("storyboardRevisions").get(0).path("shots").get(0).path("dialogue").asText())
+                .isEqualTo("Hello.");
+        assertThat(manifest.path("storyboardRevisions").get(0).path("shots").get(0).path("productions").get(0)
+                .path("selectedVersionId").asText()).isEqualTo(frameVersionId.toString());
         assertThat(manifest.path("project").path("id").asText())
                 .isEqualTo(project.id().toString());
         assertThat(manifest.path("project").has("ownerId")).isFalse();
@@ -212,29 +282,23 @@ class ProjectExportManifestPostgresIT {
         assertThat(targetCard.path("mediaDraft").path("styleId").asText()).isEqualTo(style.id().toString());
         assertThat(targetCard.path("mediaDraft").path("style").path("promptSuffix").asText())
                 .isEqualTo("Soft paper texture");
-        assertThat(manifest.path("creativeSkills").size()).isEqualTo(3);
+        assertThat(manifest.path("creativeSkills").size()).isEqualTo(2);
         JsonNode exportedBuiltin = findSkillVersion(manifest.path("creativeSkills"), builtin.currentVersionId());
         assertThat(exportedBuiltin.path("version").path("skillMd").asText()).isEqualTo(builtinVersion.skillMd());
         assertThat(exportedBuiltin.path("version").path("resources")).hasSize(builtinVersion.resources().size());
         assertThat(exportedBuiltin.path("version").path("assets")).isEmpty();
         assertThat(exportedBuiltin.path("mapping").path("assets")).isEmpty();
-        assertSkillBinding(exportedBuiltin, agent.id(), builtin.id(), builtin.currentVersionId());
-        assertThat(exportedBuiltin.path("agentBindings").path(0).path("position").asInt()).isEqualTo(1);
+        assertDirectorSkillBinding(exportedBuiltin, builtin.id(), builtin.currentVersionId());
+        assertThat(exportedBuiltin.path("directorBinding").path("position").asInt()).isEqualTo(1);
         JsonNode firstSkill = findSkillVersion(manifest.path("creativeSkills"), skillVersionId);
         assertThat(firstSkill.path("version").path("skillMd").asText()).isEqualTo(firstDraft.skillMd());
         assertThat(firstSkill.path("version").path("resources").get(0).path("content").asText())
                 .isEqualTo("Use the warm watercolor palette.");
-        assertSkillBinding(firstSkill, agent.id(), skill.id(), skillVersionId);
+        assertDirectorSkillBinding(firstSkill, skill.id(), skillVersionId);
         assertThat(firstSkill.path("mapping").path("schemaVersion").asInt()).isEqualTo(SkillContent.SCHEMA_VERSION);
         assertThat(firstSkill.path("mapping").path("assets")).isEmpty();
-        JsonNode secondSkill = findSkillVersion(manifest.path("creativeSkills"), secondVersionId);
-        assertThat(secondSkill.path("version").path("skillMd").asText()).isEqualTo(secondDraft.skillMd());
-        assertThat(secondSkill.path("version").path("resources").get(0).path("content").asText())
-                .isEqualTo("Use the cold watercolor palette.");
-        assertSkillBinding(secondSkill, secondAgent.id(), skill.id(), secondVersionId);
-        assertThat(secondSkill.path("mapping").path("schemaVersion").asInt()).isEqualTo(SkillContent.SCHEMA_VERSION);
-        assertThat(secondSkill.path("mapping").path("assets").isArray()).isTrue();
-        assertThat(secondSkill.path("mapping").path("assets").isEmpty()).isTrue();
+        assertThat(manifest.path("creativeSkills")).allSatisfy(exported ->
+                assertThat(exported.path("version").path("id").asText()).isNotEqualTo(secondVersionId.toString()));
         for (JsonNode exportedSkill : manifest.path("creativeSkills")) {
             if (exportedSkill == exportedBuiltin) continue;
             assertThat(exportedSkill.path("version").path("assets").size()).isEqualTo(1);
@@ -275,6 +339,21 @@ class ProjectExportManifestPostgresIT {
                 targetItemId, draftVersion, changedSource).frozenInputHash()).isNotEqualTo(changedStyle.frozenInputHash());
     }
 
+    /** OpenAPI owns the public version; feature tests exercise the exported content below. */
+    private int declaredManifestSchemaVersion() {
+        for (Path directory = Path.of("").toAbsolutePath(); directory != null; directory = directory.getParent()) {
+            Path contract = directory.resolve("contracts/openapi.yaml");
+            if (!Files.isRegularFile(contract)) continue;
+            YamlMapFactoryBean yaml = new YamlMapFactoryBean();
+            yaml.setResources(new FileSystemResource(contract));
+            JsonNode specification = mapper.valueToTree(yaml.getObject());
+            JsonNode version = specification.at("/components/schemas/ProjectExportManifest/properties/schemaVersion/const");
+            assertThat(version.isIntegralNumber()).as("OpenAPI manifest schemaVersion const").isTrue();
+            return version.intValue();
+        }
+        throw new AssertionError("Cannot locate contracts/openapi.yaml");
+    }
+
     private ObjectNode mediaContent(UUID assetId, String prompt) {
         ObjectNode content = mapper.createObjectNode();
         content.put("assetId", assetId.toString());
@@ -302,10 +381,11 @@ class ProjectExportManifestPostgresIT {
         throw new AssertionError("Missing Skill version " + id);
     }
 
-    private void assertSkillBinding(JsonNode skill, UUID agentId, UUID skillId, UUID versionId) {
-        assertThat(skill.path("agentBindings").size()).isEqualTo(1);
-        JsonNode binding = skill.path("agentBindings").get(0);
-        assertThat(binding.path("agentId").asText()).isEqualTo(agentId.toString());
+    private void assertDirectorSkillBinding(JsonNode skill, UUID skillId, UUID versionId) {
+        assertThat(skill.has("agentBindings")).isFalse();
+        JsonNode binding = skill.path("directorBinding");
+        assertThat(binding.isObject()).isTrue();
+        assertThat(binding.has("agentId")).isFalse();
         assertThat(binding.path("skillId").asText()).isEqualTo(skillId.toString());
         assertThat(binding.path("skillVersionId").asText()).isEqualTo(versionId.toString());
     }

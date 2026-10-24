@@ -5,13 +5,15 @@ import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes } from "react-router";
 import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { CanvasCommand,CanvasItem,ImageGenerationParameters,SaveMediaDraftRequest } from "../../shared/api/client";
+import type { CanvasEditRequest,CanvasItem,ImageGenerationParameters,SaveMediaDraftRequest } from "../../shared/api/client";
 import { clickControl } from "../../test/controls";
 import { server } from "../../test/server";
 import { useCanvasStore } from "./canvasStore";
 import { CANVAS_ARRANGE_GAP } from "./arrangeCanvas";
 import { MediaDraftEditor } from "./MediaDraftEditor";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
+
+type CanvasItemChange = NonNullable<CanvasEditRequest["itemChanges"]>[number];
 
 type TestNode = Node<{ onResizeEnd: (id: string, layout: Pick<ResizeParams, "x" | "y" | "width" | "height">) => void }>;
 
@@ -64,7 +66,7 @@ function mediaItem(id = "image-card", assetId = "landscape", kind: "IMAGE" | "VI
 
 describe("workspace media dimensions", () => {
   let items: CanvasItem[];
-  let commands: CanvasCommand[];
+  let commands: CanvasItemChange[];
   let conflict: boolean;
   let draftMode: "RESULT" | "DRAFT";
   let metadataReads: number;
@@ -83,7 +85,7 @@ describe("workspace media dimensions", () => {
       http.get("/api/v1/projects/project-1", () => HttpResponse.json({ id: "project-1", name: "Images", status: "ACTIVE" })),
       http.get("/api/v1/projects/project-1/snapshot", () => HttpResponse.json({
         project: { id: "project-1", name: "Images", status: "ACTIVE" }, canvas: { items },
-        agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+        director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
       http.get("/api/v1/projects/project-1/canvas/items", () => HttpResponse.json({ items })),
       http.get("/api/v1/projects/project-1/canvas-items/:canvasItemId/media-draft", ({ params }) => HttpResponse.json({
@@ -117,15 +119,17 @@ describe("workspace media dimensions", () => {
         return HttpResponse.json({ id: params.assetId, width: params.assetId === "portrait" ? 100 : 2000,
           height: params.assetId === "portrait" ? 2000 : 100 });
       }),
-      http.post("/api/v1/projects/project-1/canvas/commands", async ({ request }) => {
-        commands = (await request.json() as { commands: CanvasCommand[] }).commands;
+      http.post("/api/v1/projects/project-1/canvas/edits", async ({ request }) => {
+        const input = await request.json() as CanvasEditRequest;
+        expect(input).toMatchObject({ operation: "DISPLAY", commandId: expect.any(String) });
+        commands = input.itemChanges ?? [];
         if (saveGate) await saveGate;
         if (conflict) return HttpResponse.json({ status: 409, code: "VERSION_CONFLICT", detail: "布局冲突" }, { status: 409 });
         items = items.map((item) => {
           const command = commands.find((entry) => entry.itemId === item.id);
-          return command?.type === "UPDATE_LAYOUT" ? { ...item, ...command, version: item.version + 1 } : item;
+          return command ? { ...item, ...command, version: item.version + 1 } : item;
         });
-        return HttpResponse.json({ items });
+        return HttpResponse.json({ items, groups: [], receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
       }),
     );
   });
@@ -157,7 +161,7 @@ describe("workspace media dimensions", () => {
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle(expected));
     expect(commands).toEqual([]);
     await clickControl(screen.getByRole("button", { name: "drag image-card" }));
-    await waitFor(() => expect(commands[0]).toMatchObject({ type: "UPDATE_LAYOUT",
+    await waitFor(() => expect(commands[0]).toMatchObject({
       width: size.displayWidth, height: size.displayHeight }));
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
     view.unmount();
@@ -289,13 +293,56 @@ describe("workspace media dimensions", () => {
     await clickControl(screen.getByRole("button", { name: "measure image-card" }));
     expect(useCanvasStore.getState().drafts).toEqual({});
     await clickControl(screen.getByRole("button", { name: "drag image-card" }));
-    await waitFor(() => expect(commands[0]).toMatchObject({ type: "UPDATE_LAYOUT", x: 140, y: 180,
+    await waitFor(() => expect(commands[0]).toMatchObject({ x: 140, y: 180,
       width: 300, height: 80, expectedVersion: 0 }));
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
     expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" });
     view.unmount();
     showWorkspace();
     await waitFor(() => expect(screen.getByTestId("image-card")).toHaveStyle({ width: "300px", height: "15px" }));
+  });
+
+  it.each(["drag", "resize"])("saves a %s without a pending canvas edit notice", async (gesture) => {
+    let finishSave: (() => void) | undefined;
+    saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
+    const { client } = showWorkspace();
+    try {
+      await screen.findByTestId("image-card");
+      await clickControl(screen.getByRole("button", { name: `${gesture} image-card` }));
+      await waitFor(() => expect(commands).toHaveLength(1));
+      expect(useCanvasStore.getState().saveState).toBe("saving");
+      expect(screen.queryByText("正在保存画布编辑…")).not.toBeInTheDocument();
+      finishSave?.();
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+      expect(useCanvasStore.getState().drafts["image-card"]).toBeUndefined();
+      expect(screen.queryByText("正在保存画布编辑…")).not.toBeInTheDocument();
+    } finally {
+      finishSave?.();
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+    }
+  });
+
+  it("keeps drag conflicts visible and retries without a pending canvas edit notice", async () => {
+    conflict = true;
+    const { client } = showWorkspace();
+    await screen.findByTestId("image-card");
+    await clickControl(screen.getByRole("button", { name: "drag image-card" }));
+    await screen.findByText("内容有冲突，当前修改未保存");
+    expect(useCanvasStore.getState().drafts["image-card"]).toMatchObject({ x: 140, y: 180 });
+    let finishSave: (() => void) | undefined;
+    saveGate = new Promise<void>((resolve) => { finishSave = resolve; });
+    conflict = false;
+    try {
+      await clickControl(screen.getByRole("button", { name: "重试本次操作" }));
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saving"));
+      expect(screen.queryByText("正在保存画布编辑…")).not.toBeInTheDocument();
+      finishSave?.();
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+      expect(useCanvasStore.getState().drafts["image-card"]).toBeUndefined();
+    } finally {
+      finishSave?.();
+      await waitFor(() => expect(client.isMutating()).toBe(0));
+    }
   });
 
   it("keeps a newer move after an older resize acknowledgement and saves it with the returned version", async () => {
@@ -341,20 +388,22 @@ describe("workspace media dimensions", () => {
     expect(screen.getByTestId("image-card")).toHaveAttribute("data-position", "260,320");
   });
 
-  it("keeps a newer conflicted drag when an older successful response arrives and retries against the refreshed version", async () => {
+  it("retains a newer drag blocked by a pending receipt and later saves against the refreshed version", async () => {
     let finishSave: (() => void) | undefined;
     const firstResponse = new Promise<void>((resolve) => { finishSave = resolve; });
-    const submitted: CanvasCommand[][] = [];
-    server.use(http.post("/api/v1/projects/project-1/canvas/commands", async ({ request }) => {
-      const batch = (await request.json() as { commands: CanvasCommand[] }).commands;
+    const submitted: CanvasItemChange[][] = [];
+    server.use(http.post("/api/v1/projects/project-1/canvas/edits", async ({ request }) => {
+      const input = await request.json() as CanvasEditRequest;
+      expect(input).toMatchObject({ operation: "DISPLAY", commandId: expect.any(String) });
+      const batch = input.itemChanges ?? [];
       submitted.push(batch);
       const command = batch[0];
-      if (!command || command.type !== "UPDATE_LAYOUT") throw new Error("Expected layout update");
+      if (!command) throw new Error("Expected layout update");
       if (command.expectedVersion !== items[0]?.version) {
         return HttpResponse.json({ code: "VERSION_CONFLICT", detail: "布局冲突" }, { status: 409 });
       }
       items = items.map((item) => ({ ...item, ...command, version: item.version + 1 }));
-      const saved = { items };
+      const saved = { items, groups: [], receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } };
       if (submitted.length === 1) await firstResponse;
       return HttpResponse.json(saved);
     }));
@@ -364,9 +413,10 @@ describe("workspace media dimensions", () => {
       await clickControl(screen.getByRole("button", { name: "resize image-card" }));
       await waitFor(() => expect(submitted).toHaveLength(1));
       await clickControl(screen.getByRole("button", { name: "drag image-card" }));
-      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("conflict"));
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("failed"));
       const newerDraft = useCanvasStore.getState().drafts["image-card"];
-      expect(submitted[1]?.[0]).toMatchObject({ expectedVersion: 0, x: 140, y: 180 });
+      expect(submitted).toHaveLength(1);
+      expect(screen.queryByText("正在保存画布编辑…")).not.toBeInTheDocument();
       // A concurrent server edit is already in the Query projection when the first response arrives.
       items = items.map((item) => ({ ...item, version: 2, x: 600 }));
       act(() => client.setQueryData(["canvas", "project-1"], { items }));
@@ -375,11 +425,11 @@ describe("workspace media dimensions", () => {
       expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items[0])
         .toMatchObject({ version: 2, x: 600 });
       expect(useCanvasStore.getState().drafts["image-card"]).toBe(newerDraft);
-      expect(useCanvasStore.getState().saveState).toBe("conflict");
-      expect(submitted).toHaveLength(2);
+      expect(useCanvasStore.getState().saveState).toBe("failed");
+      expect(submitted).toHaveLength(1);
       expect(screen.getByTestId("image-card")).toHaveAttribute("data-position", "140,180");
       await clickControl(screen.getByRole("button", { name: "finish move image-card" }));
-      await waitFor(() => expect(submitted[2]?.[0]).toMatchObject({ expectedVersion: 2, x: 140, y: 180 }));
+      await waitFor(() => expect(submitted[1]?.[0]).toMatchObject({ expectedVersion: 2, x: 140, y: 180 }));
       await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
       expect(useCanvasStore.getState().drafts["image-card"]).toBeUndefined();
     } finally {
@@ -412,21 +462,23 @@ describe("workspace media dimensions", () => {
     }
   });
 
-  it("keeps another node's conflict when an older successful response arrives", async () => {
+  it("retains another node's blocked move after an older acknowledgement and its subsequent CAS conflict", async () => {
     let finishSave: (() => void) | undefined;
     const firstResponse = new Promise<void>((resolve) => { finishSave = resolve; });
-    const submitted: CanvasCommand[][] = [];
+    const submitted: CanvasItemChange[][] = [];
     items = [mediaItem(), { ...mediaItem("second-card"), x: 600 }];
-    server.use(http.post("/api/v1/projects/project-1/canvas/commands", async ({ request }) => {
-      const batch = (await request.json() as { commands: CanvasCommand[] }).commands;
+    server.use(http.post("/api/v1/projects/project-1/canvas/edits", async ({ request }) => {
+      const input = await request.json() as CanvasEditRequest;
+      expect(input).toMatchObject({ operation: "DISPLAY", commandId: expect.any(String) });
+      const batch = input.itemChanges ?? [];
       submitted.push(batch);
       const command = batch[0];
-      if (!command || command.type !== "UPDATE_LAYOUT") throw new Error("Expected layout update");
+      if (!command) throw new Error("Expected layout update");
       if (command.itemId === "second-card") {
         return HttpResponse.json({ code: "VERSION_CONFLICT", detail: "布局冲突" }, { status: 409 });
       }
       items = items.map((item) => item.id === command.itemId ? { ...item, ...command, version: item.version + 1 } : item);
-      const saved = { items };
+      const saved = { items, groups: [], receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } };
       await firstResponse;
       return HttpResponse.json(saved);
     }));
@@ -436,15 +488,24 @@ describe("workspace media dimensions", () => {
       await clickControl(screen.getByRole("button", { name: "resize image-card" }));
       await waitFor(() => expect(submitted).toHaveLength(1));
       await clickControl(screen.getByRole("button", { name: "drag second-card" }));
-      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("conflict"));
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("failed"));
+      expect(submitted).toHaveLength(1);
+      expect(screen.queryByText("正在保存画布编辑…")).not.toBeInTheDocument();
       const failedDraft = useCanvasStore.getState().drafts["second-card"];
       finishSave?.();
       await waitFor(() => expect(client.isMutating()).toBe(0));
       expect(useCanvasStore.getState().drafts["image-card"]).toBeUndefined();
       expect(useCanvasStore.getState().drafts["second-card"]).toBe(failedDraft);
-      expect(useCanvasStore.getState().saveState).toBe("conflict");
-      expect(submitted).toHaveLength(2);
+      expect(useCanvasStore.getState().saveState).toBe("failed");
+      expect(submitted).toHaveLength(1);
       expect(screen.getByTestId("second-card")).toHaveAttribute("data-position", "140,180");
+      await clickControl(screen.getByRole("button", { name: "finish move second-card" }));
+      const retriedDraft = useCanvasStore.getState().drafts["second-card"];
+      expect(retriedDraft).toEqual(failedDraft);
+      await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("conflict"));
+      expect(submitted).toHaveLength(2);
+      expect(submitted[1]?.[0]).toMatchObject({ itemId: "second-card", expectedVersion: 0, x: 140, y: 180 });
+      expect(useCanvasStore.getState().drafts["second-card"]).toBe(retriedDraft);
     } finally {
       finishSave?.();
       await waitFor(() => expect(client.isMutating()).toBe(0));

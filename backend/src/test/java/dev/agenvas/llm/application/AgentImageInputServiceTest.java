@@ -40,14 +40,14 @@ class AgentImageInputServiceTest {
     private final AssetService assets = mock(AssetService.class);
     private final dev.agenvas.skill.application.SkillService skills = mock(dev.agenvas.skill.application.SkillService.class);
     private final ToolExecutionRepository ledger = mock(ToolExecutionRepository.class);
+    private final AgentMediaSampleService samples = mock(AgentMediaSampleService.class);
     private final ObjectMapper mapper = new ObjectMapper();
-    private final AgentImageInputService service = new AgentImageInputService(artifacts, assets, mapper, skills, ledger);
+    private final AgentImageInputService service = new AgentImageInputService(artifacts, assets, mapper, skills, ledger, samples);
     private final AgentImageInputService.Input input = new AgentImageInputService.Input(artifact, version);
 
     private tools.jackson.databind.node.ObjectNode snapshot() {
         var snapshot = mapper.createObjectNode();
-        snapshot.putArray("bindings").addObject().put("kind", "IMAGE")
-                .put("artifactId", artifact.toString()).put("selectedVersionId", version.toString());
+        snapshot.putArray("creativeSkills");
         return snapshot;
     }
     private UserMessage message() {
@@ -58,7 +58,7 @@ class AgentImageInputServiceTest {
         ArtifactVersion bound = mock(ArtifactVersion.class);
         when(bound.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
         when(bound.artifactId()).thenReturn(artifact);
-        when(artifacts.requireAgentVisibleVersion(owner, project, run, version, snapshot())).thenReturn(bound);
+        when(artifacts.requireAgentReadableVersion(owner, project, snapshot(), run, version)).thenReturn(bound);
         Asset asset = mock(Asset.class);
         when(asset.id()).thenReturn(assetId);
         when(asset.projectId()).thenReturn(project);
@@ -118,7 +118,7 @@ class AgentImageInputServiceTest {
             var visible = mock(ArtifactVersion.class);
             when(visible.artifactId()).thenReturn(artifactId);
             when(visible.content()).thenReturn(mapper.createObjectNode().put("assetId", previewId.toString()));
-            when(artifacts.requireAgentVisibleVersion(owner, project, run, versionId, snapshot())).thenReturn(visible);
+            when(artifacts.requireAgentReadableVersion(owner, project, snapshot(), run, versionId)).thenReturn(visible);
             var asset = mock(Asset.class);
             when(asset.id()).thenReturn(previewId);
             when(asset.projectId()).thenReturn(project);
@@ -139,8 +139,7 @@ class AgentImageInputServiceTest {
             result.putArray("data").addObject().put("kind", "IMAGE")
                     .put("artifactId", reference.artifactId().toString())
                     .put("versionId", reference.versionId().toString())
-                    .put(AgentImageInputService.PREVIEW_REQUEST_KEY, true)
-                    .put(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY, true);
+                    .put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
             var assistant = readCall("read_artifacts");
             if (!history.isEmpty()) history.add(new AssistantMessage("Observed identity anchors of the previous image"));
             history.add(assistant);
@@ -178,12 +177,12 @@ class AgentImageInputServiceTest {
         assertThat(service.hydrate(owner, project, run, snapshot(), history)).isEqualTo(history);
         verifyNoInteractions(artifacts, assets);
     }
-    @Test void rejectsUnboundReferencesWithoutReadingMedia() {
+    @Test void rejectsForeignReferencesWithoutReadingMedia() {
         UUID foreign = UUID.randomUUID();
         var denied = new ApiProblemException(org.springframework.http.HttpStatus.NOT_FOUND,
                 "INPUT_SCOPE_DENIED", dev.agenvas.shared.i18n.ApiMessage.of("api.read-tool-service.task-does-not-exist"),
                 dev.agenvas.shared.i18n.ApiMessage.of("api.read-tool-service.task-does-not-exist"), false);
-        when(artifacts.requireAgentVisibleVersion(owner, project, run, foreign, snapshot())).thenThrow(denied);
+        when(artifacts.requireAgentReadableVersion(owner, project, snapshot(), run, foreign)).thenThrow(denied);
         var wrong = UserMessage.builder().text("Synthetic reference").metadata(Map.of(
                 AgentImageInputService.METADATA_KEY,
                 List.of(new AgentImageInputService.Input(artifact, foreign)))).build();
@@ -191,11 +190,21 @@ class AgentImageInputServiceTest {
                 .isSameAs(denied);
         verifyNoInteractions(assets);
     }
-    @Test void acceptsRunVisibleImageVersionsWithoutRequiringAnOriginalBinding() {
+    @Test void dropsAStoredPreviewAfterItsCanvasSelectionIsRemovedWithoutLoadingPixels() {
+        var message = dev.agenvas.shared.i18n.ApiMessage.of("api.read-tool-service.task-does-not-exist");
+        when(artifacts.requireAgentReadableVersion(owner, project, snapshot(), run, version))
+                .thenThrow(new ApiProblemException(org.springframework.http.HttpStatus.FORBIDDEN,
+                        "INPUT_SCOPE_DENIED", message, message, false));
+        var hydrated = service.hydrate(owner, project, run, snapshot(), List.of(message()));
+        assertThat(((UserMessage) hydrated.getFirst()).getMedia()).isEmpty();
+        assertThat(hydrated.getFirst().getText()).contains("no longer selected", "no pixels are attached");
+        verifyNoInteractions(assets);
+    }
+    @Test void acceptsCurrentCanvasImagesWithoutInputBindings() {
         fixture(PNG.length, Asset.MediaKind.IMAGE);
-        var visible = artifacts.requireAgentVisibleVersion(owner, project, run, version, snapshot());
+        var visible = artifacts.requireAgentReadableVersion(owner, project, snapshot(), run, version);
         var emptySnapshot = mapper.createObjectNode();
-        when(artifacts.requireAgentVisibleVersion(owner, project, run, version, emptySnapshot)).thenReturn(visible);
+        when(artifacts.requireAgentReadableVersion(owner, project, emptySnapshot, run, version)).thenReturn(visible);
         service.validateInputs(owner, project, run, emptySnapshot, List.of(input));
         verify(assets, never()).content(any(), any(), any(), anyBoolean());
     }
@@ -259,5 +268,47 @@ class AgentImageInputServiceTest {
         when(assets.open(content, 0, PNG.length)).thenThrow(new IOException("Synthetic failure"));
         assertThatThrownBy(() -> service.hydrate(owner, project, run, snapshot(), List.of(message())))
                 .isInstanceOf(IllegalStateException.class).hasMessage("Agent image preview could not be read");
+    }
+
+    @Test void committedSampleManifestSurvivesCheckpointWithoutMediaAndIsReplacedByTheNextRead() {
+        List<Message> history = new ArrayList<>(List.of(message()));
+        var result = mapper.createObjectNode().put("status", "SUCCEEDED");
+        result.putObject("data").put("artifactId", artifact.toString()).put("versionId", version.toString())
+                .put("kind", "VIDEO").put("sampleRequested", true).put("notice", "Bounded sample")
+                .put("audioStartMs", 0).put("audioDurationMs", 500).putArray("timestampsMs").add(0).add(1000);
+        service.appendReadPreviews(history, readCall("read_media_sample"), Map.of("read", result));
+        assertThat(history).hasSize(1);
+        var codec = new LlmProtocolCodec(mapper);
+        var checkpoint = codec.request(history, List.of());
+        assertThat(checkpoint.toString()).contains(AgentMediaSampleService.METADATA_KEY, version.toString(), "timestampsMs")
+                .doesNotContain(AgentImageInputService.METADATA_KEY, "base64", "image_url");
+        var sample = AgentMediaSampleService.parse(mapper.valueToTree(history.getFirst().getMetadata()
+                .get(AgentMediaSampleService.METADATA_KEY)).get(0));
+        var media = new org.springframework.ai.content.Media(org.springframework.util.MimeTypeUtils.IMAGE_PNG,
+                new org.springframework.core.io.ByteArrayResource(PNG));
+        when(samples.hydrate(owner, project, snapshot(), run, sample)).thenReturn(List.of(media));
+        var dispatched = (UserMessage) service.hydrate(owner, project, run, snapshot(), codec.requestMessages(checkpoint)).getFirst();
+        assertThat(dispatched.getMedia()).containsExactly(media);
+        assertThat(dispatched.getMetadata()).doesNotContainKey(AgentMediaSampleService.METADATA_KEY);
+        assertThat(checkpoint.toString()).doesNotContain(Base64.getEncoder().encodeToString(PNG));
+        verify(samples).hydrate(owner, project, snapshot(), run, sample);
+        service.appendReadPreviews(history, readCall("read_artifacts"), Map.of("read", readResult("SUCCEEDED")));
+        assertThat(history).hasSize(1);
+        assertThat(history.getFirst().getMetadata()).containsKey(AgentImageInputService.METADATA_KEY)
+                .doesNotContainKey(AgentMediaSampleService.METADATA_KEY);
+    }
+
+    @Test void failedReadsNeverAttachSamplesAndDuplicateSampleManifestsFailBeforeDispatch() {
+        var failed = mapper.createObjectNode().put("status", "FAILED");
+        failed.putObject("data").put("sampleRequested", true);
+        List<Message> history = new ArrayList<>();
+        service.appendReadPreviews(history, readCall("read_media_sample"), Map.of("read", failed));
+        assertThat(history).isEmpty();
+        var sample = new AgentMediaSampleService.Sample(artifact, version, List.of(0), null, null);
+        var duplicate = UserMessage.builder().text("invalid duplicate sample")
+                .metadata(Map.of(AgentMediaSampleService.METADATA_KEY, List.of(sample, sample))).build();
+        assertThatThrownBy(() -> service.hydrate(owner, project, run, snapshot(), List.of(duplicate)))
+                .isInstanceOf(ApiProblemException.class);
+        verifyNoInteractions(samples, assets, artifacts);
     }
 }

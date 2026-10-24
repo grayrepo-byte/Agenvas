@@ -59,6 +59,11 @@ public class ComfyUiImageAdapter implements MediaAdapter {
         return input.kind() == Task.Kind.IMAGE_GENERATION;
     }
 
+    @Override public String preflightFailure(AttemptContext context) {
+        var settings = mapper.readTree(catalog.pinnedSnapshot(context.binding()).specJson()).path("settings");
+        return ComfyUiWorkflowDefinition.configured(settings) ? published.preflightFailure(context) : null;
+    }
+
     @Override public Submission submit(AttemptContext context) {
         Snapshot snapshot = catalog.pinnedSnapshot(context.binding());
         ComfyUiClient client = clients.create(snapshot.connectionVersion());

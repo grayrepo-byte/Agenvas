@@ -2,7 +2,6 @@ package dev.agenvas.agent.infrastructure;
 
 import static dev.agenvas.db.Tables.AGENT_INSTANCE;
 import static dev.agenvas.db.Tables.PROJECT;
-import static dev.agenvas.db.Tables.IDEMPOTENCY_RECORD;
 
 import dev.agenvas.agent.application.AgentInstanceRepository;
 import dev.agenvas.agent.domain.AgentInstance;
@@ -10,7 +9,6 @@ import dev.agenvas.db.tables.records.AgentInstanceRecord;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.jooq.DSLContext;
@@ -29,34 +27,6 @@ public class JooqAgentInstanceRepository implements AgentInstanceRepository {
         this.dsl = dsl;
     }
 
-    @Override public boolean reserveCreateKey(UUID ownerId, String scope, String key, String hash, Instant now, Instant expiresAt) {
-        return dsl.insertInto(IDEMPOTENCY_RECORD).set(IDEMPOTENCY_RECORD.PRINCIPAL_ID, ownerId)
-                .set(IDEMPOTENCY_RECORD.SCOPE, scope).set(IDEMPOTENCY_RECORD.IDEMPOTENCY_KEY, key)
-                .set(IDEMPOTENCY_RECORD.REQUEST_HASH, hash).set(IDEMPOTENCY_RECORD.STATE, dev.agenvas.shared.idempotency.IdempotencyState.IN_PROGRESS.name())
-                .set(IDEMPOTENCY_RECORD.CREATED_AT, atUtc(now)).set(IDEMPOTENCY_RECORD.UPDATED_AT, atUtc(now))
-                .set(IDEMPOTENCY_RECORD.EXPIRES_AT, atUtc(expiresAt))
-                .onConflict(IDEMPOTENCY_RECORD.PRINCIPAL_ID, IDEMPOTENCY_RECORD.SCOPE, IDEMPOTENCY_RECORD.IDEMPOTENCY_KEY)
-                .doNothing().execute() == 1;
-    }
-
-    @Override public Optional<CreateKey> findCreateKey(UUID ownerId, String scope, String key) {
-        return dsl.select(IDEMPOTENCY_RECORD.REQUEST_HASH, IDEMPOTENCY_RECORD.RESOURCE_ID, IDEMPOTENCY_RECORD.RESPONSE_JSON)
-                .from(IDEMPOTENCY_RECORD).where(IDEMPOTENCY_RECORD.PRINCIPAL_ID.eq(ownerId))
-                .and(IDEMPOTENCY_RECORD.SCOPE.eq(scope)).and(IDEMPOTENCY_RECORD.IDEMPOTENCY_KEY.eq(key))
-                .and(IDEMPOTENCY_RECORD.STATE.eq(dev.agenvas.shared.idempotency.IdempotencyState.COMPLETED.name()))
-                .fetchOptional(row -> new CreateKey(row.value1(), row.value2(), row.value3().data()));
-    }
-
-    @Override public boolean completeCreateKey(UUID ownerId, String scope, String key, String hash, UUID agentId, String response, Instant now) {
-        return dsl.update(IDEMPOTENCY_RECORD).set(IDEMPOTENCY_RECORD.RESOURCE_ID, agentId)
-                .set(IDEMPOTENCY_RECORD.RESPONSE_JSON, org.jooq.JSONB.valueOf(response))
-                .set(IDEMPOTENCY_RECORD.STATE, dev.agenvas.shared.idempotency.IdempotencyState.COMPLETED.name())
-                .set(IDEMPOTENCY_RECORD.UPDATED_AT, atUtc(now)).where(IDEMPOTENCY_RECORD.PRINCIPAL_ID.eq(ownerId))
-                .and(IDEMPOTENCY_RECORD.SCOPE.eq(scope)).and(IDEMPOTENCY_RECORD.IDEMPOTENCY_KEY.eq(key))
-                .and(IDEMPOTENCY_RECORD.REQUEST_HASH.eq(hash))
-                .and(IDEMPOTENCY_RECORD.STATE.eq(dev.agenvas.shared.idempotency.IdempotencyState.IN_PROGRESS.name())).execute() == 1;
-    }
-
     /** 插入 Agent 配置行。 */
     @Override
     public void create(AgentInstance instance) {
@@ -73,16 +43,15 @@ public class JooqAgentInstanceRepository implements AgentInstanceRepository {
                 .execute();
     }
 
-    /** 按创建顺序列出项目 Agent。 */
+    /** 数据库唯一约束保证每个项目只返回一个导演。 */
     @Override
-    public List<AgentInstance> list(UUID ownerId, UUID projectId) {
+    public Optional<AgentInstance> findProjectDirector(UUID ownerId, UUID projectId) {
         return dsl.select(AGENT_INSTANCE.fields())
                 .from(AGENT_INSTANCE)
                 .join(PROJECT).on(PROJECT.ID.eq(AGENT_INSTANCE.PROJECT_ID))
                 .where(AGENT_INSTANCE.PROJECT_ID.eq(projectId))
                 .and(PROJECT.OWNER_ID.eq(ownerId))
-                .orderBy(AGENT_INSTANCE.CREATED_AT, AGENT_INSTANCE.ID)
-                .fetch(row -> map(row.into(AGENT_INSTANCE)));
+                .fetchOptional(row -> map(row.into(AGENT_INSTANCE)));
     }
 
     /** 按项目和所有者读取 Agent 配置，不对配置行加锁。 */

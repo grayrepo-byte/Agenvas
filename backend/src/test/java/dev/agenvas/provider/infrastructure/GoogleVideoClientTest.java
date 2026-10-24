@@ -29,6 +29,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 /** All HTTP/media are synthetic; this does not demonstrate real Google connectivity. */
 class GoogleVideoClientTest {
+    private static final String VEO_MODEL = "veo-3.1-generate-preview";
     private final ObjectMapper mapper = new ObjectMapper();
     private final List<String> paths = new ArrayList<>();
     private final List<JsonNode> bodies = new ArrayList<>();
@@ -61,7 +62,7 @@ class GoogleVideoClientTest {
     }
     @AfterEach void stop() { server.stop(0); }
     @Test void veoUsesNativeLongRunningRouteAndPackedOriginalReferenceBytes() {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         ObjectNode values = values(p, mapper.createObjectNode().put("image_3", UUID.randomUUID().toString())
                 .put("negativePrompt", "No lettering").put("seed", 13).put("enhancePrompt", false));
         var body = client.build(p, values, Map.of("image_3", new GoogleVideoClient.Input("image/png", new byte[]{1, 2, 3})));
@@ -112,7 +113,7 @@ class GoogleVideoClientTest {
         assertThat(extension.at("/generation_config/video_config/task").asText()).isEqualTo("extend");
     }
     @Test void originalOperationPollingHasStrictIdentityAndOneGoogleFileOutput() {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         response = "{\"name\":\"operations/synthetic\"}";
         assertThat(client.query(p, null, "synthetic-key", "operations/synthetic").status()).isEqualTo("pending");
         response = "{\"name\":\"operations/synthetic\",\"done\":true,\"response\":{\"generateVideoResponse\":{\"generatedSamples\":[{\"video\":{\"uri\":\"https://generativelanguage.googleapis.com/v1beta/files/synthetic-video\"}}]}}}";
@@ -137,7 +138,7 @@ class GoogleVideoClientTest {
         assertThatThrownBy(() -> client.query(p, null, "synthetic-key", "v1_synthetic")).isInstanceOf(NativeMediaFailure.class);
     }
     @Test void longVeoOperationNamesKeepTheirCompleteIdentityThroughCreateAndHttpQuery() {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         ObjectNode body = client.build(p, values(p, mapper.createObjectNode()), Map.of());
         String createPath = "/v1beta/models/" + p.model() + ":predictLongRunning";
         List<String> expectedPaths = new ArrayList<>();
@@ -162,7 +163,7 @@ class GoogleVideoClientTest {
         assertThat(paths).hasSize(5);
     }
     @Test void malformedCreateAndLostResponseStayUnknownWithNoPostRetry() {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         ObjectNode body = client.build(p, values(p, mapper.createObjectNode()), Map.of());
         for (String bad : List.of("not-json", "{}", "{\"name\":\"models/another/operations/synthetic\"}")) {
             response = bad;
@@ -183,7 +184,7 @@ class GoogleVideoClientTest {
         assertThat(client.query(p, null, "synthetic-key", "v1_synthetic").video().bytes()).isEqualTo(bytes);
     }
     @Test void duplicateOrTrailingJsonNeverCreatesAmbiguousAcknowledgedIdentity() {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         ObjectNode body = client.build(p, values(p, mapper.createObjectNode()), Map.of());
         for (String ambiguous : List.of("{\"name\":\"operations/a\",\"name\":\"operations/b\"}", "{\"name\":\"operations/a\"}{}")) {
             response = ambiguous;
@@ -192,7 +193,7 @@ class GoogleVideoClientTest {
         assertThat(paths).hasSize(2);
     }
     @Test void queryFailuresArePermanentOnlyForKnownRejectionAndExpiry() {
-        var p = profile(GoogleVideoModels.VEO, GoogleVideoModels.VEO_MODELS.getFirst(), "GENERATE");
+        var p = profile(GoogleVideoModels.VEO, VEO_MODEL, "GENERATE");
         status = 403;
         assertThatThrownBy(() -> client.query(p, null, "synthetic-key", "operations/synthetic"))
                 .isInstanceOf(NativeMediaFailure.class).hasMessage("MEDIA_CREDENTIAL_UNAVAILABLE");

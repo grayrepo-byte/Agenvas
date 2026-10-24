@@ -19,10 +19,31 @@ class KlingModelsTest {
     private static final String IMAGE = "00000000-0000-0000-0000-000000000001";
     private static final String VIDEO = "00000000-0000-0000-0000-000000000002";
 
-    @Test void catalogContainsEveryCurrentModelAndExplicitGenerationOperation() {
-        assertThat(KlingModels.profiles(Task.Kind.IMAGE_GENERATION)).hasSize(7);
-        assertThat(KlingModels.profiles(Task.Kind.VIDEO_GENERATION)).hasSize(8);
-        assertThat(KlingModels.profiles()).hasSize(15);
+    @Test void catalogContainsResolvableUniqueProfilesAndPartitionsThemByMediaKind() {
+        var profiles = KlingModels.profiles();
+        assertThat(profiles).isNotEmpty().doesNotHaveDuplicates();
+        for (var kind : List.of(Task.Kind.IMAGE_GENERATION, Task.Kind.VIDEO_GENERATION)) {
+            assertThat(KlingModels.profiles(kind)).containsExactlyInAnyOrderElementsOf(
+                    profiles.stream().filter(profile -> profile.kind() == kind).toList());
+        }
+        // Keep supported identities covered while allowing the catalog to grow or be reordered.
+        for (String model : List.of("kling-v3", "kling-v3-omni", "kling-image-o1", "kling-v2-1")) {
+            assertThat(profiles).contains(new KlingModels.Profile(model, KlingModels.Operation.GENERATE, Task.Kind.IMAGE_GENERATION));
+        }
+        for (String model : List.of("kling-3.0-turbo", "kling-3.0", "kling-3.0-omni", "kling-o1", "kling-2.6", "kling-2.5-turbo")) {
+            assertThat(profiles).contains(new KlingModels.Profile(model, KlingModels.Operation.GENERATE, Task.Kind.VIDEO_GENERATION));
+        }
+        assertThat(profiles).contains(
+                new KlingModels.Profile("kling-v2-1", KlingModels.Operation.MULTI_IMAGE, Task.Kind.IMAGE_GENERATION),
+                new KlingModels.Profile("", KlingModels.Operation.EXPAND, Task.Kind.IMAGE_GENERATION),
+                new KlingModels.Profile("", KlingModels.Operation.SUBJECT_COMPLETION, Task.Kind.IMAGE_GENERATION));
+        for (String model : List.of("kling-3.0", "kling-2.6")) {
+            assertThat(profiles).contains(new KlingModels.Profile(model, KlingModels.Operation.MOTION_CONTROL, Task.Kind.VIDEO_GENERATION));
+        }
+        for (var profile : profiles) {
+            assertThat(KlingModels.resolve(profile.model(), profile.operation().name(), profile.kind())).isEqualTo(profile);
+            assertThat(KlingModels.inputs(profile)).isNotEmpty().extracting(KlingModels.Field::key).doesNotHaveDuplicates();
+        }
         assertThat(KlingModels.adapter("KLING_IMAGE")).isTrue();
         assertThat(KlingModels.adapter("KLING_IMAGE_3")).isFalse();
         for (var settings : List.of(mapper.createObjectNode(), mapper.createObjectNode().put("model", ""), mapper.createObjectNode().putNull("model"))) {

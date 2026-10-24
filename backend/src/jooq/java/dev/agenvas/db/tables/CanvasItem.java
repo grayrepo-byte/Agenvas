@@ -9,7 +9,9 @@ import dev.agenvas.db.Keys;
 import dev.agenvas.db.Public;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.ArtifactVersion.ArtifactVersionPath;
+import dev.agenvas.db.tables.CanvasCharacterBinding.CanvasCharacterBindingPath;
 import dev.agenvas.db.tables.CanvasConnection.CanvasConnectionPath;
+import dev.agenvas.db.tables.CanvasGroup.CanvasGroupPath;
 import dev.agenvas.db.tables.CanvasItemMediaVersion.CanvasItemMediaVersionPath;
 import dev.agenvas.db.tables.MediaDraft.MediaDraftPath;
 import dev.agenvas.db.tables.Project.ProjectPath;
@@ -165,6 +167,12 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
      */
     public final TableField<CanvasItemRecord, Long> MEDIA_SELECTION_EPOCH = createField(DSL.name("media_selection_epoch"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "Content selection revision, independent of layout CAS; prevents late tasks from replacing user selections.");
 
+    /**
+     * The column <code>public.canvas_item.topology_epoch</code>.
+     * 任何关联连线创建、修改、删除时递增；与展示版本和内容选择epoch独立，防止连线变化后误撤销复制
+     */
+    public final TableField<CanvasItemRecord, Long> TOPOLOGY_EPOCH = createField(DSL.name("topology_epoch"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "任何关联连线创建、修改、删除时递增；与展示版本和内容选择epoch独立，防止连线变化后误撤销复制");
+
     private CanvasItem(Name alias, Table<CanvasItemRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -249,7 +257,7 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
 
     @Override
     public List<ForeignKey<CanvasItemRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_PROJECT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION);
+        return Arrays.asList(Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_GROUP, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_PROJECT, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_SELECTED_VERSION);
     }
 
     private transient ArtifactPath _artifact;
@@ -262,6 +270,18 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
             _artifact = new ArtifactPath(this, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_ARTIFACT, null);
 
         return _artifact;
+    }
+
+    private transient CanvasGroupPath _canvasGroup;
+
+    /**
+     * Get the implicit join path to the <code>public.canvas_group</code> table.
+     */
+    public CanvasGroupPath canvasGroup() {
+        if (_canvasGroup == null)
+            _canvasGroup = new CanvasGroupPath(this, Keys.CANVAS_ITEM__FK_CANVAS_ITEM_GROUP, null);
+
+        return _canvasGroup;
     }
 
     private transient ProjectPath _project;
@@ -330,6 +350,19 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
         return _fkCanvasConnectionTarget;
     }
 
+    private transient CanvasCharacterBindingPath _canvasCharacterBinding;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_character_binding</code> table
+     */
+    public CanvasCharacterBindingPath canvasCharacterBinding() {
+        if (_canvasCharacterBinding == null)
+            _canvasCharacterBinding = new CanvasCharacterBindingPath(this, null, Keys.CANVAS_CHARACTER_BINDING__FK_CHARACTER_BINDING_CANVAS.getInverseKey());
+
+        return _canvasCharacterBinding;
+    }
+
     private transient MediaDraftPath _mediaDraft;
 
     /**
@@ -363,6 +396,7 @@ public class CanvasItem extends TableImpl<CanvasItemRecord> {
             Internal.createCheck(this, DSL.name("ck_canvas_item_subject_mapping"), "((subject_id = artifact_id))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_subject_type"), "(((subject_type)::text = 'ARTIFACT'::text))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_title"), "(((length(btrim((title)::text)) >= 1) AND (length(btrim((title)::text)) <= 160)))", true),
+            Internal.createCheck(this, DSL.name("ck_canvas_item_topology_epoch"), "((topology_epoch >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_item_version_non_negative"), "((version >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_canvas_media_selection_epoch"), "((media_selection_epoch >= 0))", true)
         );

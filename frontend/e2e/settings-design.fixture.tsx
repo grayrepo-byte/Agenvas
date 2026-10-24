@@ -119,7 +119,7 @@ let nextStorageProfile = 1;
 let prompts: PromptDefinition[] = [
   { id: "synthetic-director", key: "agent.director", kind: "AGENT", name: "导演 Agent", description: "将创作意图转化为清晰的故事结构与镜头语言。",
     content: "你是创作项目的导演。\n\n先理解用户的目标、素材与限制，再制定清晰的创作计划。\n只使用明确授权的工具；在媒体生成前提出可审查的提案。\n\n所有内容为设计预览使用的合成提示词。", builtIn: true, version: 2, createdAt: now, updatedAt: now },
-  { id: "synthetic-copywriter", key: "agent.copywriter", kind: "AGENT", name: "创意文案", description: "打磨叙事、人物与表达节奏。",
+  { id: "synthetic-copywriter", key: "feature.copywriter", kind: "FUNCTION", name: "创意文案", description: "打磨叙事、人物与表达节奏。",
     content: "根据当前项目背景编写简洁、有画面感的文案。保持角色与信息的一致性。", builtIn: false, version: 1, createdAt: now, updatedAt: now },
   { id: "synthetic-image-prompt", key: "function.image-prompt", kind: "FUNCTION", name: "图片提示词优化", description: "将画面描述整理为可复用的图片提示词。",
     content: "从主体、场景、光线、构图与材质五个维度整理画面描述。", builtIn: true, version: 1, createdAt: now, updatedAt: now },
@@ -380,11 +380,10 @@ window.fetch = async (input, init) => {
     const details: CallDebug = { id: call.id, captured: false, exchanges: [], llmStream: null };
     return Response.json(details);
   }
-  if (path === "/api/v1/agent-presets") return Response.json({ items: prompts.filter((prompt) => prompt.kind === "AGENT").map(({ key, name }) => ({ key, name })) });
   if (path.startsWith("/api/v1/settings/prompts")) {
     if (method === "POST") {
       const prompt: PromptDefinition = { id: `synthetic-prompt-${prompts.length}`, key: stringField(body, "key"), name: stringField(body, "name"),
-        description: stringField(body, "description"), content: stringField(body, "content"), kind: body.kind === "FUNCTION" ? "FUNCTION" : "AGENT",
+        description: stringField(body, "description"), content: stringField(body, "content"), kind: "FUNCTION",
         builtIn: false, version: 1, createdAt: now, updatedAt: now };
       prompts = [...prompts, prompt]; return Response.json(prompt);
     }

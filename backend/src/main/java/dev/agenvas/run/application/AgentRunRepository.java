@@ -4,7 +4,6 @@ import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.idempotency.IdempotencyState;
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -13,6 +12,9 @@ public interface AgentRunRepository {
 
     /** Bounded identity scan only; callers must recheck whether a blocked Run can safely end. */
     List<BlockedRunCandidate> blockedRecoveryCandidates(UUID afterId, int limit);
+
+    /** Active waiting Runs are also the durable repair queue for local tool completion notifications. */
+    List<WaitingRunCandidate> waitingRecoveryCandidates(UUID afterId, int limit);
 
     /** Caller holds project/run locks and has confirmed abandoning these expired units. */
     List<AgentRun> stopForHistoryCleanup(List<UUID> runIds, Instant now);
@@ -44,13 +46,6 @@ public interface AgentRunRepository {
 
     /** 仅在认证所有者及项目范围内读取指定 Run。 */
     Optional<AgentRun> find(UUID ownerId, UUID projectId, UUID runId);
-
-    /** Resolve provenance only for the bounded candidate versions currently shown on the canvas. */
-    Set<UUID> filterAgentRunIds(UUID ownerId, UUID projectId, UUID agentId, Set<UUID> candidateIds);
-
-    /** 以创建时间和 Run ID 的稳定键集分页读取同一 Agent 的运行历史。 */
-    List<AgentRun> list(UUID ownerId, UUID projectId, UUID agentId,
-            Instant beforeCreatedAt, UUID beforeId, int limit);
 
     /** 同一会话按单调消息序号倒序分页。 */
     List<AgentRun> listConversation(UUID ownerId, UUID projectId, UUID agentId,

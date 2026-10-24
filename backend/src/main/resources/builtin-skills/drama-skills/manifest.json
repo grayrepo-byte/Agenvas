@@ -173,5 +173,8 @@
       ]
     }
   ],
-  "edition": "agenvas-canvas-v1"
+  "edition": "agenvas-canvas-v1",
+  "sourceName": "Drama Skills",
+  "licenseUrl": "https://github.com/zenstory-ai/drama-skills/blob/c2426e03c0e7722bebcc6a488b6658dc38c65ac3/LICENSE",
+  "category": "STORY"
 }

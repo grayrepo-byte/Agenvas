@@ -196,7 +196,7 @@ describe("VideoPreview", () => {
     await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 1100)); });
     const dialog = await screen.findByRole("dialog", { name: "预览 的视频预览" });
     const player = dialog.querySelector("video")!;
-    expect(player).toHaveAttribute("controls");
+    expect(player).not.toHaveAttribute("controls");
     expect(player).not.toHaveAttribute("autoplay");
     expect(player).toHaveAttribute("poster", "/synthetic-poster.png");
     expect(player.querySelector("source")).toHaveAttribute("src", "/synthetic-video.mp4");

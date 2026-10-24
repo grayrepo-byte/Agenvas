@@ -1,0 +1,3580 @@
+{
+  "tools": [
+    {
+      "name": "list_projects",
+      "description": "List projects currently owned by the authenticated user. No model, director or credential configuration is returned.",
+      "requiredScope": "READ",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "includeArchived": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "projectId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ACTIVE",
+                    "ARCHIVED"
+                  ]
+                },
+                "aspectRatio": {
+                  "type": "string",
+                  "maxLength": 40
+                }
+              },
+              "required": [
+                "projectId",
+                "name",
+                "status",
+                "aspectRatio"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 100,
+            "minItems": 0,
+            "uniqueItems": true
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "read_project_summary",
+      "description": "Read safe project metadata, aspect ratio and current content counts.",
+      "requiredScope": "READ",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "status": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "aspectRatio": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "nodeCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "artifactCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "counts": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "projectId",
+          "name",
+          "status",
+          "aspectRatio",
+          "nodeCount",
+          "artifactCount",
+          "counts"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "read_canvas",
+      "description": "Read live canvas metadata and CAS versions, 20 nodes by default (max 40). includeDrafts=true returns complete editable drafts and requires limit <=6. Use read_artifacts for immutable content/pixels.",
+      "requiredScope": "READ",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 40
+          },
+          "includeDrafts": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "canvasItemId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "artifactId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "TEXT",
+                    "IMAGE",
+                    "VIDEO",
+                    "AUDIO"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "artifactVersion": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "versionId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "width": {
+                  "type": "number"
+                },
+                "height": {
+                  "type": "number"
+                },
+                "zIndex": {
+                  "type": "integer",
+                  "minimum": -1000,
+                  "maximum": 1000
+                },
+                "mediaDraft": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "version": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "capabilityId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "styleId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "videoInputMode": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "TEXT",
+                                "START_END",
+                                "GENERAL_REFERENCE"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "durationSeconds": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 60
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "prompt": {
+                          "type": "string",
+                          "maxLength": 20000
+                        },
+                        "parameters": {
+                          "type": "object"
+                        },
+                        "mediaInputs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "versionId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "artifactId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "role": {
+                                "type": "string",
+                                "enum": [
+                                  "REFERENCE",
+                                  "START_FRAME",
+                                  "END_FRAME",
+                                  "AUDIO_REFERENCE",
+                                  "VIDEO_REFERENCE"
+                                ]
+                              },
+                              "order": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "color": {
+                                "type": "string",
+                                "pattern": "^#[0-9A-F]{6}$"
+                              }
+                            },
+                            "required": [
+                              "versionId",
+                              "artifactId",
+                              "role",
+                              "order",
+                              "color"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 14
+                        },
+                        "mentions": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "versionId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "role": {
+                                "type": "string",
+                                "enum": [
+                                  "REFERENCE",
+                                  "START_FRAME",
+                                  "END_FRAME",
+                                  "AUDIO_REFERENCE",
+                                  "VIDEO_REFERENCE"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "versionId",
+                              "role"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "maxItems": 100
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "capabilityId",
+                        "styleId",
+                        "videoInputMode",
+                        "durationSeconds",
+                        "prompt",
+                        "parameters",
+                        "mediaInputs",
+                        "mentions"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "version": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "capabilityId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "styleId": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "videoInputMode": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": [
+                                "TEXT",
+                                "START_END",
+                                "GENERAL_REFERENCE"
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "durationSeconds": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 60
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "promptCharacters": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "mediaInputCount": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "mentionCount": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "capabilityId",
+                        "styleId",
+                        "videoInputMode",
+                        "durationSeconds",
+                        "promptCharacters",
+                        "mediaInputCount",
+                        "mentionCount"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "canvasItemId",
+                "artifactId",
+                "kind",
+                "title",
+                "expectedVersion",
+                "artifactVersion",
+                "locked",
+                "x",
+                "y",
+                "width",
+                "height",
+                "zIndex"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 100,
+            "minItems": 0,
+            "uniqueItems": true
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "nextOffset": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "offset",
+          "total",
+          "nextOffset"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "read_artifacts",
+      "description": "Read 1–12 exact immutable versions from the selected project. Text is bounded; at most one controlled image preview per call. No paths or download URLs.",
+      "requiredScope": "READ",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "versionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "projectId",
+          "versionIds"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "artifactId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "versionId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "TEXT",
+                    "IMAGE",
+                    "VIDEO",
+                    "AUDIO"
+                  ]
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "versionNo": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "createdByKind": {
+                  "type": "string",
+                  "enum": [
+                    "USER",
+                    "AGENT",
+                    "TASK",
+                    "EXTERNAL_TOOL"
+                  ]
+                },
+                "expectedVersion": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "content": {
+                  "type": "object",
+                  "properties": {
+                    "format": {
+                      "type": "string",
+                      "enum": [
+                        "PLAIN_TEXT",
+                        "MARKDOWN"
+                      ]
+                    },
+                    "text": {
+                      "type": "string",
+                      "maxLength": 20000
+                    }
+                  },
+                  "required": [
+                    "format",
+                    "text"
+                  ],
+                  "additionalProperties": false
+                },
+                "contentPreview": {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                "contentTruncated": {
+                  "type": "boolean"
+                },
+                "media": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "IMAGE",
+                        "VIDEO",
+                        "AUDIO"
+                      ]
+                    },
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "byteSize": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "width": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "height": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "durationMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "contentType",
+                    "byteSize"
+                  ],
+                  "additionalProperties": false
+                },
+                "imageIndex": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "generationPrompt": {
+                  "type": "string",
+                  "maxLength": 20000
+                },
+                "composition": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "artifactId",
+                "versionId",
+                "kind",
+                "title",
+                "versionNo",
+                "createdByKind",
+                "contentTruncated"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_text",
+      "description": "Create a text artifact and canvas node atomically. Retry lost responses with the identical commandId and arguments.",
+      "requiredScope": "CONTENT_WRITE",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "commandId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "PLAIN_TEXT",
+              "MARKDOWN"
+            ]
+          },
+          "placement": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number",
+                "minimum": 120,
+                "maximum": 2000
+              },
+              "height": {
+                "type": "number",
+                "minimum": 80,
+                "maximum": 2000
+              },
+              "zIndex": {
+                "type": "integer",
+                "minimum": -1000,
+                "maximum": 1000
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "commandId",
+          "projectId",
+          "title",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "node": {
+            "type": "object",
+            "properties": {
+              "canvasItemId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "artifactId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "TEXT",
+                  "IMAGE",
+                  "VIDEO",
+                  "AUDIO"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              "artifactVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              "versionId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              },
+              "zIndex": {
+                "type": "integer",
+                "minimum": -1000,
+                "maximum": 1000
+              },
+              "mediaDraft": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "capabilityId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "styleId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "videoInputMode": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "TEXT",
+                              "START_END",
+                              "GENERAL_REFERENCE"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "durationSeconds": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 60
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "prompt": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "parameters": {
+                        "type": "object"
+                      },
+                      "mediaInputs": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "versionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "artifactId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "REFERENCE",
+                                "START_FRAME",
+                                "END_FRAME",
+                                "AUDIO_REFERENCE",
+                                "VIDEO_REFERENCE"
+                              ]
+                            },
+                            "order": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "color": {
+                              "type": "string",
+                              "pattern": "^#[0-9A-F]{6}$"
+                            }
+                          },
+                          "required": [
+                            "versionId",
+                            "artifactId",
+                            "role",
+                            "order",
+                            "color"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 14
+                      },
+                      "mentions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "versionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "REFERENCE",
+                                "START_FRAME",
+                                "END_FRAME",
+                                "AUDIO_REFERENCE",
+                                "VIDEO_REFERENCE"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "versionId",
+                            "role"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 100
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "capabilityId",
+                      "styleId",
+                      "videoInputMode",
+                      "durationSeconds",
+                      "prompt",
+                      "parameters",
+                      "mediaInputs",
+                      "mentions"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "capabilityId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "styleId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "videoInputMode": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "TEXT",
+                              "START_END",
+                              "GENERAL_REFERENCE"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "durationSeconds": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 60
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "promptCharacters": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "mediaInputCount": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "mentionCount": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "capabilityId",
+                      "styleId",
+                      "videoInputMode",
+                      "durationSeconds",
+                      "promptCharacters",
+                      "mediaInputCount",
+                      "mentionCount"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "canvasItemId",
+              "artifactId",
+              "kind",
+              "title",
+              "expectedVersion",
+              "artifactVersion",
+              "locked",
+              "x",
+              "y",
+              "width",
+              "height",
+              "zIndex"
+            ],
+            "additionalProperties": false
+          },
+          "artifact": {
+            "type": "object",
+            "properties": {
+              "artifactId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "versionId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "TEXT",
+                  "IMAGE",
+                  "VIDEO",
+                  "AUDIO"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "versionNo": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              "createdByKind": {
+                "type": "string",
+                "enum": [
+                  "USER",
+                  "AGENT",
+                  "TASK",
+                  "EXTERNAL_TOOL"
+                ]
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              "content": {
+                "type": "object",
+                "properties": {
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "PLAIN_TEXT",
+                      "MARKDOWN"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 20000
+                  }
+                },
+                "required": [
+                  "format",
+                  "text"
+                ],
+                "additionalProperties": false
+              },
+              "contentPreview": {
+                "type": "string",
+                "maxLength": 20000
+              },
+              "contentTruncated": {
+                "type": "boolean"
+              },
+              "media": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "IMAGE",
+                      "VIDEO",
+                      "AUDIO"
+                    ]
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "byteSize": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "kind",
+                  "contentType",
+                  "byteSize"
+                ],
+                "additionalProperties": false
+              },
+              "imageIndex": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              }
+            },
+            "required": [
+              "artifactId",
+              "versionId",
+              "kind",
+              "title",
+              "versionNo",
+              "createdByKind",
+              "contentTruncated"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "operationId",
+          "node",
+          "artifact"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "revise_artifact",
+      "description": "Append a text version using artifact expectedVersion. Locked nodes and archived media cannot be revised. A replay returns the original version before checking current CAS.",
+      "requiredScope": "CONTENT_WRITE",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "commandId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "artifactId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "PLAIN_TEXT",
+              "MARKDOWN"
+            ]
+          }
+        },
+        "required": [
+          "commandId",
+          "projectId",
+          "artifactId",
+          "expectedVersion",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "artifact": {
+            "type": "object",
+            "properties": {
+              "artifactId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "versionId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "TEXT",
+                  "IMAGE",
+                  "VIDEO",
+                  "AUDIO"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "versionNo": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              "createdByKind": {
+                "type": "string",
+                "enum": [
+                  "USER",
+                  "AGENT",
+                  "TASK",
+                  "EXTERNAL_TOOL"
+                ]
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              "content": {
+                "type": "object",
+                "properties": {
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "PLAIN_TEXT",
+                      "MARKDOWN"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 20000
+                  }
+                },
+                "required": [
+                  "format",
+                  "text"
+                ],
+                "additionalProperties": false
+              },
+              "contentPreview": {
+                "type": "string",
+                "maxLength": 20000
+              },
+              "contentTruncated": {
+                "type": "boolean"
+              },
+              "media": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "IMAGE",
+                      "VIDEO",
+                      "AUDIO"
+                    ]
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "byteSize": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "durationMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "kind",
+                  "contentType",
+                  "byteSize"
+                ],
+                "additionalProperties": false
+              },
+              "imageIndex": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              }
+            },
+            "required": [
+              "artifactId",
+              "versionId",
+              "kind",
+              "title",
+              "versionNo",
+              "createdByKind",
+              "contentTruncated"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "operationId",
+          "artifact"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "manage_canvas_node",
+      "description": "Rename, move or resize one node using its layout expectedVersion. This never modifies content versions. Locked nodes reject changes.",
+      "requiredScope": "CONTENT_WRITE",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "commandId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "canvasItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "RENAME",
+              "MOVE",
+              "RESIZE"
+            ]
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1
+          },
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "width": {
+            "type": "number"
+          },
+          "height": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "commandId",
+          "projectId",
+          "canvasItemId",
+          "action",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "node": {
+            "type": "object",
+            "properties": {
+              "canvasItemId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "artifactId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "TEXT",
+                  "IMAGE",
+                  "VIDEO",
+                  "AUDIO"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              "artifactVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              "versionId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              },
+              "zIndex": {
+                "type": "integer",
+                "minimum": -1000,
+                "maximum": 1000
+              },
+              "mediaDraft": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "capabilityId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "styleId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "videoInputMode": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "TEXT",
+                              "START_END",
+                              "GENERAL_REFERENCE"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "durationSeconds": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 60
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "prompt": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "parameters": {
+                        "type": "object"
+                      },
+                      "mediaInputs": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "versionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "artifactId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "REFERENCE",
+                                "START_FRAME",
+                                "END_FRAME",
+                                "AUDIO_REFERENCE",
+                                "VIDEO_REFERENCE"
+                              ]
+                            },
+                            "order": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "color": {
+                              "type": "string",
+                              "pattern": "^#[0-9A-F]{6}$"
+                            }
+                          },
+                          "required": [
+                            "versionId",
+                            "artifactId",
+                            "role",
+                            "order",
+                            "color"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 14
+                      },
+                      "mentions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "versionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "REFERENCE",
+                                "START_FRAME",
+                                "END_FRAME",
+                                "AUDIO_REFERENCE",
+                                "VIDEO_REFERENCE"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "versionId",
+                            "role"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 100
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "capabilityId",
+                      "styleId",
+                      "videoInputMode",
+                      "durationSeconds",
+                      "prompt",
+                      "parameters",
+                      "mediaInputs",
+                      "mentions"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "capabilityId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "styleId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "videoInputMode": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "TEXT",
+                              "START_END",
+                              "GENERAL_REFERENCE"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "durationSeconds": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 60
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "promptCharacters": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "mediaInputCount": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "mentionCount": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "capabilityId",
+                      "styleId",
+                      "videoInputMode",
+                      "durationSeconds",
+                      "promptCharacters",
+                      "mediaInputCount",
+                      "mentionCount"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "canvasItemId",
+              "artifactId",
+              "kind",
+              "title",
+              "expectedVersion",
+              "artifactVersion",
+              "locked",
+              "x",
+              "y",
+              "width",
+              "height",
+              "zIndex"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "operationId",
+          "node"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "create_media_node",
+      "description": "Create an empty IMAGE/VIDEO/AUDIO artifact, canvas node and draft. This does not call a Provider.",
+      "requiredScope": "CONTENT_WRITE",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "commandId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "IMAGE",
+              "VIDEO",
+              "AUDIO"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1
+          },
+          "placement": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number",
+                "minimum": 120,
+                "maximum": 2000
+              },
+              "height": {
+                "type": "number",
+                "minimum": 80,
+                "maximum": 2000
+              },
+              "zIndex": {
+                "type": "integer",
+                "minimum": -1000,
+                "maximum": 1000
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "commandId",
+          "projectId",
+          "kind",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "node": {
+            "type": "object",
+            "properties": {
+              "canvasItemId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "artifactId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "TEXT",
+                  "IMAGE",
+                  "VIDEO",
+                  "AUDIO"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              "artifactVersion": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              "versionId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "locked": {
+                "type": "boolean"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number"
+              },
+              "height": {
+                "type": "number"
+              },
+              "zIndex": {
+                "type": "integer",
+                "minimum": -1000,
+                "maximum": 1000
+              },
+              "mediaDraft": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "capabilityId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "styleId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "videoInputMode": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "TEXT",
+                              "START_END",
+                              "GENERAL_REFERENCE"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "durationSeconds": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 60
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "prompt": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "parameters": {
+                        "type": "object"
+                      },
+                      "mediaInputs": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "versionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "artifactId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "REFERENCE",
+                                "START_FRAME",
+                                "END_FRAME",
+                                "AUDIO_REFERENCE",
+                                "VIDEO_REFERENCE"
+                              ]
+                            },
+                            "order": {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            "color": {
+                              "type": "string",
+                              "pattern": "^#[0-9A-F]{6}$"
+                            }
+                          },
+                          "required": [
+                            "versionId",
+                            "artifactId",
+                            "role",
+                            "order",
+                            "color"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 14
+                      },
+                      "mentions": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "versionId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "role": {
+                              "type": "string",
+                              "enum": [
+                                "REFERENCE",
+                                "START_FRAME",
+                                "END_FRAME",
+                                "AUDIO_REFERENCE",
+                                "VIDEO_REFERENCE"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "versionId",
+                            "role"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 100
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "capabilityId",
+                      "styleId",
+                      "videoInputMode",
+                      "durationSeconds",
+                      "prompt",
+                      "parameters",
+                      "mediaInputs",
+                      "mentions"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "capabilityId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "styleId": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "videoInputMode": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "enum": [
+                              "TEXT",
+                              "START_END",
+                              "GENERAL_REFERENCE"
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "durationSeconds": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 60
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "promptCharacters": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "mediaInputCount": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "mentionCount": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "capabilityId",
+                      "styleId",
+                      "videoInputMode",
+                      "durationSeconds",
+                      "promptCharacters",
+                      "mediaInputCount",
+                      "mentionCount"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "canvasItemId",
+              "artifactId",
+              "kind",
+              "title",
+              "expectedVersion",
+              "artifactVersion",
+              "locked",
+              "x",
+              "y",
+              "width",
+              "height",
+              "zIndex"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "operationId",
+          "node"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "update_media_draft",
+      "description": "Patch the persisted media draft using independent expectedDraftVersion. Arrays replace complete inputs/mentions; omitted fields keep previous values. Explicit mediaInputs reconcile reference connections. Does not generate.",
+      "requiredScope": "CONTENT_WRITE",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "commandId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "canvasItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedDraftVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "patch": {
+            "type": "object",
+            "properties": {
+              "prompt": {
+                "type": "string",
+                "maxLength": 20000
+              },
+              "parameters": {
+                "type": "object"
+              },
+              "durationSeconds": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 60
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "capabilityId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "styleId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "videoInputMode": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "TEXT",
+                      "START_END",
+                      "GENERAL_REFERENCE"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "mediaInputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "versionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "REFERENCE",
+                        "START_FRAME",
+                        "END_FRAME",
+                        "AUDIO_REFERENCE",
+                        "VIDEO_REFERENCE"
+                      ]
+                    },
+                    "color": {
+                      "type": "string",
+                      "pattern": "^#[0-9a-fA-F]{6}$"
+                    }
+                  },
+                  "required": [
+                    "versionId",
+                    "role",
+                    "color"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 14,
+                "minItems": 0,
+                "uniqueItems": true
+              },
+              "mentions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "versionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "REFERENCE",
+                        "START_FRAME",
+                        "END_FRAME",
+                        "AUDIO_REFERENCE",
+                        "VIDEO_REFERENCE"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "versionId",
+                    "role"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 100,
+                "minItems": 0,
+                "uniqueItems": true
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "commandId",
+          "projectId",
+          "canvasItemId",
+          "expectedDraftVersion",
+          "patch"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "canvasItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "draft": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "capabilityId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "styleId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "videoInputMode": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "TEXT",
+                      "START_END",
+                      "GENERAL_REFERENCE"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "durationSeconds": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 60
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prompt": {
+                "type": "string",
+                "maxLength": 20000
+              },
+              "parameters": {
+                "type": "object"
+              },
+              "mediaInputs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "versionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "artifactId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "REFERENCE",
+                        "START_FRAME",
+                        "END_FRAME",
+                        "AUDIO_REFERENCE",
+                        "VIDEO_REFERENCE"
+                      ]
+                    },
+                    "order": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "color": {
+                      "type": "string",
+                      "pattern": "^#[0-9A-F]{6}$"
+                    }
+                  },
+                  "required": [
+                    "versionId",
+                    "artifactId",
+                    "role",
+                    "order",
+                    "color"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 14
+              },
+              "mentions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "versionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "REFERENCE",
+                        "START_FRAME",
+                        "END_FRAME",
+                        "AUDIO_REFERENCE",
+                        "VIDEO_REFERENCE"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "versionId",
+                    "role"
+                  ],
+                  "additionalProperties": false
+                },
+                "maxItems": 100
+              }
+            },
+            "required": [
+              "version",
+              "capabilityId",
+              "styleId",
+              "videoInputMode",
+              "durationSeconds",
+              "prompt",
+              "parameters",
+              "mediaInputs",
+              "mentions"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "operationId",
+          "canvasItemId",
+          "draft"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "list_media_capabilities",
+      "description": "List enabled published media capabilities and safe input contracts. No connection addresses, credentials or raw executable workflows.",
+      "requiredScope": "READ",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "IMAGE",
+              "VIDEO",
+              "AUDIO"
+            ]
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "projectId"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "capabilityId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 160
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "IMAGE",
+                    "VIDEO",
+                    "AUDIO"
+                  ]
+                },
+                "version": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "minimumSeconds": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "maximumSeconds": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "settings": {
+                  "type": "object"
+                }
+              },
+              "required": [
+                "capabilityId",
+                "name",
+                "kind",
+                "version",
+                "minimumSeconds",
+                "maximumSeconds",
+                "settings"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 100,
+            "minItems": 0,
+            "uniqueItems": true
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "nextOffset": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9223372036854775807
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "offset",
+          "total",
+          "nextOffset"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "run_media",
+      "description": "Immediately accept media generation without a fee approval. Pins the draft and exact inputs, returning ALL charged Task outputs. Other commands occupying the node cause CANVAS_ITEM_BUSY. Keep commandId stable on retry; a new command is a new delegation.",
+      "requiredScope": "MEDIA_GENERATE",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "commandId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "canvasItemId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedDraftVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          }
+        },
+        "required": [
+          "commandId",
+          "projectId",
+          "canvasItemId",
+          "expectedDraftVersion"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "AGENT_TURN",
+                    "TEXT_GENERATION",
+                    "IMAGE_GENERATION",
+                    "VIDEO_GENERATION",
+                    "AUDIO_GENERATION"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "READY",
+                    "RUNNING",
+                    "SUBMITTING",
+                    "WAITING_PROVIDER",
+                    "UNKNOWN",
+                    "BLOCKED",
+                    "SUCCEEDED",
+                    "FAILED",
+                    "CANCELED"
+                  ]
+                },
+                "cancelRequested": {
+                  "type": "boolean"
+                },
+                "attemptNo": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "errorCode": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 120
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "completedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "EXTERNAL_MCP",
+                    "USER_DIRECT",
+                    "BUILTIN_AGENT"
+                  ]
+                },
+                "operationId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "canvasItemId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "artifactId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "artifactVersionId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "additionalResults": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "maxItems": 100,
+                  "minItems": 0,
+                  "uniqueItems": true
+                },
+                "inputSummary": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "draftVersion",
+                    "generationIndex",
+                    "generationCount",
+                    "promptCharacters",
+                    "inputVersionIds"
+                  ],
+                  "properties": {
+                    "draftVersion": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "generationIndex": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "generationCount": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "promptCharacters": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "inputVersionIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "maxItems": 42
+                    },
+                    "capabilityId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "capabilityVersion": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "durationSeconds": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              },
+              "required": [
+                "taskId",
+                "kind",
+                "status",
+                "cancelRequested",
+                "attemptNo",
+                "errorCode",
+                "updatedAt",
+                "completedAt",
+                "source"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "operationId",
+          "tasks"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "read_task_status",
+      "description": "Read same-project task states and exact result references. UNKNOWN remains UNKNOWN; this query never retries generation or wakes an internal Agent.",
+      "requiredScope": "READ",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "projectId",
+          "taskIds"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "AGENT_TURN",
+                    "TEXT_GENERATION",
+                    "IMAGE_GENERATION",
+                    "VIDEO_GENERATION",
+                    "AUDIO_GENERATION"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "READY",
+                    "RUNNING",
+                    "SUBMITTING",
+                    "WAITING_PROVIDER",
+                    "UNKNOWN",
+                    "BLOCKED",
+                    "SUCCEEDED",
+                    "FAILED",
+                    "CANCELED"
+                  ]
+                },
+                "cancelRequested": {
+                  "type": "boolean"
+                },
+                "attemptNo": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "errorCode": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 120
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "completedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "EXTERNAL_MCP",
+                    "USER_DIRECT",
+                    "BUILTIN_AGENT"
+                  ]
+                },
+                "operationId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "canvasItemId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "artifactId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "artifactVersionId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "additionalResults": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "maxItems": 100,
+                  "minItems": 0,
+                  "uniqueItems": true
+                },
+                "inputSummary": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "draftVersion",
+                    "generationIndex",
+                    "generationCount",
+                    "promptCharacters",
+                    "inputVersionIds"
+                  ],
+                  "properties": {
+                    "draftVersion": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "generationIndex": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "generationCount": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "promptCharacters": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "inputVersionIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "maxItems": 42
+                    },
+                    "capabilityId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "capabilityVersion": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "durationSeconds": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              },
+              "required": [
+                "taskId",
+                "kind",
+                "status",
+                "cancelRequested",
+                "attemptNo",
+                "errorCode",
+                "updatedAt",
+                "completedAt",
+                "source"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "compose_video",
+      "description": "Compose existing authorized videos and dubbing locally. First read storyboard text and immutable generationPrompt/media durations; match shots and dialogue semantically, never by canvas/file order. Supply ordered exact versions. Omit line startMs for automatic source-audio activity alignment; explicit starts are story anchors. Worker analyzes energy/silence (not speech recognition), trims audio conservatively, allows at most 1.15x tempo and fails rather than truncate speech. Unreliable activity falls back with warnings. Max 12 shots, 30 lines, 60 seconds; output 1280x720 30fps. MUTE by default; BACKGROUND retains 15% original dialogue too. Rationale is a short public editing explanation, not private reasoning. No provider generation or approval. Returns queued Task; query status and read result composition timeline, do not claim success immediately. Also supports zero-voice trimming/joining, KEEP original audio, source clips up to 10 minutes, shot speed 0.5–2 and fadeMs 0–500, pinned music with volume/source offset, timed subtitles, and output 720P/1080P with 16:9/9:16/1:1. Final timeline remains at most 60 seconds, 30fps.",
+      "requiredScope": "MEDIA_GENERATE",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectId",
+          "commandId",
+          "composition"
+        ],
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "commandId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "composition": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "title",
+              "shots"
+            ],
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 160
+              },
+              "rationale": {
+                "type": "string",
+                "maxLength": 2000,
+                "description": "面向用户的简短编排依据，不保存模型私有推理"
+              },
+              "originalAudioMode": {
+                "type": "string",
+                "enum": [
+                  "MUTE",
+                  "BACKGROUND",
+                  "KEEP"
+                ],
+                "default": "MUTE"
+              },
+              "output": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "resolution": {
+                    "type": "string",
+                    "enum": [
+                      "720P",
+                      "1080P"
+                    ],
+                    "default": "720P"
+                  },
+                  "aspectRatio": {
+                    "type": "string",
+                    "enum": [
+                      "16:9",
+                      "9:16",
+                      "1:1"
+                    ],
+                    "default": "16:9"
+                  }
+                }
+              },
+              "music": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "audioVersionId"
+                ],
+                "properties": {
+                  "audioVersionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "sourceStartMs": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 599999,
+                    "default": 0
+                  },
+                  "volume": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.2
+                  }
+                }
+              },
+              "subtitles": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "text",
+                    "startMs",
+                    "endMs"
+                  ],
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 500
+                    },
+                    "startMs": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 59999
+                    },
+                    "endMs": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 60000
+                    }
+                  }
+                }
+              },
+              "shots": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 12,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "videoVersionId",
+                    "lines"
+                  ],
+                  "properties": {
+                    "videoVersionId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "sourceStartMs": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 599999,
+                      "default": 0
+                    },
+                    "durationMs": {
+                      "type": "integer",
+                      "minimum": 100,
+                      "maximum": 600000,
+                      "description": "取源时长；省略时取素材剩余长度；成片时长按速度换算并受60秒总限约束"
+                    },
+                    "speed": {
+                      "type": "number",
+                      "minimum": 0.5,
+                      "maximum": 2,
+                      "default": 1
+                    },
+                    "fadeMs": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 500,
+                      "default": 0,
+                      "description": "每镜开头及结尾的淡黑时长，不重叠镜头"
+                    },
+                    "lines": {
+                      "type": "array",
+                      "maxItems": 30,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "audioVersionId"
+                        ],
+                        "properties": {
+                          "audioVersionId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "startMs": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 59999,
+                            "description": "可选镜内锚点；省略时依声音活动自动排布"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "AGENT_TURN",
+                    "TEXT_GENERATION",
+                    "IMAGE_GENERATION",
+                    "VIDEO_GENERATION",
+                    "AUDIO_GENERATION"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "READY",
+                    "RUNNING",
+                    "SUBMITTING",
+                    "WAITING_PROVIDER",
+                    "UNKNOWN",
+                    "BLOCKED",
+                    "SUCCEEDED",
+                    "FAILED",
+                    "CANCELED"
+                  ]
+                },
+                "cancelRequested": {
+                  "type": "boolean"
+                },
+                "attemptNo": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9223372036854775807
+                },
+                "errorCode": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 120
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "completedAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 64
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "EXTERNAL_MCP",
+                    "USER_DIRECT",
+                    "BUILTIN_AGENT"
+                  ]
+                },
+                "operationId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "canvasItemId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "artifactId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "artifactVersionId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "additionalResults": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "maxItems": 100,
+                  "minItems": 0,
+                  "uniqueItems": true
+                },
+                "inputSummary": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "draftVersion",
+                    "generationIndex",
+                    "generationCount",
+                    "promptCharacters",
+                    "inputVersionIds"
+                  ],
+                  "properties": {
+                    "draftVersion": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "generationIndex": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "generationCount": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "promptCharacters": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "inputVersionIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "maxItems": 42
+                    },
+                    "capabilityId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "capabilityVersion": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "durationSeconds": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              },
+              "required": [
+                "taskId",
+                "kind",
+                "status",
+                "cancelRequested",
+                "attemptNo",
+                "errorCode",
+                "updatedAt",
+                "completedAt",
+                "source"
+              ],
+              "additionalProperties": false
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "operationId",
+          "tasks"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ]
+}

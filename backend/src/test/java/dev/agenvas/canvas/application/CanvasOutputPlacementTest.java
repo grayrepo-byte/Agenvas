@@ -3,6 +3,7 @@ package dev.agenvas.canvas.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -23,6 +24,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -39,15 +41,61 @@ class CanvasOutputPlacementTest {
     private final CanvasItemRepository items = mock(CanvasItemRepository.class);
     private final ArtifactService artifacts = mock(ArtifactService.class);
     private final MediaDraftService drafts = mock(MediaDraftService.class);
+    private final ProjectEventService events = mock(ProjectEventService.class);
     private final ObjectMapper mapper = new ObjectMapper();
     private final CanvasService canvas = new CanvasService(mock(ProjectService.class), artifacts,
             drafts, items, mock(CanvasConnectionService.class),
-            mock(ProjectEventService.class), mapper, Clock.fixed(NOW, java.time.ZoneOffset.UTC));
+            events, mapper, Clock.fixed(NOW, java.time.ZoneOffset.UTC),
+                    new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
+                            mock(dev.agenvas.character.application.CharacterService.class)))
+                            .getBeanProvider(dev.agenvas.character.application.CharacterService.class));
 
     @BeforeEach
     void setup() {
         when(items.create(any())).thenReturn(true);
         when(artifacts.get(owner, project, artifactId)).thenReturn(artifactView(artifactId, Artifact.Kind.IMAGE));
+    }
+
+    @Test
+    void directGroupPlacementRejectsOverflowBeforeCreatingAnyNode() {
+        when(items.groupExists(owner, project, groupId)).thenReturn(true);
+        List<CanvasItem> full = java.util.stream.IntStream.range(0, 100).mapToObj(index -> groupedCard(UUID.randomUUID())).toList();
+        when(items.list(owner, project)).thenReturn(full);
+        executeProjectMutation();
+        assertThatThrownBy(() -> canvas.apply(owner, project, List.of(groupPlacement(UUID.randomUUID()))))
+                .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("CANVAS_EDIT_LIMIT"));
+        verify(items, never()).create(any());
+    }
+
+    @Test
+    void fullGroupStillAcceptsAnIdenticalPlacementRetry() {
+        UUID id = UUID.randomUUID();
+        CanvasItem existing = groupedCard(id);
+        List<CanvasItem> full = new ArrayList<>(java.util.stream.IntStream.range(0, 99)
+                .mapToObj(index -> groupedCard(UUID.randomUUID())).toList());
+        full.add(existing);
+        when(items.groupExists(owner, project, groupId)).thenReturn(true);
+        when(items.list(owner, project)).thenReturn(full);
+        when(items.create(any())).thenReturn(false);
+        when(items.findForUpdate(owner, project, id)).thenReturn(Optional.of(existing));
+        executeProjectMutation();
+        assertThat(canvas.apply(owner, project, List.of(groupPlacement(id)))).hasSize(100);
+        verify(drafts, never()).initializeWithinChange(any(), any(), anyBoolean());
+    }
+
+    private void executeProjectMutation() {
+        when(events.recordChange(any(), any(), any())).thenAnswer(call -> {
+            @SuppressWarnings("unchecked") Supplier<ProjectEventService.Change<Object>> mutation = call.getArgument(2);
+            return new ProjectEventService.RecordedChange<>(mutation.get().value(), null);
+        });
+    }
+    private CanvasService.PlaceArtifact groupPlacement(UUID id) {
+        return new CanvasService.PlaceArtifact(id, artifactId, BigDecimal.ZERO, BigDecimal.ZERO,
+                new BigDecimal("300"), new BigDecimal("200"), 0, groupId, false);
+    }
+    private CanvasItem groupedCard(UUID id) {
+        return new CanvasItem(id, project, CanvasItem.SubjectType.ARTIFACT, artifactId, null, "Result",
+                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("300"), new BigDecimal("200"), 0, groupId, false, 0, NOW, NOW);
     }
 
     @Test
@@ -137,23 +185,6 @@ class CanvasOutputPlacementTest {
                 .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.detail().key())
                         .isEqualTo("api.canvas-service.there-is-no-free-location-for-generated-content"));
         verify(items, never()).create(any());
-    }
-
-    @Test
-    void exactMediaPlacementReusesOnlyTheMatchingSiblingSelection() {
-        UUID first = UUID.randomUUID(), second = UUID.randomUUID();
-        CanvasItem original = new CanvasItem(sourceId, project, CanvasItem.SubjectType.ARTIFACT, artifactId,
-                second, "Source", decimal("0"), decimal("0"), decimal("300"), decimal("300"),
-                0, groupId, false, 0, NOW, NOW);
-        when(items.list(owner, project)).thenReturn(List.of(original));
-        var requested = new CanvasService.ArtifactVersionPlacement(artifactId, first);
-        var result = canvas.placeArtifactVersionsWithinChange(owner, project, List.of(requested), null);
-        assertThat(result.created()).singleElement().satisfies(item -> {
-            assertThat(item.selectedVersionId()).isEqualTo(first);
-            assertThat(item.groupId()).isNull();
-        });
-        assertThat(result.alreadyPresent()).isEmpty();
-        verify(items, never()).selectVersion(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any(), any());
     }
 
     @Test

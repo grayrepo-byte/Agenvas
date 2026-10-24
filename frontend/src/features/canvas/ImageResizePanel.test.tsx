@@ -18,14 +18,14 @@ describe("ImageResizePanel", () => {
     expect(screen.getByText("目标：600 × 400 px")).toBeVisible();
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "33.3" } });
     expect(screen.getByText("目标：400 × 266 px")).toBeVisible();
-    fireEvent.submit(screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("button", { name: "开始缩放" }));
     expect(onSubmit).toHaveBeenCalledWith({ resizeMode: "PERCENTAGE", percentage: 33.3 });
   });
   it("uses the longest side for portrait images and remembers both values", () => {
     const { onSubmit } = mount({ sourceWidth: 800, sourceHeight: 1200 });
     fireEvent.click(screen.getByRole("radio", { name: "最长边像素" }));
     expect(screen.getByText("目标：683 × 1024 px")).toBeVisible();
-    fireEvent.submit(screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("button", { name: "开始缩放" }));
     expect(onSubmit).toHaveBeenCalledWith({ resizeMode: "LONGEST_EDGE", longestEdge: 1024 });
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "512" } });
     fireEvent.click(screen.getByRole("radio", { name: "百分比" }));
@@ -42,7 +42,7 @@ describe("ImageResizePanel", () => {
     expect(screen.getByRole("button", { name: "开始缩放" })).toBeDisabled();
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "40000" } });
     expect(screen.getByText("目标图片不能超过 4000 万像素。")).toBeVisible();
-    fireEvent.submit(screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("button", { name: "开始缩放" }));
     expect(onSubmit).not.toHaveBeenCalled();
   });
   it("allows reading failed dimensions again and blocks execution", () => {

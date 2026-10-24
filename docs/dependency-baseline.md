@@ -22,6 +22,7 @@
 | Spring Boot Parent / Maven Plugin | 4.0.8 |
 | Tomcat Embed | 11.0.25（Boot 4.0 管理系列内的安全修复覆盖） |
 | Spring AI BOM / `spring-ai-client-chat` / `spring-ai-starter-model-openai` | 2.0.1 |
+| Spring AI MCP WebMVC starter / transport | 2.0.1，由现有 Spring AI BOM 管理；官方 MCP Java SDK core / Jackson 3 mapper 2.0.0，显式无状态工具注册，最高协商 `2025-11-25` |
 | OkHttp（LLM 出站固定目标与 DNS/重定向控制） | 4.12.0；与 Spring AI 2.0.1 当前解析版本一致 |
 | TwelveMonkeys ImageIO WebP reader | 3.15.2；用于实际 WebP 解码，见 [项目仓库](https://github.com/haraldk/TwelveMonkeys) |
 | ONNX Runtime Java CPU | 1.30.0；仅用于服务端本地 Depth Anything V2 Small 推理，Maven 包包含 Linux/macOS x64/aarch64 与 Windows x64 原生库；Compose server 镜像内置固定提交、SHA-256 校验的 27.3 MB INT8 ONNX |
@@ -33,7 +34,7 @@
 
 本地 Testcontainers PostgreSQL 仅用于测试且不启用 TLS；Maven Surefire/Failsafe 的测试进程固定 JDBC `sslmode=disable`，避免驱动在 Docker Desktop 端口代理上进行不必要的 SSL 协商。此设置不进入 Spring Boot 生产运行配置，也不改变部署数据库的 TLS 策略。
 
-jOOQ 生成源码（145 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的独立 jooq-codegen job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
+jOOQ 生成源码（157 个文件，包 `dev.agenvas.db`）提交在 `backend/src/jooq/java`，由 `build-helper-maven-plugin` 加为源码根，因此普通构建、CI 与部署镜像都不需要数据库。重新生成走 `jooq-codegen` profile：先对一次性 PostgreSQL 17 执行 Flyway，再反向生成；该 profile 不是默认构建的一部分（原因为何不采用构建期 codegen，见 [ADR 0012](adr/0012-jooq-persistence.md)）。CI 的独立 jooq-codegen job 对同一一次性数据库重跑该 profile 并断言生成结果与提交内容一致。
 
 Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；本项目使用 BOM 管理的 `spring-ai-client-chat` 与 OpenAI 兼容模型 starter，避免混入 1.x API。默认禁用 Spring AI 的所有外部模型自动配置；独立 JVM 的默认 Mock 与开发 Compose 的显式 Mock 加载应用自有确定性 `ChatGateway` 和 `GenerationGateway`。默认部署 Compose 使用 `configured`，管理员配置数据库模型或部署者配置候选聊天适配器的端点、模型与 Key 后才会创建真实聊天客户端。两种模式仍经过同一持久化 Runtime/Task 路径。
 
@@ -51,11 +52,13 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 
 2026-10-03 Agent 回答展示新增精确版本：[`react-markdown` 10.1.0](https://github.com/remarkjs/react-markdown)、[`remark-gfm` 4.0.1](https://github.com/remarkjs/remark-gfm)、[`remark-breaks` 4.0.0](https://github.com/remarkjs/remark-breaks)。使用同步 React 渲染、GFM 语法与普通换行插件；React peer 范围为 >=18，与当前 React 19 基线兼容。禁用原始 HTML，并使用应用自己的安全链接转换与不自动加载图片的组件。验证范围为 Markdown 与 Agent 对话/流式相关前端测试、TypeScript、lint 和 Vite 构建，不涉及后端或真实 Provider。
 
-2026-10-04 图片与视频查看器新增精确正式版本：[`yet-another-react-lightbox` 3.32.2](https://yet-another-react-lightbox.com/)（MIT）。使用包内 Zoom、Fullscreen、Video 插件，React/React DOM peer 范围为 `^16.8.0 || ^17 || ^18 || ^19`，与当前 React 19 基线兼容。图片支持缩放、平移和全屏；视频使用原生控件且默认不自动播放。验证范围为查看器与画布媒体入口的定向前端测试、TypeScript、相关 lint、四语言目录检查和 Vite 构建；实际检查结果记录在开发清单，不涉及后端或真实 Provider。
+2026-10-04 图片与视频查看器新增精确正式版本：[`yet-another-react-lightbox` 3.32.2](https://yet-another-react-lightbox.com/)（MIT）。使用包内 Zoom、Fullscreen、Video 插件，React/React DOM peer 范围为 `^16.8.0 || ^17 || ^18 || ^19`，与当前 React 19 基线兼容。图片支持缩放、平移和全屏；视频默认不自动播放，当前使用公共 `VideoReviewControls`（统一控件修订后关闭系统原生控制条）。验证范围为查看器与画布媒体入口的定向前端测试、TypeScript、相关 lint、四语言目录检查和 Vite 构建；实际检查结果记录在开发清单，不涉及后端或真实 Provider。
 
 2026-10-05 调用日志日期组件新增精确正式版本：[`react-day-picker` 10.0.2](https://daypicker.dev/) 与 [`date-fns` 4.4.0](https://date-fns.org/)，通过 shadcn CLI 加入 Calendar 与 Popover 源码。使用 React DayPicker 单日选择、四语言 locale 与 date-fns 本地时间格式化；沿用现有 Radix、Phosphor、主题及其他依赖版本。验证范围为调用日志 Mock HTTP 组件测试、TypeScript、lint、四语言/主题检查与 Vite 构建；实际结果见开发清单。
 
 2026-10-20 导演聊天窗口使用 shadcn CLI 新增 MessageScroller、Message 与 Bubble 源码，新增正式依赖 `@shadcn/react` 精确版本 0.3.1；沿用现有 Radix、Phosphor 与 React 19，不覆盖既有基础组件。MessageScroller 管理流式跟随、历史锚定和回到最新消息。源码与用法见 [shadcn 聊天组件](https://ui.shadcn.com/docs/components/radix/message-scroller)。验证覆盖聊天、窗口生命周期、画布集成、四语言、类型、lint、生产构建及使用合成数据的浏览器尺寸与交互；实际结果见开发清单，不等于真实模型验收。
+
+2026-10-22 本地 3D 导演台新增精确正式依赖 `three` 0.186.1 与开发期类型 `@types/three` 0.186.0，版本已写入 `frontend/package.json` 和锁文件。采用 Three.js 原生接口按需加载视口，沿用 React 19，不引入 React Three Fiber；人偶与道具为本地程序化几何体，不新增外部模型资产或远程运行服务。Three.js 使用 [MIT 许可证](https://github.com/mrdoob/three.js/blob/dev/LICENSE)。依赖解析、类型、243 项定向前端测试、完整 lint（含主题与四语言目录）、生产构建及真实 Chrome WebGL 验证通过。浏览器覆盖 1440×900、390×844、844×390，四种精确 PNG 尺寸、非空场景像素、控件可达、机位同步、上下文丢失后恢复与合成换视角受理；使用合成 API，未验证真实 Provider。Three.js 渲染代码保持独立动态分块，构建保留大分块与 Vite 未来配置加载提示。行为边界见 [ADR 0051](adr/0051-local-3d-director-workbench.md)。
 
 ## 容器镜像
 
@@ -70,6 +73,10 @@ Spring AI 2.0 不再提供旧教程常见的 `spring-ai-core` 直接模块名；
 server 和 web 使用非 root 用户、只读根文件系统及受限 tmpfs；PostgreSQL 在各 Compose 内联入口中首次生成持久密钥后，交由官方入口初始化数据库并以 postgres 用户运行。server 从只读 credentials-data 文件读取数据库密码与凭证主密钥，目录为 0700、文件为 0600，UID 100/GID 101。默认镜像部署仅发布 Web 8088 到 `0.0.0.0`；源码与 Mock Compose 保留三个端口的 `127.0.0.1` 绑定。部署定向测试使用 Python 3 标准库和隔离官方 PostgreSQL，运行服务不需要 Python；8 项通过，详见 T02。
 
 Web 运行镜像在固定 Alpine 基础镜像上执行 `apk upgrade --no-cache`；server 使用固定 Ubuntu Noble/Temurin glibc 镜像并执行 `apt-get upgrade`，因为 Maven 发布的 ONNX Runtime Linux 原生库依赖 glibc，不能在 Alpine/musl 上可靠加载。实际 OS 包版本由每次镜像 SBOM 记录，不能仅凭基础镜像 digest 推断。2026-10-04 按用户决定，PostgreSQL 直接使用[官方固定版本镜像](https://hub.docker.com/_/postgres)，移除自建 Dockerfile、su-exec 替换和 gosu 路径扫描排除；CI 直接拉取并扫描官方镜像。旧派生镜像扫描和初始化结果是历史记录，不代表当前官方镜像的安全验收。
+
+## MCP 验证范围
+
+附加 MCP 入口保持 Java 21、Boot 4.0.8、Spring AI 2.0.1 与 Jackson 3 基线；没有引入预览版本。依赖解析、实际 TCP SDK 客户端、12 工具 Schema、真实 PostgreSQL 鉴权/并发/恢复、Mock 媒体归档与图片返回已定向验证；客户端兼容和非回归结果见[开发清单](DEVELOPMENT-CHECKLIST.md)。Maven 从 `contracts/mcp/tools.json` 打包唯一目录，源码 Docker 构建同步复制该目录。首版手工 Bearer 不提供 OAuth 授权发现，不声明支持 `2026-07-28` 传输或所有客户端。
 
 ## 源码构建缓存与本地更新
 
@@ -155,3 +162,5 @@ CI 的 jOOQ 漂移检查不再占用固定 55432 端口；Docker 自动预留仅
 ## SMB / WebDAV 验证范围
 
 SMB 新增固定正式版 [`com.hierynomus:smbj:0.15.0`](https://github.com/hierynomus/smbj/releases/tag/v0.15.0)，使用 SMB2/3、强制签名、关闭 DFS 和带超时的会话。Maven 在 Spring Boot BOM 管理下解析传递依赖；WebDAV 复用 OkHttp 4.12.0，不引入 WebDAV SDK。协议根据 [RFC 4918](https://www.rfc-editor.org/rfc/rfc4918.html) 实现 MKCOL/PUT/MOVE/HEAD/GET/DELETE，发布禁止覆盖并核对 SHA-256。验证涵盖协议单元测试、真实 PostgreSQL 加模拟 WebDAV HTTP、现有对象存储与媒体中继回归，以及前端设置、四语言、类型、lint 和构建。真实 NAS/WebDAV 产品与大文件吞吐未验证；具体执行结果见开发清单。
+
+导演上下文预算复用 Spring AI 2.0.1 已解析的 `JTokkitTokenCountEstimator`（`spring-ai-commons` 及其既有传递依赖），不新增依赖或 Provider 专属压缩 API。估算包含文本、工具定义、参数、回复与媒体预留；25% 余量用于不同模型 tokenizer 的差异，不能当作真实计费用量。语义交接使用原 ChatGateway 与持久回合。编译、定向单元与真实 PostgreSQL 的长任务/恢复验证见开发清单；真实模型摘要质量和墙钟十几小时运行另行验收。

@@ -14,6 +14,7 @@ import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.tool.ToolCallback;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -127,5 +128,61 @@ class LlmProtocolCodecTest {
         response.put("schemaVersion", 0);
         assertThatThrownBy(() -> codec.selectedAssistant(response))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void restoresExactSavedToolDefinitionsWithoutAnExecutableCallback() {
+        ObjectNode request = requestWithTool("read_artifacts");
+        String oldSchema = "{\n  \"type\":\"object\", \"properties\":{\"versionIds\":{\"type\":\"array\"}}\n}";
+        ((ObjectNode) request.at("/tools/0")).put("description", "Original description\nwith preserved whitespace")
+                .put("inputSchema", oldSchema);
+        request.withArray("tools").addObject().put("name", "read_canvas").put("description", "Original directory")
+                .put("inputSchema", "{\"type\":\"object\",\"properties\":{}}");
+
+        List<ToolCallback> restored = codec.requestTools(request, List.of("read_canvas", "read_artifacts"));
+
+        assertThat(restored).extracting(tool -> tool.getToolDefinition().name())
+                .containsExactly("read_artifacts", "read_canvas");
+        assertThat(restored.getFirst().getToolDefinition().inputSchema()).isEqualTo(oldSchema);
+        assertThat(codec.request(codec.requestMessages(request), restored)).isEqualTo(request);
+        assertThatThrownBy(() -> restored.getFirst().call("{}"))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("durable business executor");
+    }
+
+    @Test
+    void rejectsUnknownDuplicateOrMalformedSavedToolDefinitions() {
+        var allowed = List.of("read_artifacts", "read_canvas");
+        ObjectNode unknown = requestWithTool("run_shell");
+        assertThatThrownBy(() -> codec.requestTools(unknown, allowed)).isInstanceOf(IllegalArgumentException.class);
+        ObjectNode duplicate = requestWithTool("read_artifacts");
+        duplicate.withArray("tools").add(duplicate.at("/tools/0").deepCopy());
+        assertThatThrownBy(() -> codec.requestTools(duplicate, allowed)).isInstanceOf(IllegalArgumentException.class);
+
+        for (String schema : List.of("not json", "null", "[]", "{\"type\":\"string\"}", "{}")) {
+            ObjectNode request = requestWithTool("read_artifacts");
+            ((ObjectNode) request.at("/tools/0")).put("inputSchema", schema);
+            assertThatThrownBy(() -> codec.requestTools(request, allowed)).isInstanceOf(IllegalArgumentException.class);
+        }
+        for (String field : List.of("name", "description", "inputSchema")) {
+            ObjectNode request = requestWithTool("read_artifacts");
+            ((ObjectNode) request.at("/tools/0")).putNull(field);
+            assertThatThrownBy(() -> codec.requestTools(request, allowed)).isInstanceOf(IllegalArgumentException.class);
+        }
+        ObjectNode extra = requestWithTool("read_artifacts");
+        ((ObjectNode) extra.at("/tools/0")).put("callback", "execute directly");
+        assertThatThrownBy(() -> codec.requestTools(extra, allowed)).isInstanceOf(IllegalArgumentException.class);
+        ObjectNode absent = requestWithTool("read_artifacts");
+        absent.remove("tools");
+        assertThatThrownBy(() -> codec.requestTools(absent, allowed)).isInstanceOf(IllegalArgumentException.class);
+        ObjectNode wrongType = requestWithTool("read_artifacts");
+        wrongType.putObject("tools");
+        assertThatThrownBy(() -> codec.requestTools(wrongType, allowed)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private ObjectNode requestWithTool(String name) {
+        ObjectNode request = codec.request(List.of(new UserMessage("Frozen request")), List.of());
+        request.withArray("tools").addObject().put("name", name).put("description", "Frozen definition")
+                .put("inputSchema", "{\"type\":\"object\",\"properties\":{}}");
+        return request;
     }
 }

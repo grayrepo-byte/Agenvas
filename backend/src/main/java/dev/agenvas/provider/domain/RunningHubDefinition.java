@@ -20,7 +20,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         String sourceSha256, List<NodeOption> nodeOptions, JsonNode importSource) {
     public static final int SCHEMA_VERSION = 1;
     public static final String PROTOCOL_VERSION = "V2";
-    public static final int MAX_FIELDS = 64;
+    public static final int MAX_FIELDS = 1024;
     public static final int MAX_NODE_OPTIONS = 2048;
     public static final int MAX_OUTPUTS = 16;
     public static final int MAX_TEXT_LENGTH = 20_000;
@@ -31,6 +31,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     private static final Set<String> IMPORT_CREDENTIAL_FIELDS = Set.of("apikey", "authorization", "accesspassword", "password", "token", "secret");
     public static final String VALUES_PROPERTY = "dynamicValues";
     public static final int MAX_LABEL_LENGTH = 160;
+    public static final int MAX_GROUP_LENGTH = 80;
     private static final int MAX_DESCRIPTION_LENGTH = 1_000;
     private static final int MIN_RETAIN_SECONDS = 10;
     private static final int MAX_RETAIN_SECONDS = 180;
@@ -40,7 +41,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             "usePersonalQueue", "addMetadata", "retainSeconds", "sourceSha256", "nodeOptions", "importSource");
     private static final Set<String> FIELD_FIELDS = Set.of("key", "label", "description", "type",
             "required", "defaultValue", "minimum", "maximum", "maxLength", "options",
-            "advanced", "nodeId", "fieldName", "source", "encoding", "resourceFormat", "enabledWhen");
+            "advanced", "nodeId", "fieldName", "source", "encoding", "resourceFormat", "enabledWhen", "group");
     private static final Set<String> RESERVED_KEYS = Set.of("apiKey", "accessPassword", "password",
             "authorization", "endpoint", "webhookUrl", "__proto__", "constructor", "prototype");
     public enum TargetType { WORKFLOW, AI_APP }
@@ -55,7 +56,16 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
             boolean required, JsonNode defaultValue, BigDecimal minimum, BigDecimal maximum,
             Integer maxLength, List<Option> options, boolean advanced, String nodeId,
             String fieldName, Source source, Encoding encoding, ResourceFormat resourceFormat,
-            Condition enabledWhen) {
+            Condition enabledWhen, String group) {
+        /** Existing contracts and callers may omit the display-only creator group. */
+        public Field(String key, String label, String description, FieldType type,
+                boolean required, JsonNode defaultValue, BigDecimal minimum, BigDecimal maximum,
+                Integer maxLength, List<Option> options, boolean advanced, String nodeId,
+                String fieldName, Source source, Encoding encoding, ResourceFormat resourceFormat,
+                Condition enabledWhen) {
+            this(key, label, description, type, required, defaultValue, minimum, maximum, maxLength,
+                    options, advanced, nodeId, fieldName, source, encoding, resourceFormat, enabledWhen, null);
+        }
         public boolean media() { return type == FieldType.IMAGE || type == FieldType.AUDIO || type == FieldType.VIDEO; }
         public Source effectiveSource() { return source == null ? Source.PARAMETER : source; }
         public Encoding effectiveEncoding() { return encoding == null ? Encoding.NATIVE : encoding; }
@@ -182,6 +192,8 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
                     || RESERVED_KEYS.contains(field.key()) || !keys.add(field.key()))
                 throw invalid(ApiMessage.of("api.running-hub-definition.parameter-keys-must-be-valid-unique-and-cannot-contain-credential"));
             label(field.label());
+            if (field.group() != null && field.group().length() > MAX_GROUP_LENGTH)
+                throw invalid(ApiMessage.of("api.running-hub-definition.field-group-must-be-at-most-80-characters"));
             if (field.description() != null && field.description().length() > MAX_DESCRIPTION_LENGTH)
                 throw invalid(ApiMessage.of("api.running-hub-definition.parameter-description-is-too-long"));
             if (field.effectiveSource() != Source.PARAMETER && !sources.add(field.effectiveSource()))
@@ -335,6 +347,8 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
     }
     private static void requireObject(JsonNode value, Set<String> allowed) {
         if (value == null || !value.isObject() || !allowed.containsAll(value.propertyNames())) throw invalid(ApiMessage.of("api.running-hub-definition.capability-definition-contains-unknown-fields-or-invalid-objects"));
+        if (allowed.contains("group") && value.hasNonNull("group") && !value.path("group").isTextual())
+            throw invalid(ApiMessage.of("api.running-hub-definition.runninghub-capability-field-type-is-invalid"));
     }
     public static ApiProblemException invalid(ApiMessage detail) {
         return new ApiProblemException(HttpStatus.UNPROCESSABLE_ENTITY, "RUNNINGHUB_INPUT_INVALID",

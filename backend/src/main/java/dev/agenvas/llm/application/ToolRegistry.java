@@ -13,15 +13,13 @@ public class ToolRegistry {
     private static final String READ_PROJECT_SUMMARY_SCHEMA = """
             {"type":"object","additionalProperties":false,"properties":{}}
             """;
-    /** 读取 Run 创建时快照中的画布选择，不接受额外选择 ID。 */
-    private static final String READ_SELECTION_SCHEMA = """
-            {"type":"object","additionalProperties":false,"properties":{}}
-            """;
-    /** 精确版本白名单读取；最多 12 个互异 UUID。 */
+    /** 当前画布或显式Skill输入的精确版本读取；最多 12 个互异 UUID。 */
     private static final String READ_ARTIFACTS_SCHEMA = """
             {"type":"object","additionalProperties":false,"required":["versionIds"],
              "properties":{"versionIds":{"type":"array","minItems":1,"maxItems":12,
-               "uniqueItems":true,"items":{"type":"string","format":"uuid"}}}}
+               "uniqueItems":true,"items":{"type":"string","format":"uuid"}},
+               "textOffset":{"type":"integer","minimum":0},
+               "textLimit":{"type":"integer","minimum":1,"maximum":4000}}}
             """;
     /** Run 内任务状态查询；最多 12 个互异任务 ID。 */
     private static final String READ_TASK_STATUS_SCHEMA = """
@@ -37,6 +35,8 @@ public class ToolRegistry {
                    "kind":{"type":"string","enum":["IMAGE","VIDEO","AUDIO"]},
                    "title":{"type":"string","minLength":1,"maxLength":160},
                    "prompt":{"type":"string","maxLength":20000},
+                   "shotId":{"type":"string","format":"uuid","description":"Storyboard shot ID observed through read_storyboard; pair with expectedShotRevision. This association grants no approval or result selection."},
+                   "expectedShotRevision":{"type":"integer","minimum":1,"description":"Current creative revision of that shot, required with shotId."},
                    "capabilityId":{"type":"string","format":"uuid"},
                    "parameters":{"type":"object"},
                    "durationSeconds":{"type":"integer","minimum":1,"maximum":60},
@@ -46,6 +46,52 @@ public class ToolRegistry {
                      "properties":{"versionId":{"type":"string","format":"uuid"},
                        "role":{"type":"string","enum":["REFERENCE","START_FRAME","END_FRAME",
                          "AUDIO_REFERENCE","VIDEO_REFERENCE"]}}}}}}}}}
+            """;
+
+    private static final String EXTRACT_AUDIO_SCHEMA = """
+            {"type":"object","additionalProperties":false,
+             "required":["canvasItemId","sourceVersionId","expectedCanvasItemVersion"],
+             "properties":{"canvasItemId":{"type":"string","format":"uuid"},
+               "sourceVersionId":{"type":"string","format":"uuid"},
+               "expectedCanvasItemVersion":{"type":"integer","minimum":0},
+               "format":{"type":"string","enum":["WAV","MP3"],"default":"WAV"},
+               "trackIndex":{"type":"integer","minimum":0,"maximum":31,"default":0}}}
+            """;
+    private static final String TRIM_AUDIO_SCHEMA = """
+            {"type":"object","additionalProperties":false,
+             "required":["canvasItemId","sourceVersionId","expectedCanvasItemVersion","startMs","endMs"],
+             "properties":{"canvasItemId":{"type":"string","format":"uuid"},
+               "sourceVersionId":{"type":"string","format":"uuid"},
+               "expectedCanvasItemVersion":{"type":"integer","minimum":0},
+               "startMs":{"type":"integer","minimum":0,"maximum":599900},
+               "endMs":{"type":"integer","minimum":100,"maximum":600000},
+               "format":{"type":"string","enum":["WAV","MP3"],"default":"WAV"}}}
+            """;
+
+    private static final String READ_STORYBOARD_SCHEMA = """
+            {"type":"object","additionalProperties":false,"properties":{
+             "offset":{"type":"integer","minimum":0,"default":0},
+             "limit":{"type":"integer","minimum":1,"maximum":40,"default":20},
+             "shotIds":{"type":"array","minItems":1,"maxItems":1,"uniqueItems":true,
+               "description":"Read one complete shot instead of the summary page; omit offset and limit.",
+               "items":{"type":"string","format":"uuid"}}}}
+            """;
+    private static final String WRITE_STORYBOARD_SHOTS_SCHEMA = """
+            {"type":"object","additionalProperties":false,"required":["expectedVersion","shots"],
+             "properties":{"expectedVersion":{"type":"integer","minimum":0},
+             "shots":{"type":"array","minItems":1,"maxItems":6,
+               "items":{"type":"object","additionalProperties":false,
+                 "description":"Omit shotId to append; then code, description, dialogue and durationSeconds are required. With shotId supply only creative fields to change.",
+                 "properties":{"shotId":{"type":"string","format":"uuid"},
+                   "code":{"type":"string","minLength":1,"maxLength":80},
+                   "scene":{"type":"string","maxLength":200},
+                   "title":{"type":"string","maxLength":200},
+                   "description":{"type":"string","maxLength":20000},
+                   "dialogue":{"type":"string","maxLength":20000},
+                   "durationSeconds":{"type":"number","minimum":0.1,"maximum":3600,"multipleOf":0.001},
+                   "sourceVersionId":{"type":["string","null"],"format":"uuid"},
+                   "referenceVersionIds":{"type":"array","maxItems":30,"uniqueItems":true,
+                     "items":{"type":"string","format":"uuid"}}}}}}}
             """;
 
     /** 文本产物只允许标题、正文和格式字段。 */
@@ -65,21 +111,7 @@ public class ToolRegistry {
                "title":{"type":"string","minLength":1,"maxLength":160},
                "content":{"type":"object"}}}
             """;
-    /** 仅允许把当前 Run 可见产物放入服务端指定的 Agent 输出组。 */
-    private static final String PLACE_ARTIFACTS_SCHEMA = """
-            {"type":"object","additionalProperties":false,
-             "required":["versionIds","group"],
-             "properties":{"versionIds":{"type":"array","minItems":1,"maxItems":6,
-               "uniqueItems":true,"items":{"type":"string","format":"uuid"}},
-               "group":{"type":"string","const":"AGENT_OUTPUT"}}}
-            """;
-    private static final String PLACE_CANVAS_ARTIFACTS_SCHEMA = """
-            {"type":"object","additionalProperties":false,
-             "required":["versionIds"],
-             "properties":{"versionIds":{"type":"array","minItems":1,"maxItems":6,
-               "uniqueItems":true,"items":{"type":"string","format":"uuid"}}}}
-            """;
-    /** 布局命令须提供画布项、内容版本和布局 CAS 版本。 */
+    /** 布局命令须提供画布项和布局 CAS；有选用内容时须提供内容版本。 */
     private static final String ARRANGE_ITEMS_SCHEMA = """
             {"type":"object","additionalProperties":false,
              "required":["items","layout"],
@@ -87,7 +119,7 @@ public class ToolRegistry {
                "enum":["HORIZONTAL","VERTICAL","GRID"]},
                "items":{"type":"array","minItems":1,"maxItems":6,
                  "items":{"type":"object","additionalProperties":false,
-                   "required":["itemId","versionId","expectedVersion"],
+                   "required":["itemId","expectedVersion"],
                    "properties":{"itemId":{"type":"string","format":"uuid"},
                      "versionId":{"type":"string","format":"uuid"},
                      "expectedVersion":{"type":"integer","minimum":0}}}}}}
@@ -102,8 +134,17 @@ public class ToolRegistry {
             {"type":"object","additionalProperties":false,"properties":{
              "offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":40}}}
             """;
-    private static final String READ_CANVAS_SCHEMA = PAGED_READ_SCHEMA.replace("\"properties\":{",
-            "\"properties\":{\"includeDrafts\":{\"type\":\"boolean\"},");
+    private static final String READ_CANVAS_SCHEMA = """
+            {"type":"object","additionalProperties":false,"properties":{
+             "offset":{"type":"integer","minimum":0},"limit":{"type":"integer","minimum":1,"maximum":40},
+             "includeDrafts":{"type":"boolean"},
+             "characterOffset":{"type":"integer","minimum":0,"default":0},
+             "characterLimit":{"type":"integer","minimum":1,"maximum":20,"default":10},
+             "characterId":{"type":"string","format":"uuid"},
+             "characterTextOffset":{"type":"integer","minimum":0,"default":0},
+             "characterTextLimit":{"type":"integer","minimum":1,"maximum":4000,"default":4000},
+             "expectedCharacterVersion":{"type":"integer","minimum":0}}}
+            """;
     private static final String MANAGE_CANVAS_SCHEMA = """
             {"type":"object","additionalProperties":false,"required":["action","itemId","expectedVersion"],
              "properties":{"action":{"type":"string","enum":["RENAME","MOVE","RESIZE","REMOVE","DUPLICATE"]},
@@ -129,84 +170,79 @@ public class ToolRegistry {
             "\"capabilityId\":{", "\"canvasItemId\":{\"type\":\"string\",\"format\":\"uuid\"},"
                     + "\"expectedItemVersion\":{\"type\":\"integer\",\"minimum\":0},"
                     + "\"expectedDraftVersion\":{\"type\":\"integer\",\"minimum\":0},\"capabilityId\":{");
+    private static final String COMPOSE_VIDEO_SCHEMA = """
+            {"type":"object","additionalProperties":false,"required":["title","shots"],"properties":{"title":{"type":"string","minLength":1,"maxLength":160},"rationale":{"type":"string","maxLength":2000,"description":"面向用户的简短编排依据，不保存模型私有推理"},"originalAudioMode":{"type":"string","enum":["MUTE","BACKGROUND","KEEP"],"default":"MUTE"},"output":{"type":"object","additionalProperties":false,"properties":{"resolution":{"type":"string","enum":["720P","1080P"],"default":"720P"},"aspectRatio":{"type":"string","enum":["16:9","9:16","1:1"],"default":"16:9"}}},"music":{"type":"object","additionalProperties":false,"required":["audioVersionId"],"properties":{"audioVersionId":{"type":"string","format":"uuid"},"sourceStartMs":{"type":"integer","minimum":0,"maximum":599999,"default":0},"volume":{"type":"number","minimum":0,"maximum":1,"default":0.2}}},"subtitles":{"type":"array","maxItems":100,"items":{"type":"object","additionalProperties":false,"required":["text","startMs","endMs"],"properties":{"text":{"type":"string","minLength":1,"maxLength":500},"startMs":{"type":"integer","minimum":0,"maximum":59999},"endMs":{"type":"integer","minimum":1,"maximum":60000}}}},"shots":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"object","additionalProperties":false,"required":["videoVersionId","lines"],"properties":{"videoVersionId":{"type":"string","format":"uuid"},"sourceStartMs":{"type":"integer","minimum":0,"maximum":599999,"default":0},"durationMs":{"type":"integer","minimum":100,"maximum":600000,"description":"取源时长；省略时取素材剩余长度；成片时长按速度换算并受60秒总限约束"},"speed":{"type":"number","minimum":0.5,"maximum":2,"default":1},"fadeMs":{"type":"integer","minimum":0,"maximum":500,"default":0,"description":"每镜开头及结尾的淡黑时长，不重叠镜头"},"lines":{"type":"array","maxItems":30,"items":{"type":"object","additionalProperties":false,"required":["audioVersionId"],"properties":{"audioVersionId":{"type":"string","format":"uuid"},"startMs":{"type":"integer","minimum":0,"maximum":59999,"description":"可选镜内锚点；省略时依声音活动自动排布"}}}}}}}}}
+            """;
 
     public List<ToolCallback> modelDefinitions(tools.jackson.databind.JsonNode policy) {
         var allowed = RunToolPolicy.allowed(policy);
         return modelDefinitions().stream().filter(tool -> allowed.contains(
-                tool.getToolDefinition().name())).map(tool -> {
-                    var current = tool.getToolDefinition();
-                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
-                            && "read_selection".equals(current.name()))
-                        return definition(current.name(), "Read a page of the frozen canvas selection that expresses the user's intent. Use nextOffset to continue.", PAGED_READ_SCHEMA);
-                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
-                            && "place_artifacts".equals(current.name()))
-                        return definition(current.name(), "Display one to six exact authorized Artifact versions on the canvas. "
-                                + "Reuse a card displaying that exact version or create an independent display card; "
-                                + "never change another node's selection. Returns itemId and itemVersion for arrangement.",
-                                PLACE_CANVAS_ARTIFACTS_SCHEMA);
-                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
-                            && "arrange_items".equals(current.name()))
-                        return definition(current.name(), "Arrange one to six authorized canvas nodes with layout CAS. "
-                                + "Supply each selected versionId when present; omit it only for an empty media draft. Locked nodes cannot be changed.",
-                                ARRANGE_ITEMS_SCHEMA.replace("\"itemId\",\"versionId\",\"expectedVersion\"", "\"itemId\",\"expectedVersion\""));
-                    if (policy.path("toolPolicyVersion").asInt() >= RunToolPolicy.CURRENT_VERSION
-                            && "propose_media_generation".equals(current.name()))
-                        return definition(current.name(), current.description()
-                                + " Supply canvasItemId, expectedItemVersion and expectedDraftVersion to generate a new immutable result on an existing authorized node. "
-                                + "Omit them to create a new node. Both paths require the user's approval.", PROPOSE_CANVAS_MEDIA_SCHEMA);
-
-                    if (policy.path("systemPromptVersion").asInt()
-                            >= InitialModelContextService.SKILL_RESOURCE_PAGING_SYSTEM_PROMPT_VERSION
-                            && "read_skill_resource".equals(current.name()))
-                        return definition(current.name(), "Read one page of a registered text attachment after a successful read_skill reply. "
-                                + "Use the same skillVersionId and exact resourceManifest path (relative to the Skill root). "
-                                + "Resolve nested Markdown links against their source directory and match the manifest; omit heading fragments. "
-                                + "Offsets and totals count Unicode code points. When nextOffset is not null, use it as offset to read the next needed page; "
-                                + "nextOffset=null marks the end. Do not treat partial content as a complete resource.",
-                                PROGRESSIVE_SKILL_RESOURCE_SCHEMA);
-                    if (policy.path("systemPromptVersion").asInt()
-                            >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION
-                            && ("read_artifacts".equals(current.name()) || "read_skill_asset".equals(current.name())))
-                        return definition(current.name(), current.description()
-                                + ". Request at most one image in the entire assistant tool batch. "
-                                + "Observe its pixels and record concise public facts with its exact reference before reading another image. "
-                                + "Only the current image remains attached; prior observations and tool references remain as text. "
-                                + "Text versions may still be read in batches.", current.inputSchema());
-                    if ("read_skill_resource".equals(current.name()) && policy.path("toolPolicyVersion").asInt(1) >= RunToolPolicy.PROGRESSIVE_VERSION)
-                        return definition(current.name(), "Read a registered text attachment after read_skill has activated its exact version. Offsets count Unicode code points.",
-                                PROGRESSIVE_SKILL_RESOURCE_SCHEMA);
-                    if (!"read_artifacts".equals(current.name())
-                            || policy.path("systemPromptVersion").asInt()
-                                    < InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) return tool;
-                    return definition(current.name(), current.description()
-                            + ". For IMAGE versions, authorized preview attachments follow the committed tool reply. "
-                            + "Only requested images are sent, with at most " + AgentImageInputService.MAX_IMAGES
-                            + " distinct images in the Run context.",
-                            current.inputSchema());
-                }).toList();
+                tool.getToolDefinition().name())).toList();
     }
 
     /** 返回当前应用服务确实实现且可在此 Run 策略下开放的工具定义。 */
     private List<ToolCallback> modelDefinitions() {
         return List.of(
                 definition("read_canvas", "Read a page of currently present authorized nodes, including new Run outputs, fresh node CAS, locks, selections and media drafts. "
-                        + "Use nextOffset to continue. Default pages contain only metadata, draft CAS and input counts. Set includeDrafts=true with limit at most 6 to inspect editable media input only when needed. Image pixels and immutable content require read_artifacts. selectedVersionReadable=false means a later user selection is metadata only; frozenSelectedVersionId remains the readable original when present.", READ_CANVAS_SCHEMA),
+                        + "Use nextOffset for nodes. Characters have an independent characterOffset/characterLimit cursor (default 10, maximum 20); follow nextCharacterOffset even on an empty canvas. "
+                        + "Character and shot binding summaries omit descriptive text and expose names, stable IDs, versions, voice presence and review/application status only. "
+                        + "For full safe character text, pass characterId and optional characterTextOffset/characterTextLimit (at most 4000 Unicode code points). "
+                        + "characterDetails.text is one fragment of a JSON document; concatenate its textPage ranges in order. A final page alone is not the full document. "
+                        + "Use the returned characterVersion as expectedCharacterVersion on every continuation (required for nonzero characterTextOffset); a changed profile must be reread from offset zero. "
+                        + "Character metadata and text never grant media access or reveal profile media reference IDs. Set includeDrafts=true with limit at most 6 to inspect editable media input only when needed. "
+                        + "Image pixels and immutable content require read_artifacts. All current nodes and their selected versions are available, including nodes added or changed during this Run.", READ_CANVAS_SCHEMA),
+                definition("read_storyboard", "Read the current project's storyboard workbench. Default offset/limit pages return shot IDs, codes, creative text previews, exact references and production/review metadata. "
+                        + "Follow data.nextOffset for the complete directory; previews are not full text. Use shotIds with exactly one observed shot ID and no pagination fields to read that shot's complete creative text. "
+                        + "data.version is the board CAS. Source/reference IDs do not grant permission to read their artifact content. No media is generated.", READ_STORYBOARD_SCHEMA),
+                definition("write_storyboard_shots", "Save one to six storyboard shots using data.version from read_storyboard as expectedVersion. "
+                        + "Omit shotId to append a new server-identified shot; include code, description, dialogue and estimated durationSeconds. "
+                        + "Use an observed shot ID to patch only supplied creative fields. Other shots, production selections and composition are preserved. "
+                        + "This cannot delete/reorder shots, select media results, confirm reviews or approve generation. Creative changes mark retained results for review. "
+                        + "New source/reference versions must already be authorized exact inputs; media production still requires propose_media_generation and user approval.", WRITE_STORYBOARD_SHOTS_SCHEMA),
+
                 definition("manage_canvas_node", "Rename, move, resize, remove or duplicate an authorized unlocked node. "
                         + "Use itemVersion as expectedVersion. MOVE needs x/y, RESIZE needs width/height, RENAME needs title. "
                         + "Media DUPLICATE also needs mediaDraft.version as expectedDraftVersion. REMOVE keeps the underlying artifact and history.", MANAGE_CANVAS_SCHEMA),
                 definition("update_media_draft", "Edit an authorized unlocked IMAGE, VIDEO or AUDIO node's working draft without generating. "
                         + "Use mediaDraft.version as expectedVersion. Omitted fields retain their existing values; replacing prompt clears old structured mentions unless mentions is supplied. U+FFFC markers require matching mentions. Media references must be exact authorized versions.", UPDATE_MEDIA_DRAFT_SCHEMA),
+                definition("extract_audio", "Extract the chosen audio track from an exact selected VIDEO version into a new AUDIO node, using a fixed local processor with no Provider charge or approval. "
+                        + "Observe canvasItemId, sourceVersionId and itemVersion through read_canvas; source must be unlocked. WAV default, MP3 optional, trackIndex is zero-based. "
+                        + "The server waits durably then resumes this Run with the archived audio version. Never poll or claim completion from its acceptance receipt. No ASR, voice isolation or speaker embedding is performed.", EXTRACT_AUDIO_SCHEMA),
+                definition("trim_audio", "Create an immutable audio segment in a derived node from an exact selected AUDIO version and observed itemVersion. "
+                        + "Use integer startMs/endMs within measured source duration, at least 100 ms; WAV default, MP3 optional. This fixed local command has no Provider charge or approval. "
+                        + "The server waits durably then resumes with the archived version, usable as AUDIO_REFERENCE. It does not remove music or identify speakers; choose the interval from actual evidence. Never poll or resubmit UNKNOWN.", TRIM_AUDIO_SCHEMA),
+                definition("compose_video", "Queue local video trimming, joining and dubbing from authorized exact VIDEO/AUDIO versions. Zero dialogue is allowed. Optional shot speed/fades, KEEP original sound, music, timed subtitles and output shape are supported. "
+                        + "First read storyboard/script text and immutable media prompts plus mediaMetadata.durationMs; infer shot order and match each spoken line from that evidence. "
+                        + "rationale is a short public edit summary, never private reasoning. shots are playback order; lines are spoken order. "
+                        + "sourceStartMs defaults to zero and omitted durationMs uses the remaining source video. startMs is optional, relative to the selected shot, only for an evidenced story anchor; "
+                        + "omit it for automatic waveform/silence placement. At most 12 shots, 30 total lines and 60000 ms total. "
+                        + "MUTE replaces original sound; BACKGROUND keeps it quietly beneath dialogue. The local renderer allows at most 1.15x dialogue speed and fails rather than cutting speech. "
+                        + "No external media generation or media approval occurs. The receipt confirms acceptance only: the server durably waits for completion and resumes this same Run with the archived version. "
+                        + "Stopping the Director does not cancel an accepted composition; the user can cancel it from the new output node. "
+                        + "Continue from the final localTaskOutcome reply; do not poll or claim completion from acceptance, semantic audio understanding or lip synchronization.", COMPOSE_VIDEO_SCHEMA),
                 definition("read_project_summary",
                         "Read the current project's bounded metadata and pinned Run limits",
                         READ_PROJECT_SUMMARY_SCHEMA),
                 definition("read_selection",
                         "Read the canvas cards selected when this Run started; selection is "
                                 + "intent only and grants no write permission",
-                        READ_SELECTION_SCHEMA),
+                        PAGED_READ_SCHEMA),
                 definition("read_artifacts",
-                        "Read up to twelve exact immutable versions bound to this Run or "
-                                + "created by it; large content is explicitly truncated",
+                        "Read up to twelve exact immutable versions selected on the current canvas or explicitly mapped as Skill inputs; "
+                                + "large content is explicitly truncated. To read full TEXT content, pass textOffset and/or textLimit: "
+                                + "pagination requires exactly one TEXT version, counts Unicode code points, and defaults to offset 0 / limit 4000. "
+                                + "Follow textPage.nextOffset on the same version until null; the final page alone does not mean earlier pages were read. "
+                                + "For images read one per tool batch; the committed reply attaches pixels. "
+                                + "Record public observations before requesting another image; only the latest image remains attached",
                         READ_ARTIFACTS_SCHEMA),
+                definition("read_media_sample", "Inspect one authorized exact VIDEO/AUDIO version. Request up to four unique frame timestamps in milliseconds, and/or an audioStartMs/audioDurationMs pair (max 15 seconds). Next model call attaches a timestamped contact sheet and/or WAV sample; no bytes in the tool ledger. Read one sample per batch. Inspect only attached content; sparse frames cannot verify every intervening action. Audio requires an audio-capable model; do not infer speech from metadata.",
+                        """
+                        {"type":"object","additionalProperties":false,"required":["versionId"],"properties":{
+                          "versionId":{"type":"string","format":"uuid"},
+                          "timestampsMs":{"type":"array","maxItems":4,"uniqueItems":true,"items":{"type":"integer","minimum":0,"maximum":599999}},
+                          "audioStartMs":{"type":"integer","minimum":0,"maximum":599999},
+                          "audioDurationMs":{"type":"integer","minimum":1,"maximum":15000}}}
+                        """),
                 definition("read_task_status",
                         "Read status only for up to twelve tasks in this Run; ordinary progress "
                                 + "arrives through the scheduler, so do not repeatedly poll",
@@ -216,41 +252,35 @@ public class ToolRegistry {
                 definition("propose_media_generation", "Propose one fixed batch of image, video or audio generation. "
                         + "The server pauses this Run for user approval and archived outcomes. "
                         + "Never poll read_task_status for these tasks or claim user authorization. "
-                        + "Use one output per request, with generationCount=1; await the server's final tool reply.",
-                        PROPOSE_MEDIA_SCHEMA),
+                        + "Use one output per request, with generationCount=1; await the server's final tool reply. "
+                        + "For storyboard shot media, supply the observed shotId and expectedShotRevision; the server freezes the shot association and inferred media role. "
+                        + "Approval and archived candidates return to that shot, while users alone approve and select results. A changed shot requires a fresh reviewed proposal. "
+                        + "Supply canvasItemId, expectedItemVersion and expectedDraftVersion to target an existing node; omit them to create a node. Both paths require approval.",
+                        PROPOSE_CANVAS_MEDIA_SCHEMA),
                 definition("read_skill", "Activate one Skill from the available catalogue and read its full frozen SKILL.md plus reference and attachment manifests.",
                         "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"skillVersionId\"],\"properties\":{\"skillVersionId\":{\"type\":\"string\",\"format\":\"uuid\"}}}"),
                 definition("read_skill_asset", "Read one registered Skill reference image after read_skill has activated its exact version. "
-                        + "Its image preview follows the committed reply as LLM context only; it has no project artifact ID and cannot be a Provider media input.",
+                        + "Its image preview follows the committed reply as LLM context only; it has no project artifact ID and cannot be a Provider media input. "
+                        + "Request one image per tool batch and record public observations before another read; only the latest image stays attached.",
                         """
                         {"type":"object","additionalProperties":false,"required":["skillVersionId","alias"],
                          "properties":{"skillVersionId":{"type":"string","format":"uuid"},
                          "alias":{"type":"string","minLength":1,"maxLength":64}}}
                         """),
-                definition("read_skill_resource", "Read one text resource frozen in this Run's selected Skill; "
-                        + "paths and URLs outside the resource manifest are never accessible. Offsets count Unicode code points.",
-                        """
-                        {"type":"object","additionalProperties":false,"required":["path"],
-                         "properties":{"path":{"type":"string","maxLength":160},
-                         "offset":{"type":"integer","minimum":0},
-                         "limit":{"type":"integer","minimum":1,"maximum":4000}}}
-                        """),
+                definition("read_skill_resource", "Read one page of a registered text attachment after a successful read_skill reply. "
+                        + "Use the same skillVersionId and exact resourceManifest path relative to the Skill root. "
+                        + "Resolve relative Markdown links against their source directory; omit heading fragments. "
+                        + "Offsets count Unicode code points. Follow nextOffset until null when the task needs the remaining text; a partial page is not complete.",
+                        PROGRESSIVE_SKILL_RESOURCE_SCHEMA),
                 definition("create_text", "Create a text artifact in the current project",
                         CREATE_TEXT_SCHEMA),
                 definition("revise_artifact",
-                        "Create a new version of a Run-visible text artifact; "
-                                + "requires expectedVersion from bound input or artifactVersions "
-                                + "in a prior tool result, plus complete content",
+                        "Create a new version of a current canvas text artifact; "
+                                + "requires expectedVersion observed from read_artifacts or a prior successful content write, plus complete content",
                         REVISE_ARTIFACT_SCHEMA),
-                definition("place_artifacts",
-                        "Place one to six current Run-visible Artifact versions in this Agent's "
-                                + "server-owned output group; returns itemId and itemVersion "
-                                + "for arrangement, and reuses existing cards",
-                        PLACE_ARTIFACTS_SCHEMA),
                 definition("arrange_items",
-                        "Arrange one to six Run-visible cards in this Agent's output group "
-                                + "using itemId, content versionId and itemVersion from "
-                                + "place_artifacts; requires layout CAS, never changes content",
+                        "Arrange one to six current unlocked canvas nodes with layout CAS. "
+                                + "Supply each selected versionId when present; omit it only for an empty media draft. Requires observed itemVersion",
                         ARRANGE_ITEMS_SCHEMA));
     }
 

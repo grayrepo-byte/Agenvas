@@ -1,5 +1,7 @@
 package dev.agenvas.audit;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -213,7 +215,7 @@ class CallLogPostgresIT {
     @Test
     void legacyUnknownRemainsAuditableWithoutInventedTelemetryOrPrivateBodies() throws Exception {
         Project project = newProject("Legacy audit");
-        var agent = agents.create(owner.userId(), project.id(), "Audit agent", "Create");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Audit agent", "Create");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 PRIVATE_MARKER, "legacy-audit-run").run();
         Task task = tasks.create(owner.userId(), project.id(), run.id(),
@@ -929,7 +931,7 @@ class CallLogPostgresIT {
 
     private AgentRun fixtureRun(Project project) {
         return fixtureRuns.computeIfAbsent(project.id(), ignored -> {
-            var agent = agents.create(project.ownerId(), project.id(), "Audit fixture", "Create");
+            var agent = configureDirector(agents, project.ownerId(), project.id(), "Audit fixture", "Create");
             return runs.create(project.ownerId(), project.id(), agent.id(), "Audit fixture",
                     "audit-fixture-run").run();
         });

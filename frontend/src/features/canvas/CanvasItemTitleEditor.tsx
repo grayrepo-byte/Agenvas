@@ -1,9 +1,10 @@
 import { useMutation,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState,type KeyboardEvent } from "react";
-import { applyCanvasCommands,type CanvasItem } from "../../shared/api/client";
+import { applyCanvasCommands,type Canvas, type CanvasItem } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
+import { canvasItemPresentation, useCanvasEditingExecutor } from "./useCanvasEditing";
 
 const MAX_TITLE_LENGTH = 160;
 const MIN_INPUT_CHARS = 8;
@@ -17,16 +18,41 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
 }) {
   useLocale();
   const queryClient = useQueryClient();
+  const execute = useCanvasEditingExecutor();
   const input = useRef<HTMLInputElement>(null);
   const cancelBlur = useRef(false);
   const [editing, setEditing] = useState(false);
   const [displayTitle, setDisplayTitle] = useState(item.title);
   const [draft, setDraft] = useState(item.title);
+  const latestDraft = useRef(draft);
+  latestDraft.current = draft;
   const [baseVersion, setBaseVersion] = useState(item.version);
   const [validationError, setValidationError] = useState<string | null>(null);
+  function acceptTitle(canvas: Canvas, submittedTitle: string) {
+    const updated = canvas.items.find((candidate) => candidate.id === item.id);
+    if (!updated) throw new Error("Updated canvas item is missing from the response");
+    setDisplayTitle(updated.title);
+    setBaseVersion(updated.version);
+    // A global retry can acknowledge an older title after the user has typed a new draft.
+    if (latestDraft.current.trim() === submittedTitle) {
+      setDraft(updated.title);
+      setEditing(false);
+    }
+    queryClient.setQueryData<Canvas>(["canvas", projectId], (current) => {
+      const cached = new Map(current?.items.map((candidate) => [candidate.id, candidate]) ?? []);
+      return { items: canvas.items.map((candidate) => {
+        const newer = cached.get(candidate.id);
+        return newer && newer.version > candidate.version ? newer : candidate;
+      }) };
+    });
+    void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
+  }
   const save = useMutation({
     mutationFn: async (title: string) => {
-      const canvas = await applyCanvasCommands(projectId, [{
+      const canvas = execute ? await execute({ operation: "DISPLAY",
+        itemChanges: [{ ...canvasItemPresentation(item), expectedVersion: baseVersion, title }] },
+      (accepted) => acceptTitle(accepted, title))
+        : await applyCanvasCommands(projectId, [{
         type: "UPDATE_TITLE",
         itemId: item.id,
         expectedVersion: baseVersion,
@@ -36,14 +62,7 @@ export function CanvasItemTitleEditor({ projectId, item, kindLabel }: {
       if (!updated) throw new Error("Updated canvas item is missing from the response");
       return { canvas, updated };
     },
-    onSuccess: ({ canvas, updated }) => {
-      setDisplayTitle(updated.title);
-      setDraft(updated.title);
-      setBaseVersion(updated.version);
-      setEditing(false);
-      queryClient.setQueryData(["canvas", projectId], canvas);
-      void queryClient.invalidateQueries({ queryKey: ["snapshot", projectId] });
-    },
+    onSuccess: ({ canvas }, title) => { if (!execute) acceptTitle(canvas, title); },
   });
 
   useEffect(() => {

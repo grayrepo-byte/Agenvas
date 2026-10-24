@@ -1,7 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { PROVIDER_FAILURE_CODES, taskErrorDetail, taskErrorMessage } from "./taskErrorMessages";
+import { PROVIDER_FAILURE_CODES, providerFailureMessage, taskErrorDetail, taskErrorMessage } from "./taskErrorMessages";
+import { getLocale, setLocale, SUPPORTED_LOCALES } from "../../shared/i18n";
 
 describe("taskErrorMessages", () => {
+  it("explains RunningHub failures and safe node locations in every locale while retaining unknown submission semantics", () => {
+    const previous = getLocale();
+    try {
+      for (const locale of SUPPORTED_LOCALES) {
+        setLocale(locale);
+        for (const code of Object.values(PROVIDER_FAILURE_CODES).filter((value) => value.startsWith("RUNNINGHUB_"))) {
+          expect(taskErrorMessage(code), `${locale}: ${code}`).toBeTruthy();
+          expect(taskErrorMessage(code)).not.toContain(code);
+        }
+        const diagnostic = { stage: "SUBMIT" as const, category: "PARAMETER" as const, httpStatus: 400, upstreamCode: 301, nodeId: "20", fieldName: "duration" };
+        expect(providerFailureMessage(diagnostic)).toContain("20");
+        expect(providerFailureMessage(diagnostic)).toContain("duration");
+        expect(taskErrorDetail(PROVIDER_FAILURE_CODES.SUBMISSION_UNKNOWN, diagnostic)).toContain(taskErrorMessage(PROVIDER_FAILURE_CODES.SUBMISSION_UNKNOWN));
+      }
+    } finally { setLocale(previous); }
+  });
+  it("explains composition validation, overflow and local execution failures in every locale", () => {
+    const previous = getLocale();
+    try {
+      for (const locale of SUPPORTED_LOCALES) {
+        setLocale(locale);
+        for (const code of ["VIDEO_COMPOSITION_INVALID", "VIDEO_COMPOSITION_AUDIO_OVERFLOW", "LOCAL_VIDEO_COMPOSITION_FAILED",
+          "LOCAL_VIDEO_COMPOSITION_TIMEOUT", "LOCAL_VIDEO_COMPOSITION_CANCELED", "AUDIO_TRIM_INVALID",
+          "AUDIO_TRIM_OUTPUT_TOO_LARGE", "LOCAL_AUDIO_TRIM_FAILED", "LOCAL_AUDIO_TRIM_TIMEOUT", "LOCAL_AUDIO_TRIM_CANCELED",
+          "LLM_INSUFFICIENT_CREDITS", "LLM_MEDIA_INPUT_UNSUPPORTED", "STORYBOARD_VERSION_CONFLICT"]) {
+          expect(taskErrorMessage(code), `${locale}: ${code}`).toBeTruthy();
+          expect(taskErrorMessage(code)).not.toContain(code);
+        }
+      }
+    } finally { setLocale(previous); }
+  });
+
   it("explains result collection exhaustion and the new-task retry", () => {
     expect(taskErrorMessage("PROVIDER_POLL_RETRY_EXHAUSTED")).toContain("创建新任务");
   });

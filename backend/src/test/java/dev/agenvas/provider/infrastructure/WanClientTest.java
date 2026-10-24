@@ -28,7 +28,7 @@ import tools.jackson.databind.node.ObjectNode;
 class WanClientTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final WanModels models = new WanModels();
-    private final NativeMediaProtocol.Profile image = models.profiles().get(0), pro = models.profiles().get(1), video = models.profiles().get(2);
+    private final NativeMediaProtocol.Profile image = profile("wan2.7-image"), pro = profile("wan2.7-image-pro"), video = profile("wan3.0-video");
     private final List<String> paths = new ArrayList<>(), methods = new ArrayList<>();
     private final List<JsonNode> bodies = new ArrayList<>();
     private static final String ORIGIN = "https://llm-synthetic.cn-beijing.maas.aliyuncs.com";
@@ -136,6 +136,10 @@ class WanClientTest {
                 ORIGIN + "/api/v1", ORIGIN + "?apiKey=synthetic", "http://llm-synthetic.cn-beijing.maas.aliyuncs.com", "https://user@llm-synthetic.cn-beijing.maas.aliyuncs.com",
                 "https://llm-synthetic.cn-beijing.maas.aliyuncs.com.untrusted.example", "https://127.0.0.1"))
             assertThatThrownBy(() -> WanClient.validatedOrigin(invalid)).isInstanceOf(ApiProblemException.class);
+    }
+    private NativeMediaProtocol.Profile profile(String model) {
+        return models.profiles().stream().filter(profile -> profile.model().equals(model) && profile.operation().equals("GENERATE"))
+                .findFirst().orElseThrow();
     }
     private ObjectNode values(NativeMediaProtocol.Profile p) { return NativeMediaProfiles.effectiveValues(new NativeMediaProfiles.Selection(models, p), mapper.createObjectNode(), "A synthetic landscape", 5, mapper); }
 }

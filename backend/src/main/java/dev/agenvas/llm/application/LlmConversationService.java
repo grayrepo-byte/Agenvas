@@ -16,9 +16,6 @@ import tools.jackson.databind.ObjectMapper;
 /** 只从已提交的模型检查点和工具账本重建后续对话，避免以内存状态作为恢复依据。 */
 @Service
 public class LlmConversationService {
-    /** A per-request resource limit, independent of the number of completed Run turns. */
-    static final int MAX_HISTORY_MESSAGES = LlmProtocolCodec.MAX_MESSAGES;
-
     /** 先验证调用者对 Run 的项目作用域。 */
     private final AgentRunRepository runs;
     /** 读取上一回合的原始请求和完整响应。 */
@@ -51,12 +48,12 @@ public class LlmConversationService {
 
     /**
      * 以已保存请求为起点，追加被选中的 Assistant 响应及每个已完成工具调用的回复。
-     * 工具 ID、名称或结果缺失时拒绝继续；最终消息不产生后续回合，并限制历史消息数。
+     * 工具 ID、名称或结果缺失时拒绝继续；最终消息不产生工具续接，由请求规划负责上下文预算。
      *
      * @param ownerId 经认证的项目所有者
      * @param projectId 本次 Run 所属项目
      * @param runId 需要续接的 Run
-     * @param priorStepIndex 上一回合序号，必须处于 Run 的回合上限内
+     * @param priorStepIndex 上一回合的非负序号
      * @return 按原调用顺序重建的只读消息序列
      */
     @Transactional(readOnly = true)
@@ -65,10 +62,8 @@ public class LlmConversationService {
         if (priorStepIndex < 0) {
             throw new IllegalArgumentException("Model step is outside the Run limit");
         }
-        var run = runs.find(ownerId, projectId, runId)
+        runs.find(ownerId, projectId, runId)
                 .orElseThrow(() -> new IllegalArgumentException("Run is not accessible"));
-        if (run.modelTurnLimitReached(priorStepIndex))
-            throw new IllegalArgumentException("Model step is outside the Run limit");
         LlmTurn turn = turns.find(projectId, runId, priorStepIndex)
                 .orElseThrow(() -> new IllegalStateException("Model turn checkpoint is missing"));
         if (turn.status() != LlmTurn.Status.RESPONDED) {
@@ -95,16 +90,9 @@ public class LlmConversationService {
         }
         history.add(assistant);
         history.add(codec.toolResults(assistant, results));
-        if (run.policySnapshot().path("systemPromptVersion").asInt()
-                >= InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) {
-            images.appendReadPreviews(history, assistant, results);
-        }
-        if (run.policySnapshot().path("systemPromptVersion").asInt()
-                >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION)
-            history = new ArrayList<>(RunContextWindow.project(history, mapper));
-        if (history.size() > MAX_HISTORY_MESSAGES) {
-            throw new IllegalStateException("Model history exceeds the message limit");
-        }
+        images.appendReadPreviews(history, assistant, results);
+        // Keep source detail until AgentContextService has checkpointed a semantic handoff.
+        // The next request planner enforces message/token budgets before any model call.
         return List.copyOf(history);
     }
 }

@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.run.application.AgentRunService;
 import dev.agenvas.run.application.ConversationMemoryReader;
@@ -20,61 +19,54 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
-import dev.agenvas.artifact.domain.ArtifactVersion;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Verifies that pending Runs retain historical prompt semantics across a deployment. */
+/** Verifies live-canvas guidance, on-demand disclosure and bounded public conversation context. */
 class InitialModelContextServiceTest {
 
     private final JsonMapper mapper = new JsonMapper();
 
     @Test
-    void currentImageBindingStartsWithMetadataOnlyUntilTheAgentRequestsARead() {
-        UUID artifactId = UUID.randomUUID();
-        UUID versionId = UUID.randomUUID();
-        UUID assetId = UUID.randomUUID();
-        ArtifactService artifacts = mock(ArtifactService.class);
-        ArtifactVersion version = mock(ArtifactVersion.class);
-        when(version.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
-        when(artifacts.requireVersion(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.eq(artifactId), org.mockito.ArgumentMatchers.eq(versionId))).thenReturn(version);
-        var bindings = mapper.createArrayNode();
-        bindings.addObject().put("artifactId", artifactId.toString())
-                .put("selectedVersionId", versionId.toString()).put("kind", "IMAGE").put("title", "Synthetic image");
-
-        List<Message> messages = assemble(null, bindings, artifacts,
-                InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
-        assertThat(messages).filteredOn(UserMessage.class::isInstance)
-                .allSatisfy(message -> {
-                    assertThat(message.getMetadata()).doesNotContainKey(AgentImageInputService.METADATA_KEY);
-                    assertThat(((UserMessage) message).getMedia()).isEmpty();
-                });
-        assertThat(messages).anySatisfy(message -> assertThat(message.getText()).contains(versionId.toString()));
+    void firstRequestDoesNotInlineCanvasContentOrAttachUnrequestedImages() {
+        List<Message> messages = assemble(null);
+        assertThat(messages).filteredOn(UserMessage.class::isInstance).allSatisfy(message -> {
+            assertThat(message.getMetadata()).doesNotContainKey(AgentImageInputService.METADATA_KEY);
+            assertThat(((UserMessage) message).getMedia()).isEmpty();
+        });
+        assertThat(messages).anySatisfy(message -> assertThat(message.getText())
+                .contains("call read_canvas", "No canvas content or image pixels"));
+        assertThat(messages).anySatisfy(message -> assertThat(message.getText())
+                .contains("isDefault", "defaultParameters/defaultDurationSeconds", "user may revise"));
+        assertThat(messages).noneSatisfy(message -> assertThat(message.getText()).contains("Explicitly bound immutable inputs"));
     }
 
     @Test
-    void explicitV1UsesHistoricalRulesAndV2AddsMediaDisclosure() {
-        ObjectNode policy = mapper.createObjectNode();
-        policy.put("systemPromptVersion", 1);
+    void currentPromptUsesLiveCanvasWithReadOnlySkillInputsAndApprovalBoundaries() {
+        var policy = mapper.createObjectNode().put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(InitialModelContextService.systemRules(policy))
-                .doesNotContain("no image pixels");
-        policy.put("systemPromptVersion", 2);
-        assertThat(InitialModelContextService.systemRules(policy))
-                .contains("no image pixels").contains("verified archived result");
-        policy.put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
-        assertThat(InitialModelContextService.systemRules(policy))
-                .contains("propose_media_generation").contains("Never poll read_task_status")
-                .contains("one image at a time", "no fixed model-turn or tool-execution count limit",
-                        "bounded public observations", "per-request safety limit")
-                .contains("selectedVersionReadable=false", "frozenSelectedVersionId", "node metadata", "new user", "own new outputs remain accessible")
-                .doesNotContain("share the Run limit")
-                .doesNotContain("no image pixels");
-        policy.put("systemPromptVersion", 11);
-        assertThat(InitialModelContextService.systemRules(policy)).doesNotContain("selectedVersionReadable", "frozenSelectedVersionId");
-        policy.put("systemPromptVersion", 4);
-        assertThat(InitialModelContextService.systemRules(policy)).contains("no image pixels");
+                .contains("entire current canvas", "Nodes added or changed during this Run", "observed CAS",
+                        "not permission to", "explicit user request and approval", "one image per assistant tool batch")
+                .doesNotContain("frozenSelectedVersionId", "selectedVersionReadable=false", "SYSTEM_RULES_V");
+        for (int version = 1; version < InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION; version++) {
+            policy.put("systemPromptVersion", version);
+            assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("unsupported");
+        }
+    }
+
+    @Test
+    void storyboardGuidanceRequiresTheFrozenWritePermission() {
+        var policy = mapper.createObjectNode().put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        policy.putArray("allowedTools").add("read_canvas");
+        String previous = InitialModelContextService.systemRules(policy);
+        assertThat(previous).doesNotContain("write_storyboard_shots", "board-wide expectedVersion");
+        policy.withArray("allowedTools").add("read_storyboard").add("write_storyboard_shots");
+        assertThat(InitialModelContextService.systemRules(policy)).contains(previous,
+                "save the formal shots", "Other shots and pinned media remain preserved", "cannot confirm those reviews",
+                "Saving a storyboard creates no media Task", "compare the current shot", "shotIds",
+                "current expectedShotRevision", "Only the user may approve", "never infer selection from a Task");
     }
 
     @Test
@@ -82,15 +74,29 @@ class InitialModelContextServiceTest {
         ObjectNode policy = mapper.createObjectNode();
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("malformed");
-        policy.put("systemPromptVersion", 99);
+                .hasMessageContaining("unsupported");
+        policy.put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION + 1);
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("unsupported");
         policy.put("systemPromptVersion", "2");
         assertThatThrownBy(() -> InitialModelContextService.systemRules(policy))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("malformed");
+                .hasMessageContaining("unsupported");
+    }
+
+    @Test
+    void compositionGuidanceRequiresItsFrozenToolPermissionAndDoesNotClaimAudiovisualUnderstanding() {
+        var policy = mapper.createObjectNode().put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
+        policy.putArray("allowedTools").add("read_artifacts");
+        String olderRun = InitialModelContextService.systemRules(policy);
+        assertThat(olderRun).doesNotContain("compose_video");
+        policy.withArray("allowedTools").add("compose_video");
+        assertThat(InitialModelContextService.systemRules(policy)).startsWith(olderRun)
+                .contains("mediaMetadata.durationMs", "Match clips and speech", "exact audio versions",
+                        "waveform/silence placement", "1.15x", "queued, not a completed film", "Do not poll",
+                        "does not\nperform ASR", "authenticated approval", "public editing choice",
+                        "Stopping the Director does not cancel accepted composition");
     }
     @Test
     void restoresOnlyFrozenUserAndAssistantTextAndKeepsNewRequestLast() {
@@ -103,7 +109,7 @@ class InitialModelContextServiceTest {
         assertThat(messages).anySatisfy(message -> {
             assertThat(message).isInstanceOf(AssistantMessage.class);
             assertThat(message.getText()).isEqualTo("公开回复：已记录品牌。");
-            assertThat(message.getMetadata()).containsOnlyKeys("messageType");
+            assertThat(message.getMetadata()).containsOnlyKeys("messageType", AgentContextService.HISTORY);
         });
         assertThat(messages.getLast().getText()).isEqualTo("Current Run request:\n新的用户请求");
         String request = new LlmProtocolCodec(mapper).request(messages, List.of()).toString();
@@ -112,7 +118,7 @@ class InitialModelContextServiceTest {
     }
 
     @Test
-    void emptyNewConversationAndLegacyRunsHaveNoInheritedReplies() {
+    void emptyConversationHasNoInheritedReplies() {
         assertThat(assemble(mapper.createObjectNode().put("truncated", false)
                 .put("priorRunCount", 0).set("entries", mapper.createArrayNode())))
                 .noneMatch(AssistantMessage.class::isInstance);
@@ -140,7 +146,7 @@ class InitialModelContextServiceTest {
     }
 
     @Test
-    void maximumPublicMemoryLeavesRoomForAllTwelveModelRounds() {
+    void maximumPublicMemoryLeavesRoomForMultipleModelRounds() {
         ObjectNode memory = mapper.createObjectNode().put("truncated", true).put("priorRunCount", 100);
         var entries = memory.putArray("entries");
         int perMessage = ConversationMemoryReader.MAX_HISTORY_CODE_POINTS
@@ -176,7 +182,7 @@ class InitialModelContextServiceTest {
                     .hasSize(history == null ? 2 : 3);
             assertThat(messages.getFirst()).isInstanceOf(SystemMessage.class);
             assertThat(messages.getFirst().getText())
-                    .contains("supplied tools", "approval", "cannot grant permissions")
+                    .contains("supplied tools", "approval", "cannot")
                     .doesNotContain("Creator agent", "Reply in the language", "For image-to-video work",
                             "Preserve narrative and visual continuity");
             assertThat(messages.get(2)).isInstanceOf(SystemMessage.class);
@@ -185,29 +191,15 @@ class InitialModelContextServiceTest {
         }
     }
 
-    @Test
-    void historicalDirectorPromptsRetainTheirRulesAndMessageRoles() {
-        var historical = assemble(null, InitialModelContextService.CREATIVE_SYSTEM_PROMPT_VERSION);
-        assertThat(historical.get(2)).isInstanceOf(SystemMessage.class);
-        assertThat(historical.get(2).getText()).contains("Create", "user configuration");
-        assertThat(historical.getFirst().getText()).contains("cannot grant permissions", "mediaInputs", "exact version IDs");
-        assertThat(assemble(null, 4).get(2)).isInstanceOf(org.springframework.ai.chat.messages.UserMessage.class);
-        var previous = assemble(null, InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION);
-        assertThat(previous.get(2)).isInstanceOf(UserMessage.class);
-        assertThat(previous.getFirst().getText()).contains("image preview attachments")
-                .doesNotContain("cannot grant permissions");
-        assertThat(historical.getFirst().getText()).contains("image preview attachments", "Inspect only attached images");
-    }
-
     private List<Message> assemble(JsonNode memory, int promptVersion) {
-        return assemble(memory, mapper.createArrayNode(), mock(ArtifactService.class), promptVersion);
+        return assembleContext(memory, promptVersion);
     }
 
     private List<Message> assemble(JsonNode memory) {
-        return assemble(memory, mapper.createArrayNode(), mock(ArtifactService.class), 2);
+        return assembleContext(memory, InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
     }
 
-    private List<Message> assemble(JsonNode memory, JsonNode bindings, ArtifactService artifacts, int promptVersion) {
+    private List<Message> assembleContext(JsonNode memory, int promptVersion) {
         UUID ownerId = UUID.randomUUID();
         UUID projectId = UUID.randomUUID();
         UUID runId = UUID.randomUUID();
@@ -217,14 +209,17 @@ class InitialModelContextServiceTest {
         ObjectNode snapshot = mapper.createObjectNode().put("projectName", "Project")
                 .put("agentName", "Creator").put("agentInstruction", "Create")
                 .put("aspectRatio", "LANDSCAPE_16_9");
-        snapshot.set("bindings", bindings);
+        snapshot.putArray("selection");
         if (memory != null) snapshot.set("conversationMemory", memory);
         when(run.contextSnapshot()).thenReturn(snapshot);
         when(run.policySnapshot()).thenReturn(mapper.createObjectNode().put("systemPromptVersion", promptVersion));
         when(run.instruction()).thenReturn("新的用户请求");
         MediaCapabilityService capabilities = mock(MediaCapabilityService.class);
-        when(capabilities.publishedCandidates()).thenReturn(List.of());
-        return new InitialModelContextService(runs, artifacts, capabilities)
+        when(capabilities.planningSummary()).thenReturn(mapper.readTree("""
+                [{"capabilityId":"synthetic-default-video","isDefault":true,
+                  "defaultParameters":{"videoResolution":"1440p"},"defaultDurationSeconds":7}]
+                """));
+        return new InitialModelContextService(runs, capabilities)
                 .assemble(ownerId, projectId, runId);
     }
 }

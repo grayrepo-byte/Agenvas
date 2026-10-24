@@ -17,7 +17,7 @@ final class AgentMediaToolResult {
     private static final String TOOL_NAME = "propose_media_generation";
     private static final List<String> APPROVAL_FIELDS = List.of("id", "projectId", "runId", "operationId",
             "status", "version", "taskIds", "result", "createdAt", "expiresAt", "executionDeadline");
-    private static final List<String> OUTPUT_FIELDS = List.of("kind", "title", "artifactId", "canvasItemId", "draftVersion");
+    private static final List<String> OUTPUT_FIELDS = List.of("kind", "title", "artifactId", "canvasItemId", "draftVersion", "storyboard");
     // The original assistant call already contains the prompt. Effective parameters and exact inputs can differ after preflight.
     private static final List<String> PREVIEW_FIELDS = List.of("kind", "capabilityId", "adapterId", "outputCount",
             "parameters", "mediaInputs", "videoInputMode", "durationSeconds", "priceUnknown", "mediaPricing",
@@ -51,7 +51,7 @@ final class AgentMediaToolResult {
         return dataForModel(data);
     }
 
-    /** Apply the same projection to old persisted receipts without changing their ledger entry or final outcome. */
+    /** Project persisted receipts without changing their ledger entry or final outcome. */
     static JsonNode forModel(JsonNode receipt) {
         if (!receipt.isObject() || !receipt.path("approvalId").isTextual() || !receipt.path("data").isObject()) return receipt;
         ObjectNode result = JsonNodeFactory.instance.objectNode();
@@ -86,8 +86,7 @@ final class AgentMediaToolResult {
             JsonNode preview = originalOutput.path("preview");
             if (preview.isObject()) output.set("preview", fields(preview, PREVIEW_FIELDS));
             JsonNode source = preview.path("creativeSkill");
-            if (source.path("skills").isArray()) source.path("skills").forEach(skill -> addSkill(skills, skill));
-            else addSkill(skills, source);
+            source.path("skills").forEach(skill -> addSkill(skills, skill));
             outputs.add(output);
         }
         var references = data.putArray("creativeSkills");

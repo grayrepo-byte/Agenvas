@@ -18,6 +18,7 @@ import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
+import dev.agenvas.task.domain.AudioExtractionParameters;
 import dev.agenvas.provider.domain.MediaFunction;
 import dev.agenvas.usage.application.UsageService;
 import java.time.Clock;
@@ -61,6 +62,23 @@ public class VideoOperationService {
     public Task run(UUID ownerId, UUID projectId, UUID artifactId, UUID itemId, UUID sourceVersionId,
             long expectedItemVersion, VideoOperation operation, long expectedFunctionVersion, int expectedCapabilityVersion,
             String prompt, JsonNode parameters, String commandKey) {
+        return accept(ownerId, projectId, artifactId, itemId, sourceVersionId, expectedItemVersion,
+                operation, expectedFunctionVersion, expectedCapabilityVersion, prompt, parameters, commandKey, null, null);
+    }
+
+    /** Agent audio extraction always uses the fixed local capability, regardless of configured cloud routes. */
+    public Task extractAudioFromAgent(UUID ownerId, UUID projectId, UUID artifactId, UUID itemId,
+            UUID sourceVersionId, long expectedItemVersion, AudioExtractionParameters parameters,
+            String commandKey, UUID runId, UUID operationId) {
+        if (runId == null || operationId == null || parameters == null)
+            throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
+        return accept(ownerId, projectId, artifactId, itemId, sourceVersionId, expectedItemVersion,
+                VideoOperation.EXTRACT_AUDIO, 0, 1, "", parameters.toJson(mapper), commandKey, runId, operationId);
+    }
+
+    private Task accept(UUID ownerId, UUID projectId, UUID artifactId, UUID itemId, UUID sourceVersionId,
+            long expectedItemVersion, VideoOperation operation, long expectedFunctionVersion, int expectedCapabilityVersion,
+            String prompt, JsonNode parameters, String commandKey, UUID runId, UUID operationId) {
         if (itemId == null || sourceVersionId == null || operation == null || expectedItemVersion < 0
                 || expectedFunctionVersion < 0 || expectedCapabilityVersion < 1 || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH || parameters == null || !parameters.isObject()) {
@@ -75,6 +93,8 @@ public class VideoOperationService {
                 .put("expectedCanvasItemVersion", expectedItemVersion).put("operation", operation.name())
                 .put("expectedFunctionVersion", expectedFunctionVersion).put("expectedCapabilityVersion", expectedCapabilityVersion).put("prompt", instruction);
         request.set("parameters", parameters.deepCopy());
+        if (runId != null) request.putObject("agentLocalOrigin").put("runId", runId.toString())
+                .put("operationId", operationId.toString());
         return events.recordChange(ownerId, projectId, () -> {
             Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
             if (prior != null) {
@@ -95,12 +115,15 @@ public class VideoOperationService {
             }
             var source = artifacts.requireMediaVersionForTask(ownerId, projectId, sourceVersionId, Artifact.Kind.VIDEO);
             var asset = assets.metadata(ownerId, projectId, UUID.fromString(source.content().path("assetId").asText()));
-            var binding = functions.resolve(MediaFunction.forVideo(operation), expectedFunctionVersion);
-            if (binding.capabilityVersion() != expectedCapabilityVersion) {
+            var binding = runId == null ? functions.resolve(MediaFunction.forVideo(operation), expectedFunctionVersion)
+                    : catalog.resolve(MediaFunctionService.LOCAL_AUDIO_CAPABILITY, Task.Kind.AUDIO_GENERATION, 0);
+            if (runId != null && !MediaAdapterRegistry.LOCAL_VIDEO_AUDIO_EXTRACTOR.equals(binding.adapterId()))
+                throw problem(HttpStatus.UNPROCESSABLE_ENTITY, "MEDIA_FUNCTION_INCOMPATIBLE", ApiMessage.of("api.media-function.incompatible"));
+            if (runId == null && binding.capabilityVersion() != expectedCapabilityVersion) {
                 throw problem(HttpStatus.CONFLICT, "MEDIA_CAPABILITY_CHANGED", ApiMessage.of("api.media-function.conflict"));
             }
             PreparedOperation prepared = prepareOperation(binding, asset, sourceVersionId,
-                    instruction, parameters);
+                    instruction, parameters, operation);
             var sourceDraft = drafts.get(ownerId, projectId, itemId);
             var output = operation == VideoOperation.EXTRACT_AUDIO
                     ? canvas.forkAudioDerivationWithinChange(ownerId, projectId, itemId, operation.resultLabel())
@@ -133,6 +156,7 @@ public class VideoOperationService {
                         .put("resultDraftVersion", drafts.get(ownerId, projectId, silent.id()).version());
             }
             input.set("videoOperationRequest", request);
+            if (runId != null) input.set("agentLocalOrigin", request.path("agentLocalOrigin"));
             input.putObject("videoOperation").put("name", operation.name()).put("sourceVersionId", sourceVersionId.toString());
             freezeMediaInput(input, artifactId, sourceVersionId, instruction, binding, prepared);
             var now = clock.instant();
@@ -154,13 +178,19 @@ public class VideoOperationService {
 
     /** Validates operation-specific parameters before any output node is created. */
     private PreparedOperation prepareOperation(MediaCapabilityBinding binding, Asset asset,
-            UUID sourceVersionId, String instruction, JsonNode parameters) {
+            UUID sourceVersionId, String instruction, JsonNode parameters, VideoOperation operation) {
         boolean local = MediaAdapterRegistry.localProcessor(binding.adapterId());
         ObjectNode frozenParameters = mapper.createObjectNode();
         RunningHubDefinition definition = catalog.runningHubDefinition(binding);
         if (local) {
-            if (!parameters.isEmpty()) throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
-            LocalVideoOperationBounds.require(asset);
+            LocalVideoOperationBounds.require(asset, operation);
+            if (operation == VideoOperation.EXTRACT_AUDIO) {
+                var audio = AudioExtractionParameters.parse(parameters);
+                LocalVideoOperationBounds.requireAudioOutput(asset, audio);
+                frozenParameters = audio.toJson(mapper);
+            } else if (!parameters.isEmpty()) {
+                throw problem(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", ApiMessage.of("api.media-function.invalid-request"));
+            }
             int seconds = (asset.durationMs() + MILLIS_PER_SECOND - 1) / MILLIS_PER_SECOND;
             return new PreparedOperation(true, definition, frozenParameters, seconds);
         }

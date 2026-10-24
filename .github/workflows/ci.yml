@@ -77,6 +77,8 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Install local media tools required by unit tests
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Run unit tests only
         run: ./mvnw --batch-mode --no-transfer-progress test
       - name: Retain failed unit test reports

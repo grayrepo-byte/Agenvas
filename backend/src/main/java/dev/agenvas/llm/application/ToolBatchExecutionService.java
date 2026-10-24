@@ -36,8 +36,10 @@ public class ToolBatchExecutionService {
         for (AssistantMessage.ToolCall call : calls) {
             var data = tools.executeLeased(context, stepIndex, call.id(), lease, workerId).path("data");
             if (data.isArray()) {
-                for (var item : data) if (item.path(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY).asBoolean()) images++;
-            } else if (data.path(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY).asBoolean()) images++;
+                for (var item : data) if (item.path(AgentImageInputService.PREVIEW_REQUEST_KEY).asBoolean()) images++;
+            } else if (data.path(AgentImageInputService.PREVIEW_REQUEST_KEY).asBoolean()) images++;
+            // A timestamped contact sheet/audio sample is one inspectable read, like an image.
+            if (data.path("sampleRequested").asBoolean()) images++;
             // Throw inside the shared transaction: neither earlier reads nor business
             // changes from an invalid multi-image batch may commit or attach pixels.
             if (images > 1) throw ReadToolService.oneImageAtATime();

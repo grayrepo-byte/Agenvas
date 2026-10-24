@@ -36,10 +36,11 @@ public class CanvasItemController {
             @Valid @RequestBody UploadVersionRequest request) {
         return CanvasController.CanvasItemResponse.from(canvas.uploadVersion(principal.userId(),
                 projectId, canvasItemId, request.targetItemId(), request.expectedVersion(),
-                request.content(), request.purpose(), request.sourceVersionId()));
+                request.content(), request.purpose(), request.sourceVersionId(), request.directorScene()));
     }
 
     public record UploadVersionRequest(@NotNull UUID targetItemId,
             @PositiveOrZero long expectedVersion,
-            @NotNull JsonNode content, MediaUploadPurpose purpose, UUID sourceVersionId) {}
+            @NotNull JsonNode content, MediaUploadPurpose purpose, UUID sourceVersionId,
+            JsonNode directorScene) {}
 }

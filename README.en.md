@@ -31,7 +31,9 @@
 | Creative canvas | Drag, select, connect, arrange, and upload local media |
 | Multimodal generation | Run text, image, video, and audio cards with queues, cancellation, regeneration, and version history |
 | Agent collaboration | Use director chat in the bottom-right corner to read and work with the current canvas, with persistent conversations and Skills; media proposals require user approval |
+| MCP access | Keep the built-in director and expose 12 creative tools to external clients through user tokens; authorized media calls accept tasks without per-call paid approval |
 | Reusable materials | Project resources, personal assets, prompt templates, visual styles, and mixed references |
+| Character consistency | Project characters, multiple looks, image and voice references; preview and apply to shot drafts, track affected shots, and review results separately |
 | Image tools | Annotate, crop, rotate, mirror, resize, extract depth, and use configured AI editing capabilities |
 | Self-hosting | Model settings, local and OSS/COS/S3 storage, task and call records, and project manifest exports |
 
@@ -229,6 +231,8 @@ cd backend
 
 For a standalone JVM, provide `AGENVAS_DB_URL`, `AGENVAS_DB_USER`, and `AGENVAS_DB_PASSWORD`; `.env.example` lists these variables but is not automatically loaded. Automatic installation secrets apply to container entrypoints. Source execution defaults to Mock. Media processing requires FFmpeg / FFprobe; see [local image processing](docs/local-image-processing.md) for depth extraction.
 
+The director supports token-budgeted context compaction and durable long tasks, with a default 24-hour transient model recovery window. Set context, handoff, and retry budgets in the administrator’s Director settings screen; changes need no restart. See [Agent runtime configuration (Chinese)](docs/agent-runtime.md).
+
 Vite runs on port `5173` and proxies `/api` to `localhost:8080`.
 
 </details>
@@ -286,6 +290,7 @@ The workflow follows [Docker's multi-platform build documentation](https://docs.
 | Document | Contents |
 | --- | --- |
 | [Product specification](docs/MVP-SPEC.md) | Feature scope and behavior |
+| [MCP client setup (Chinese)](docs/mcp-client-guide.md) | User tokens, permissions, client configuration, and tool usage |
 | [Development checklist](docs/DEVELOPMENT-CHECKLIST.md) | Implementation and verification status |
 | [Development guidelines](AGENTS.md) | Architecture, coding, and testing requirements |
 | [Backup and recovery](docs/operations/backup-restore.md) | Upgrades, backups, and recovery |

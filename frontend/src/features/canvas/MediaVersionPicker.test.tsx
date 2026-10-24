@@ -1,10 +1,10 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act,fireEvent,render,screen,waitFor } from "@testing-library/react";
+import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import { http,HttpResponse } from "msw";
 import { describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { ArtifactVersionList,CanvasItem } from "../../shared/api/client";
-import { clickControl } from "../../test/controls";
+import { clickControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
 import { MediaVersionPicker } from "./MediaVersionPicker";
 
@@ -32,6 +32,62 @@ function setup(versions = [version("v2", 2), version("v1", 1)], selectedItem = i
 }
 
 describe("MediaVersionPicker", () => {
+  it("shows video thumbnails and opens a read-only comparison of precise versions and frozen inputs", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    const selected = { ...version("v2", 2), content: { assetId: "asset-v2", prompt: "海边人物", workflowVersion: "fixed-v1", parameters: { seed: 42 }, sourceTaskId: "task-1" } };
+    let writes = 0;
+    server.use(http.post(`${base}/select-media-version`, () => { writes++; return HttpResponse.json(item); }));
+    setup([selected, version("v1", 1)], { ...item, selectedVersion: selected,
+      artifact: { ...item.artifact, kind: "VIDEO" } });
+    await clickControl(await screen.findByRole("button", { name: "版本 v2" }));
+    const current = screen.getByRole("menuitem", { name: "v2 当前选用" });
+    expect(current.querySelector("img")).toHaveAttribute("src", "/api/v1/projects/project-1/assets/asset-v2/thumbnail");
+    expect(current).toHaveTextContent("海边人物");
+    await clickControl(screen.getByRole("menuitem", { name: "视频审片与对比" }));
+    const dialog = await screen.findByRole("dialog", { name: "Concept · 视频审片与对比" });
+    const players = dialog.querySelectorAll("video");
+    expect(players[0]).toHaveAttribute("src", "/api/v1/projects/project-1/assets/asset-v2/content");
+    expect(players[1]).toHaveAttribute("src", "/api/v1/projects/project-1/assets/asset-v1/content");
+    fireEvent.click(within(dialog).getAllByText("查看完整输入摘要")[0]!);
+    expect(dialog).toHaveTextContent('"seed": 42');
+    await selectValue(within(dialog).getByRole("combobox", { name: "右侧版本" }), "v2");
+    expect(dialog.querySelectorAll("video")[1]).toHaveAttribute("src", "/api/v1/projects/project-1/assets/asset-v2/content");
+    expect(writes).toBe(0);
+    await clickControl(within(dialog).getByRole("button", { name: "关闭窗口" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("shows image previews and frozen prompt summaries, keeping selection usable if a thumbnail fails", async () => {
+    const preview = { ...version("v2", 2), content: { assetId: "asset-v2", prompt: "A rainy street at blue hour",
+      workflowVersion: "fixed-v1", parameters: {}, sourceTaskId: "task-1" } };
+    let request: unknown;
+    server.use(http.post(`${base}/select-media-version`, async ({ request: incoming }) => {
+      request = await incoming.json();
+      return HttpResponse.json({ ...item, version: 8, selectedVersionId: "v1" });
+    }));
+    setup([preview, version("v1", 1)]);
+    await clickControl(await screen.findByRole("button", { name: "版本 v2" }));
+    const current = screen.getByRole("menuitem", { name: "v2 当前选用" });
+    const image = current.querySelector("img");
+    expect(image).toHaveAttribute("src", "/api/v1/projects/project-1/assets/asset-v2/thumbnail");
+    expect(current).toHaveTextContent("A rainy street at blue hour");
+    fireEvent.error(image!);
+    expect(current).toBeVisible();
+    await clickControl(screen.getByRole("menuitem", { name: "v1 选用此版本" }));
+    await waitFor(() => expect(request).toEqual({ versionId: "v1", expectedVersion: 7 }));
+  });
+
+  it("shows audio prompt summaries without requesting image thumbnails", async () => {
+    const audio = { ...version("v2", 2), content: { assetId: "asset-v2", prompt: "A quiet acoustic guitar phrase",
+      workflowVersion: "fixed-v1", parameters: {}, sourceTaskId: "task-1" } };
+    setup([audio, version("v1", 1)], { ...item, artifact: { ...item.artifact, kind: "AUDIO" } });
+    await clickControl(await screen.findByRole("button", { name: "版本 v2" }));
+    const current = screen.getByRole("menuitem", { name: "v2 当前选用" });
+    expect(current).toHaveTextContent("A quiet acoustic guitar phrase");
+    expect(current.querySelector("img")).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "视频审片与对比" })).not.toBeInTheDocument();
+  });
+
   it("lets an empty node select its only completed result", async () => {
     let request: unknown;
     server.use(http.post(`${base}/select-media-version`, async ({ request: incoming }) => {

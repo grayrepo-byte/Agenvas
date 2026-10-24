@@ -63,5 +63,17 @@ public final class ProviderFailureCodes {
     public static final String GOOGLE_VIDEO_TASK_EXPIRED = "GOOGLE_VIDEO_TASK_EXPIRED";
     public static final String GOOGLE_VIDEO_RESULT_EXPIRED = "GOOGLE_VIDEO_RESULT_EXPIRED";
 
+    /** RunningHub diagnostics retain structured details separately from these stable reason codes. */
+    public static final String RUNNINGHUB_AUTHENTICATION_FAILED = "RUNNINGHUB_AUTHENTICATION_FAILED";
+    public static final String RUNNINGHUB_BALANCE_INSUFFICIENT = "RUNNINGHUB_BALANCE_INSUFFICIENT";
+    public static final String RUNNINGHUB_PARAMETER_INVALID = "RUNNINGHUB_PARAMETER_INVALID";
+    public static final String RUNNINGHUB_RATE_LIMITED = "RUNNINGHUB_RATE_LIMITED";
+    public static final String RUNNINGHUB_UPLOAD_FAILED = "RUNNINGHUB_UPLOAD_FAILED";
+    public static final String RUNNINGHUB_GENERATION_FAILED = "RUNNINGHUB_GENERATION_FAILED";
+    public static final String RUNNINGHUB_RESULT_EXPIRED = "RUNNINGHUB_RESULT_EXPIRED";
+    public static final String RUNNINGHUB_RESULT_IDENTITY_CHANGED = "RUNNINGHUB_RESULT_IDENTITY_CHANGED";
+    public static final String RUNNINGHUB_PROTOCOL_INVALID = "RUNNINGHUB_PROTOCOL_INVALID";
+    public static final String RUNNINGHUB_UNAVAILABLE = "RUNNINGHUB_UNAVAILABLE";
+
     private ProviderFailureCodes() {}
 }

@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
@@ -120,7 +122,7 @@ class AgentHeartbeatPostgresIT {
         gateway.control = new CallControl();
         project = projects.create(owner.userId(), "Synthetic heartbeat project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create a text");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Create a text");
         run = runs.create(owner.userId(), project.id(), agent.id(), "Create a text", "heartbeat-run").run();
         caller = Executors.newSingleThreadExecutor(
                 Thread.ofPlatform().daemon().name("synthetic-worker-caller").factory());

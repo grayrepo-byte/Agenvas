@@ -4,6 +4,9 @@
   /* Modal surfaces sit above canvas NodeToolbars; portal order handles nested dialogs. */
   --ui-z-dialog: 2400;
   --ui-z-popup: 2500;
+  --ui-video-output-background: #000;
+  --ui-video-subtitle-foreground: #fff;
+  --ui-video-subtitle-outline: #000;
   --ui-bg: #11151c;
   --ui-surface: #1a202b;
   --ui-surface-raised: #222b38;
@@ -37,6 +40,8 @@
   --ui-status-neutral: var(--ui-text-muted);
   /* Light temperature is an image-operation preview, independent of the brand. */
   --ui-light-temperature-cool: #587b89;
+  --ui-light-temperature-warm: #a86408;
+  --ui-light-temperature-neutral: #9b8456;
   --ui-success: #9bd5b5;
   --ui-success-bg: #1a2c29;
   --ui-success-border: #315448;
@@ -67,6 +72,13 @@
   --ui-radius-lg: 12px;
   --ui-control-height: 40px;
   --ui-control-height-compact: 32px;
+  --ui-control-field-height: 36px;
+  --ui-menu-padding: 6px;
+  --ui-menu-item-height: 34px;
+  --ui-slider-track-size: 4px;
+  --ui-slider-thumb-size: 12px;
+  --ui-media-track-size: 3px;
+  --ui-media-thumb-size: 8px;
   --ui-model-menu-width: 340px;
   --ui-menu-shadow: 0 16px 48px #0006, inset 0 1px 0 #ffffff08;
   --ui-panel-shadow: 0 4px 16px #00000014, inset 0 1px 0 #ffffff04;
@@ -88,9 +100,9 @@
   --ui-canvas-control-size: 36px;
   --ui-canvas-gutter: 20px;
   --ui-canvas-toolbar-radius: 10px;
-  --ui-canvas-editor-width-share: 0.64;
-  --ui-canvas-editor-min-width: 48ch;
-  --ui-canvas-editor-max-width: 120ch;
+  --ui-canvas-editor-width-share: 0.56;
+  --ui-canvas-editor-min-width: 36rem;
+  --ui-canvas-editor-max-width: 48rem;
   --ui-canvas-editor-prompt-limit: 40dvh;
   --ui-canvas-minimap-node: #53647d;
   --ui-canvas-minimap-mask: #10161fb8;

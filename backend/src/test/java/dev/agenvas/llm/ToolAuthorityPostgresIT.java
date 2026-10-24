@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -83,7 +85,7 @@ class ToolAuthorityPostgresIT {
         ArtifactService.ArtifactView brief = createBrief(owner.userId(), project.id());
         canvas.apply(owner.userId(), project.id(), List.of(new dev.agenvas.canvas.application.CanvasService.PlaceArtifact(UUID.randomUUID(), brief.artifact().id(),
                 java.math.BigDecimal.ZERO, java.math.BigDecimal.ZERO, new java.math.BigDecimal("320"), new java.math.BigDecimal("200"), 0, null, false)));
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Create");
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                 "Draft one text", "authority-run").run();
         String workerId = "tool-authority-worker";

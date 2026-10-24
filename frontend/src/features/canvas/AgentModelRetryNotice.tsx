@@ -7,7 +7,7 @@ export function AgentModelRetryNotice({ task }: { task: Task }) {
   useLocale();
   const retry = task.output?.modelRetry;
   if (!retry || task.kind !== "AGENT_TURN" || (task.status !== "READY" && task.status !== "RUNNING")) return null;
-  const format = (time: string) => new Date(time).toLocaleTimeString(getFormatLocale());
+  const format = (time: string) => new Date(time).toLocaleString(getFormatLocale());
   const reason = retry.lastErrorCode === "LLM_CALL_TIMEOUT" ? t("agent.retry.timeout") : taskErrorMessage(retry.lastErrorCode);
   return <div className="agent-chat-model-retry" role="status">
     <strong>{t(task.status === "READY" ? "agent.retry.waiting" : "agent.retry.running")}

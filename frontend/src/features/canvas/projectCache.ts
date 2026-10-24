@@ -29,7 +29,11 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         if (needsRecovery || event.type !== "agent.turn.stream.delta") invalidateRunState(event.payload.runId);
         return;
       }
+      if (event.type === "storyboard.changed") {
+        invalidate("storyboard", "storyboard-revisions", "storyboard-media-approvals");
+      }
       if (event.type === "agent.media.approval.changed") {
+        invalidate("storyboard-media-approvals");
         void queryClient.invalidateQueries({ queryKey: typeof event.payload.runId === "string"
           ? ["run-media-approvals", projectId, event.payload.runId] : ["run-media-approvals", projectId] });
         invalidate("snapshot");
@@ -39,10 +43,12 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         invalidate("snapshot");
         invalidateRunState(event.payload.runId);
       }
-      if (event.type.startsWith("artifact.") || event.type.startsWith("canvas.") || event.type.startsWith("task.")
-          || event.type === "agent.run.changed") invalidate("agent-outputs");
       if (event.type.startsWith("canvas.") || event.type === "task.status.changed") {
         invalidate("canvas-media-versions");
+      }
+      if (event.type.startsWith("canvas.")) invalidate("canvas-editor");
+      if (event.type === "canvas.edited" && event.payload.operation === "DUPLICATE") {
+        invalidate("canvas-connections", "media-draft", "artifacts");
       }
       if (event.type.startsWith("artifact.") || event.type.startsWith("canvas.") ||
           event.type === "agent.instance.changed") {
@@ -50,7 +56,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         if (event.type.startsWith("canvas.connection.") || event.type === "canvas.items.changed") {
           invalidate("canvas-connections", "media-draft");
         }
-        if (event.type === "agent.instance.changed") invalidate("snapshot", "agents");
+        if (event.type === "agent.instance.changed") invalidate("snapshot");
         if (event.type.startsWith("artifact.")) invalidate("media-draft");
         if (event.type === "canvas.item.selected_version.changed"
             && typeof event.payload.canvasItemId === "string") {
@@ -76,10 +82,16 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         void queryClient.invalidateQueries({ queryKey: ["run-tasks", projectId, activeRunId] });
       }
       if (event.type === "task.status.changed") {
-        invalidate("direct-media-tasks", "direct-media-queue");
+        invalidate("direct-media-tasks", "direct-media-queue", "storyboard-media-approvals");
       }
       if (event.type === "media.draft.changed") invalidate("media-draft", "canvas-connections");
       if (event.type === "usage.changed") invalidate("project-usage");
+      // Character review depends on the current draft and exact selected result, not
+      // just profile mutations. Reconnect recovery refreshes the same projection below.
+      if (event.type.startsWith("character.") || event.type.startsWith("canvas.")
+          || event.type === "media.draft.changed" || event.type === "artifact.version.created") {
+        invalidate("project-characters");
+      }
     },
     onSnapshot: (fresh: ProjectSnapshot) => {
       queryClient.setQueryData(["snapshot", projectId], fresh);
@@ -90,7 +102,8 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       // The snapshot contains the current workspace, but not historical panels or lists.
       // A missed event may have changed any of them while the stream was unavailable.
       invalidate(...HISTORY_QUERY_PREFIXES, "run-tasks", "direct-media-tasks", "media-draft",
-        "canvas-media-versions", "project-usage", "agent-outputs");
+        "canvas-media-versions", "project-usage", "storyboard", "storyboard-revisions",
+        "storyboard-media-approvals", "project-characters", "canvas-editor");
     },
   };
 }

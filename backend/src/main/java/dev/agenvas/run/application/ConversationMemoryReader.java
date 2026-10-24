@@ -6,7 +6,7 @@ import java.util.UUID;
 /** Freezes public history only; the caller authorizes and orders terminal Runs under its conversation lock. */
 public interface ConversationMemoryReader {
 
-    /** At most ten user/assistant pairs, leaving room for the current Run's twelve model rounds. */
+    /** At most ten user/assistant pairs; long Run context is compacted independently. */
     int MAX_HISTORY_MESSAGES = 20;
     /** Unicode code points, rather than UTF-16 units, so Chinese and supplementary text stay intact. */
     int MAX_HISTORY_CODE_POINTS = 32_000;

@@ -69,7 +69,7 @@ const revisions: string[] = [];
 function snapshot(): ProjectSnapshot {
   return { project: { id: "project-1", name: "落点项目", status: "ACTIVE",
     aspectRatio: "LANDSCAPE_16_9", version: 1, createdAt: now, updatedAt: now },
-    canvas: { items }, connections: [], agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
+    canvas: { items }, connections: [], director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
 }
 
 beforeEach(() => {

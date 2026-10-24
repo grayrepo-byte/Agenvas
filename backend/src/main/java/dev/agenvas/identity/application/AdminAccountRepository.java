@@ -16,6 +16,9 @@ public interface AdminAccountRepository {
     /** 在创建管理员的同一事务中首次记录完成时间；已有标记时返回 false。 */
     boolean completeSetup(Instant completedAt);
 
+    /** 按账户标识检查当前活动状态，供其他模块通过 IdentityService 复核身份。 */
+    boolean isActiveById(UUID userId);
+
     /** 按规范化登录名查找活动管理员。 */
     Optional<AdminAccount> findActiveByLoginName(String loginName);
 

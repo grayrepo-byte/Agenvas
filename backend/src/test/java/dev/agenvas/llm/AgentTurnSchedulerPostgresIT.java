@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.agenvas.agent.application.AgentInstanceService;
@@ -9,6 +11,7 @@ import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.AgentTurnWorker;
+import dev.agenvas.llm.application.LlmProtocolCodec;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
@@ -73,8 +76,9 @@ class AgentTurnSchedulerPostgresIT {
         AdminPrincipal owner = owner();
         Project project = projects.create(owner.userId(), "Scheduler project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
                 "Complete this small task");
+        int callsBefore = gateway.calls.get();
         AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
                 "Say the task is done", "scheduler-run").run();
 
@@ -88,51 +92,48 @@ class AgentTurnSchedulerPostgresIT {
         assertThat(tasks.listByRun(owner.userId(), project.id(), queued.id()))
                 .singleElement().satisfies(task ->
                         assertThat(task.status()).isEqualTo(Task.Status.SUCCEEDED));
-        assertThat(gateway.calls.get()).isEqualTo(1);
+        assertThat(gateway.calls.get() - callsBefore).isEqualTo(1);
     }
 
     @Test
-    void historicalNumericBudgetStillStopsAtTwelveDurableTurnsWithoutClientPolling() throws Exception {
+    void longRunningConversationCanBeCanceledWithoutCreatingMoreModelTurns() throws Exception {
         AdminPrincipal owner = owner();
-        Project project = projects.create(owner.userId(), "Bounded scheduler project",
+        Project project = projects.create(owner.userId(), "Cancelable scheduler project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
                 "Inspect the project");
         int callsBefore = gateway.calls.get();
         gateway.keepRequestingTools.set(true);
         try {
             AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(),
-                    "Keep checking project status", "bounded-scheduler-run").run();
-            jdbc.sql("update agent_run set policy_snapshot_json = jsonb_set(policy_snapshot_json, '{maxModelTurns}', '12'::jsonb) where id = :id")
-                    .param("id", queued.id()).update();
+                    "Keep checking project status", "cancelable-scheduler-run").run();
             Instant deadline = Instant.now().plus(Duration.ofSeconds(20));
             AgentRun current = runs.get(owner.userId(), project.id(), queued.id());
-            while (!current.status().terminal()
+            while (gateway.calls.get() - callsBefore < 13 && !current.status().terminal()
                     && Instant.now().isBefore(deadline)) {
-                worker.runOnce("bounded-turn-test-worker");
+                worker.runOnce("cancelable-turn-test-worker");
                 Thread.sleep(25);
                 current = runs.get(owner.userId(), project.id(), queued.id());
             }
-            assertThat(current.status()).isEqualTo(AgentRun.Status.FAILED);
-            assertThat(gateway.calls.get() - callsBefore).isEqualTo(12);
-            assertThat(tasks.listByRun(owner.userId(), project.id(), queued.id()))
-                    .hasSize(12)
-                    .allSatisfy(task -> assertThat(task.kind()).isEqualTo(Task.Kind.AGENT_TURN))
-                    .filteredOn(task -> task.status() == Task.Status.FAILED)
-                    .singleElement().satisfies(task ->
-                            assertThat(task.errorCode()).isEqualTo("MODEL_TURN_LIMIT"));
+            assertThat(gateway.calls.get() - callsBefore).isGreaterThanOrEqualTo(13);
+            assertThat(runs.cancel(owner.userId(), project.id(), queued.id()).status()).isEqualTo(AgentRun.Status.CANCELED);
+            // Allow an already in-flight fake response to observe cancellation before
+            // checking that no subsequent model request is dispatched.
+            Thread.sleep(300);
+            int stoppedCalls = gateway.calls.get();
             Thread.sleep(500);
-            assertThat(gateway.calls.get() - callsBefore).isEqualTo(12);
+            assertThat(gateway.calls.get()).isEqualTo(stoppedCalls);
+            assertThat(runs.get(owner.userId(), project.id(), queued.id()).status()).isEqualTo(AgentRun.Status.CANCELED);
         } finally {
             gateway.keepRequestingTools.set(false);
         }
     }
 
     @Test
-    void unboundedRunPassesTwelveAndFortyTurnsWithBoundedContextAndCanFinish() throws Exception {
+    void unboundedRunPassesNinetyToolTurnsWithoutPrematurelyTruncatingContext() throws Exception {
         AdminPrincipal owner = owner();
         Project project = projects.create(owner.userId(), "Long synthetic run", Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Reader", "Keep concise public observations");
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Reader", "Keep concise public observations");
         int before = gateway.calls.get();
         gateway.stopAfter.set(before + 90);
         try {
@@ -150,9 +151,14 @@ class AgentTurnSchedulerPostgresIT {
             assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id").param("id", queued.id())
                     .query(Long.class).single()).isEqualTo(90);
             assertThat(jdbc.sql("select max(jsonb_array_length(request_json->'messages')) from llm_turn where run_id = :id")
-                    .param("id", queued.id()).query(Integer.class).single()).isLessThan(80);
+                    .param("id", queued.id()).query(Integer.class).single())
+                    .isBetween(180, LlmProtocolCodec.MAX_MESSAGES);
+            // This short transcript fits the default 1M window: retain its first and latest
+            // observations instead of applying the retired 80-message clipping policy.
             assertThat(jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 90")
-                    .param("id", queued.id()).query(String.class).single()).contains("runContextMemory", "Public observation");
+                    .param("id", queued.id()).query(String.class).single())
+                    .contains("Public observation for call " + (before + 1),
+                            "Public observation for call " + (before + 90));
         } finally { gateway.stopAfter.set(0); }
     }
 

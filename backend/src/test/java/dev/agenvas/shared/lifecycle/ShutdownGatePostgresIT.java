@@ -1,5 +1,7 @@
 package dev.agenvas.shared.lifecycle;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -68,7 +70,7 @@ class ShutdownGatePostgresIT {
         AdminPrincipal owner = identities.setup("shutdown-admin", "shutdown-password-123");
         Project project = projects.create(owner.userId(), "Shutdown gate",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Create");
         var run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create storyboard", "before-close").run();
         Task image = tasks.create(owner.userId(), project.id(), run.id(),

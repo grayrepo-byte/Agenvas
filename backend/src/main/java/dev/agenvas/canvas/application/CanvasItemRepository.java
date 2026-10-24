@@ -12,14 +12,14 @@ public interface CanvasItemRepository {
     /** 按确定的 z 顺序列出已保存布局。 */
     List<CanvasItem> list(UUID ownerId, UUID projectId);
 
-    /** Project-scoped exact media selections, deduplicated without loading card bodies. */
-    List<UUID> selectedMediaVersionIds(UUID ownerId, UUID projectId);
-
     /** 读取一张已鉴权画布卡片，不取得写锁。 */
     Optional<CanvasItem> find(UUID ownerId, UUID projectId, UUID itemId);
 
     /** 锁定单个画布项，以执行带预期版本的命令。 */
     Optional<CanvasItem> findForUpdate(UUID ownerId, UUID projectId, UUID itemId);
+
+    /** Confirms a group identity is active inside this project. */
+    default boolean groupExists(UUID ownerId, UUID projectId, UUID groupId) { return groupId == null; }
 
     /** 插入由客户端指定稳定 ID 的展示项。 */
     boolean create(CanvasItem item);

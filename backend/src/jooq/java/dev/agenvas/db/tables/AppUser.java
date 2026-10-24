@@ -15,6 +15,8 @@ import dev.agenvas.db.tables.LibraryCleanup.LibraryCleanupPath;
 import dev.agenvas.db.tables.LibraryCommand.LibraryCommandPath;
 import dev.agenvas.db.tables.LibraryEntry.LibraryEntryPath;
 import dev.agenvas.db.tables.LibraryFile.LibraryFilePath;
+import dev.agenvas.db.tables.McpAccessToken.McpAccessTokenPath;
+import dev.agenvas.db.tables.McpOperation.McpOperationPath;
 import dev.agenvas.db.tables.MediaTemplate.MediaTemplatePath;
 import dev.agenvas.db.tables.MediaTemplateImage.MediaTemplateImagePath;
 import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
@@ -248,6 +250,32 @@ public class AppUser extends TableImpl<AppUserRecord> {
             _idempotencyRecord = new IdempotencyRecordPath(this, null, Keys.IDEMPOTENCY_RECORD__FK_IDEMPOTENCY_PRINCIPAL.getInverseKey());
 
         return _idempotencyRecord;
+    }
+
+    private transient McpAccessTokenPath _mcpAccessToken;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.mcp_access_token</code> table
+     */
+    public McpAccessTokenPath mcpAccessToken() {
+        if (_mcpAccessToken == null)
+            _mcpAccessToken = new McpAccessTokenPath(this, null, Keys.MCP_ACCESS_TOKEN__FK_MCP_ACCESS_TOKEN_USER.getInverseKey());
+
+        return _mcpAccessToken;
+    }
+
+    private transient McpOperationPath _mcpOperation;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.mcp_operation</code> table
+     */
+    public McpOperationPath mcpOperation() {
+        if (_mcpOperation == null)
+            _mcpOperation = new McpOperationPath(this, null, Keys.MCP_OPERATION__FK_MCP_OPERATION_USER.getInverseKey());
+
+        return _mcpOperation;
     }
 
     private transient LibraryCleanupPath _libraryCleanup;

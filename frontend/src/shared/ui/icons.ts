@@ -17,6 +17,7 @@ export { BookmarkSimple } from "@phosphor-icons/react/dist/csr/BookmarkSimple";
 export { BoundingBox } from "@phosphor-icons/react/dist/csr/BoundingBox";
 export { Buildings } from "@phosphor-icons/react/dist/csr/Buildings";
 export { CalendarBlank } from "@phosphor-icons/react/dist/csr/CalendarBlank";
+export { Camera } from "@phosphor-icons/react/dist/csr/Camera";
 export { CaretDown } from "@phosphor-icons/react/dist/csr/CaretDown";
 export { CaretLeft } from "@phosphor-icons/react/dist/csr/CaretLeft";
 export { CaretRight } from "@phosphor-icons/react/dist/csr/CaretRight";

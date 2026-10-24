@@ -54,6 +54,25 @@ function taskSummary(label: string, index = 0) {
 }
 
 describe("AgentRunConversation", () => {
+  it("shows a local composition task and its committed summary without a media approval", async () => {
+    mockConversation([
+      task({ kind: "VIDEO_GENERATION", status: "FAILED", input: { videoComposition: { clips: [] } },
+        errorCode: "VIDEO_COMPOSITION_AUDIO_OVERFLOW" }),
+    ], [action({ toolName: "compose_video", summary: "已提交三段镜头的本地配音合成" })]);
+    mountConversation("FAILED", true);
+    expect(await screen.findByText("已提交三段镜头的本地配音合成")).toBeInTheDocument();
+    expect(await screen.findAllByText("本地配音合成")).not.toHaveLength(0);
+    expect(await screen.findByText(/配音超出镜头可用时长/)).toBeInTheDocument();
+    expect(screen.queryByText(/批准媒体生成/)).not.toBeInTheDocument();
+    expect(screen.queryByText("生成视频")).not.toBeInTheDocument();
+  });
+
+  it("explains that stopping the director does not cancel an independently accepted composition", async () => {
+    mockConversation([], [action({ toolName: "compose_video", summary: "已提交本地合成任务" })]);
+    mountConversation("CANCELED");
+    expect(await screen.findByText("停止导演不会取消已受理的本地合成；请在成片节点查看进度或取消。")).toBeInTheDocument();
+  });
+
   it("places media approvals after the reply that proposed them and before later replies", async () => {
     mockConversation([
       task({ id: "proposal-turn", completedAt: "2026-09-26T00:01:01Z",
@@ -247,9 +266,21 @@ describe("AgentRunConversation", () => {
     expect(screen.getByRole("region", { name: "任务对话" })).not.toHaveTextContent("PRIVATE_TOOL_RESULT");
   });
 
+  it("names storyboard tool actions without exposing their saved shot payloads", async () => {
+    mockConversation([], [
+      action({ id: "read-board", toolName: "read_storyboard", summary: "已读取镜头目录" }),
+      action({ id: "write-board", stepIndex: 1, toolName: "write_storyboard_shots", summary: "已保存第 3 镜的台词" }),
+    ]);
+    mountConversation();
+    expect(await screen.findByText("已保存第 3 镜的台词")).toBeInTheDocument();
+    expect(taskSummary("已读取镜头目录").getByText("读取分镜制作台")).toBeInTheDocument();
+    expect(taskSummary("已保存第 3 镜的台词").getByText("写入分镜镜头")).toBeInTheDocument();
+    expect(taskSummary("已保存第 3 镜的台词").getByText("已完成")).toBeInTheDocument();
+  });
+
   it("keeps failed, canceled, unknown and queued task outcomes distinct", async () => {
     mockConversation([
-      task({ id: "failed-planning", kind: "AGENT_TURN", stepKey: "planning-failed", status: "FAILED", errorCode: "MODEL_TURN_LIMIT_REACHED" }),
+      task({ id: "failed-planning", kind: "AGENT_TURN", stepKey: "planning-failed", status: "FAILED", errorCode: "MODEL_OUTPUT_INVALID" }),
       task({ id: "failed-image", kind: "IMAGE_GENERATION", stepKey: "shot-failed", status: "FAILED", errorCode: "PROVIDER_TIMEOUT" }),
       task({ id: "canceled-video", kind: "VIDEO_GENERATION", stepKey: "shot-canceled", status: "CANCELED", cancelRequested: true }),
       task({ id: "unknown-image", kind: "IMAGE_GENERATION", stepKey: "shot-unknown", status: "UNKNOWN" }),
@@ -259,7 +290,7 @@ describe("AgentRunConversation", () => {
 
     expect(await screen.findAllByText("生成图片")).toHaveLength(2);
     expect(taskSummary("模型调用").getByText("失败")).toBeInTheDocument();
-    expect(screen.getByText(/MODEL_TURN_LIMIT_REACHED/)).toBeInTheDocument();
+    expect(screen.getByText(/MODEL_OUTPUT_INVALID/)).toBeInTheDocument();
     expect(taskSummary("生成图片").getByText("失败")).toBeInTheDocument();
     expect(taskSummary("生成视频").getByText("已取消")).toBeInTheDocument();
     expect(taskSummary("生成图片", 1).getByText("未知")).toBeInTheDocument();

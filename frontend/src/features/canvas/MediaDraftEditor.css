@@ -81,6 +81,18 @@
   max-height: min(var(--ui-canvas-editor-prompt-limit), calc(var(--draft-available-height) * 0.5));
   margin: 7px 0 6px;
 }
+/* A centered node can leave a short area below it. Scroll the panel rather than
+   collapsing the prompt below one editable line or overlapping the run controls. */
+.workspace-media-editor .media-draft-editor { overflow-y: auto; scrollbar-width: thin; }
+.workspace-media-editor .media-draft-prompt-shell {
+  min-height: calc(var(--ui-editor-text-size) * var(--ui-editor-line-height) + var(--ui-space-4));
+}
+/* The screen-sized overlay is the fixed containing block. Menus escape the
+   scrolling editor and continue to open above it. */
+.workspace-media-editor :is(.ui-popover-surface.media-draft-popover, .ui-popover-surface.voice-library, .media-draft-mention-menu) {
+  position: fixed;
+}
+.workspace-media-editor .media-draft-mention-menu { height: auto; }
 .media-draft-editor .media-draft-prompt {
   width: 100%; min-height: 0; height: 100%; overflow-y: auto; resize: none;
   field-sizing: fixed; border: 0; border-radius: var(--ui-radius-md);
@@ -115,7 +127,7 @@
 .media-draft-mode-trigger { max-width: 132px; }
 .media-draft-mode-trigger span { overflow: hidden; text-overflow: ellipsis; }
 /* The toolbar can shrink the anchor below the model button's width cap. */
-.media-draft-model-trigger { width: 100%; max-width: 220px; }
+.media-draft-model-trigger { width: 100%; max-width: 220px; justify-content: flex-start; text-align: left; }
 .media-draft-model-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .media-draft-popover-anchor { position: relative; }
 .media-draft-reference-picker-anchor { position: relative; min-width: 0; }
@@ -235,7 +247,7 @@
 }
 
 /* Respond to the panel, including a narrow node in a wide desktop window. */
-@container canvas-editor (max-width: 48rem) {
+@container canvas-editor (max-width: 40rem) {
   .media-draft-toolbar { flex-wrap: wrap; gap: 5px; }
   .media-draft-model-anchor { flex: 1; }
   .media-draft-parameters-anchor { order: 3; flex-basis: 100%; }

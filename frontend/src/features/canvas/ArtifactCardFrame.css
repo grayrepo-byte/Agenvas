@@ -18,6 +18,8 @@
 
 /* An outer shadow follows the card radius without taking space from the preview. */
 .artifact-canvas-card:hover { box-shadow: var(--ui-canvas-shadow-raised); }
+.artifact-canvas-card:hover:not(.is-selected) .artifact-card-title { color: var(--ui-text); }
+.artifact-canvas-card:hover:not(.is-selected) .artifact-card-title-icon { color: var(--ui-text-secondary); }
 .artifact-canvas-card.is-selected { box-shadow: var(--ui-canvas-selection-shadow); }
 .artifact-canvas-card.is-selected .artifact-card-title,
 .artifact-canvas-card.is-selected .artifact-card-title-icon { color: var(--ui-accent-text); }
@@ -105,6 +107,9 @@
 .artifact-card-toolbar > :where(button:hover:not(:disabled), button.is-open, button[aria-expanded="true"]),
 .artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:hover:not(:disabled), button.is-open, button[aria-expanded="true"]),
 .artifact-card-toolbar > a:hover { background: var(--ui-hover); color: var(--ui-text); }
+.artifact-card-toolbar > :where(button:active:not(:disabled)),
+.artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:active:not(:disabled)),
+.artifact-card-toolbar > a:active { background: var(--ui-selected); }
 .artifact-card-toolbar > :where(button:disabled),
 .artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > :where(button:disabled) { opacity: .48; cursor: not-allowed; }
 .artifact-card-toolbar > :where(button, a):focus-visible,

@@ -2,8 +2,10 @@ package dev.agenvas.llm.application;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -12,6 +14,7 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.EmptyUsage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -22,7 +25,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 public class LlmProtocolCodec {
     /** Per-request resource bound; Run turn counts are governed by their frozen policy. */
-    public static final int MAX_MESSAGES = 80;
+    public static final int MAX_MESSAGES = 4096;
 
     /** 单轮请求检查点的 UTF-8 字节上限，防止无界上下文进入数据库。 */
     private static final int MAX_REQUEST_BYTES = 32 * 1024 * 1024;
@@ -122,6 +125,48 @@ public class LlmProtocolCodec {
             messages.add(decodeMessage(value));
         }
         return List.copyOf(messages);
+    }
+
+    /**
+     * 恢复同一回合保存的原工具定义，避免部署后的说明或 Schema 变化改写技术重试。
+     * 冻结定义只供模型序列化，工具名称仍须属于当前 Run 的冻结允许列表，不能执行回调。
+     */
+    public List<ToolCallback> requestTools(JsonNode request, List<String> allowedNames) {
+        requireSchema(request, MAX_REQUEST_BYTES);
+        JsonNode saved = request.path("tools");
+        if (allowedNames == null || !saved.isArray() || saved.size() > allowedNames.size())
+            throw new IllegalArgumentException("Saved model request has invalid tools");
+        Set<String> names = new HashSet<>();
+        List<ToolCallback> restored = new ArrayList<>(saved.size());
+        for (JsonNode value : saved) {
+            if (!value.isObject() || value.size() != 3 || value.propertyNames().stream()
+                    .anyMatch(field -> !Set.of("name", "description", "inputSchema").contains(field)))
+                throw new IllegalArgumentException("Saved model tool definition is malformed");
+            String name = required(value, "name");
+            String description = required(value, "description");
+            String inputSchema = required(value, "inputSchema");
+            if (name.isBlank() || !allowedNames.contains(name) || !names.add(name))
+                throw new IllegalArgumentException("Saved model tool is not uniquely allowlisted");
+            JsonNode schema;
+            try {
+                schema = mapper.readTree(inputSchema);
+            } catch (RuntimeException malformed) {
+                throw new IllegalArgumentException("Saved model tool schema is malformed", malformed);
+            }
+            if (schema == null || !schema.isObject() || !"object".equals(schema.path("type").asText()))
+                throw new IllegalArgumentException("Saved model tool schema is malformed");
+            restored.add(new SavedDefinition(ToolDefinition.builder().name(name).description(description)
+                    .inputSchema(inputSchema).build()));
+        }
+        return List.copyOf(restored);
+    }
+
+    /** 保存的模型定义不能将 Spring AI 自动调用路径变成业务执行入口。 */
+    private record SavedDefinition(ToolDefinition definition) implements ToolCallback {
+        @Override public ToolDefinition getToolDefinition() { return definition; }
+        @Override public String call(String input) {
+            throw new IllegalStateException("Saved tool definitions require the durable business executor");
+        }
     }
 
     /**

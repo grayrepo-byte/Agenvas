@@ -1,4 +1,4 @@
-import { CaretRight,Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,PlugsConnected,ShieldCheck,SidebarSimple,SignOut,Sparkle,TerminalWindow,UserCircle } from "@/shared/ui/icons";
+import { CaretRight,Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,PlugsConnected,Robot,ShieldCheck,SidebarSimple,SignOut,Sparkle,TerminalWindow,UserCircle } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,type ReactNode } from "react";
 import { Link,Navigate,useLocation,useNavigate } from "react-router";
@@ -18,6 +18,7 @@ const NAVIGATION = [
   { to: "/projects", get label() { return t("common.project"); }, icon: FolderSimple },
   { to: "/library", get label() { return t("common.asset"); }, icon: Cube },
   { to: "/skills", get label() { return t("skills.title"); }, icon: Sparkle },
+  { to: "/settings/director", get label() { return t("settings.director.title"); }, icon: Robot },
   { to: "/settings/providers", get label() { return t("settings.providerTitle"); }, icon: PlugsConnected },
   { to: "/settings/media", get label() { return t("ui.pageShell.mediaSettings"); }, icon: FilmStrip },
   { to: "/settings/functions", get label() { return t("media.functions.title"); }, icon: Sparkle },
@@ -30,7 +31,7 @@ const NAVIGATION = [
 /** Settings retain the same destinations and collapse state as the workspace. */
 const SETTINGS_GROUPS = [
   { label: "ui.pageShell.workspace", paths: ["/projects", "/library", "/skills"] },
-  { label: "settings.workspace.configuration", paths: ["/settings/providers", "/settings/media", "/settings/functions", "/settings/storage"] },
+  { label: "settings.workspace.configuration", paths: ["/settings/director", "/settings/providers", "/settings/media", "/settings/functions", "/settings/storage"] },
   { label: "settings.workspace.observability", paths: ["/settings/calls", "/settings/logs"] },
   { label: "settings.workspace.preferences", paths: ["/settings/general"] },
 ] as const;

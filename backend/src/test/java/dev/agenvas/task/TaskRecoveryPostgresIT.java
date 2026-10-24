@@ -1,5 +1,7 @@
 package dev.agenvas.task;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
@@ -77,7 +79,7 @@ class TaskRecoveryPostgresIT {
         AdminPrincipal owner = identities.setup("recovery-admin", "recovery-password-123");
         Project project = projects.create(owner.userId(), "Recovery project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Create");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create shots", "recovery-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),

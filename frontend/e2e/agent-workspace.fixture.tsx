@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { ProjectWorkspacePage } from "../src/features/canvas/ProjectWorkspacePage";
-import type { Agent, CanvasItem, ProjectSnapshot } from "../src/shared/api/client";
+import type { Agent, AgentConversation, CanvasEditorState, CanvasItem, CharacterIndex, ProjectSnapshot } from "../src/shared/api/client";
 import { setLocale } from "../src/shared/i18n";
 import "../src/styles.css";
 
@@ -16,7 +16,6 @@ const project: ProjectSnapshot["project"] = { id: projectId, name: "午后城市
 const director: Agent = { id: "synthetic-director", projectId, name: "导演 Agent", instruction: "协助当前画布创作。",
   profileKey: "creator", profileVersion: 1, version: 0,
   createdAt: now, updatedAt: now };
-const writer: Agent = { ...director, id: "synthetic-writer", name: "编剧 Agent" };
 function textItem(id: string, title: string, text: string, x: number, y: number): CanvasItem {
   const version: NonNullable<CanvasItem["selectedVersion"]> = { id: `${id}-version`, versionNo: 1, schemaVersion: 1,
     content: { format: "PLAIN_TEXT", text }, inputReferences: [], createdByKind: "USER", runId: null, createdAt: now };
@@ -33,11 +32,19 @@ const image: CanvasItem = { ...textItem("synthetic-image", "视觉参考", "", 4
     resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 0, createdAt: now, updatedAt: now },
   selectedVersionId: null, selectedVersion: null };
 const items = [story, character, image];
+const canvasEditor: CanvasEditorState = { items, groups: [] };
+const characters: CharacterIndex = { characters: [], bindings: [] };
 const connections: ProjectSnapshot["connections"] = [];
-const snapshot: ProjectSnapshot = { project, canvas: { items }, connections, agents: [director, writer],
+const snapshot: ProjectSnapshot = { project, canvas: { items }, connections, director,
   activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
-const diagnostics = { requests: [] as string[], unexpected: [] as string[], mutations: [] as string[] };
+const diagnostics = { requests: [] as string[], unexpected: [] as string[], mutations: [] as string[], conversationMutations: [] as string[] };
 Object.assign(window, { __agenvasWorkspaceFixture: diagnostics });
+const conversations: { items: AgentConversation[]; currentConversationId: string } = {
+  items: [{ id: `conversation-${director.id}`, projectId, agentInstanceId: director.id,
+    title: "午后城市 · 创作讨论", version: 0, turnCount: 0, createdAt: now, updatedAt: now }],
+  currentConversationId: `conversation-${director.id}`,
+};
+let conversationNumber = 0;
 
 // EventSource does not use window.fetch. This local stand-in reports a connected
 // stream without opening a real network connection or fabricating Run results.
@@ -54,6 +61,27 @@ window.fetch = async (input, init) => {
   const method = init?.method ?? (input instanceof Request ? input.method : "GET");
   const path = url.pathname;
   diagnostics.requests.push(`${method} ${path}`);
+  // Session changes are the only allowed fixture mutations. They never create a Run.
+  const sessionRoute = path.match(/\/agents\/([^/]+)\/conversations(?:\/([^/]+)\/select)?$/);
+  if (method === "POST" && sessionRoute) {
+    const agentId = sessionRoute[1];
+    if (agentId !== director.id) throw new Error(`Unexpected synthetic director: ${agentId}`);
+    const sessions = conversations;
+    diagnostics.conversationMutations.push(`${method} ${path}`);
+    let conversation: AgentConversation;
+    if (sessionRoute[2]) {
+      const selected = sessions.items.find((item) => item.id === sessionRoute[2]);
+      if (!selected) throw new Error(`Missing synthetic conversation: ${sessionRoute[2]}`);
+      conversation = selected;
+    } else {
+      conversation = { id: `synthetic-conversation-${++conversationNumber}`, projectId, agentInstanceId: agentId,
+        title: "新会话", version: 0, turnCount: 0, createdAt: now, updatedAt: now };
+      sessions.items.unshift(conversation);
+    }
+    sessions.currentConversationId = conversation.id;
+    return new Response(JSON.stringify(conversation), { status: sessionRoute[2] ? 200 : 201,
+      headers: { "Content-Type": "application/json" } });
+  }
   if (method !== "GET") {
     diagnostics.mutations.push(`${method} ${path}`);
     throw new Error(`The workspace fixture forbids mutation/generation: ${method} ${path}`);
@@ -61,18 +89,16 @@ window.fetch = async (input, init) => {
   let value: unknown;
   if (path.endsWith("/auth/me")) value = { id: "synthetic-user", loginName: "Synthetic user", role: "ADMIN" };
   else if (path.endsWith("/auth/csrf")) value = { headerName: "X-XSRF-TOKEN", token: "synthetic" };
-  else if (path === "/api/v1/agent-presets") value = { items: [{ key: "agent.director", name: director.name }, { key: "agent.writer", name: writer.name }] };
   else if (path === `/api/v1/projects/${projectId}`) value = project;
   else if (path.endsWith("/snapshot")) value = snapshot;
   else if (path.endsWith("/canvas/items")) value = { items };
+  else if (path === `/api/v1/projects/${projectId}/canvas/editor`) value = canvasEditor;
+  else if (path === `/api/v1/projects/${projectId}/characters`) value = characters;
   else if (path.endsWith("/canvas/connections")) value = { items: connections };
-  else if (path.endsWith("/agents")) value = { items: [director, writer] };
-  else if (path.endsWith("/outputs")) value = { canvasItemIds: [] };
   else if (path.endsWith("/conversations")) {
     const agentId = path.split("/").at(-2)!;
-    value = { items: [{ id: `conversation-${agentId}`, projectId, agentInstanceId: agentId,
-      title: "午后城市 · 创作讨论", version: 0, turnCount: 0, createdAt: now, updatedAt: now }],
-      currentConversationId: `conversation-${agentId}`, nextCursor: null };
+    if (agentId !== director.id) throw new Error(`Unexpected synthetic director: ${agentId}`);
+    value = { ...conversations, nextCursor: null };
   } else if (path.endsWith("/skill-binding")) value = { agentVersion: 0, skills: [] };
   else if (path === "/api/v1/skills") value = { items: [], total: 0, nextCursor: null };
   else if (path.endsWith("/runs")) value = { items: [], nextCursor: null };

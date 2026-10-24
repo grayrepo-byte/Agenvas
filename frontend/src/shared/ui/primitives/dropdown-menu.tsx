@@ -2,6 +2,7 @@ import { Check as CheckIcon,CaretRight as ChevronRightIcon,Circle as CircleIcon 
 import { cn } from "cn"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 import * as React from "react"
+import "../Dropdown.css"
 
 function DropdownMenu({
   ...props
@@ -30,7 +31,7 @@ function DropdownMenuTrigger({
 
 function DropdownMenuContent({
   className,
-  sideOffset = 4,
+  sideOffset = 6,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content>) {
   return (

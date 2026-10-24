@@ -6,7 +6,7 @@ import java.util.Set;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 
-/** A user decision covers one immutable batch; terminal task outcomes resume its waiting Run. */
+/** Pending input is revisioned; a user decision freezes the batch for execution and continuation. */
 public record AgentMediaApproval(UUID id, UUID ownerId, UUID projectId, UUID runId, int stepIndex,
         String toolCallId, UUID operationId, JsonNode request, JsonNode targets,
         List<UUID> taskIds, JsonNode result, Status status, long version,
@@ -33,5 +33,12 @@ public record AgentMediaApproval(UUID id, UUID ownerId, UUID projectId, UUID run
         return new AgentMediaApproval(id, ownerId, projectId, runId, stepIndex, toolCallId,
                 operationId, request, targets, newTaskIds, newResult, nextStatus,
                 version + 1, createdAt, expiresAt, deadline, key, hash);
+    }
+
+    public AgentMediaApproval revise(JsonNode revisedRequest, JsonNode revisedTargets) {
+        if (status != Status.PENDING) throw new IllegalStateException("Only pending approvals can be revised");
+        return new AgentMediaApproval(id, ownerId, projectId, runId, stepIndex, toolCallId,
+                operationId, revisedRequest, revisedTargets, taskIds, result, status,
+                version + 1, createdAt, expiresAt, executionDeadline, decisionKey, decisionHash);
     }
 }

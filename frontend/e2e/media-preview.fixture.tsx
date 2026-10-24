@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { MediaPreviewDialog } from "../src/features/canvas/MediaPreviewDialog";
+import { VideoComparisonDialog } from "../src/features/canvas/VideoComparisonDialog";
+import { VideoEditDialog } from "../src/features/canvas/VideoEditDialog";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { createQueryClient } from "../src/app/queryClient";
+import type { CanvasItem } from "../src/shared/api/client";
 import { setLocale } from "../src/shared/i18n";
 import "../src/styles.css";
 
@@ -72,6 +77,9 @@ function Fixture() {
   const [sourceVideo, setSourceVideo] = useState<string>();
   const [preview, setPreview] = useState<Preview>();
   const [deletions, setDeletions] = useState(0);
+  const [comparing, setComparing] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [queryClient] = useState(createQueryClient);
   useEffect(() => {
     let disposed = false;
     let objectUrl: string | undefined;
@@ -102,6 +110,8 @@ function Fixture() {
       <button id="video-open" disabled={!sourceVideo} onClick={() => setPreview("video")}>Open video</button>
       <button id="retry-image-open" onClick={() => setPreview("retry-image")}>Open failing image</button>
       <button id="retry-video-open" disabled={!sourceVideo} onClick={() => setPreview("retry-video")}>Open failing video</button>
+      <button id="compare-open" disabled={!sourceVideo} onClick={() => setComparing(true)}>Compare videos</button>
+      <button id="edit-open" disabled={!sourceVideo} onClick={() => setEditing(true)}>Edit videos</button>
       <input aria-label="Background input" />
     </main>
     {preview && sourceVideo ? <MediaPreviewDialog kind={isVideo ? "video" : "image"}
@@ -110,6 +120,16 @@ function Fixture() {
       width={isVideo ? VIDEO_WIDTH : isPortrait ? IMAGE_HEIGHT : IMAGE_WIDTH}
       height={isVideo ? VIDEO_HEIGHT : isPortrait ? IMAGE_WIDTH : IMAGE_HEIGHT}
       onClose={() => setPreview(undefined)} /> : null}
+    {comparing ? <VideoComparisonDialog projectId="review" title="Synthetic comparison" selectedVersionId="v2" onClose={() => setComparing(false)}
+      versions={[2, 1].map((number) => ({ nodeVersionNo: number, version: { id: `v${number}`, versionNo: number, schemaVersion: 1,
+        content: { sourceType: "UPLOAD", assetId: `asset-${number}` }, inputReferences: [], createdByKind: "USER", createdAt: "2026-10-22T00:00:00Z" } }))} /> : null}
+    {editing ? <QueryClientProvider client={queryClient}><VideoEditDialog projectId="review" initialIds={["item-1", "item-2"]} onClose={() => setEditing(false)}
+      items={[1, 2].map((number): CanvasItem => ({ id: `item-${number}`, subjectType: "ARTIFACT", subjectId: `artifact-${number}`, title: `Synthetic ${number}`,
+        x: 0, y: 0, width: 640, height: 360, zIndex: number, locked: false, version: 1, selectedVersionId: `v${number}`,
+        selectedVersion: { id: `v${number}`, versionNo: number, schemaVersion: 1, content: { sourceType: "UPLOAD", assetId: `asset-${number}` },
+          inputReferences: [], createdByKind: "USER", createdAt: "2026-10-22T00:00:00Z" }, artifact: { id: `artifact-${number}`, projectId: "review", kind: "VIDEO",
+          title: `Synthetic ${number}`, resourceDefaultVersionId: null, resourceDefaultVersion: null, version: 1, createdAt: "2026-10-22T00:00:00Z", updatedAt: "2026-10-22T00:00:00Z" } }))} />
+    </QueryClientProvider> : null}
   </>;
 }
 

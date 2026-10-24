@@ -1,0 +1,77 @@
+.canvas-group {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--ui-canvas-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--ui-canvas-chrome) 32%, transparent);
+  pointer-events: none;
+}
+
+.canvas-group--selected {
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 1px var(--ui-accent);
+}
+
+.canvas-group--selected .canvas-group__name { color: var(--ui-accent-text); }
+
+.canvas-group--drop-target {
+  border-color: var(--ui-accent);
+  background: color-mix(in srgb, var(--ui-accent) 12%, transparent);
+  box-shadow: 0 0 0 2px var(--ui-accent);
+}
+
+.canvas-group__drop-hint {
+  position: absolute;
+  top: 56px;
+  left: 20px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--ui-canvas-chrome);
+  color: var(--ui-accent-text);
+  font-size: 12px;
+}
+
+.canvas-group__header {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  min-width: 0;
+  padding: 8px;
+  border-bottom: 1px solid var(--ui-canvas-border);
+  border-radius: 15px 15px 0 0;
+  background: var(--ui-canvas-chrome);
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.canvas-group__header:hover { background: color-mix(in srgb, var(--ui-hover) 45%, var(--ui-canvas-chrome)); }
+.react-flow__node.dragging .canvas-group__header { background: var(--ui-hover); cursor: grabbing; }
+
+.canvas-group__name {
+  min-width: 0;
+  flex: 1;
+  color: var(--ui-text);
+  font-weight: 500;
+}
+
+.canvas-group__count {
+  flex-shrink: 0;
+}
+
+.canvas-group--collapsed {
+  background: var(--ui-canvas-chrome);
+}
+
+.canvas-group--collapsed .canvas-group__header {
+  height: 100%;
+  border: 0;
+  border-radius: 15px;
+}
+
+.canvas-group__relation-handle {
+  opacity: 0;
+  pointer-events: none;
+}

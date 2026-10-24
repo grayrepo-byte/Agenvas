@@ -2,23 +2,16 @@ package dev.agenvas.agent.application;
 
 import dev.agenvas.agent.domain.AgentInstance;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 /** 项目助手配置的所有者范围持久化边界。 */
 public interface AgentInstanceRepository {
-    /** A create command pins defaults once and can recover a lost HTTP response without a duplicate card. */
-    boolean reserveCreateKey(UUID ownerId, String scope, String key, String hash, Instant now, Instant expiresAt);
-    Optional<CreateKey> findCreateKey(UUID ownerId, String scope, String key);
-    boolean completeCreateKey(UUID ownerId, String scope, String key, String hash, UUID agentId, String response, Instant now);
-    record CreateKey(String requestHash, UUID agentId, String responseJson) {}
-
     /** 插入单个助手配置；权限由受理 Run 时的固定画布范围决定。 */
     void create(AgentInstance instance);
 
-    /** 按确定的创建顺序列出助手配置。 */
-    List<AgentInstance> list(UUID ownerId, UUID projectId);
+    /** 一个项目仅有一个导演；按项目和所有者读取其稳定身份。 */
+    Optional<AgentInstance> findProjectDirector(UUID ownerId, UUID projectId);
 
     /** 在所有者范围内读取单个助手。 */
     Optional<AgentInstance> find(UUID ownerId, UUID projectId, UUID agentId);

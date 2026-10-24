@@ -77,7 +77,8 @@ class AgentTurnWorkerTest {
     void setup() throws Exception {
         worker = new AgentTurnWorker(tasks, new TaskProperties(Duration.ofMinutes(30), 16), commits,
                 initialContext, conversation, repairContext, rounds, turns, codec, tools, registry,
-                gateway, Clock.fixed(NOW, ZoneOffset.UTC), modelExecutor);
+                gateway, Clock.fixed(NOW, ZoneOffset.UTC),
+                new AgentContextService(source(DirectorSettings.defaults()), mapper, codec), modelExecutor);
         when(modelExecutor.open(lease, WORKER)).thenReturn(execution);
         when(lease.id()).thenReturn(UUID.randomUUID());
         when(lease.projectId()).thenReturn(project);
@@ -89,10 +90,14 @@ class AgentTurnWorkerTest {
         when(commits.start(lease, WORKER)).thenReturn(run);
         when(run.status()).thenReturn(AgentRun.Status.RUNNING);
         when(run.policySnapshot()).thenReturn(mapper.createObjectNode()
-                .put("modelConfigSource", "mock").put("modelConfigVersion", 1));
+                .put("modelConfigSource", "mock").put("modelConfigVersion", 1)
+                .put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION)
+                .put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION)
+                .put("systemPromptVersion", InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION)
+                .set("allowedTools", mapper.valueToTree(RunToolPolicy.CURRENT)));
         when(turns.find(project, runId, 0)).thenReturn(Optional.empty());
         when(initialContext.assemble(owner, project, runId)).thenReturn(frozen);
-        when(rounds.callLeased(eq(owner), eq(project), eq(runId), eq(0), anyList(), anyList(),
+        when(rounds.callLeased(eq(owner), eq(project), eq(runId), eq(0), any(JsonNode.class), anyList(),
                 anyMap(), eq(lease), eq(WORKER))).thenReturn(response);
         when(execution.call(ArgumentMatchers.<Callable<JsonNode>>any(), any(Duration.class)))
                 .thenAnswer(invocation -> {
@@ -134,7 +139,7 @@ class AgentTurnWorkerTest {
         worker.runOnce(WORKER);
 
         verify(execution).call(ArgumentMatchers.<Callable<JsonNode>>any(), eq(LlmCallTimeouts.REQUEST));
-        verify(rounds).callLeased(owner, project, runId, 0, frozen, List.of(),
+        verify(rounds).callLeased(owner, project, runId, 0, codec.request(frozen, List.of()), List.of(),
                 java.util.Map.of("projectId", project.toString(), "runId", runId.toString()), lease, WORKER);
         verifyNoInteractions(initialContext, conversation, repairContext);
         verify(commits, never()).modelFailed(any(), anyString(), anyString());
@@ -323,4 +328,10 @@ class AgentTurnWorkerTest {
         verify(commits).complete(lease, WORKER);
         verify(commits, never()).finishFailure(any(), anyString(), anyString());
     }
+    private static DirectorSettingsService source(DirectorSettings value) {
+        var source = org.mockito.Mockito.mock(DirectorSettingsService.class);
+        org.mockito.Mockito.when(source.get()).thenReturn(value);
+        return source;
+    }
+
 }

@@ -1,9 +1,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactFlow, useNodesState, type NodeProps } from "@xyflow/react";
+import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createQueryClient } from "../src/app/queryClient";
 import { ArtifactCardFrame } from "../src/features/canvas/ArtifactCardFrame";
 import { AudioPlayer } from "../src/features/canvas/AudioPlayer";
+import { AudioTrimDialog } from "../src/features/canvas/AudioTrimDialog";
 import { CANVAS_POINTER_THRESHOLD } from "../src/features/canvas/canvasInteraction";
 import { setLocale } from "../src/shared/i18n";
 import "@xyflow/react/dist/style.css";
@@ -11,10 +13,19 @@ import "../src/styles.css";
 
 setLocale("zh");
 function AudioNode({ selected }: NodeProps) {
-  return <ArtifactCardFrame title="合成音频" kindLabel="音频" selected={selected} locked={false}
-    className="audio-canvas-card" toolbar={<button type="button">音频操作</button>}>
-    <AudioPlayer src="/e2e/audio-node.wav" title="合成音频" selected={selected} />
-  </ArtifactCardFrame>;
+  const [trimming, setTrimming] = useState(false);
+  return <>
+    <ArtifactCardFrame title="合成音频" kindLabel="音频" selected={selected} locked={false}
+      className="audio-canvas-card" toolbar={<button type="button" className="nodrag"
+        data-testid="audio-trim-open" onClick={() => setTrimming(true)}>音频操作</button>}>
+      <AudioPlayer src="/e2e/audio-node.wav" title="合成音频" selected={selected} />
+    </ArtifactCardFrame>
+    {trimming ? <AudioTrimDialog projectId="00000000-0000-4000-8000-000000000301"
+      artifactId="00000000-0000-4000-8000-000000000302"
+      source={{ canvasItemId: "00000000-0000-4000-8000-000000000303",
+        sourceVersionId: "00000000-0000-4000-8000-000000000304", expectedCanvasItemVersion: 7 }}
+      src="/e2e/audio-node.wav" title="合成音频" durationMs={10_000} onClose={() => setTrimming(false)} /> : null}
+  </>;
 }
 const nodeTypes = { audio: AudioNode };
 function Fixture() {

@@ -6,7 +6,6 @@ import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.bootstrap.AgenvasApplication;
-import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.canvas.domain.CanvasConnection;
 import dev.agenvas.identity.application.IdentityService;
@@ -74,7 +73,6 @@ class SequentialAgentImagesPostgresIT {
     @Autowired AssetService assets;
     @Autowired AgentInstanceService agents;
     @Autowired CanvasService canvas;
-    @Autowired CanvasConnectionService connections;
     @Autowired AgentRunService runs;
     @Autowired AgentTurnWorker worker;
     @Autowired AgentImageInputService images;
@@ -100,7 +98,7 @@ class SequentialAgentImagesPostgresIT {
             try (var stream = assets.open(preview, 0, preview.size())) { gateway.previews.add(stream.readAllBytes()); }
         }
         var first = versions.getFirst();
-        var agent = AgentImageInputFixture.connect(agents, canvas, connections, owner.userId(), project.id(),
+        var agent = AgentImageInputFixture.withCanvasImage(agents, canvas, owner.userId(), project.id(),
                 first.artifact().id(), first.resourceDefaultVersion().id(), "Image observer", "Record visible continuity anchors");
         for (var version : versions.subList(1, versions.size())) {
             UUID source = UUID.randomUUID();

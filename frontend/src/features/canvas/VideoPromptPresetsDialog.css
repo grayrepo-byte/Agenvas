@@ -1,0 +1,79 @@
+.video-presets-dialog.ui-dialog.app-page { --ui-dialog-width: 1120px; height: min(840px, calc(100dvh - 48px)); max-height: calc(100dvh - 32px); }
+.video-presets-dialog .ui-dialog-form { flex: 1; overflow: hidden; }
+.video-presets-dialog .ui-dialog-body { display: flex; flex: 1; flex-direction: column; padding: 0; overflow: hidden; }
+.video-presets-toolbar { display: flex; align-items: center; gap: 16px; padding: 16px 24px; border-bottom: 1px solid var(--ui-border); }
+.video-presets-search { position: relative; flex: 1; }
+.video-presets-search > svg { position: absolute; left: 12px; top: 11px; width: 18px; height: 18px; color: var(--ui-text-muted); pointer-events: none; }
+.video-presets-search input { padding-left: 38px; background: var(--ui-field); }
+.video-presets-scenarios { display: flex; flex: none; align-items: center; gap: 12px; min-width: 0; padding: 8px 24px; border-bottom: 1px solid var(--ui-border); }
+.video-presets-scenarios > span { flex: none; color: var(--ui-text-subtle); font-size: var(--ui-text-xs); }
+.video-presets-scenario-options[data-slot="toggle-group"] { flex: 1; min-width: 0; overflow-x: auto; padding: 2px; }
+.video-presets-workspace { display: grid; grid-template-columns: 168px minmax(240px, 0.9fr) minmax(300px, 1.15fr); min-height: 0; flex: 1; }
+.video-presets-categories { display: flex; flex-direction: column; gap: 4px; padding: 16px 10px; overflow: auto; border-right: 1px solid var(--ui-border); background: var(--ui-field); }
+.video-presets-categories > button { flex: none; justify-content: flex-start; gap: 8px; padding: 8px; min-height: 36px; font-size: var(--ui-text-sm); }
+.video-presets-categories > button > span:not(.video-presets-category-number) { min-width: 0; white-space: normal; text-align: left; }
+.video-presets-categories > button > small { margin-left: auto; color: var(--ui-text-subtle); font-size: 10px; font-variant-numeric: tabular-nums; }
+.video-presets-category-number { font-size: 10px; font-variant-numeric: tabular-nums; color: var(--ui-text-subtle); }
+.video-presets-categories > button[aria-pressed="true"] { box-shadow: inset 2px 0 var(--ui-accent); }
+.video-presets-catalog { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--ui-border); }
+.video-presets-result-count { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; min-height: 44px; padding: 6px 12px 6px 18px; font-size: var(--ui-text-xs); color: var(--ui-text-subtle); }
+.video-presets-result-count > p { margin: 0; }
+.video-presets-results { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 0 10px 16px; overflow: auto; overscroll-behavior: contain; }
+.video-preset-option[data-slot="button"] { display: flex; align-items: center; flex: none; justify-content: space-between; height: auto; min-height: 104px; gap: 8px; padding: 14px 12px; border: 1px solid transparent; border-radius: var(--ui-radius-md); white-space: normal; text-align: left; }
+.video-preset-option.is-selected[data-slot="button"] { border-color: var(--ui-accent); background: var(--ui-accent-subtle); }
+.video-preset-option.is-selected > svg { color: var(--ui-accent-text); }
+.video-preset-option-copy { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.video-preset-option-copy > strong { font-size: var(--ui-text-md); font-weight: 550; }
+.video-preset-option-copy > small { color: var(--ui-text-subtle); font-size: 10px; font-weight: 400; }
+.video-preset-option-copy > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 5px; color: var(--ui-text-muted); font-size: var(--ui-text-sm); line-height: 1.6; font-weight: 400; }
+.video-presets-detail { min-width: 0; overflow: auto; overscroll-behavior: contain; padding: 20px 24px 24px; }
+.video-presets-detail-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.video-presets-detail-heading > span:last-child { font-size: var(--ui-text-xs); color: var(--ui-text-subtle); font-variant-numeric: tabular-nums; }
+.video-presets-detail h3 { margin: 14px 0 4px; font-size: 23px; line-height: 1.35; font-weight: 550; letter-spacing: -0.5px; }
+.video-presets-english-name { margin: 0 0 16px; color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+.video-presets-notes { display: flex; flex-direction: column; gap: 14px; margin: 0 0 22px; }
+.video-presets-notes > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; }
+.video-presets-notes dt { color: var(--ui-text-subtle); font-size: var(--ui-text-xs); line-height: 1.8; }
+.video-presets-notes dd { margin: 0; color: var(--ui-text-secondary); font-size: var(--ui-text-sm); line-height: 1.8; }
+.video-presets-prompt-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.video-presets-prompt-heading h4 { margin: 0; font-size: var(--ui-text-sm); font-weight: 500; }
+.video-presets-prompt { margin: 0; padding: 14px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius-md); color: var(--ui-text-secondary); background: var(--ui-field); font-size: var(--ui-text-sm); line-height: 1.85; overflow-wrap: anywhere; user-select: text; }
+.video-presets-model-note { margin: 10px 0 0; color: var(--ui-text-subtle); font-size: var(--ui-text-xs); line-height: 1.7; }
+.video-presets-footer-note { display: flex; flex-direction: column; gap: 4px; min-width: 0; margin-right: auto; font-size: var(--ui-text-sm); }
+.video-presets-footer-note > small { color: var(--ui-text-subtle); font-size: var(--ui-text-xs); }
+@media (max-width: 900px) {
+  .video-presets-workspace { grid-template-columns: 152px minmax(200px, 0.9fr) minmax(230px, 1fr); }
+  .video-presets-detail { padding: 16px; }
+  .video-presets-notes > div { grid-template-columns: 1fr; gap: 2px; }
+  .video-presets-categories > button { gap: 5px; }
+  .video-presets-category-number { display: none; }
+}
+@media (max-width: 700px) {
+  .video-presets-dialog.ui-dialog.app-page { height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); }
+  .video-presets-dialog .ui-dialog-body { overflow: auto; }
+  .video-presets-toolbar { flex: none; padding: 12px 16px; gap: 8px; }
+  .video-presets-toolbar > [data-slot="badge"] { display: none; }
+  .video-presets-scenarios { padding: 6px 12px; gap: 8px; }
+  .video-presets-scenarios > span { display: none; }
+  .video-presets-workspace { display: flex; flex-direction: column; flex: none; min-height: 0; }
+  .video-presets-categories { flex-direction: row; flex: none; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--ui-border); }
+  .video-presets-categories > button { min-height: 32px; }
+  .video-presets-categories > button > span:not(.video-presets-category-number) { white-space: nowrap; }
+  .video-presets-categories > button[aria-pressed="true"] { box-shadow: inset 0 -2px var(--ui-accent); }
+  .video-presets-category-number { display: none; }
+  .video-presets-catalog { flex: none; height: 216px; border-right: 0; border-bottom: 1px solid var(--ui-border); }
+  .video-presets-results { flex-direction: row; gap: 8px; padding: 0 12px 12px; }
+  .video-preset-option[data-slot="button"] { width: 212px; min-height: 0; align-items: flex-start; }
+  .video-presets-detail { flex: none; overflow: visible; padding: 20px 16px; }
+  .video-presets-notes > div { grid-template-columns: 64px minmax(0, 1fr); gap: 12px; }
+  .video-presets-dialog .ui-dialog-footer { gap: 8px; }
+  .video-presets-footer-note { flex-basis: 100%; }
+}
+@media (max-height: 480px) and (min-width: 701px) {
+  .video-presets-dialog.ui-dialog.app-page { height: calc(100dvh - 16px); max-height: calc(100dvh - 16px); }
+  .video-presets-dialog .ui-dialog-header { padding-top: 12px; padding-bottom: 12px; }
+  .video-presets-toolbar { padding-top: 8px; padding-bottom: 8px; }
+  .video-presets-scenarios { padding-top: 4px; padding-bottom: 4px; }
+  .video-presets-dialog .ui-dialog-footer { padding-top: 8px; padding-bottom: 8px; }
+  .video-presets-footer-note > small { display: none; }
+}

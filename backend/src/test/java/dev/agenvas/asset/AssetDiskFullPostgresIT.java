@@ -1,5 +1,7 @@
 package dev.agenvas.asset;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -93,7 +95,7 @@ class AssetDiskFullPostgresIT {
         AdminPrincipal owner = identities.setup("disk-admin", "disk-password-123");
         Project project = projects.create(owner.userId(), "Disk failure",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Create");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create image", "disk-full-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),

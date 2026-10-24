@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -81,7 +83,7 @@ class ReadToolsPostgresIT {
     @Autowired private ObjectMapper mapper;
 
     @Test
-    void historicalRunReadsOnlyPinnedVersionAndNeverLeaksUnboundProjectContent() {
+    void currentCanvasReadsAreBoundedReplayableAndOffCanvasContentIsDenied() {
         AdminPrincipal owner = identities.setup("reader-admin", "reader-password-123");
         Project project = projects.create(owner.userId(), "Reader project",
                 Project.AspectRatio.LANDSCAPE_16_9);
@@ -101,49 +103,32 @@ class ReadToolsPostgresIT {
         gateway.largeVersionId = largeBound.resourceDefaultVersion().id();
         gateway.longBrief = longBrief;
         gateway.unboundVersionId = unbound.resourceDefaultVersion().id();
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Reader",
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Reader",
                 "Read the brief");
         UUID selectedItemId = UUID.randomUUID();
-        UUID unboundSelectedItemId = UUID.randomUUID();
+        UUID largeItemId = UUID.randomUUID();
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.PlaceArtifact(
                         selectedItemId, bound.artifact().id(), BigDecimal.ZERO, BigDecimal.ZERO,
                         new BigDecimal("320"), new BigDecimal("200"), 0, null, false),
-                new CanvasService.PlaceArtifact(unboundSelectedItemId, unbound.artifact().id(),
-                        new BigDecimal("400"), BigDecimal.ZERO,
+                new CanvasService.PlaceArtifact(largeItemId, largeBound.artifact().id(),
+                        new BigDecimal("600"), BigDecimal.ZERO,
                         new BigDecimal("320"), new BigDecimal("200"), 1, null, false)));
         assertThatThrownBy(() -> runs.create(owner.userId(), project.id(), agent.id(),
                 "Summarize the brief", "invalid-selection", null,
                 List.of(UUID.randomUUID()))).isInstanceOf(ApiProblemException.class);
         gateway.selectedItemId = selectedItemId;
-        gateway.unboundSelectedItemId = unboundSelectedItemId;
+        gateway.unboundSelectedItemId = largeItemId;
+        gateway.placedItemId = largeItemId;
         AgentRun accepted = runs.create(owner.userId(), project.id(), agent.id(),
                 "Summarize the brief", "read-tools-run", null,
-                List.of(selectedItemId, unboundSelectedItemId)).run();
-        // Model a persisted pre-upgrade Run: upgrading must not silently grant its selected nodes new authority.
-        ObjectNode oldContext = (ObjectNode) accepted.contextSnapshot().deepCopy();
-        oldContext.remove("canvasScope");
-        UUID historicalGroup = UUID.randomUUID();
-        oldContext.put("outputGroupId", historicalGroup.toString());
-        var historicalBindings = oldContext.putArray("bindings");
-        for (var input : List.of(bound, largeBound)) historicalBindings.addObject()
-                .put("artifactId", input.artifact().id().toString())
-                .put("selectedVersionId", input.resourceDefaultVersion().id().toString())
-                .put("kind", "TEXT").put("title", input.artifact().title())
-                .put("expectedVersion", input.artifact().version());
-
-        ObjectNode oldPolicy = (ObjectNode) accepted.policySnapshot().deepCopy();
-        oldPolicy.put("toolPolicyVersion", 3).put("systemPromptVersion", 11);
-        oldPolicy.set("allowedTools", mapper.valueToTree(dev.agenvas.llm.application.RunToolPolicy.current(false, false).stream()
-                .filter(name -> !List.of("read_canvas", "manage_canvas_node", "update_media_draft").contains(name)).toList()));
-        jdbc.sql("update agent_run set context_snapshot_json = cast(:context as jsonb), policy_snapshot_json = cast(:policy as jsonb) where id = :id")
-                .param("context", oldContext.toString()).param("policy", oldPolicy.toString()).param("id", accepted.id()).update();
-        AgentRun run = runs.get(owner.userId(), project.id(), accepted.id());
+                List.of(selectedItemId, largeItemId)).run();
+        AgentRun run = accepted;
         assertThat(run.contextSnapshot().at("/selection/0/itemId").asText())
                 .isEqualTo(selectedItemId.toString());
         assertThat(run.contextSnapshot().at("/selection/0/versionId").asText())
                 .isEqualTo(bound.resourceDefaultVersion().id().toString());
         assertThat(run.contextSnapshot().at("/selection/1/versionId").asText())
-                .isEqualTo(unbound.resourceDefaultVersion().id().toString());
+                .isEqualTo(largeBound.resourceDefaultVersion().id().toString());
         assertThatThrownBy(() -> runs.create(owner.userId(), project.id(), agent.id(),
                 "Summarize the brief", "read-tools-run", null,
                 List.of(selectedItemId)))
@@ -162,7 +147,7 @@ class ReadToolsPostgresIT {
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
                 .isEqualTo(AgentRun.Status.RUNNING);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
-                .param("runId", run.id()).query(Long.class).single()).isEqualTo(6);
+                .param("runId", run.id()).query(Long.class).single()).isEqualTo(4);
         assertThat(jdbc.sql("select count(*) from artifact where project_id = :projectId")
                 .param("projectId", project.id()).query(Long.class).single()).isEqualTo(3);
         TrustedToolContext trusted = new TrustedToolContext(owner.userId(), project.id(), run.id());
@@ -170,42 +155,24 @@ class ReadToolsPostgresIT {
         assertThat(firstRead.at("/data/1/content/text").asText()).isEqualTo(longBrief);
         assertThat(toolExecutions.execute(trusted, 0, "read-bound")).isEqualTo(firstRead);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
-                .param("runId", run.id()).query(Long.class).single()).isEqualTo(6);
-        assertThatThrownBy(() -> creativeTools.placeArtifacts(trusted, run,
-                UUID.randomUUID(), gateway.placeRequest(unbound.resourceDefaultVersion().id())))
-                .isInstanceOf(ApiProblemException.class)
-                .extracting(error -> ((ApiProblemException) error).code())
-                .isEqualTo("INPUT_SCOPE_DENIED");
-        assertThatThrownBy(() -> creativeTools.placeArtifacts(trusted, run,
-                UUID.randomUUID(), "{\"versionIds\":[\""
-                        + largeBound.resourceDefaultVersion().id() + "\"],\"group\":\"PRIVATE\"}"))
-                .isInstanceOf(ApiProblemException.class)
-                .extracting(error -> ((ApiProblemException) error).code())
-                .isEqualTo("TOOL_ARGUMENT_INVALID");
+                .param("runId", run.id()).query(Long.class).single()).isEqualTo(4);
         assertThat(canvas.list(owner.userId(), project.id()).stream()
                 .filter(entry -> entry.item().subjectId().equals(largeBound.artifact().id()))
-                .filter(entry -> historicalGroup.equals(entry.item().groupId()))
                 .count()).isEqualTo(1);
 
         assertThat(worker.runOnce("reader-worker")).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
                 .isEqualTo(AgentRun.Status.RUNNING);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
-                .param("runId", run.id()).query(Long.class).single()).isEqualTo(8);
+                .param("runId", run.id()).query(Long.class).single()).isEqualTo(6);
         var arranged = canvas.list(owner.userId(), project.id()).stream()
                 .map(CanvasService.CanvasEntry::item)
                 .filter(item -> item.id().equals(gateway.placedItemId))
                 .findFirst().orElseThrow();
         assertThat(arranged.version()).isEqualTo(1);
-        assertThat(arranged.x()).isEqualByComparingTo(new BigDecimal("800"));
+        assertThat(arranged.x()).isEqualByComparingTo(new BigDecimal("400"));
         assertThat(artifacts.get(owner.userId(), project.id(), largeBound.artifact().id())
                 .resourceDefaultVersion().id()).isEqualTo(largeBound.resourceDefaultVersion().id());
-        assertThatThrownBy(() -> creativeTools.arrangeItems(trusted, run,
-                UUID.randomUUID(), gateway.arrangeRequest(unboundSelectedItemId,
-                        unbound.resourceDefaultVersion().id(), 0, "GRID")))
-                .isInstanceOf(ApiProblemException.class)
-                .extracting(error -> ((ApiProblemException) error).code())
-                .isEqualTo("INPUT_SCOPE_DENIED");
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.UpdateLayout(
                 arranged.id(), 1, new BigDecimal("900"), arranged.y(),
                 arranged.width(), arranged.height(), arranged.zIndex(), arranged.groupId())));
@@ -218,17 +185,12 @@ class ReadToolsPostgresIT {
         content.put("text", "Changed large brief");
         artifacts.revise(owner.userId(), project.id(), largeBound.artifact().id(),
                 largeBound.artifact().version(), null, content);
-        assertThatThrownBy(() -> creativeTools.placeArtifacts(trusted, run,
-                UUID.randomUUID(), gateway.placeRequest(largeBound.resourceDefaultVersion().id())))
-                .isInstanceOf(ApiProblemException.class)
-                .extracting(error -> ((ApiProblemException) error).code())
-                .isEqualTo("ARTIFACT_VERSION_CONFLICT");
         assertThatThrownBy(() -> creativeTools.arrangeItems(trusted, run,
                 UUID.randomUUID(), gateway.arrangeRequest(arranged.id(),
                         largeBound.resourceDefaultVersion().id(), 2, "GRID")))
                 .isInstanceOf(ApiProblemException.class)
                 .extracting(error -> ((ApiProblemException) error).code())
-                .isEqualTo("ARTIFACT_VERSION_CONFLICT");
+                .isEqualTo("INPUT_SCOPE_DENIED");
         canvas.apply(owner.userId(), project.id(), List.of(new CanvasService.SetLocked(
                 arranged.id(), 2, true)));
         assertThatThrownBy(() -> creativeTools.arrangeItems(trusted, run,
@@ -246,7 +208,7 @@ class ReadToolsPostgresIT {
         assertThat(jdbc.sql("select active_run_id is null from project where id = :projectId")
                 .param("projectId", project.id()).query(Boolean.class).single()).isTrue();
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
-                .param("runId", run.id()).query(Long.class).single()).isEqualTo(8);
+                .param("runId", run.id()).query(Long.class).single()).isEqualTo(6);
         assertThat(gateway.calls.get()).isEqualTo(3);
     }
 
@@ -290,27 +252,23 @@ class ReadToolsPostgresIT {
                 Map<String, Object> toolContext) {
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name()))
                     .contains("read_project_summary", "read_selection",
-                            "read_artifacts", "read_task_status", "place_artifacts",
+                            "read_artifacts", "read_task_status",
                             "arrange_items");
             int step = calls.incrementAndGet();
             if (step == 1) {
                 String firstPrompt = messages.stream().map(Message::getText)
                         .filter(value -> value != null)
                         .reduce("", (left, right) -> left + right);
-                assertThat(firstPrompt).contains("contentTruncated=true")
-                        .contains(selectedItemId.toString())
-                        .contains("read_artifacts for full content")
+                assertThat(firstPrompt).contains("read_canvas")
                         .doesNotContain(longBrief);
             }
             if (step == 2) {
                 ToolResponseMessage results = (ToolResponseMessage) messages.getLast();
-                assertThat(results.getResponses()).hasSize(6);
+                assertThat(results.getResponses()).hasSize(4);
                 JsonNode summary = mapper.readTree(results.getResponses().get(0).responseData());
                 JsonNode selection = mapper.readTree(results.getResponses().get(1).responseData());
                 JsonNode artifact = mapper.readTree(results.getResponses().get(2).responseData());
                 JsonNode task = mapper.readTree(results.getResponses().get(3).responseData());
-                JsonNode firstPlace = mapper.readTree(results.getResponses().get(4).responseData());
-                JsonNode secondPlace = mapper.readTree(results.getResponses().get(5).responseData());
                 assertThat(summary.at("/data/name").asText()).isEqualTo("Reader project");
                 assertThat(summary.at("/data/runLimits/maxToolExecutions").isNull())
                         .isTrue();
@@ -327,12 +285,6 @@ class ReadToolsPostgresIT {
                 assertThat(task.at("/data/0/kind").asText()).isEqualTo("AGENT_TURN");
                 assertThat(task.at("/data/0/status").asText()).isEqualTo("RUNNING");
                 assertThat(task.toString()).doesNotContain("providerRequestId", "inputHash");
-                assertThat(firstPlace.at("/data/0/created").asBoolean()).isTrue();
-                assertThat(secondPlace.at("/data/0/created").asBoolean()).isFalse();
-                assertThat(secondPlace.at("/data/0/itemId").asText())
-                        .isEqualTo(firstPlace.at("/data/0/itemId").asText());
-                assertThat(firstPlace.at("/data/0/itemVersion").asLong()).isZero();
-                placedItemId = UUID.fromString(firstPlace.at("/data/0/itemId").asText());
                 assertThat(results.getResponses().toString())
                         .doesNotContain("PRIVATE UNBOUND CONTENT");
             }
@@ -360,11 +312,7 @@ class ReadToolsPostgresIT {
                                     "read_artifacts", versionRequest(boundVersionId,
                                             largeVersionId)),
                             new AssistantMessage.ToolCall("read-own-task", "function",
-                                    "read_task_status", taskRequest(taskId)),
-                            new AssistantMessage.ToolCall("place-bound-first", "function",
-                                    "place_artifacts", placeRequest(largeVersionId)),
-                            new AssistantMessage.ToolCall("place-bound-again", "function",
-                                    "place_artifacts", placeRequest(largeVersionId)))
+                                    "read_task_status", taskRequest(taskId)))
                     : step == 2
                             ? List.of(new AssistantMessage.ToolCall("arrange-output", "function",
                                     "arrange_items", arrangeRequest(placedItemId,
@@ -390,13 +338,6 @@ class ReadToolsPostgresIT {
             ObjectNode input = mapper.createObjectNode();
             var values = input.putArray("taskIds");
             for (UUID requestedId : taskIds) values.add(requestedId.toString());
-            return input.toString();
-        }
-
-        private String placeRequest(UUID versionId) {
-            ObjectNode input = mapper.createObjectNode();
-            input.putArray("versionIds").add(versionId.toString());
-            input.put("group", "AGENT_OUTPUT");
             return input.toString();
         }
 

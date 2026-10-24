@@ -29,6 +29,8 @@ export function BlockedRunNotice({ projectId, runId, status = "BLOCKED" }: {
     modelFailure ? switchOnFailure(modelFailure.errorCode) : status === "FAILED" ? t("agent.run.failedHint") : t("agent.blocked.unknownTaskHint");
 
   const noticeTitle = status === "FAILED" ? t("agent.run.failedHint") : t("agent.blocked.retryPolicyHint");
+  const diagnosticDetail = modelFailure?.errorCode && taskErrorMessage(modelFailure.errorCode) !== explanation
+    ? taskErrorDetail(modelFailure.errorCode) : "";
 
   return <section aria-label={status === "FAILED" ? t("agent.run.taskFailed") : t("agent.blocked.title")} className="agent-chat-panel agent-chat-blocked">
     <div role="alert">
@@ -41,7 +43,7 @@ export function BlockedRunNotice({ projectId, runId, status = "BLOCKED" }: {
         <p>{t("agent.retry.lastError", { "0": taskErrorMessage(modelFailure.output.modelRetry.lastErrorCode) ?? modelFailure.output.modelRetry.lastErrorCode })}</p> : null}
       {archivedMedia ? <p className="text-xs">{t("agent.blocked.archivedProjectCode")}</p> : null}
       {staleMedia ? <p className="text-xs">{t("agent.blocked.staleInputCode")}</p> : null}
-      {!archivedMedia && !staleMedia && modelFailure?.errorCode ? <p className="text-xs">{t("agent.blocked.diagnostic", { "0": modelFailure.errorCode, "1": taskErrorDetail(modelFailure.errorCode) })}</p> : null}
+      {!archivedMedia && !staleMedia && modelFailure?.errorCode ? <p className="text-xs">{t("agent.blocked.diagnostic", { "0": modelFailure.errorCode, "1": diagnosticDetail })}</p> : null}
     </div>
   </section>;
 }
@@ -61,8 +63,8 @@ function switchOnFailure(code: string | null | undefined): string {
       return t("agent.blocked.keyVersionMissing");
     case "MODEL_OUTPUT_INVALID":
       return t("agent.blocked.validationFailed");
-    case "MODEL_TURN_LIMIT":
-      return t("agent.blocked.roundLimit");
+    case "AGENT_CONTEXT_BUDGET_EXCEEDED":
+      return t("agent.blocked.contextBudget");
     case "AGENT_TURN_FAILED":
       return t("agent.blocked.modelFailed");
     default:

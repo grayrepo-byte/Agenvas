@@ -6,11 +6,13 @@ import { useLayoutEffect } from "react";
 import { MemoryRouter,Route,Routes } from "react-router";
 import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { CanvasCommand,CanvasItem,ProjectSnapshot } from "../../shared/api/client";
+import type { CanvasEditRequest,CanvasItem,ProjectSnapshot,SaveMediaDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
+
+type CanvasItemChange = NonNullable<CanvasEditRequest["itemChanges"]>[number];
 
 type SelectionChange = NodeSelectionChange;
 type FlowProps = ReactFlowProps;
@@ -91,9 +93,9 @@ const items: CanvasItem[] = [
 function snapshot(): ProjectSnapshot {
   return { project: { id: "project-1", name: "选中项目", status: "ACTIVE",
     aspectRatio: "LANDSCAPE_16_9", version: 1, createdAt: now, updatedAt: now },
-    canvas: { items }, connections: [], agents: [{ id: "agent-id", projectId: "project-1", profileKey: "creator",
+    canvas: { items }, connections: [], director: { id: "agent-id", projectId: "project-1", profileKey: "creator",
       profileVersion: 1, name: "Creator", instruction: "Create", version: 4,
-      createdAt: now, updatedAt: now, }], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
+      createdAt: now, updatedAt: now, }, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 };
 }
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -111,6 +113,7 @@ beforeEach(() => {
   server.use(
     http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ connections: [], defaults: [] })),
     http.get("/api/v1/projects/:projectId/artifacts/:artifactId/run", () => HttpResponse.json([])),
+    http.get("/api/v1/projects/:projectId/artifacts/:artifactId/versions", () => HttpResponse.json({ items: [] })),
     http.get("/api/v1/projects/:projectId/agents/:agentId/conversations", () => HttpResponse.json({ items: [], nextCursor: null })),
     http.get("/api/v1/auth/me", () => HttpResponse.json({
       id: "owner-id", loginName: "admin", role: "ADMIN" })),
@@ -130,7 +133,12 @@ beforeEach(() => {
       HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt: "",
         parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: null,
         mediaInputs: [], mentions: [], displayMode: "RESULT", version: 0,
-        createdAt: now, updatedAt: now })));
+        createdAt: now, updatedAt: now })),
+    http.put("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", async ({ request, params }) => {
+      const input = await request.json() as SaveMediaDraftRequest;
+      return HttpResponse.json({ ...input, projectId: "project-1", canvasItemId: params.canvasItemId,
+        displayMode: "RESULT", version: input.expectedVersion + 1, createdAt: now, updatedAt: now });
+    }));
 });
 
 async function renderFlow() {
@@ -149,21 +157,22 @@ const selectChange = (id: string, selected: boolean): SelectionChange =>
   ({ id, type: "select", selected });
 
 describe("canvas selection clearing", () => {
-  it("selects all Agent outputs and offers relevant bulk actions with a working close button", async () => {
-    const outputs = items;
-    const commands: CanvasCommand[][] = [];
+  it("offers relevant bulk actions for any selected cards with a working close button", async () => {
+    const canvasItems = items;
+    const commands: CanvasItemChange[][] = [];
     server.use(
-      http.get("/api/v1/projects/:projectId/agents/:agentId/outputs", () => HttpResponse.json({ canvasItemIds: ["image-card", "text-card"] })),
-      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: outputs } })),
-      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: outputs })),
-      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-        commands.push((await request.json() as { commands: CanvasCommand[] }).commands);
-        return HttpResponse.json({ items: outputs });
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: canvasItems } })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: canvasItems })),
+      http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
+        const input = await request.json() as CanvasEditRequest;
+        expect(input).toMatchObject({ operation: "DISPLAY", commandId: expect.any(String) });
+        commands.push(input.itemChanges ?? []);
+        return HttpResponse.json({ items: canvasItems, groups: [], receipt: {
+          id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
       }),
     );
     await renderInteractiveFlow();
-    fireEvent.click(screen.getByRole("button", { name: "打开创作导演" }));
-    fireEvent.click(await screen.findByRole("button", { name: "查看产物 · 2" }));
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card", "text-card"]));
     const toolbar = await screen.findByRole("group", { name: "批量操作" });
     expect(selectedIds()).toEqual(["image-card", "text-card"]);
     expect(within(toolbar).getByText("2 张卡片已选中")).toBeVisible();
@@ -172,8 +181,8 @@ describe("canvas selection clearing", () => {
     fireEvent.click(within(toolbar).getByRole("button", { name: "左对齐" }));
     await waitFor(() => expect(commands).toHaveLength(1));
     expect(commands[0]).toEqual([
-      expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "image-card", x: 0 }),
-      expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "text-card", x: 0 }),
+      expect.objectContaining({ itemId: "image-card", x: 0 }),
+      expect.objectContaining({ itemId: "text-card", x: 0 }),
     ]);
     act(() => useCanvasStore.getState().setSelectedIds(["image-card", "text-card", "middle-card"]));
     expect(within(toolbar).queryByRole("button", { name: "绑定到 Agent" })).not.toBeInTheDocument();
@@ -301,6 +310,7 @@ describe("video hover controls", () => {
     expect(selectedIds()).toEqual([]);
     expect(screen.queryByLabelText("媒体卡片操作")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(focusProbe.center).not.toHaveBeenCalled();
     // Hover playback must still allow dragging the picture; only its controls opt out.
     nodeMouseGesture("mouseDown", video, 0);
     nodeMouseGesture("mouseMove", video, CANVAS_POINTER_THRESHOLD + 1);
@@ -372,9 +382,11 @@ describe("connection gesture overlays", () => {
   });
 });
 
-describe("node selection preserves the canvas view", () => {
-  it.each([0.6, 1.8])("opens and switches editors at zoom %s without moving or resizing the canvas", async (zoom) => {
+describe("node editor centering", () => {
+  it.each([0.6, 1.8])("centers initial, repeated, and switched editor clicks at zoom %s without changing node layouts", async (zoom) => {
     focusProbe.zoom = zoom;
+    // Focus must use the current canvas projection, including unsaved layout and media dimensions.
+    useCanvasStore.getState().updateDraft("image-card", { x: 120, y: 620, width: 420, height: 320 });
     const originalBounds = HTMLElement.prototype.getBoundingClientRect;
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
       return this.classList.contains("workspace-canvas")
@@ -385,36 +397,132 @@ describe("node selection preserves the canvas view", () => {
     await waitFor(() => expect(focusProbe.instance).not.toBeNull());
     const viewport = focusProbe.instance!.getViewport();
     expect(viewport.zoom).toBe(zoom);
-    const viewportStyle = document.querySelector(".react-flow__viewport")?.getAttribute("style");
     const layouts = new Map(["image-card", "text-card"].map((id) => {
       const { width, height, transform } = nodeElement(id).style;
       return [id, { width, height, transform }];
     }));
+    const layoutDrafts = useCanvasStore.getState().drafts;
+    let previousEditor: HTMLElement | undefined;
+    let previousPrompt: HTMLElement | undefined;
+    let previousId: string | undefined;
     for (const id of ["image-card", "image-card", "text-card"]) {
+      const projected = flowProps.nodes?.find((node) => node.id === id);
+      const { width, height } = projected?.measured ?? {};
+      if (!projected || width === undefined || height === undefined) throw new Error(`Missing projected dimensions for ${id}`);
+      const centersBeforeClick = focusProbe.center.mock.calls.length;
       fireEvent.click(nodeElement(id));
       expect(selectedIds()).toEqual([id]);
       expect(await screen.findByLabelText(id === "text-card" ? "文字卡片操作" : "媒体卡片操作")).toBeVisible();
       const editor = await screen.findByLabelText("所选卡片编辑区");
       expect(editor).toBeVisible();
+      const prompt = await within(editor).findByRole("textbox");
+      if (previousId === id) {
+        expect(editor).toBe(previousEditor);
+        expect(prompt).toBe(previousPrompt);
+        if (prompt instanceof HTMLTextAreaElement) expect(prompt).toHaveValue("点击居中仍保留的提示词");
+        else expect(prompt).toHaveTextContent("点击居中仍保留的提示词");
+      } else if (id === "image-card") {
+        if (prompt instanceof HTMLTextAreaElement) fireEvent.change(prompt, { target: { value: "点击居中仍保留的提示词" } });
+        else {
+          prompt.textContent = "点击居中仍保留的提示词";
+          fireEvent.input(prompt);
+        }
+      }
+      previousEditor = editor;
+      previousPrompt = prompt;
+      previousId = id;
       const editorToolbar = editor.closest(".react-flow__node-toolbar");
       expect(editorToolbar).toHaveAttribute("data-id", id);
       // The portal translates to the node but must never inherit the canvas zoom.
       expect((editorToolbar as HTMLElement).style.transform).not.toContain("scale");
       await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
-      expect(nodeElement(id)).toHaveStyle(layouts.get(id)!);
-      expect(focusProbe.instance!.getViewport()).toEqual(viewport);
-      expect(document.querySelector(".react-flow__viewport")).toHaveAttribute("style", viewportStyle!);
-      expect(focusProbe.center).not.toHaveBeenCalled();
-      expect(focusProbe.viewport).not.toHaveBeenCalled();
+      for (const [itemId, layout] of layouts) expect(nodeElement(itemId)).toHaveStyle(layout);
+      expect(useCanvasStore.getState().drafts).toBe(layoutDrafts);
+      expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClick + 1);
+      expect(focusProbe.center).toHaveBeenLastCalledWith(
+        projected.position.x + width / 2, projected.position.y + height / 2,
+        expect.objectContaining({ zoom, duration: expect.any(Number), ease: expect.any(Function), interpolate: "linear" }));
+      const duration = focusProbe.center.mock.lastCall?.[2]?.duration;
+      expect(duration).toBeGreaterThanOrEqual(240);
+      expect(duration).toBeLessThanOrEqual(420);
+      // The probe does not animate the camera. A second focus may stop the previous
+      // native transition, but that stop must preserve the current position and zoom.
+      for (const call of focusProbe.viewport.mock.calls) expect(call).toEqual([viewport, { duration: 0 }]);
       expect(focusProbe.fit).not.toHaveBeenCalled();
     }
+    const centersBeforeClosing = focusProbe.center.mock.calls.length;
     fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
     expect(selectedIds()).toEqual([]);
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
     expect(focusProbe.instance!.getViewport()).toEqual(viewport);
-    expect(focusProbe.center).not.toHaveBeenCalled();
-    expect(focusProbe.viewport).not.toHaveBeenCalled();
+    expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeClosing);
+    for (const call of focusProbe.viewport.mock.calls) expect(call).toEqual([viewport, { duration: 0 }]);
     expect(focusProbe.fit).not.toHaveBeenCalled();
+  });
+
+  it("focuses both media and text nodes immediately when reduced motion is requested", async () => {
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
+    await renderInteractiveFlow();
+    for (const id of ["image-card", "text-card"]) {
+      fireEvent.click(nodeElement(id));
+      await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+      expect(focusProbe.center).toHaveBeenLastCalledWith(expect.any(Number), expect.any(Number), {
+        zoom: 1, duration: 0, ease: expect.any(Function), interpolate: "linear",
+      });
+    }
+    expect(focusProbe.center).toHaveBeenCalledTimes(2);
+    expect(focusProbe.viewport).not.toHaveBeenCalled();
+  });
+
+  it.each(["pointerDown", "wheel"] as const)("cancels a pending text editor focus on %s before the next frame", async (gesture) => {
+    await renderInteractiveFlow();
+    const schedule = vi.spyOn(window, "requestAnimationFrame");
+    const cancel = vi.spyOn(window, "cancelAnimationFrame");
+    fireEvent.click(nodeElement("text-card"));
+    expect(schedule).toHaveBeenCalled();
+    const frame = schedule.mock.results.at(-1)?.value;
+    expect(frame).toEqual(expect.any(Number));
+    fireEvent[gesture](nodeElement("image-card"));
+    expect(cancel).toHaveBeenCalledWith(frame);
+    await act(() => new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve())));
+    expect(focusProbe.center).not.toHaveBeenCalled();
+  });
+
+  it("stops an unfinished focus in pointer capture before a node starts dragging", async () => {
+    const saves = observeLayoutSaves();
+    // D3's interrupted animation promise can remain pending forever. A new gesture
+    // must never wait for that promise before it can drag or save a node.
+    focusProbe.center.mockImplementationOnce(() => new Promise<boolean>(() => {}));
+    await renderInteractiveFlow();
+    const node = nodeElement("image-card");
+    fireEvent.click(node);
+    expect(focusProbe.center).toHaveBeenCalledOnce();
+    const viewport = focusProbe.instance!.getViewport();
+    const onPointerDown = vi.fn(() => {
+      expect(focusProbe.viewport).toHaveBeenCalledExactlyOnceWith(viewport, { duration: 0 });
+    });
+    node.addEventListener("pointerdown", onPointerDown, { once: true });
+    fireEvent.pointerDown(node);
+    expect(onPointerDown).toHaveBeenCalledOnce();
+    nodeMouseGesture("mouseDown", node, 0);
+    nodeMouseGesture("mouseMove", node, CANVAS_POINTER_THRESHOLD + 1);
+    nodeMouseGesture("mouseMove", node, 40);
+    nodeMouseGesture("mouseUp", node, 40);
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toEqual([expect.objectContaining({ itemId: "image-card", x: 36, y: 0 })]);
+    expect(focusProbe.center).toHaveBeenCalledOnce();
+  });
+
+  it("keeps programmatic camera motion and gives user viewport movement immediate control", async () => {
+    await renderInteractiveFlow();
+    fireEvent.click(nodeElement("image-card"));
+    const viewport = focusProbe.instance!.getViewport();
+    act(() => flowProps.onMoveStart?.(null, viewport));
+    expect(focusProbe.viewport).not.toHaveBeenCalled();
+    expect(selectedIds()).toEqual(["image-card"]);
+    act(() => flowProps.onMoveStart?.(new MouseEvent("mousedown"), viewport));
+    expect(focusProbe.viewport).toHaveBeenCalledExactlyOnceWith(viewport, { duration: 0 });
+    expect(selectedIds()).toEqual([]);
   });
 });
 
@@ -432,22 +540,72 @@ function nodeMouseGesture(type: "mouseDown" | "mouseMove" | "mouseUp", node: HTM
 }
 
 function observeLayoutSaves(fail = false, baseItems = items) {
-  const batches: CanvasCommand[][] = [];
-  server.use(http.post("/api/v1/projects/project-1/canvas/commands", async ({ request }) => {
-    const body = await request.json() as { commands: CanvasCommand[] };
-    batches.push(body.commands);
+  const batches: CanvasItemChange[][] = [];
+  server.use(http.post("/api/v1/projects/project-1/canvas/edits", async ({ request }) => {
+    const input = await request.json() as CanvasEditRequest;
+    expect(input).toMatchObject({ operation: "DISPLAY", commandId: expect.any(String) });
+    const changes = input.itemChanges ?? [];
+    batches.push(changes);
     if (fail) return HttpResponse.json({ code: "VERSION_CONFLICT", title: "布局冲突" }, { status: 409 });
     return HttpResponse.json({ items: baseItems.map((item) => {
-      const command = body.commands.find((candidate) => candidate.itemId === item.id);
-      return command?.type === "UPDATE_LAYOUT"
+      const command = changes.find((candidate) => candidate.itemId === item.id);
+      return command
         ? { ...item, x: command.x, y: command.y, width: command.width, height: command.height,
           version: item.version + 1 } : item;
-    }) });
+    }), groups: [], receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
   }));
   return batches;
 }
 
 describe("node click and drag gestures", () => {
+  it.each([
+    ["text-card", ".content-card-body", 836],
+    ["middle-card", ".content-card-empty", 436],
+    ["middle-card", ".content-card-empty svg", 436],
+  ] as const)("drags an unlocked text node from the blank surface %s %s and saves once", async (id, selector, x) => {
+    const saves = observeLayoutSaves();
+    await renderInteractiveFlow();
+    const target = nodeElement(id).querySelector<HTMLElement>(selector);
+    if (!target) throw new Error(`Missing text drag surface ${selector}`);
+    nodeMouseGesture("mouseDown", target, 0);
+    nodeMouseGesture("mouseMove", target, CANVAS_POINTER_THRESHOLD + 1);
+    nodeMouseGesture("mouseMove", target, 40);
+    nodeMouseGesture("mouseUp", target, 40);
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]).toEqual([expect.objectContaining({ itemId: id, x, y: 0 })]);
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+  });
+
+  it("preserves native text selection instead of moving the node from its real text", async () => {
+    const saves = observeLayoutSaves();
+    await renderInteractiveFlow();
+    const node = nodeElement("text-card");
+    const text = node.querySelector<HTMLElement>(".content-card-text");
+    if (!text) throw new Error("Missing text selection surface");
+    const before = node.style.transform;
+    nodeMouseGesture("mouseDown", text, 0);
+    nodeMouseGesture("mouseMove", text, 40);
+    nodeMouseGesture("mouseUp", text, 40);
+    expect(node.style.transform).toBe(before);
+    expect(saves).toHaveLength(0);
+    expect(useCanvasStore.getState().drafts).toEqual({});
+  });
+
+  it("preserves editing gestures inside the text editor instead of moving the node", async () => {
+    const saves = observeLayoutSaves();
+    await renderInteractiveFlow();
+    const node = nodeElement("text-card");
+    fireEvent.doubleClick(within(node).getByText("选中的正文"));
+    const editor = await screen.findByRole("textbox", { name: "内容" });
+    const before = node.style.transform;
+    nodeMouseGesture("mouseDown", editor, 0);
+    nodeMouseGesture("mouseMove", editor, 40);
+    nodeMouseGesture("mouseUp", editor, 40);
+    expect(node.style.transform).toBe(before);
+    expect(saves).toHaveLength(0);
+    expect(useCanvasStore.getState().drafts).toEqual({});
+  });
+
   it.each([".audio-player-details", ".audio-player"])("selects and drags an audio node from %s", async (targetSelector) => {
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     const source = items[0]!;
@@ -474,7 +632,7 @@ describe("node click and drag gestures", () => {
     nodeMouseGesture("mouseMove", target, 40);
     nodeMouseGesture("mouseUp", target, 40);
     await waitFor(() => expect(saves).toHaveLength(1));
-    expect(saves[0]).toEqual([expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "image-card", x: 36, y: 0 })]);
+    expect(saves[0]).toEqual([expect.objectContaining({ itemId: "image-card", x: 36, y: 0 })]);
   });
 
   it("highlights an unselected node only while dragging, saves on release, and accepts the next click", async () => {
@@ -498,9 +656,10 @@ describe("node click and drag gestures", () => {
     expect(node.querySelector(".artifact-canvas-card")).not.toHaveClass("is-selected");
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
     await waitFor(() => expect(saves).toHaveLength(1));
-    expect(saves[0]).toEqual([expect.objectContaining({ type: "UPDATE_LAYOUT", itemId: "image-card",
+    expect(saves[0]).toEqual([expect.objectContaining({ itemId: "image-card",
       expectedVersion: 3, x: 36, y: 0 })]);
     await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
+    expect(focusProbe.center).not.toHaveBeenCalled();
     fireEvent.click(node);
     expect(selectedIds()).toEqual(["image-card"]);
     expect(await screen.findByLabelText("媒体卡片操作")).toBeVisible();
@@ -619,6 +778,7 @@ describe("workspace selection with real React Flow", () => {
     fireEvent.keyDown(imageCheckbox, { key: "Escape" });
     expect(selectedIds()).toEqual([]);
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(focusProbe.center).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -687,6 +847,7 @@ describe("workspace selection with real React Flow", () => {
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(platform);
     await renderInteractiveFlow();
     fireEvent.click(nodeElement("image-card"));
+    const centersBeforeModifiers = focusProbe.center.mock.calls.length;
     fireEvent.keyDown(window, { key, code, ...modifier });
     fireEvent.click(nodeElement("middle-card"), modifier);
     expect(selectedIds()).toEqual(["image-card", "middle-card"]);
@@ -696,6 +857,7 @@ describe("workspace selection with real React Flow", () => {
     expect(screen.getByRole("checkbox", { name: "选择卡片：脚本" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "选择卡片：参考图" })).not.toBeChecked();
     expect(screen.getByRole("group", { name: "批量操作" })).toBeVisible();
+    expect(focusProbe.center).toHaveBeenCalledTimes(centersBeforeModifiers);
     fireEvent.keyUp(window, { key, code });
   });
 
@@ -736,6 +898,22 @@ describe("workspace selection with real React Flow", () => {
 
 
 describe("canvas interaction tools", () => {
+  it("does not center or open a node editor while the hand tool or Space is active", async () => {
+    await renderInteractiveFlow();
+    fireEvent.click(screen.getByRole("radio", { name: "手形工具" }));
+    fireEvent.click(nodeElement("image-card"));
+    expect(selectedIds()).toEqual([]);
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(focusProbe.center).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("radio", { name: "选择工具" }));
+    fireEvent.keyDown(window, { key: " ", code: "Space" });
+    fireEvent.click(nodeElement("image-card"));
+    expect(selectedIds()).toEqual([]);
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(focusProbe.center).not.toHaveBeenCalled();
+    fireEvent.keyUp(window, { key: " ", code: "Space" });
+  });
+
   it("defaults to selection and temporarily pans with Space, releasing on blur", async () => {
     await renderFlow();
     expect(flowProps.panOnDrag).toBe(false);
@@ -806,6 +984,7 @@ describe("canvas interaction tools", () => {
     expect(viewport?.getAttribute("style")).not.toBe(before);
     expect(flowProps.nodes?.find((node) => node.id === "image-card")?.position).toEqual(position);
     expect(selectedIds()).toEqual([]);
+    expect(focusProbe.center).not.toHaveBeenCalled();
     fireEvent.keyUp(window, { key: " ", code: "Space" });
     await new Promise((resolve) => setTimeout(resolve, 0));
   });

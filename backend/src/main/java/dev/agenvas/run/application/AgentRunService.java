@@ -6,7 +6,6 @@ import dev.agenvas.llm.application.RunToolPolicy;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
-import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.canvas.application.CanvasService;
@@ -25,19 +24,15 @@ import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.DateTimeException;
 import java.util.Base64;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Objects;
-import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -57,14 +52,11 @@ public class AgentRunService {
     private static final int MAX_PAGE_SIZE = 100;
     private static final int MAX_RECOVERY_BATCH_SIZE = 100;
     private static final int MAX_CONTEXT_RUNS = 40;
-    private static final int MAX_CONTEXT_BINDINGS = 40;
 
     /** 校验项目归属并独占项目的活动 Run 槽位。 */
     private final ProjectService projects;
     /** 读取项目助手当前配置。 */
     private final AgentInstanceService agents;
-    /** 按所有者读取精确产物版本。 */
-    private final ArtifactService artifacts;
     /** 将用户选择的画布项解析为当前项目内的意图快照。 */
     private final CanvasService canvas;
     /** 持久化 Run、幂等命令和状态版本。 */
@@ -91,7 +83,6 @@ public class AgentRunService {
     public AgentRunService(
             ProjectService projects,
             AgentInstanceService agents,
-            ArtifactService artifacts,
             CanvasService canvas,
             AgentRunRepository runs,
             ProjectEventService events,
@@ -105,7 +96,6 @@ public class AgentRunService {
             ConversationMemoryReader memoryReader, SkillRunService skills) {
         this.projects = projects;
         this.agents = agents;
-        this.artifacts = artifacts;
         this.canvas = canvas;
         this.runs = runs;
         this.events = events;
@@ -184,7 +174,7 @@ public class AgentRunService {
      *
      * @param ownerId 经认证的项目所有者
      * @param projectId 将占用活动 Run 槽位的项目
-     * @param agentId 用户选择的项目助手
+     * @param agentId 项目唯一导演的稳定身份
      * @param requestedInstruction 用户指令，校验长度后固定到 Run
      * @param requestedIdempotencyKey 项目内创建 Run 的客户端幂等键
      * @param expectedAgentVersion 用户预览过的 Agent 版本；为空时不做该版本核对
@@ -246,7 +236,8 @@ public class AgentRunService {
         if (expectedSystemPromptVersion != null) {
             requestFingerprint += "\nsystem-prompt:" + expectedSystemPromptVersion;
         }
-        // Absent conversation fields preserve the legacy command hash, even after the current pointer changes.
+        // Omitted conversation fields mean "use current" at acceptance. Replays hash
+        // that submitted intent, so a later current-conversation change cannot duplicate it.
         if (requestedConversationId != null) requestFingerprint += "\nconversation:" + requestedConversationId;
         if (expectedConversationVersion != null) requestFingerprint += "\nconversation-version:" + expectedConversationVersion;
         if (skillSelection != null) requestFingerprint += "\nskill:" + objectMapper.valueToTree(skillSelection);
@@ -308,11 +299,9 @@ public class AgentRunService {
                                 ApiMessage.of("api.agent-run-service.session-has-changed"), ApiMessage.of("api.agent-run-service.there-is-a-new-message-in-the-conversation-please-recheck"), false);
                     }
                     ObjectNode snapshot = contextSnapshot(ownerId, agent, project, selection);
-                    ConversationInputs context = conversationInputs(ownerId, projectId, conversation, snapshot.path("canvasScope"));
-                    snapshot.set("conversationMemory", objectMapper.valueToTree(context.memory()));
+                    snapshot.set("conversationMemory", objectMapper.valueToTree(conversationMemory(projectId, conversation)));
                     snapshot.put("conversationId", conversation.id().toString());
                     snapshot.put("conversationHistoryThroughTurn", conversation.turnCount());
-                    appendInheritedBindings(snapshot, context.inherited());
                     skills.freezeIntoRun(ownerId, projectId, pinnedAgent, runId, skillSelection, snapshot);
                     policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.current(
                             !snapshot.path("creativeSkills").isEmpty(),
@@ -366,24 +355,11 @@ public class AgentRunService {
         return runs.blockedRecoveryCandidates(afterId, limit);
     }
 
-    /** 按 Agent 作用域分页读取持久化运行历史，不返回模型原始回合或工具参数。 */
+    /** A missed local-task event must not leave an otherwise finished tool round waiting forever. */
     @Transactional(readOnly = true)
-    public RunPage list(UUID ownerId, UUID projectId, UUID agentId,
-            String encodedCursor, Integer requestedLimit) {
-        projects.get(ownerId, projectId);
-        agents.get(ownerId, projectId, agentId);
-        int limit = requestedLimit == null ? DEFAULT_PAGE_SIZE : requestedLimit;
-        if (limit < 1 || limit > MAX_PAGE_SIZE) {
-            throw validation(ApiMessage.of("api.project-service.limit-must-be-between-1-and-100"));
-        }
-        RunCursor cursor = decodeCursor(encodedCursor);
-        List<AgentRun> rows = runs.list(ownerId, projectId, agentId,
-                cursor == null ? null : cursor.createdAt(),
-                cursor == null ? null : cursor.id(), limit + 1);
-        boolean hasMore = rows.size() > limit;
-        List<AgentRun> items = hasMore ? rows.subList(0, limit) : rows;
-        return new RunPage(List.copyOf(items),
-                hasMore ? encodeCursor(items.getLast()) : null);
+    public List<WaitingRunCandidate> waitingRecoveryCandidates(UUID afterId, int limit) {
+        if (limit < 1 || limit > MAX_RECOVERY_BATCH_SIZE) throw new IllegalArgumentException("Invalid recovery batch size");
+        return runs.waitingRecoveryCandidates(afterId, limit);
     }
 
     /** 会话归属核验先于分页；游标为单调消息序号，不由墙钟时间决定顺序。 */
@@ -410,48 +386,11 @@ public class AgentRunService {
         return new RunPage(List.copyOf(items), next);
     }
 
-    /** 同一 Agent 范围内的一页运行历史；nextCursor 为空表示没有下一页。
+    /** 同一会话的一页运行历史；nextCursor 为空表示没有下一页。
      * @param items 当前页的 Run 记录
      * @param nextCursor 下一页位置；没有更多结果时为空
      */
     public record RunPage(List<AgentRun> items, String nextCursor) {}
-
-    /** 用创建时间与 Run ID 共同确定稳定翻页位置。
-     * @param createdAt 上一页最后一条 Run 的创建时间
-     * @param id 上一页最后一条 Run 的 ID，用于时间相同时继续稳定排序
-     */
-    private record RunCursor(Instant createdAt, UUID id) {}
-
-    /** 只接受长度有界、结构完整的 URL 安全 Base64 游标。 */
-    private RunCursor decodeCursor(String encoded) {
-        if (encoded == null) {
-            return null;
-        }
-        if (encoded.isBlank() || encoded.length() > 160) {
-            throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt"));
-        }
-        try {
-            String value = new String(Base64.getUrlDecoder().decode(encoded),
-                    StandardCharsets.UTF_8);
-            String[] parts = value.split(":", 3);
-            if (parts.length != 3) {
-                throw new IllegalArgumentException("invalid cursor parts");
-            }
-            Instant createdAt = Instant.ofEpochSecond(
-                    Long.parseLong(parts[0]), Long.parseLong(parts[1]));
-            return new RunCursor(createdAt, UUID.fromString(parts[2]));
-        } catch (IllegalArgumentException | DateTimeException invalidCursor) {
-            throw validation(ApiMessage.of("api.project-service.the-cursor-is-invalid-or-corrupt"));
-        }
-    }
-
-    /** 将创建时间的秒、纳秒及 Run ID 编码为下一页游标。 */
-    private String encodeCursor(AgentRun run) {
-        String value = run.createdAt().getEpochSecond() + ":"
-                + run.createdAt().getNano() + ":" + run.id();
-        return Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(value.getBytes(StandardCharsets.UTF_8));
-    }
 
     /** 模型调用前展示助手配置、会话输出版本和策略，供用户核对运行范围。 */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
@@ -459,7 +398,7 @@ public class AgentRunService {
         return preflight(ownerId, projectId, agentId, null);
     }
 
-    /** 预览同一会话已提交历史与可继承的精确产物；确认时仍在项目锁下再次核对版本。 */
+    /** 预览同一会话已提交的公开记忆；受理时仍在项目锁下再次核对版本。 */
     @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public RunPreflight preflight(UUID ownerId, UUID projectId, UUID agentId, UUID conversationId) {
         return preflight(ownerId, projectId, agentId, conversationId, null);
@@ -470,10 +409,7 @@ public class AgentRunService {
         projects.requireRunSlotAvailableSnapshot(ownerId, projectId);
         AgentInstance agent = agents.get(ownerId, projectId, agentId);
         AgentConversation conversation = conversations.resolve(ownerId, projectId, agentId, conversationId);
-        ConversationInputs context = conversationInputs(ownerId, projectId, conversation, canvas.freezeRunScope(ownerId, projectId));
-        List<PreflightBinding> bindings = new ArrayList<>();
-        context.inherited().forEach(binding -> bindings.add(new PreflightBinding(binding.artifactId(),
-                binding.selectedVersionId(), binding.title(), binding.kind())));
+        ConversationMemoryReader.ConversationMemory memory = conversationMemory(projectId, conversation);
         var skill = skills.preview(ownerId, projectId, agentId, selection);
         ObjectNode policy = policySnapshot();
         policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.current(
@@ -481,10 +417,10 @@ public class AgentRunService {
                 skill.stream().anyMatch(item -> !item.assets().isEmpty()))));
         ChatGateway.ModelDetails model = chatGateway.modelDetails();
         return new RunPreflight(agent.id(), agent.version(), agent.name(),
-                agent.instruction(), List.copyOf(bindings), model.available(), model.providerAdapter(),
+                agent.instruction(), model.available(), model.providerAdapter(),
                 model.modelId(), model.toolCalling(), policy,
                 conversation == null ? null : conversation.id(), conversation == null ? null : conversation.version(),
-                conversation == null ? 0 : conversation.turnCount(), context.inherited().size(), context.memory().truncated(), skill);
+                conversation == null ? 0 : conversation.turnCount(), memory.truncated(), skill);
     }
 
     /** 运行前预览；不包含凭证、端点或模型私有消息。
@@ -492,7 +428,6 @@ public class AgentRunService {
      * @param agentVersion 用户预览过的 Agent 配置版本
      * @param agentName Agent 展示名称
      * @param agentInstruction Agent 固定指令
-     * @param bindings 将作为首轮上下文的素材绑定
      * @param modelAvailable 当前模型配置是否可用
      * @param providerAdapter 对外展示的 Provider 适配器名
      * @param modelId 对外展示的模型 ID
@@ -501,23 +436,13 @@ public class AgentRunService {
      * @param conversationId 已选择的会话；从未创建会话时为空
      * @param conversationVersion 用户确认的历史版本；创建 Run 时再次比较
      * @param conversationTurnCount 会话内已受理的 Run 数
-     * @param inheritedBindingCount 本次将继承的历史产物精确版本数
-     * @param memoryTruncated 历史文本或历史产物是否触及上下文限额
+     * @param memoryTruncated 历史公开文本是否触及上下文限额
      */
     public record RunPreflight(UUID agentId, long agentVersion, String agentName,
-            String agentInstruction, List<PreflightBinding> bindings,
+            String agentInstruction,
             boolean modelAvailable, String providerAdapter, String modelId,
             boolean toolCalling, ObjectNode policySnapshot, UUID conversationId, Long conversationVersion,
-            long conversationTurnCount, int inheritedBindingCount, boolean memoryTruncated, List<SkillRunService.Summary> creativeSkills) {}
-
-    /** 预检时将作为首轮文本上下文的产物版本绑定。
-     * @param artifactId 输入产物 ID
-     * @param selectedVersionId Agent 当前选定的不可变产物版本
-     * @param artifactTitle 预检时的产物标题
-     * @param artifactKind 产物类型
-     */
-    public record PreflightBinding(UUID artifactId, UUID selectedVersionId,
-            String artifactTitle, Artifact.Kind artifactKind) {}
+            long conversationTurnCount, boolean memoryTruncated, List<SkillRunService.Summary> creativeSkills) {}
 
     /**
      * 在项目事务内按预期版本校验 Run 状态机；终态释放项目槽位，取消请求同时取消未提交任务。
@@ -567,20 +492,18 @@ public class AgentRunService {
     }
 
     /**
-     * 按 Run 版本与当前步骤序号同时比较并前移模型游标；步骤达到上限时拒绝继续。
+     * 按 Run 版本与当前步骤序号同时比较并前移模型游标，不限制整个 Run 的累计回合数。
      * 调用方应与下一回合任务创建置于同一业务事务。
      */
     @Transactional
     public AgentRun advanceStep(UUID ownerId, UUID projectId, UUID runId,
             long expectedVersion, int expectedStepIndex) {
         if (expectedStepIndex < 0) {
-            throw validation(ApiMessage.of("api.agent-run-service.model-turns-have-reached-the-default-limit"));
+            throw new IllegalArgumentException("Model step must be non-negative");
         }
         return events.recordChange(ownerId, projectId, () -> {
             AgentRun current = runs.findForUpdate(ownerId, projectId, runId)
                     .orElseThrow(this::notFound);
-            if (current.modelTurnLimitReached(Math.addExact(expectedStepIndex, 1)))
-                throw validation(ApiMessage.of("api.agent-run-service.model-turns-have-reached-the-default-limit"));
             if (current.version() != expectedVersion
                     || current.nextStepIndex() != expectedStepIndex
                     || (current.status() != AgentRun.Status.RUNNING
@@ -663,52 +586,20 @@ public class AgentRunService {
                 "agent.run.changed", 1, run.id(), run.version(), payload);
     }
 
-    /** 从已核验会话的终态 Run 冻结公开记忆和精确输出范围；不以提示词里的 ID 授权。 */
-    private ConversationInputs conversationInputs(UUID ownerId, UUID projectId,
-            AgentConversation conversation, JsonNode scope) {
+    /** 只冻结已核验会话的终态 Run 公开文本与动作；历史内容不授予产物权限。 */
+    private ConversationMemoryReader.ConversationMemory conversationMemory(UUID projectId,
+            AgentConversation conversation) {
         List<UUID> priorIds = conversation == null ? List.of() : runs.contextRunIds(projectId,
                 conversation.id(), conversation.turnCount(), MAX_CONTEXT_RUNS);
         long priorCount = conversation == null ? 0 : runs.contextRunCount(projectId,
                 conversation.id(), conversation.turnCount());
         ConversationMemoryReader.ConversationMemory memory = memoryReader.read(projectId, priorIds);
-        Set<UUID> explicit = Set.of();
-        List<UUID> selectedMediaVersions = priorIds.isEmpty() ? List.of()
-                : canvas.selectedMediaVersionIds(ownerId, projectId);
-        List<ArtifactService.ConversationInput> outputs = artifacts.conversationInputs(ownerId, projectId,
-                priorIds, selectedMediaVersions, explicit);
-        int remaining = MAX_CONTEXT_BINDINGS;
-        Set<String> visibleVersions = java.util.stream.StreamSupport.stream((scope == null ? objectMapper.createObjectNode() : scope).path("items").spliterator(), false)
-                .filter(item -> item.path("selectedVersionId").isTextual())
-                .map(item -> item.path("artifactId").asText() + ":" + item.path("selectedVersionId").asText())
-                .collect(java.util.stream.Collectors.toSet());
-        List<ArtifactService.ConversationInput> inherited = outputs.stream()
-                .filter(item -> visibleVersions.contains(item.artifactId() + ":" + item.selectedVersionId()))
-                .limit(remaining).toList();
-        memory = new ConversationMemoryReader.ConversationMemory(memory.entries(),
-                memory.truncated() || priorCount > priorIds.size() || inherited.size() < outputs.size()
-                        || outputs.size() == MAX_CONTEXT_BINDINGS,
+        return new ConversationMemoryReader.ConversationMemory(memory.entries(),
+                memory.truncated() || priorCount > priorIds.size(),
                 (int) Math.min(Integer.MAX_VALUE, priorCount));
-        return new ConversationInputs(memory, inherited);
     }
 
-    private void appendInheritedBindings(ObjectNode snapshot, List<ArtifactService.ConversationInput> inherited) {
-        ArrayNode bindings = (ArrayNode) snapshot.path("bindings");
-        for (var binding : inherited) {
-            if (!dev.agenvas.run.domain.RunCanvasScope.containsVersion(snapshot, binding.artifactId(), binding.selectedVersionId())) continue;
-            ObjectNode item = bindings.addObject();
-            item.put("artifactId", binding.artifactId().toString());
-            item.put("selectedVersionId", binding.selectedVersionId().toString());
-            item.put("kind", binding.kind().name());
-            item.put("title", binding.title());
-            item.put("source", "CONVERSATION_OUTPUT");
-            if (binding.expectedVersion() != null) item.put("expectedVersion", binding.expectedVersion());
-        }
-    }
-
-    private record ConversationInputs(ConversationMemoryReader.ConversationMemory memory,
-            List<ArtifactService.ConversationInput> inherited) {}
-
-    /** 固定当前画布范围与用户选择时的版本。 */
+    /** 冻结创作配置和用户选择的任务重点；画布访问按当前项目内容校验。 */
     private ObjectNode contextSnapshot(UUID ownerId, AgentInstance agent, Project project,
             List<UUID> selectedItemIds) {
         ObjectNode snapshot = objectMapper.createObjectNode();
@@ -720,10 +611,6 @@ public class AgentRunService {
         snapshot.put("profileVersion", agent.profileVersion());
         snapshot.put("agentName", agent.name());
         snapshot.put("agentInstruction", agent.instruction());
-        // Old input topology is retired. Only this conversation's exact outputs are appended below;
-        // current canvas authorization is frozen independently and is never expanded by old bindings.
-        snapshot.putArray("bindings");
-        snapshot.set("canvasScope", canvas.freezeRunScope(ownerId, project.id()));
         ArrayNode selection = snapshot.putArray("selection");
         List<CanvasService.CanvasEntry> items = selectedItemIds.isEmpty()
                 ? List.of() : canvas.list(ownerId, project.id());
@@ -753,7 +640,7 @@ public class AgentRunService {
     /** 把本次 Run 的模型配置版本及回合、工具预算写入不可变策略快照。 */
     private ObjectNode policySnapshot() {
         ObjectNode policy = objectMapper.createObjectNode();
-        policy.put("schemaVersion", 6);
+        policy.put("schemaVersion", RunToolPolicy.CURRENT_SCHEMA_VERSION);
         policy.put("toolPolicyVersion", RunToolPolicy.CURRENT_VERSION);
         policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.CURRENT));
         policy.put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);

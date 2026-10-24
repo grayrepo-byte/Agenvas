@@ -2,8 +2,9 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
 export const server = setupServer(
-  http.get("/api/v1/projects/:projectId/agents/:agentId/outputs", () => HttpResponse.json({ canvasItemIds: [] })),
-  http.get("/api/v1/agent-presets", () => HttpResponse.json({ items: [{ key: "agent.director", name: "导演 Agent" }] })),
+  http.get("/api/v1/projects/:projectId/canvas/editor", () => HttpResponse.json({ items: [], groups: [] })),
+  http.get("/api/v1/projects/:projectId/characters", () => HttpResponse.json({ characters: [], bindings: [] })),
+  http.get("/api/v1/account/mcp-tokens", () => HttpResponse.json([])),
   http.get("/api/v1/projects/:projectId/agents/:agentId/skill-binding", () => HttpResponse.json({agentVersion:0,skills:[]})),
   http.get("/api/v1/skills", () => HttpResponse.json({items:[],nextCursor:null,total:0})),
   http.get("/api/v1/projects/:projectId/runs/:runId/media-approvals", () => HttpResponse.json([])),

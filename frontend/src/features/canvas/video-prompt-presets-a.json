@@ -1,0 +1,1602 @@
+[
+  {
+    "id": "locked-off-wide",
+    "category": "framing",
+    "englishName": "Locked-off Wide Shot",
+    "prompt": "Use a locked-off wide composition that clearly establishes the existing subject within the surrounding space. Keep the camera completely still, preserve consistent framing and straight architectural lines, and let any existing action unfold naturally inside the frame without reframing.",
+    "copy": {
+      "zh": {
+        "name": "固定机位全景",
+        "conditions": "环境关系清楚，主体可在画面内活动。",
+        "effect": "用稳定全景交代空间，让动作自己发生。",
+        "caution": "主体过小会削弱情绪；避免背景信息过杂。"
+      },
+      "en": {
+        "name": "Locked-off Wide Shot",
+        "conditions": "Clear geography with action contained inside the frame.",
+        "effect": "Establishes space while movement plays within a stable composition.",
+        "caution": "Distant faces lose detail; busy backgrounds compete with action."
+      },
+      "ja": {
+        "name": "固定ロングショット",
+        "conditions": "空間関係が明確で、動きが画面内に収まる場面。",
+        "effect": "安定した構図で環境と動きを見せる。",
+        "caution": "人物が小さすぎると表情が伝わりにくい。"
+      },
+      "ru": {
+        "name": "Общий план со статичной камерой",
+        "conditions": "Понятное пространство; действие помещается в кадре.",
+        "effect": "Показывает окружение и движение в устойчивой композиции.",
+        "caution": "Мелкие лица теряют выразительность; фон может отвлекать."
+      }
+    }
+  },
+  {
+    "id": "over-the-shoulder",
+    "category": "framing",
+    "englishName": "Over-the-Shoulder Shot",
+    "prompt": "Frame the existing main subject over the near shoulder of another person already present in the scene. Keep that foreground shoulder softly out of focus at the edge, give the main subject clear visual priority, and maintain a coherent eyeline and screen direction.",
+    "copy": {
+      "zh": {
+        "name": "过肩镜头",
+        "conditions": "场景中已有两个人，彼此有明确视线关系。",
+        "effect": "借前景肩部建立交流关系与人物视角。",
+        "caution": "需要双人场景；肩部遮挡过多会挤压主体。"
+      },
+      "en": {
+        "name": "Over-the-Shoulder Shot",
+        "conditions": "Two existing people with a clear shared eyeline.",
+        "effect": "Connects the exchange to one participant’s viewpoint.",
+        "caution": "Requires two people; excessive shoulder coverage obscures the subject."
+      },
+      "ja": {
+        "name": "肩越しショット",
+        "conditions": "二人が登場し、互いの視線が明確な場面。",
+        "effect": "前景の肩で会話の関係と視点を示す。",
+        "caution": "肩が大きすぎると主役を隠してしまう。"
+      },
+      "ru": {
+        "name": "План через плечо",
+        "conditions": "В сцене уже есть двое с понятным направлением взглядов.",
+        "effect": "Передаёт отношения и точку зрения участника разговора.",
+        "caution": "Нужны два человека; плечо не должно закрывать главное."
+      }
+    }
+  },
+  {
+    "id": "expressive-close-up",
+    "category": "framing",
+    "englishName": "Close-up",
+    "prompt": "Compose a steady close-up of the existing main subject, prioritizing the most expressive visible detail. Use restrained background separation, maintain natural proportions and consistent identity, and preserve enough surrounding context to keep the moment legible without introducing additional action or camera movement.",
+    "copy": {
+      "zh": {
+        "name": "情绪特写",
+        "conditions": "主体已有可辨认表情或关键细节。",
+        "effect": "集中注意力，放大细微情绪与反应。",
+        "caution": "人脸近景更容易暴露身份与五官漂移。"
+      },
+      "en": {
+        "name": "Close-up",
+        "conditions": "An existing expression or detail carries the moment.",
+        "effect": "Draws attention to subtle emotion and reaction.",
+        "caution": "Tight facial framing can expose identity and feature drift."
+      },
+      "ja": {
+        "name": "クローズアップ",
+        "conditions": "表情や重要な細部に意味がある場面。",
+        "effect": "細かな感情や反応へ視線を集める。",
+        "caution": "顔の寄りでは顔立ちの変化が目立ちやすい。"
+      },
+      "ru": {
+        "name": "Крупный план",
+        "conditions": "Момент держится на выражении лица или важной детали.",
+        "effect": "Выделяет тонкие эмоции и реакции.",
+        "caution": "На крупном лице заметнее изменения внешности."
+      }
+    }
+  },
+  {
+    "id": "extreme-detail-close-up",
+    "category": "framing",
+    "englishName": "Extreme Close-up",
+    "prompt": "Use an extreme close-up to isolate a visually important detail already present in the scene. Keep the detail sharply readable with a narrow, coherent focus plane, preserve its material texture and shape, and hold the camera still without adding unrelated objects or actions.",
+    "copy": {
+      "zh": {
+        "name": "极近特写",
+        "conditions": "已有眼神、手部或材质等值得强调的细节。",
+        "effect": "把细节变成视觉重点，强化触感与张力。",
+        "caution": "过浅景深可能丢失信息；手部结构需检查。"
+      },
+      "en": {
+        "name": "Extreme Close-up",
+        "conditions": "An existing eye, hand, or material detail deserves emphasis.",
+        "effect": "Makes a small detail visually dominant and tactile.",
+        "caution": "Very shallow focus can hide information; inspect hand anatomy."
+      },
+      "ja": {
+        "name": "エクストリームクローズアップ",
+        "conditions": "目、手、質感など強調したい細部がある場面。",
+        "effect": "小さな細部を大きく見せ、触感や緊張を強める。",
+        "caution": "浅すぎる被写界深度や手の形の崩れに注意。"
+      },
+      "ru": {
+        "name": "Сверхкрупный план",
+        "conditions": "Нужно подчеркнуть уже существующую мелкую деталь.",
+        "effect": "Усиливает фактуру и напряжение через деталь.",
+        "caution": "Малая глубина резкости скрывает информацию; проверяйте кисти рук."
+      }
+    }
+  },
+  {
+    "id": "medium-shot",
+    "category": "framing",
+    "englishName": "Medium Shot",
+    "prompt": "Frame the existing main subject in a balanced medium shot, keeping the face and any relevant gestures readable together. Preserve comfortable headroom and look room, retain useful background context, and hold a stable composition so the scene’s existing performance carries the shot.",
+    "copy": {
+      "zh": {
+        "name": "中景",
+        "conditions": "需要同时看清表情、手势与部分环境。",
+        "effect": "兼顾人物情绪和肢体表达，适合日常叙事。",
+        "caution": "避免在关节处生硬截断；手势应留在画内。"
+      },
+      "en": {
+        "name": "Medium Shot",
+        "conditions": "Face, gestures, and some environment all matter.",
+        "effect": "Balances expression, body language, and contextual information.",
+        "caution": "Avoid awkward joint crops and cutting relevant gestures offscreen."
+      },
+      "ja": {
+        "name": "ミディアムショット",
+        "conditions": "表情、手振り、周囲を同時に見せたい場面。",
+        "effect": "感情と身体の動きをバランスよく伝える。",
+        "caution": "関節で不自然に切らず、手振りの余白を確保。"
+      },
+      "ru": {
+        "name": "Средний план",
+        "conditions": "Нужны одновременно лицо, жесты и часть окружения.",
+        "effect": "Уравновешивает эмоции, пластику и контекст.",
+        "caution": "Не обрезайте суставы и значимые жесты краем кадра."
+      }
+    }
+  },
+  {
+    "id": "balanced-two-shot",
+    "category": "framing",
+    "englishName": "Two-shot",
+    "prompt": "Compose both existing people together in a balanced two-shot, giving each a clear silhouette and appropriate space for their current interaction. Keep their relative positions and eyelines consistent, preserve the established screen direction, and avoid cutting away or privileging unrelated background action.",
+    "copy": {
+      "zh": {
+        "name": "双人镜头",
+        "conditions": "场景中已有两人，互动关系是重点。",
+        "effect": "同时保留双方反应，突出距离与关系变化。",
+        "caution": "人物重叠会混淆轮廓；注意双人身份一致性。"
+      },
+      "en": {
+        "name": "Two-shot",
+        "conditions": "Two existing people share an important interaction.",
+        "effect": "Shows both reactions and their spatial relationship together.",
+        "caution": "Overlapping silhouettes and identity swaps can reduce clarity."
+      },
+      "ja": {
+        "name": "ツーショット",
+        "conditions": "二人のやり取りや距離感が重要な場面。",
+        "effect": "双方の反応と関係性を同じ画面で見せる。",
+        "caution": "輪郭の重なりや人物の取り違えに注意。"
+      },
+      "ru": {
+        "name": "Парный план",
+        "conditions": "Важны взаимодействие и дистанция двух участников.",
+        "effect": "Показывает обе реакции и отношения в одном кадре.",
+        "caution": "Перекрытие силуэтов и подмена лиц мешают читаемости."
+      }
+    }
+  },
+  {
+    "id": "low-angle-framing",
+    "category": "framing",
+    "englishName": "Low-angle Shot",
+    "prompt": "Place the camera below the existing main subject’s eye level and frame upward with a deliberate low angle. Keep perspective believable, retain a readable silhouette against the existing background, and hold the position steadily without exaggerating anatomy or adding movement to the scene.",
+    "copy": {
+      "zh": {
+        "name": "低角度仰拍",
+        "conditions": "主体轮廓清楚，下方机位可成立。",
+        "effect": "增强体量、力量感或压迫感。",
+        "caution": "近距离广角仰拍容易拉长身体与面部。"
+      },
+      "en": {
+        "name": "Low-angle Shot",
+        "conditions": "A low viewpoint and clear silhouette fit the scene.",
+        "effect": "Emphasizes scale, strength, or an imposing presence.",
+        "caution": "Close wide-angle perspectives can distort bodies and faces."
+      },
+      "ja": {
+        "name": "ローアングル",
+        "conditions": "低い位置から主体の輪郭を捉えられる場面。",
+        "effect": "大きさ、力強さ、威圧感を強調する。",
+        "caution": "近距離の広角では顔や身体が歪みやすい。"
+      },
+      "ru": {
+        "name": "Нижний ракурс",
+        "conditions": "Низкая точка съёмки даёт читаемый силуэт.",
+        "effect": "Подчёркивает масштаб, силу или внушительность.",
+        "caution": "Близкий широкий угол может исказить лицо и тело."
+      }
+    }
+  },
+  {
+    "id": "high-angle-framing",
+    "category": "framing",
+    "englishName": "High-angle Shot",
+    "prompt": "Position the camera above the existing main subject and frame downward at a controlled high angle. Keep the subject recognizable within the surrounding space, preserve believable perspective and body proportions, and maintain this elevated viewpoint without turning the shot into an overhead view.",
+    "copy": {
+      "zh": {
+        "name": "高角度俯拍",
+        "conditions": "上方视点合理，需要保留人物与环境关系。",
+        "effect": "突出空间布局，也可表现渺小或脆弱。",
+        "caution": "俯角过大会压缩身形；注意头身比例。"
+      },
+      "en": {
+        "name": "High-angle Shot",
+        "conditions": "An elevated viewpoint can preserve useful spatial context.",
+        "effect": "Reveals layout and can suggest vulnerability or smallness.",
+        "caution": "Steep angles compress bodies; inspect head-to-body proportions."
+      },
+      "ja": {
+        "name": "ハイアングル",
+        "conditions": "高所の視点で人物と空間を一緒に見せる場面。",
+        "effect": "配置を伝え、小ささや弱さも表現できる。",
+        "caution": "角度が急だと頭身が不自然になりやすい。"
+      },
+      "ru": {
+        "name": "Верхний ракурс",
+        "conditions": "Высокая точка помогает показать героя в пространстве.",
+        "effect": "Раскрывает расположение и может подчеркнуть уязвимость.",
+        "caution": "Крутой угол сжимает фигуру; проверяйте пропорции."
+      }
+    }
+  },
+  {
+    "id": "dutch-angle-framing",
+    "category": "framing",
+    "englishName": "Dutch Angle",
+    "prompt": "Use a restrained Dutch angle by tilting the camera’s roll axis while keeping the existing main subject clearly composed. Maintain a consistent slanted horizon, preserve the scene’s established geometry, and hold the frame steady so the unease comes from composition rather than camera shake.",
+    "copy": {
+      "zh": {
+        "name": "荷兰角",
+        "conditions": "场景需要不安、失衡或主观情绪。",
+        "effect": "倾斜地平线制造心理张力与视觉失衡。",
+        "caution": "慎用于日常平静场面；倾斜应保持一致。"
+      },
+      "en": {
+        "name": "Dutch Angle",
+        "conditions": "Unease, imbalance, or subjective tension suits the scene.",
+        "effect": "A tilted horizon adds psychological and visual instability.",
+        "caution": "Use sparingly; inconsistent roll can resemble accidental shake."
+      },
+      "ja": {
+        "name": "ダッチアングル",
+        "conditions": "不安、違和感、主観的な緊張を示す場面。",
+        "effect": "傾いた水平線で心理的な不安定さを生む。",
+        "caution": "穏やかな場面では慎重に使い、傾きを一定に。"
+      },
+      "ru": {
+        "name": "Голландский угол",
+        "conditions": "Сцене подходят тревога, дисбаланс или субъективное напряжение.",
+        "effect": "Наклон горизонта создаёт ощущение неустойчивости.",
+        "caution": "Используйте умеренно; случайный крен выглядит как ошибка."
+      }
+    }
+  },
+  {
+    "id": "deep-focus-wide",
+    "category": "framing",
+    "englishName": "Deep-focus Wide Shot",
+    "prompt": "Create a steady wide composition with deep focus across the existing foreground, main subject, and background. Arrange visual priority through the scene’s existing lines and contrast, keep each depth layer spatially coherent, and let the viewer read simultaneous details without a focus pull.",
+    "copy": {
+      "zh": {
+        "name": "深焦全景",
+        "conditions": "前中后景都有有效信息，空间层次清楚。",
+        "effect": "让多个层次同时可读，增加观察与叙事空间。",
+        "caution": "信息过密会分散注意力；不适合靠虚化隔离主体。"
+      },
+      "en": {
+        "name": "Deep-focus Wide Shot",
+        "conditions": "Foreground, subject, and background contain useful information.",
+        "effect": "Makes several depth layers readable at the same time.",
+        "caution": "Dense detail can dilute attention; it offers little isolation."
+      },
+      "ja": {
+        "name": "ディープフォーカスのロングショット",
+        "conditions": "前景、主体、背景の各層に意味がある場面。",
+        "effect": "奥行きの複数の情報を同時に読ませる。",
+        "caution": "情報が多すぎると主役への注意が散る。"
+      },
+      "ru": {
+        "name": "Общий план с глубокой резкостью",
+        "conditions": "В переднем, среднем и дальнем планах есть важное.",
+        "effect": "Позволяет одновременно читать несколько пространственных слоёв.",
+        "caution": "Избыток деталей рассеивает внимание к главному."
+      }
+    }
+  },
+  {
+    "id": "slow-dolly-in",
+    "category": "dolly",
+    "englishName": "Dolly In",
+    "prompt": "Move the camera slowly forward toward the existing main subject along a straight, unobstructed path. Keep the lens focal length unchanged so the approach creates natural perspective change and foreground parallax, maintain a stable horizon, and finish with the subject clearly framed.",
+    "copy": {
+      "zh": {
+        "name": "缓慢推轨",
+        "conditions": "主体前方有推进空间，场景有可辨识纵深。",
+        "effect": "逐步接近主体，增强注意力与情绪投入。",
+        "caution": "推进会改变透视；不要同时混入无意变焦。"
+      },
+      "en": {
+        "name": "Dolly In",
+        "conditions": "Clear forward space and visible scene depth.",
+        "effect": "Gradually increases attention and emotional proximity.",
+        "caution": "Perspective must change naturally; avoid unintended zooming."
+      },
+      "ja": {
+        "name": "ゆっくりしたドリーイン",
+        "conditions": "主体へ近づく経路と奥行きがある場面。",
+        "effect": "距離を縮め、注意と感情への関与を高める。",
+        "caution": "透視が自然に変わる必要があり、ズーム混入に注意。"
+      },
+      "ru": {
+        "name": "Плавный наезд",
+        "conditions": "Есть свободный путь к объекту и заметная глубина.",
+        "effect": "Постепенно усиливает внимание и эмоциональную близость.",
+        "caution": "Перспектива должна меняться; избегайте случайного зума."
+      }
+    }
+  },
+  {
+    "id": "slow-dolly-out",
+    "category": "dolly",
+    "englishName": "Dolly Out",
+    "prompt": "Move the camera slowly backward away from the existing main subject while keeping the lens focal length unchanged. Let the existing surroundings enter the composition through natural perspective change, retain a clear visual connection to the subject, and keep the retreat smooth and level.",
+    "copy": {
+      "zh": {
+        "name": "缓慢拉轨",
+        "conditions": "主体周围已有值得揭示的环境，后方可退。",
+        "effect": "由人物扩展到环境，带出疏离或结束感。",
+        "caution": "后退区域必须符合原场景；避免凭空增加布景。"
+      },
+      "en": {
+        "name": "Dolly Out",
+        "conditions": "Existing surroundings matter and there is room to retreat.",
+        "effect": "Expands context and can suggest distance or closure.",
+        "caution": "Newly visible space must remain consistent with the scene."
+      },
+      "ja": {
+        "name": "ゆっくりしたドリーアウト",
+        "conditions": "周囲に見せたい情報があり、後退できる場面。",
+        "effect": "人物から環境へ広げ、距離感や余韻を作る。",
+        "caution": "広がる空間が元の場面と矛盾しないよう注意。"
+      },
+      "ru": {
+        "name": "Плавный отъезд",
+        "conditions": "Окружение важно; позади камеры есть место для движения.",
+        "effect": "Расширяет контекст, создаёт дистанцию или ощущение завершения.",
+        "caution": "Открывающаяся часть пространства должна соответствовать сцене."
+      }
+    }
+  },
+  {
+    "id": "tabletop-dolly-in",
+    "category": "dolly",
+    "englishName": "Tabletop Dolly In",
+    "prompt": "Place the camera just above the existing tabletop or display surface and slide forward toward the main detail already present. Keep a fixed focal length and consistent surface clearance, let nearby textures create natural parallax, and preserve the object’s material, proportions and contact with the surface.",
+    "copy": {
+      "zh": {
+        "name": "桌面滑轨推进",
+        "conditions": "场景已有桌面或展示台，主体是其上的物体。",
+        "effect": "贴近表面推进，突出材质、细节与物体体量。",
+        "caution": "近距离纹理容易游移；检查台面接触和细小结构。"
+      },
+      "en": {
+        "name": "Tabletop Dolly In",
+        "conditions": "An existing tabletop or display surface supports the object.",
+        "effect": "Highlights texture, fine detail, and object volume through surface parallax.",
+        "caution": "Inspect sliding textures, surface contact, and small structural details."
+      },
+      "ja": {
+        "name": "卓上ドリーイン",
+        "conditions": "机や展示台の上に見せたい物体がある場面。",
+        "effect": "面に沿って近づき、質感や細部と立体感を強調する。",
+        "caution": "表面の模様の流れ、接地、細かな形の崩れに注意。"
+      },
+      "ru": {
+        "name": "Наезд вдоль столешницы",
+        "conditions": "Предмет уже находится на столе или выставочной поверхности.",
+        "effect": "Подчёркивает фактуру, мелкие детали и объём через параллакс.",
+        "caution": "Проверяйте дрейф текстуры, контакт с поверхностью и мелкие элементы."
+      }
+    }
+  },
+  {
+    "id": "doorway-pullback",
+    "category": "dolly",
+    "englishName": "Pullback Through a Doorway",
+    "prompt": "Retreat smoothly from the existing main subject through an established doorway behind the camera, keeping the subject visible beyond the opening. Maintain a fixed focal length, preserve doorframe geometry as it enters the composition, and let the existing threshold create a natural frame without a cut.",
+    "copy": {
+      "zh": {
+        "name": "穿门后拉",
+        "conditions": "镜头后方已有门洞，主体位于门内可见区域。",
+        "effect": "后退中让门框进入画面，形成退出与分隔感。",
+        "caution": "门洞两侧空间必须连通；避免门框突然凭空出现。"
+      },
+      "en": {
+        "name": "Pullback Through a Doorway",
+        "conditions": "An existing doorway behind the camera frames the subject beyond.",
+        "effect": "Creates withdrawal and separation as the threshold enters frame.",
+        "caution": "Spaces must connect; the doorframe should enter progressively."
+      },
+      "ja": {
+        "name": "戸口を抜けるドリーアウト",
+        "conditions": "カメラ後方に戸口があり、奥の主体が見える場面。",
+        "effect": "後退で枠を入れ、退出や隔たりの感覚を作る。",
+        "caution": "前後の空間をつなげ、枠を突然出現させない。"
+      },
+      "ru": {
+        "name": "Отъезд через дверной проём",
+        "conditions": "Позади камеры уже есть проём, через который виден объект.",
+        "effect": "Создаёт отход и дистанцию при появлении дверной рамы.",
+        "caution": "Пространства должны соединяться; рама входит в кадр постепенно."
+      }
+    }
+  },
+  {
+    "id": "diagonal-dolly-in",
+    "category": "dolly",
+    "englishName": "Diagonal Dolly In",
+    "prompt": "Approach the existing main subject on a smooth diagonal dolly path, combining forward travel with a modest sideways shift. Keep the focal length fixed, maintain readable subject framing, and use the changing overlap of existing background layers to reveal depth without circling around the subject.",
+    "copy": {
+      "zh": {
+        "name": "斜向推轨",
+        "conditions": "主体前侧有空位，背景有层次或线条。",
+        "effect": "推进同时改变遮挡关系，让接近更有空间感。",
+        "caution": "路径应是斜线；过多转向会变成环绕。"
+      },
+      "en": {
+        "name": "Diagonal Dolly In",
+        "conditions": "An open approach from one side and layered surroundings.",
+        "effect": "Combines increasing intimacy with a changing view of depth.",
+        "caution": "Keep a diagonal path; excessive curvature becomes an orbit."
+      },
+      "ja": {
+        "name": "斜めドリーイン",
+        "conditions": "主体の前側に経路があり、背景に層がある場面。",
+        "effect": "接近しながら重なりを変え、奥行きを見せる。",
+        "caution": "経路を斜めの直線に保ち、回り込みすぎない。"
+      },
+      "ru": {
+        "name": "Диагональный наезд",
+        "conditions": "Есть свободный подход сбоку и многоплановый фон.",
+        "effect": "Сближение сопровождается изменением перекрытий и глубины.",
+        "caution": "Сохраняйте диагональную траекторию; изгиб превращает её в облёт."
+      }
+    }
+  },
+  {
+    "id": "diagonal-dolly-out",
+    "category": "dolly",
+    "englishName": "Diagonal Dolly Out",
+    "prompt": "Retreat from the existing main subject along a smooth diagonal path, moving backward and gently sideways with a fixed focal length. Keep the subject visually anchored as the surrounding space opens asymmetrically, preserve coherent parallax, and avoid crossing the scene’s established line of action.",
+    "copy": {
+      "zh": {
+        "name": "斜向拉轨",
+        "conditions": "后侧空间可展开，场景有明确行动轴线。",
+        "effect": "边退边显露一侧环境，形成有方向的结束感。",
+        "caution": "不要跨越既有轴线；新露出的空间需连贯。"
+      },
+      "en": {
+        "name": "Diagonal Dolly Out",
+        "conditions": "Rear-side space can open without crossing the action axis.",
+        "effect": "Reveals one side of the environment during withdrawal.",
+        "caution": "Respect screen direction and continuity of newly exposed space."
+      },
+      "ja": {
+        "name": "斜めドリーアウト",
+        "conditions": "後方の片側へ広がれ、動作の軸が明確な場面。",
+        "effect": "後退しながら片側の環境を開いて余韻を作る。",
+        "caution": "軸越えや新たに見える空間の不整合に注意。"
+      },
+      "ru": {
+        "name": "Диагональный отъезд",
+        "conditions": "Сзади и сбоку есть место, ось действия понятна.",
+        "effect": "При отходе направленно раскрывает одну сторону пространства.",
+        "caution": "Не пересекайте ось; сохраняйте связность открывающегося пространства."
+      }
+    }
+  },
+  {
+    "id": "lateral-dolly-reveal",
+    "category": "dolly",
+    "englishName": "Lateral Dolly Reveal",
+    "prompt": "Slide the camera sideways from behind an existing foreground obstruction to reveal the main subject. Keep the focal length fixed and the movement smooth, allow the near layer to pass naturally across the frame, and settle into a clear composition once the subject is visible.",
+    "copy": {
+      "zh": {
+        "name": "横移揭示",
+        "conditions": "原场景已有柱子、门框等可用前景遮挡。",
+        "effect": "通过遮挡退出画面，逐渐揭示主体。",
+        "caution": "依赖真实遮挡物；边缘穿越时容易变形。"
+      },
+      "en": {
+        "name": "Lateral Dolly Reveal",
+        "conditions": "An existing foreground edge can initially obscure the subject.",
+        "effect": "Builds anticipation through a progressive lateral reveal.",
+        "caution": "Requires a real obstruction; crossing edges may deform."
+      },
+      "ja": {
+        "name": "横移動のリビール",
+        "conditions": "柱や枠など、主体を隠せる既存の前景がある場面。",
+        "effect": "遮蔽物を横に抜けて主体を徐々に見せる。",
+        "caution": "遮蔽物が必要で、境界を通る際の変形に注意。"
+      },
+      "ru": {
+        "name": "Боковое раскрытие из-за преграды",
+        "conditions": "В переднем плане уже есть подходящая преграда.",
+        "effect": "Постепенно открывает объект и создаёт ожидание.",
+        "caution": "Без преграды приём теряется; края могут деформироваться."
+      }
+    }
+  },
+  {
+    "id": "doorway-dolly-through",
+    "category": "dolly",
+    "englishName": "Dolly Through a Doorway",
+    "prompt": "Guide the camera forward through an existing doorway or opening along a clear path into the established space. Keep a fixed focal length, preserve the opening’s geometry as its edges pass the lens, and resolve the move on the existing main subject without a cut.",
+    "copy": {
+      "zh": {
+        "name": "穿门推轨",
+        "conditions": "场景已有可穿行的门洞，内外空间关系明确。",
+        "effect": "带观众进入场景，建立连续的空间体验。",
+        "caution": "门框近距离掠过容易扭曲；需足够通行宽度。"
+      },
+      "en": {
+        "name": "Dolly Through a Doorway",
+        "conditions": "An existing opening connects two coherent, traversable spaces.",
+        "effect": "Brings the viewer into the scene in one continuous move.",
+        "caution": "Close doorframe edges may warp; allow a clear passage."
+      },
+      "ja": {
+        "name": "戸口を抜けるドリー",
+        "conditions": "通れる開口部があり、前後の空間がつながる場面。",
+        "effect": "切らずに場面へ入り、空間の連続性を伝える。",
+        "caution": "レンズ近くの枠が歪みやすく、通路の幅も必要。"
+      },
+      "ru": {
+        "name": "Проезд через дверной проём",
+        "conditions": "Есть проходимый проём и связное пространство за ним.",
+        "effect": "Непрерывно вводит зрителя внутрь сцены.",
+        "caution": "Близкие края проёма могут искривляться; нужен свободный проход."
+      }
+    }
+  },
+  {
+    "id": "push-in-and-hold",
+    "category": "dolly",
+    "englishName": "Push In and Hold",
+    "prompt": "Begin with a measured forward dolly toward the existing main subject, then decelerate gently into a fully stationary final frame. Keep the focal length constant and the subject consistently composed, allowing the scene’s existing expression or detail to carry the stillness after the move.",
+    "copy": {
+      "zh": {
+        "name": "推进后停驻",
+        "conditions": "已有值得落点停留的表情、动作结果或细节。",
+        "effect": "用接近建立重点，再用静止留出反应时间。",
+        "caution": "终点不能突然刹停；停驻后避免细微漂移。"
+      },
+      "en": {
+        "name": "Push In and Hold",
+        "conditions": "An existing expression or detail can sustain the final frame.",
+        "effect": "Builds emphasis through approach, then leaves room to react.",
+        "caution": "Avoid abrupt braking and unwanted drift after settling."
+      },
+      "ja": {
+        "name": "ドリーインして静止",
+        "conditions": "最後に留めて見せたい表情や細部がある場面。",
+        "effect": "接近で強調し、静止で受け止める余白を作る。",
+        "caution": "急停止せず、止まった後のカメラの流れに注意。"
+      },
+      "ru": {
+        "name": "Наезд с остановкой",
+        "conditions": "Выражение или деталь выдерживают неподвижный финальный кадр.",
+        "effect": "Подводит к важному и оставляет время на реакцию.",
+        "caution": "Избегайте резкого торможения и дрейфа после остановки."
+      }
+    }
+  },
+  {
+    "id": "low-dolly-pass",
+    "category": "dolly",
+    "englishName": "Low Dolly Pass",
+    "prompt": "Place the camera close to the existing ground plane and dolly smoothly past the main subject at a fixed low height. Keep the lens focal length unchanged, emphasize natural near-ground parallax, and preserve believable scale and clearance without passing through objects or changing the subject’s action.",
+    "copy": {
+      "zh": {
+        "name": "贴地滑轨掠过",
+        "conditions": "地面结构可读，主体附近有低位通道。",
+        "effect": "放大近地视差与体量，突出脚步或物体底部。",
+        "caution": "近地遮挡多；检查地面穿模与比例变化。"
+      },
+      "en": {
+        "name": "Low Dolly Pass",
+        "conditions": "Readable ground texture and a clear low camera path.",
+        "effect": "Emphasizes near-ground parallax, scale, or lower details.",
+        "caution": "Inspect ground intersections, occlusions, and changing proportions."
+      },
+      "ja": {
+        "name": "地面すれすれのドリー",
+        "conditions": "地面の質感が見え、低い経路を確保できる場面。",
+        "effect": "足元の視差や被写体の大きさを強調する。",
+        "caution": "地面へのめり込みや近接物の遮りに注意。"
+      },
+      "ru": {
+        "name": "Низкий проезд мимо объекта",
+        "conditions": "Виден рельеф земли и свободен низкий путь камеры.",
+        "effect": "Усиливает параллакс у земли и ощущение масштаба.",
+        "caution": "Проверяйте пересечения с землёй и ближними предметами."
+      }
+    }
+  },
+  {
+    "id": "steadicam-follow",
+    "category": "tracking",
+    "englishName": "Steadicam Follow",
+    "prompt": "Follow the existing moving subject from behind with a smooth Steadicam-style camera, matching the established pace at a consistent distance. Keep gentle human-scale responsiveness without visible footstep bounce, preserve a level horizon, and let the existing environment flow naturally around the subject.",
+    "copy": {
+      "zh": {
+        "name": "斯坦尼康跟拍",
+        "conditions": "主体已经向前移动，后方有连续可行走路径。",
+        "effect": "稳定地陪伴主体前进，营造沉浸式在场感。",
+        "caution": "长距离遮挡可能丢失主体；避免悬浮式急转。"
+      },
+      "en": {
+        "name": "Steadicam Follow",
+        "conditions": "An already moving subject has a clear path behind them.",
+        "effect": "Creates an immersive, smoothly accompanying viewpoint.",
+        "caution": "Extended occlusion can lose identity; avoid floating sharp turns."
+      },
+      "ja": {
+        "name": "ステディカム追従",
+        "conditions": "進む主体の後ろに連続した移動経路がある場面。",
+        "effect": "滑らかに同行し、その場にいる感覚を作る。",
+        "caution": "長い遮蔽による主体の消失や不自然な急旋回に注意。"
+      },
+      "ru": {
+        "name": "Следование со стедикамом",
+        "conditions": "Герой уже движется; за ним есть непрерывный проход.",
+        "effect": "Создаёт плавное сопровождение и ощущение присутствия.",
+        "caution": "Долгое перекрытие может потерять героя; избегайте резких поворотов."
+      }
+    }
+  },
+  {
+    "id": "lateral-tracking",
+    "category": "tracking",
+    "englishName": "Lateral Tracking Shot",
+    "prompt": "Track the camera smoothly sideways across the established scene while maintaining a readable view of the main subject. Keep camera height and focal length constant, let existing foreground and background layers shift at different speeds, and use the lateral parallax to clarify the space.",
+    "copy": {
+      "zh": {
+        "name": "横向移轨",
+        "conditions": "主体附近有横向通道，前后景层次明显。",
+        "effect": "用横向视差展示空间宽度与前后层次。",
+        "caution": "近景掠过速度较快；避免穿越原有障碍。"
+      },
+      "en": {
+        "name": "Lateral Tracking Shot",
+        "conditions": "A clear sideways path and separated depth layers.",
+        "effect": "Reveals scene width and depth through lateral parallax.",
+        "caution": "Near objects move quickly; avoid intersecting established obstacles."
+      },
+      "ja": {
+        "name": "横方向のトラッキング",
+        "conditions": "横に移動でき、前景と背景の距離がある場面。",
+        "effect": "横の視差で空間の幅と奥行きを見せる。",
+        "caution": "近景の流れが速くなるため、障害物への貫通に注意。"
+      },
+      "ru": {
+        "name": "Боковой трэвеллинг",
+        "conditions": "Есть боковой проход и разделённые планы глубины.",
+        "effect": "Показывает ширину и глубину за счёт параллакса.",
+        "caution": "Ближние объекты смещаются быстро; исключите пересечения с препятствиями."
+      }
+    }
+  },
+  {
+    "id": "front-leading-tracking",
+    "category": "tracking",
+    "englishName": "Leading Shot",
+    "prompt": "Move the camera backward in front of the existing advancing subject, matching the subject’s established pace and keeping a consistent frontal view. Maintain comfortable headroom, stable distance and a level horizon, while the existing surroundings reveal the route behind the subject without introducing new actions.",
+    "copy": {
+      "zh": {
+        "name": "正面倒退引导",
+        "conditions": "主体已经迎面前进，镜头后方有退行空间。",
+        "effect": "保留正面表情，同时让观众感受前进过程。",
+        "caution": "后退路径需连贯；主体不能贴近镜头突然变大。"
+      },
+      "en": {
+        "name": "Leading Shot",
+        "conditions": "The subject is advancing and the camera can retreat safely.",
+        "effect": "Retains facial expression while conveying forward progress.",
+        "caution": "Keep a coherent retreat path and a stable subject distance."
+      },
+      "ja": {
+        "name": "正面からの先行撮影",
+        "conditions": "主体が前進し、カメラが後退できる場面。",
+        "effect": "進行感を保ちながら正面の表情を見せる。",
+        "caution": "後退経路のつながりと主体との距離を保つ。"
+      },
+      "ru": {
+        "name": "Фронтальное сопровождение",
+        "conditions": "Герой идёт вперёд; камера может отступать перед ним.",
+        "effect": "Сохраняет выражение лица и ощущение продвижения.",
+        "caution": "Соблюдайте дистанцию и связность пути при отступлении."
+      }
+    }
+  },
+  {
+    "id": "parallel-profile-tracking",
+    "category": "tracking",
+    "englishName": "Parallel Tracking Shot",
+    "prompt": "Travel alongside the existing moving subject on a parallel path, matching the established speed to maintain a clean profile view. Keep a consistent lateral distance and camera height, allow the existing background to scroll naturally, and preserve the subject’s original direction of travel.",
+    "copy": {
+      "zh": {
+        "name": "平行侧面跟拍",
+        "conditions": "主体持续沿清楚方向移动，侧面有通道。",
+        "effect": "突出步态、速度与侧面轮廓，运动方向清晰。",
+        "caution": "侧面肢体重复易变形；避免背景滑动快于逻辑。"
+      },
+      "en": {
+        "name": "Parallel Tracking Shot",
+        "conditions": "Continuous travel and an unobstructed parallel camera route.",
+        "effect": "Clarifies gait, speed, and the subject’s profile silhouette.",
+        "caution": "Inspect repeated limb motion and consistent background scrolling."
+      },
+      "ja": {
+        "name": "並走トラッキング",
+        "conditions": "主体が一定方向へ動き、横に並走できる場面。",
+        "effect": "歩調、速度、横顔の輪郭を明確に見せる。",
+        "caution": "手足の反復動作と背景の流れる速度に注意。"
+      },
+      "ru": {
+        "name": "Параллельное сопровождение в профиль",
+        "conditions": "Герой движется по ясному маршруту; сбоку есть проход.",
+        "effect": "Выделяет походку, скорость и профильный силуэт.",
+        "caution": "Проверяйте повторяющиеся движения конечностей и скорость фона."
+      }
+    }
+  },
+  {
+    "id": "corner-turning-tracking",
+    "category": "tracking",
+    "englishName": "Corner-turning Tracking Shot",
+    "prompt": "Follow the existing moving subject smoothly around an established corner, matching the subject’s current route and pace. Turn the camera continuously to preserve a readable view, let the existing wall edge explain the changing direction, and maintain stable height and believable clearance throughout the turn.",
+    "copy": {
+      "zh": {
+        "name": "转角连续跟拍",
+        "conditions": "主体原有路径会经过转角，内外空间已成立。",
+        "effect": "随主体转向进入新区域，保持连续的空间体验。",
+        "caution": "拐角短暂遮挡易丢失主体；避免穿墙与方向反转。"
+      },
+      "en": {
+        "name": "Corner-turning Tracking Shot",
+        "conditions": "The subject’s existing route turns around a coherent corner.",
+        "effect": "Connects successive spaces through a continuous accompanied turn.",
+        "caution": "Corner occlusion risks losing identity; avoid walls and reversed direction."
+      },
+      "ja": {
+        "name": "角を曲がる追従ショット",
+        "conditions": "主体の経路に曲がり角があり、先の空間も成立する場面。",
+        "effect": "主体と曲がり、複数の空間を連続してつなぐ。",
+        "caution": "角の遮蔽による人物の変化や壁の貫通に注意。"
+      },
+      "ru": {
+        "name": "Сопровождение за поворотом",
+        "conditions": "Маршрут героя уже проходит за пространственно связный угол.",
+        "effect": "Непрерывно соединяет помещения, следуя за поворотом героя.",
+        "caution": "Перекрытие углом грозит потерей внешности; избегайте стен и смены направления."
+      }
+    }
+  },
+  {
+    "id": "two-shot-tracking",
+    "category": "tracking",
+    "englishName": "Two-shot Tracking",
+    "prompt": "Track smoothly with the two existing moving people, keeping both readable in a shared composition throughout their established movement. Match their common pace, preserve the distance and eyelines between them, and maintain sufficient framing space for their current gestures without inventing dialogue or additional action.",
+    "copy": {
+      "zh": {
+        "name": "双人移动跟拍",
+        "conditions": "两人已经同向移动，速度与相互位置接近。",
+        "effect": "在移动中保留双方反应，展示同行关系。",
+        "caution": "两人速度差过大会出框；注意脸部与身体归属。"
+      },
+      "en": {
+        "name": "Two-shot Tracking",
+        "conditions": "Two existing people move together at compatible speeds.",
+        "effect": "Preserves both reactions and their relationship during movement.",
+        "caution": "Different speeds can break framing; inspect identity and body ownership."
+      },
+      "ja": {
+        "name": "移動ツーショット",
+        "conditions": "二人が同じ方向へ近い速度で動く場面。",
+        "effect": "移動中も双方の反応と関係を保つ。",
+        "caution": "速度差で片方が外れやすく、顔や身体の混同に注意。"
+      },
+      "ru": {
+        "name": "Парное сопровождение",
+        "conditions": "Двое уже движутся вместе с близкой скоростью.",
+        "effect": "Сохраняет обе реакции и отношения в движении.",
+        "caution": "Разная скорость нарушает композицию; проверяйте принадлежность лиц и тел."
+      }
+    }
+  },
+  {
+    "id": "vehicle-mounted-tracking",
+    "category": "tracking",
+    "englishName": "Vehicle-mounted Shot",
+    "prompt": "Use a camera viewpoint rigidly mounted to the existing moving vehicle, with a consistent position and orientation relative to its body. Let the established surroundings stream past naturally, retain believable vehicle vibration, and preserve any already visible occupants or bodywork without adding traffic or changing the route.",
+    "copy": {
+      "zh": {
+        "name": "车载固定镜头",
+        "conditions": "原场景已有行驶载具及可成立的安装视点。",
+        "effect": "车体相对稳定，流动背景传递速度与旅途感。",
+        "caution": "车速与背景流速应匹配；车体不能软化变形。"
+      },
+      "en": {
+        "name": "Vehicle-mounted Shot",
+        "conditions": "A moving vehicle and plausible mounting viewpoint already exist.",
+        "effect": "Stable vehicle-relative framing conveys travel through moving surroundings.",
+        "caution": "Match background speed to travel and preserve rigid bodywork."
+      },
+      "ja": {
+        "name": "車載固定ショット",
+        "conditions": "走行中の乗り物と自然な取付位置が成立する場面。",
+        "effect": "車体を基準に安定させ、背景の流れで速度を伝える。",
+        "caution": "車速と背景の流れを合わせ、車体の歪みに注意。"
+      },
+      "ru": {
+        "name": "Камера на транспортном средстве",
+        "conditions": "В сцене уже есть движущийся транспорт и возможная точка крепления.",
+        "effect": "Неподвижная относительно корпуса камера передаёт движение окружения.",
+        "caution": "Скорость фона должна совпадать с движением; корпус сохраняет жёсткость."
+      }
+    }
+  },
+  {
+    "id": "ground-level-follow",
+    "category": "tracking",
+    "englishName": "Ground-level Tracking",
+    "prompt": "Track the existing moving subject from a low position near the ground, matching the established pace while keeping the lower silhouette readable. Maintain steady clearance and a consistent distance, let ground textures pass naturally beneath the viewpoint, and avoid exaggerated speed or new footwork.",
+    "copy": {
+      "zh": {
+        "name": "低机位贴地跟拍",
+        "conditions": "已有步行或贴地运动，地面路径清楚。",
+        "effect": "强调步伐、接地感和运动的力量。",
+        "caution": "脚部接触与影子要连贯；避免镜头钻入地面。"
+      },
+      "en": {
+        "name": "Ground-level Tracking",
+        "conditions": "Existing movement has a clear, readable ground path.",
+        "effect": "Emphasizes footwork, ground contact, and physical momentum.",
+        "caution": "Inspect foot contact, shadows, and camera clearance above ground."
+      },
+      "ja": {
+        "name": "足元の低位置トラッキング",
+        "conditions": "歩行などの動きがあり、地面の経路が明確な場面。",
+        "effect": "足運び、接地感、動きの力強さを強調する。",
+        "caution": "足と影の連続性、カメラの地面へのめり込みに注意。"
+      },
+      "ru": {
+        "name": "Сопровождение у земли",
+        "conditions": "Есть движение и читаемая траектория по поверхности.",
+        "effect": "Подчёркивает шаг, контакт с землёй и импульс.",
+        "caution": "Проверяйте контакт стоп, тени и высоту камеры над землёй."
+      }
+    }
+  },
+  {
+    "id": "three-quarter-front-tracking",
+    "category": "tracking",
+    "englishName": "Three-quarter Front Tracking",
+    "prompt": "Accompany the existing moving subject from a three-quarter front angle, retreating on a parallel offset route at the established pace. Preserve both the face and the direction of travel, keep the lateral offset consistent, and let the existing environment provide coherent depth and motion cues.",
+    "copy": {
+      "zh": {
+        "name": "前侧四分之三跟拍",
+        "conditions": "主体已有前进动作，前侧有平行移动空间。",
+        "effect": "兼顾表情与前进方向，空间纵深更明显。",
+        "caution": "侧向距离需稳定；转弯时容易跨轴或拉伸面部。"
+      },
+      "en": {
+        "name": "Three-quarter Front Tracking",
+        "conditions": "The advancing subject has a clear offset camera route.",
+        "effect": "Shows facial expression and travel direction with visible depth.",
+        "caution": "Keep the offset stable; turns can distort faces or cross axes."
+      },
+      "ja": {
+        "name": "斜め前からの追従",
+        "conditions": "進む主体の斜め前に並行した経路がある場面。",
+        "effect": "表情と進行方向を奥行きとともに見せる。",
+        "caution": "横の距離を一定にし、旋回時の軸越えに注意。"
+      },
+      "ru": {
+        "name": "Сопровождение спереди в три четверти",
+        "conditions": "Перед движущимся героем есть свободный смещённый маршрут камеры.",
+        "effect": "Соединяет выражение лица, направление движения и глубину.",
+        "caution": "Сохраняйте смещение; на поворотах возможны искажения и пересечение оси."
+      }
+    }
+  },
+  {
+    "id": "overtaking-tracking",
+    "category": "tracking",
+    "englishName": "Overtaking Tracking Shot",
+    "prompt": "Begin alongside the existing moving subject, then let the camera gradually travel ahead at a slightly faster pace. Reframe smoothly to retain the subject as the viewing angle changes, preserve the established direction of travel, and maintain believable relative speed without accelerating the subject’s action.",
+    "copy": {
+      "zh": {
+        "name": "超越式跟拍",
+        "conditions": "主体已持续移动，旁侧与前方空间充足。",
+        "effect": "镜头由并行转为领先，形成主动的速度变化。",
+        "caution": "相对速度宜温和；大角度换面容易丢失身份。"
+      },
+      "en": {
+        "name": "Overtaking Tracking Shot",
+        "conditions": "Continuous subject movement and ample side-to-front clearance.",
+        "effect": "Changes the camera from companion to leading viewpoint.",
+        "caution": "Use modest relative speed; large view changes risk identity drift."
+      },
+      "ja": {
+        "name": "追い越しトラッキング",
+        "conditions": "主体が移動中で、横から前へ抜ける余地がある場面。",
+        "effect": "並走から先行へ視点を変え、速度差を感じさせる。",
+        "caution": "速度差を抑え、向きの変化による顔の変化に注意。"
+      },
+      "ru": {
+        "name": "Сопровождение с обгоном",
+        "conditions": "Герой движется непрерывно; сбоку и впереди достаточно места.",
+        "effect": "Переводит камеру от параллельного движения к опережению.",
+        "caution": "Умеряйте разницу скоростей; смена ракурса может менять внешность."
+      }
+    }
+  },
+  {
+    "id": "quarter-arc-shot",
+    "category": "orbit",
+    "englishName": "Quarter Arc Shot",
+    "prompt": "Move the camera through a smooth quarter-circle arc around the existing main subject, keeping a consistent radius and height. Maintain the subject as the visual anchor while revealing a new side of the established space, with coherent perspective and no change to the subject’s original action.",
+    "copy": {
+      "zh": {
+        "name": "四分之一弧线环绕",
+        "conditions": "主体周围有局部弧形通道，侧面信息可见。",
+        "effect": "从正面或侧面过渡到新角度，轻量展示立体感。",
+        "caution": "新露出的侧面应一致；遮挡关系变化需连贯。"
+      },
+      "en": {
+        "name": "Quarter Arc Shot",
+        "conditions": "A short arc is clear and a new side is meaningful.",
+        "effect": "Reveals dimensionality through a controlled change of angle.",
+        "caution": "Maintain newly revealed side details and coherent occlusion."
+      },
+      "ja": {
+        "name": "クォーターアーク",
+        "conditions": "短い弧を描け、新しい側面に意味がある場面。",
+        "effect": "角度を少し変え、立体感と空間を伝える。",
+        "caution": "見えてくる側面と遮蔽のつながりに注意。"
+      },
+      "ru": {
+        "name": "Облёт по четверти круга",
+        "conditions": "Свободна короткая дуга; новый ракурс даёт полезную информацию.",
+        "effect": "Показывает объём через контролируемую смену угла.",
+        "caution": "Сохраняйте детали открывающейся стороны и связность перекрытий."
+      }
+    }
+  },
+  {
+    "id": "half-orbit-shot",
+    "category": "orbit",
+    "englishName": "Half Orbit Shot",
+    "prompt": "Arc the camera halfway around the existing main subject in one continuous, even movement, maintaining a consistent radius and height. Keep the subject readable as the background rotates through the established space, preserve coherent body volume, and let the continuous move explain the changing viewpoint.",
+    "copy": {
+      "zh": {
+        "name": "半圈环绕",
+        "conditions": "主体两侧及背侧空间合理，周围通道开放。",
+        "effect": "连续展示主体的另一面，改变空间与人物关系。",
+        "caution": "会跨越轴线；较大换面增加身份与背景漂移风险。"
+      },
+      "en": {
+        "name": "Half Orbit Shot",
+        "conditions": "Both sides of the subject and a clear surrounding path.",
+        "effect": "Reveals the opposite viewpoint in one continuous move.",
+        "caution": "Crosses the action axis; major view changes risk identity drift."
+      },
+      "ja": {
+        "name": "ハーフオービット",
+        "conditions": "主体の両側が成立し、半周できる通路がある場面。",
+        "effect": "連続した動きで反対側の視点へ移る。",
+        "caution": "軸を越えるため、人物や背景の変化に注意。"
+      },
+      "ru": {
+        "name": "Облёт по полукругу",
+        "conditions": "Обе стороны объекта правдоподобны; путь вокруг свободен.",
+        "effect": "Непрерывно переводит взгляд на противоположную сторону.",
+        "caution": "Пересекает ось действия; возможен дрейф внешности и фона."
+      }
+    }
+  },
+  {
+    "id": "full-orbit-shot",
+    "category": "orbit",
+    "englishName": "Full Orbit Shot",
+    "prompt": "Complete a smooth full-circle camera orbit around the existing main subject at a consistent radius and height. Keep the subject anchored in frame, preserve the established environment as every side becomes visible, and return toward the starting viewpoint with coherent lighting, geometry and identity throughout.",
+    "copy": {
+      "zh": {
+        "name": "完整一圈环绕",
+        "conditions": "主体四周空间充足，各方向形体与环境可成立。",
+        "effect": "完整展示立体形态，产生强调与仪式感。",
+        "caution": "背面与闭环一致性难度高；不适合单一平面参考。"
+      },
+      "en": {
+        "name": "Full Orbit Shot",
+        "conditions": "All sides and the complete surrounding space are plausible.",
+        "effect": "Displays three-dimensional form with a strong sense of emphasis.",
+        "caution": "Unseen surfaces and loop continuity are demanding for flat references."
+      },
+      "ja": {
+        "name": "フルオービット",
+        "conditions": "全方向の形と周囲の空間が成立する場面。",
+        "effect": "立体を一周見せ、強調や儀式的な印象を作る。",
+        "caution": "見えない面の再現と一周後の整合が難しい。"
+      },
+      "ru": {
+        "name": "Полный круговой облёт",
+        "conditions": "Все стороны объекта и окружающее пространство правдоподобны.",
+        "effect": "Полностью раскрывает объём и усиливает значимость.",
+        "caution": "Невидимые поверхности и совпадение начала с концом сложны."
+      }
+    }
+  },
+  {
+    "id": "tight-orbit-shot",
+    "category": "orbit",
+    "englishName": "Tight Orbit Shot",
+    "prompt": "Use a close, restrained camera arc around the existing main subject, maintaining a tight composition and a constant nearby radius. Keep the subject’s key features readable as the perspective shifts subtly, allow gentle background parallax, and avoid abrupt angle changes or intrusion into the subject’s personal space.",
+    "copy": {
+      "zh": {
+        "name": "近距离小弧环绕",
+        "conditions": "主体关键细节稳定，周围近距离空间可用。",
+        "effect": "在近景里增加微妙立体感与亲密张力。",
+        "caution": "面部比例对视角敏感；不宜弧度过大或过近。"
+      },
+      "en": {
+        "name": "Tight Orbit Shot",
+        "conditions": "Stable close detail and a usable nearby camera path.",
+        "effect": "Adds intimate tension and subtle depth within a tight frame.",
+        "caution": "Close facial proportions are sensitive to large angle changes."
+      },
+      "ja": {
+        "name": "タイトなオービット",
+        "conditions": "寄りの細部が安定し、近くを回れる場面。",
+        "effect": "近い構図のまま立体感と親密な緊張を加える。",
+        "caution": "顔の比率が変わりやすく、近づきすぎに注意。"
+      },
+      "ru": {
+        "name": "Тесный дуговой облёт",
+        "conditions": "Есть устойчивые крупные детали и близкая свободная дуга.",
+        "effect": "Добавляет близость, напряжение и тонкое ощущение объёма.",
+        "caution": "На близком лице смена угла легко меняет пропорции."
+      }
+    }
+  },
+  {
+    "id": "wide-orbit-shot",
+    "category": "orbit",
+    "englishName": "Wide Orbit Shot",
+    "prompt": "Orbit the existing main subject from a broad, constant radius while keeping a wide composition of the established surroundings. Maintain even speed and a stable camera height, let large spatial layers shift naturally, and preserve the subject as a clear anchor within the changing environmental view.",
+    "copy": {
+      "zh": {
+        "name": "远距离大半径环绕",
+        "conditions": "环境有规模和层次，主体仍能清楚识别。",
+        "effect": "把主体放进更大空间，突出位置与环境关系。",
+        "caution": "主体过小会失去重点；背景全向连贯性要求较高。"
+      },
+      "en": {
+        "name": "Wide Orbit Shot",
+        "conditions": "A spacious environment can keep the subject identifiable.",
+        "effect": "Connects the subject to the scale and layout of its surroundings.",
+        "caution": "A tiny subject loses emphasis; background continuity is demanding."
+      },
+      "ja": {
+        "name": "ワイドオービット",
+        "conditions": "広い環境でも主体を識別できる場面。",
+        "effect": "主体の位置と周囲のスケールを結び付ける。",
+        "caution": "主体が小さすぎると埋もれ、背景の整合も難しい。"
+      },
+      "ru": {
+        "name": "Широкий облёт",
+        "conditions": "Пространство масштабно, но объект остаётся различимым.",
+        "effect": "Связывает объект с масштабом и устройством окружения.",
+        "caution": "Слишком мелкий объект теряется; нужна согласованность фона."
+      }
+    }
+  },
+  {
+    "id": "low-angle-orbit",
+    "category": "orbit",
+    "englishName": "Low-angle Orbit",
+    "prompt": "Move the camera in a smooth low-angle arc around the existing main subject, maintaining a consistent low height and radius. Keep the upward view controlled, preserve believable proportions and a readable silhouette, and let the established background shift naturally without adding camera roll or vertical travel.",
+    "copy": {
+      "zh": {
+        "name": "低角度环绕",
+        "conditions": "低位路径可行，主体上方背景与轮廓清楚。",
+        "effect": "结合仰视与环绕，强化体量和力量感。",
+        "caution": "容易拉伸腿部或面部；低位遮挡需提前判断。"
+      },
+      "en": {
+        "name": "Low-angle Orbit",
+        "conditions": "Clear low camera space and a readable upward silhouette.",
+        "effect": "Combines imposing scale with a changing dimensional view.",
+        "caution": "Inspect stretched limbs or faces and low foreground obstructions."
+      },
+      "ja": {
+        "name": "ローアングルのオービット",
+        "conditions": "低い経路があり、上向きの輪郭が読める場面。",
+        "effect": "仰視の迫力と角度変化による立体感を合わせる。",
+        "caution": "手足や顔の伸びと低位置の遮蔽物に注意。"
+      },
+      "ru": {
+        "name": "Облёт с нижнего ракурса",
+        "conditions": "Свободен низкий путь; силуэт снизу хорошо читается.",
+        "effect": "Совмещает внушительный масштаб со сменой объёмного ракурса.",
+        "caution": "Проверяйте вытянутые конечности, лица и низкие преграды."
+      }
+    }
+  },
+  {
+    "id": "high-angle-orbit",
+    "category": "orbit",
+    "englishName": "High-angle Orbit",
+    "prompt": "Orbit the existing main subject from a stable elevated viewpoint, keeping a consistent radius and looking downward throughout the move. Preserve the subject’s position within the established ground layout, let surrounding geometry rotate coherently, and avoid rising, descending or changing the focal length during the orbit.",
+    "copy": {
+      "zh": {
+        "name": "高角度环绕",
+        "conditions": "上方空间开放，地面布局能帮助定位。",
+        "effect": "俯视中连续改变方向，展示主体与地面关系。",
+        "caution": "地面几何易旋转错位；注意身体被俯角压缩。"
+      },
+      "en": {
+        "name": "High-angle Orbit",
+        "conditions": "Open space above and a readable ground layout.",
+        "effect": "Reveals the subject’s placement from changing elevated viewpoints.",
+        "caution": "Inspect rotating ground geometry and foreshortened body proportions."
+      },
+      "ja": {
+        "name": "ハイアングルのオービット",
+        "conditions": "上方が開け、地面の配置が読み取れる場面。",
+        "effect": "高い視点を変えながら主体と地面の関係を示す。",
+        "caution": "地面の幾何形状と身体の短縮表現に注意。"
+      },
+      "ru": {
+        "name": "Облёт с верхнего ракурса",
+        "conditions": "Верхнее пространство открыто; план земли хорошо читается.",
+        "effect": "Раскрывает положение объекта с разных высоких точек.",
+        "caution": "Следите за геометрией земли и перспективным сокращением тела."
+      }
+    }
+  },
+  {
+    "id": "spiral-in-orbit",
+    "category": "orbit",
+    "englishName": "Spiral In",
+    "prompt": "Follow a smooth inward spiral around the existing main subject, gradually reducing camera distance while changing the viewing angle. Keep the focal length fixed and the subject visually anchored, let perspective and background parallax evolve naturally, and avoid abrupt tightening or sudden changes in orbit speed.",
+    "copy": {
+      "zh": {
+        "name": "螺旋向内环绕",
+        "conditions": "主体四周有余量，既适合换面也适合靠近。",
+        "effect": "环绕中逐渐收紧注意力，增强情绪聚焦。",
+        "caution": "角度与距离同时变化，身份和比例更容易漂移。"
+      },
+      "en": {
+        "name": "Spiral In",
+        "conditions": "There is room to circle and approach the subject.",
+        "effect": "Gradually concentrates attention through an encircling approach.",
+        "caution": "Simultaneous angle and distance changes increase identity and scale drift."
+      },
+      "ja": {
+        "name": "スパイラルイン",
+        "conditions": "回り込みながら近づける余地がある場面。",
+        "effect": "旋回と接近を重ねて注意を徐々に集中させる。",
+        "caution": "角度と距離が同時に変わり、顔や倍率が揺れやすい。"
+      },
+      "ru": {
+        "name": "Спиральный облёт с приближением",
+        "conditions": "Есть место одновременно обходить объект и приближаться.",
+        "effect": "Постепенно концентрирует внимание при сближении по кругу.",
+        "caution": "Одновременная смена угла и дистанции усиливает дрейф внешности."
+      }
+    }
+  },
+  {
+    "id": "spiral-out-orbit",
+    "category": "orbit",
+    "englishName": "Spiral Out",
+    "prompt": "Move the camera in a smooth outward spiral around the existing main subject, gradually increasing the radius while maintaining a fixed focal length. Keep the subject recognizable as the established environment expands around it, preserve coherent parallax, and let the widening view develop without a cut or zoom.",
+    "copy": {
+      "zh": {
+        "name": "螺旋向外环绕",
+        "conditions": "周边空间充足，环境信息值得逐步展开。",
+        "effect": "边环绕边拉开距离，扩展尺度并形成释放感。",
+        "caution": "扩大半径会暴露更多未知空间；主体可能过小。"
+      },
+      "en": {
+        "name": "Spiral Out",
+        "conditions": "Ample surrounding space contains useful environmental information.",
+        "effect": "Opens scale and creates release through a widening orbit.",
+        "caution": "Widening reveals unseen space and can make the subject too small."
+      },
+      "ja": {
+        "name": "スパイラルアウト",
+        "conditions": "周囲が広く、徐々に見せたい環境がある場面。",
+        "effect": "回りながら離れ、スケールと解放感を広げる。",
+        "caution": "未知の空間が増え、主体が小さくなりすぎることがある。"
+      },
+      "ru": {
+        "name": "Спиральный облёт с удалением",
+        "conditions": "Вокруг достаточно места и значимого окружения.",
+        "effect": "Расширяет масштаб и создаёт ощущение освобождения.",
+        "caution": "Открывает невидимое пространство; объект может стать слишком мелким."
+      }
+    }
+  },
+  {
+    "id": "group-orbit-shot",
+    "category": "orbit",
+    "englishName": "Group Orbit Shot",
+    "prompt": "Arc the camera around the existing group as a single spatial arrangement, keeping a consistent distance from the group’s center. Preserve each person’s identity, relative position and established action, maintain readable separation between silhouettes, and let the changing viewpoint clarify the relationships within the group.",
+    "copy": {
+      "zh": {
+        "name": "群像环绕",
+        "conditions": "场景已有多人，站位关系明确且周边可绕行。",
+        "effect": "用视角变化展示群体结构、距离与关系。",
+        "caution": "人物交叠会增多；多人身份、站位容易交换。"
+      },
+      "en": {
+        "name": "Group Orbit Shot",
+        "conditions": "An existing group has clear blocking and space around it.",
+        "effect": "Shows group structure and relationships through changing viewpoints.",
+        "caution": "Overlapping people increase risks of identity and position swaps."
+      },
+      "ja": {
+        "name": "群像のオービット",
+        "conditions": "複数人の配置が明確で、周囲を回れる場面。",
+        "effect": "視点を変えて集団の構造と距離感を示す。",
+        "caution": "人物の重なりが増え、顔や位置の入れ替わりに注意。"
+      },
+      "ru": {
+        "name": "Облёт группы",
+        "conditions": "Группа уже выстроена понятно; вокруг достаточно места.",
+        "effect": "Раскрывает структуру группы и отношения через смену ракурса.",
+        "caution": "Перекрытия повышают риск подмены лиц и перестановки участников."
+      }
+    }
+  },
+  {
+    "id": "crane-rise",
+    "category": "vertical",
+    "englishName": "Crane Rise",
+    "prompt": "Lift the camera smoothly from the existing subject’s level into a higher crane viewpoint, gently adjusting the downward angle to keep the main subject readable. Let more of the established surrounding layout become visible through the change in height, with coherent perspective and no zoom.",
+    "copy": {
+      "zh": {
+        "name": "摇臂升起",
+        "conditions": "上方空间开放，主体周围布局值得揭示。",
+        "effect": "由人物高度升向全局，扩展空间与场面规模。",
+        "caution": "高处新露出的环境要合理；人物可能逐渐变小。"
+      },
+      "en": {
+        "name": "Crane Rise",
+        "conditions": "Open space above and useful surrounding layout.",
+        "effect": "Expands from subject level toward a broader spatial overview.",
+        "caution": "Newly revealed surroundings must remain coherent; the subject gets smaller."
+      },
+      "ja": {
+        "name": "クレーンアップ",
+        "conditions": "上方が開け、周囲の配置を見せたい場面。",
+        "effect": "主体の高さから上がり、場面の広がりを示す。",
+        "caution": "高所から見える環境の整合と主体の縮小に注意。"
+      },
+      "ru": {
+        "name": "Подъём на кране",
+        "conditions": "Сверху свободно; окружение содержит важную планировку.",
+        "effect": "Переходит от уровня героя к пространственному обзору.",
+        "caution": "Открывающаяся среда должна быть связной; герой становится мельче."
+      }
+    }
+  },
+  {
+    "id": "crane-descent",
+    "category": "vertical",
+    "englishName": "Crane Descent",
+    "prompt": "Lower the camera smoothly from an elevated view toward the existing main subject’s level, adjusting the viewing angle gradually as the subject becomes more prominent. Preserve the established environment and a fixed focal length, and settle into a clear, stable final composition without passing through surrounding objects.",
+    "copy": {
+      "zh": {
+        "name": "摇臂下降",
+        "conditions": "高位到主体高度之间有连续可下降空间。",
+        "effect": "从环境落到人物，将注意力逐步交给主体。",
+        "caution": "下降路径不能穿物；终点视角与比例应自然。"
+      },
+      "en": {
+        "name": "Crane Descent",
+        "conditions": "A clear vertical route connects an elevated view to the subject.",
+        "effect": "Transfers attention from the surroundings to the subject.",
+        "caution": "Avoid intersecting objects and unnatural final perspective."
+      },
+      "ja": {
+        "name": "クレーンダウン",
+        "conditions": "高い視点から主体の高さまで障害物がない場面。",
+        "effect": "環境から主体へ注意を徐々に移す。",
+        "caution": "下降時の貫通や終点の不自然な遠近感に注意。"
+      },
+      "ru": {
+        "name": "Спуск на кране",
+        "conditions": "От высокой точки до уровня героя свободен путь.",
+        "effect": "Постепенно переводит внимание с окружения на героя.",
+        "caution": "Исключите пересечения с предметами и неестественную конечную перспективу."
+      }
+    }
+  },
+  {
+    "id": "pedestal-up",
+    "category": "vertical",
+    "englishName": "Pedestal Up",
+    "prompt": "Raise the camera vertically in a straight pedestal move while keeping the lens level and the focal length fixed. Preserve the existing main subject’s structural proportions, allow higher parts of the established scene to enter the composition naturally, and avoid tilting upward or drifting sideways during the lift.",
+    "copy": {
+      "zh": {
+        "name": "垂直升机位",
+        "conditions": "主体或场景有明确上下结构，镜头可直线上升。",
+        "effect": "平视轴线随高度上移，逐层展示上方信息。",
+        "caution": "这是机位上升；不要误成原地仰摇或斜向飞行。"
+      },
+      "en": {
+        "name": "Pedestal Up",
+        "conditions": "A vertical subject or scene supports a straight upward path.",
+        "effect": "Reveals higher layers while keeping the optical axis level.",
+        "caution": "A tilt or diagonal flight changes the intended perspective."
+      },
+      "ja": {
+        "name": "ペデスタルアップ",
+        "conditions": "上下の構造が明確で、真上へ移動できる場面。",
+        "effect": "レンズを水平に保ち、高い層を順に見せる。",
+        "caution": "その場のティルトや斜めの飛行に変わらないよう注意。"
+      },
+      "ru": {
+        "name": "Вертикальный подъём камеры",
+        "conditions": "Есть вертикальная структура и свободный путь вверх.",
+        "effect": "Открывает верхние слои при горизонтальной оптической оси.",
+        "caution": "Наклон или диагональный полёт изменяют задуманный приём."
+      }
+    }
+  },
+  {
+    "id": "pedestal-down",
+    "category": "vertical",
+    "englishName": "Pedestal Down",
+    "prompt": "Lower the camera vertically along a straight path while keeping the lens level and the focal length unchanged. Let lower parts of the existing scene enter the frame through the actual height change, maintain coherent foreground parallax, and avoid tilting downward or moving toward the subject.",
+    "copy": {
+      "zh": {
+        "name": "垂直降机位",
+        "conditions": "场景下方有有效信息，机位能沿直线下降。",
+        "effect": "保持平视方向，从高层信息过渡到低处细节。",
+        "caution": "下降应带来真实视差；避免仅把画面向下裁切。"
+      },
+      "en": {
+        "name": "Pedestal Down",
+        "conditions": "Lower scene details matter and a straight descent is clear.",
+        "effect": "Moves attention from higher layers toward lower details.",
+        "caution": "Preserve real parallax; a downward crop cannot replace camera travel."
+      },
+      "ja": {
+        "name": "ペデスタルダウン",
+        "conditions": "下方に意味のある情報があり、真下へ動ける場面。",
+        "effect": "水平な視線のまま低い層へ注意を移す。",
+        "caution": "実際の視差を保ち、画像の切り取り移動にしない。"
+      },
+      "ru": {
+        "name": "Вертикальное опускание камеры",
+        "conditions": "Внизу есть важные детали и свободен вертикальный путь.",
+        "effect": "Переносит внимание с верхних слоёв на нижние.",
+        "caution": "Нужен реальный параллакс, а не смещение обрезки изображения."
+      }
+    }
+  },
+  {
+    "id": "jib-to-overhead",
+    "category": "vertical",
+    "englishName": "Jib to Overhead",
+    "prompt": "Boom the camera upward and gently forward from the existing oblique view, gradually angling the lens downward until the established subject is seen from above. Keep the transition continuous, preserve the subject’s footprint and surrounding geometry, and avoid passing the camera through any existing overhead obstruction.",
+    "copy": {
+      "zh": {
+        "name": "摇臂转顶视",
+        "conditions": "主体上方开阔，顶面或地面布局有表达价值。",
+        "effect": "从斜视过渡到俯视，揭示形状与空间结构。",
+        "caution": "顶面可能缺少参考；需检查几何与人体短缩。"
+      },
+      "en": {
+        "name": "Jib to Overhead",
+        "conditions": "Clear overhead space and a meaningful top surface or layout.",
+        "effect": "Transitions from oblique perspective to readable overhead structure.",
+        "caution": "Unseen top surfaces and foreshortened anatomy may need inspection."
+      },
+      "ja": {
+        "name": "ジブで真上へ移行",
+        "conditions": "上方が開け、上面や配置に意味がある場面。",
+        "effect": "斜めの視点から真上へ移り、形や構造を見せる。",
+        "caution": "未提示の上面と身体の短縮表現に注意。"
+      },
+      "ru": {
+        "name": "Переход на джибе к виду сверху",
+        "conditions": "Сверху свободно; важны верхняя поверхность или планировка.",
+        "effect": "Переходит от косого ракурса к читаемой структуре сверху.",
+        "caution": "Проверяйте невидимые ранее поверхности и сокращение тела."
+      }
+    }
+  },
+  {
+    "id": "top-down-rise",
+    "category": "vertical",
+    "englishName": "Top-down Rise",
+    "prompt": "Begin directly above the existing main subject with the lens pointing straight down, then raise the camera vertically while keeping that downward orientation fixed. Use an unchanged focal length so the established ground layout expands naturally, with stable geometry and no rotation or sideways drift.",
+    "copy": {
+      "zh": {
+        "name": "顶视垂直拉升",
+        "conditions": "已有清楚的顶视布局，上方有足够上升空间。",
+        "effect": "主体缩小、地面范围扩大，强化图形与尺度。",
+        "caution": "保持朝下与方位固定；地面纹理容易重复变形。"
+      },
+      "en": {
+        "name": "Top-down Rise",
+        "conditions": "A readable overhead layout and clear space for ascent.",
+        "effect": "Expands ground coverage and emphasizes graphic scale.",
+        "caution": "Keep orientation fixed; ground textures can repeat or deform."
+      },
+      "ja": {
+        "name": "真俯瞰の垂直上昇",
+        "conditions": "真上からの配置が読め、上昇できる場面。",
+        "effect": "地面の範囲を広げ、図形とスケールを強調する。",
+        "caution": "向きを固定し、地面模様の反復や変形に注意。"
+      },
+      "ru": {
+        "name": "Вертикальный подъём с видом вниз",
+        "conditions": "Есть читаемый план сверху и место для подъёма.",
+        "effect": "Расширяет видимую площадь и подчёркивает графику масштаба.",
+        "caution": "Фиксируйте ориентацию; текстуры земли могут повторяться и деформироваться."
+      }
+    }
+  },
+  {
+    "id": "top-down-descent",
+    "category": "vertical",
+    "englishName": "Top-down Descent",
+    "prompt": "Look straight down at the existing main subject and descend vertically along the same viewing axis, keeping the focal length fixed. Let the subject enlarge through physical approach rather than zoom, preserve the surrounding ground geometry, and stop with clear separation before reaching the subject or surface.",
+    "copy": {
+      "zh": {
+        "name": "顶视垂直下降",
+        "conditions": "主体上方通道开放，顶视目标足够清晰。",
+        "effect": "从整体逼近局部，强化目标与图形细节。",
+        "caution": "终点保留距离；近距离接触容易穿模或软化。"
+      },
+      "en": {
+        "name": "Top-down Descent",
+        "conditions": "An open vertical approach and a clearly readable overhead target.",
+        "effect": "Concentrates a broad overhead view into a specific detail.",
+        "caution": "Stop above the surface; close contact can cause intersections."
+      },
+      "ja": {
+        "name": "真俯瞰の垂直下降",
+        "conditions": "真上から対象が読め、下へ近づける場面。",
+        "effect": "全体の俯瞰から特定の細部へ集中させる。",
+        "caution": "表面に近づきすぎると貫通や形の崩れが起きやすい。"
+      },
+      "ru": {
+        "name": "Вертикальный спуск с видом вниз",
+        "conditions": "Цель сверху хорошо видна; вертикальный подход свободен.",
+        "effect": "Сводит общий вид сверху к конкретной детали.",
+        "caution": "Останавливайтесь над поверхностью, чтобы избежать пересечений."
+      }
+    }
+  },
+  {
+    "id": "vertical-subject-follow",
+    "category": "vertical",
+    "englishName": "Vertical Tracking Shot",
+    "prompt": "Match the existing subject’s upward or downward movement with a smooth vertical camera track, keeping a consistent relative height and distance. Preserve the established direction and pace, let the surrounding vertical structure provide clear motion cues, and avoid adding horizontal travel or changing the subject’s action.",
+    "copy": {
+      "zh": {
+        "name": "垂直运动跟拍",
+        "conditions": "主体本身已在上升或下降，周围有高度参照。",
+        "effect": "让主体相对稳定，用背景变化表现升降过程。",
+        "caution": "需要原有垂直动作；注意高度与背景速度匹配。"
+      },
+      "en": {
+        "name": "Vertical Tracking Shot",
+        "conditions": "The subject already rises or falls beside readable height cues.",
+        "effect": "Keeps the subject stable while the surroundings convey vertical travel.",
+        "caution": "Requires existing vertical action; match background and subject speeds."
+      },
+      "ja": {
+        "name": "垂直トラッキング",
+        "conditions": "主体がすでに上下に動き、高さの目印がある場面。",
+        "effect": "主体を安定させ、背景の変化で昇降を伝える。",
+        "caution": "元の上下動が必要で、背景との速度差に注意。"
+      },
+      "ru": {
+        "name": "Вертикальное сопровождение",
+        "conditions": "Объект уже поднимается или опускается рядом с ориентирами высоты.",
+        "effect": "Удерживает объект, передавая вертикальный путь через окружение.",
+        "caution": "Нужно исходное вертикальное действие; согласуйте скорости объекта и фона."
+      }
+    }
+  },
+  {
+    "id": "rising-orbit",
+    "category": "vertical",
+    "englishName": "Rising Orbit",
+    "prompt": "Combine a smooth camera arc around the existing main subject with a gradual increase in camera height, keeping the orbit radius consistent. Adjust the viewing angle gently to retain the subject, let the established surroundings reveal coherent depth, and avoid sudden acceleration or an unintended widening spiral.",
+    "copy": {
+      "zh": {
+        "name": "上升环绕",
+        "conditions": "主体周围及上方均有空间，多层环境可成立。",
+        "effect": "环绕中抬高视点，同时展示立体感与全局。",
+        "caution": "旋转与升高叠加更复杂；避免半径失控扩大。"
+      },
+      "en": {
+        "name": "Rising Orbit",
+        "conditions": "Clear space around and above the subject with coherent surroundings.",
+        "effect": "Combines dimensional reveal with a gradually broader viewpoint.",
+        "caution": "Coupled rotation and lift are demanding; keep radius stable."
+      },
+      "ja": {
+        "name": "上昇オービット",
+        "conditions": "周囲と上方が開け、環境の立体関係が明確な場面。",
+        "effect": "回り込みと視点上昇で立体と全体像を見せる。",
+        "caution": "旋回と上昇の組合せは難しく、半径の拡大に注意。"
+      },
+      "ru": {
+        "name": "Восходящий облёт",
+        "conditions": "Вокруг и сверху свободно; окружение пространственно связно.",
+        "effect": "Совмещает раскрытие объёма с постепенным повышением точки зрения.",
+        "caution": "Вращение и подъём сложны; не допускайте дрейфа радиуса."
+      }
+    }
+  },
+  {
+    "id": "vertical-foreground-reveal",
+    "category": "vertical",
+    "englishName": "Vertical Reveal",
+    "prompt": "Raise the camera smoothly from behind an existing low foreground obstruction until the main subject becomes clearly visible. Keep the ascent primarily vertical with a fixed focal length, preserve the obstruction’s edge as it passes downward through frame, and finish at a stable, readable viewing height.",
+    "copy": {
+      "zh": {
+        "name": "越过前景的升降揭示",
+        "conditions": "原场景已有低矮遮挡，主体在其后方。",
+        "effect": "随遮挡边缘下降，逐步揭开主体与环境。",
+        "caution": "需现成遮挡物；边缘与主体交接处容易形变。"
+      },
+      "en": {
+        "name": "Vertical Reveal",
+        "conditions": "An existing low obstruction partially hides the subject.",
+        "effect": "Progressively reveals the subject as the foreground edge drops.",
+        "caution": "Requires an existing obstruction; inspect edge and subject transitions."
+      },
+      "ja": {
+        "name": "上昇リビール",
+        "conditions": "低い既存の遮蔽物が主体を隠している場面。",
+        "effect": "前景の縁が下がるにつれて主体を徐々に見せる。",
+        "caution": "遮蔽物が必要で、縁と主体の境目の変形に注意。"
+      },
+      "ru": {
+        "name": "Вертикальное раскрытие из-за преграды",
+        "conditions": "Невысокая существующая преграда частично закрывает объект.",
+        "effect": "Постепенно открывает объект по мере опускания края переднего плана.",
+        "caution": "Нужна преграда; проверяйте переходы между её краем и объектом."
+      }
+    }
+  }
+]

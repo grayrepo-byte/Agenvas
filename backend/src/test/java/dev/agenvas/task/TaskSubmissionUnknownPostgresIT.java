@@ -1,5 +1,7 @@
 package dev.agenvas.task;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.agenvas.agent.application.AgentInstanceService;
@@ -76,7 +78,7 @@ class TaskSubmissionUnknownPostgresIT {
         // 直连媒体任务固定一张已存在的空图片卡片；提交与判定路径与用户直连生成一致。
         var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE,
                 "Frame card", null);
-        var agent = agents.create(owner.userId(), project.id(), "Creator", "Create");
+        var agent = configureDirector(agents, owner.userId(), project.id(), "Creator", "Create");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "生成一张图片", "uncertain-submission-run").run();
         runs.transition(owner.userId(), project.id(), run.id(), run.version(),
@@ -123,7 +125,7 @@ class TaskSubmissionUnknownPostgresIT {
         // 且项目活动槽位不因 BLOCKED 释放，因此换一个全新项目只验证 CAS 回落本身。
         Project second = projects.create(owner.userId(), "Expired lease project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance secondAgent = agents.create(owner.userId(), second.id(), "Creator",
+        AgentInstance secondAgent = configureDirector(agents, owner.userId(), second.id(), "Creator",
                 "Create");
         AgentRun secondRun = runs.create(owner.userId(), second.id(), secondAgent.id(),
                 "Make an image", "expired-lease-run").run();

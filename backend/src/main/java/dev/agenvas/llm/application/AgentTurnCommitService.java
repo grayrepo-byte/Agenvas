@@ -29,6 +29,7 @@ public class AgentTurnCommitService {
     /** 反查任务所有者，并核验回合任务的持久化状态。 */
     private final TaskRepository taskRepository;
     private final Clock clock;
+    private final DirectorSettingsService settings;
     /** 带租约 fencing 的任务完成、失败与下一回合创建入口。 */
     private final TaskService tasks;
     /** 使用 Run 的预期版本推进状态和步骤游标。 */
@@ -62,8 +63,9 @@ public class AgentTurnCommitService {
             AgentRunService runs, AgentTurnLeaseGuard leaseGuard,
             ProjectEventService events, ObjectMapper mapper,
             LlmTurnRepository turns, ToolExecutionRepository toolExecutions,
-            LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes, Clock clock) {
+            LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes, Clock clock, DirectorSettingsService settings) {
         this.clock = clock;
+        this.settings = settings;
         this.taskRepository = taskRepository;
         this.tasks = tasks;
         this.runs = runs;
@@ -126,7 +128,9 @@ public class AgentTurnCommitService {
                 throw new IllegalStateException("Model response is not durable yet");
             }
             AssistantMessage assistant = codec.selectedAssistant(turn.response());
-            Decision decision = decisionFor(lease, stepIndex, assistant);
+            boolean compacting = AgentContextService.isCompaction(turn.request());
+            if (compacting && !assistant.getToolCalls().isEmpty()) throw new IllegalStateException("Compaction cannot execute tools");
+            Decision decision = compacting ? Decision.CONTINUE : decisionFor(lease, stepIndex, assistant);
             if (decision == Decision.CONTINUE
                     && mediaOutcomes.hasOutstanding(lease.projectId(), lease.runId(), stepIndex)) {
                 decision = Decision.WAIT;
@@ -134,16 +138,11 @@ public class AgentTurnCommitService {
             ObjectNode output = mapper.createObjectNode();
             output.put("decision", decision.name());
             output.put("stepIndex", stepIndex);
-            output.put("assistantText", assistant.getText() == null ? "" : assistant.getText());
+            if (compacting) output.put("contextCompacted", true);
+            else output.put("assistantText", assistant.getText() == null ? "" : assistant.getText());
             if (decision == Decision.CONTINUE || decision == Decision.WAIT) {
                 if (run.status() != AgentRun.Status.RUNNING) {
                     throw new IllegalStateException("Run state prevents model continuation");
-                }
-                if (run.modelTurnLimitReached(stepIndex + 1)) {
-                    // 当前响应及工具账本已持久化；达到固定预算后停止创建回合。
-                    tasks.fail(lease, workerId, "MODEL_TURN_LIMIT");
-                    finishFailedRun(ownerId, lease, run, stepIndex);
-                    return ProjectEventService.Change.unchanged(Decision.LIMIT_REACHED);
                 }
                 // Completing the leased turn and publishing the next READY task share this
                 // transaction and project lock, so no dependency table or pending task is needed.
@@ -152,6 +151,12 @@ public class AgentTurnCommitService {
                     ObjectNode input = mapper.createObjectNode();
                     input.put("schemaVersion", 1);
                     input.put("stepIndex", stepIndex + 1);
+                    // Maintenance turns must not reset the bounded repair chain they interrupted.
+                    // repairFromStep is deliberately absent: resume the saved handoff, not its repair prompt.
+                    if (compacting && lease.input().has("repairAttempt")) {
+                        input.set("repairAttempt", lease.input().get("repairAttempt"));
+                        input.put("maxRepairAttempts", lease.input().path("maxRepairAttempts").asInt(settings.get().maxRepairAttempts()));
+                    }
                     tasks.create(ownerId, lease.projectId(), lease.runId(),
                             "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input, 1);
                 }
@@ -176,7 +181,7 @@ public class AgentTurnCommitService {
     }
 
     /**
-     * 工具批次因参数或计划错误回滚后，最多创建两个修复回合；超限时结束运行。
+     * 工具批次或交接摘要校验失败后，按本次修复链固定的次数上限继续；超限时结束运行。
      * 原始无效响应仍留在检查点，供修复上下文引用和问题核查。
      *
      * @param lease 产生无效响应的当前任务租约
@@ -200,10 +205,11 @@ public class AgentTurnCommitService {
                 throw new IllegalStateException("Run cannot repair this model response");
             }
             int attempt = lease.input().path("repairAttempt").asInt(0);
-            if (attempt < 0 || attempt > 2) {
+            int maximum = lease.input().path("maxRepairAttempts").asInt(settings.get().maxRepairAttempts());
+            if (attempt < 0 || attempt > maximum) {
                 throw new IllegalStateException("Invalid model repair count");
             }
-            if (attempt >= 2 || run.modelTurnLimitReached(stepIndex + 1)) {
+            if (attempt >= maximum) {
                 tasks.fail(lease, workerId, "MODEL_OUTPUT_INVALID");
                 finishFailedRun(ownerId, lease, run, stepIndex);
                 return ProjectEventService.Change.unchanged(false);
@@ -212,6 +218,7 @@ public class AgentTurnCommitService {
             input.put("schemaVersion", 1);
             input.put("stepIndex", stepIndex + 1);
             input.put("repairAttempt", attempt + 1);
+            input.put("maxRepairAttempts", maximum);
             input.put("repairFromStep", stepIndex);
             input.put("repairErrorCode", errorCode);
             input.put("repairErrorDetail", errorDetail.substring(0,
@@ -301,7 +308,7 @@ public class AgentTurnCommitService {
             }
             Task current = taskRepository.findById(lease.id()).orElseThrow();
             AgentModelRetryPolicy.Decision decision = AgentModelRetryPolicy.afterFailure(
-                    current, errorCode, clock.instant(), mapper);
+                    current, errorCode, clock.instant(), mapper, settings.get());
             tasks.recordAgentModelFailure(lease, workerId, decision.progress(),
                     decision.exhausted() ? AgentModelRetryPolicy.EXHAUSTED_CODE : errorCode,
                     decision.nextActionAt(), decision.exhausted());
@@ -336,7 +343,7 @@ public class AgentTurnCommitService {
     private int requireStep(Task lease, AgentRun run) {
         int stepIndex = lease.input().path("stepIndex").asInt(-1);
         if (lease.input().path("schemaVersion").asInt(-1) != 1
-                || stepIndex < 0 || run.modelTurnLimitReached(stepIndex)
+                || stepIndex < 0
                 || (run.nextStepIndex() != stepIndex
                         && !(run.nextStepIndex() == stepIndex + 1
                                 && (run.status() == AgentRun.Status.WAITING_TASKS
@@ -379,8 +386,6 @@ public class AgentTurnCommitService {
         /** Approval or generation is pending; a persisted outcome schedules the continuation. */
         WAIT,
         /** 无后续工具调用，Run 可以结束。 */
-        FINISH,
-        /** 已达到历史模型回合上限，Run 停止续接。 */
-        LIMIT_REACHED
+        FINISH
     }
 }

@@ -13,19 +13,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
 import "./ComfyWorkflowEditor.css";
 import { COMFY_FIXED_MAPPING as NO_MAPPING, COMFY_PARAMETER_MAPPING as PARAMETER_MAPPING, COMFY_WORKFLOW_DEFAULT_SIDE,
-  COMFY_WORKFLOW_LIMITS as LIMITS, comfyParameterTypes, comfyReferenceCount, comfyWorkflowProblem, mapComfyInput, type ComfyInputMapping } from "./comfyWorkflow";
+  COMFY_WORKFLOW_LIMITS as LIMITS, comfyParameterTypes, comfyReferenceCount, comfyWorkflowProblem, isComfyReferenceSource, mapComfyInput, type ComfyInputMapping } from "./comfyWorkflow";
 
 type Settings = MediaCapability["settings"];
 type Binding = ComfyUiWorkflowDefinition["bindings"][number];
 type Source = Binding["source"];
 const STEPS = ["import", "mapping", "review"] as const;
 type Step = typeof STEPS[number];
-const TEXT_SOURCES: Source[] = ["PROMPT", "NEGATIVE_PROMPT", "REFERENCE_IMAGE"];
+const TEXT_SOURCES: Source[] = ["PROMPT", "NEGATIVE_PROMPT", "REFERENCE_IMAGE", "REFERENCE_VIDEO", "REFERENCE_AUDIO"];
 const NUMBER_SOURCES: Source[] = ["SEED", "WIDTH", "HEIGHT", "BATCH_SIZE"];
 const VIDEO_SOURCES: Source[] = ["DURATION_SECONDS", "FRAME_COUNT", "FPS"];
 const SOURCE_KEYS = {
   PROMPT: "settings.comfy.sourcePrompt", NEGATIVE_PROMPT: "settings.comfy.sourceNegative", SEED: "settings.comfy.sourceSeed",
   WIDTH: "settings.comfy.sourceWidth", HEIGHT: "settings.comfy.sourceHeight", REFERENCE_IMAGE: "settings.comfy.sourceImage",
+  REFERENCE_VIDEO: "settings.comfy.sourceVideo", REFERENCE_AUDIO: "settings.comfy.sourceAudio",
   DURATION_SECONDS: "settings.comfy.sourceDuration", FRAME_COUNT: "settings.comfy.sourceFrames", FPS: "settings.comfy.sourceFps", BATCH_SIZE: "settings.comfy.sourceBatch",
 } as const;
 
@@ -157,7 +158,7 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
                   {choices.map((choice) => <option key={choice} value={choice} disabled={!binding && definition.bindings.length >= LIMITS.bindings}>{t(SOURCE_KEYS[choice])}</option>)}
                 </Select></Field>
                 <Field><FieldLabel htmlFor={`${fieldId}-literal-${inputName}`}>{t("settings.comfy.currentValue")}</FieldLabel>
-                {binding?.source === "REFERENCE_IMAGE" ? <Input type="number" min={1} max={LIMITS.references} step={1} aria-label={t("settings.comfy.referenceFor", { "0": inputName })} value={(binding.referenceIndex ?? 0) + 1}
+                {binding && isComfyReferenceSource(binding.source) ? <Input type="number" min={1} max={LIMITS.references} step={1} aria-label={t("settings.comfy.referenceFor", { "0": inputName })} value={(binding.referenceIndex ?? 0) + 1}
                   id={`${fieldId}-literal-${inputName}`}
                   onChange={(event) => update({ bindings: definition.bindings.map((item) => item === binding ? { ...item, referenceIndex: Number(event.target.value) - 1 } : item) })} />
                   : extended ? <small className="ui-muted">{extended.label}</small>
@@ -253,9 +254,9 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
     </div> : null}
     {step === "review" && definition ? <div className="ui-stack comfy-review-step">
       <p className="ui-muted">{t("settings.comfy.reviewHint")}</p>
-      <Notice>{t("settings.comfy.summary", { "0": Object.keys(definition.graph).length, "1": definition.bindings.length, "2": definition.output.nodeId, "3": comfyReferenceCount(definition) })}</Notice>
+      <Notice>{t("settings.comfy.summary", { "0": Object.keys(definition.graph).length, "1": definition.bindings.length, "2": definition.output.nodeId, "3": comfyReferenceCount(definition), "4": comfyReferenceCount(definition, "REFERENCE_VIDEO"), "5": comfyReferenceCount(definition, "REFERENCE_AUDIO") })}</Notice>
       <FieldSet className="comfy-review-section"><FieldLegend>{t("settings.comfy.mappedInputs")}</FieldLegend><FieldDescription>{t("settings.comfy.readOnlyBindings")}</FieldDescription>
-      <ul className="comfy-binding-summary">{definition.bindings.map((binding) => <li key={`${binding.nodeId}:${binding.inputName}`}><code>#{binding.nodeId}.{binding.inputName}</code> ← {t(SOURCE_KEYS[binding.source])}{binding.source === "REFERENCE_IMAGE" ? ` #${(binding.referenceIndex ?? 0) + 1}` : ""}</li>)}</ul>
+      <ul className="comfy-binding-summary">{definition.bindings.map((binding) => <li key={`${binding.nodeId}:${binding.inputName}`}><code>#{binding.nodeId}.{binding.inputName}</code> ← {t(SOURCE_KEYS[binding.source])}{isComfyReferenceSource(binding.source) ? ` #${(binding.referenceIndex ?? 0) + 1}` : ""}</li>)}</ul>
       {definition.parameters?.length ? <ul className="comfy-binding-summary">{definition.parameters.map((field) => <li key={field.key}><code>#{field.nodeId}.{field.fieldName}</code> ← {t("settings.comfy.extendedParameters")} · {field.label}</li>)}</ul> : null}
       </FieldSet>
       <FieldSet className="comfy-review-section"><FieldLegend>{t("settings.comfy.outputSettings")}</FieldLegend><dl className="comfy-review-output"><div><dt>{t("settings.comfy.outputNode")}</dt><dd>#{definition.output.nodeId} · {definition.graph[definition.output.nodeId]?._meta?.title ?? definition.graph[definition.output.nodeId]?.class_type}</dd></div><div><dt>{t("settings.comfy.outputField")}</dt><dd><code>{definition.output.field}</code></dd></div>

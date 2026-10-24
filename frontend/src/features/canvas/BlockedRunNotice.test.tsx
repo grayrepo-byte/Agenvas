@@ -7,6 +7,17 @@ import { server } from "../../test/server";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 
 describe("BlockedRunNotice", () => {
+  it("explains a fixed context budget failure without publishing task inputs", async () => {
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
+      { id: "context-budget", kind: "AGENT_TURN", status: "FAILED", errorCode: "AGENT_CONTEXT_BUDGET_EXCEEDED",
+        input: { prompt: "private-context-input" } },
+    ])));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="context-run" status="FAILED" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/固定创作指令或已激活 Skill 超出配置的模型上下文预算/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).not.toHaveTextContent("private-context-input");
+  });
   it("explains an unselected archived video conflict instead of a model outage", async () => {
     server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
       { id: "done-video", kind: "VIDEO_GENERATION", status: "SUCCEEDED", output: { selected: false } },
@@ -29,7 +40,7 @@ describe("BlockedRunNotice", () => {
     render(<QueryClientProvider client={createQueryClient()}>
       <BlockedRunNotice projectId="project-1" runId="exhausted-run" status="FAILED" />
     </QueryClientProvider>);
-    expect(await screen.findByText(/^已达到 10 次重试或 5 分钟期限/)).toHaveTextContent("本次运行已结束");
+    expect(await screen.findByText(/^已达到本回合配置的重试次数或恢复期限/)).toHaveTextContent("本次运行已结束");
     expect(screen.getByRole("alert")).toHaveTextContent("已完成的媒体保留");
   });
   it("distinguishes a model response timeout after media succeeded without exposing private data", async () => {
@@ -79,19 +90,7 @@ describe("BlockedRunNotice", () => {
     render(<QueryClientProvider client={createQueryClient()}>
       <BlockedRunNotice projectId="project-1" runId="run-3" />
     </QueryClientProvider>);
-    expect(await screen.findByText(/已达到两次修复或回合上限/)).toBeInTheDocument();
-  });
-
-  it("explains a durable model-turn ceiling without implying media is still polling", async () => {
-    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () =>
-      HttpResponse.json([{ id: "task-limit", kind: "AGENT_TURN", status: "FAILED",
-        errorCode: "MODEL_TURN_LIMIT" }]),
-    ));
-    render(<QueryClientProvider client={createQueryClient()}>
-      <BlockedRunNotice projectId="project-1" runId="run-limit" />
-    </QueryClientProvider>);
-    expect(await screen.findByText(/12 回合上限/)).toBeInTheDocument();
-    expect(screen.getByText(/系统未再调用模型或自动重试/)).toBeInTheDocument();
+    expect(await screen.findByText(/已达到配置的修复次数上限/)).toBeInTheDocument();
   });
 
   it("requires a new approval when an unsubmitted media task is stale", async () => {

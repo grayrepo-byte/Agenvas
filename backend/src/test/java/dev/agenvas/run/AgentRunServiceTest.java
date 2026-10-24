@@ -43,7 +43,7 @@ class AgentRunServiceTest {
         var cancellation = mock(RunTaskCancellation.class);
         var mapper = new ObjectMapper();
         var service = new AgentRunService(projects, mock(AgentInstanceService.class),
-                mock(ArtifactService.class), mock(CanvasService.class), rows, events,
+                mock(CanvasService.class), rows, events,
                 cancellation, mock(RunTaskCreation.class), mock(ChatGateway.class), mapper,
                 Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), mock(AgentConversationService.class),
                 mock(ConversationMemoryReader.class), mock(SkillRunService.class));
@@ -74,13 +74,12 @@ class AgentRunServiceTest {
         verifyNoInteractions(cancellation);
     }
 
-    @Test void freezesMediaNodeResultsTextVersionsAndEmptyDraftSelections() {
+    @Test void freezesOnlyTaskFocusAndConfigurationWithoutArtifactCollectionsOrCanvasAllowLists() {
         UUID owner = UUID.randomUUID(), projectId = UUID.randomUUID(), agentId = UUID.randomUUID();
         UUID artifactId = UUID.randomUUID(), versionId = UUID.randomUUID();
         UUID imageNodeId = UUID.randomUUID(), emptyNodeId = UUID.randomUUID();
         var projects = mock(ProjectService.class);
         var agents = mock(AgentInstanceService.class);
-        var artifacts = mock(ArtifactService.class);
         var canvas = mock(CanvasService.class);
         var rows = mock(AgentRunRepository.class);
         var events = mock(ProjectEventService.class);
@@ -89,7 +88,7 @@ class AgentRunServiceTest {
         var conversations = mock(AgentConversationService.class);
         var memory = mock(ConversationMemoryReader.class);
         var skills = mock(SkillRunService.class);
-        var service = new AgentRunService(projects, agents, artifacts, canvas, rows, events,
+        var service = new AgentRunService(projects, agents, canvas, rows, events,
                 mock(RunTaskCancellation.class), tasks, gateway, new ObjectMapper(),
                 Clock.fixed(NOW, ZoneOffset.UTC), new ShutdownGate(), conversations, memory, skills);
         var project = new Project(projectId, owner, "Synthetic project", Project.AspectRatio.SQUARE_1_1,
@@ -115,7 +114,6 @@ class AgentRunServiceTest {
         when(media.kind()).thenReturn(Artifact.Kind.IMAGE);
         when(media.title()).thenReturn("Synthetic image");
         var view = new ArtifactService.ArtifactView(media, null);
-        when(artifacts.get(owner, projectId, artifactId)).thenReturn(view);
         var imageNode = mock(CanvasItem.class);
         when(imageNode.id()).thenReturn(imageNodeId);
         when(imageNode.subjectId()).thenReturn(artifactId);
@@ -140,16 +138,11 @@ class AgentRunServiceTest {
                 new CanvasService.CanvasEntry(emptyNode, view, null),
                 new CanvasService.CanvasEntry(textNode, textView, null)));
 
-        var scope = new ObjectMapper().createObjectNode().put("version", 1);
-        var scopeItems = scope.putArray("items");
-        scopeItems.addObject().put("itemId", imageNodeId.toString()).put("artifactId", artifactId.toString())
-                .put("selectedVersionId", versionId.toString());
-        when(canvas.freezeRunScope(owner, projectId)).thenReturn(scope);
         var run = service.create(owner, projectId, agentId, "Use image", "synthetic-request", null,
                 List.of(imageNodeId, emptyNodeId, textNodeId)).run();
-        assertThat(run.contextSnapshot().path("bindings")).isEmpty();
+        assertThat(run.contextSnapshot().has("bindings")).isFalse();
         assertThat(run.contextSnapshot().has("outputGroupId")).isFalse();
-        assertThat(run.contextSnapshot().path("canvasScope")).isEqualTo(scope);
+        assertThat(run.contextSnapshot().has("canvasScope")).isFalse();
 
         assertThat(run.contextSnapshot().at("/selection/0/versionId").asText()).isEqualTo(versionId.toString());
         assertThat(run.contextSnapshot().at("/selection/1/kind").asText()).isEqualTo("IMAGE");
@@ -158,6 +151,7 @@ class AgentRunServiceTest {
         assertThat(run.contextSnapshot().at("/selection/2/versionId").asText()).isEqualTo(textVersionId.toString());
         verify(rows).create(run);
         verify(tasks).createInitialTurn(projectId, run.id(), NOW);
-        verify(artifacts, never()).setResourceDefaultVersion(any(), any(), any(), any(), anyLong());
+        verify(canvas).list(owner, projectId);
+        verifyNoMoreInteractions(canvas);
     }
 }

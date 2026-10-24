@@ -10,6 +10,10 @@ public sealed interface Submission {
     record CompletedResults(ProviderResultManifest manifest) implements Submission {}
     record Pending(java.time.Instant nextActionAt) implements Submission {}
     record Blocked(String code) implements Submission {}
-    record Rejected(String code) implements Submission {}
-    record Unknown(String code) implements Submission {}
+    record Rejected(String code, ProviderFailure providerFailure) implements Submission {
+        public Rejected(String code) { this(code, null); }
+    }
+    record Unknown(String code, ProviderFailure providerFailure) implements Submission {
+        public Unknown(String code) { this(code, null); }
+    }
 }

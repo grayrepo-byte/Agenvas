@@ -1,5 +1,7 @@
 package dev.agenvas.llm;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.agenvas.agent.application.AgentInstanceService;
@@ -67,10 +69,11 @@ class AgentTurnRepairPostgresIT {
 
     @Test
     void repairsWholeInvalidRoundOnceAndBlocksAfterTwoFailedRepairs() {
+        jdbc.sql("update director_settings set max_repair_attempts=2").update();
         AdminPrincipal owner = identities.setup("repair-admin", "repair-password-123");
         Project project = projects.create(owner.userId(), "Repair project",
                 Project.AspectRatio.LANDSCAPE_16_9);
-        AgentInstance agent = agents.create(owner.userId(), project.id(), "Creator",
+        AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Creator",
                 "Write a short text");
         AgentRun recovered = runs.create(owner.userId(), project.id(), agent.id(),
                 "Write", "repair-success-run").run();

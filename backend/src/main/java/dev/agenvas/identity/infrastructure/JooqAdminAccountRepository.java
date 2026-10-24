@@ -68,6 +68,14 @@ public class JooqAdminAccountRepository implements AdminAccountRepository {
                 .fetchOptional(this::map);
     }
 
+    /** 不把账户表细节或密码数据暴露给身份模块外的调用方。 */
+    @Override
+    public boolean isActiveById(UUID userId) {
+        return dsl.fetchExists(dsl.selectOne().from(APP_USER)
+                .where(APP_USER.ID.eq(userId))
+                .and(APP_USER.STATUS.eq(AdminAccount.Status.ACTIVE.name())));
+    }
+
     /** 插入首个活动管理员账户，密码哈希由应用服务预先生成。 */
     @Override
     public void createAdmin(UUID id, String loginName, String passwordHash, Instant createdAt) {

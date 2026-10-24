@@ -278,6 +278,13 @@ public class ArkSeedance2Adapter implements MediaAdapter {
     }
 
     private String ratio(AttemptContext context) {
+        // Older accepted tasks have no resolved ratio and keep their historical fallback.
+        JsonNode frozen = context.lease().input().path("mediaInput").path("providerParameters").path("aspectRatio");
+        if (!frozen.isMissingNode()) {
+            if (!frozen.isTextual() || !java.util.Set.of("16:9", "9:16", "1:1").contains(frozen.asText()))
+                throw new IllegalStateException("Pinned Seedance aspect ratio is invalid");
+            return frozen.asText();
+        }
         String requested = VideoGenerationParameters.parse(context.lease().input()
                 .path("mediaInput").path("parameters")).aspectRatio();
         if (!VideoGenerationParameters.AUTO_ASPECT_RATIO.equals(requested)) return requested;

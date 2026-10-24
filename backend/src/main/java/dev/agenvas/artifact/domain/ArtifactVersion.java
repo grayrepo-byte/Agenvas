@@ -39,6 +39,8 @@ public record ArtifactVersion(
         USER,
         /** 由受控 Agent 工具创建或编辑。 */
         AGENT,
+        /** 由用户级 MCP 凭据委托的外部工具创建，不属于内置 Run。 */
+        EXTERNAL_TOOL,
         /** 由媒体任务或系统任务归档生成。 */
         TASK
     }

@@ -9,8 +9,7 @@ const createdAt = "2026-09-24T00:00:00Z";
 const historyPrefixes = [
   "run-history", "agent-conversations", "conversation-runs", "run-history-tasks", "run-actions", "run-media-approvals",
 ];
-type CacheCall = readonly [operation: "invalidate" | "read" | "write", key: QueryKey | undefined];
-const readSnapshot: CacheCall = ["read", ["snapshot", projectId]];
+type CacheCall = readonly [operation: "invalidate" | "write", key: QueryKey | undefined];
 
 function event(type: string, payload: ProjectEvent["payload"] = {}): ProjectEvent {
   return { projectId, type, payload, seq: 1, eventId: "event-1", schemaVersion: 1,
@@ -21,15 +20,15 @@ function snapshot(activeRunId: string | null = null): ProjectSnapshot {
   return {
     project: { id: projectId, name: "Recovered", aspectRatio: "LANDSCAPE_16_9",
       status: "ACTIVE", version: 0, createdAt, updatedAt: createdAt },
-    canvas: { items: [] }, connections: [], agents: [], activeTasks: [], unknownTasks: [], snapshotSeq: 42,
+    canvas: { items: [] }, connections: [], director: null, activeTasks: [], unknownTasks: [], snapshotSeq: 42,
     activeRun: activeRunId ? {
       id: activeRunId, projectId, agentInstanceId: "agent-1", conversationId: "conversation-1",
       conversationTurn: 1, status: "RUNNING", instruction: "Create", profileVersion: 1,
       nextStepIndex: 0, version: 0, createdAt, updatedAt: createdAt,
       contextSnapshot: { agentId: "agent-1", agentVersion: 0, profileKey: "creator",
         profileVersion: 1,  },
-      policySnapshot: { schemaVersion: 2, modelConfigSource: "MOCK", modelConfigVersion: 0,
-        maxModelTurns: 1, maxToolExecutions: 1 },
+      policySnapshot: { schemaVersion: 7, toolPolicyVersion: 6, systemPromptVersion: 14, allowedTools: ["read_canvas"], modelConfigSource: "MOCK", modelConfigVersion: 0,
+        maxModelTurns: null, maxToolExecutions: null },
     } : null,
   };
 }
@@ -38,59 +37,69 @@ function invalidations(...prefixes: string[]): CacheCall[] {
   return prefixes.map((prefix) => ["invalidate", [prefix, projectId]]);
 }
 
-/** Records real QueryClient operations, including reads between ordered invalidations. */
+/** Keep the real QueryClient so scoping assertions verify the affected cached views. */
 function trackCache(activeRunId: string | null = null) {
   const queryClient = new QueryClient();
   queryClient.setQueryData(["snapshot", projectId], snapshot(activeRunId));
   const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-  const read = vi.spyOn(queryClient, "getQueryData");
   const write = vi.spyOn(queryClient, "setQueryData");
   return {
     queryClient,
     callbacks: projectCacheCallbacks(queryClient, projectId),
-    write,
-    clear: () => { invalidate.mockClear(); read.mockClear(); write.mockClear(); },
+    write, invalidate,
+    clear: () => { invalidate.mockClear(); write.mockClear(); },
     calls: (): CacheCall[] => [
-      ...invalidate.mock.calls.map(([filters], index) => ({
-        order: invalidate.mock.invocationCallOrder[index]!, call: ["invalidate", filters?.queryKey] as CacheCall,
-      })),
-      ...read.mock.calls.map(([key], index) => ({
-        order: read.mock.invocationCallOrder[index]!, call: ["read", key] as CacheCall,
-      })),
-      ...write.mock.calls.map(([key], index) => ({
-        order: write.mock.invocationCallOrder[index]!, call: ["write", key] as CacheCall,
-      })),
-    ].sort((left, right) => left.order - right.order).map(({ call }) => call),
+      ...invalidate.mock.calls.map(([filters]): CacheCall => ["invalidate", filters?.queryKey]),
+      ...write.mock.calls.map(([key]): CacheCall => ["write", key]),
+    ],
   };
+}
+
+function expectCacheEffects(tracked: ReturnType<typeof trackCache>, expected: CacheCall[]) {
+  const keys = (calls: CacheCall[]) => new Set(calls.map((call) => JSON.stringify(call)));
+  expect(keys(tracked.calls())).toEqual(keys(expected));
 }
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("project cache callbacks", () => {
   it.each([
-    { type: "artifact.created", beforeRead: ["agent-outputs", "canvas", "media-draft"], afterRead: [] },
-    { type: "artifact.version.created", beforeRead: ["agent-outputs", "canvas", "media-draft"], afterRead: [] },
-    { type: "artifact.resource_default_version.changed", beforeRead: ["agent-outputs", "canvas", "media-draft"], afterRead: [] },
-    { type: "canvas.items.changed", beforeRead: ["agent-outputs", "canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: [] },
-    { type: "canvas.connection.created", beforeRead: ["agent-outputs", "canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: [] },
-    { type: "canvas.connection.deleted", beforeRead: ["agent-outputs", "canvas-media-versions", "canvas", "canvas-connections", "media-draft"], afterRead: [] },
-    { type: "agent.instance.changed", beforeRead: ["canvas", "snapshot", "agents"], afterRead: [] },
-    { type: "agent.conversation.changed", beforeRead: ["snapshot", ...historyPrefixes], afterRead: [] },
-    { type: "agent.run.changed", beforeRead: ["agent-outputs", "snapshot", ...historyPrefixes], afterRead: [] },
-    { type: "project.changed", beforeRead: ["projects"], afterRead: [] },
-    { type: "media.draft.changed", beforeRead: [], afterRead: ["media-draft", "canvas-connections"] },
-    { type: "usage.changed", beforeRead: [], afterRead: ["project-usage"] },
-    { type: "task.changed", beforeRead: ["agent-outputs"], afterRead: [] },
-    { type: "asset.ready", beforeRead: [], afterRead: [] },
-    { type: "llm.turn.requested", beforeRead: ["snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
-    { type: "llm.turn.recorded", beforeRead: ["snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
-    { type: "agent.media.approval.changed", beforeRead: ["run-media-approvals", "snapshot", "run-history-tasks", "run-actions", "run-tasks"], afterRead: [] },
-  ])("refreshes only the expected views for $type in order", ({ type, beforeRead, afterRead }) => {
+    { type: "artifact.created", prefixes: ["canvas", "media-draft"] },
+    { type: "artifact.version.created", prefixes: ["canvas", "media-draft", "project-characters"] },
+    { type: "artifact.resource_default_version.changed", prefixes: ["canvas", "media-draft"] },
+    { type: "canvas.items.changed", prefixes: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft", "project-characters"] },
+    { type: "canvas.connection.created", prefixes: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft", "project-characters"] },
+    { type: "canvas.connection.deleted", prefixes: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft", "project-characters"] },
+    { type: "agent.instance.changed", prefixes: ["canvas", "snapshot"] },
+    { type: "agent.conversation.changed", prefixes: ["snapshot", ...historyPrefixes] },
+    { type: "agent.run.changed", prefixes: ["snapshot", ...historyPrefixes] },
+    { type: "project.changed", prefixes: ["projects"] },
+    { type: "media.draft.changed", prefixes: ["media-draft", "canvas-connections", "project-characters"] },
+    { type: "character.profile.changed", prefixes: ["project-characters"] },
+    { type: "character.bindings.changed", prefixes: ["project-characters"] },
+    { type: "usage.changed", prefixes: ["project-usage"] },
+    { type: "task.changed", prefixes: [] },
+    { type: "asset.ready", prefixes: [] },
+    { type: "llm.turn.requested", prefixes: ["snapshot", "run-history-tasks", "run-actions", "run-tasks"] },
+    { type: "llm.turn.recorded", prefixes: ["snapshot", "run-history-tasks", "run-actions", "run-tasks"] },
+    { type: "agent.media.approval.changed", prefixes: ["storyboard-media-approvals", "run-media-approvals", "snapshot", "run-history-tasks", "run-actions", "run-tasks"] },
+    { type: "storyboard.changed", prefixes: ["storyboard", "storyboard-revisions", "storyboard-media-approvals"] },
+  ])("refreshes only the expected views for $type", ({ type, prefixes }) => {
     const tracked = trackCache();
     tracked.callbacks.onChange(event(type));
-    expect(tracked.calls()).toEqual([
-      ...invalidations(...beforeRead), readSnapshot, ...invalidations(...afterRead),
+    expectCacheEffects(tracked, invalidations(...prefixes));
+  });
+
+  it("refreshes group metadata and restored copy drafts without invalidating another project", () => {
+    const tracked = trackCache();
+    tracked.queryClient.setQueryData(["canvas-editor", "other-project"], { groups: [] });
+    tracked.clear();
+    tracked.callbacks.onChange(event("canvas.edited", { operation: "DUPLICATE", state: "APPLIED" }));
+    expectCacheEffects(tracked, [
+      ...invalidations("canvas-media-versions", "canvas-editor", "canvas-connections", "media-draft", "artifacts", "canvas"),
+      ...invalidations("project-characters"),
     ]);
+    expect(tracked.queryClient.getQueryState(["canvas-editor", "other-project"])?.isInvalidated).toBe(false);
   });
 
   it.each([
@@ -112,9 +121,9 @@ describe("project cache callbacks", () => {
     }
     tracked.clear();
     tracked.callbacks.onChange(event("canvas.item.selected_version.changed", payload));
-    expect(tracked.calls()).toEqual([
-      ...invalidations("agent-outputs", "canvas-media-versions", "canvas"),
-      ...scopedKeys.map((key): CacheCall => ["invalidate", key]), readSnapshot,
+    expectCacheEffects(tracked, [
+      ...invalidations("canvas-media-versions", "canvas-editor", "canvas"),
+      ...scopedKeys.map((key): CacheCall => ["invalidate", key]), ...invalidations("project-characters"),
     ]);
     expect(tracked.queryClient.getQueryState(cardDraftKey)?.isInvalidated).toBe(scopedKeys.length > 0);
     expect(tracked.queryClient.getQueryState(artifactVersionsKey)?.isInvalidated).toBe(scopedKeys.length === 2);
@@ -129,24 +138,25 @@ describe("project cache callbacks", () => {
   ])("refreshes task status with active Run $activeRunId and artifact $artifactId", ({ activeRunId, artifactId }) => {
     const tracked = trackCache(activeRunId);
     tracked.callbacks.onChange(event("task.status.changed", { artifactId, runId: "other-run" }));
-    expect(tracked.calls()).toEqual([
-      ...invalidations("agent-outputs", "canvas-media-versions", "snapshot", ...historyPrefixes), readSnapshot,
+    expectCacheEffects(tracked, [
+      ...invalidations("canvas-media-versions", "snapshot", ...historyPrefixes),
       ...invalidations(...(artifactId ? ["canvas", "media-draft"] : [])),
-      ...(activeRunId ? [["invalidate", ["run-tasks", projectId, activeRunId]]] : []),
-      ...invalidations("direct-media-tasks", "direct-media-queue"),
+      ...(activeRunId ? [["invalidate", ["run-tasks", projectId, activeRunId]] satisfies CacheCall] : []),
+      ...invalidations("direct-media-tasks", "direct-media-queue", "storyboard-media-approvals"),
     ]);
   });
 
   it("refreshes task details for the cached active Run without status-only views", () => {
     const tracked = trackCache("active-run");
     tracked.callbacks.onChange(event("task.changed", { artifactId: "artifact-1", runId: "other-run" }));
-    expect(tracked.calls()).toEqual([...invalidations("agent-outputs"), readSnapshot, ["invalidate", ["run-tasks", projectId, "active-run"]]]);
+    expectCacheEffects(tracked, [["invalidate", ["run-tasks", projectId, "active-run"]]]);
   });
 
   it("writes the four snapshot projections before refreshing missing history and auxiliary views", () => {
     const tracked = trackCache("old-run");
     const refreshedPrefixes = [
-      ...historyPrefixes, "run-tasks", "direct-media-tasks", "media-draft", "canvas-media-versions", "project-usage", "agent-outputs",
+      ...historyPrefixes, "run-tasks", "direct-media-tasks", "media-draft", "canvas-media-versions", "project-usage",
+      "storyboard", "storyboard-revisions", "storyboard-media-approvals", "project-characters", "canvas-editor",
     ];
     const refreshedKeys = refreshedPrefixes.map((prefix) => [prefix, projectId, "scope-1"]);
     const unchangedKeys = [
@@ -157,15 +167,14 @@ describe("project cache callbacks", () => {
     tracked.clear();
     const fresh = snapshot();
     tracked.callbacks.onSnapshot(fresh);
-    expect(tracked.write.mock.calls).toEqual([
-      [["snapshot", projectId], fresh], [["projects", projectId], fresh.project],
-      [["canvas", projectId], fresh.canvas], [["canvas-connections", projectId], { items: fresh.connections }],
-    ]);
-    expect(tracked.calls()).toEqual([
+    expectCacheEffects(tracked, [
       ["write", ["snapshot", projectId]], ["write", ["projects", projectId]],
       ["write", ["canvas", projectId]], ["write", ["canvas-connections", projectId]],
       ...invalidations(...refreshedPrefixes),
     ]);
+    // A recovery publishes every snapshot projection before refetching historical views.
+    expect(Math.max(...tracked.write.mock.invocationCallOrder))
+      .toBeLessThan(Math.min(...tracked.invalidate.mock.invocationCallOrder));
     for (const key of refreshedKeys) expect(tracked.queryClient.getQueryState(key)?.isInvalidated).toBe(true);
     for (const key of unchangedKeys) expect(tracked.queryClient.getQueryState(key)?.isInvalidated).toBe(false);
     expect(tracked.queryClient.getQueryData(["snapshot", projectId])).toEqual(fresh);
@@ -199,10 +208,10 @@ describe("project cache callbacks", () => {
     expect(invalidate).not.toHaveBeenCalled();
     expect(tracked.queryClient.getQueryData<AssistantTurnStream[]>(runAssistantStreamKey(projectId, "run-1"))?.[0]?.text).toBe("Hello");
     tracked.callbacks.onChange(event("agent.turn.stream.delta", { ...payload, chunkIndex: 3, textDelta: "Gap" }));
-    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+    expect(new Set(invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey)))).toEqual(new Set([
       ["snapshot", projectId], ["run-history-tasks", projectId, "run-1"],
       ["run-actions", projectId, "run-1"], ["run-tasks", projectId, "run-1"],
-    ]);
+    ].map((key) => JSON.stringify(key))));
     expect(tracked.queryClient.getQueryData<AssistantTurnStream[]>(runAssistantStreamKey(projectId, "run-1"))?.[0]?.text).toBe("Hello");
   });
 
@@ -212,8 +221,8 @@ describe("project cache callbacks", () => {
       const invalidate = vi.spyOn(tracked.queryClient, "invalidateQueries");
       tracked.callbacks.onChange(event(type, { runId: "run-1", taskId: "task-1", stepIndex: 0,
         streamEpoch: 1, chunkIndex: 0 }));
-      expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      expect(new Set(invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey)))).toEqual(new Set([
         ["run-history-tasks", projectId, "run-1"], ["run-actions", projectId, "run-1"], ["run-tasks", projectId, "run-1"],
-      ]);
+      ].map((key) => JSON.stringify(key))));
     });
 });

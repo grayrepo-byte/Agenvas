@@ -1,5 +1,7 @@
 package dev.agenvas.security;
 
+import static dev.agenvas.testing.AgentFixture.configureDirector;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -78,7 +80,7 @@ class ResourceScopePostgresIT {
         UUID artifactId = artifacts.create(owner.userId(), target.id(), Artifact.Kind.TEXT,
                 "Private title", mapper.readTree("{\"format\":\"MARKDOWN\",\"text\":\"SECRET_SCOPE_MARKER\"}"))
                 .artifact().id();
-        AgentInstance agent = agents.create(owner.userId(), target.id(),
+        AgentInstance agent = configureDirector(agents, owner.userId(), target.id(),
                 "Creator", "Create");
         UUID runId = runs.create(owner.userId(), target.id(), agent.id(),
                 "SECRET_SCOPE_MARKER", "resource-scope-run").run().id();

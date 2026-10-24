@@ -9,6 +9,8 @@ import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.application.LocalVideoOperationBounds;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.VideoOperation;
+import dev.agenvas.task.domain.AudioExtractionParameters;
+import dev.agenvas.shared.error.ApiProblemException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,8 +31,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class LocalVideoProcessor {
     private static final Duration TIMEOUT = Duration.ofMinutes(3);
     private static final long MAX_SCRATCH_BYTES = 128L * 1024 * 1024;
-    private static final long MAX_AUDIO_BYTES = 32L * 1024 * 1024;
-    private static final long MAX_SILENT_VIDEO_BYTES = 200L * 1024 * 1024;
+    private static final long MAX_SILENT_VIDEO_BYTES = LocalVideoOperationBounds.AUDIO_MAX_BYTES;
     private static final String FRAME_PATTERN = "frame-%04d.png";
     private final ArtifactService artifacts;
     private final AssetService assets;
@@ -48,32 +49,43 @@ public class LocalVideoProcessor {
     String preflight(AttemptContext context, VideoOperation operation) {
         try {
             var file = source(context);
-            LocalVideoOperationBounds.require(file.asset());
+            LocalVideoOperationBounds.require(file.asset(), operation);
             if (operation == VideoOperation.DEPTH_MAP && !depth.depthModelAvailable()) return "LOCAL_DEPTH_MODEL_UNAVAILABLE";
-            if (operation == VideoOperation.EXTRACT_AUDIO && !hasAudio(file.path())) return "VIDEO_AUDIO_TRACK_MISSING";
+            if (operation == VideoOperation.EXTRACT_AUDIO) {
+                var audio = audioParameters(context);
+                LocalVideoOperationBounds.requireAudioOutput(file.asset(), audio);
+                if (!hasAudio(file.path(), audio.trackIndex())) return "VIDEO_AUDIO_TRACK_MISSING";
+            }
             return null;
-        } catch (RuntimeException unavailable) { return "PROVIDER_UNSUPPORTED_INPUT"; }
+        } catch (ApiProblemException invalid) { return invalid.code(); }
+        catch (RuntimeException unavailable) { return "PROVIDER_UNSUPPORTED_INPUT"; }
     }
 
     Submission submit(AttemptContext context, VideoOperation operation) {
         Path scratch = null;
         try {
             var source = source(context);
-            LocalVideoOperationBounds.require(source.asset());
+            LocalVideoOperationBounds.require(source.asset(), operation);
             scratch = Files.createTempDirectory("agenvas-video-tool-",
                     PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
-            Path output = scratch.resolve(operation == VideoOperation.EXTRACT_AUDIO ? "audio.wav" : "depth.mp4");
+            var audio = operation == VideoOperation.EXTRACT_AUDIO ? audioParameters(context) : null;
+            Path output = scratch.resolve(audio == null ? "depth.mp4"
+                    : audio.format() == AudioExtractionParameters.Format.WAV ? "audio.wav" : "audio.mp3");
             long deadline = System.nanoTime() + TIMEOUT.toNanos();
             if (operation == VideoOperation.EXTRACT_AUDIO) {
-                if (!hasAudio(source.path())) return new Submission.Rejected("VIDEO_AUDIO_TRACK_MISSING");
-                var command = inputArguments(source.path());
-                command.addAll(List.of("-map", "0:a:0", "-vn", "-map_metadata", "-1", "-map_chapters", "-1",
-                        "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", "-fs", Long.toString(MAX_AUDIO_BYTES),
-                        "-y", output.toString()));
-                run(context, command, scratch, deadline);
+                LocalVideoOperationBounds.requireAudioOutput(source.asset(), audio);
+                if (!hasAudio(source.path(), audio.trackIndex())) return new Submission.Rejected("VIDEO_AUDIO_TRACK_MISSING");
+                var command = inputArguments(source.path(), operation);
+                command.addAll(List.of("-map", "0:a:" + audio.trackIndex(), "-vn", "-map_metadata", "-1", "-map_chapters", "-1",
+                        "-ac", Integer.toString(AudioExtractionParameters.CHANNELS), "-ar", Integer.toString(AudioExtractionParameters.SAMPLE_RATE)));
+                if (audio.format() == AudioExtractionParameters.Format.WAV) command.addAll(List.of("-c:a", "pcm_s16le"));
+                else command.addAll(List.of("-c:a", "libmp3lame", "-b:a", AudioExtractionParameters.MP3_BITRATE_KBPS + "k"));
+                command.addAll(List.of("-y", output.toString()));
+                // Do not use -fs: truncating speech to meet a byte budget is not a valid extraction.
+                run(context, command, scratch, deadline, LocalVideoOperationBounds.MAX_AUDIO_OUTPUT_BYTES);
             } else {
                 int edge = LocalVideoOperationBounds.DEPTH_EDGE;
-                var command = inputArguments(source.path());
+                var command = inputArguments(source.path(), operation);
                 command.addAll(List.of("-map", "0:v:0", "-an", "-vf", "fps=" + LocalVideoOperationBounds.DEPTH_FPS
                         + ",scale=" + edge + ":" + edge + ":force_original_aspect_ratio=decrease:force_divisible_by=2",
                         "-frames:v", Integer.toString(LocalVideoOperationBounds.MAX_DURATION_MS / 1000 * LocalVideoOperationBounds.DEPTH_FPS),
@@ -109,10 +121,17 @@ public class LocalVideoProcessor {
                     ? assets.archiveTaskAudio(owner, task.projectId(), task.id(), () -> open(output))
                     : assets.archiveTaskVideo(owner, task.projectId(), task.id(), () -> open(output));
             var content = MediaResult.content(mapper, task, asset.id(), task.input().path("prompt").asText());
-            var parameters = content.withObject("parameters");
+            var parameters = MediaResult.copyFrozenParameters(content, task);
             parameters.put("operation", operation.name()).put("local", true);
+            if (audio != null) {
+                parameters.put("format", audio.format().name()).put("trackIndex", audio.trackIndex())
+                        .put("sampleRate", AudioExtractionParameters.SAMPLE_RATE).put("channels", AudioExtractionParameters.CHANNELS);
+                if (audio.format() == AudioExtractionParameters.Format.MP3) parameters.put("bitrateKbps", AudioExtractionParameters.MP3_BITRATE_KBPS);
+            }
             if (operation == VideoOperation.DEPTH_MAP) parameters.put("frameRate", LocalVideoOperationBounds.DEPTH_FPS);
             return new Submission.CompletedArtifact(content);
+        } catch (ApiProblemException invalid) {
+            return new Submission.Rejected(invalid.code());
         } catch (ProcessingTimeout timedOut) {
             return new Submission.Rejected("LOCAL_VIDEO_PROCESSING_TIMEOUT");
         } catch (ScratchLimit exceeded) {
@@ -175,16 +194,22 @@ public class LocalVideoProcessor {
         }
     }
 
-    private boolean hasAudio(Path file) {
+    private AudioExtractionParameters audioParameters(AttemptContext context) {
+        var parameters = context.lease().input().path("mediaInput").path("parameters");
+        return AudioExtractionParameters.parse(parameters.isMissingNode() ? mapper.createObjectNode() : parameters);
+    }
+
+    private boolean hasAudio(Path file, int trackIndex) {
         return !mapper.readTree(tools.ffprobe(List.of("-v", "error", "-protocol_whitelist", "file,pipe",
-                "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "json", file.toString())))
+                "-select_streams", "a:" + trackIndex, "-show_entries", "stream=index", "-of", "json", file.toString())))
                 .path("streams").isEmpty();
     }
 
-    private List<String> inputArguments(Path file) {
+    private List<String> inputArguments(Path file, VideoOperation operation) {
         return new ArrayList<>(List.of("-hide_banner", "-loglevel", "error", "-nostdin", "-protocol_whitelist", "file,pipe",
                 "-threads", "2", "-filter_threads", "2", "-i", file.toString(), "-t",
-                Integer.toString(LocalVideoOperationBounds.MAX_DURATION_MS / 1000)));
+                Integer.toString((operation == VideoOperation.EXTRACT_AUDIO
+                        ? LocalVideoOperationBounds.AUDIO_MAX_DURATION_MS : LocalVideoOperationBounds.MAX_DURATION_MS) / 1000)));
     }
 
     private void run(AttemptContext context, List<String> arguments, Path scratch, long deadline) {

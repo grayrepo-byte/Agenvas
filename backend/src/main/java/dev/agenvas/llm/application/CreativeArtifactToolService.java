@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 实现受限的产物修订与画布布局工具：校验 Run 可见范围后调用产物与画布应用服务。 */
+/** 实现受限的产物修订与画布布局工具：核对当前画布后调用产物与画布应用服务。 */
 @Service
 public class CreativeArtifactToolService {
 
@@ -29,36 +29,27 @@ public class CreativeArtifactToolService {
     private static final Set<String> REVISE_FIELDS = Set.of(
             "artifactId", "expectedVersion", "title", "content");
 
-    /** 按预期版本修订产物并校验 Agent 可见版本范围。 */
+    /** 按预期版本修订当前画布文字产物。 */
     private final ArtifactService artifacts;
     /** 在业务画布中创建或排列 Agent 输出卡片。 */
     private final CanvasService canvas;
     /** 解析工具参数并组装统一结果结构。 */
     private final ObjectMapper mapper;
-    private final ToolExecutionRepository ledger;
 
     /** 连接产物领域校验、画布投影和工具 JSON 编解码。 */
     public CreativeArtifactToolService(ArtifactService artifacts, CanvasService canvas,
-            ObjectMapper mapper, ToolExecutionRepository ledger) {
-        this.ledger = ledger;
+            ObjectMapper mapper) {
         this.artifacts = artifacts;
         this.canvas = canvas;
         this.mapper = mapper;
     }
 
-    /** 按预期版本完整修订产物，并由服务端确认目标处于当前 Run 的授权范围。 */
+    /** 按预期版本完整修订产物，并由服务端确认目标处于当前画布。 */
     public JsonNode reviseArtifact(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
         allowOnly(input, REVISE_FIELDS);
         UUID artifactId = parseUuid(input.path("artifactId"));
-        if (dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot())
-                && canvas.list(context.ownerId(), context.projectId()).stream().anyMatch(entry ->
-                        entry.item().subjectId().equals(artifactId) && entry.item().locked())) {
-            throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
-                    ApiMessage.of("api.creative-artifact-tool-service.card-locked"),
-                    ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"), false);
-        }
         JsonNode version = input.path("expectedVersion");
         if (!version.isIntegralNumber() || !version.canConvertToLong()
                 || version.longValue() < 0) {
@@ -70,7 +61,7 @@ public class CreativeArtifactToolService {
             throw invalid(ApiMessage.of("api.creative-artifact-tool-service.a-complete-content-object-is-required"));
         }
         ArtifactService.ArtifactView revised = artifacts.reviseFromAgent(context.ownerId(),
-                context.projectId(), context.runId(), run.contextSnapshot(), artifactId,
+                context.projectId(), context.runId(), artifactId,
                 version.longValue(), title, content);
         ObjectNode result = mapper.createObjectNode();
         result.put("status", ToolResultStatus.SUCCEEDED.name());
@@ -87,104 +78,15 @@ public class CreativeArtifactToolService {
         return result;
     }
 
-    /** 新产物独立放置在画布；只有冻结旧协议的 Run 继续使用原布局标签。 */
+    /** 新产物独立放置在当前画布。 */
     public List<CanvasItem> placeOutputs(TrustedToolContext context, AgentRun run,
             List<ArtifactService.ArtifactView> created) {
-        UUID groupId = legacyOutputGroup(run);
         var placed = canvas.placeArtifactsWithinChange(context.ownerId(), context.projectId(),
-                created.stream().map(view -> view.artifact().id()).toList(), groupId);
+                created.stream().map(view -> view.artifact().id()).toList(), null);
         return java.util.stream.Stream.concat(placed.created().stream(), placed.alreadyPresent().stream()).toList();
     }
 
-    private UUID legacyOutputGroup(AgentRun run) {
-        return dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot()) ? null
-                : parseUuid(run.contextSnapshot().path("outputGroupId"));
-    }
-
-    /** 复用本 Run 可见且仍选用精确结果的媒体输出卡片；新建卡片与文字按资源默认版本校验。 */
-    public JsonNode placeArtifacts(TrustedToolContext context, AgentRun run,
-            UUID operationId, String arguments) {
-        ObjectNode input = parseObject(arguments);
-        boolean canvasScope = dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot());
-        allowOnly(input, canvasScope ? Set.of("versionIds") : Set.of("versionIds", "group"));
-        if (!canvasScope && !"AGENT_OUTPUT".equals(requiredText(input, "group", 20))) {
-            throw invalid(ApiMessage.of("api.creative-artifact-tool-service.only-the-agent-output-group-is-allowed"));
-        }
-        JsonNode requested = input.path("versionIds");
-        if (!requested.isArray() || requested.isEmpty() || requested.size() > 6) {
-            throw invalid(ApiMessage.of("api.creative-artifact-tool-service.place-artifacts-requires-one-to-six-version-ids"));
-        }
-        List<UUID> versionIds = new ArrayList<>();
-        Set<UUID> unique = new HashSet<>();
-        for (JsonNode supplied : requested) {
-            UUID versionId = parseUuid(supplied);
-            if (!unique.add(versionId)) {
-                throw invalid(ApiMessage.of("api.creative-artifact-tool-service.place-artifacts-version-ids-must-be-unique"));
-            }
-            versionIds.add(versionId);
-        }
-        List<UUID> artifactIds = new ArrayList<>();
-        Set<UUID> uniqueArtifacts = new HashSet<>();
-        UUID outputGroupId = legacyOutputGroup(run);
-        List<CanvasService.CanvasEntry> existing = canvas.list(context.ownerId(),
-                context.projectId());
-        for (UUID versionId : versionIds) {
-            ArtifactVersion version = artifacts.requireAgentVisibleVersion(context.ownerId(),
-                    context.projectId(), context.runId(), versionId, run.contextSnapshot());
-            ArtifactService.ArtifactView view = artifacts.get(context.ownerId(),
-                    context.projectId(), version.artifactId());
-            CanvasItem output = existing.stream().map(CanvasService.CanvasEntry::item)
-                    .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                            && item.subjectId().equals(version.artifactId())
-                            && (outputGroupId == null || outputGroupId.equals(item.groupId())))
-                    .findFirst().orElse(null);
-            if (view.artifact().archivedAt() != null
-                    || (!dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot())
-                        && !isCurrentCardVersion(view, output, versionId))) {
-                throw new ApiProblemException(HttpStatus.CONFLICT,
-                        "ARTIFACT_VERSION_CONFLICT", ApiMessage.of("api.creative-artifact-tool-service.product-version-has-changed"),
-                        ApiMessage.of("api.creative-artifact-tool-service.the-output-card-can-only-point-to-the-currently-selected"), false);
-            }
-            if (!uniqueArtifacts.add(version.artifactId()) && !canvasScope) {
-                throw invalid(ApiMessage.of("api.creative-artifact-tool-service.place-artifacts-must-not-repeat-an-artifact"));
-            }
-            artifactIds.add(version.artifactId());
-        }
-        CanvasService.OutputPlacements placed = canvas.placeArtifactVersionsWithinChange(
-                context.ownerId(), context.projectId(), java.util.stream.IntStream.range(0, artifactIds.size())
-                        .mapToObj(index -> new CanvasService.ArtifactVersionPlacement(artifactIds.get(index), versionIds.get(index))).toList(), outputGroupId);
-        ObjectNode result = mapper.createObjectNode();
-        result.put("status", ToolResultStatus.SUCCEEDED.name());
-        result.put("operationId", operationId.toString());
-        ArrayNode createdIds = result.putArray("createdIds");
-        placed.created().forEach(item -> createdIds.add(item.id().toString()));
-        result.putArray("updatedIds");
-        result.putObject("affectedVersions");
-        result.putArray("taskIds");
-        result.putNull("errorCode");
-        result.put("userVisibleSummary", "已将允许的精确产物版本显示在画布");
-        ArrayNode items = result.putArray("data");
-        for (int index = 0; index < artifactIds.size(); index++) {
-            UUID artifactId = artifactIds.get(index);
-            UUID versionId = versionIds.get(index);
-            CanvasItem item = placed.created().stream()
-                    .filter(card -> card.subjectId().equals(artifactId)
-                            && (card.selectedVersionId() == null || versionId.equals(card.selectedVersionId())))
-                    .findFirst().orElseGet(() -> placed.alreadyPresent().stream()
-                            .filter(card -> card.subjectId().equals(artifactId)
-                            && (card.selectedVersionId() == null || versionId.equals(card.selectedVersionId())))
-                            .findFirst().orElseThrow());
-            ObjectNode mapping = items.addObject();
-            mapping.put("artifactId", artifactId.toString());
-            mapping.put("versionId", versionIds.get(index).toString());
-            mapping.put("itemId", item.id().toString());
-            mapping.put("itemVersion", item.version());
-            mapping.put("created", placed.created().contains(item));
-        }
-        return result;
-    }
-
-    /** 以每张卡片的预期版本更新布局，且只允许排列本 Run 输出分组中的卡片。 */
+    /** 以每张当前画布卡片的预期版本更新布局。 */
     public JsonNode arrangeItems(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
@@ -203,7 +105,7 @@ public class CreativeArtifactToolService {
             if (!(supplied instanceof ObjectNode object)
                     || object.size() < 2 || object.size() > 3
                     || object.propertyNames().stream().anyMatch(field -> !Set.of("itemId", "versionId", "expectedVersion").contains(field))
-                    || !object.has("itemId") || (!dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot()) && !object.has("versionId"))
+                    || !object.has("itemId")
                     || !object.has("expectedVersion")) {
                 throw invalid(ApiMessage.of("api.creative-artifact-tool-service.arrange-items-requires-itemid-versionid-and-expectedversion"));
             }
@@ -216,7 +118,6 @@ public class CreativeArtifactToolService {
             }
             commands.add(new ArrangeRequest(itemId, versionId, expected.longValue()));
         }
-        UUID outputGroupId = legacyOutputGroup(run);
         List<CanvasService.CanvasEntry> before = canvas.list(context.ownerId(),
                 context.projectId());
         List<CanvasItem> selected = new ArrayList<>();
@@ -228,32 +129,19 @@ public class CreativeArtifactToolService {
                             ApiMessage.of("api.creative-artifact-tool-service.canvas-card-does-not-exist"), ApiMessage.of("api.creative-artifact-tool-service.the-target-card-does-not-belong-to-the-current-project"), false));
             CanvasItem item = entry.item();
             ArtifactService.ArtifactView view = artifacts.get(context.ownerId(), context.projectId(), item.subjectId());
-            ArtifactVersion selectedVersion = view.artifact().kind() == Artifact.Kind.TEXT
-                    ? view.resourceDefaultVersion() : entry.selectedVersion();
-            boolean ownOutput = dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot())
-                    && selectedVersion != null && run.id().equals(selectedVersion.runId())
-                    && selectedVersion.createdByKind() != ArtifactVersion.CreatedByKind.USER;
-            boolean canvasNode = ownOutput || dev.agenvas.run.domain.RunCanvasScope.containsItem(run.contextSnapshot(), item.id())
-                    || (dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot())
-                        && ledger.hasCreatedCanvasItem(context.projectId(), run.id(), item.id()));
-            if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                    || (!canvasNode && (outputGroupId == null || !outputGroupId.equals(item.groupId())))) {
-                throw new ApiProblemException(HttpStatus.FORBIDDEN, "INPUT_SCOPE_DENIED",
-                        ApiMessage.of("api.creative-artifact-tool-service.canvas-card-exceeds-authorization-scope"), ApiMessage.of("api.creative-artifact-tool-service.only-the-product-cards-of-this-agent-s-output-group"), false);
+            if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
+                throw invalid(ApiMessage.of("api.creative-artifact-tool-service.arrange-items-version-does-not-match-its-card"));
             }
             if (item.locked()) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "CANVAS_ITEM_LOCKED",
                         ApiMessage.of("api.creative-artifact-tool-service.card-locked"), ApiMessage.of("api.creative-artifact-tool-service.locked-cards-cannot-be-arranged-by-the-agent"), false);
             }
             boolean emptyMedia = request.versionId() == null
-                    && canvasNode && view.artifact().kind() != Artifact.Kind.TEXT && item.selectedVersionId() == null;
+                    && view.artifact().kind() != Artifact.Kind.TEXT && item.selectedVersionId() == null;
             if (!emptyMedia) {
                 if (request.versionId() == null) throw invalid(ApiMessage.of("api.creative-artifact-tool-service.arrange-items-version-does-not-match-its-card"));
-                // Current canvas layouts are authorized by node identity and CAS, separately
-                // from immutable content reads. A later user selection never grants body access.
-                ArtifactVersion version = dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot()) ? null
-                        : artifacts.requireAgentVisibleVersion(context.ownerId(), context.projectId(), context.runId(), request.versionId(), run.contextSnapshot());
-                if (version != null && !version.artifactId().equals(item.subjectId())) {
+                ArtifactVersion version = artifacts.requireCanvasVersion(context.ownerId(), context.projectId(), request.versionId());
+                if (!version.artifactId().equals(item.subjectId())) {
                     throw invalid(ApiMessage.of("api.creative-artifact-tool-service.arrange-items-version-does-not-match-its-card"));
                 }
             }
@@ -322,7 +210,7 @@ public class CreativeArtifactToolService {
     }
 
     /**
-     * 媒体已有卡片按自身选用结果校验；没有卡片时只能从明确的资源默认版本创建。
+     * 媒体卡片按自身当前选用结果校验，文字卡片按资源默认版本校验。
      * 文字卡片继续展示资源默认版本，媒体生成归档不必设置该默认版本。
      */
     private boolean isCurrentCardVersion(ArtifactService.ArtifactView view, CanvasItem item,

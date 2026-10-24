@@ -9,12 +9,19 @@ export const COMFY_WORKFLOW_LIMITS = {
 } as const;
 export const COMFY_FIXED_MAPPING = "FIXED";
 export const COMFY_PARAMETER_MAPPING = "PARAMETER";
+export const COMFY_REFERENCE_SOURCES = ["REFERENCE_IMAGE", "REFERENCE_VIDEO", "REFERENCE_AUDIO"] as const;
+export type ComfyReferenceSource = typeof COMFY_REFERENCE_SOURCES[number];
 export type ComfyInputMapping = ComfyUiWorkflowDefinition["bindings"][number]["source"]
   | typeof COMFY_FIXED_MAPPING | typeof COMFY_PARAMETER_MAPPING;
 export function isComfyAdapter(adapterId: string) { return adapterId === "COMFY_IMAGE_V1" || adapterId === "COMFY_VIDEO_V1"; }
 
-export function comfyReferenceCount(definition: ComfyUiWorkflowDefinition) {
-  return Math.max(0, ...definition.bindings.filter((binding) => binding.source === "REFERENCE_IMAGE").map((binding) => (binding.referenceIndex ?? 0) + 1));
+export function isComfyReferenceSource(source: ComfyInputMapping): source is ComfyReferenceSource {
+  return COMFY_REFERENCE_SOURCES.some((candidate) => candidate === source);
+}
+
+/** Reference numbers are scoped to their media type; several graph targets may share a slot. */
+export function comfyReferenceCount(definition: ComfyUiWorkflowDefinition, source: ComfyReferenceSource = "REFERENCE_IMAGE") {
+  return Math.max(0, ...definition.bindings.filter((binding) => binding.source === source).map((binding) => (binding.referenceIndex ?? 0) + 1));
 }
 
 /** Preserve a published key even when the administrator edits the display name. */
@@ -48,7 +55,7 @@ export function mapComfyInput(definition: ComfyUiWorkflowDefinition, nodeId: str
     parameters.push({ key: comfyParameterKey(nodeId, inputName, parameters), label: inputName,
       type, nodeId, fieldName: inputName, source: "PARAMETER", defaultValue: value, required: false, advanced: false });
   } else if (source !== COMFY_FIXED_MAPPING) bindings.push({ nodeId, inputName, source,
-    ...(source === "REFERENCE_IMAGE" ? { referenceIndex: 0 } : {}) });
+    ...(isComfyReferenceSource(source) ? { referenceIndex: 0 } : {}) });
 
   const dimension = source === "WIDTH" ? "width" : source === "HEIGHT" ? "height" : null;
   const dimensionPatch: Partial<ComfyUiWorkflowDefinition> = {};
@@ -69,7 +76,7 @@ function validParameter(field: RunningHubField, literal: unknown) {
   if (!comfyParameterTypes(literal).includes(field.type) || (field.source ?? "PARAMETER") !== "PARAMETER"
       || field.encoding === "STRING" || field.resourceFormat
       || !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(field.key) || !field.label.trim()
-      || field.key === "prompt" || field.key === "durationSeconds" || field.key.startsWith("reference_")
+      || field.key === "prompt" || field.key === "durationSeconds" || /^(reference_|video_reference_|audio_reference_)/.test(field.key)
       || field.label.length > limits.fieldLabelLength) return false;
   if (field.minimum != null && !Number.isFinite(field.minimum) || field.maximum != null && !Number.isFinite(field.maximum)
       || field.minimum != null && field.maximum != null && field.minimum > field.maximum
@@ -100,8 +107,12 @@ export function comfyWorkflowProblem(definition: ComfyUiWorkflowDefinition | und
   const sources = new Set(definition.bindings.map((binding) => binding.source));
   if (sources.has("WIDTH") !== sources.has("HEIGHT")) return t("settings.comfy.dimensionsRequired");
   if (video && (!sources.has("DURATION_SECONDS") && !sources.has("FRAME_COUNT") || sources.has("FRAME_COUNT") && !sources.has("FPS"))) return t("settings.comfy.durationRequired");
-  const indices = new Set(definition.bindings.filter((binding) => binding.source === "REFERENCE_IMAGE").map((binding) => binding.referenceIndex));
-  if ([...indices].some((index) => index == null || index < 0 || index >= limits.references) || indices.size !== comfyReferenceCount(definition)) return t("settings.comfy.referencesRequired");
+  for (const source of COMFY_REFERENCE_SOURCES) {
+    const indices = new Set(definition.bindings.filter((binding) => binding.source === source).map((binding) => binding.referenceIndex));
+    if ([...indices].some((index) => index == null || !Number.isInteger(index) || index < 0 || index >= limits.references)
+        || indices.size !== comfyReferenceCount(definition, source)) return t("settings.comfy.referencesRequired");
+  }
+  if (COMFY_REFERENCE_SOURCES.reduce((sum, source) => sum + comfyReferenceCount(definition, source), 0) > limits.references) return t("settings.comfy.referencesRequired");
   const ancestors = new Set<string>();
   function visit(id: string) {
     if (ancestors.has(id)) return;

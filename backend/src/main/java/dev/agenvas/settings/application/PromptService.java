@@ -32,17 +32,10 @@ public class PromptService {
     public enum Kind { AGENT, FUNCTION }
     public record Prompt(UUID id, String key, Kind kind, String name, String description, String content,
             boolean builtIn, long version, Instant createdAt, Instant updatedAt) {}
-    public record AgentPreset(String key, String name) {}
 
     @Transactional(readOnly = true)
     public List<Prompt> list() {
         return dsl.selectFrom(PROMPT_DEFINITION).orderBy(PROMPT_DEFINITION.BUILT_IN.desc(), PROMPT_DEFINITION.KEY.asc()).fetch(this::view);
-    }
-    @Transactional(readOnly = true)
-    public List<AgentPreset> agentPresets() {
-        return dsl.select(PROMPT_DEFINITION.KEY, PROMPT_DEFINITION.NAME).from(PROMPT_DEFINITION)
-                .where(PROMPT_DEFINITION.KIND.eq(Kind.AGENT.name())).orderBy(PROMPT_DEFINITION.BUILT_IN.desc(), PROMPT_DEFINITION.KEY.asc())
-                .fetch(row -> new AgentPreset(row.value1(), row.value2()));
     }
     @Transactional(readOnly = true)
     public Prompt get(UUID id) {
@@ -53,15 +46,16 @@ public class PromptService {
         return dsl.selectFrom(PROMPT_DEFINITION).where(PROMPT_DEFINITION.KEY.eq(key)).and(PROMPT_DEFINITION.KIND.eq(kind.name()))
                 .fetchOptional(this::view).orElseThrow(this::notFound);
     }
+    /** Only FUNCTION entries can be added; the installed director is edited in place. */
     @Transactional
-    public Prompt create(String key, Kind kind, String name, String description, String content) {
-        if (key == null || !key.matches(KEY_PATTERN) || kind == null) throw invalid();
+    public Prompt createFunction(String key, String name, String description, String content) {
+        if (key == null || !key.matches(KEY_PATTERN)) throw invalid();
         String validName = text(name, MAX_NAME_LENGTH, false);
         String validDescription = text(description, MAX_DESCRIPTION_LENGTH, true);
         String validContent = text(content, MAX_CONTENT_LENGTH, false);
         UUID id = UUID.randomUUID(); OffsetDateTime now = OffsetDateTime.ofInstant(clock.instant(), ZoneOffset.UTC);
         int changed = dsl.insertInto(PROMPT_DEFINITION).set(PROMPT_DEFINITION.ID, id).set(PROMPT_DEFINITION.KEY, key)
-                .set(PROMPT_DEFINITION.KIND, kind.name()).set(PROMPT_DEFINITION.NAME, validName)
+                .set(PROMPT_DEFINITION.KIND, Kind.FUNCTION.name()).set(PROMPT_DEFINITION.NAME, validName)
                 .set(PROMPT_DEFINITION.DESCRIPTION, validDescription).set(PROMPT_DEFINITION.CONTENT, validContent)
                 .set(PROMPT_DEFINITION.CREATED_AT, now).set(PROMPT_DEFINITION.UPDATED_AT, now)
                 .onConflict(PROMPT_DEFINITION.KEY).doNothing().execute();

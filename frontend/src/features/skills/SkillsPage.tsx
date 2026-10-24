@@ -3,8 +3,8 @@ import { ArrowCounterClockwise,ArrowUpRight,BookOpen,CaretRight,Copy,FileText,Fl
 import { useEffect,useRef,useState,type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { ApiError,HTTP_STATUS,copySkill,copySkillVersion,createSkill,getSkill,getSkillDraft,getSkillOperation,getSkillVersion,
-  listAgents,listProjects,listSkills,listSkillVersions,publishSkillVersion,retrySkillOperation,saveSkillDraft,skillAssetThumbnailUrl,updateSkill,
-  type CreativeSkill,type LibraryEntry,type SaveSkillDraftRequest,type SkillDraft,type SkillOperation,type SkillVersion } from "../../shared/api/client";
+  listProjects,listSkills,listSkillVersions,publishSkillVersion,retrySkillOperation,saveSkillDraft,skillAssetThumbnailUrl,updateSkill,
+  type CreativeSkill,type LibraryEntry,type SaveSkillDraftRequest,type SkillDraft,type SkillOperation,type SkillVersion,type SkillCategory } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
@@ -20,6 +20,8 @@ import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitive
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { ToggleGroup,ToggleGroupItem } from "../../shared/ui/primitives/toggle-group";
 import { LibraryBrowser } from "../library/LibraryBrowser";
+import { SkillCategoryFilter } from "./SkillCategoryFilter";
+import { skillCatalogueGroups } from "./skillCategories";
 import "./Skills.css";
 
 const AUTOSAVE_DELAY_MS = 650;
@@ -30,6 +32,7 @@ const MAX_RESOURCES = 8;
 const MAX_ASSETS = 14;
 const MAX_SLOTS = 14;
 const MAX_TITLE_LENGTH = 160;
+const H3_LICENSE = "MiniMax H3 Community License";
 const EMPTY_SKILL_MD = "---\nname: new-skill\ndescription: Describe when this Skill should be used.\n---\n\n# Creative method\n";
 const operationPending = (operation?: SkillOperation) => operation?.status === "ACCEPTED" || operation?.status === "ARCHIVING";
 function editable(draft: SkillDraft): Omit<SaveSkillDraftRequest,"expectedVersion"> {
@@ -40,24 +43,25 @@ export function SkillsPage() {
   const client = useQueryClient();
   const [query,setQuery] = useState("");
   const [trash,setTrash] = useState(false);
+  const [category,setCategory] = useState<SkillCategory>();
   const [selected,setSelected] = useState<CreativeSkill | null>(null);
   const [opened,setOpened] = useState<CreativeSkill[]>([]);
   function openSkill(skill:CreativeSkill) {setSelected(skill);setOpened((current)=>current.some((entry)=>entry.id===skill.id) ? current.map((entry)=>entry.id===skill.id ? skill:entry) : [...current,skill]);}
   const [newTitle,setNewTitle] = useState("");
-  const list = useInfiniteQuery({ queryKey: ["skills",query,trash], initialPageParam: undefined as string | undefined,
-    queryFn: ({pageParam}) => listSkills(query,pageParam,trash), getNextPageParam: (page) => page.nextCursor ?? undefined });
+  const list = useInfiniteQuery({ queryKey: ["skills",query,trash,category], initialPageParam: undefined as string | undefined,
+    queryFn: ({pageParam}) => listSkills(query,pageParam,trash,trash ? undefined:category), getNextPageParam: (page) => page.nextCursor ?? undefined });
   const create = useMutation({ mutationFn: () => createSkill(newTitle.trim()), onSuccess: (skill) => {
     openSkill(skill); setNewTitle(""); void client.invalidateQueries({queryKey:["skills"]});
   }});
   const loadedSkills = list.data?.pages.flatMap((page)=>page.items) ?? [];
   const catalogueGroups = trash
     ? [{label:t("skills.trash"),items:loadedSkills}]
-    : [{label:t("skills.builtin"),items:loadedSkills.filter((skill)=>skill.builtin)},
-      {label:t("skills.title"),items:loadedSkills.filter((skill)=>!skill.builtin)}];
+    : skillCatalogueGroups(loadedSkills);
   return <PageShell title={t("skills.title")} description={t("skills.description")}>
     <div className="skills-layout skills-workspace"><Panel title={trash ? t("skills.trash") : t("skills.active")} className="skills-sidebar" actions={list.data ? <Badge variant="secondary">{list.data.pages[0]?.total ?? 0}</Badge> : undefined}>
       <ToggleGroup className="skills-catalogue-tabs" type="single" variant="outline" size="sm" value={trash ? "trash":"active"} onValueChange={(value)=>{if(value)setTrash(value==="trash");}} aria-label={t("skills.title")}><ToggleGroupItem value="active"><BookOpen aria-hidden />{t("skills.active")}</ToggleGroupItem><ToggleGroupItem value="trash"><Trash aria-hidden />{t("skills.trash")}</ToggleGroupItem></ToggleGroup>
       <FieldGroup className="skills-search"><Field><FieldLabel className="sr-only" htmlFor="skill-search">{t("skills.search")}</FieldLabel><div className="skills-search-control"><MagnifyingGlass aria-hidden /><Input id="skill-search" placeholder={t("skills.search")} value={query} onChange={(event)=>setQuery(event.target.value)} /></div></Field></FieldGroup>
+      {!trash ? <SkillCategoryFilter value={category} onChange={setCategory} /> : null}
       {create.error ? <SkillError error={create.error} /> : null}
       {list.isPending ? <LoadingState label={t("common.loading")} /> : null}
       {list.error ? <SkillError error={list.error} onRefresh={()=>void list.refetch()} /> : null}
@@ -87,7 +91,11 @@ function BuiltinSkillViewer({skill}:{skill:CreativeSkill}) {
   const version=useQuery({queryKey:["skill-version",skill.id,skill.currentVersionId],queryFn:()=>getSkillVersion(skill.id,skill.currentVersionId!),enabled:Boolean(skill.currentVersionId)});
   const [tryOpen,setTryOpen]=useState(false);
   return <Panel title={skill.title} description={skill.description} className="skills-detail-panel skills-builtin-viewer" actions={<StatusBadge>{t("skills.builtin")}</StatusBadge>}>
-    <Notice><p>{t("skills.builtinHint")}</p><a href="https://github.com/zenstory-ai/drama-skills" target="_blank" rel="noreferrer">Drama Skills · MIT</a></Notice>
+    <Notice><p>{t("skills.builtinHint")}</p>{skill.builtinSource ? <>
+      <p><a href={skill.builtinSource.repository} target="_blank" rel="noreferrer">{skill.builtinSource.name}</a>{" · "}
+      <a href={skill.builtinSource.licenseUrl} target="_blank" rel="noreferrer">{skill.builtinSource.license}</a></p>
+      {skill.builtinSource.license === H3_LICENSE ? <p>{t("skills.restrictedLicense")}</p> : null}
+    </> : null}</Notice>
     {version.isPending ? <LoadingState label={t("common.loading")} /> : null}
     {version.error ? <SkillError error={version.error} onRefresh={()=>void version.refetch()} /> : null}
     {version.data ? <SkillVersionPreview version={version.data} actions={<Button onClick={()=>setTryOpen(true)}><ArrowUpRight data-icon="inline-start" />{t("skills.try")}</Button>} /> : null}
@@ -218,16 +226,14 @@ function SkillEditorForm({skill,initial,onSkillChanged}:{skill:CreativeSkill;ini
 function TrySkillDialog({version,onClose}:{version:SkillVersion;onClose:()=>void}) {
   const navigate = useNavigate();
   const [projectId,setProjectId] = useState("");
-  const [agentId,setAgentId] = useState("");
   const projects = useInfiniteQuery({queryKey:["projects","skill-try"],initialPageParam:undefined as string | undefined,queryFn:({pageParam})=>listProjects({cursor:pageParam}),getNextPageParam:(page)=>page.nextCursor??undefined});
-  const agents = useQuery({queryKey:["agents",projectId],queryFn:()=>listAgents(projectId),enabled:Boolean(projectId)});
   return <Dialog title={t("skills.try")} description={t("skills.tryHint")} className="skills-dialog skills-try-dialog" onClose={onClose} onSubmit={(event)=>{
-    event.preventDefault();if (!projectId || !agentId)return;
-    const params=new URLSearchParams({agentId,skillId:version.skillId,skillVersionId:version.id});navigate(`/projects/${projectId}?${params}`);
-  }} footer={<Button type="submit" disabled={!projectId || !agentId}>{t("skills.openAgent")}</Button>}>
-    <FieldGroup><Field><FieldLabel htmlFor="skill-try-project">{t("skills.project")}</FieldLabel><Select id="skill-try-project" value={projectId} onChange={(event)=>{setProjectId(event.target.value);setAgentId("");}}><option value="">{t("skills.project")}</option>{projects.data?.pages.flatMap((page)=>page.items).filter((project)=>project.status==="ACTIVE").map((project)=><option key={project.id} value={project.id}>{project.name}</option>)}</Select></Field><Field><FieldLabel htmlFor="skill-try-agent">{t("skills.agent")}</FieldLabel><Select id="skill-try-agent" disabled={!projectId || agents.isPending} value={agentId} onChange={(event)=>setAgentId(event.target.value)}><option value="">{t("skills.agent")}</option>{agents.data?.items.map((agent)=><option key={agent.id} value={agent.id}>{agent.name}</option>)}</Select></Field></FieldGroup>
+    event.preventDefault();if (!projectId)return;
+    const params=new URLSearchParams({skillId:version.skillId,skillVersionId:version.id});navigate(`/projects/${projectId}?${params}`);
+  }} footer={<Button type="submit" disabled={!projectId}>{t("skills.openAgent")}</Button>}>
+    <FieldGroup><Field><FieldLabel htmlFor="skill-try-project">{t("skills.project")}</FieldLabel><Select id="skill-try-project" value={projectId} onChange={(event)=>setProjectId(event.target.value)}><option value="">{t("skills.project")}</option>{projects.data?.pages.flatMap((page)=>page.items).filter((project)=>project.status==="ACTIVE").map((project)=><option key={project.id} value={project.id}>{project.name}</option>)}</Select></Field></FieldGroup>
     {projects.hasNextPage ? <Button onClick={()=>void projects.fetchNextPage()}>{t("projects.loadMore")}</Button> : null}
-    {projects.error || agents.error ? <SkillError error={(projects.error ?? agents.error)!} onRefresh={()=>{void projects.refetch();if(projectId)void agents.refetch();}} /> : null}
+    {projects.error ? <SkillError error={projects.error} onRefresh={()=>void projects.refetch()} /> : null}
     <p>{t("skills.fees")}</p>
   </Dialog>;
 }

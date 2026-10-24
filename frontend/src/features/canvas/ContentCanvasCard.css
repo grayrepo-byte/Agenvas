@@ -26,14 +26,14 @@
   overscroll-behavior: contain;
   scrollbar-color: var(--ui-scrollbar-thumb) transparent;
   scrollbar-width: thin;
-  cursor: text;
+  cursor: inherit;
   user-select: text;
   -webkit-user-select: text;
 }
 
 .content-card-body:focus-visible { outline: none; }
 .content-canvas-card:not(.is-selected):focus-within { box-shadow: 0 0 0 var(--ui-focus-width) var(--ui-focus); }
-.content-card-text { margin: 0; overflow-wrap: anywhere; color: var(--ui-text-secondary); font-size: var(--ui-text-md); font-weight: 400; line-height: 1.75; white-space: pre-wrap; }
+.content-card-text { margin: 0; cursor: text; overflow-wrap: anywhere; color: var(--ui-text-secondary); font-size: var(--ui-text-md); font-weight: 400; line-height: 1.75; white-space: pre-wrap; }
 .content-card-sources { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; min-width: 0; overflow: hidden; padding: 8px 20px 16px; }
 .content-card-chip { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border: 1px solid var(--ui-canvas-border); border-radius: var(--ui-radius-sm); background: transparent; color: var(--ui-text-muted); font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .content-card-chip svg { color: var(--ui-text-subtle); }
@@ -72,12 +72,8 @@
 }
 .text-card-done:hover:enabled { background: var(--ui-hover); color: var(--ui-text); }
 .text-card-done:disabled { cursor: not-allowed; opacity: .45; }
-.text-card-save:focus-visible, .text-card-version-tag:focus-visible,
-.text-card-version-option:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+.text-card-save:focus-visible, .text-card-version-tag:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .text-card-version-picker { position: relative; flex: none; }
-.text-card-version-menu {   width: 190px; max-height: 240px; }
-
-.text-card-version-option { justify-content: space-between; }
 
 .text-card-notice, .text-card-error {
   flex: none; margin: 0 0 8px; border-radius: var(--ui-radius-sm); padding: 6px 8px; font-size: var(--ui-text-xs); line-height: 1.5;

@@ -45,6 +45,21 @@ function ValuesHarness({ dialog = false, initialValues = {} }: { dialog?: boolea
 }
 
 describe("WorkflowMediaInputs", () => {
+  it("shows independent creator stages in published order without merging duplicate-purpose controls", () => {
+    const fields = [
+      { key: "baseRatio", label: "画幅", type: "STRING" as const, group: "基础生成", required: false, advanced: false },
+      { key: "finalRatio", label: "画幅", type: "STRING" as const, group: "放大输出", required: false, advanced: false },
+      { key: "fps", label: "帧率", type: "INTEGER" as const, group: "基础生成", required: false, advanced: false },
+    ];
+    const onChange = vi.fn();
+    render(<WorkflowParameterFields definition={{ fields }} values={{ baseRatio: "16:9", finalRatio: "9:16", fps: 24 }} prompt="" durationSeconds={null} onChange={onChange} />);
+    expect(screen.getAllByRole("columnheader", { name: "基础生成" })).toHaveLength(2);
+    expect(screen.getByRole("columnheader", { name: "放大输出" })).toBeInTheDocument();
+    const ratios = screen.getAllByRole("textbox", { name: "画幅" });
+    expect(ratios[0]).toHaveValue("16:9"); expect(ratios[1]).toHaveValue("9:16");
+    fireEvent.change(ratios[1]!, { target: { value: "4:3" } });
+    expect(onChange).toHaveBeenCalledWith("finalRatio", "4:3");
+  });
   it("displays native creator parameter descriptions without graph mapping labels", () => {
     const field: CreatorInputField = { key: "aspect_ratio", label: "Aspect ratio", type: "SELECT", required: false,
       advanced: false, description: "Only used for text-to-video; the first frame determines image-to-video proportions.",

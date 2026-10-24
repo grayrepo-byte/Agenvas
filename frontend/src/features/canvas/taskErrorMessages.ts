@@ -9,6 +9,7 @@ import { t } from "../../shared/i18n";
  * 未登记的码由调用方回退展示原始码，而不是隐藏——未知码至少还能拿去检索。
  */
 import type { Task } from "../../shared/api/client";
+export type ProviderFailureDiagnostic = NonNullable<NonNullable<Task["output"]>["providerFailure"]>;
 
 /** 与后端 `dev.agenvas.shared.error.ProviderFailureCodes` 一一对应，改一处必须同步另一处。 */
 export const PROVIDER_FAILURE_CODES = {
@@ -42,15 +43,29 @@ export const PROVIDER_FAILURE_CODES = {
   RESPONSE_TOO_LARGE: "PROVIDER_RESPONSE_TOO_LARGE",
   RESULT_TOO_LARGE: "PROVIDER_RESULT_TOO_LARGE",
   SUBMISSION_UNKNOWN: "PROVIDER_SUBMISSION_UNKNOWN",
+  RUNNINGHUB_AUTHENTICATION_FAILED: "RUNNINGHUB_AUTHENTICATION_FAILED",
+  RUNNINGHUB_BALANCE_INSUFFICIENT: "RUNNINGHUB_BALANCE_INSUFFICIENT",
+  RUNNINGHUB_PARAMETER_INVALID: "RUNNINGHUB_PARAMETER_INVALID",
+  RUNNINGHUB_RATE_LIMITED: "RUNNINGHUB_RATE_LIMITED",
+  RUNNINGHUB_UPLOAD_FAILED: "RUNNINGHUB_UPLOAD_FAILED",
+  RUNNINGHUB_GENERATION_FAILED: "RUNNINGHUB_GENERATION_FAILED",
+  RUNNINGHUB_RESULT_EXPIRED: "RUNNINGHUB_RESULT_EXPIRED",
+  RUNNINGHUB_RESULT_IDENTITY_CHANGED: "RUNNINGHUB_RESULT_IDENTITY_CHANGED",
+  RUNNINGHUB_PROTOCOL_INVALID: "RUNNINGHUB_PROTOCOL_INVALID",
+  RUNNINGHUB_UNAVAILABLE: "RUNNINGHUB_UNAVAILABLE",
 } as const;
 
 const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get ARTIFACT_VERSION_CONFLICT() { return t("agent.blocked.artifactVersionConflictDetail"); },
+  get STORYBOARD_VERSION_CONFLICT() { return t("agent.failure.storyboardVersionConflict"); },
   get LLM_RETRY_EXHAUSTED() { return t("agent.retry.exhausted"); },
+  get AGENT_CONTEXT_BUDGET_EXCEEDED() { return t("agent.blocked.contextBudget"); },
   get LLM_CONNECTION_FAILED() { return t("agent.retry.connection"); },
   get LLM_RATE_LIMITED() { return t("agent.retry.rateLimited"); },
   get LLM_SERVICE_UNAVAILABLE() { return t("agent.retry.unavailable"); },
   get LLM_CALL_TIMEOUT() { return t("agent.retry.timeout"); },
+  get LLM_INSUFFICIENT_CREDITS() { return t("agent.failure.insufficientCredits"); },
+  get LLM_MEDIA_INPUT_UNSUPPORTED() { return t("agent.failure.mediaInputUnsupported"); },
   get EXECUTION_HISTORY_CLEANED() { return t("tasks.errors.executionExpired"); },
   get PROVIDER_POLL_RETRY_EXHAUSTED() { return t("tasks.errors.pollRetryExhausted"); },
   // 措辞保持中性：连接超时也走这个码，那时请求可能根本没发出去，
@@ -63,6 +78,16 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get [PROVIDER_FAILURE_CODES.RESPONSE_TOO_LARGE]() { return t("tasks.errors.responseTooLarge"); },
   get [PROVIDER_FAILURE_CODES.RESULT_TOO_LARGE]() { return t("tasks.errors.resultTooLarge"); },
   get [PROVIDER_FAILURE_CODES.SUBMISSION_UNKNOWN]() { return t("tasks.errors.submissionVerificationRequired"); },
+  get RUNNINGHUB_AUTHENTICATION_FAILED() { return t("tasks.errors.runningHubAuthentication"); },
+  get RUNNINGHUB_BALANCE_INSUFFICIENT() { return t("tasks.errors.runningHubBalance"); },
+  get RUNNINGHUB_PARAMETER_INVALID() { return t("tasks.errors.runningHubParameter"); },
+  get RUNNINGHUB_RATE_LIMITED() { return t("tasks.errors.runningHubRateLimit"); },
+  get RUNNINGHUB_UPLOAD_FAILED() { return t("tasks.errors.runningHubUpload"); },
+  get RUNNINGHUB_GENERATION_FAILED() { return t("tasks.errors.runningHubGeneration"); },
+  get RUNNINGHUB_RESULT_EXPIRED() { return t("tasks.errors.runningHubResultExpired"); },
+  get RUNNINGHUB_RESULT_IDENTITY_CHANGED() { return t("tasks.errors.runningHubResultIdentity"); },
+  get RUNNINGHUB_PROTOCOL_INVALID() { return t("tasks.errors.runningHubProtocol"); },
+  get RUNNINGHUB_UNAVAILABLE() { return t("tasks.errors.runningHubUnavailable"); },
   get SEED_AUDIO_RESULT_UNKNOWN() { return t("tasks.errors.audioResultUnknown"); },
   get SEED_AUDIO_REJECTED() { return t("tasks.errors.audioRequestRejected"); },
   get AUTODL_CREATE_UNCERTAIN() { return t("tasks.errors.autoDlSubmissionUnknown"); },
@@ -110,6 +135,16 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get LOCAL_VIDEO_PROCESSING_TIMEOUT() { return t("tasks.errors.localVideoTimeout"); },
   get LOCAL_VIDEO_LIMIT_EXCEEDED() { return t("tasks.errors.localVideoLimits"); },
   get LOCAL_VIDEO_PROCESSING_CANCELED() { return t("tasks.errors.localVideoCanceled"); },
+  get VIDEO_COMPOSITION_INVALID() { return t("tasks.errors.compositionInvalid"); },
+  get VIDEO_COMPOSITION_AUDIO_OVERFLOW() { return t("tasks.errors.compositionAudioOverflow"); },
+  get LOCAL_VIDEO_COMPOSITION_FAILED() { return t("tasks.errors.compositionFailed"); },
+  get LOCAL_VIDEO_COMPOSITION_TIMEOUT() { return t("tasks.errors.compositionTimeout"); },
+  get LOCAL_VIDEO_COMPOSITION_CANCELED() { return t("tasks.errors.compositionCanceled"); },
+  get AUDIO_TRIM_INVALID() { return t("audio.trim.invalid"); },
+  get AUDIO_TRIM_OUTPUT_TOO_LARGE() { return t("audio.trim.outputTooLarge"); },
+  get LOCAL_AUDIO_TRIM_FAILED() { return t("audio.trim.processingFailed"); },
+  get LOCAL_AUDIO_TRIM_TIMEOUT() { return t("audio.trim.timeout"); },
+  get LOCAL_AUDIO_TRIM_CANCELED() { return t("audio.trim.canceled"); },
   get LOCAL_IMAGE_PROCESSING_FAILED() { return t("tasks.errors.localProcessingFailed"); },
   get LOCAL_IMAGE_ENCODING_FAILED() { return t("tasks.errors.localEncodingFailed"); },
 };
@@ -125,7 +160,29 @@ export function taskErrorMessage(errorCode: Task["errorCode"]): string | null {
  *
  * @returns 形如 {@code " · 调用超时，结果未知"}；未登记的码回退为该码本身
  */
-export function taskErrorDetail(errorCode: Task["errorCode"]): string {
-  if (!errorCode) return "";
-  return ` · ${taskErrorMessage(errorCode) ?? errorCode}`;
+export function taskErrorDetail(errorCode: Task["errorCode"], diagnostic?: ProviderFailureDiagnostic | null): string {
+  if (!errorCode && !diagnostic) return "";
+  const reason = errorCode ? taskErrorMessage(errorCode) ?? errorCode : "";
+  const includeAdvice = !diagnostic || reason !== t(RUNNINGHUB_CATEGORY_KEYS[diagnostic.category]);
+  return ` · ${[reason, providerFailureMessage(diagnostic, includeAdvice)].filter(Boolean).join(" · ")}`;
+}
+
+const RUNNINGHUB_CATEGORY_KEYS = {
+  AUTHENTICATION: "tasks.errors.runningHubAuthentication", BALANCE: "tasks.errors.runningHubBalance",
+  PARAMETER: "tasks.errors.runningHubParameter", RATE_LIMIT: "tasks.errors.runningHubRateLimit",
+  UPLOAD: "tasks.errors.runningHubUpload", GENERATION: "tasks.errors.runningHubGeneration",
+  DOWNLOAD_EXPIRED: "tasks.errors.runningHubResultExpired", UNAVAILABLE: "tasks.errors.runningHubUnavailable",
+  PROTOCOL: "tasks.errors.runningHubProtocol",
+} as const satisfies Record<ProviderFailureDiagnostic["category"], Parameters<typeof t>[0]>;
+const PROVIDER_STAGE_KEYS = { DISCOVERY: "tasks.providerStage.discovery", UPLOAD: "tasks.providerStage.upload",
+  SUBMIT: "tasks.providerStage.submit", POLL: "tasks.providerStage.poll", DOWNLOAD: "tasks.providerStage.download" } as const;
+
+/** Uses only the server's bounded diagnostic; upstream messages, bodies and URLs never enter this text. */
+export function providerFailureMessage(diagnostic?: ProviderFailureDiagnostic | null, includeAdvice = true): string {
+  if (!diagnostic) return "";
+  const parts = [t(PROVIDER_STAGE_KEYS[diagnostic.stage])];
+  if (includeAdvice) parts.push(t(RUNNINGHUB_CATEGORY_KEYS[diagnostic.category]));
+  if (diagnostic.nodeId) parts.push(t("tasks.providerLocation.node", { "0": diagnostic.nodeId }));
+  if (diagnostic.fieldName) parts.push(t("tasks.providerLocation.field", { "0": diagnostic.fieldName }));
+  return parts.join(" · ");
 }

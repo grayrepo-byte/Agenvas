@@ -18,6 +18,10 @@ spring:
       max-file-size: 500MB
       max-request-size: 501MB
   ai:
+    mcp:
+      server:
+        # Explicit registration below prevents exporting internal Agent tools automatically.
+        enabled: false
     model:
       chat: ${AGENVAS_LLM_CHAT_ADAPTER:none}
       embedding: none
@@ -42,6 +46,10 @@ server:
         secure: ${AGENVAS_SECURE_COOKIES:false}
 
 logging:
+  level:
+    # Upstream transport/handler diagnostics can include malformed request bodies or client-controlled metadata.
+    org.springframework.ai.mcp: "OFF"
+    io.modelcontextprotocol: "OFF"
   structured:
     format:
       console: ecs
@@ -70,6 +78,8 @@ springdoc:
     enabled: ${AGENVAS_OPENAPI_ENABLED:false}
 
 agenvas:
+  mcp:
+    enabled: ${AGENVAS_MCP_ENABLED:true}
   recovery-mode: ${AGENVAS_RECOVERY_MODE:false}
   media-templates:
     sync-enabled: ${AGENVAS_PROMPT_SYNC_ENABLED:true}

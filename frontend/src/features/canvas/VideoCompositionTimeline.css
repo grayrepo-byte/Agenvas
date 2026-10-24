@@ -1,0 +1,47 @@
+.video-composition-timeline { --video-timeline-label-width: 76px; flex: none; min-width: 0; border-top: 1px solid var(--ui-border); background: var(--ui-surface); padding: 0 var(--ui-space-4) var(--ui-space-3); }
+.video-composition-timeline .video-edit-timeline-toolbar { min-height: 40px; }
+.video-composition-zoom { display: flex; align-items: center; gap: var(--ui-space-1); margin-left: auto; }
+.video-composition-timeline-scroll { overflow-x: auto; overscroll-behavior-inline: contain; }
+.video-composition-timeline-grid { display: grid; grid-template-columns: var(--video-timeline-label-width) minmax(0, 1fr); min-height: 178px; }
+.video-composition-track-labels { position: sticky; left: 0; display: grid; grid-template-rows: 26px 84px 34px 34px; background: var(--ui-surface); z-index: 3; }
+.video-composition-track-labels > span, .video-composition-track-labels > button { display: flex; align-items: center; justify-content: flex-start; gap: var(--ui-space-2); font-size: var(--ui-text-xs); color: var(--ui-text-muted); }
+.video-composition-track-labels > span svg { width: 14px; height: 14px; }
+.video-composition-time-area { position: relative; background: var(--ui-field); }
+.video-composition-ruler { position: relative; height: 26px; background: var(--ui-surface); cursor: crosshair; touch-action: none; }
+.video-composition-ruler time { position: absolute; top: 0; font-variant-numeric: tabular-nums; color: var(--ui-text-subtle); font-size: 10px; white-space: nowrap; pointer-events: none; }
+.video-composition-ruler time::after { content: ''; position: absolute; left: 0; bottom: -10px; width: 1px; height: 5px; background: var(--ui-border-strong); }
+.video-composition-video-track { position: relative; height: 84px; }
+.video-composition-timeline-clip { position: absolute; top: 1px; height: 81px; border-radius: 5px; border: 1px solid var(--ui-border-strong); overflow: visible; }
+.video-composition-timeline-clip.is-active { border-color: var(--ui-accent); box-shadow: inset 0 0 0 1px var(--ui-accent); z-index: 2; }
+.video-composition-timeline-clip.is-current:not(.is-active) { border-color: var(--ui-text-muted); }
+.video-composition-timeline-clip.is-drop-target { outline: 2px solid var(--ui-focus); }
+.video-edit-timeline-clip-body { position: relative; display: block; width: 100%; height: 100%; padding: 0; overflow: hidden; border: 0; border-radius: 4px; cursor: grab; }
+.video-composition-clip-caption { position: absolute; inset: 0 0 auto; height: 23px; display: flex; align-items: center; gap: var(--ui-space-2); padding: 0 11px; background: var(--ui-selected); }
+.video-composition-clip-caption strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; font-weight: 500; font-size: var(--ui-text-xs); }
+.video-composition-clip-caption small { flex: none; font-size: 10px; color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
+.video-composition-filmstrip { position: absolute; inset: 23px 0 0; display: block; overflow: hidden; background: var(--ui-video-output-background); pointer-events: none; }
+.video-composition-frame-tile { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; border-right: 1px solid var(--ui-border); }
+.video-composition-frame-tile > img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.video-composition-frame-tile[data-frame-state="loading"] > img { opacity: .35; }
+.video-composition-frame-tile > svg { position: absolute; width: 14px; height: 14px; color: var(--ui-text-muted); }
+.video-composition-frame-tile[data-frame-state="failed"] { opacity: .4; }
+.video-composition-trim-handle { position: absolute; top: -1px; width: 9px; height: 81px; padding: 0; cursor: ew-resize; touch-action: none; border-radius: 3px; background: var(--ui-selected); }
+.video-composition-trim-handle.is-start { left: -1px; }
+.video-composition-trim-handle.is-end { right: -1px; }
+.video-composition-trim-handle > span { width: 2px; height: 16px; border-radius: 1px; background: var(--ui-text-secondary); pointer-events: none; }
+.video-composition-timeline-clip.is-active .video-composition-trim-handle { background: var(--ui-accent); }
+.video-composition-timeline-clip.is-active .video-composition-trim-handle > span { background: var(--ui-accent-foreground); }
+.video-composition-audio-track, .video-composition-caption-track { position: relative; height: 34px; border-top: 1px solid var(--ui-border); }
+.video-composition-music-block { height: 28px; min-width: 0; justify-content: flex-start; margin-top: 3px; border: 1px dashed var(--ui-border); overflow: hidden; font-size: var(--ui-text-xs); }
+.video-composition-music-block.has-content { border-style: solid; background: var(--ui-accent-subtle); }
+.video-composition-caption-track > button { position: absolute; top: 3px; height: 27px; min-width: 0; justify-content: flex-start; padding-inline: var(--ui-space-2); overflow: hidden; border: 1px solid var(--ui-border-strong); font-size: var(--ui-text-xs); }
+.video-composition-playhead { position: absolute; top: 14px; bottom: 0; width: 1px; background: var(--ui-accent); pointer-events: none; z-index: 2; }
+.video-composition-playhead > button { position: absolute; left: -8px; top: -3px; width: 17px; height: 18px; padding: 3px; pointer-events: auto; touch-action: none; cursor: ew-resize; }
+.video-composition-playhead > button > span { display: block; width: 9px; height: 12px; border-radius: 3px 3px 5px 5px; background: var(--ui-accent); }
+.video-composition-frame-error { padding: var(--ui-space-2); margin-top: var(--ui-space-2); font-size: var(--ui-text-xs); }
+.video-composition-frame-error [data-slot="alert-description"] { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-2); }
+@media (max-width: 580px) {
+  .video-composition-timeline { --video-timeline-label-width: 60px; padding-inline: var(--ui-space-2); }
+  .video-composition-timeline .video-edit-timeline-toolbar { flex-wrap: wrap; gap: var(--ui-space-1); padding-block: var(--ui-space-1); }
+  .video-composition-timeline .video-edit-timeline-toolbar p { display: none; }
+}

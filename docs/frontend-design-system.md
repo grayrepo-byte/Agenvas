@@ -20,6 +20,7 @@
 | 多行编辑的字体、行高与滚动条 | `styles.css` 的 `ui-multiline`，消费 `design-tokens.css` 的编辑器与滚动条变量 |
 | 日期与时间选择 | `frontend/src/shared/ui/DateTimePicker.tsx`，组合 `primitives/calendar.tsx`、`popover.tsx`、`input.tsx` |
 | 单选表单兼容层 | `frontend/src/shared/ui/Select.tsx`、`Dropdown.css` |
+| 单值参数滑块、媒体播放进度与色温轨道 | `frontend/src/shared/ui/Range.tsx`、`Range.css`，基于 shadcn Input 扩展 |
 | 动作、模型、版本、输入模式与引用菜单 | `frontend/src/shared/ui/primitives/dropdown-menu.tsx`、`command.tsx` |
 | 页面表单、面板、提示、状态、摘要与图标容器 | `PagePrimitives.tsx`、`PageTheme.css` |
 | 导航与页面框架 | `PageShell.tsx`、`PageShell.css` |
@@ -47,9 +48,30 @@
 
 ## 单选控件
 
-使用基于 shadcn/Radix 的 `Select` 兼容层，继续传入标准 `option`、`optgroup`、`value/defaultValue`、`onChange`、`name`、`required` 和 `disabled`。常规控件使用 shadcn 默认尺寸；画布使用 `density="compact"`。视觉、交互和选项结构由 `primitives/select.tsx` 维护，语义颜色映射到现有 `--ui-*` 主题。
+使用基于 shadcn/Radix 的 `Select` 兼容层，继续传入标准 `option`、`optgroup`、`value/defaultValue`、`onChange`、`name`、`required` 和 `disabled`。常规字段高36px、字号13px；紧凑筛选与画布工具栏使用 `density="compact"`，高32px、字号12px。`variant="ghost"` 只用于已经有容器的工具栏，保持相同尺寸与焦点规则。视觉由 `Dropdown.css` 统一维护，结构与交互由 `primitives/select.tsx` 管理，语义颜色映射到现有 `--ui-*` 主题。
 
 隐藏原生 select 只作为表单提交、必填校验和 change 事件桥接；label 指向可见的 shadcn 触发器。选项由 Radix Portal 与定位机制管理，避开画布缩放和祖先容器裁切；靠近视口底部向上展开，宽度与高度限制在视口内。提供方向键、Home/End、Enter/Space、前缀键入、Escape、Tab 和外部点击；禁用选项与禁用 optgroup 不可选择，禁用 fieldset 不可打开。选项更新会同步到已打开的面板，保存与业务版本检查仍由原应用服务处理。
+
+### 下拉框与滑块的统一视觉规范
+
+表单选择、富信息模型选择、动作/版本菜单、Command 选项共用冷调表面、文字层级、圆角与交互色。字段使用 `--ui-field`，菜单使用 `--ui-surface-raised`、细描边和 `--ui-menu-shadow`；菜单内留白6px、普通选项最小高34px，富信息行最小高56px。菜单左侧对齐触发器，Radix 负责碰撞翻转；触发器与菜单相距6px，不再叠加额外位移。长标题在触发器中省略，在菜单中按可用宽度换行；列表有界滚动，预留至少8px视口边距。
+
+选中项使用浅强调底色和勾选标记，悬停/键盘活动项使用 `--ui-hover`；不能把整行填成高饱和主色。展开时箭头翻转，错误边框使用 `--ui-danger` 并关联 `FieldError`，禁用项降低对比且不能操作。键盘聚焦仍使用统一的2px轮廓与2px偏移，减少动态效果偏好同时关闭箭头和选项过渡。业务 CSS 只负责宽度、排列、滚动和信息布局，不覆盖公共触发器的字体、颜色、圆角、边框或高度；密度通过组件属性选择。
+
+所有单值滑块使用 `Range`，由 shadcn Input 扩展原生 `input[type=range]`，保留原生事件、label、键盘、表单及媒体时钟的 ref 接口。不要在业务中直接创建原生 range，也不要用普通 Input 冒充滑块。
+
+| 使用场景 | `variant` | 轨道 / 拖柄 | 视觉与反馈 |
+| --- | --- | --- | --- |
+| 画笔大小、亮度等数值参数 | `parameter`（默认） | 4px / 12px | 主色已选范围、白色小圆柄，32px操作热区 |
+| 视频、审片、成片与运镜播放进度 | `media` | 3px / 8px | 中性浅色已播放范围；24px操作热区，粗指针设备至少32px |
+| 补光色温 | `temperature` | 4px / 12px | 公共 token 的暖色→中性→冷色连续轨道；取值仍显示为K |
+| 已解码音频波形 | `waveform` | 真实波形作为轨道 | 隐形 range 覆盖波形热区，外容器显示键盘焦点；不绘制第二根轨道 |
+
+轨道和拖柄的尺寸、色温端点、控件高度都从 `design-tokens.css` 获取。拖动时立即更新填充与业务预览，不对轨道位置做缓动；悬停、拖动和键盘焦点轻微放大拖柄，禁用时降低对比。非零/负数区间按 `(value-min)/(max-min)` 计算填充，无效或零长度区间不出现NaN样式。受控值通过 `value/onChange` 更新；运镜动画等不重绘React的时钟通过 `setRangeValue(input, value)` 同步原生值与填充，不在业务中操作公共CSS变量。
+
+应用内放大预览、区间裁切与对比复用 `VideoReviewControls`，音频卡片和分镜试听复用 `AudioPlayer`；不再并列显示浏览器系统播放器的另一套进度条。字幕、混音、逐帧、步长、取消/受理锁定、错误重试和关闭停止播放等语义由原业务组件维护。带真实帧胶片的剪辑时间线、波形和区间双端裁切手柄是媒体专用视图，继续保留其信息结构与可访问操作；不把它们替换成单值参数滑块。没有可测总量的后台状态使用加载/状态文案，不伪造完成百分比。
+
+`frontend/e2e/controls.html` 提供真实公共组件的合成验证页，覆盖常规/紧凑/富信息/长列表/错误/禁用选择器、参数/媒体/色温滑块与动作菜单。验收应同时检查桌面和窄屏、鼠标拖动、键盘Home/End/方向键、分组禁用、表单语义和菜单视口边界。ESLint 拒绝公共入口之外的原生 select/range，防止再次出现零散的系统默认控件；执行范围与结果记录在开发清单。
 
 ## 日期与时间
 
@@ -58,6 +80,8 @@
 ## 动作菜单
 
 使用 `primitives/dropdown-menu.tsx` 的 Root、Trigger、Content、Group、Item 和 Sub 组合。模型、版本和工具菜单由 Radix 管理键盘、禁用、Portal、外部关闭及焦点恢复；异步保存继续由调用方控制关闭时机。引用补全和画布添加卡片使用 `Command`、`CommandList`、`CommandGroup`、`CommandItem`，由编辑器保留文字光标与活动引用。
+
+画布四类内容的工具栏版本菜单复用 `features/canvas/CanvasVersionMenu.tsx` 与配套样式，统一数量摘要、富信息版本行、当前选用标记、创建时间、状态区和视口内滚动。`MediaVersionPicker` 提供图片/视频缩略图或音频图标，`TextVersionPicker` 提供正文摘要和来源；视频审片入口独立置底。查询、编号、脏草稿保护和 CAS 仍由各业务选择器负责，不将文字的资源默认版本和媒体的节点选用版本混为同一状态。
 
 引用来源菜单保留悬停入口，指针进入 Portal 后取消延迟关闭。参数/资源选择器包含专用编辑逻辑，仍使用 `ui-popover-surface`；画布通过 `isolation` 将 React Flow 工具栏限制在自身层级中，使 body Portal 的组件可正常显示。
 
@@ -151,6 +175,14 @@ MediaDraftEditor、MediaCanvasCard、Select 与 DropdownMenu 共 108 项定向�
 
 ## 轻量画布工作区（2026-10-21）
 
+### 视口移动与操作反馈（2026-10-23）
+
+画布相机使用 React Flow 原生过渡统一管理，点击/整理定位为按距离调整的 240–420ms，缩放按钮为 220ms，适应画布/反馈定位为 360ms；缓出曲线提供快速响应与柔和落点，线性路径插值避免长距离移动中额外缩放。首次加载保持即时适配，已对齐的目标不做多余移动。文字仍按实际节点、四行编辑器和操作栏测量目标，动效不改变最终可用空间。
+
+相机可以在任意阶段由新目标或用户接管。工作区捕获指针按下和滚轮，在 React Flow 记录拖动的世界坐标前冻结当前视口；同时取消待执行的文字测量聚焦。用户手势、窗口失焦或隐藏、减少动态效果偏好改变时停止旧动画；不以可能被中断的原生 Promise 阻塞输入或编辑器。新目标从当前画面继续移动，不排队、不回到旧起点。
+
+卡片/分组的边框、阴影与文字颜色使用 150ms 反馈，工具按钮有 100ms 的轻微按压；节点工具栏、编辑栏内容与多选工具栏使用 180ms、4px 淡入。动画仅施加于内层表面，不对 React Flow 节点/视口 transform、业务坐标、节点尺寸或折叠几何加 CSS transition，不重挂载编辑器，也不为所有节点持续开启 will-change 或滤镜。`prefers-reduced-motion` 下停用相机过渡、位移进场和按压缩放；颜色与选择状态仍即时反馈。
+
 画布使用公共画布 token 的深灰点阵、细边框和轻阴影，沿用蓝色主色。左上悬浮区域承载项目返回、名称与保存状态，资源和导出位于右上；左侧中部直接展示创建、选择、手形与设置。选择/手形复用 shadcn ToggleGroup，Tooltip 提示 V、Space，键盘与输入隔离规则沿用现有实现。“+”菜单贴近按钮展开，节点创建在当前可见画布中心；双击创建保留原落点。空态直接展示四种内容类型。
 
 左下缩放和概览紧凑排列，右下导演入口使用次级表面。节点动作条、编辑器与导演窗口消费公共语义变量，保留各自层级、焦点和草稿生命周期；自适应编辑栏的宽度、内容高度测量和可视边缘避让不变。桌面从 1024px 提供编辑，更窄视口保留现有简化提示。此修订替代下述右上角折叠工具栏布局，产品决定见 [ADR 0005](adr/0005-canvas-interaction-redesign.md#轻量画布布局修订2026-10-21)。
@@ -171,7 +203,7 @@ FormattedCallExchange 与 CallLogsPage 共 19 项测试、主题颜色检查及 
 
 全屏智能编辑复用公共 Radix Dialog 的焦点隔离、初始焦点与关闭恢复；公共弹窗层级由 `--ui-z-dialog` 集中维护，高于画布浮动工具栏；公共 Select/DropdownMenu 使用更高的 `--ui-z-popup`，确保根部 Portal 不被弹窗遮挡。全屏样式同时重置 `transform` 与 `translate`。模型菜单先处理 Esc，画布的全局 Esc 在存在模态或弹出层时不取消选中；未提交提示词、参考图或蒙版退出提供继续编辑/放弃修改。
 
-文字节点的显式退出提供继续编辑/放弃修改/保存并退出，保存失败和冲突保持草稿与 CAS 基准，并显示未保存状态。文字编辑工具条允许换行，生成面板在选中聚焦时预留自己的高度；1280×800 浏览器复测面板底部为 709.5px。新建 Agent 自动选中并适屏，配置输入在同一卡片的聊天/设置标签之间保留。
+文字节点的显式退出提供继续编辑/放弃修改/保存并退出，保存失败和冲突保持草稿与 CAS 基准，并显示未保存状态。文字编辑工具条允许换行，生成面板在选中聚焦时预留自己的高度；1280×800 浏览器复测面板底部为 709.5px。项目导演由右下角唯一入口恢复或初始化，不创建画布节点；会话和配置草稿在聊天、历史与设置之间保留。
 
 资产网格的主按钮按内容自适应高度，缩略图和信息完整展示。资产动作名称按查看详情、放到画布、用作参考区分；项目资源使用本地化类型及默认结果状态，不用“草稿”代替未设置资源默认版本。
 

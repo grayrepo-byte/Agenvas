@@ -186,6 +186,17 @@ class DebugHttpCaptureTest {
         }
     }
 
+    @Test void llmDebugOmitsAudioSamplesWhilePreservingFormatAndText() {
+        try (var capture = DebugHttpCapture.openLlm(ignored -> {})) {
+            String body = capture.sanitizeJson("""
+                    {"messages":[{"content":[{"type":"text","text":"Inspect this sample"},
+                    {"type":"input_audio","input_audio":{"data":"c3ludGhldGljLWF1ZGlv","format":"wav"}}]}]}
+                    """);
+            assertThat(body).contains("[audio bytes omitted]", "Inspect this sample", "wav")
+                    .doesNotContain("c3ludGhldGljLWF1ZGlv");
+        }
+    }
+
     @Test void llmDebugPreservesBodyFieldsNumbersAndTextEvenWhenTheyMatchHeaders() {
         String json = """
                 {"model":"synthetic-2-model","stream":true,"temperature":0.25,

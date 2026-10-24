@@ -1,6 +1,7 @@
 package dev.agenvas.canvas.infrastructure;
 
 import static dev.agenvas.db.Tables.CANVAS_CONNECTION;
+import static dev.agenvas.db.Tables.CANVAS_ITEM;
 import static dev.agenvas.db.Tables.PROJECT;
 
 import dev.agenvas.canvas.application.CanvasConnectionRepository;
@@ -61,6 +62,22 @@ public class JooqCanvasConnectionRepository implements CanvasConnectionRepositor
                 .and(PROJECT.OWNER_ID.eq(ownerId))
                 .orderBy(CANVAS_CONNECTION.CREATED_AT, CANVAS_CONNECTION.ID)
                 .fetch(row -> map(row.into(CANVAS_CONNECTION)));
+    }
+
+    @Override
+    public TopologyGuard copyGuard(UUID ownerId, UUID projectId, UUID canvasItemId) {
+        long epoch = dsl.select(CANVAS_ITEM.TOPOLOGY_EPOCH).from(CANVAS_ITEM)
+                .join(PROJECT).on(PROJECT.ID.eq(CANVAS_ITEM.PROJECT_ID))
+                .where(PROJECT.OWNER_ID.eq(ownerId)).and(CANVAS_ITEM.PROJECT_ID.eq(projectId))
+                .and(CANVAS_ITEM.ID.eq(canvasItemId)).fetchOptional(CANVAS_ITEM.TOPOLOGY_EPOCH)
+                .orElseThrow(() -> new IllegalStateException("Owned canvas copy target disappeared"));
+        List<CanvasConnection> edges = dsl.select(CANVAS_CONNECTION.fields()).from(CANVAS_CONNECTION)
+                .join(PROJECT).on(PROJECT.ID.eq(CANVAS_CONNECTION.PROJECT_ID))
+                .where(PROJECT.OWNER_ID.eq(ownerId)).and(CANVAS_CONNECTION.PROJECT_ID.eq(projectId))
+                .and(CANVAS_CONNECTION.SOURCE_CANVAS_ITEM_ID.eq(canvasItemId)
+                        .or(CANVAS_CONNECTION.TARGET_CANVAS_ITEM_ID.eq(canvasItemId)))
+                .orderBy(CANVAS_CONNECTION.ID).fetch(row -> map(row.into(CANVAS_CONNECTION)));
+        return new TopologyGuard(epoch, edges);
     }
 
     @Override

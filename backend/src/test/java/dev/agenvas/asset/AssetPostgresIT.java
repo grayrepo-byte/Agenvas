@@ -18,7 +18,6 @@ import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.asset.infrastructure.LocalAssetStorage;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.bootstrap.AgenvasApplication;
-import dev.agenvas.canvas.application.CanvasConnectionService;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
@@ -86,7 +85,6 @@ class AssetPostgresIT {
     @Autowired private AssetService assets;
     @Autowired private AgentInstanceService agents;
     @Autowired private CanvasService canvasService;
-    @Autowired private CanvasConnectionService connections;
     @Autowired private LocalAssetStorage storage;
     @Autowired private MediaToolRunner mediaTools;
     @Autowired private JdbcClient jdbc;
@@ -341,14 +339,13 @@ class AssetPostgresIT {
         assertThat(mapper.readTree(canvas.getResponse().getContentAsString())
                 .path("items").path(0).path("artifact").path("resourceDefaultVersion")
                 .path("content").path("assetId").asText()).isEqualTo(id.toString());
-        var agent = AgentImageInputFixture.connect(agents, canvasService, connections,
+        var agent = AgentImageInputFixture.withCanvasImage(agents, canvasService,
                 owner.userId(), project.id(), artifactId, versionId,
                 "Reference creator", "Use only the selected input");
         assertThat(agent.projectId()).isEqualTo(project.id());
-        assertThat(java.util.stream.StreamSupport.stream(canvasService.freezeRunScope(owner.userId(), project.id())
-                .path("items").spliterator(), false)).anySatisfy(item -> {
-            assertThat(item.path("artifactId").asText()).isEqualTo(artifactId.toString());
-            assertThat(item.path("selectedVersionId").asText()).isEqualTo(versionId.toString());
+        assertThat(canvasService.list(owner.userId(), project.id())).anySatisfy(item -> {
+            assertThat(item.item().subjectId()).isEqualTo(artifactId);
+            assertThat(item.item().selectedVersionId()).isEqualTo(versionId);
         });
 
         mvc.perform(multipart(path)

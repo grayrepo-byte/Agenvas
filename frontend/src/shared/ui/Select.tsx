@@ -77,7 +77,7 @@ export function Select({ children, className, density = "regular", variant = "de
       </SelectTrigger>
       <SelectContent position="popper" sideOffset={MENU_GAP} collisionPadding={VIEWPORT_MARGIN} portalContainer={portalContainer}
         className={cn("nodrag nowheel nopan", optionDetails && "ui-select-model-menu")} variant={variant}
-        presentation={optionDetails ? "rich" : "default"} align={variant === "ghost" ? "start" : "center"} aria-label={props["aria-label"] ?? label}
+        presentation={optionDetails ? "rich" : "default"} align="start" aria-label={props["aria-label"] ?? label}
         onCloseAutoFocus={(event) => {
           // Continue Tab traversal after Radix unmounts its focus scope, avoiding a
           // race with the library restoring focus to the trigger.

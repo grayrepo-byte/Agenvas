@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import textwrap
 import unittest
 
 
@@ -10,6 +11,37 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("ci", SCRIPT_DIR / "ci.py")
 ci = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ci)
+
+
+def workflow_jobs(workflow):
+    # Job order is cosmetic; only another job at this indentation ends its body.
+    jobs = re.split(r"(?m)^jobs:[ \t]*(?:#[^\n]*)?\n", workflow, maxsplit=1)[1]
+    parts = re.split(r"\n  ([A-Za-z_][A-Za-z0-9_-]*):[ \t]*(?:#[^\n]*)?\n", "\n" + jobs)
+    return dict(zip(parts[1::2], parts[2::2]))
+
+
+def job_needs(job):
+    # Read only this field, accepting GitHub's scalar, flow-list and block-list forms.
+    field = re.search(r"(?m)^    needs:[ \t]*(\[[^]]*\]|[^\n]*)", job)
+    if field is None:
+        return set()
+    value = re.sub(r"(?m)#[^\n]*", "", field.group(1)).strip()
+    if not value:
+        block = re.match(r"\n((?:      (?:- |#)[^\n]*(?:\n|$)|[ \t]*\n)*)", job[field.end():]).group(1)
+        values = re.findall(r"(?m)^      - (.+)$", block)
+    else:
+        values = value.strip("[]").split(",")
+    names = {value.split("#", 1)[0].strip().strip("\"'") for value in values}
+    if not all(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", name) for name in names):
+        raise ValueError("Unsupported workflow dependency syntax")
+    return names
+
+
+def job_run_commands(job):
+    # This job uses ordinary scalar or literal-block run steps, not a YAML interpreter.
+    for step in re.finditer(r"(?m)^(?:      - |        )run: ([^\n]+)\n((?:          [^\n]*\n|\n)*)", job):
+        command, block = step.groups()
+        yield textwrap.dedent(block) if command.split("#", 1)[0].strip() in {"|", "|-", "|+"} else command
 
 
 class PlanningTest(unittest.TestCase):
@@ -88,30 +120,72 @@ class ShardingTest(unittest.TestCase):
                     ci.integration_shard(Path(folder), index, count)
 
 
+class RuntimeDependenciesTest(unittest.TestCase):
+    def test_backend_unit_installs_media_tools_before_running_tests(self):
+        workflow = (SCRIPT_DIR.parents[1] / ".github/workflows/ci.yml").read_text()
+        unit_job = workflow_jobs(workflow)["backend-unit"]
+        # These tests launch /usr/bin/ffmpeg and /usr/bin/ffprobe; Ubuntu's
+        # ffmpeg package supplies both binaries before Surefire starts. Exercise
+        # the commands with isolated tools, allowing harmless shell/apt flag edits.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            scripts = {
+                # Only common flag-only sudo/apt options are needed here; these
+                # stand-ins deliberately do not parse arbitrary command syntax.
+                "sudo": 'while [ "$#" -gt 0 ]; do\n'
+                        '  case "$1" in\n'
+                        '    -n|--non-interactive|-E) shift ;;\n'
+                        '    --) shift; break ;;\n'
+                        '    *) break ;;\n'
+                        '  esac\ndone\nexec "$@"\n',
+                "apt-get": 'while [ "$#" -gt 0 ]; do\n'
+                           '  case "$1" in -*) shift ;; *) break ;; esac\n'
+                           'done\n'
+                           'if [ "${1:-}" = install ]; then\n'
+                           '  shift\n'
+                           '  for package in "$@"; do\n'
+                           '    if [ "$package" = ffmpeg ]; then touch "$MEDIA_TOOLS_READY"; fi\n'
+                           '  done\nfi\n',
+                "mvnw": 'test -f "$MEDIA_TOOLS_READY" || { echo "Media tools missing before Maven" >&2; exit 1; }\n'
+                        'touch "$MAVEN_STARTED"\n',
+            }
+            for name, script in scripts.items():
+                path = root / name
+                path.write_text("#!/bin/sh\nset -eu\n" + script)
+                path.chmod(0o700)
+            environment = {"PATH": f"{root}:/usr/bin:/bin",
+                           "MEDIA_TOOLS_READY": str(root / "media-ready"),
+                           "MAVEN_STARTED": str(root / "maven-started")}
+            for command in job_run_commands(unit_job):
+                result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", command],
+                                        cwd=root, env=environment, capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((root / "maven-started").is_file(), "The workflow must run Maven after installing media tools")
+
+
 class GateTest(unittest.TestCase):
     def test_publishing_credentials_are_only_used_after_the_gate_on_tag_pushes(self):
         workflow = (SCRIPT_DIR.parents[1] / ".github/workflows/ci.yml").read_text()
-        parts = re.split(r"\n  ([a-z][a-z-]+):\n", workflow.split("\njobs:\n", 1)[1])
-        sections = dict(zip(parts[1::2], parts[2::2]))
+        sections = workflow_jobs(workflow)
         credential_jobs = {job for job, body in sections.items() if "secrets.DOCKERHUB_" in body}
         self.assertEqual(credential_jobs, {"push-images", "publish-dockerhub"})
-        self.assertIn("needs: [ci-gate]", sections["push-images"])
-        self.assertIn("needs: [push-images]", sections["publish-dockerhub"])
+        self.assertEqual(job_needs(sections["push-images"]), {"ci-gate"})
+        self.assertEqual(job_needs(sections["publish-dockerhub"]), {"push-images"})
         for job in credential_jobs:
             self.assertIn("if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')", sections[job])
 
     def test_workflow_gate_waits_for_every_validation_job(self):
         workflow = (SCRIPT_DIR.parents[1] / ".github/workflows/ci.yml").read_text()
-        jobs = set(re.findall(r"^  ([a-z][a-z-]+):$", workflow.split("\njobs:\n", 1)[1], re.M))
-        gate = workflow.split("\n  ci-gate:", 1)[1].split("\n  push-images:", 1)[0]
-        dependencies = set(re.search(r"needs: \[([^]]+)\]", gate).group(1).replace(" ", "").split(","))
+        sections = workflow_jobs(workflow)
+        jobs = set(sections)
+        dependencies = job_needs(sections["ci-gate"])
         self.assertEqual(dependencies, jobs - {"ci-gate", "push-images", "publish-dockerhub", "github-release"})
         self.assertEqual(dependencies, set(ci.CODE_JOBS + ci.ALWAYS_JOBS))
 
     def test_release_write_permission_is_gated_by_successful_tag_image_publication(self):
         workflow = (SCRIPT_DIR.parents[1] / ".github/workflows/ci.yml").read_text()
-        release_job = workflow.split("\n  github-release:\n", 1)[1]
-        self.assertIn("needs: [ci-gate, publish-dockerhub]", release_job)
+        release_job = workflow_jobs(workflow)["github-release"]
+        self.assertEqual(job_needs(release_job), {"ci-gate", "publish-dockerhub"})
         self.assertIn("if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')", release_job)
         self.assertNotIn("always()", release_job)
         self.assertEqual(workflow.count("contents: write"), 1)

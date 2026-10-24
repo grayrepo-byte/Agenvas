@@ -41,7 +41,7 @@ beforeEach(() => {
     http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "owner", loginName: "admin", role: "ADMIN" })),
     http.get("/api/v1/projects/:id", () => HttpResponse.json(project)),
     http.get("/api/v1/projects/:id/snapshot", () => HttpResponse.json({ project, canvas: { items }, connections,
-      agents: [], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 })),
+      director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0 })),
     http.get("/api/v1/projects/:id/canvas/items", () => HttpResponse.json({ items })),
     http.get("/api/v1/projects/:id/canvas/connections", () => HttpResponse.json({ items: connections })),
   );

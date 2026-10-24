@@ -164,7 +164,12 @@ class FlywayBaselinePostgresIT {
             canvasBefore = rowSnapshot(connection, "canvas_item", "to_jsonb(t)-'agent_instance_id'", "subject_type='ARTIFACT'");
             history.put("canvas_connection", rowSnapshot(connection, "canvas_connection", "to_jsonb(t)", "relation_type<>'AGENT_IMAGE_INPUT'"));
         }
-        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 25);
+        // This fixture deliberately contains live/UNKNOWN execution checkpoints:
+        // it verifies V26 topology retirement, not a later authorized history reset.
+        Flyway topologyUpgrade = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("26").load();
+        assertThat(topologyUpgrade.migrate().migrationsExecuted).isEqualTo(1);
         try (Connection connection = connection()) {
             for (var entry : history.entrySet()) assertThat(rowSnapshot(connection, entry.getKey(), "to_jsonb(t)", "true"))
                     .as("preserved %s", entry.getKey()).isEqualTo(entry.getValue());
@@ -410,7 +415,10 @@ class FlywayBaselinePostgresIT {
             execute(connection, "insert into skill_version(id,owner_id,skill_id,version_number,bundle_hash,bundle_json,created_at) values (?,?,?,1,repeat('0',64),'{\"schemaVersion\":1}',now())", version, owner, skill);
             execute(connection, "insert into agent_skill_binding(agent_id,project_id,owner_id,skill_id,skill_version_id,position,updated_at) values (?,?,?,?,?,7,now())", agent, project, owner, skill, version);
         }
-        assertThat(flyway.migrate().migrationsExecuted).isEqualTo(MigrationVersions.sorted().size() - 13);
+        Flyway skillCatalogueUpgrade = Flyway.configure()
+                .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
+                .locations("classpath:db/migration").target("14").load();
+        assertThat(skillCatalogueUpgrade.migrate().migrationsExecuted).isEqualTo(1);
         try (Connection connection = connection()) {
             assertThat(text(connection, "select skill_version_id::text from agent_skill_binding where agent_id=? and position=7", agent)).isEqualTo(version.toString());
             assertThat(text(connection, "select builtin_key from creative_skill where id=?", skill)).isNull();
@@ -742,13 +750,12 @@ class FlywayBaselinePostgresIT {
     }
 
     @Test
-    void conversationAndRunOwnershipStayWithinTheirProjectAndAgent() throws Exception {
+    void conversationsShareOneDirectorAndRunOwnershipStaysWithinItsProject() throws Exception {
         flyway.migrate();
         UUID owner = UUID.randomUUID();
         UUID project = UUID.randomUUID();
         UUID foreignProject = UUID.randomUUID();
         UUID agent = UUID.randomUUID();
-        UUID otherAgent = UUID.randomUUID();
         UUID foreignAgent = UUID.randomUUID();
         UUID conversation = UUID.randomUUID();
         UUID otherConversation = UUID.randomUUID();
@@ -759,10 +766,9 @@ class FlywayBaselinePostgresIT {
             insertProject(connection, project, owner);
             insertProject(connection, foreignProject, owner);
             insertAgent(connection, project, agent);
-            insertAgent(connection, project, otherAgent);
             insertAgent(connection, foreignProject, foreignAgent);
             insertConversation(connection, project, agent, conversation);
-            insertConversation(connection, project, otherAgent, otherConversation);
+            insertConversation(connection, project, agent, otherConversation);
             insertConversation(connection, foreignProject, foreignAgent, foreignConversation);
             execute(connection, """
                     insert into agent_run(id,project_id,agent_instance_id,user_id,status,instruction,
@@ -772,10 +778,9 @@ class FlywayBaselinePostgresIT {
                     """, run, project, agent, owner, conversation);
             execute(connection, "update agent_instance set current_conversation_id=? where id=?", conversation, agent);
 
-            for (UUID invalidConversation : List.of(otherConversation, foreignConversation)) {
-                assertRejected(connection, FOREIGN_KEY_VIOLATION,
-                        "update agent_run set conversation_id=? where id=?", invalidConversation, run);
-            }
+            execute(connection, "update agent_run set conversation_id=? where id=?", otherConversation, run);
+            assertRejected(connection, FOREIGN_KEY_VIOLATION,
+                    "update agent_run set conversation_id=? where id=?", foreignConversation, run);
             assertRejected(connection, FOREIGN_KEY_VIOLATION, """
                     insert into agent_conversation(id,project_id,agent_instance_id,title,created_at,updated_at)
                     values (?,?,?,'Wrong project',now(),now())

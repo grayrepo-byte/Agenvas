@@ -49,7 +49,7 @@ class AgentSkillImageInputServiceTest {
     private final AssetService assets = mock(AssetService.class);
     private final SkillService skills = mock(SkillService.class);
     private final ToolExecutionRepository ledger = mock(ToolExecutionRepository.class);
-    private final AgentImageInputService service = new AgentImageInputService(artifacts, assets, mapper, skills, ledger);
+    private final AgentImageInputService service = new AgentImageInputService(artifacts, assets, mapper, skills, ledger, mock(AgentMediaSampleService.class));
     private final AgentImageInputService.SkillInput input = new AgentImageInputService.SkillInput(skill, version, "style", hash);
     @TempDir Path directory;
 
@@ -146,7 +146,7 @@ class AgentSkillImageInputServiceTest {
             var visible = mock(ArtifactVersion.class);
             when(visible.artifactId()).thenReturn(artifactId);
             when(visible.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
-            when(artifacts.requireAgentVisibleVersion(owner, project, run, versionId, snapshot())).thenReturn(visible);
+            when(artifacts.requireAgentReadableVersion(owner, project, snapshot(), run, versionId)).thenReturn(visible);
             var asset = mock(Asset.class);
             when(asset.projectId()).thenReturn(project);
             when(asset.mediaKind()).thenReturn(Asset.MediaKind.IMAGE);

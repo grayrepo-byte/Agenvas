@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.provider.domain.AttemptContext;
 import dev.agenvas.provider.domain.NativeMediaFailure;
+import dev.agenvas.provider.domain.NativeMediaProtocol;
 import dev.agenvas.provider.domain.WanModels;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.WanClient;
@@ -24,7 +25,8 @@ class WanVideoAdapterTest {
     private final MediaToolRunner tools = mock(MediaToolRunner.class);
     private final WanVideoAdapter adapter = new WanVideoAdapter(mock(JooqMediaCapabilityRepository.class), mock(CredentialCipher.class),
             mock(WanClient.class), mock(WanMediaDownloadPolicy.class), mapper, mock(NativeMediaReferences.class), tools);
-    private final dev.agenvas.provider.domain.NativeMediaProtocol.Profile profile = new WanModels().profiles().get(2);
+    private final NativeMediaProtocol.Profile profile = new NativeMediaProtocol.Profile(
+            WanModels.VIDEO_ADAPTER_ID, "wan3.0-video", "GENERATE", Task.Kind.VIDEO_GENERATION);
     @Test void preservesNativeAudioAndVerifiesFixedDurationAgainstActualMp4() {
         var values = mapper.createObjectNode().put("duration", 5).put("audio", true);
         probe(5.2, true, true); adapter.validateResult(null, profile, values, Path.of("synthetic-result"));

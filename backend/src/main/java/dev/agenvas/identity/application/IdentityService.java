@@ -37,6 +37,12 @@ public class IdentityService {
         this.clock = clock;
     }
 
+    /** 通过身份应用接口复核委托凭据的用户状态，其他模块不读取账户表。 */
+    @Transactional(readOnly = true)
+    public boolean isActiveUser(UUID userId) {
+        return userId != null && accounts.isActiveById(userId);
+    }
+
     /** 串行创建管理员并持久记录完成状态；停用或删除账户也不重新开放初始化。 */
     @Transactional
     public AdminPrincipal setup(String loginName, String password) {

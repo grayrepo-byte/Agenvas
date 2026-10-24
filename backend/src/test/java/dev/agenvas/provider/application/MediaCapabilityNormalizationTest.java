@@ -63,6 +63,31 @@ class MediaCapabilityNormalizationTest {
             Clock.fixed(NOW, ZoneOffset.UTC), mapper,
             new ProviderModeProperties(ProviderModeProperties.Mode.CONFIGURED));
 
+    @Test
+    void planningCatalogMarksDefaultsAndExposesOnlyPublishedInputsAndGenerationDefaults() {
+        var catalog = org.mockito.Mockito.spy(service);
+        var binding = new MediaCapabilityBinding(CONNECTION_ID, 1, CAPABILITY_ID, 1, "MINIMAX_H3", "synthetic-hash");
+        var settings = mapper.readTree("""
+                {"defaultParameters":{"videoResolution":"1440p"},"defaultDurationSeconds":7,
+                 "nativeInputs":[{"key":"resolution","type":"SELECT","options":[{"value":"720p","label":"720P"}]}],
+                 "pricing":{"amount":"2","currency":"CNY","unit":"SECOND"},
+                 "origin":"PRIVATE_ORIGIN","apiKey":"PRIVATE_KEY","workflowGraph":"PRIVATE_GRAPH"}
+                """);
+        org.mockito.Mockito.doReturn(List.of(new MediaCapabilityService.Candidate(binding, "My video connection", "My video model",
+                Task.Kind.VIDEO_GENERATION, 4, 15, false, settings))).when(catalog).publishedCandidates();
+        org.mockito.Mockito.doReturn(null).when(catalog).defaultCapabilityId(any());
+        org.mockito.Mockito.doReturn(CAPABILITY_ID).when(catalog).defaultCapabilityId(Task.Kind.VIDEO_GENERATION);
+        org.mockito.Mockito.doReturn(new MediaAdapterRegistry(List.of()).declaration("MINIMAX_H3")).when(catalog).inputPolicy(binding);
+        org.mockito.Mockito.doReturn(null).when(catalog).runningHubDefinition(binding);
+        JsonNode result = catalog.planningCatalog();
+        assertThat(result.size()).isEqualTo(1);
+        assertThat(result.at("/0/isDefault").asBoolean()).isTrue();
+        assertThat(result.at("/0/defaultParameters/videoResolution").asText()).isEqualTo("1440p");
+        assertThat(result.at("/0/defaultDurationSeconds").asInt()).isEqualTo(7);
+        assertThat(result.at("/0/fields/0/key").asText()).isEqualTo("resolution");
+        assertThat(result.toString()).doesNotContain("PRIVATE_ORIGIN", "PRIVATE_KEY", "PRIVATE_GRAPH");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"WAN_IMAGE", "WAN_VIDEO", "ARK_SEEDREAM_IMAGE", "GOOGLE_VEO",
             "GOOGLE_OMNI_VIDEO", "KLING_IMAGE", "KLING_VIDEO"})

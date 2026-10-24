@@ -53,16 +53,27 @@ async function waitFor(fn, ...args) {
   }
   throw new Error(`Timed out waiting for workspace: ${await page(() => document.body.innerText)}`);
 }
-async function click(selector) {
-  const point = await page((target) => {
-    const element = document.querySelector(target);
-    if (!element) throw new Error(`Missing click target: ${target}`);
+async function click(selector, text) {
+  function visiblePoint(target, label) {
+    const element = [...document.querySelectorAll(target)].find((item) => !label || item.textContent.includes(label));
+    if (!element || element.disabled) return false;
+    element.scrollIntoView({ block: "nearest" });
     const rect = element.getBoundingClientRect();
-    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
-    const hit = document.elementFromPoint(x, y);
-    return { x, y, reachable: hit === element || element.contains(hit), hit: hit?.outerHTML.slice(0, 240) };
-  }, selector);
-  assert.ok(point.reachable, `Workspace control is pointer reachable: ${selector}: ${JSON.stringify(point)}`);
+    const left = Math.max(0, rect.left), right = Math.min(innerWidth, rect.right);
+    const top = Math.max(0, rect.top), bottom = Math.min(innerHeight, rect.bottom);
+    if (left >= right || top >= bottom) return false;
+    // A nonmodal dock can cover a card's center while its left edge is still
+    // usable. Choose a real hit on the visible card, keeping full occlusion red.
+    for (const xFraction of [0.5, 0.1, 0.9]) for (const yFraction of [0.5, 0.1, 0.9]) {
+      const x = left + (right - left) * xFraction, y = top + (bottom - top) * yFraction;
+      const hit = document.elementFromPoint(x, y);
+      if (hit === element || element.contains(hit)) return { x, y };
+    }
+    return false;
+  }
+  await waitFor(visiblePoint, selector, text);
+  const point = await page(visiblePoint, selector, text);
+  assert.ok(point, `Workspace control is pointer reachable: ${selector}`);
   await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x, y: point.y });
   await cdp("Input.dispatchMouseEvent", { type: "mousePressed", x: point.x, y: point.y, button: "left", clickCount: 1 });
   await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x, y: point.y, button: "left", clickCount: 1 });
@@ -71,14 +82,6 @@ async function typeDraft(text) {
   await click(composer);
   await cdp("Input.insertText", { text });
   await waitFor((selector, expected) => document.querySelector(selector)?.value === expected, composer, text);
-}
-async function switchAgent(id) {
-  await click(`${active} .workspace-agent-controls [role="combobox"]`);
-  await waitFor((value) => Boolean(document.querySelector(`[role="option"][data-value="${value}"]`)), id);
-  await click(`[role="option"][data-value="${id}"]`);
-  await waitFor((selector) => Boolean(document.querySelector(selector)) && !document.querySelector(selector).disabled, composer);
-  await waitFor((value, selector) => document.querySelector(`${selector} .workspace-agent-controls [role="combobox"]`)?.getAttribute("value") === value,
-    id, active);
 }
 function inspectLayout(activeSelector) {
   const dialog = document.querySelector(".agent-chat-dock-panel");
@@ -91,9 +94,11 @@ function inspectLayout(activeSelector) {
   const inputRect = input.getBoundingClientRect();
   const hit = document.elementFromPoint(inputRect.left + inputRect.width / 2, inputRect.top + inputRect.height / 2);
   const controls = [...panel.querySelectorAll(".agent-chat-header button")]
-    .filter((element) => element.getBoundingClientRect().width > 0).map((element) => ({
-      label: element.getAttribute("aria-label"), ...rect(element),
-    }));
+    .filter((element) => element.getBoundingClientRect().width > 0).map((element) => {
+      const bounds = rect(element);
+      const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      return { label: element.getAttribute("aria-label"), ...bounds, reachable: element === hit || element.contains(hit) };
+    });
   let opacity = 1;
   for (let element = dialog; element; element = element.parentElement) opacity *= Number(getComputedStyle(element).opacity);
   return { viewport: { width: innerWidth, height: innerHeight }, dialog: rect(dialog),
@@ -114,9 +119,13 @@ function assertLayout(layout) {
   assert.equal(layout.opacity, 1, "Narrow-screen canvas dimming does not dim the dock");
   assert.equal(layout.warningDisplay, "none", "Narrow-screen warning is hidden while chatting");
   assert.equal(layout.overflow, false, "Workspace has no document horizontal overflow");
-  assert.equal(layout.controls.length, 4, "Real Agent selector, new-Agent, expand and close controls are rendered");
+  const labels = layout.controls.map((control) => control.label);
+  assert.ok(labels.includes("收起创作导演"), "The director header retains its collapse action");
+  assert.ok(labels.some((label) => ["展开对话", "还原对话大小"].includes(label)),
+    "The director header retains its expand or restore action");
   for (const [index, control] of layout.controls.entries()) {
     assert.ok(within(control, layout.dialog), "Header control stays inside dock: " + JSON.stringify(control));
+    assert.ok(control.reachable, "Header control remains pointer reachable: " + JSON.stringify(control));
     for (const other of layout.controls.slice(index + 1)) {
       const overlaps = Math.min(control.right, other.right) - Math.max(control.left, other.left) > 1
         && Math.min(control.bottom, other.bottom) - Math.max(control.top, other.top) > 1;
@@ -173,6 +182,12 @@ try {
     assert.equal(await page(() => document.querySelectorAll(".react-flow__edge").length), 0, "Only explicit media relationships are drawn");
     await click(".agent-chat-launcher");
     await waitFor((selector) => Boolean(document.querySelector(selector)) && !document.querySelector(selector).disabled, composer);
+    assert.equal(await page((selector) => document.querySelector(`${selector} [aria-label="切换 Agent"]`) === null
+      && document.querySelector(`${selector} [aria-label="从预设新建 Agent"]`) === null, active), true,
+    "The built-in director needs no Agent selection or creation controls");
+    assert.equal(await page((selector) => [...document.querySelectorAll(`${selector} button`)]
+      .some((button) => /查看产物|绑定到 Agent|清空 Agent 输入/.test(button.textContent)), active), false,
+    "Whole-canvas management has no output attribution or binding action");
     assertLayout(await page(inspectLayout, active));
     if (viewport.width >= 1280) {
       await click('[data-id="synthetic-story"] .content-card-bar');
@@ -185,14 +200,22 @@ try {
     await waitFor(() => document.querySelector(".agent-chat-dock-panel").hidden);
     await click(".agent-chat-launcher");
     assert.equal(await page((selector) => document.querySelector(selector).value, composer), "导演草稿：雨后城市的午后光线", "Collapse/reopen preserves the actual workspace draft");
-    await switchAgent("synthetic-writer");
-    assert.equal(await page((selector) => document.querySelector(selector).value, composer), "", "Another Agent starts with its own draft");
-    await typeDraft("编剧草稿：先讨论人物冲突");
-    await switchAgent("synthetic-director");
-    assert.equal(await page((selector) => document.querySelector(selector).value, composer), "导演草稿：雨后城市的午后光线", "Switching back restores the director draft");
-    await switchAgent("synthetic-writer");
-    assert.equal(await page((selector) => document.querySelector(selector).value, composer), "编剧草稿：先讨论人物冲突", "Agent drafts never leak across selection");
-    await switchAgent("synthetic-director");
+    await click(`${active} [aria-label="会话列表"]`);
+    assert.equal(await page((selector) => document.querySelector(selector) === null, composer), true, "History gives its full height to conversations");
+    await click(`${active} [aria-label="聊天"]`);
+    assert.equal(await page((selector) => document.querySelector(selector).value, composer), "导演草稿：雨后城市的午后光线", "Returning from history preserves the draft");
+    await click(`${active} [aria-label="Agent 设置"]`);
+    assert.equal(await page((selector) => document.querySelector(selector) === null, composer), true, "Settings does not show a task composer");
+    await click(`${active} [aria-label="新建会话"]`);
+    await waitFor((selector) => Boolean(document.querySelector(selector)) && !document.querySelector(selector).disabled, composer);
+    assert.equal(await page((selector) => document.querySelector(selector).value, composer), "", "Creating a conversation returns from settings to a clean chat");
+    await typeDraft("新会话草稿：先讨论人物冲突");
+    await click(`${active} [aria-label="会话列表"]`);
+    await click(`${active} .agent-chat-history-item`, "午后城市 · 创作讨论");
+    await waitFor((selector) => document.querySelector(selector)?.value === "导演草稿：雨后城市的午后光线", composer);
+    await click(`${active} [aria-label="会话列表"]`);
+    await click(`${active} .agent-chat-history-item`, "新会话");
+    await waitFor((selector) => document.querySelector(selector)?.value === "新会话草稿：先讨论人物冲突", composer);
     assertLayout(await page(inspectLayout, active));
     await click(`${active} [aria-label="展开对话"]`);
     assertLayout(await page(inspectLayout, active));
@@ -203,10 +226,13 @@ try {
     await chmod(screenshotPath, 0o600);
     const diagnostics = await page(() => window.__agenvasWorkspaceFixture);
     assert.deepEqual(diagnostics.unexpected, [], "All real workspace API reads have explicit synthetic fixtures");
+    assert.equal(diagnostics.requests.some((request) => request.includes("/outputs")), false,
+      "Opening the director never reads an output attribution endpoint");
     assert.deepEqual(diagnostics.mutations, [], "No canvas command, Run, generation or Provider mutation was requested");
+    assert.equal(diagnostics.conversationMutations.length, 3, "Only one new conversation and two conversation selections were requested");
   }
   assert.deepEqual(browserErrors, [], "Real workspace has no browser runtime errors");
-  console.log("Director workspace passed: 4 production-CSS viewports, artifact-only canvas and persisted media relations, real header controls, live canvas selection, per-Agent/collapse draft retention, reachable composer, expand/restore; synthetic HTTP/SSE only");
+  console.log("Director workspace passed: 4 production-CSS viewports, artifact-only canvas and persisted media relations, fixed director, live canvas selection, session navigation and per-session/collapse draft retention, reachable composer, expand/restore; synthetic HTTP/SSE only");
   console.log(`Private screenshots: ${proofDir}`);
 } finally {
   socket?.close();

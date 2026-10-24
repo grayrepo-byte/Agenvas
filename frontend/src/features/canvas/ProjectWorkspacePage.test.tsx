@@ -6,12 +6,18 @@ import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes } from "react-router";
 import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Agent,CanvasCommand,CanvasItem,ProjectSnapshot } from "../../shared/api/client";
+import type { Agent,CanvasCommand,CanvasEditRequest,CanvasItem,CreateRunRequest,ProjectSnapshot } from "../../shared/api/client";
 import { changeControl } from "../../test/controls";
 import { imageFunctionSettings } from "../../test/imageFunctionsFixture";
 import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
+
+vi.mock("./DirectorWorkbench", () => ({ DirectorWorkbench: ({ canvasItemId,sourceVersionId,onClose }: {
+  canvasItemId: string; sourceVersionId: string | null; onClose: () => void;
+}) => <div role="dialog" aria-label="3D 导演台" data-item={canvasItemId} data-source={sourceVersionId ?? ""}>
+  <button onClick={onClose}>Close director</button>
+</div> }));
 
 const viewportProbe = vi.hoisted(() => ({ center: vi.fn<ReactFlowInstance["setCenter"]>(),
   instance: null as ReactFlowInstance | null }));
@@ -145,7 +151,7 @@ describe("ProjectWorkspacePage", () => {
           archivedAt: null,
         },
         canvas: { items: [] },
-        agents: [],
+        director: null,
         activeRun: null,
         activeTasks: [],
         unknownTasks: [],
@@ -177,6 +183,8 @@ describe("ProjectWorkspacePage", () => {
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
     await screen.findByRole("group", { name: "添加卡片" });
+    expect(screen.getByRole("button", { name: "项目角色" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "分镜制作台" })).toBeEnabled();
     measureCreationCanvas();
     const add = screen.getByRole("button", { name: "添加卡片" });
     vi.spyOn(add, "getBoundingClientRect").mockReturnValue(new DOMRect(124, 300, 36, 36));
@@ -194,6 +202,42 @@ describe("ProjectWorkspacePage", () => {
       type: "PLACE_ARTIFACT", artifactId: "created-artifact", x: 20, y: 30,
     })] });
     expect(screen.queryByRole("listbox", { name: "添加卡片" })).not.toBeInTheDocument();
+  });
+
+  it("opens the director from the canvas rail after creating and placing its blank image", async () => {
+    let placed: CanvasItem | null = null;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Director project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: placed ? [placed] : [] })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        expect(await request.json()).toEqual({ kind: "IMAGE", title: "3D 导演台", content: null });
+        return HttpResponse.json({ id: "director-artifact" }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
+        const body = await request.json() as { commands: CanvasCommand[] };
+        const command = body.commands[0];
+        if (!command || command.type !== "PLACE_ARTIFACT") throw new Error("Missing placement");
+        placed = { ...imageCard(), id: command.itemId, subjectId: "director-artifact", title: "3D 导演台",
+          selectedVersionId: null, selectedVersion: null,
+          x: command.x, y: command.y, width: command.width, height: command.height,
+          artifact: { ...imageCard().artifact, id: "director-artifact", title: "3D 导演台", resourceDefaultVersion: null, resourceDefaultVersionId: null } };
+        return HttpResponse.json({ items: [placed] });
+      }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    await screen.findByText("Director project");
+    await user.click(screen.getByRole("button", { name: "3D 导演台" }));
+    const dialog = await screen.findByRole("dialog", { name: "3D 导演台" });
+    expect(dialog.getAttribute("data-item")).toBeTruthy();
+    expect(dialog).toHaveAttribute("data-source", "");
+    expect(placed).not.toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Close director" }));
+    expect(screen.queryByRole("dialog", { name: "3D 导演台" })).not.toBeInTheDocument();
   });
 
   it.each([
@@ -312,9 +356,8 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
       http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Feedback project", status: "ACTIVE" })),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [audio] })),
-      http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: [] })),
       http.get("/api/v1/projects/project-1/assets/asset-id/content", () => HttpResponse.error()),
-      http.post("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ code: "AGENT_CREATE_FAILED", title: "合成对话错误", detail: "合成对话错误", retryable: false }, { status: 422, headers: { "Content-Type": "application/problem+json" } })),
+      http.put("/api/v1/projects/:projectId/director", () => HttpResponse.json({ code: "AGENT_CREATE_FAILED", title: "合成对话错误", detail: "合成对话错误", retryable: false }, { status: 422, headers: { "Content-Type": "application/problem+json" } })),
     );
     const user = userEvent.setup();
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
@@ -331,6 +374,86 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.queryByText("合成对话错误")).not.toBeInTheDocument();
   });
 
+  it.each([false, true])("starts smart composition through the director without manual mapping (single video: %s)", async (singleVideo) => {
+    const video: CanvasItem = { ...imageCard(), id: "video-card", title: "Shot",
+      artifact: { ...imageCard().artifact, kind: "VIDEO", title: "Shot" } };
+    const script = textCard();
+    const items = [video, script];
+    const now = "2026-10-20T00:00:00Z";
+    const agent: Agent = { id: "director", projectId: "project-1", name: "导演 Agent", instruction: "Project director",
+      profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
+    const creates = vi.fn();
+    const requests: CreateRunRequest[] = [];
+    const policy = { schemaVersion: 7, toolPolicyVersion: 6, systemPromptVersion: 14, allowedTools: ["compose_video"],
+      modelConfigSource: "mock", modelConfigVersion: 1, maxModelTurns: null, maxToolExecutions: null };
+    const selectedItemIds = singleVideo ? [video.id] : [script.id, video.id];
+    useCanvasStore.setState({ selectedIds: selectedItemIds,
+      selectionMode: singleVideo ? CANVAS_SELECTION_MODE.SINGLE : CANVAS_SELECTION_MODE.MULTIPLE });
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Composition project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        project: { id: "project-1", name: "Composition project", status: "ACTIVE" }, canvas: { items },
+        connections: [], director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+      http.put("/api/v1/projects/:projectId/director", () => { creates(); return HttpResponse.json(agent); }),
+      http.post("/api/v1/projects/:projectId/runs/preflight", () => HttpResponse.json({
+        agentId: agent.id, agentVersion: agent.version, agentName: agent.name, agentInstruction: agent.instruction,
+        conversationId: "conversation-director", conversationVersion: 0, conversationTurnCount: 0,
+        modelAvailable: true, toolCalling: true, creativeSkills: [], memoryTruncated: false, policySnapshot: policy,
+      })),
+      http.post("/api/v1/projects/:projectId/runs", async ({ request }) => {
+        const input = await request.json() as CreateRunRequest;
+        requests.push(input);
+        return HttpResponse.json({ id: "composition-run", projectId: "project-1", agentInstanceId: agent.id,
+          conversationId: input.conversationId, conversationTurn: 1, instruction: input.instruction, status: "QUEUED",
+          contextSnapshot: {}, policySnapshot: policy, profileVersion: 1, nextStepIndex: 0, version: 1, createdAt: now, updatedAt: now });
+      }),
+    );
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "智能配音合成" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(creates).toHaveBeenCalledOnce();
+    expect(new Set(requests[0]?.selectedItemIds)).toEqual(new Set(selectedItemIds));
+    expect(requests[0]?.instruction).toContain("分镜、台词");
+    expect(requests[0]?.instruction).toContain("不要把选中数组顺序");
+    expect(requests[0]?.instruction).toContain("compose_video");
+    expect(requests[0]?.instruction).toContain("波形活动窗口");
+    expect(screen.getByRole("dialog", { name: "创作导演" })).toBeVisible();
+  });
+
+  it.each([
+    { state: "no-video", hint: "请至少选择一个视频，可同时选择分镜文字和配音。" },
+    { state: "no-result", hint: "所选素材中有尚未选用结果的节点，请先选用结果。" },
+    { state: "busy", hint: "导演正在执行任务，请等待当前任务结束后再发送。" },
+  ])("disables composition for $state with a reason", async ({ state, hint }) => {
+    const video: CanvasItem = { ...imageCard(), id: "video-card", title: "Shot",
+      selectedVersionId: state === "no-result" ? null : imageVersionId,
+      artifact: { ...imageCard().artifact, kind: state === "no-video" ? "IMAGE" : "VIDEO", title: "Shot" } };
+    const items = [video, textCard()];
+    useCanvasStore.setState({ selectedIds: items.map((item) => item.id), selectionMode: CANVAS_SELECTION_MODE.MULTIPLE });
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Composition project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        project: { id: "project-1", name: "Composition project", status: "ACTIVE" }, canvas: { items },
+        connections: [], director: null, activeRun: state === "busy" ? { id: "busy-run", status: "RUNNING" } : null,
+        activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items })),
+    );
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    const button = await screen.findByRole("button", { name: "智能配音合成" });
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(button).toHaveAttribute("title", hint);
+  });
+
   it("opens the project Agent for the selected audio without creating a canvas node or Run", async () => {
     const audio: CanvasItem = { ...imageCard(), id: "audio-card", title: "Voice",
       artifact: { ...imageCard().artifact!, kind: "AUDIO", title: "Voice" } };
@@ -341,10 +464,13 @@ describe("ProjectWorkspacePage", () => {
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Audio project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        project: { id: "project-1", name: "Audio project", status: "ACTIVE" }, canvas: { items: [audio] },
+        connections: [], director: agent, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+      })),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [audio] })),
-      http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: [agent] })),
       http.get("/api/v1/projects/project-1/assets/asset-id/content", () => HttpResponse.error()),
-      http.post("/api/v1/projects/:projectId/agents", () => { creates(); return HttpResponse.json(agent); }),
+      http.put("/api/v1/projects/:projectId/director", () => { creates(); return HttpResponse.json(agent); }),
       http.post("/api/v1/projects/:projectId/canvas/commands", () => { commands(); return HttpResponse.json({ items: [audio] }); }),
       http.post("/api/v1/projects/:projectId/runs", () => { runs(); return HttpResponse.json({}); }),
     );
@@ -354,65 +480,75 @@ describe("ProjectWorkspacePage", () => {
     </MemoryRouter></QueryClientProvider>);
     fireEvent.click(await screen.findByRole("article", { name: "Voice · 音频" }));
     await user.click(await screen.findByRole("button", { name: "Agent 对话" }));
-    expect(await screen.findByRole("heading", { name: agent.name })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "创作导演" })).toBeVisible();
     expect(useCanvasStore.getState().selectedIds).toEqual([audio.id]);
     await waitFor(() => expect(document.querySelectorAll(".react-flow__node")).toHaveLength(1));
     expect(creates).not.toHaveBeenCalled(); expect(commands).not.toHaveBeenCalled(); expect(runs).not.toHaveBeenCalled();
   });
 
-  it("creates the default director only when opened and reuses the idempotency key after failure", async () => {
+  it("ensures the project director only when opened and reuses its identity across retries and remounts", async () => {
     const now = "2026-10-20T00:00:00Z";
     const agent: Agent = { id: "director", projectId: "project-1", name: "导演 Agent", instruction: "Project director",
       profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
-    const keys: (string | null)[] = []; const commands = vi.fn(); const runs = vi.fn();
+    const requests: string[] = []; const commands = vi.fn(); const runs = vi.fn();
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
       http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Director project", status: "ACTIVE" })),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
-      http.get("/api/v1/projects/:projectId/agents", () => HttpResponse.json({ items: [] })),
-      http.post("/api/v1/projects/:projectId/agents", async ({ request }) => {
-        keys.push(request.headers.get("Idempotency-Key"));
-        expect(await request.json()).toEqual({ promptKey: "agent.director" });
-        if (keys.length === 1) return HttpResponse.error();
-        return HttpResponse.json(agent, { status: 201 });
+      http.put("/api/v1/projects/:projectId/director", async ({ request }) => {
+        requests.push(await request.text());
+        if (requests.length === 1) return HttpResponse.error();
+        return HttpResponse.json(agent);
       }),
       http.post("/api/v1/projects/:projectId/canvas/commands", () => { commands(); return HttpResponse.json({ items: [] }); }),
       http.post("/api/v1/projects/:projectId/runs", () => { runs(); return HttpResponse.json({}); }),
     );
     const user = userEvent.setup();
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+    const mountWorkspace = () => render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
-    await screen.findByText("Director project"); expect(keys).toHaveLength(0);
+    const workspace = mountWorkspace();
+    await screen.findByText("Director project"); expect(requests).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "打开创作导演" }));
     await user.click(await screen.findByRole("button", { name: "重试" }));
-    expect(await screen.findByRole("heading", { name: agent.name })).toBeVisible();
-    expect(keys[0]).toBeTruthy(); expect(keys).toEqual([keys[0], keys[0]]);
+    expect(await screen.findByRole("heading", { name: "创作导演" })).toBeVisible();
+    expect(requests).toEqual(["", ""]);
+    workspace.unmount();
+    mountWorkspace();
+    await screen.findByText("Director project");
+    await user.click(screen.getByRole("button", { name: "打开创作导演" }));
+    expect(await screen.findByRole("heading", { name: "创作导演" })).toBeVisible();
+    expect(requests).toEqual(["", "", ""]);
     expect(document.querySelector(".react-flow__node")).toBeNull();
     expect(commands).not.toHaveBeenCalled(); expect(runs).not.toHaveBeenCalled();
   });
 
-  it("opens project Agent memory by URL without changing canvas selection or layout", async () => {
+  it.each([true,false])("opens the project director for a Skill try URL without changing canvas selection or layout (director exists: %s)", async (directorExists) => {
     const now = "2026-10-20T00:00:00Z";
-    const agent: Agent = { id: "existing-agent", projectId: "project-1", name: "既有导演", instruction: "Keep my memory",
+    const agent: Agent = { id: "director", projectId: "project-1", name: "导演 Agent", instruction: "Project director",
       profileKey: "creator", profileVersion: 1, version: 0,
       createdAt: now, updatedAt: now };
     const image = imageCard();
+    const ensures = vi.fn();
     useCanvasStore.setState({ selectedIds: [image.id] });
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Legacy project", status: "ACTIVE" })),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
         project: { id: "project-1", name: "Legacy project", status: "ACTIVE" }, canvas: { items: [image] },
-        agents: [agent], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+        director: directorExists ? agent : null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
+      http.put("/api/v1/projects/:projectId/director", () => { ensures(); return HttpResponse.json(agent); }),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [image] })),
+      http.get("/api/v1/settings/media-functions", () => HttpResponse.json(imageFunctionSettings("image-model"))),
     );
-    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1?agentId=existing-agent"]}>
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1?skillId=skill-1&skillVersionId=version-1"]}>
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
-    expect(await screen.findByRole("heading", { name: agent.name })).toBeVisible();
+    await screen.findByRole("textbox", { name: "本次任务" });
+    expect(screen.getByRole("heading", { name: "创作导演" })).toBeVisible();
+    expect(ensures).toHaveBeenCalledTimes(directorExists ? 0 : 1);
     await waitFor(() => expect(document.querySelectorAll(".react-flow__node")).toHaveLength(1));
     expect(document.querySelector(".react-flow__edge")).toBeNull();
     expect(useCanvasStore.getState().selectedIds).toEqual([image.id]);
@@ -424,25 +560,32 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getByRole("dialog", { name: "创作导演" })).toBeVisible();
   });
 
-  it("creates another project Agent from a dock preset without placing a node", async () => {
+  it("opens the built-in director directly and creates sessions without creating a new director", async () => {
     const now = "2026-10-20T00:00:00Z";
     const director: Agent = { id: "director", projectId: "project-1", name: "导演 Agent", instruction: "Project director",
       profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
-    const writer: Agent = { ...director, id: "writer", name: "编剧 Agent" };
-    const creates = vi.fn(); const commands = vi.fn();
+    const creates = vi.fn(); const sessionCreates = vi.fn(); const commands = vi.fn();
+    const sessionReads = vi.fn();
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
-      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Preset project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Director history project", status: "ACTIVE" })),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
-        project: { id: "project-1", name: "Preset project", status: "ACTIVE" }, canvas: { items: [] },
-        agents: [director], activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+        project: { id: "project-1", name: "Director history project", status: "ACTIVE" }, canvas: { items: [] },
+        director, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
       })),
-      http.get("/api/v1/agent-presets", () => HttpResponse.json({ items: [{ key: "agent.writer", name: writer.name }] })),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
-      http.post("/api/v1/projects/:projectId/agents", async ({ request }) => {
-        creates(await request.json()); expect(request.headers.get("Idempotency-Key")).toBeTruthy();
-        return HttpResponse.json(writer, { status: 201 });
+      http.put("/api/v1/projects/:projectId/director", () => { creates(); return HttpResponse.json(director); }),
+      http.get("/api/v1/projects/:projectId/agents/:agentId/conversations", ({ params }) => {
+        sessionReads(params.agentId);
+        return HttpResponse.json({ items: [{ id: `conversation-${params.agentId}`, projectId: params.projectId,
+          agentInstanceId: params.agentId, title: `${params.agentId} 的历史会话`, version: 0, turnCount: 0,
+          createdAt: now, updatedAt: now }], currentConversationId: `conversation-${params.agentId}`, nextCursor: null });
+      }),
+      http.post("/api/v1/projects/:projectId/agents/:agentId/conversations", ({ params, request }) => {
+        sessionCreates(params.agentId); expect(request.headers.get("Idempotency-Key")).toBeTruthy();
+        return HttpResponse.json({ id: "new-session", projectId: params.projectId, agentInstanceId: params.agentId,
+          title: "新会话", version: 0, turnCount: 0, createdAt: now, updatedAt: now }, { status: 201 });
       }),
       http.post("/api/v1/projects/:projectId/canvas/commands", () => { commands(); return HttpResponse.json({ items: [] }); }),
     );
@@ -450,13 +593,43 @@ describe("ProjectWorkspacePage", () => {
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter></QueryClientProvider>);
-    await screen.findByText("Preset project");
+    await screen.findByText("Director history project");
     await user.click(screen.getByRole("button", { name: "打开创作导演" }));
-    await user.click(screen.getByRole("button", { name: "从预设新建 Agent" }));
-    await user.click(screen.getByRole("menuitem", { name: writer.name }));
-    expect(await screen.findByRole("heading", { name: writer.name })).toBeVisible();
-    expect(creates).toHaveBeenCalledWith({ promptKey: "agent.writer", });
+    expect(await screen.findByRole("heading", { name: "创作导演" })).toBeVisible();
+    await waitFor(() => expect(sessionReads).toHaveBeenCalledWith(director.id));
+    expect(screen.queryByRole("combobox", { name: "切换 Agent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "从预设新建 Agent" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "新建会话" }));
+    await waitFor(() => expect(sessionCreates).toHaveBeenCalledWith(director.id));
+    expect(creates).not.toHaveBeenCalled();
     expect(commands).not.toHaveBeenCalled(); expect(document.querySelector(".react-flow__node")).toBeNull();
+  });
+
+  it("opens whole-canvas management without an output attribution request or viewing action", async () => {
+    const now = "2026-10-20T00:00:00Z";
+    const director: Agent = { id: "director", projectId: "project-1", name: "导演 Agent", instruction: "Manage the canvas",
+      profileKey: "creator", profileVersion: 1, version: 0, createdAt: now, updatedAt: now };
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Managed canvas", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
+        project: { id: "project-1", name: "Managed canvas", status: "ACTIVE" }, canvas: { items: [] },
+        connections: [], director, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 0,
+      })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+    );
+    const requests = vi.spyOn(globalThis, "fetch");
+    try {
+      render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+        <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+      </MemoryRouter></QueryClientProvider>);
+      await userEvent.setup().click(await screen.findByRole("button", { name: "打开创作导演" }));
+      await screen.findByRole("textbox", { name: "本次任务" });
+      expect(screen.queryByRole("button", { name: /查看产物|绑定到 Agent|清空 Agent 输入/ })).not.toBeInTheDocument();
+      expect(requests.mock.calls.some(([input]) => (input instanceof Request ? input.url : String(input)).includes("/outputs"))).toBe(false);
+    } finally {
+      requests.mockRestore();
+    }
   });
 
   it.each(["doubleClick", "contextMenu"] as const)("creates and selects empty text at the %s menu's canvas position without a drawer", async (gesture) => {
@@ -634,7 +807,8 @@ describe("ProjectWorkspacePage", () => {
       ...textCard(), id: `card-${index}`, title: `Note ${index}`, x: count - index, y: count - index,
       version: 7, locked: false,
     }));
-    const batches: CanvasCommand[][] = [];
+    const batches: NonNullable<CanvasEditRequest["itemChanges"]>[] = [];
+    const requestIds: string[] = [];
     let finishFirstBatch: (() => void) | undefined;
     const firstBatch = new Promise<void>((resolve) => { finishFirstBatch = resolve; });
     server.use(
@@ -645,17 +819,20 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/canvas/connections", () => HttpResponse.json({ items:
         items.slice(1).map((item, index) => ({ id: `edge-${index}`, sourceCanvasItemId: `card-${index}`,
           targetCanvasItemId: item.id, sourceArtifactVersionId: "text-v2", relationType: "MEDIA_DERIVATION" })) })),
-      http.post("/api/v1/projects/:projectId/canvas/commands", async ({ request }) => {
-        const { commands } = await request.json() as { commands: CanvasCommand[] };
+      http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
+        const input = await request.json() as CanvasEditRequest;
+        expect(input).toMatchObject({ operation: "DISPLAY", commandId: expect.any(String) });
+        const commands = input.itemChanges ?? [];
         batches.push(commands);
+        requestIds.push(input.commandId);
         if (editPendingBatch && batches.length === 1) await firstBatch;
         if (batches.length === failBatch) return HttpResponse.json({ code: "CANVAS_VERSION_CONFLICT", title: "合成布局冲突", detail: "合成布局冲突" },
           { status: 409, headers: { "Content-Type": "application/problem+json" } });
         items = items.map((item) => {
           const command = commands.find((candidate) => candidate.itemId === item.id);
-          return command?.type === "UPDATE_LAYOUT" ? { ...item, ...command, version: item.version + 1 } : item;
+          return command ? { ...item, ...command, version: item.version + 1 } : item;
         });
-        return HttpResponse.json({ items });
+        return HttpResponse.json({ items, groups: [], receipt: { id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
       }),
     );
     const user = userEvent.setup();
@@ -699,8 +876,8 @@ describe("ProjectWorkspacePage", () => {
     const first = commands.find((command) => command.itemId === "card-0");
     const fifth = commands.find((command) => command.itemId === "card-4");
     const sixth = commands.find((command) => command.itemId === "card-5");
-    expect(first).toMatchObject({ type: "UPDATE_LAYOUT", expectedVersion: 7, x: 1, y: 1, width: 280, height: 180 });
-    if (!first || first.type !== "UPDATE_LAYOUT" || !fifth || fifth.type !== "UPDATE_LAYOUT" || !sixth || sixth.type !== "UPDATE_LAYOUT")
+    expect(first).toMatchObject({ expectedVersion: 7, x: 1, y: 1, width: 280, height: 180 });
+    if (!first || !fifth || !sixth)
       throw new Error("Missing layout commands");
     expect(fifth.y).toBe(first.y);
     expect(fifth.x).toBeGreaterThan(first.x);
@@ -709,24 +886,26 @@ describe("ProjectWorkspacePage", () => {
     if (failBatch) {
       expect(viewportProbe.center).not.toHaveBeenCalled();
       expect(Object.keys(useCanvasStore.getState().drafts)).toHaveLength(failBatch === 2 ? 1 : count);
-      expect(await screen.findByText("合成布局冲突")).toBeVisible();
+      expect((await screen.findAllByText("合成布局冲突"))[0]).toBeVisible();
       if (failBatch === 2) {
         expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items.find((item) => item.id === "card-0")?.version).toBe(8);
         expect(useCanvasStore.getState().drafts["card-100"]).toBeDefined();
-        // Explicitly run the arrangement again. The confirmed batch uses its returned
-        // versions; the previously rejected item still uses its unchanged server version.
-        fireEvent.contextMenu(pane, { clientX: 300, clientY: 200 });
-        await user.click(await screen.findByRole("menuitem", { name: "一键整理" }));
-        await waitFor(() => expect(batches).toHaveLength(4));
+        // Retry the rejected batch as the same durable intent. The accepted first
+        // batch stays acknowledged and must never be resubmitted or overwritten.
+        await user.click(screen.getByRole("button", { name: "重试本次操作" }));
+        await waitFor(() => expect(batches).toHaveLength(3));
         await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("saved"));
-        expect(batches[2]?.find((command) => command.itemId === "card-0"))
-          .toMatchObject({ expectedVersion: 8 });
-        expect(batches[3]?.[0]).toMatchObject({ itemId: "card-100", expectedVersion: 7 });
+        expect(requestIds[2]).toBe(requestIds[1]);
+        expect(batches[2]).toEqual(batches[1]);
+        expect(batches[2]?.[0]).toMatchObject({ itemId: "card-100", expectedVersion: 7 });
+        expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items
+          .find((item) => item.id === "card-0")?.version).toBe(8);
         expect(useCanvasStore.getState().drafts).toEqual({});
       }
     } else {
       await waitFor(() => expect(viewportProbe.center).toHaveBeenCalledExactlyOnceWith(
-        first.x + first.width / 2, first.y + first.height / 2, { zoom: initialZoom }));
+        first.x + first.width / 2, first.y + first.height / 2, expect.objectContaining({
+          zoom: initialZoom, duration: expect.any(Number), ease: expect.any(Function), interpolate: "linear" })));
       expect(useCanvasStore.getState().selectedIds).toEqual([]);
       expect(useCanvasStore.getState().drafts).toEqual({});
       expect(client.getQueryData<{ items: CanvasItem[] }>(["canvas", "project-1"])?.items[0]?.version).toBe(8);
@@ -900,7 +1079,7 @@ describe("ProjectWorkspacePage", () => {
           snapshotReads++;
           return HttpResponse.json({
             project: { id: params.projectId, name: "SSE project", status: "ACTIVE" },
-            canvas: { items: [] }, agents: [], activeRun: null, activeTasks: [],
+            canvas: { items: [] }, director: null, activeRun: null, activeTasks: [],
             unknownTasks: [], snapshotSeq: 0,
           });
         }),
@@ -1404,7 +1583,7 @@ describe("ProjectWorkspacePage", () => {
         project: { id: params.projectId, name: "Unknown test", aspectRatio: "LANDSCAPE_16_9",
           status: "ACTIVE", version: 0, createdAt: "2026-09-23T00:00:00Z",
           updatedAt: "2026-09-23T00:00:00Z", archivedAt: null },
-        canvas: { items: [] }, agents: [], activeRun: null, activeTasks: [],
+        canvas: { items: [] }, director: null, activeRun: null, activeTasks: [],
         unknownTasks: [{ id: "task-1", kind: "IMAGE_GENERATION", stepKey: "image-2",
           planId: source === "planned" ? "plan-1" : null,
           runId: source === "planned" ? "run-1" : null,
@@ -1448,7 +1627,7 @@ describe("ProjectWorkspacePage", () => {
         })),
         http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
           project: { id: "project-1", name: "Hidden Agent", status: "ACTIVE" },
-          canvas: { items: [] }, agents: [],
+          canvas: { items: [] }, director: null,
           activeRun: { id: "run-1", agentInstanceId: "hidden-agent", status },
           activeTasks: [], unknownTasks: [], snapshotSeq: 1,
         })),
@@ -1493,11 +1672,11 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
       http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({
         project: { id: "project-1", name: "Original project", status: "ACTIVE" }, canvas: { items: [] },
-        connections: [], agents: [agent], activeRun, activeTasks: [], unknownTasks: [], snapshotSeq: 1,
+        connections: [], director: agent, activeRun, activeTasks: [], unknownTasks: [], snapshotSeq: 1,
       })),
       http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Original project", status: "ACTIVE" })),
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
-      http.post("/api/v1/projects/:projectId/agents", () => { creates(); return HttpResponse.json(agent); }),
+      http.put("/api/v1/projects/:projectId/director", () => { creates(); return HttpResponse.json(agent); }),
       http.post("/api/v1/projects/:projectId/canvas/commands", () => { commands(); return HttpResponse.json({ items: [] }); }),
     );
     const user = userEvent.setup();
@@ -1547,19 +1726,19 @@ describe("ProjectWorkspacePage", () => {
         return HttpResponse.json({
           agentId, agentVersion: updated ? 1 : 0, agentName: updated ? "Agent Beta" : "Agent Alpha",
           conversationId: `conversation-${agentId}`, conversationVersion: 0,
-          conversationTurnCount: 0, inheritedBindingCount: 0, memoryTruncated: false, creativeSkills: [],
+          conversationTurnCount: 0, memoryTruncated: false, creativeSkills: [],
           agentInstruction: updated ? "Updated instruction" : "Initial instruction",
           modelAvailable, providerAdapter: modelAvailable ? "FakeChatModel" : null,
           modelId: modelAvailable ? "fixture-model" : null,
           toolCalling: true,
-          policySnapshot: { schemaVersion: 2, systemPromptVersion: 2, modelConfigSource: "fixture",
-            modelConfigVersion: 7, maxModelTurns: 12, maxToolExecutions: 40 },
+          policySnapshot: { schemaVersion: 7, toolPolicyVersion: 6, systemPromptVersion: 14, allowedTools: ["read_canvas"], modelConfigSource: "fixture",
+            modelConfigVersion: 7, maxModelTurns: null, maxToolExecutions: null },
         });
       }),
       http.get("/api/v1/projects/:projectId/snapshot", ({ params }) =>
         HttpResponse.json({
           project: { id: params.projectId, name: "Agent canvas", status: "ACTIVE" },
-          canvas: { items: [] }, agents: [agent(updated)], activeRun, activeTasks: [], unknownTasks: [],
+          canvas: { items: [] }, director: agent(updated), activeRun, activeTasks: [], unknownTasks: [],
           snapshotSeq: 0,
         }),
       ),
@@ -1573,7 +1752,7 @@ describe("ProjectWorkspacePage", () => {
         expect(body).toMatchObject({ agentId, instruction: "规划三个镜头",
           conversationId: `conversation-${agentId}`, expectedConversationVersion: 0,
           expectedAgentVersion: 1, expectedModelConfigSource: "fixture",
-          expectedModelConfigVersion: 7, expectedSystemPromptVersion: 2 });
+          expectedModelConfigVersion: 7, expectedSystemPromptVersion: 14 });
         expect(Array.isArray(body.selectedItemIds)).toBe(true);
         idempotencyKeys.push(request.headers.get("Idempotency-Key") ?? "");
         starts += 1;
@@ -1632,7 +1811,7 @@ describe("ProjectWorkspacePage", () => {
 
     await screen.findByText("Agent canvas");
     await userEvent.click(screen.getByRole("button", { name: "打开创作导演" }));
-    const heading = await screen.findByRole("heading", { name: "Agent Alpha" });
+    const heading = await screen.findByRole("heading", { name: "创作导演" });
     const card = heading.closest("article");
     expect(card).not.toBeNull();
     expect(card).toHaveClass("agent-chat-surface");
@@ -1646,9 +1825,10 @@ describe("ProjectWorkspacePage", () => {
     await changeControl(instruction, { target: { value: "Updated instruction" } });
     fireEvent.submit(name.closest("form") as HTMLFormElement);
 
-    expect(await screen.findByRole("heading", { name: "Agent Beta" })).toBeInTheDocument();
-    expect(updated).toBe(true);
+    await waitFor(() => expect(updated).toBe(true));
+    expect(await screen.findByRole("heading", { name: "创作导演" })).toBeInTheDocument();
 
+    fireEvent.click(within(editorArea).getByRole("button", { name: "聊天" }));
     const taskInput = within(editorArea).getByLabelText("本次任务");
     await changeControl(taskInput, { target: { value: "规划三个镜头" } });
     fireEvent.click(within(editorArea).getByRole("button", { name: "发送" }));

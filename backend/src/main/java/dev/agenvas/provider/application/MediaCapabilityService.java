@@ -442,7 +442,9 @@ public class MediaCapabilityService {
         }
         if (comfyWorkflow != null) {
             ComfyUiWorkflowDefinition.requireDefinitionSize(settings.get(ComfyUiWorkflowDefinition.SETTINGS_KEY));
-            if (policy.maxReferenceImages() != comfyWorkflow.referenceCount())
+            if (policy.maxReferenceImages() != comfyWorkflow.referenceCount()
+                    || policy.maxReferenceVideos() != comfyWorkflow.referenceCount(ComfyUiWorkflowDefinition.Source.REFERENCE_VIDEO)
+                    || policy.maxReferenceAudios() != comfyWorkflow.referenceCount(ComfyUiWorkflowDefinition.Source.REFERENCE_AUDIO))
                 throw invalid(ApiMessage.of("api.comfy-workflow.invalid", "references"));
         }
         putInputLimits(normalized, policy);
@@ -676,6 +678,46 @@ public class MediaCapabilityService {
     public List<Candidate> publishedCandidates() {
         return publishedSnapshots().map(snapshot -> candidate(snapshot, inputPolicy(snapshot)))
                 .toList();
+    }
+
+    /** Safe planning metadata shared by the Director's initial context and discovery tool. */
+    public JsonNode planningCatalog() {
+        var defaults = java.util.Arrays.stream(new Task.Kind[] { Task.Kind.IMAGE_GENERATION,
+                Task.Kind.VIDEO_GENERATION, Task.Kind.AUDIO_GENERATION })
+                .map(this::defaultCapabilityId).filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        var result = mapper.createArrayNode();
+        // Keep configured defaults visible even when the bounded catalog omits other entries.
+        publishedCandidates().stream().sorted(java.util.Comparator.comparing(
+                (Candidate candidate) -> !defaults.contains(candidate.binding().capabilityId())))
+                .limit(40).forEach(candidate -> {
+                    var entry = result.addObject().put("capabilityId", candidate.binding().capabilityId().toString())
+                            .put("name", candidate.capabilityName()).put("connectionName", candidate.connectionName())
+                            .put("kind", candidate.kind().name()).put("isDefault", defaults.contains(candidate.binding().capabilityId()))
+                            .put("minimumSeconds", candidate.minimumSeconds()).put("maximumSeconds", candidate.maximumSeconds());
+                    entry.set("inputPolicy", mapper.valueToTree(inputPolicy(candidate.binding())));
+                    JsonNode settings = candidate.settings();
+                    for (String key : List.of("defaultParameters", "defaultDurationSeconds", "videoResolution",
+                            "videoResolutions", "pricing", "pricingByResolution")) {
+                        if (settings.has(key)) entry.set(key, settings.get(key).deepCopy());
+                    }
+                    var definition = runningHubDefinition(candidate.binding());
+                    if (definition != null) entry.set("fields", mapper.valueToTree(definition.fields()));
+                    else for (String key : List.of("nativeInputs", "klingInputs", ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY)) {
+                        if (settings.has(key)) { entry.set("fields", settings.get(key).deepCopy()); break; }
+                    }
+                });
+        return result;
+    }
+
+    /** Keep first-turn context bounded; exact input definitions are discovered on demand. */
+    public JsonNode planningSummary() {
+        JsonNode result = planningCatalog();
+        for (JsonNode entry : result) {
+            ((ObjectNode) entry).remove("fields");
+            ((ObjectNode) entry).remove("inputPolicy");
+        }
+        return result;
     }
 
     private Stream<Snapshot> publishedSnapshots() {

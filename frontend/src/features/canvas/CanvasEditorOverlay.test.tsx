@@ -6,7 +6,7 @@ import { CanvasEditorOverlay } from "./CanvasEditorOverlay";
 const viewport = vi.hoisted(() => ({ transform: [0, 0, 1] }));
 vi.mock("@xyflow/react", () => ({ useStore: (select: (state: typeof viewport) => unknown) => select(viewport) }));
 
-it("keeps the editor inside canvas bounds, reserves the navigation strip, and retains input on resize/zoom", async () => {
+it("keeps the editor and actions anchored without edge avoidance and retains input on resize/zoom", async () => {
   let resized: ResizeObserverCallback | undefined;
   vi.stubGlobal("ResizeObserver", class {
     constructor(callback: ResizeObserverCallback) { resized = callback; }
@@ -38,17 +38,17 @@ it("keeps the editor inside canvas bounds, reserves the navigation strip, and re
   const view = render(content());
   const editor = screen.getByLabelText("所选卡片编辑区");
   expect(editor.style.getPropertyValue("--canvas-editor-available-width")).toBe("1248px");
-  expect(editor.style.getPropertyValue("--canvas-editor-available-height")).toBe("524px");
+  expect(editor.style.getPropertyValue("--canvas-editor-available-height")).toBe("54px");
   expect(editor.style.getPropertyValue("--canvas-editor-node-width")).toBe("420px");
-  expect(editor.getBoundingClientRect().left).toBe(16);
-  expect(editor.getBoundingClientRect().bottom).toBe(640);
-  expect(screen.getByLabelText("节点操作").getBoundingClientRect().bottom).toBe(editor.getBoundingClientRect().top - 10);
+  expect(editor.getBoundingClientRect().left).toBe(500);
+  expect(editor.getBoundingClientRect().top).toBe(650);
+  expect(screen.getByLabelText("节点操作").style.translate).toBe("");
   await userEvent.setup().type(screen.getByRole("textbox"), "保留这段输入");
   natural = { left: -200, top: -100, width: 1248, height: 400 };
   viewport.transform = [10, 20, 0.5];
   view.rerender(content());
-  expect(editor.getBoundingClientRect().left).toBe(16);
-  expect(editor.getBoundingClientRect().top).toBe(60);
+  expect(editor.getBoundingClientRect().left).toBe(-200);
+  expect(editor.getBoundingClientRect().top).toBe(-100);
   expect(screen.getByRole("textbox")).toHaveValue("保留这段输入");
   natural = { left: 80, top: 100, width: 500, height: 220 };
   act(() => resized?.([], {} as ResizeObserver));
@@ -61,8 +61,10 @@ it("keeps the editor inside canvas bounds, reserves the navigation strip, and re
   nodeWidth = 760;
   act(() => resized?.([], {} as ResizeObserver));
   expect(editor.style.getPropertyValue("--canvas-editor-available-width")).toBe("768px");
-  expect(editor.style.getPropertyValue("--canvas-editor-available-height")).toBe("424px");
+  expect(editor.style.getPropertyValue("--canvas-editor-available-height")).toBe("504px");
   expect(editor.style.getPropertyValue("--canvas-editor-node-width")).toBe("760px");
+  expect(editor.getBoundingClientRect().top).toBe(100);
+  expect(screen.getByLabelText("节点操作").style.translate).toBe("");
   expect(screen.getByRole("textbox")).toHaveValue("保留这段输入");
   vi.unstubAllGlobals();
 });

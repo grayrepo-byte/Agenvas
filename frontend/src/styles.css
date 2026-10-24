@@ -103,7 +103,7 @@ select {
   font: inherit;
 }
 
-input:not([data-slot]) {
+input:not([data-slot]):not([type="range"]) {
   display: block;
   width: 100%;
   margin-top: 0.5rem;
@@ -115,7 +115,7 @@ input:not([data-slot]) {
   outline: none;
 }
 
-input:not([data-slot]):focus {
+input:not([data-slot]):not([type="range"]):focus {
   border-color: var(--accent);
   box-shadow: var(--ui-focus-shadow);
 }
@@ -378,7 +378,7 @@ button:disabled {
 .workspace-media-editor {
   --editor-available-width: var(--canvas-editor-available-width, calc(100vw - 2rem));
   position: relative;
-  /* Follow the canvas and visible node; cap line length rather than imposing a fixed panel width. */
+  /* Keep a compact writing surface while following the canvas and visible node. */
   width: min(max(var(--canvas-editor-node-width, 0px), calc(var(--editor-available-width) * var(--ui-canvas-editor-width-share))), var(--ui-canvas-editor-max-width));
   min-width: min(var(--ui-canvas-editor-min-width), var(--editor-available-width));
   max-width: var(--editor-available-width);
@@ -390,7 +390,6 @@ button:disabled {
   border: 0;
   background: transparent;
   box-shadow: none;
-  transform: translate(var(--editor-shift-x, 0px), var(--editor-shift-y, 0px));
 }
 
 /* React Flow gives every NodeToolbar the same inline z-index. The editor's upward-opening
@@ -697,7 +696,7 @@ button:disabled {
 .smart-edit-close { font-weight: 650; }
 .smart-edit-divider { width: 1px; height: 22px; margin: 0 2px; background: var(--ui-border); }
 .smart-edit-brush-size { display: flex; align-items: center; width: 150px; padding: 0 8px; }
-.smart-edit-brush-size input { width: 100%; accent-color: var(--ui-text); }
+.smart-edit-brush-size { min-width: 0; }
 .smart-edit-stage { display: grid; min-height: 0; place-items: center; overflow: hidden; }
 .smart-edit-image-wrap { position: relative; max-width: min(760px, calc(100vw - 56px)); max-height: 100%; overflow: hidden; border-radius: 12px; box-shadow: 0 12px 34px #000a; }
 .smart-edit-image-wrap img { display: block; width: auto; max-width: 100%; height: auto; max-height: 100%; object-fit: contain; user-select: none; }
@@ -727,8 +726,6 @@ button:disabled {
 .smart-edit-footer { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .smart-edit-model { display: inline-flex; flex: 1; align-items: center; min-width: 0; color: var(--ui-text-secondary); }
 .smart-edit-model .ui-select { width: 100%; max-width: 220px; }
-.smart-edit-model [data-slot="select-trigger"] { min-width: 0; gap: 5px; padding: 0 5px; font-size: 12px; }
-.smart-edit-model [data-slot="select-value"] { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .smart-edit-cost { display: inline-flex; flex-shrink: 0; align-items: center; gap: 5px; margin-left: auto; color: var(--ui-text-muted); font-size: 10px; white-space: nowrap; }
 .smart-edit-submit { display: grid; flex: 0 0 33px; place-items: center; width: 33px; height: 33px; padding: 0; border: 0; border-radius: 50%; background: var(--ui-accent); color: var(--ui-accent-foreground); cursor: pointer; }
 .smart-edit-submit:hover:not(:disabled) { background: var(--ui-accent-hover); }
@@ -826,21 +823,6 @@ button:disabled {
 .relight-slider-label { display: grid; gap: 7px; color: var(--ui-text-muted); font-size: 11px; }
 .relight-slider-label > span { display: flex; align-items: center; justify-content: space-between; }
 .relight-slider-label output { color: var(--ui-text); font-size: 13px; font-weight: 650; }
-.relight-slider-label input[type="range"] {
-  width: 100%;
-  height: 8px;
-  margin: 0;
-  border: 0;
-  border-radius: 999px;
-  padding: 0;
-  background: var(--ui-border-strong);
-  accent-color: var(--ui-text);
-  cursor: pointer;
-}
-.relight-slider-label input[type="range"]::-webkit-slider-thumb { width: 17px; height: 17px; }
-.relight-temperature input[type="range"] {
-  background: linear-gradient(90deg, #a86408 0%, #9b8456 42%, var(--ui-light-temperature-cool) 100%);
-}
 .relight-style-section { display: flex; min-width: 0; flex-direction: column; }
 .relight-section-label { margin-bottom: 8px; color: var(--ui-text-muted); font-size: 12px; }
 .relight-preset-grid {
@@ -1147,8 +1129,5 @@ button:disabled {
 .workspace-canvas.is-hand-tool .react-flow__node * { pointer-events: none !important; }
 /* Media history belongs to the node whose toolbar opens this menu. */
 .media-version-picker { position: relative; }
-.media-version-menu {    width: 230px; max-height: 320px; }
-
-.media-version-menu > button { justify-content: space-between; }
 
 .media-toolbar-divider { width: 1px; height: 24px; flex: 0 0 1px; margin: 0 4px; background: var(--ui-border-strong); }

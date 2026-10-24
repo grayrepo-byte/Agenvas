@@ -8,6 +8,8 @@ export type LayoutDraft = {
   y?: number;
   width?: number;
   height?: number;
+  /** A drop into a group is acknowledged together with the node's position. */
+  groupId?: string | null;
 };
 
 type SaveState = "saved" | "saving" | "failed" | "conflict";

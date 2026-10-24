@@ -146,8 +146,10 @@ public class LlmTurnCheckpointService {
                 }
                 return ProjectEventService.Change.unchanged(existing);
             }
-            String text = codec.selectedAssistant(response).getText();
-            tasks.completeAgentStream(lease, workerId, text == null ? "" : text);
+            if (!AgentContextService.isCompaction(existing.request())) {
+                String text = codec.selectedAssistant(response).getText();
+                tasks.completeAgentStream(lease, workerId, text == null ? "" : text);
+            }
             if (!turns.saveResponse(projectId, runId, stepIndex, response, clock.instant())) {
                 throw conflict(ApiMessage.of("api.llm-turn-checkpoint-service.model-response-checkpoint-was-updated-concurrently"));
             }

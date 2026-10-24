@@ -6,6 +6,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
@@ -321,16 +322,11 @@ class VersionedMediaInputPostgresIT {
         assertThat(restoredConnections.path("items")).isEmpty();
 
         mvc.perform(post(base + "/agents").with(auth).with(csrf())
-                        .contentType("application/json")
-                        .content("{\"name\":\"Invalid image agent\","
-                                + "\"instruction\":\"Read images\",\"bindings\":[{"
-                                + "\"artifactId\":\"" + end.artifactId()
-                                + "\",\"selectedVersionId\":\"" + end.versionId() + "\"}]}"))
-                .andExpect(status().isBadRequest());
-        JsonNode agent = mapper.readTree(mvc.perform(post(base + "/agents")
-                        .with(auth).with(csrf()).contentType("application/json")
-                        .content("{\"name\":\"Visual assistant\",\"instruction\":\"Read the current canvas\"}"))
-                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+                        .contentType("application/json").content("{}"))
+                .andExpect(status().isNotFound());
+        JsonNode agent = mapper.readTree(mvc.perform(put(base + "/director")
+                        .with(auth).with(csrf()))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(agent.has("bindings")).isFalse();
         assertThat(agent.has("outputGroupId")).isFalse();
         rejectRetiredAgentPlacement(mvc, auth, base, agent.path("id").asText(), 1600);

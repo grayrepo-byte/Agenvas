@@ -3,28 +3,27 @@ package dev.agenvas.agent.api;
 import dev.agenvas.agent.application.AgentInstanceService;
 import dev.agenvas.agent.domain.AgentInstance;
 import dev.agenvas.identity.application.AdminPrincipal;
+import dev.agenvas.shared.error.ApiProblemException;
+import dev.agenvas.shared.i18n.ApiMessage;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /** Creator 项目助手配置的 REST 边界。 */
 @RestController
-@RequestMapping("/api/v1/projects/{projectId}/agents")
+@RequestMapping("/api/v1/projects/{projectId}")
 public class AgentInstanceController {
 
     /** 执行项目权限、字段校验和配置版本控制。 */
@@ -37,40 +36,18 @@ public class AgentInstanceController {
         this.agents = agents;
     }
 
-    /** 创建导演 项目助手；运行时固定当前画布范围。
-     * @param principal 当前认证用户
-     * @param projectId 助手所属项目
-     * @param request 助手名称与指令
-     * @return 新建助手配置
-     */
-    @PostMapping
-    public ResponseEntity<AgentResponse> create(
+    /** 无需预设选择或命令键即可恢复项目唯一导演；初始化不启动 Run。 */
+    @PutMapping("/director")
+    public AgentResponse ensureDirector(
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId,
-            @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String key,
-            @Valid @RequestBody CreateAgentRequest request) {
-        var result = agents.createIdempotent(
-                principal.userId(),
-                projectId,
-                request.name(),
-                request.instruction(),
-                key, request.promptKey());
-        return ResponseEntity.status(HttpStatus.CREATED).header("Idempotency-Replayed", Boolean.toString(result.replayed()))
-                .body(AgentResponse.from(result.agent()));
-    }
-
-    /** 列出项目内的 项目助手配置。
-     * @param principal 当前认证用户
-     * @param projectId 项目 UUID
-     * @return 按服务结果投影的助手列表
-     */
-    @GetMapping
-    public AgentListResponse list(
-            @AuthenticationPrincipal AdminPrincipal principal,
-            @PathVariable UUID projectId) {
-        return new AgentListResponse(agents.list(principal.userId(), projectId).stream()
-                .map(AgentResponse::from)
-                .toList());
+            @RequestBody(required = false) String requestBody) {
+        if (requestBody != null && !requestBody.isBlank()) {
+            throw new ApiProblemException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                    ApiMessage.of("api.agent-instance-service.agent-configuration-is-invalid"),
+                    ApiMessage.of("api.agent-instance-service.agent-configuration-is-invalid"), false);
+        }
+        return AgentResponse.from(agents.ensureDirector(principal.userId(), projectId));
     }
 
     /** 读取项目路径下的单个 项目助手。
@@ -79,7 +56,7 @@ public class AgentInstanceController {
      * @param agentId 助手 UUID
      * @return 助手配置
      */
-    @GetMapping("/{agentId}")
+    @GetMapping("/agents/{agentId}")
     public AgentResponse get(
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId,
@@ -94,7 +71,7 @@ public class AgentInstanceController {
      * @param request 新完整配置及客户端读取到的版本
      * @return 更新后的助手快照
      */
-    @PatchMapping("/{agentId}")
+    @PatchMapping("/agents/{agentId}")
     public AgentResponse update(
             @AuthenticationPrincipal AdminPrincipal principal,
             @PathVariable UUID projectId,
@@ -107,22 +84,6 @@ public class AgentInstanceController {
                 request.expectedVersion(),
                 request.name(),
                 request.instruction()));
-    }
-
-    /**
-     * 创建内置 Creator Agent 的请求。
-     *
-     * @param name 展示名称，长度为 1 至 120 字符
-     * @param instruction 每次运行可见的 Agent 指令，长度不超过 8,000 字符
-     */
-    public record CreateAgentRequest(
-            @Size(min = 1, max = 120) String name,
-            @Size(min = 1, max = 8000) String instruction,
-            @jakarta.validation.constraints.Pattern(regexp = dev.agenvas.settings.application.PromptService.KEY_PATTERN) String promptKey) {
-        @com.fasterxml.jackson.annotation.JsonAnySetter
-        public void rejectUnknownField(String field, tools.jackson.databind.JsonNode value) {
-            throw new IllegalArgumentException("Unknown assistant settings field");
-        }
     }
 
     /**
@@ -182,8 +143,4 @@ public class AgentInstanceController {
         }
     }
 
-    /** 项目 Agent 列表响应。
-     * @param items 当前项目的助手
-     */
-    public record AgentListResponse(List<AgentResponse> items) {}
 }

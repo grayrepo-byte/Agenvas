@@ -1,0 +1,30 @@
+.video-review-controls { display: flex; min-width: 0; flex-direction: column; gap: var(--ui-space-3); color: var(--ui-text); }
+.video-review-transport { display: flex; min-width: 0; align-items: center; gap: var(--ui-space-2); flex-wrap: wrap; }
+.video-review-transport .ui-range { min-width: 80px; flex: 1; }
+.video-review-time { color: var(--ui-text-secondary); font-size: var(--ui-text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.video-review-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-3); }
+.video-review-options [data-slot="field"] { min-width: 0; gap: var(--ui-space-1); }
+.video-review-hint { margin: 0; color: var(--ui-text-muted); font-size: var(--ui-text-xs); line-height: 1.5; }
+.video-review-marker-form { display: flex; flex-direction: row; align-items: flex-end; gap: var(--ui-space-3); }
+.video-review-marker-form [data-slot="field"] { min-width: 0; flex: 1; gap: var(--ui-space-1); }
+.video-review-markers { display: flex; flex-direction: column; gap: var(--ui-space-1); padding: 0; margin: 0; max-height: 130px; overflow: auto; list-style: none; }
+.video-review-markers li { display: flex; align-items: center; gap: var(--ui-space-2); }
+.video-review-markers li > button:first-child { flex: 1; min-width: 0; justify-content: flex-start; }
+.video-review-markers time { flex: none; font-variant-numeric: tabular-nums; }
+.video-review-markers span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.video-comparison-dialog { --ui-dialog-width: 1200px; }
+.video-comparison-players { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-4); margin-bottom: var(--ui-space-4); }
+.video-comparison-side { display: flex; min-width: 0; flex-direction: column; gap: var(--ui-space-2); }
+.video-comparison-side video { display: block; width: 100%; max-height: 300px; aspect-ratio: 16 / 9; background: var(--ui-bg); object-fit: contain; }
+.video-comparison-summary { color: var(--ui-text-secondary); font-size: var(--ui-text-sm); }
+.video-comparison-summary p { margin: var(--ui-space-2) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.video-comparison-summary pre { max-height: 180px; overflow: auto; font-size: var(--ui-text-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+.video-range-editor { display: flex; flex-direction: column; min-width: 0; gap: var(--ui-space-3); }
+.video-range-editor > video { width: 100%; max-height: 260px; background: var(--ui-bg); object-fit: contain; }
+.video-range-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-3); }
+.video-range-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); }
+@media (max-width: 640px) {
+  .video-comparison-players { grid-template-columns: minmax(0, 1fr); }
+  .video-comparison-side video { max-height: 200px; }
+  .video-review-marker-form { flex-direction: column; align-items: stretch; }
+}

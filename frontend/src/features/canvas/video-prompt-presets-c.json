@@ -1,0 +1,386 @@
+[
+  {
+    "id": "tripod-pan-follow",
+    "category": "rotation",
+    "englishName": "Tripod Pan Follow",
+    "prompt": "Keep the camera anchored at one position and pan horizontally to follow the existing moving subject. Rotate smoothly at a pace matched to the subject, maintain consistent headroom and leading space, and let the background slide across the frame without translating the camera or changing focal length.",
+    "copy": {
+      "zh": {
+        "name": "定点横摇跟随",
+        "conditions": "主体已有横向位移，固定机位能覆盖完整运动范围。",
+        "effect": "主体保持可读，背景横向滑动，清楚交代移动方向。",
+        "caution": "摇摄速度应跟上主体；与横向移动机位产生的视差不同。"
+      },
+      "en": {
+        "name": "Tripod Pan Follow",
+        "conditions": "An existing subject moves laterally within the camera’s available sweep.",
+        "effect": "Keeps the subject readable while the background slides sideways.",
+        "caution": "Match the subject’s pace; a fixed-position pan does not create tracking parallax."
+      },
+      "ja": {
+        "name": "定点パン追従",
+        "conditions": "被写体が横移動し、固定位置から動きを追える場面。",
+        "effect": "被写体を捉えながら背景を横に流し、移動方向を示す。",
+        "caution": "被写体の速度に合わせる。横移動撮影のような視差は生じない。"
+      },
+      "ru": {
+        "name": "Панорама вслед за объектом",
+        "conditions": "Объект движется поперёк сцены в пределах доступного поворота камеры.",
+        "effect": "Удерживает объект в кадре, пока фон движется в сторону.",
+        "caution": "Согласуйте скорость с объектом; поворот на месте не даёт параллакса проезда."
+      }
+    }
+  },
+  {
+    "id": "fixed-tilt-down",
+    "category": "rotation",
+    "englishName": "Fixed-position Tilt Down",
+    "prompt": "Hold the camera at a fixed position and tilt downward from the upper portion of the existing scene toward its lower visible details. Use a controlled continuous rotation, preserve the scene’s spatial relationships, and settle into a readable final composition without lowering the camera, zooming, or introducing new elements.",
+    "copy": {
+      "zh": {
+        "name": "定点下摇",
+        "conditions": "上下区域已有可衔接的信息，适合沿垂直方向逐步展示。",
+        "effect": "视线从上向下展开，依次揭示主体、动作或地面关系。",
+        "caution": "机位高度保持不变；大角度下摇会改变透视与主体比例。"
+      },
+      "en": {
+        "name": "Fixed-position Tilt Down",
+        "conditions": "Existing upper and lower details form a useful vertical reveal.",
+        "effect": "Guides attention downward through the scene’s spatial relationships.",
+        "caution": "Keep camera height fixed; a large tilt changes perspective and apparent proportions."
+      },
+      "ja": {
+        "name": "定点ティルトダウン",
+        "conditions": "画面の上下に連続して見せたい情報がある場面。",
+        "effect": "視線を上から下へ導き、被写体や足元の関係を順に示す。",
+        "caution": "カメラの高さは固定。大きく下に向けると遠近感や比率が変わる。"
+      },
+      "ru": {
+        "name": "Наклон камеры вниз с места",
+        "conditions": "Верхняя и нижняя части сцены содержат связанные детали.",
+        "effect": "Ведёт взгляд сверху вниз, последовательно раскрывая пространство.",
+        "caution": "Высота камеры постоянна; сильный наклон меняет перспективу и пропорции."
+      }
+    }
+  },
+  {
+    "id": "axial-barrel-roll",
+    "category": "rotation",
+    "englishName": "360-degree Axial Roll",
+    "prompt": "Keep the camera position and viewing direction fixed on the existing main subject while rotating one full turn around the lens’s optical axis. Let the entire horizon roll through 360 degrees at a deliberate pace, retain the subject near the frame center, and finish upright with a brief stable hold.",
+    "copy": {
+      "zh": {
+        "name": "轴向360°滚转",
+        "conditions": "主体靠近画面中心，场景有清晰地平线或垂直参照。",
+        "effect": "主体居中，整个画面绕中心翻转，营造失重或眩晕感。",
+        "caution": "围绕镜头光轴旋转；强烈倾斜可能引起不适，四角内容需留余量。"
+      },
+      "en": {
+        "name": "360-degree Axial Roll",
+        "conditions": "A centered subject with a clear horizon or vertical reference.",
+        "effect": "Turns the frame around its center for a weightless or disorienting impression.",
+        "caution": "Rotate around the lens axis; strong roll can cause discomfort and crop corner details."
+      },
+      "ja": {
+        "name": "光軸まわりの360°ロール",
+        "conditions": "被写体が中央にあり、水平線や垂直線が分かる場面。",
+        "effect": "被写体を中心に画面全体が回転し、浮遊感や方向感覚の揺らぎを生む。",
+        "caution": "レンズの光軸を中心に回転。酔いやすいため使用量と四隅の余白に注意。"
+      },
+      "ru": {
+        "name": "Крен на 360° вокруг оптической оси",
+        "conditions": "Объект расположен в центре; виден горизонт или вертикальный ориентир.",
+        "effect": "Вращает весь кадр вокруг центра, создавая невесомость или дезориентацию.",
+        "caution": "Вращение идёт вокруг оси объектива; сильный крен может укачивать и обрезать углы."
+      }
+    }
+  },
+  {
+    "id": "pan-between-subjects",
+    "category": "rotation",
+    "englishName": "Pan Between Two Subjects",
+    "prompt": "From a fixed camera position, begin with a short hold on one of the two existing subjects, then pan smoothly toward the other and settle on their response. Preserve the established screen direction and spatial separation, keep focal length consistent, and make the handoff in one continuous shot without a cut.",
+    "copy": {
+      "zh": {
+        "name": "双主体摇摄交接",
+        "conditions": "场景中已有两个主体，分处不同方向且关系明确。",
+        "effect": "用一次连续横摇把注意力从行动者交给回应者。",
+        "caution": "先明确起止主体；距离过远或摇速过快会打断反应节奏。"
+      },
+      "en": {
+        "name": "Pan Between Two Subjects",
+        "conditions": "Two existing subjects occupy distinct directions with a clear relationship.",
+        "effect": "Passes attention from an action to a response in one continuous pan.",
+        "caution": "Specify the starting and ending subjects; excessive travel or speed can lose the reaction."
+      },
+      "ja": {
+        "name": "二人をつなぐパン",
+        "conditions": "異なる方向に二人がいて、その関係が明確な場面。",
+        "effect": "一度の連続したパンで行動から反応へ注目を渡す。",
+        "caution": "開始と終了の人物を明確にする。距離や速度が過大だと反応を見逃しやすい。"
+      },
+      "ru": {
+        "name": "Панорама между двумя объектами",
+        "conditions": "Два уже существующих объекта находятся в разных направлениях и связаны действием.",
+        "effect": "Передаёт внимание от действия к реакции одним непрерывным поворотом.",
+        "caution": "Укажите начало и конец; слишком длинная или быстрая панорама может пропустить реакцию."
+      }
+    }
+  },
+  {
+    "id": "snorricam-body-mount",
+    "category": "handheld",
+    "englishName": "Snorricam Body-mounted Shot",
+    "prompt": "Use a body-mounted camera facing the existing subject from a fixed close distance as they continue forward along their established straight path. Keep the face and upper body nearly anchored in the frame while the background flows past. Preserve the attachment relationship and natural anatomy without adding an orbit or zoom.",
+    "copy": {
+      "zh": {
+        "name": "贴身机位（Snorricam）",
+        "conditions": "已有沿直线前行的人物，适合贴近表情与身体节奏。",
+        "effect": "脸部相对稳定，背景随人物前行流动，强化主观紧张与疏离感。",
+        "caution": "相机随主体固定移动；近距离广角可能夸张五官，持续的背景运动较刺激。"
+      },
+      "en": {
+        "name": "Snorricam Body-mounted Shot",
+        "conditions": "A person already moving along a straight path whose expression and body rhythm matter.",
+        "effect": "Anchors the face while the background flows past, intensifying subjective tension.",
+        "caution": "Keep the camera attached to the subject; close wide-angle framing can distort faces, and sustained background motion can feel intense."
+      },
+      "ja": {
+        "name": "スノリカム・身体固定撮影",
+        "conditions": "直線に沿って進む人物がいて、表情と身体のリズムに近づきたい場面。",
+        "effect": "顔をほぼ固定し、流れる背景で主観的な緊張や孤立感を強める。",
+        "caution": "カメラは人物に固定して追従。近距離の広角は顔を誇張し、持続する背景の動きは刺激が強い。"
+      },
+      "ru": {
+        "name": "Камера на теле — Snorricam",
+        "conditions": "Человек уже движется по прямой; его выражение лица и ритм важны для сцены.",
+        "effect": "Лицо почти неподвижно в кадре, а фон движется мимо, усиливая субъективное напряжение.",
+        "caution": "Камера закреплена относительно человека; близкий широкий угол искажает лицо, а постоянное движение фона может быть интенсивным."
+      }
+    }
+  },
+  {
+    "id": "fpv-vertical-dive",
+    "category": "aerial",
+    "englishName": "FPV Dive and Pull-out",
+    "prompt": "Begin above the existing scene and make a steep FPV-style descent through clearly open space beside its visible structures. Gradually pitch out of the dive into a forward glide before reaching the ground, maintain readable spatial continuity, and avoid passing through any existing surface, object, or person.",
+    "copy": {
+      "zh": {
+        "name": "FPV俯冲后拉平",
+        "conditions": "场景已有明显高度差，结构旁有完整、无遮挡的下降路径。",
+        "effect": "地面快速接近，随后视线抬起前飞，突出高度与速度。",
+        "caution": "预留足够拉平距离；低空急转与高速逼近容易造成空间跳变和不适。"
+      },
+      "en": {
+        "name": "FPV Dive and Pull-out",
+        "conditions": "Visible height variation and a fully open descent beside existing structures.",
+        "effect": "Rushes toward the ground, then lifts the view into forward flight.",
+        "caution": "Leave enough room to pull out; abrupt low turns and rapid approach can disrupt continuity or comfort."
+      },
+      "ja": {
+        "name": "FPV急降下から水平飛行",
+        "conditions": "高低差があり、既存の構造物の横に開けた下降経路がある場面。",
+        "effect": "地面が急接近した後に視線が上がり、高さと速度を感じさせる。",
+        "caution": "水平飛行へ戻る距離を確保。低空の急旋回は空間の不連続や酔いを招きやすい。"
+      },
+      "ru": {
+        "name": "FPV-пикирование с выходом в горизонт",
+        "conditions": "Есть заметный перепад высоты и открытый спуск рядом с существующими сооружениями.",
+        "effect": "Земля быстро приближается, затем взгляд поднимается в полёт вперёд.",
+        "caution": "Оставьте место для выхода из пикирования; резкие повороты внизу могут нарушить связность и укачивать."
+      }
+    }
+  },
+  {
+    "id": "fpv-gap-slalom",
+    "category": "aerial",
+    "englishName": "FPV Gap Slalom",
+    "prompt": "Fly forward through the existing scene at a fixed focal length, weaving left and then right through clear gaps between visible obstacles. Bank gently with each connected turn, let nearby foreground edges sweep past to convey speed, and maintain believable clearance without clipping through solid structures or changing the scene layout.",
+    "copy": {
+      "zh": {
+        "name": "FPV障碍穿梭",
+        "conditions": "场景已有连续障碍和清晰开口，能辨认一条可通行路线。",
+        "effect": "近景边缘快速掠过，连续侧倾转向带来穿行速度感。",
+        "caution": "不要凭空增加通道；密集障碍、狭小间隙和急弯容易造成穿模。"
+      },
+      "en": {
+        "name": "FPV Gap Slalom",
+        "conditions": "Existing obstacles and visible gaps define a clearly passable route.",
+        "effect": "Combines sweeping foreground edges with linked banking turns for speed.",
+        "caution": "Do not invent openings; dense obstacles, tight gaps, and sharp turns increase clipping risk."
+      },
+      "ja": {
+        "name": "FPV障害物スラローム",
+        "conditions": "既存の障害物と開口部から、通過できる経路が読み取れる場面。",
+        "effect": "手前の縁が流れ、連続したバンク旋回が速度感を生む。",
+        "caution": "新しい通路を作らない。密集した障害物や狭い隙間、急旋回は貫通が起こりやすい。"
+      },
+      "ru": {
+        "name": "FPV-слалом между препятствиями",
+        "conditions": "Существующие препятствия и видимые просветы образуют проходимый маршрут.",
+        "effect": "Близкие края быстро проносятся мимо, а связанные виражи передают скорость.",
+        "caution": "Не придумывайте проходы; тесные зазоры и резкие повороты повышают риск пересечения геометрии."
+      }
+    }
+  },
+  {
+    "id": "aerial-subject-follow",
+    "category": "aerial",
+    "englishName": "Aerial Moving-subject Follow",
+    "prompt": "Follow the existing moving subject from an elevated rear three-quarter viewpoint, matching its direction and pace along the established route. Maintain a consistent oblique viewing angle and useful subject size, allow the terrain to flow beneath the frame, and adjust the camera path smoothly without overtaking or circling the subject.",
+    "copy": {
+      "zh": {
+        "name": "航拍主体跟随",
+        "conditions": "已有持续移动的主体与明确路线，上方视野较开阔。",
+        "effect": "主体保持稳定大小，地形在下方流动，同时交代行动与环境。",
+        "caution": "保持高度、速度与跟随距离协调；复杂遮挡会丢失主体。"
+      },
+      "en": {
+        "name": "Aerial Moving-subject Follow",
+        "conditions": "An existing subject follows a clear route beneath a relatively open view.",
+        "effect": "Keeps subject size consistent while terrain flows below, linking action and setting.",
+        "caution": "Coordinate height, speed, and following distance; complex occlusion can lose the subject."
+      },
+      "ja": {
+        "name": "空撮での被写体追従",
+        "conditions": "継続して動く被写体と明確な経路があり、上空の見通しがよい場面。",
+        "effect": "被写体の大きさを保ち、下を流れる地形と動きを同時に見せる。",
+        "caution": "高度、速度、追従距離を合わせる。複雑な遮蔽物では被写体を見失いやすい。"
+      },
+      "ru": {
+        "name": "Воздушное сопровождение объекта",
+        "conditions": "Объект движется по понятному маршруту, который хорошо виден сверху.",
+        "effect": "Сохраняет масштаб объекта на фоне движущегося рельефа, связывая действие с окружением.",
+        "caution": "Согласуйте высоту, скорость и дистанцию; сложные перекрытия могут скрыть объект."
+      }
+    }
+  },
+  {
+    "id": "moving-subject-orbit",
+    "category": "orbit",
+    "englishName": "Orbit Around a Moving Subject",
+    "prompt": "Track the existing subject along its established movement while making a smooth clockwise half orbit around its changing position. Keep the subject near the frame center at a consistent distance, combine forward travel with a gradual change of viewing angle, and preserve coherent background parallax without crossing the subject’s body or route.",
+    "copy": {
+      "zh": {
+        "name": "移动主体环绕",
+        "conditions": "主体已有稳定运动方向，周围有足够空间支持随行与绕拍。",
+        "effect": "边跟随边改变观察角度，主体持续居中，背景产生复合视差。",
+        "caution": "环绕中心随主体移动；过大的绕行角度会增加遮挡与方向混乱。"
+      },
+      "en": {
+        "name": "Orbit Around a Moving Subject",
+        "conditions": "A subject moves predictably with enough surrounding space for a traveling arc.",
+        "effect": "Changes the viewing angle while following, adding layered background parallax.",
+        "caution": "Move the orbit center with the subject; a large sweep increases occlusion and directional confusion."
+      },
+      "ja": {
+        "name": "移動する被写体の周回撮影",
+        "conditions": "被写体の進行方向が安定し、追従と回り込みの空間がある場面。",
+        "effect": "追いながら視点が変わり、被写体を中央に保って複合的な視差を生む。",
+        "caution": "周回の中心も被写体と移動する。大きく回ると遮蔽や方向の混乱が増える。"
+      },
+      "ru": {
+        "name": "Облёт движущегося объекта",
+        "conditions": "Объект движется предсказуемо, вокруг достаточно места для сопровождающей дуги.",
+        "effect": "Меняет ракурс во время сопровождения и создаёт сложный параллакс фона.",
+        "caution": "Центр облёта движется с объектом; широкая дуга повышает риск перекрытий и путаницы направлений."
+      }
+    }
+  },
+  {
+    "id": "push-past-subject",
+    "category": "dolly",
+    "englishName": "Push Past the Subject",
+    "prompt": "Advance toward the existing main subject along a slightly offset path, then continue past one side into the visible space beyond. Let the subject grow briefly in frame before leaving the edge, shift attention naturally to the existing background, and preserve clear physical separation without traveling through the subject.",
+    "copy": {
+      "zh": {
+        "name": "越过主体推进",
+        "conditions": "主体侧面有可通行空间，后方已有值得接续展示的环境。",
+        "effect": "主体先放大再从边缘退出，注意力被带入其身后空间。",
+        "caution": "路径必须偏离主体身体；近距离掠过容易产生裁切与形体变形。"
+      },
+      "en": {
+        "name": "Push Past the Subject",
+        "conditions": "There is clear space beside the subject and a meaningful existing background beyond.",
+        "effect": "Enlarges the subject, then passes it to draw attention deeper into the scene.",
+        "caution": "Offset the path from the body; a close pass can cause abrupt cropping or shape distortion."
+      },
+      "ja": {
+        "name": "被写体を通り越す前進",
+        "conditions": "被写体の横に通れる空間があり、奥に見せたい既存の環境がある場面。",
+        "effect": "被写体が大きくなって画面端へ抜け、注目をその奥へ導く。",
+        "caution": "身体からずらした経路を使う。近すぎる通過は急な切れや形の歪みを生みやすい。"
+      },
+      "ru": {
+        "name": "Проезд вперёд мимо объекта",
+        "conditions": "Сбоку есть свободный проход, а за объектом — значимое существующее пространство.",
+        "effect": "Объект укрупняется и уходит за край, направляя внимание в глубину сцены.",
+        "caution": "Путь должен проходить в стороне от тела; близкий проезд может резко обрезать или исказить объект."
+      }
+    }
+  },
+  {
+    "id": "aerial-flyover-lookback",
+    "category": "sequence",
+    "englishName": "Aerial Flyover and Look Back",
+    "prompt": "Approach the existing subject from an elevated viewpoint and fly above and beyond it with clear overhead separation. Ease into a hover, then smoothly turn the camera back toward the subject. Reveal the reverse side of the established setting, preserve the subject’s identity and location, and finish with a stable backward-looking aerial composition.",
+    "copy": {
+      "zh": {
+        "name": "飞越后回望",
+        "conditions": "主体上方与后方无遮挡，场景两侧空间关系已明确。",
+        "effect": "飞越主体后悬停回望，依次展示正反两侧环境与空间关系。",
+        "caution": "飞越时需保持高度间隔；回望转向过急会失去主体并混淆方向。"
+      },
+      "en": {
+        "name": "Aerial Flyover and Look Back",
+        "conditions": "Clear space above and beyond the subject with established scene geography.",
+        "effect": "Flies beyond the subject, then hovers and looks back to reveal the setting from its reverse side.",
+        "caution": "Keep overhead clearance; an abrupt look-back can lose the subject and confuse direction."
+      },
+      "ja": {
+        "name": "飛び越えて振り返る空撮",
+        "conditions": "被写体の上と奥が開け、前後の空間関係が明確な場面。",
+        "effect": "人物を越えてホバリングし、振り返って空間の表裏の関係を見せる。",
+        "caution": "上方の間隔を保つ。急な振り返りは被写体を見失い、方向感覚を乱しやすい。"
+      },
+      "ru": {
+        "name": "Пролёт сверху с взглядом назад",
+        "conditions": "Над объектом и за ним свободно; география сцены уже понятна.",
+        "effect": "Камера пролетает над объектом, зависает и оглядывается, показывая обратную сторону пространства.",
+        "caution": "Сохраняйте просвет сверху; резкий разворот взгляда может потерять объект и запутать направление."
+      }
+    }
+  },
+  {
+    "id": "corkscrew-flythrough",
+    "category": "sequence",
+    "englishName": "Rolling Corkscrew Flythrough",
+    "prompt": "Advance through a wide opening already visible in the existing scene while making one smooth full roll around the lens’s optical axis. Keep the flight path centered within the clear passage, let the surrounding frame rotate as depth flows forward, and finish upright beyond the opening without intersecting its solid edges.",
+    "copy": {
+      "zh": {
+        "name": "滚转穿越",
+        "conditions": "场景已有宽阔开口，前后路径连续且周围轮廓清晰。",
+        "effect": "向前穿越同时绕光轴滚转，空间向前流动、边框旋转。",
+        "caution": "开口需留足余量；推进与整圈滚转叠加较刺激，易产生穿模或不适。"
+      },
+      "en": {
+        "name": "Rolling Corkscrew Flythrough",
+        "conditions": "A wide existing opening has a continuous clear route and readable edges.",
+        "effect": "Combines forward depth flow with a full rotation of the surrounding frame.",
+        "caution": "Leave ample edge clearance; travel plus a full roll can cause clipping and discomfort."
+      },
+      "ja": {
+        "name": "ロールしながらのフライスルー",
+        "conditions": "広い既存の開口部があり、前後の経路と周囲の縁が明確な場面。",
+        "effect": "奥行きが前へ流れると同時に、周囲の枠が光軸まわりに一回転する。",
+        "caution": "縁から十分に離す。前進と一回転の併用は刺激が強く、貫通や酔いに注意。"
+      },
+      "ru": {
+        "name": "Пролёт с полным осевым креном",
+        "conditions": "Есть широкий существующий проём с открытым маршрутом и чёткими краями.",
+        "effect": "Совмещает движение в глубину с полным вращением окружающего кадра.",
+        "caution": "Оставьте запас до краёв; пролёт с полным креном может вызывать пересечения и укачивание."
+      }
+    }
+  }
+]

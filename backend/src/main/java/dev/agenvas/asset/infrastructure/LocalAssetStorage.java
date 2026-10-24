@@ -48,6 +48,8 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     private static final long MAX_IMAGE_BYTES = 20L * 1024 * 1024;
     /** 原始视频的最大归档字节数。 */
     private static final long MAX_VIDEO_BYTES = 500L * 1024 * 1024;
+    /** Covers provider video extension while retaining a finite archive/decode bound. */
+    private static final int MAX_VIDEO_DURATION_MS = 600_000;
     /** 图片与视频允许解码的最大像素面积。 */
     private static final long MAX_IMAGE_PIXELS = 40_000_000L;
     /** 缩略图最长边，短边按比例缩放。 */
@@ -180,7 +182,7 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
         }
     }
 
-    /** 通过 ffprobe 核验视频流、MP4 容器、分辨率和 60 秒时长上限。 */
+    /** 通过 ffprobe 核验视频流、MP4 容器、分辨率和十分钟时长上限。 */
     private VideoDetails inspectVideo(Path path) {
         JsonNode probe;
         try {
@@ -202,11 +204,11 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
         if (!"video".equals(stream.path("codec_type").asText())
                 || !format.contains("mp4") || width < 1 || height < 1
                 || (long) width * height > MAX_IMAGE_PIXELS
-                || !Double.isFinite(duration) || duration <= 0 || duration > 60) {
-            throw invalid(ApiMessage.of("api.local-asset-storage.video-must-be-decodable-mp4-and-no-longer-than-60"), "ASSET_INVALID_VIDEO");
+                || !Double.isFinite(duration) || duration <= 0 || duration * 1000 > MAX_VIDEO_DURATION_MS) {
+            throw invalid(ApiMessage.of("api.local-asset-storage.video-must-be-decodable-mp4-within-archive-limits"), "ASSET_INVALID_VIDEO");
         }
         int durationMs = Math.toIntExact(Math.round(duration * 1_000));
-        if (durationMs < 1 || durationMs > 60_000) {
+        if (durationMs < 1 || durationMs > MAX_VIDEO_DURATION_MS) {
             throw invalid(ApiMessage.of("api.local-asset-storage.the-video-length-exceeds-the-supported-range"), "ASSET_INVALID_VIDEO");
         }
         return new VideoDetails(width, height, durationMs);
@@ -215,13 +217,16 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     /** ffprobe 验证后的视频元数据。
      * @param width 视频流像素宽度
      * @param height 视频流像素高度
-     * @param durationMs 视频时长，已验证为 1 到 60,000 毫秒
+     * @param durationMs 视频时长，已验证为 1 到 600,000 毫秒
      */
     private record VideoDetails(int width, int height, int durationMs) {}
 
     /** 限流保存视频字节，实测容器与视频流后解码首帧并原子安装 MP4 和海报。 */
     public static final long MAX_AUDIO_BYTES = 50L * 1024 * 1024;
     public static final int MAX_AUDIO_DURATION_MS = 600_000;
+    private static final int AUDIO_VALIDATION_SAMPLE_RATE = 48_000;
+    private static final int AUDIO_VALIDATION_BYTES_PER_SECOND = AUDIO_VALIDATION_SAMPLE_RATE * Short.BYTES;
+    private static final int MIN_AUDIO_DURATION_MS = 100;
     public record StoredAudio(String objectKey, String contentType, long byteSize,
             String sha256, int durationMs) {}
 
@@ -274,6 +279,7 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     }
 
     private StoredAudio inspectAudio(Path file, String key, long size, String hash) {
+        Path decoded = null;
         try {
             JsonNode probe = mapper.readTree(mediaTools.ffprobe(java.util.List.of(
                     "-v", "error", "-protocol_whitelist", "file,pipe", "-show_entries",
@@ -289,16 +295,30 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
             };
             if (mime == null || "audio/ogg".equals(mime) && !"opus".equals(streams.path(0).path("codec_name").asText()) || !streams.isArray() || streams.size() != 1
                     || !"audio".equals(streams.path(0).path("codec_type").asText())
-                    || !Double.isFinite(seconds) || seconds < 0.1
-                    || seconds * 1000 > MAX_AUDIO_DURATION_MS)
+                    || !Double.isFinite(seconds) || seconds < 0.1)
                 throw invalid(ApiMessage.of("api.local-asset-storage.audio-must-be-decodable-mp3-wav-or-ogg-and-no"), "ASSET_INVALID_AUDIO");
+            // MP3 container duration includes encoder padding. Count decoded fixed-rate samples
+            // instead; the extra second bounds scratch space while still rejecting overlong audio.
+            decoded = Files.createTempFile(file.getParent(), ".audio-decode-", ".pcm");
             mediaTools.ffmpeg(java.util.List.of("-hide_banner", "-loglevel", "error", "-nostdin",
                     "-protocol_whitelist", "file,pipe", "-i", file.toString(), "-map", "0:a:0",
-                    "-f", "null", "-"));
-            return new StoredAudio(key, mime, size, hash, (int) Math.round(seconds * 1000));
+                    "-t", Integer.toString(MAX_AUDIO_DURATION_MS / 1000 + 1), "-ac", "1",
+                    "-ar", Integer.toString(AUDIO_VALIDATION_SAMPLE_RATE), "-c:a", "pcm_s16le",
+                    "-f", "s16le", "-y", decoded.toString()));
+            long decodedBytes = Files.size(decoded);
+            if (decodedBytes % Short.BYTES != 0
+                    || decodedBytes < (long) AUDIO_VALIDATION_BYTES_PER_SECOND * MIN_AUDIO_DURATION_MS / 1000
+                    || decodedBytes > (long) AUDIO_VALIDATION_BYTES_PER_SECOND * MAX_AUDIO_DURATION_MS / 1000)
+                throw invalid(ApiMessage.of("api.local-asset-storage.audio-must-be-decodable-mp3-wav-or-ogg-and-no"), "ASSET_INVALID_AUDIO");
+            return new StoredAudio(key, mime, size, hash,
+                    (int) Math.round((double) decodedBytes * 1000 / AUDIO_VALIDATION_BYTES_PER_SECOND));
         } catch (MediaToolRunner.MediaToolException failure) {
             if (failure.invalidInput()) throw invalid(ApiMessage.of("api.local-asset-storage.audio-cannot-be-decoded"), "ASSET_INVALID_AUDIO");
             throw failure;
+        } catch (IOException failure) {
+            throw new IllegalStateException("Private audio validation failed", failure);
+        } finally {
+            cleanup(decoded);
         }
     }
 

@@ -24,6 +24,8 @@ import tools.jackson.databind.ObjectMapper;
 @Repository
 public class JooqToolExecutionRepository implements ToolExecutionRepository {
 
+    private static final List<String> LOCAL_TASK_TOOLS = List.of("extract_audio", "trim_audio", "compose_video");
+
     /** 执行工具执行账本的查询与条件更新。 */
     private final DSLContext dsl;
     /** 将已完成工具结果从 JSONB 还原为结果树。 */
@@ -33,13 +35,6 @@ public class JooqToolExecutionRepository implements ToolExecutionRepository {
     public JooqToolExecutionRepository(DSLContext dsl, ObjectMapper mapper) {
         this.dsl = dsl;
         this.mapper = mapper;
-    }
-
-    /** 统计 Run 已登记的工具调用数，用于执行预算限制。 */
-    @Override
-    public long countByRun(UUID projectId, UUID runId) {
-        return dsl.fetchCount(TOOL_EXECUTION, TOOL_EXECUTION.PROJECT_ID.eq(projectId)
-                .and(TOOL_EXECUTION.RUN_ID.eq(runId)));
     }
 
     /** JSONB 只提取服务端写入的公开摘要和业务状态，避免载入私有结果字段。 */
@@ -77,35 +72,39 @@ public class JooqToolExecutionRepository implements ToolExecutionRepository {
     }
 
     @Override
-    public boolean hasCreatedCanvasItem(UUID projectId, UUID runId, UUID itemId) {
-        var copied = mapper.createObjectNode();
-        copied.putArray("createdIds").add(itemId.toString());
-        copied.putObject("data").put("itemId", itemId.toString());
-        var placed = mapper.createObjectNode();
-        placed.putArray("createdIds").add(itemId.toString());
-        placed.putArray("data").addObject().put("itemId", itemId.toString()).put("created", true);
-        var textNodes = mapper.createObjectNode();
-        textNodes.putArray("createdCanvasItemIds").add(itemId.toString());
-        textNodes.putArray("data").addObject().put("itemId", itemId.toString());
-        var proposed = mapper.createObjectNode();
-        proposed.putArray("createdIds").add(itemId.toString());
-        proposed.putObject("data").putArray("outputs").addObject().put("canvasItemId", itemId.toString());
-        // createdIds also contains artifact IDs. Typed result fields prevent a caller-created node
-        // whose UUID equals such an artifact ID from becoming an accidental authorization token.
-        var recognized = TOOL_EXECUTION.TOOL_NAME.eq("manage_canvas_node")
-                .and(DSL.condition("{0} @> {1}::jsonb", TOOL_EXECUTION.RESULT_JSON, DSL.val(copied.toString())))
-                .or(TOOL_EXECUTION.TOOL_NAME.eq("place_artifacts")
-                        .and(DSL.condition("{0} @> {1}::jsonb", TOOL_EXECUTION.RESULT_JSON, DSL.val(placed.toString()))))
-                .or(TOOL_EXECUTION.TOOL_NAME.eq("propose_media_generation")
-                        .and(DSL.condition("{0} @> {1}::jsonb", TOOL_EXECUTION.RESULT_JSON, DSL.val(proposed.toString()))));
-        recognized = recognized.or(TOOL_EXECUTION.TOOL_NAME.eq("create_text")
-                .and(DSL.condition("{0} @> {1}::jsonb", TOOL_EXECUTION.RESULT_JSON, DSL.val(textNodes.toString()))));
-        return dsl.fetchExists(dsl.selectOne().from(TOOL_EXECUTION)
+    public List<ToolExecution> localTaskExecutions(UUID projectId, UUID runId) {
+        return dsl.selectFrom(TOOL_EXECUTION)
                 .where(TOOL_EXECUTION.PROJECT_ID.eq(projectId)).and(TOOL_EXECUTION.RUN_ID.eq(runId))
-                .and(TOOL_EXECUTION.STATUS.eq(ToolExecution.Status.COMPLETED.name())).and(recognized));
+                .and(localTaskReceipt())
+                .orderBy(TOOL_EXECUTION.STEP_INDEX, TOOL_EXECUTION.CREATED_AT, TOOL_EXECUTION.ID)
+                .fetch(this::map);
     }
 
-    /** 按 Run、步骤和 toolCallId 读取去重记录及已完成结果。 */
+    @Override
+    public boolean ownsLocalTask(UUID projectId, UUID runId, UUID taskId) {
+        return dsl.fetchExists(dsl.selectOne().from(TOOL_EXECUTION)
+                .where(TOOL_EXECUTION.PROJECT_ID.eq(projectId)).and(TOOL_EXECUTION.RUN_ID.eq(runId))
+                .and(localTaskReceipt())
+                .and(DSL.condition("{0}->'taskIds' @> {1}", TOOL_EXECUTION.RESULT_JSON,
+                        DSL.val(JSONB.valueOf("[\"" + taskId + "\"]")))));
+    }
+
+    @Override
+    public boolean appendLocalTaskOutcome(UUID id, JsonNode outcome) {
+        return dsl.update(TOOL_EXECUTION)
+                .set(TOOL_EXECUTION.RESULT_JSON, DSL.field("jsonb_set({0}, '{localTaskOutcome}', {1}, true)",
+                        JSONB.class, TOOL_EXECUTION.RESULT_JSON, DSL.val(JSONB.valueOf(outcome.toString()))))
+                .where(TOOL_EXECUTION.ID.eq(id)).and(localTaskReceipt())
+                .and(DSL.condition("{0}->'localTaskOutcome' is null", TOOL_EXECUTION.RESULT_JSON))
+                .execute() == 1;
+    }
+
+    private org.jooq.Condition localTaskReceipt() {
+        return TOOL_EXECUTION.STATUS.eq(ToolExecution.Status.COMPLETED.name())
+                .and(TOOL_EXECUTION.TOOL_NAME.in(LOCAL_TASK_TOOLS))
+                .and(DSL.condition("{0}->'awaitingLocalTask' = 'true'::jsonb", TOOL_EXECUTION.RESULT_JSON));
+    }
+
     @Override
     public Optional<ToolExecution> find(UUID projectId, UUID runId,
             int stepIndex, String toolCallId) {

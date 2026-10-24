@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import { clickControl } from "../../test/controls";
@@ -42,5 +42,16 @@ describe("AudioPlayer", () => {
     await clickControl(screen.getByRole("button", { name: "重试播放" }));
     expect(load).toHaveBeenCalledOnce();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("pauses a late play result after unmount", async () => {
+    let resolve!: () => void;
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => new Promise<void>((done) => { resolve = done; }));
+    const view = showPlayer();
+    await clickControl(screen.getByRole("button", { name: "播放音频" }));
+    view.unmount();
+    vi.mocked(HTMLMediaElement.prototype.pause).mockClear();
+    await act(async () => resolve());
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledOnce();
   });
 });

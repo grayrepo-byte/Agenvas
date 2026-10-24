@@ -17,7 +17,7 @@ import tools.jackson.databind.JsonNode;
  * @param userId 创建 Run 的服务端用户身份
  * @param status 当前编排状态
  * @param instruction 创建时固定的用户指令
- * @param contextSnapshot 创建时选定的绑定、画布选择与项目上下文
+ * @param contextSnapshot 创建时固定的创作配置、任务重点、公开记忆与明确 Skill 输入
  * @param policySnapshot 模型配置版本及预算等执行策略快照
  * @param profileVersion 创建时 Agent 配置档案版本
  * @param nextStepIndex 下一个可调度的模型回合序号
@@ -43,35 +43,6 @@ public record AgentRun(
         Instant createdAt,
         Instant updatedAt,
         Instant completedAt) {
-
-    /** Historical policies retain their frozen budgets; null in v6 means no count limit. */
-    private static final int LEGACY_MAX_TOOL_EXECUTIONS = 40;
-
-    public boolean modelTurnLimitReached(int stepIndex) {
-        return limitReached("maxModelTurns", 12, stepIndex);
-    }
-
-    /** Unbounded policies do not require an ever-growing ledger count before each tool. */
-    public boolean hasToolExecutionLimit() {
-        return configuredLimit("maxToolExecutions", LEGACY_MAX_TOOL_EXECUTIONS) != null;
-    }
-
-    public boolean toolExecutionLimitReached(long completedCount) {
-        return limitReached("maxToolExecutions", LEGACY_MAX_TOOL_EXECUTIONS, completedCount);
-    }
-
-    private boolean limitReached(String field, int legacyDefault, long count) {
-        Long value = configuredLimit(field, legacyDefault);
-        return value != null && count >= value;
-    }
-
-    private Long configuredLimit(String field, int legacyDefault) {
-        JsonNode limit = policySnapshot.path(field);
-        if (limit.isNull() && policySnapshot.path("schemaVersion").asInt() >= 6) return null;
-        long value = limit.isMissingNode() ? legacyDefault : limit.isIntegralNumber() ? limit.longValue() : -1;
-        if (value < 1 || value > Integer.MAX_VALUE) throw new IllegalStateException("Invalid frozen Run budget");
-        return value;
-    }
 
     /** 持久化运行状态；等待任务和阻断均未释放项目活动槽位。 */
     public enum Status {

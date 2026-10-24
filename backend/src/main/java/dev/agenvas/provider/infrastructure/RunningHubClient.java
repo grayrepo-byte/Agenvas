@@ -2,6 +2,9 @@ package dev.agenvas.provider.infrastructure;
 
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.provider.domain.MediaPayload;
+import dev.agenvas.provider.domain.ProviderFailure;
+import dev.agenvas.provider.domain.ProviderFailure.Category;
+import dev.agenvas.provider.domain.ProviderFailure.Stage;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.FilterInputStream;
@@ -12,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import okhttp3.Dns;
 import okhttp3.MediaType;
@@ -178,12 +182,20 @@ public final class RunningHubClient {
         validateDownload(origin, url);
         try {
             Response response = http.newCall(new Request.Builder().url(url).get().build()).execute();
-            if (!response.isSuccessful() || response.body() == null) { response.close(); throw new ProtocolFailure(); }
+            if (!response.isSuccessful() || response.body() == null) {
+                int status = response.code();
+                response.close();
+                var diagnostic = new ProviderFailure(Stage.DOWNLOAD,
+                        Set.of(403, 404, 410).contains(status) ? Category.DOWNLOAD_EXPIRED : Category.UNAVAILABLE,
+                        status, null, null, null);
+                if (diagnostic.category() == Category.DOWNLOAD_EXPIRED) throw new DownloadExpired(diagnostic);
+                throw new ProtocolFailure(diagnostic);
+            }
             InputStream stream = new FilterInputStream(response.body().byteStream()) {
                 @Override public void close() throws IOException { try { super.close(); } finally { response.close(); } }
             };
             return new MediaPayload(stream, response.header("Content-Type", "application/octet-stream"));
-        } catch (IOException failure) { throw new ProtocolFailure(); }
+        } catch (IOException failure) { throw new ProtocolFailure(new ProviderFailure(Stage.DOWNLOAD, Category.UNAVAILABLE, null, null, null, null)); }
     }
 
     public static void validateDownload(String origin, String url) {
@@ -214,25 +226,126 @@ public final class RunningHubClient {
     private JsonNode json(Request request, boolean submission, Duration timeout) {
         var call = http.newCall(request);
         call.timeout().timeout(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        Stage stage = stage(request);
         try (Response response = call.execute()) {
-            if (response.code() >= 400 && response.code() < 500) throw new Rejected();
-            if (!response.isSuccessful() || response.body() == null) throw new ProtocolFailure();
+            if (response.body() == null) throw new ProtocolFailure(diagnostic(stage, response.code(), null, request));
             byte[] bytes = response.body().byteStream().readNBytes(MAX_JSON_BYTES + 1);
-            if (bytes.length > MAX_JSON_BYTES) throw new ProtocolFailure();
-            JsonNode result = mapper.readTree(bytes);
-            if (!result.isObject()) throw new ProtocolFailure();
-            if (result.hasNonNull("code")) {
-                if (!result.path("code").isIntegralNumber()) throw new ProtocolFailure();
-                int code = result.path("code").asInt();
-                if (code != 0 && code != 200) throw new Rejected();
+            if (bytes.length > MAX_JSON_BYTES) throw new ProtocolFailure(diagnostic(stage, response.code(), null, request));
+            JsonNode result;
+            try { result = mapper.readTree(bytes); }
+            catch (RuntimeException invalid) { result = null; }
+            var diagnostic = diagnostic(stage, response.code(), result, request);
+            if (!response.isSuccessful()) {
+                // Gateways may return throttling/timeouts after forwarding the paid request.
+                if (submission && !Set.of(400, 401, 402, 403, 404, 405, 410, 413, 422).contains(response.code()))
+                    throw new Uncertain(diagnostic);
+                if (response.code() >= 400 && response.code() < 500) throw new Rejected(diagnostic);
+                throw new ProtocolFailure(diagnostic);
             }
-            if (submission && "FAILED".equals(result.path("status").asText())) throw new Rejected();
+            if (result == null || !result.isObject()) throw new ProtocolFailure(diagnostic);
+            if (result.hasNonNull("code")) {
+                if (!result.path("code").isIntegralNumber() || !result.path("code").canConvertToInt()) throw new ProtocolFailure(diagnostic);
+                int code = result.path("code").asInt();
+                if (code == 804 || code == 813) {
+                    if (!result.hasNonNull("status")) ((ObjectNode) result).put("status", code == 804 ? "RUNNING" : "QUEUED");
+                } else if (code != 0 && code != 200) {
+                    if (submission && !definiteRejection(diagnostic.category())) throw new Uncertain(diagnostic);
+                    throw new Rejected(diagnostic);
+                }
+            }
+            if (submission && "FAILED".equals(result.path("status").asText())) throw new Rejected(diagnostic);
             return result;
-        } catch (Rejected failure) { throw failure; }
-        catch (IOException | RuntimeException failure) {
-            if (submission) throw new Uncertain();
-            throw new ProtocolFailure();
+        } catch (Rejected | Uncertain failure) { throw failure; }
+        catch (ProtocolFailure failure) {
+            if (submission) throw new Uncertain(failure.diagnostic());
+            throw failure;
+        } catch (IOException | RuntimeException failure) {
+            var diagnostic = new ProviderFailure(stage, Category.UNAVAILABLE, null, null, null, null);
+            if (submission) throw new Uncertain(diagnostic);
+            throw new ProtocolFailure(diagnostic);
         }
+    }
+
+    private static Stage stage(Request request) {
+        String path = request.url().encodedPath();
+        if (path.contains("/upload")) return Stage.UPLOAD;
+        if (path.startsWith("/openapi/v2/run/")) return Stage.SUBMIT;
+        if (path.equals("/openapi/v2/query")) return Stage.POLL;
+        return Stage.DISCOVERY;
+    }
+
+    private static boolean definiteRejection(Category category) {
+        return Set.of(Category.AUTHENTICATION, Category.BALANCE, Category.PARAMETER, Category.UPLOAD).contains(category);
+    }
+
+    /** Read a small allowlist of typed locations; never mine messages or nested arbitrary data for diagnostics. */
+    private static ProviderFailure diagnostic(Stage stage, int status, JsonNode body, Request request) {
+        JsonNode value = body == null ? null : body.get("errorCode");
+        Long code = numericCode(value);
+        if (code == null || code == 0 || code == 200) code = body == null ? null : numericCode(body.get("code"));
+        if (code != null && (code == 0 || code == 200)) code = null;
+        String authorization = request.header("Authorization");
+        String key = authorization != null && authorization.startsWith("Bearer ") ? authorization.substring(7) : null;
+        if (code != null && key != null && !key.isEmpty() && code.toString().contains(key)) code = null;
+        String identifier = value != null && value.isTextual() ? value.asText() : "";
+        Category category = category(stage, status, code, identifier, body != null && "FAILED".equals(body.path("status").asText()));
+        JsonNode location = body;
+        if (body != null && body.path("error").isObject()) location = body.path("error");
+        String node = safeLocation(location, "nodeId", "[0-9]{1,32}", request);
+        String field = safeLocation(location, "fieldName", "[A-Za-z_][A-Za-z0-9_.]{0,79}", request);
+        if (field != null && field.matches("(?i).*(apikey|api_key|authorization|token|secret|password).*")) field = null;
+        return new ProviderFailure(stage, category, status, code, node, field);
+    }
+
+    private static String safeLocation(JsonNode body, String field, String pattern, Request request) {
+        JsonNode value = body == null ? null : body.get(field);
+        if (value == null || !(value.isTextual() || value.isIntegralNumber())) return null;
+        String text = value.asText();
+        String authorization = request.header("Authorization");
+        String key = authorization != null && authorization.startsWith("Bearer ") ? authorization.substring(7) : null;
+        return text.matches(pattern) && (key == null || key.isEmpty() || !text.contains(key)) ? text : null;
+    }
+
+    private static Long numericCode(JsonNode value) {
+        if (value == null || !(value.isIntegralNumber() || value.isTextual() && value.asText().matches("[0-9]{1,9}"))) return null;
+        try {
+            long result = Long.parseLong(value.asText());
+            return result >= 0 && result <= 999_999_999L ? result : null;
+        } catch (NumberFormatException invalid) { return null; }
+    }
+
+    private static Category category(Stage stage, int status, Long code, String identifier, boolean failed) {
+        long number = code == null ? switch (identifier) {
+            case "PARAMS_INVALID" -> 301; case "WORKFLOW_NOT_EXISTS" -> 380; case "TOKEN_INVALID" -> 412;
+            case "TASK_INSTANCE_MAXED" -> 415; case "TASK_CREATE_FAILED_BY_NOT_ENOUGH_WALLET" -> 416;
+            case "TASK_QUEUE_MAXED" -> 421; case "TASK_NOT_FOUNED" -> 423; case "VALIDATE_PROMPT_FAILED" -> 433;
+            case "TASK_USER_EXCLAPI_INSTANCE_NOT_FOUND" -> 435; case "APIKEY_UNSUPPORTED_FREE_USER" -> 801;
+            case "APIKEY_UNAUTHORIZED" -> 802; case "APIKEY_INVALID_NODE_INFO" -> 803;
+            case "APIKEY_TASK_STATUS_ERROR" -> 805; case "APIKEY_USER_NOT_FOUND" -> 806;
+            case "APIKEY_TASK_NOT_FOUND" -> 807; case "APIKEY_UPLOAD_FAILED" -> 808;
+            case "APIKEY_FILE_SIZE_EXCEEDED" -> 809; case "WORKFLOW_NOT_SAVED_OR_NOT_RUNNING" -> 810;
+            case "CORPAPIKEY_INVALID" -> 811; case "CORPAPIKEY_INSUFFICIENT_FUNDS" -> 812;
+            case "WEBAPP_NOT_EXISTS" -> 901; default -> -1;
+        } : code;
+        if (Set.of(416L, 812L).contains(number) || identifier.equals("CORPAPIKEY_INSUFFICIENT_FUNDS")
+                || identifier.equals("TASK_CREATE_FAILED_BY_NOT_ENOUGH_WALLET") || status == 402) return Category.BALANCE;
+        if (Set.of(412L, 801L, 802L, 806L, 811L, 1002L, 1014L).contains(number)
+                || Set.of("TOKEN_INVALID", "APIKEY_UNAUTHORIZED", "CORPAPIKEY_INVALID").contains(identifier)
+                || status == 401 || status == 403) return Category.AUTHENTICATION;
+        if (Set.of(415L, 421L, 1003L, 1011L).contains(number) || status == 429) return Category.RATE_LIMIT;
+        if (Set.of(301L, 380L, 433L, 435L, 803L, 809L, 810L, 901L, 1001L, 1007L, 1008L, 1009L, 1101L, 1501L, 1505L).contains(number)
+                || Set.of("PARAMS_INVALID", "APIKEY_INVALID_NODE_INFO", "VALIDATE_PROMPT_FAILED").contains(identifier)
+                || status == 400 || status == 422) return Category.PARAMETER;
+        if (number == 808 || number == 1013 || identifier.equals("APIKEY_UPLOAD_FAILED") || stage == Stage.UPLOAD) return Category.UPLOAD;
+        if (Set.of(423L, 807L, 1004L).contains(number)) return Category.DOWNLOAD_EXPIRED;
+        if (Set.of(805L, 1006L, 1015L, 1504L).contains(number) || failed) return Category.GENERATION;
+        return Category.UNAVAILABLE;
+    }
+
+    public ProviderFailure generationFailure(JsonNode response, String key) {
+        // V2 failure details use the same top-level fields; no credential-bearing message is copied.
+        return diagnostic(Stage.POLL, 200, response, new Request.Builder().url("https://www.runninghub.ai/openapi/v2/query")
+                .header("Authorization", "Bearer " + key).build());
     }
 
     private static boolean local(URI uri) { return "http".equals(uri.getScheme()) && "127.0.0.1".equals(uri.getHost()) && uri.getPort() > 0; }
@@ -243,7 +356,28 @@ public final class RunningHubClient {
             case "video/mp4" -> "mp4"; default -> throw new ProtocolFailure();
         };
     }
-    public static final class Rejected extends RuntimeException { public Rejected() { super("RunningHub rejected the request"); } }
-    public static final class Uncertain extends RuntimeException { public Uncertain() { super("RunningHub submission outcome is unknown"); } }
-    public static final class ProtocolFailure extends RuntimeException { public ProtocolFailure() { super("RunningHub response or media is unavailable"); } }
+    public abstract static class Failure extends RuntimeException {
+        private final ProviderFailure diagnostic;
+        protected Failure(String message, ProviderFailure diagnostic) { super(message); this.diagnostic = diagnostic; }
+        public ProviderFailure diagnostic() { return diagnostic; }
+        public String code() { return diagnostic.code(); }
+    }
+    public static final class Rejected extends Failure {
+        public Rejected() { this(new ProviderFailure(Stage.SUBMIT, Category.GENERATION, null, null, null, null)); }
+        public Rejected(ProviderFailure diagnostic) { super("RunningHub rejected the request", diagnostic); }
+    }
+    public static final class Uncertain extends Failure {
+        public Uncertain() { this(new ProviderFailure(Stage.SUBMIT, Category.UNAVAILABLE, null, null, null, null)); }
+        public Uncertain(ProviderFailure diagnostic) { super("RunningHub submission outcome is unknown", diagnostic); }
+    }
+    public static class ProtocolFailure extends Failure {
+        public ProtocolFailure() { this(new ProviderFailure(Stage.POLL, Category.PROTOCOL, null, null, null, null)); }
+        public ProtocolFailure(ProviderFailure diagnostic) { super("RunningHub response or media is unavailable", diagnostic); }
+    }
+    public static final class DownloadExpired extends ProtocolFailure {
+        public DownloadExpired(ProviderFailure diagnostic) { super(diagnostic); }
+    }
+    public static final class ResultIdentityChanged extends ProtocolFailure {
+        @Override public String code() { return dev.agenvas.shared.error.ProviderFailureCodes.RUNNINGHUB_RESULT_IDENTITY_CHANGED; }
+    }
 }

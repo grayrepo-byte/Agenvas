@@ -4,6 +4,8 @@ import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.domain.AgentRun;
@@ -24,7 +26,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** 提供受所有者与 Run 范围约束的读取工具，并限制批量大小及内联内容字节数。 */
+/** 提供受所有者、当前画布与精确 Skill 输入约束的读取工具，并限制批量大小及内联内容字节数。 */
 @Service
 public class ReadToolService {
 
@@ -38,25 +40,31 @@ public class ReadToolService {
     private static final int MAX_TOTAL_INLINE_BYTES = 160 * 1024;
     /** 超出内联上限时，预览文本按 Unicode 码点截取的字符数。 */
     private static final int PREVIEW_CHARS = 2_000;
+    /** 单版本正文分页按 Unicode 码点计数，避免长剧本只能读取预览或切断代理对。 */
+    private static final int MAX_TEXT_PAGE = 4_000;
 
     /** 读取项目元数据时检查请求用户的项目权限。 */
     private final ProjectService projects;
     /** 只读取当前 Run 获准访问的 Artifact 与版本。 */
     private final ArtifactService artifacts;
+    private final AssetService assets;
     /** 查询任务时同时核验用户和项目作用域。 */
     private final TaskService tasks;
     /** 构造具有稳定结果结构的 JSON 工具响应。 */
     private final ObjectMapper mapper;
     private final ToolExecutionRepository ledger;
+    private final AgentMediaSampleService samples;
 
     /** 组装项目元数据、产物版本和任务状态三类受限读取能力。 */
-    public ReadToolService(ProjectService projects, ArtifactService artifacts, TaskService tasks,
-            ObjectMapper mapper, ToolExecutionRepository ledger) {
+    public ReadToolService(ProjectService projects, ArtifactService artifacts, AssetService assets, TaskService tasks,
+            ObjectMapper mapper, ToolExecutionRepository ledger, AgentMediaSampleService samples) {
         this.projects = projects;
         this.artifacts = artifacts;
+        this.assets = assets;
         this.tasks = tasks;
         this.mapper = mapper;
         this.ledger = ledger;
+        this.samples = samples;
     }
 
     /** 读取项目公开元数据与服务端固定限制，不读取凭证，也不枚举所有画布项。 */
@@ -73,17 +81,8 @@ public class ReadToolService {
         data.put("aspectRatio", project.aspectRatio().name());
         data.put("status", project.status().name());
         ObjectNode limits = data.putObject("runLimits");
-        for (String field : new String[] {"maxModelTurns", "maxToolExecutions"}) {
-            JsonNode value = run.policySnapshot().path(field);
-            if (value.isNull() && run.policySnapshot().path("schemaVersion").asInt() >= 6) {
-                limits.putNull(field);
-                continue;
-            }
-            if (!value.isIntegralNumber() || value.intValue() < 0) {
-                throw new IllegalStateException("Run policy snapshot is malformed");
-            }
-            limits.put(field, value.intValue());
-        }
+        limits.putNull("maxModelTurns");
+        limits.putNull("maxToolExecutions");
         return output;
     }
 
@@ -103,18 +102,15 @@ public class ReadToolService {
         for (String field : List.of("name", "description", "outputKinds", "resourceManifest", "assets", "inputs"))
             data.set(field, skill.path(field).deepCopy());
         if (skill.has("assetDelivery")) data.set("assetDelivery", skill.path("assetDelivery").deepCopy());
-        if (run.policySnapshot().path("systemPromptVersion").asInt()
-                >= InitialModelContextService.SKILL_RESOURCE_PAGING_SYSTEM_PROMPT_VERSION) {
-            // Lengths aid selective paging; attachment bodies remain behind the resource tool.
-            ArrayNode manifest = data.putArray("resourceManifest");
-            for (JsonNode resource : skill.path("resources")) {
-                String text = resource.path("content").asText();
-                manifest.addObject().put("path", resource.path("path").asText())
-                        .put("contentHash", resource.path("contentHash").asText())
-                        .put("total", text.codePointCount(0, text.length()));
-            }
-            data.put("resourcePageLimit", MAX_SKILL_RESOURCE_PAGE);
+        // Lengths aid selective paging; attachment bodies remain behind the resource tool.
+        ArrayNode manifest = data.putArray("resourceManifest");
+        for (JsonNode resource : skill.path("resources")) {
+            String text = resource.path("content").asText();
+            manifest.addObject().put("path", resource.path("path").asText())
+                    .put("contentHash", resource.path("contentHash").asText())
+                    .put("total", text.codePointCount(0, text.length()));
         }
+        data.put("resourcePageLimit", MAX_SKILL_RESOURCE_PAGE);
         return output;
     }
 
@@ -138,7 +134,6 @@ public class ReadToolService {
                     .put("alias", asset.path("alias").asText()).put("kind", "IMAGE")
                     .put("contentHash", asset.path("contentHash").asText())
                     .put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
-            if (sequentialImages(run)) data.put(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY, true);
             for (String field : List.of("title", "purpose")) data.set(field, asset.path(field).deepCopy());
             return output;
         }
@@ -146,20 +141,17 @@ public class ReadToolService {
     }
 
     private JsonNode selectedSkill(AgentRun run, ObjectNode input, boolean requireActivation) {
-        boolean progressive = run.policySnapshot().path("toolPolicyVersion").asInt(1) >= RunToolPolicy.PROGRESSIVE_VERSION;
-        if (progressive && !input.path("skillVersionId").isTextual())
+        if (!input.path("skillVersionId").isTextual())
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         var candidates = requireActivation ? RunSkills.activated(run, ledger.skillReads(run.projectId(), run.id())) : RunSkills.available(run);
-        return candidates.stream().filter(skill -> !input.has("skillVersionId")
-                || skill.path("skillVersionId").asText().equals(input.path("skillVersionId").asText())).findFirst()
+        return candidates.stream().filter(skill -> skill.path("skillVersionId").asText().equals(input.path("skillVersionId").asText())).findFirst()
                 .orElseThrow(() -> invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run")));
     }
 
     /** Reads only persisted text from the selected Run snapshot, never filesystem paths. */
     public JsonNode skillResource(AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
-        Set<String> fields = run.policySnapshot().path("toolPolicyVersion").asInt(1) >= RunToolPolicy.PROGRESSIVE_VERSION
-                ? Set.of("skillVersionId", "path", "offset", "limit") : Set.of("path", "offset", "limit");
+        Set<String> fields = Set.of("skillVersionId", "path", "offset", "limit");
         if (input.properties().stream().anyMatch(entry -> !fields.contains(entry.getKey()))
                 || !input.path("path").isTextual()
                 || (input.has("offset") && !input.path("offset").isIntegralNumber())
@@ -197,27 +189,20 @@ public class ReadToolService {
         throw invalid(ApiMessage.of("api.read-tool-service.skill-resource-is-not-in-this-run"));
     }
 
-    /** Selection remains frozen intent. New canvas Runs page large selections; historical replies are unchanged. */
+    /** Selection remains frozen intent and never grants content access. */
     public JsonNode selection(AgentRun run, UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
-        boolean paged = dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot());
-        if ((!paged && !input.isEmpty()) || (paged && input.propertyNames().stream()
-                .anyMatch(field -> !Set.of("offset", "limit").contains(field)))) {
-            throw invalid(ApiMessage.of("api.read-tool-service.read-selection-takes-no-arguments"));
+        if (input.propertyNames().stream().anyMatch(field -> !Set.of("offset", "limit").contains(field))) {
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         }
         JsonNode selected = run.contextSnapshot().path("selection");
-        if (!selected.isMissingNode() && (!selected.isArray()
-                || selected.size() > (paged ? AgentRunService.MAX_SELECTED_ITEMS : 20))) {
+        if (!selected.isArray() || selected.size() > AgentRunService.MAX_SELECTED_ITEMS) {
             throw new IllegalStateException("Run selection snapshot is malformed");
         }
         ObjectNode output = result(operationId, "已读取运行开始时选中的画布卡片");
-        if (!paged) {
-            output.set("data", selected.isMissingNode() ? mapper.createArrayNode() : selected.deepCopy());
-            return output;
-        }
         int offset = pageInteger(input, "offset", 0);
         int limit = pageInteger(input, "limit", 20);
-        int total = selected.isMissingNode() ? 0 : selected.size();
+        int total = selected.size();
         if (limit < 1 || limit > 40 || offset > total) throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         int end = Math.min(total, offset + limit);
         output.put("offset", offset).put("total", total);
@@ -235,12 +220,13 @@ public class ReadToolService {
         return value.intValue();
     }
 
-    /** 仅读取显式绑定或本 Run 创建的版本，并限制完整内联内容的大小。 */
+    /** 读取当前画布或显式 Skill 输入版本，并限制完整内联内容的大小。 */
     public JsonNode artifacts(TrustedToolContext context, AgentRun run,
             UUID operationId, String arguments) {
         ObjectNode input = parseObject(arguments);
-        if (input.size() != 1 || !input.has("versionIds")) {
-            throw invalid(ApiMessage.of("api.read-tool-service.read-artifacts-requires-only-versionids"));
+        if (!input.has("versionIds") || input.propertyNames().stream()
+                .anyMatch(field -> !Set.of("versionIds", "textOffset", "textLimit").contains(field))) {
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         }
         JsonNode requested = input.path("versionIds");
         if (!requested.isArray() || requested.isEmpty()
@@ -248,28 +234,47 @@ public class ReadToolService {
             throw invalid(ApiMessage.of("api.read-tool-service.read-artifacts-requires-one-to-twelve-version-ids"));
         }
         List<UUID> versionIds = validatedIds(requested, "read_artifacts");
+        boolean textPageRequested = input.has("textOffset") || input.has("textLimit");
+        int textOffset = 0;
+        int textLimit = MAX_TEXT_PAGE;
+        if (textPageRequested) {
+            textOffset = pageInteger(input, "textOffset", 0);
+            textLimit = pageInteger(input, "textLimit", MAX_TEXT_PAGE);
+            if (versionIds.size() != 1 || textLimit < 1 || textLimit > MAX_TEXT_PAGE)
+                throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        }
         ObjectNode output = result(operationId, "已读取允许范围内的产物版本");
         ArrayNode items = output.putArray("data");
         int inlineBytes = 0;
         int imageCount = 0;
         for (UUID versionId : versionIds) {
-            ArtifactVersion version = artifacts.requireAgentVisibleVersion(context.ownerId(),
-                    context.projectId(), context.runId(), versionId, run.contextSnapshot());
+            ArtifactVersion version = artifacts.requireAgentReadableVersion(context.ownerId(),
+                    context.projectId(), run.contextSnapshot(), context.runId(), versionId);
             ArtifactService.ArtifactView view = artifacts.get(context.ownerId(),
                     context.projectId(), version.artifactId());
+            if (textPageRequested && view.artifact().kind() != Artifact.Kind.TEXT)
+                throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
             ObjectNode item = items.addObject();
             item.put("artifactId", version.artifactId().toString());
             item.put("versionId", version.id().toString());
             item.put("kind", view.artifact().kind().name());
-            if (view.artifact().kind() == Artifact.Kind.IMAGE
-                    && run.policySnapshot().path("systemPromptVersion").asInt()
-                            >= InitialModelContextService.IMAGE_INPUT_SYSTEM_PROMPT_VERSION) {
-                // The committed result requests a preview; file reads happen after this transaction.
+            if (view.artifact().kind() == Artifact.Kind.VIDEO || view.artifact().kind() == Artifact.Kind.AUDIO) {
+                // Only verified metadata is projected: storage keys, URLs and Provider settings never enter model context.
+                Asset asset = assets.metadata(context.ownerId(), context.projectId(), uuid(version.content().path("assetId")));
+                if (!asset.mediaKind().name().equals(view.artifact().kind().name()))
+                    throw new IllegalStateException("Media version kind does not match its archived asset");
+                ObjectNode metadata = item.putObject("mediaMetadata");
+                if (asset.durationMs() != null) metadata.put("durationMs", asset.durationMs());
+                if (asset.width() != null) metadata.put("width", asset.width());
+                if (asset.height() != null) metadata.put("height", asset.height());
+                metadata.put("contentType", asset.contentType());
+                if (version.createdByKind() != null) item.put("createdByKind", version.createdByKind().name());
+                item.set("inputReferences", mapper.valueToTree(version.inputReferences()));
+            }
+            if (view.artifact().kind() == Artifact.Kind.IMAGE) {
+                // Pixel hydration happens after commit; each model turn receives one image.
+                if (++imageCount > 1) throw oneImageAtATime();
                 item.put(AgentImageInputService.PREVIEW_REQUEST_KEY, true);
-                if (sequentialImages(run)) {
-                    if (++imageCount > 1) throw oneImageAtATime();
-                    item.put(AgentImageInputService.SEQUENTIAL_PREVIEW_KEY, true);
-                }
             }
             // 已归档的媒体可由节点选用，而资源库默认版本仍为空；读取不改变这两个独立选择。
             boolean current = view.resourceDefaultVersion() != null
@@ -278,12 +283,13 @@ public class ReadToolService {
             if (current) {
                 item.put("title", view.artifact().title());
             }
-            boolean mutableInRun = context.runId().equals(version.runId());
-            if (current && (mutableInRun || (view.artifact().kind() == Artifact.Kind.TEXT
-                    && dev.agenvas.run.domain.RunCanvasScope.unchangedText(
-                    run.contextSnapshot(), version.artifactId(), versionId, view.artifact().version())) || unchangedBinding(run, version,
-                    view.artifact().version()))) {
+            if (current && view.artifact().kind() == Artifact.Kind.TEXT
+                    && artifacts.isCurrentCanvasVersion(context.ownerId(), context.projectId(), versionId)) {
                 item.put("expectedVersion", view.artifact().version());
+            }
+            if (textPageRequested) {
+                appendTextPage(item, version.content(), textOffset, textLimit);
+                continue;
             }
             String content = version.content().toString();
             int size = content.getBytes(StandardCharsets.UTF_8).length;
@@ -302,9 +308,40 @@ public class ReadToolService {
         return output;
     }
 
-    private static boolean sequentialImages(AgentRun run) {
-        return run.policySnapshot().path("systemPromptVersion").asInt()
-                >= InitialModelContextService.SEQUENTIAL_IMAGE_SYSTEM_PROMPT_VERSION;
+    /** 每页重新检查同一精确版本的读权；到达末尾不代表调用方已读取此前各页。 */
+    private void appendTextPage(ObjectNode item, JsonNode content, int offset, int limit) {
+        if (!content.path("text").isTextual() || !content.path("format").isTextual())
+            throw new IllegalStateException("Text artifact content is malformed");
+        String text = content.path("text").asText();
+        int total = text.codePointCount(0, text.length());
+        if (offset > total)
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        int end = offset + Math.min(limit, total - offset);
+        item.putObject("content").put("format", content.path("format").asText())
+                .put("text", text.substring(text.offsetByCodePoints(0, offset), text.offsetByCodePoints(0, end)));
+        item.put("contentTruncated", offset > 0 || end < total);
+        ObjectNode page = item.putObject("textPage").put("offset", offset).put("endOffset", end).put("total", total);
+        if (end < total) page.put("nextOffset", end); else page.putNull("nextOffset");
+    }
+
+    /** Record exact requested sample times without decoding while the tool ledger transaction is open. */
+    public JsonNode mediaSample(TrustedToolContext context, AgentRun run, UUID operationId, String arguments) {
+        ObjectNode input = parseObject(arguments);
+        if (!Set.of("versionId", "timestampsMs", "audioStartMs", "audioDurationMs").containsAll(input.propertyNames()))
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
+        UUID versionId;
+        try { versionId = UUID.fromString(input.path("versionId").asText()); }
+        catch (IllegalArgumentException malformed) { throw invalid(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid")); }
+        var version = artifacts.requireAgentReadableVersion(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), versionId);
+        input.put("artifactId", version.artifactId().toString());
+        var sample = AgentMediaSampleService.parse(input);
+        var asset = samples.authorize(context.ownerId(), context.projectId(), run.contextSnapshot(), context.runId(), sample);
+        ObjectNode output = result(operationId, "已请求精确时间点的媒体样本");
+        ObjectNode data = output.putObject("data");
+        data.setAll(input);
+        data.put("kind", asset.mediaKind().name()).put("sampleRequested", true)
+                .put("notice", "Only the requested sampled frames/audio are supplied on the next model call; sparse samples do not prove full-video continuity. Audio requires a model supporting input_audio; metadata is not speech recognition.");
+        return output;
     }
 
     /** Also used by the atomic batch boundary to cover separate project and Skill reads. */
@@ -329,7 +366,9 @@ public class ReadToolService {
         ArrayNode items = output.putArray("data");
         for (UUID taskId : taskIds) {
             Task task = tasks.get(context.ownerId(), context.projectId(), taskId);
-            if (!context.runId().equals(task.runId())) {
+            boolean localFromRun = context.runId().equals(task.agentLocalRunId())
+                    && ledger.ownsLocalTask(context.projectId(), context.runId(), task.id());
+            if (!context.runId().equals(task.runId()) && !localFromRun) {
                 throw new ApiProblemException(HttpStatus.NOT_FOUND, "TASK_NOT_FOUND",
                         ApiMessage.of("api.read-tool-service.task-does-not-exist"), ApiMessage.of("api.read-tool-service.task-is-not-accessible-to-this-run"), false);
             }
@@ -346,24 +385,13 @@ public class ReadToolService {
             if (task.completedAt() != null) {
                 item.put("completedAt", task.completedAt().toString());
             }
-        }
-        return output;
-    }
-
-    /** 绑定的历史版本不能为用户后来选定的新版本提供 CAS 令牌。 */
-    private boolean unchangedBinding(AgentRun run, ArtifactVersion version, long artifactVersion) {
-        JsonNode bindings = run.contextSnapshot().path("bindings");
-        if (!bindings.isArray()) return false;
-        for (JsonNode binding : bindings) {
-            if (version.artifactId().toString().equals(binding.path("artifactId").asText())
-                    && version.id().toString().equals(
-                            binding.path("selectedVersionId").asText())
-                    && binding.path("expectedVersion").canConvertToLong()
-                    && binding.path("expectedVersion").longValue() == artifactVersion) {
-                return true;
+            if (localFromRun && task.output() != null) {
+                for (String field : List.of("artifactId", "artifactVersionId", "selected")) {
+                    if (task.output().has(field)) item.set(field, task.output().get(field));
+                }
             }
         }
-        return false;
+        return output;
     }
 
     /** 构造成功读取工具共用的空变更结果结构。 */

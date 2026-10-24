@@ -13,6 +13,11 @@ export type CurrentUser = components["schemas"]["CurrentUser"];
 export type SetupRequest = components["schemas"]["SetupRequest"];
 export type LoginRequest = components["schemas"]["LoginRequest"];
 export type ChangePasswordRequest = components["schemas"]["ChangePasswordRequest"];
+export type McpTokenScope = components["schemas"]["McpTokenScope"];
+export type McpTokenSummary = components["schemas"]["McpTokenSummary"];
+export type CreateMcpTokenRequest = components["schemas"]["CreateMcpTokenRequest"];
+export type McpTokenCreatedResponse = components["schemas"]["McpTokenCreatedResponse"];
+export const MCP_TOKEN_SCOPES = { READ: "READ", CONTENT_WRITE: "CONTENT_WRITE", MEDIA_GENERATE: "MEDIA_GENERATE" } as const satisfies Record<McpTokenScope, McpTokenScope>;
 export type Project = components["schemas"]["Project"];
 export type ProjectList = components["schemas"]["ProjectList"];
 export type ProjectSnapshot = components["schemas"]["ProjectSnapshot"];
@@ -24,11 +29,61 @@ export type ArtifactList = components["schemas"]["ArtifactList"];
 export type ResourceResult = components["schemas"]["ResourceResult"];
 export type ResourceFilters = NonNullable<paths["/api/v1/resources"]["get"]["parameters"]["query"]>;
 
+export type CharacterProfile = components["schemas"]["CharacterProfile"];
+export type CharacterContent = components["schemas"]["CharacterContent"];
+export type CharacterLook = components["schemas"]["CharacterLook"];
+export type CharacterView = components["schemas"]["CharacterView"];
+export type CharacterIndex = components["schemas"]["CharacterIndex"];
+export type CharacterBinding = components["schemas"]["CharacterBinding"];
+export type CharacterBindingSelection = components["schemas"]["CharacterBindingSelection"];
+export type CharacterBindingPreview = components["schemas"]["CharacterBindingPreview"];
+export type CharacterChangePreview = components["schemas"]["CharacterChangePreview"];
+export type SaveCharacter = components["schemas"]["SaveCharacter"];
+export type PreviewCharacterBindings = components["schemas"]["PreviewCharacterBindings"];
+export const CHARACTER_CLEAR_MODES = { KEEP_INPUTS: "KEEP_INPUTS", REMOVE_OWNED: "REMOVE_OWNED" } as const;
+
+export function listCharacters(projectId: string): Promise<CharacterIndex> {
+  return readJson(`/api/v1/projects/${projectId}/characters`, t("character.loadFailed"));
+}
+export function saveCharacter(projectId: string, characterId: string, request: SaveCharacter): Promise<CharacterProfile> {
+  return writeJson(`/api/v1/projects/${projectId}/characters/${characterId}`, { method: "PUT", body: JSON.stringify(request) }, t("character.saveFailed"));
+}
+export function previewCharacterChange(projectId: string, characterId: string, request: SaveCharacter): Promise<CharacterChangePreview> {
+  return writeJson(`/api/v1/projects/${projectId}/characters/${characterId}/preview-change`, { method: "POST", body: JSON.stringify(request) }, t("character.previewFailed"));
+}
+export function archiveCharacter(projectId: string, characterId: string, request: components["schemas"]["ArchiveCharacter"]): Promise<CharacterProfile> {
+  return writeJson(`/api/v1/projects/${projectId}/characters/${characterId}/archive`, { method: "POST", body: JSON.stringify(request) }, t("character.saveFailed"));
+}
+export function previewCharacterBindings(projectId: string, itemId: string, request: PreviewCharacterBindings): Promise<CharacterBindingPreview> {
+  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/preview`, { method: "POST", body: JSON.stringify(request) }, t("character.previewFailed"));
+}
+export function applyCharacterBindings(projectId: string, itemId: string, request: components["schemas"]["ApplyCharacterBindings"]): Promise<components["schemas"]["CharacterBindingApplied"]> {
+  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/apply`, { method: "POST", body: JSON.stringify(request) }, t("character.applyFailed"));
+}
+export function reviewCharacterBindings(projectId: string, itemId: string, request: components["schemas"]["ReviewCharacterBindings"]): Promise<CharacterBinding> {
+  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/review`, { method: "POST", body: JSON.stringify(request) }, t("character.reviewFailed"));
+}
+
 /** Account-wide immutable results, paged by the server rather than fetched project by project. */
 export function listResources(filters: ResourceFilters): Promise<components["schemas"]["ResourcePage"]> {
   const query = new URLSearchParams();
   Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
   return readJson(`/api/v1/resources?${query}`, t("resources.loadFailed"));
+}
+export type Storyboard = components["schemas"]["Storyboard"];
+export type StoryboardShot = components["schemas"]["StoryboardShot"];
+export type StoryboardProduction = components["schemas"]["StoryboardProduction"];
+export type SaveStoryboardRequest = components["schemas"]["SaveStoryboardRequest"];
+
+/** Project storyboard reads never prepare or authorize media work. */
+export function getStoryboard(projectId: string): Promise<Storyboard> {
+  return readJson(`/api/v1/projects/${encodeURIComponent(projectId)}/storyboard`, t("storyboard.loadFailed"));
+}
+export function saveStoryboard(projectId: string, input: SaveStoryboardRequest): Promise<Storyboard> {
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/storyboard`, { method: "PUT", body: JSON.stringify(input) });
+}
+export function listStoryboardMediaApprovals(projectId: string): Promise<{ items: AgentMediaApproval[] }> {
+  return readJson(`/api/v1/projects/${encodeURIComponent(projectId)}/storyboard/media-approvals`, t("storyboard.loadFailed"));
 }
 export type MediaDraft = components["schemas"]["MediaDraft"];
 export type SaveMediaDraftRequest = components["schemas"]["SaveMediaDraftRequest"];
@@ -53,10 +108,38 @@ export function cancelImagePrompt(projectId: string, artifactId: string, taskId:
     method: "POST",
   }, t("image.reversePrompt.cancelFailed"));
 }
+export type VideoPromptOptimizationRequest = components["schemas"]["VideoPromptOptimizationRequest"];
+export function listVideoPromptTasks(projectId: string, canvasItemId: string): Promise<Task[]> {
+  return readJson(`/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/video-prompt-optimizations`, t("video.optimize.loadFailed"));
+}
+export function runVideoPromptOptimization(projectId: string, canvasItemId: string, input: VideoPromptOptimizationRequest, key: string): Promise<Task> {
+  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/video-prompt-optimizations`, {
+    method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(input),
+  }, t("video.optimize.failed"));
+}
+export function cancelVideoPromptOptimization(projectId: string, canvasItemId: string, taskId: string): Promise<Task> {
+  return writeJson(`/api/v1/projects/${projectId}/canvas-items/${canvasItemId}/video-prompt-optimizations/${taskId}/cancel`, {
+    method: "POST",
+  }, t("video.optimize.failed"));
+}
+export type VideoCompositionRequest = components["schemas"]["VideoCompositionRequest"];
+export type VideoCompositionPreview = components["schemas"]["VideoCompositionPreview"];
+/** Read-only analysis shares export authorization and never creates a task or reserves usage. */
+export function previewVideoComposition(projectId: string, input: VideoCompositionRequest, signal?: AbortSignal): Promise<VideoCompositionPreview> {
+  return writeJson(`/api/v1/projects/${projectId}/video-compositions/preview`, {
+    method: "POST", body: JSON.stringify(input), signal,
+  }, t("video.edit.previewFailed"));
+}
+export function composeVideo(projectId: string, input: VideoCompositionRequest, commandKey: string): Promise<Task> {
+  return writeJson(`/api/v1/projects/${projectId}/video-compositions`, {
+    method: "POST", headers: { "Idempotency-Key": commandKey }, body: JSON.stringify(input),
+  }, t("video.edit.failed"));
+}
 export type VideoOperation = components["schemas"]["VideoOperation"];
 export type MediaFunction = components["schemas"]["MediaFunction"];
 export type MediaFunctionSetting = components["schemas"]["MediaFunctionSetting"];
 export type RunVideoOperationRequest = components["schemas"]["RunVideoOperationRequest"];
+export type RunAudioTrimRequest = components["schemas"]["RunAudioTrimRequest"];
 export type RunTextGenerationRequest = components["schemas"]["RunTextGenerationRequest"];
 export type DirectMediaQueueStatus = components["schemas"]["DirectMediaQueueStatus"];
 export type Asset = components["schemas"]["Asset"];
@@ -68,6 +151,12 @@ export type Canvas = components["schemas"]["Canvas"];
 export type CanvasItem = components["schemas"]["CanvasItem"];
 export type SelectMediaVersionRequest = components["schemas"]["SelectMediaVersionRequest"];
 export type CanvasCommand = components["schemas"]["CanvasCommand"];
+export type CanvasGroup = components["schemas"]["CanvasGroup"];
+export type CanvasEditorState = components["schemas"]["CanvasEditorState"];
+export type CanvasEditRequest = components["schemas"]["CanvasEditRequest"];
+export type CanvasEditResponse = components["schemas"]["CanvasEditResponse"];
+export type CanvasEditReceipt = components["schemas"]["CanvasEditReceipt"];
+export type CanvasEditReplayRequest = components["schemas"]["CanvasEditReplayRequest"];
 export type CanvasConnection = components["schemas"]["CanvasConnection"];
 export type CanvasConnectionList = components["schemas"]["CanvasConnectionList"];
 export type CreateCanvasConnectionRequest = components["schemas"]["CreateCanvasConnectionRequest"];
@@ -76,8 +165,6 @@ export type CanvasConnectionResult = components["schemas"]["CanvasConnectionResu
 export type DuplicateCanvasItemRequest = components["schemas"]["DuplicateCanvasItemRequest"];
 export type DuplicateCanvasItemResponse = components["schemas"]["DuplicateCanvasItemResponse"];
 export type Agent = components["schemas"]["Agent"];
-export type AgentList = components["schemas"]["AgentList"];
-export type CreateAgentRequest = components["schemas"]["CreateAgentRequest"];
 export type UpdateAgentRequest = components["schemas"]["UpdateAgentRequest"];
 export type AgentRun = components["schemas"]["AgentRun"];
 export type AgentRunList = components["schemas"]["AgentRunList"];
@@ -86,6 +173,7 @@ export type AgentConversationList = components["schemas"]["AgentConversationList
 export type RunAction = components["schemas"]["RunAction"];
 export type AgentMediaApproval = components["schemas"]["AgentMediaApproval"];
 export type AgentMediaApprovalDecision = components["schemas"]["AgentMediaApprovalDecisionRequest"];
+export type AgentMediaApprovalRevision = components["schemas"]["AgentMediaApprovalRevisionRequest"];
 export type AssistantTurnStreamProjection = components["schemas"]["AssistantTurnStream"];
 export type AgentTurnStreamEventPayload = components["schemas"]["AgentTurnStreamEventPayload"];
 export type RunPreflight = components["schemas"]["RunPreflight"];
@@ -98,6 +186,8 @@ export type CallLogCleanupResult = components["schemas"]["CallLogCleanupResult"]
 export type CleanupCallLogsRequest = NonNullable<paths["/api/v1/settings/call-log-retention/cleanup"]["post"]["requestBody"]>["content"]["application/json"];
 export type CallLogRetentionSettings = components["schemas"]["CallLogRetentionSettings"];
 export type UpdateCallLogRetentionRequest = NonNullable<paths["/api/v1/settings/call-log-retention"]["put"]["requestBody"]>["content"]["application/json"];
+export type DirectorSettings = components["schemas"]["DirectorSettings"];
+export type UpdateDirectorSettingsRequest = components["schemas"]["UpdateDirectorSettingsRequest"];
 export type DebugSettings = components["schemas"]["DebugSettings"];
 export type CallDebug = components["schemas"]["CallDebug"];
 export type DebugBody = components["schemas"]["DebugBody"];
@@ -195,6 +285,13 @@ export async function updateCallLogRetentionSettings(request: UpdateCallLogReten
   });
 }
 
+export function getDirectorSettings(): Promise<DirectorSettings> {
+  return readJson("/api/v1/settings/director", t("settings.director.loadFailed"));
+}
+export function updateDirectorSettings(request: UpdateDirectorSettingsRequest): Promise<DirectorSettings> {
+  return writeJson("/api/v1/settings/director", { method: "PUT", body: JSON.stringify(request) }, t("settings.director.saveFailed"));
+}
+
 export async function getDebugSettings(): Promise<DebugSettings> {
   return readJson<DebugSettings>("/api/v1/settings/debug", t("api.errors.debugSettingsUnavailable"));
 }
@@ -225,7 +322,7 @@ export function assetContentUrl(projectId: string, assetId: string): string {
   return `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}/content`;
 }
 
-/** Retrieves persisted, owner-scoped metadata before constructing a video trim interval. */
+/** Retrieves persisted, owner-scoped metadata before preparing media edits. */
 export async function getAssetMetadata(projectId: string, assetId: string): Promise<Asset> {
   return readJson<Asset>(
     `/api/v1/projects/${encodeURIComponent(projectId)}/assets/${encodeURIComponent(assetId)}`,
@@ -422,6 +519,25 @@ export async function changePassword(input: ChangePasswordRequest): Promise<void
   });
 }
 
+/** Session-only credential management. List responses contain safe metadata only. */
+export function listMcpTokens(): Promise<McpTokenSummary[]> {
+  return readJson("/api/v1/account/mcp-tokens", t("mcp.tokens.loadFailed"));
+}
+
+/** The caller must keep the returned secret in ephemeral component memory, never a query cache. */
+export function createMcpToken(input: CreateMcpTokenRequest): Promise<McpTokenCreatedResponse> {
+  return writeJson("/api/v1/account/mcp-tokens", {
+    method: "POST", cache: "no-store", body: JSON.stringify(input),
+  }, t("mcp.tokens.createFailed"));
+}
+
+/** Revocation is idempotent; an already revoked credential stays revoked. */
+export function revokeMcpToken(token: McpTokenSummary): Promise<McpTokenSummary> {
+  return writeJson(`/api/v1/account/mcp-tokens/${encodeURIComponent(token.id)}/revoke`, {
+    method: "POST", body: JSON.stringify({ expectedVersion: token.version }),
+  }, t("mcp.tokens.revokeFailed"));
+}
+
 /** Lists an owner-scoped project page. */
 export async function listProjects(options: {
   includeArchived?: boolean;
@@ -613,6 +729,13 @@ export function runVideoOperation(projectId: string, artifactId: string, input: 
   });
 }
 
+/** Creates a derived audio node from a fixed source version and exact millisecond range. */
+export function runAudioTrim(projectId: string, artifactId: string, input: RunAudioTrimRequest, commandKey: string): Promise<Task> {
+  return writeJson(`/api/v1/projects/${projectId}/artifacts/${artifactId}/audio-trims`, {
+    method: "POST", headers: { "Idempotency-Key": commandKey }, body: JSON.stringify(input),
+  }, t("audio.trim.failed"));
+}
+
 /** Card media history includes direct requests and user-approved Agent tasks. */
 export async function listDirectMediaTasks(projectId: string, artifactId: string,
   canvasItemId: string): Promise<Task[]> {
@@ -705,6 +828,21 @@ export async function listCanvasItems(projectId: string): Promise<Canvas> {
   return readJson<Canvas>(`/api/v1/projects/${projectId}/canvas/items`, t("api.errors.canvasUnavailable"));
 }
 
+export function getCanvasEditor(projectId: string): Promise<CanvasEditorState> {
+  return readJson("/api/v1/projects/" + projectId + "/canvas/editor", t("canvas.edit.loadGroups"));
+}
+
+/** A reversible edit is acknowledged by the server before entering the session history. */
+export function editCanvas(projectId: string, input: CanvasEditRequest): Promise<CanvasEditResponse> {
+  return writeJson("/api/v1/projects/" + projectId + "/canvas/edits",
+    { method: "POST", body: JSON.stringify(input) }, t("canvas.edit.failed"));
+}
+
+export function replayCanvasEdit(projectId: string, receiptId: string, input: CanvasEditReplayRequest): Promise<CanvasEditResponse> {
+  return writeJson("/api/v1/projects/" + projectId + "/canvas/edits/" + receiptId + "/replay",
+    { method: "POST", body: JSON.stringify(input) }, t("canvas.edit.failed"));
+}
+
 /** Atomically applies one or more presentation-only canvas commands. */
 export async function applyCanvasCommands(
   projectId: string,
@@ -716,27 +854,9 @@ export async function applyCanvasCommands(
   });
 }
 
-/** Lists project assistants independently of canvas content. */
-export async function listAgents(projectId: string): Promise<AgentList> {
-  return readJson<AgentList>(`/api/v1/projects/${projectId}/agents`, t("api.errors.agentsUnavailable"));
-}
-
-/** Current selected results authored by any Run belonging to this assistant. */
-export async function listAgentOutputs(projectId: string, agentId: string): Promise<operations["listAgentOutputs"]["responses"][200]["content"]["application/json"]> {
-  return readJson(`/api/v1/projects/${projectId}/agents/${agentId}/outputs`, t("api.errors.agentOutputsUnavailable"));
-}
-
-/** Creates an idle Creator Agent; creation does not start a model run. */
-export async function createAgent(
-  projectId: string,
-  input: CreateAgentRequest,
-  idempotencyKey?: string,
-): Promise<Agent> {
-  return writeJson<Agent>(`/api/v1/projects/${projectId}/agents`, {
-    method: "POST",
-    ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
-    body: JSON.stringify(input),
-  });
+/** Restores the project's one director, creating its fixed configuration once without a model call. */
+export function ensureProjectDirector(projectId: string): Promise<Agent> {
+  return writeJson<Agent>(`/api/v1/projects/${projectId}/director`, { method: "PUT" });
 }
 
 /** Replaces project assistant role configuration using CAS. */
@@ -826,6 +946,12 @@ export async function listRunMediaApprovals(projectId: string, runId: string): P
     `/api/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}/media-approvals`,
     t("api.errors.actionsUnavailable"),
   );
+}
+
+export function reviseRunMediaApproval(projectId: string, runId: string, approvalId: string,
+  body: AgentMediaApprovalRevision): Promise<AgentMediaApproval> {
+  return writeJson(`/api/v1/projects/${encodeURIComponent(projectId)}/runs/${encodeURIComponent(runId)}`
+    + `/media-approvals/${encodeURIComponent(approvalId)}`, { method: "PUT", body: JSON.stringify(body) });
 }
 
 /** An explicit user decision authorizes one frozen batch under CAS and command deduplication. */
@@ -1115,6 +1241,7 @@ function apiFetch(path: string, init: RequestInit): Promise<Response> {
 }
 
 export type CreativeSkill = components["schemas"]["CreativeSkill"];
+export type SkillCategory = components["schemas"]["SkillCategory"];
 export type SkillDraft = components["schemas"]["SkillDraft"];
 export type SkillVersion = components["schemas"]["SkillVersion"];
 export type SkillVersionSummary = components["schemas"]["SkillVersionSummary"];
@@ -1124,10 +1251,11 @@ export type AgentSkillBinding = components["schemas"]["AgentSkillBinding"];
 export type SaveAgentSkillBindingRequest = components["schemas"]["SaveAgentSkillBindingRequest"];
 export type SaveSkillDraftRequest = NonNullable<paths["/api/v1/skills/{skillId}/draft"]["put"]["requestBody"]>["content"]["application/json"];
 
-export function listSkills(query = "", cursor?: string, trash = false) {
+export function listSkills(query = "", cursor?: string, trash = false, category?: SkillCategory) {
   const params = new URLSearchParams({ query });
   if (cursor) params.set("cursor", cursor);
   if (trash) params.set("trash", "true");
+  if (category) params.set("category", category);
   return readJson<components["schemas"]["SkillPage"]>(`/api/v1/skills?${params}`, t("api.errors.requestFailed"));
 }
 export function createSkill(title: string) {
@@ -1179,7 +1307,6 @@ export function skillAssetThumbnailUrl(skillId: string, versionId: string, alias
 }
 
 export type PromptDefinition = components["schemas"]["PromptDefinition"];
-export type AgentPreset = components["schemas"]["AgentPreset"];
 export function listPrompts() {
   return readJson<components["schemas"]["PromptList"]>("/api/v1/settings/prompts", t("prompts.loadFailed"));
 }
@@ -1191,7 +1318,4 @@ export function updatePrompt(id: string, input: components["schemas"]["UpdatePro
 }
 export function deletePrompt(id: string, expectedVersion: number) {
   return writeEmpty(`/api/v1/settings/prompts/${id}?expectedVersion=${expectedVersion}`, { method: "DELETE" });
-}
-export function listAgentPresets() {
-  return readJson<components["schemas"]["AgentPresetList"]>("/api/v1/agent-presets", t("prompts.loadFailed"));
 }

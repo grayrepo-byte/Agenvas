@@ -30,7 +30,6 @@ public class ToolExecutionService {
 
     /** {@code create_text} 允许模型提供的字段；所有服务端管理字段均不在此集合中。 */
     private static final Set<String> CREATE_TEXT_FIELDS = Set.of("title", "text", "format");
-    private static final int MAX_MEDIA_CAPABILITIES = 40;
 
     /** 以项目和所有者范围锁定 Run，并核对其当前执行状态。 */
     private final AgentRunRepository runs;
@@ -55,6 +54,9 @@ public class ToolExecutionService {
     private final AgentMediaApprovalService mediaApprovals;
     private final MediaCapabilityService capabilities;
     private final CanvasAgentToolService canvasTools;
+    private final AgentVideoCompositionToolService videoCompositions;
+    private final AgentLocalMediaToolService localMedia;
+    private final StoryboardAgentToolService storyboards;
 
     /** 组装工具身份验证、持久化去重、业务应用服务及租约 fencing 边界。
      * @param runs 校验工具调用所属 Run 和项目权限
@@ -73,7 +75,9 @@ public class ToolExecutionService {
             CreativeArtifactToolService creative, ReadToolService reader,
             ProjectEventService events, AgentTurnLeaseGuard leaseGuard,
             ObjectMapper mapper, Clock clock, AgentMediaApprovalService mediaApprovals,
-            MediaCapabilityService capabilities, CanvasAgentToolService canvasTools) {
+            MediaCapabilityService capabilities, CanvasAgentToolService canvasTools,
+            AgentVideoCompositionToolService videoCompositions, AgentLocalMediaToolService localMedia,
+            StoryboardAgentToolService storyboards) {
         this.runs = runs;
         this.turns = turns;
         this.ledger = ledger;
@@ -87,6 +91,9 @@ public class ToolExecutionService {
         this.mediaApprovals = mediaApprovals;
         this.capabilities = capabilities;
         this.canvasTools = canvasTools;
+        this.videoCompositions = videoCompositions;
+        this.localMedia = localMedia;
+        this.storyboards = storyboards;
     }
 
     /**
@@ -182,10 +189,6 @@ public class ToolExecutionService {
         if (run.status() != AgentRun.Status.RUNNING) {
             throw conflict(ApiMessage.of("api.tool-execution-service.run-is-not-accepting-tool-execution"));
         }
-            if (run.hasToolExecutionLimit()
-                    && run.toolExecutionLimitReached(ledger.countByRun(context.projectId(), context.runId()))) {
-            throw conflict(ApiMessage.of("api.tool-execution-service.run-tool-execution-budget-is-exhausted"));
-        }
         if (!RunToolPolicy.allowed(run.policySnapshot()).contains(toolName)) {
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
         }
@@ -198,8 +201,13 @@ public class ToolExecutionService {
         try {
             result = switch (toolName) {
             case "read_canvas" -> canvasTools.readCanvas(context, run, operationId, arguments);
+            case "read_storyboard" -> storyboards.readStoryboard(context, run, operationId, arguments);
+            case "write_storyboard_shots" -> storyboards.writeShots(context, run, operationId, arguments);
             case "manage_canvas_node" -> canvasTools.manageNode(context, run, operationId, arguments);
             case "update_media_draft" -> canvasTools.updateMediaDraft(context, run, operationId, arguments);
+            case "extract_audio" -> localMedia.extract(context, run, operationId, arguments);
+            case "trim_audio" -> localMedia.trim(context, run, operationId, arguments);
+            case "compose_video" -> videoCompositions.compose(context, run, operationId, arguments);
             case "read_project_summary" -> reader.projectSummary(context, run,
                     operationId, arguments);
             case "read_skill" -> reader.skill(run, operationId, arguments);
@@ -207,20 +215,20 @@ public class ToolExecutionService {
             case "read_skill_resource" -> reader.skillResource(run, operationId, arguments);
             case "read_selection" -> reader.selection(run, operationId, arguments);
             case "read_artifacts" -> reader.artifacts(context, run, operationId, arguments);
+            case "read_media_sample" -> reader.mediaSample(context, run, operationId, arguments);
             case "read_task_status" -> reader.taskStatus(context, operationId, arguments);
             case "list_media_capabilities" -> mediaCapabilities(operationId, arguments);
             case "propose_media_generation" -> mediaApprovals.propose(context, run,
                     operationId, stepIndex, toolCallId, arguments);
             case "create_text" -> createText(context, run, operationId, arguments);
             case "revise_artifact" -> creative.reviseArtifact(context, run, operationId, arguments);
-            case "place_artifacts" -> creative.placeArtifacts(context, run,
-                    operationId, arguments);
             case "arrange_items" -> creative.arrangeItems(context, run,
                     operationId, arguments);
             default -> throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
             };
         } catch (ApiProblemException problem) {
-            if (Set.of("read_canvas", "manage_canvas_node", "update_media_draft").contains(toolName)
+            if (Set.of("read_canvas", "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio", "trim_audio",
+                    "read_storyboard", "write_storyboard_shots").contains(toolName)
                     && (problem.status() == HttpStatus.BAD_REQUEST || problem.status() == HttpStatus.UNPROCESSABLE_ENTITY)
                     && !"TOOL_ARGUMENT_INVALID".equals(problem.code())) {
                 throw new ApiProblemException(problem.status(), "TOOL_ARGUMENT_INVALID", problem.title(), problem.detail(), false);
@@ -251,21 +259,7 @@ public class ToolExecutionService {
         }
         var result = mapper.createObjectNode().put("status", ToolResultStatus.SUCCEEDED.name())
                 .put("operationId", operationId.toString()).put("userVisibleSummary", "已读取可用媒体能力");
-        var available = result.putArray("capabilities");
-        for (var candidate : capabilities.publishedCandidates().stream().limit(MAX_MEDIA_CAPABILITIES).toList()) {
-            var entry = available.addObject().put("capabilityId", candidate.binding().capabilityId().toString())
-                    .put("name", candidate.capabilityName()).put("kind", candidate.kind().name())
-                    .put("minimumSeconds", candidate.minimumSeconds()).put("maximumSeconds", candidate.maximumSeconds());
-            var policy = capabilities.inputPolicy(candidate.binding());
-            entry.set("inputPolicy", mapper.valueToTree(policy));
-            var definition = capabilities.runningHubDefinition(candidate.binding());
-            if (definition != null) {
-                // Only published scalar field/slot definitions; never forward Provider settings.
-                entry.set("fields", mapper.valueToTree(definition.fields()));
-            } else if (candidate.settings().has(dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY)) {
-                entry.set("fields", candidate.settings().get(dev.agenvas.provider.domain.ComfyUiWorkflowDefinition.PUBLIC_INPUTS_KEY));
-            }
-        }
+        result.set("capabilities", capabilities.planningCatalog());
         return result;
     }
 
@@ -320,15 +314,13 @@ public class ToolExecutionService {
                 .put(created.artifact().id().toString(), created.artifact().version());
         result.putArray("taskIds");
         result.putNull("errorCode");
-        if (dev.agenvas.run.domain.RunCanvasScope.enabled(run.contextSnapshot())) {
-            var nodes = result.putArray("createdCanvasItemIds");
-            var data = result.putArray("data");
-            for (var item : placedItems) {
-                nodes.add(item.id().toString());
-                data.addObject().put("itemId", item.id().toString()).put("itemVersion", item.version())
-                        .put("artifactId", created.artifact().id().toString())
-                        .put("versionId", created.resourceDefaultVersion().id().toString());
-            }
+        var nodes = result.putArray("createdCanvasItemIds");
+        var data = result.putArray("data");
+        for (var item : placedItems) {
+            nodes.add(item.id().toString());
+            data.addObject().put("itemId", item.id().toString()).put("itemVersion", item.version())
+                    .put("artifactId", created.artifact().id().toString())
+                    .put("versionId", created.resourceDefaultVersion().id().toString());
         }
         result.put("userVisibleSummary", "已创建文本产物");
         return result;

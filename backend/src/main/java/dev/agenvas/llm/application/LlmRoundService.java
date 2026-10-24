@@ -72,11 +72,21 @@ public class LlmRoundService {
     public JsonNode callLeased(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
             List<Message> messages, List<ToolCallback> tools, Map<String, Object> trustedContext,
             Task lease, String workerId) {
+        return callLeased(ownerId, projectId, runId, stepIndex, codec.request(messages, tools), tools,
+                trustedContext, lease, workerId);
+    }
+
+    /** A prepared envelope may include a durable, tool-free compaction continuation. */
+    public JsonNode callLeased(UUID ownerId, UUID projectId, UUID runId, int stepIndex,
+            JsonNode request, List<ToolCallback> tools, Map<String, Object> trustedContext,
+            Task lease, String workerId) {
         if (lease == null) throw new IllegalArgumentException("Missing model task lease");
         if (TransactionSynchronizationManager.isActualTransactionActive()) {
             throw new IllegalStateException("Model calls must not hold a database transaction");
         }
-        JsonNode request = codec.request(messages, tools);
+        List<Message> messages = codec.requestMessages(request);
+        boolean compacting = AgentContextService.isCompaction(request);
+        if (compacting && !tools.isEmpty()) throw new IllegalArgumentException("Compaction cannot have tools");
         AgentRun run = runs.find(ownerId, projectId, runId)
                 .orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
                         "RUN_NOT_FOUND", ApiMessage.of("api.llm-round-service.run-does-not-exist"), ApiMessage.of("api.llm-round-service.unable-to-access-the-project-s-runtime"), false));
@@ -99,10 +109,12 @@ public class LlmRoundService {
                 projectId, null, runId, stepIndex, CallLog.Kind.LLM, CallLog.Operation.CHAT,
                 mock ? "mock" : model.providerAdapter(), model.modelId(), mock);
         PublicStreamSink stream = new PublicStreamSink(lease, workerId);
-        tasks.startAgentStream(lease, workerId);
+        if (!compacting) tasks.startAgentStream(lease, workerId);
+        Map<String, Object> callContext = new java.util.HashMap<>(trustedContext);
+        if (compacting) callContext.put(AgentContextService.CALL_PURPOSE, true);
         ChatGateway.Exchange exchange = callLogs.recordStream(descriptor,
                 (captureContent, log) -> modelCall(() -> gateway.callStreaming(
-                        dispatched, tools, trustedContext, selected, stream, captureContent, log)),
+                        dispatched, tools, callContext, selected, compacting ? ignored -> {} : stream, captureContent, log)),
                 value -> CallLogService.CallOutcome.succeeded(value.response().getMetadata().getId()));
         if (exchange.configVersion() != turn.modelConfigVersion()) {
             throw new IllegalStateException("ChatGateway configuration changed during model call");

@@ -13,8 +13,8 @@ import type { AgentChatPanelData } from "./AgentChatPanel";
 const NOW = "2026-10-20T10:00:00Z";
 const agent = (id: string): Agent => ({ id,projectId: "project-1",name: id,instruction: `${id} instruction`,profileKey: "creator",
   profileVersion: 1,version: 1,createdAt: NOW,updatedAt: NOW,});
-const data = (id = "director-a"): AgentChatPanelData => ({ agent: agent(id),projectId: "project-1",activeRun: null,
-  outputCount: 0,canvasNodeCount: 6,selectedNodeCount: 2,onShowOutputs: vi.fn(),onUpdateAgent: vi.fn(),updatingAgent: false });
+const data = (id = "director"): AgentChatPanelData => ({ agent: agent(id),projectId: "project-1",activeRun: null,
+  canvasNodeCount: 6,selectedNodeCount: 2,onUpdateAgent: vi.fn(),updatingAgent: false });
 let sessionReads = 0;
 beforeEach(() => {
   sessionReads = 0;
@@ -27,9 +27,7 @@ function mount(initial = data(), initialOpen = false) {
   const client = createQueryClient();
   function Host() {
     const [open,setOpen] = useState(initialOpen);
-    const [current,setCurrent] = useState(initial);
-    return <><button type="button" onClick={() => setCurrent({ ...data(current.agent.id === "director-a" ? "director-b" : "director-a"),onUpdateAgent: initial.onUpdateAgent })}>切换导演</button>
-      <button type="button">画布操作</button><AgentChatDock data={current} open={open} onOpenChange={setOpen} /></>;
+    return <><button type="button">画布操作</button><AgentChatDock data={initial} open={open} onOpenChange={setOpen} /></>;
   }
   render(<QueryClientProvider client={client}><Host /></QueryClientProvider>);
 }
@@ -70,30 +68,21 @@ describe("AgentChatDock", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("keeps each director's draft and configuration separate and restores them when switching back", async () => {
+  it("preserves the director's unsaved configuration and task draft when reopening settings", async () => {
     const onUpdateAgent = vi.fn();
     mount({ ...data(),onUpdateAgent });
-    await userEvent.setup().type(await openDirector(), "导演 A 的草稿");
+    await userEvent.setup().type(await openDirector(), "导演的草稿");
     await userEvent.setup().click(screen.getByRole("button", { name: "Agent 设置" }));
     await userEvent.setup().clear(screen.getByRole("textbox", { name: "名称" }));
-    await userEvent.setup().type(screen.getByRole("textbox", { name: "名称" }), "导演 A 的未保存名称");
-    await userEvent.setup().click(screen.getByRole("button", { name: "切换导演" }));
-    const bInput = await screen.findByRole("textbox", { name: "本次任务" });
-    await waitFor(() => expect(bInput).toBeEnabled());
-    expect(bInput).toHaveValue("");
-    await userEvent.setup().type(bInput, "导演 B 的草稿");
+    await userEvent.setup().type(screen.getByRole("textbox", { name: "名称" }), "导演的未保存名称");
     await userEvent.setup().click(screen.getByRole("button", { name: "收起创作导演" }));
-    await openDirector();
-    await waitFor(() => expect(bInput).toHaveFocus());
-    expect(bInput).toHaveValue("导演 B 的草稿");
-    await userEvent.setup().click(screen.getByRole("button", { name: "Agent 设置" }));
-    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("director-b");
+    await userEvent.setup().click(screen.getByRole("button", { name: "打开创作导演" }));
+    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("导演的未保存名称");
+    expect(screen.queryByRole("textbox", { name: "本次任务" })).not.toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "保存配置" }));
-    expect(onUpdateAgent).toHaveBeenCalledWith(agent("director-b"),"director-b","director-b instruction");
-    await userEvent.setup().click(screen.getByRole("button", { name: "切换导演" }));
-    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("导演 A 的未保存名称");
+    expect(onUpdateAgent).toHaveBeenCalledWith(agent("director"),"导演的未保存名称","director instruction");
     await userEvent.setup().click(screen.getByRole("button", { name: "聊天" }));
-    expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue("导演 A 的草稿");
+    expect(screen.getByRole("textbox", { name: "本次任务" })).toHaveValue("导演的草稿");
   });
 
   it("returns focus to the launcher when a programmatic opening had no focusable predecessor", async () => {
@@ -109,7 +98,7 @@ describe("AgentChatDock", () => {
   it("places a quick suggestion into an editable draft without submitting a run", async () => {
     mount();
     const input = await openDirector();
-    await userEvent.setup().click(screen.getByRole("button", { name: "梳理当前画布" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: /^梳理当前画布/ }));
     expect(input).toHaveValue("先查看当前画布，梳理已有内容和素材，告诉我有哪些可以推进的创作方向。");
     expect(input).toHaveFocus();
     expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
@@ -117,7 +106,7 @@ describe("AgentChatDock", () => {
     expect(screen.getByText("已选 2")).toBeInTheDocument();
   });
 
-  it("shows a creation error and retry even when another director is already available", async () => {
+  it("keeps the director available while showing a recoverable load error", async () => {
     const retry = vi.fn();
     render(<QueryClientProvider client={createQueryClient()}><AgentChatDock data={data()} open onOpenChange={vi.fn()} error={new Error("failed")} onRetry={retry} /></QueryClientProvider>);
     const alert = screen.getByRole("alert");

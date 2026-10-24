@@ -574,23 +574,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/agent-presets": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 读取可直接创建的 Agent 提示词名称和用途标识 */
-        get: operations["listAgentPresets"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/settings/prompts": {
         parameters: {
             query?: never;
@@ -610,7 +593,7 @@ export interface paths {
          */
         get: operations["listPrompts"];
         put?: never;
-        /** 新建独立提示词 */
+        /** 新建功能提示词 */
         post: operations["createPrompt"];
         delete?: never;
         options?: never;
@@ -646,6 +629,33 @@ export interface paths {
          * @description 内置条目返回 PROMPT_IN_USE/409，已有 Agent/Task 保留复制内容。
          */
         delete: operations["deletePrompt"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/director": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取全局导演上下文与恢复设置（仅管理员） */
+        get: operations["getDirectorSettings"];
+        /**
+         * 以版本比较保存全局导演设置
+         * @description 保存后新请求立即读取，不需要重启。已冻结模型请求、压缩计划、恢复期限和修复链上限保持原值。不会触发模型调用或更改权限与媒体审批。响应预留至少1024且小于窗口一半；摘要至少256且不超过输入预算四分之一。环境变量不再覆盖这些设置。
+         */
+        put: operations["updateDirectorSettings"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -862,6 +872,64 @@ export interface paths {
         put?: never;
         /** 修改密码并失效其他会话 */
         post: operations["changePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/account/mcp-tokens": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询当前用户的 MCP 凭据元数据
+         * @description 仅接受网页登录 Session；MCP Bearer 凭据不能调用管理 API。结果不包含 Token 明文或散列。
+         */
+        get: operations["listMcpTokens"];
+        put?: never;
+        /**
+         * 创建用户级 MCP 凭据
+         * @description 网页 Session 与 CSRF 校验。READ 必选，凭据每次使用时仍校验当前用户及项目权限。明文仅本次响应提供，不能放入 URL、浏览器持久存储或模型上下文。
+         */
+        post: operations["createMcpToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/account/mcp-tokens/{tokenId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                tokenId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 撤销当前用户的 MCP 凭据
+         * @description 网页 Session 与 CSRF 校验。首次撤销校验 expectedVersion；重复撤销幂等返回已撤销元数据，不会恢复凭据或修改已受理的 Task。
+         */
+        post: operations["revokeMcpToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1379,6 +1447,82 @@ export interface paths {
         patch: operations["updateProject"];
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/storyboard": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** 读取项目分镜制作台，尚未创建时返回零版空板 */
+        get: operations["getStoryboard"];
+        /** CAS 保存完整分镜板并追加不可变修订，不运行模型或媒体任务 */
+        put: operations["saveStoryboard"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/storyboard/revisions": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** 按版本升序读取有界不可变分镜板历史 */
+        get: operations["listStoryboardRevisions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/storyboard/media-approvals": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** 汇总与板上镜头或生产节点关联的 Agent 审批批次与结果候选，待处理优先，最多 100 条 */
+        get: operations["listStoryboardMediaApprovals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/archive": {
         parameters: {
             query?: never;
@@ -1879,6 +2023,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/video-prompt-optimizations": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: string;
+            };
+            cookie?: never;
+        };
+        /** 查询视频节点最近的提示词优化任务 */
+        get: operations["listVideoPromptTasks"];
+        put?: never;
+        /**
+         * 优化当前视频提示词，可选择一个已发布的 Skill 版本
+         * @description 使用 TEXT_GENERATION 的 VIDEO_PROMPT_OPTIMIZATION 用途与输入 schema 4。固定用户提供的本地提示词、输出长度、可选 Skill 的主说明及全部文字附件、功能提示词和文字模型配置。仅进行文字转换，不读取 Skill 图片、输入槽位或画布素材，不创建媒体或修改草稿。相同幂等键重放原任务，异参冲突；同节点仅有一个活动优化任务。成功 output 仅含 prompt、mock。引用占位符 [[REF_n]] 必须原样保留各自出现次数。浏览器显式确认后通过原草稿保存流程回填，草稿已变化时保留结果并提示冲突。
+         */
+        post: operations["runVideoPromptOptimization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/video-prompt-optimizations/{taskId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 取消视频提示词优化任务
+         * @description 取消阻止晚到响应发布；不保证服务方停止或退款。重复取消重放原取消状态。
+         */
+        post: operations["cancelVideoPromptOptimization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/image-prompts": {
         parameters: {
             query?: never;
@@ -1995,6 +2199,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/video-compositions": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 按分镜和台词对应关系智能排布配音并本地合成
+         * @description 固定有序视频片段与配音精确版本，后台分析原片和配音的声音能量/静音区间并自动适配。声音活动不等于语音识别；无可靠窗口时回退时长排布并记录警告。最多12镜、30句、总时长60秒，素材总大小1GiB，单个音视频最多10分钟。最多1.15倍保音高加速，无法完整容纳时失败，不截断配音。输出720p/1080p、16:9/9:16/1:1、30fps的新视频节点，逐镜向下对齐整帧（少于34ms）并记录实际时间表；支持零配音、取源裁切、0.5–2倍视频速度、首尾淡黑、定时字幕与背景音乐；默认去除原声，KEEP保留完整原声，BACKGROUND保留15%原声（包括原对白）。本地处理无Provider费用，复用Task查询/取消/显式重试；同键异参冲突。
+         */
+        post: operations["composeVideo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/video-compositions/preview": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 只读分析剪辑配音的精确时间表
+         * @description 复用导出的取源授权、声音活动分析与配音排布，不创建任务、节点、事件或费用；在事务外执行有界FFmpeg分析，每实例最多两个并发预览。仅返回时间与字体，不返回本机路径或媒体正文。浏览器以此同步配音，修改镜头后需重新读取；字幕、配乐与画幅变化无需重新分析。规划端点不执行最终atempo编码，实际导出保留其完整音频边界校验。
+         */
+        post: operations["previewVideoComposition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/artifacts/{artifactId}/audio-trims": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 裁剪固定音频片段并创建独立派生节点
+         * @description 使用整数毫秒的起止位置截取当前选用音频，返回持久本地Task。来源最多10分钟/50MiB，片段至少100ms且必须完整落在来源内；输出固定双声道48kHz，WAV为PCM16、MP3为192kbps。WAV超过50MiB预算时受理前拒绝，可缩短片段或改用MP3。结果追加到同一Artifact的独立派生音频节点，使用空白草稿和精确来源；原节点及资源默认版本不变。取消或目标改变后结果仅归档，不重建已删除节点。无Provider调用或费用，同键同参重放原Task，同键异参冲突。裁剪结果可经现有AUDIO_REFERENCE用于音色参考，所选模型的格式/时长限制仍独立校验；裁剪不执行人声分离或创建声纹模型。
+         */
+        post: operations["runAudioTrim"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/video-operations": {
         parameters: {
             query?: never;
@@ -2015,7 +2304,7 @@ export interface paths {
         put?: never;
         /**
          * 按功能设置固定来源视频并创建独立处理结果节点与任务
-         * @description 深度视频和视频高清派生同一视频产物的独立节点；音频分离创建独立音频产物/节点和来源视频产物的无声视频派生节点，同一任务提交两个结果。所有结果使用空白草稿及可删除派生线，来源选择不变。固定功能设置版本、能力版本、来源视频版本及参数；同键异参冲突。视频高清只执行管理员绑定的兼容 AI 能力。本地深度输出最长边 518px、12fps、无音轨的相对深度视频；本地音频分离读取第一音轨为双声道 48kHz PCM WAV，并直接复制原视频流、移除音轨为无声 MP4；云端音频输出也配套本地无声视频。两个目标独立核对选择 epoch/草稿版本，目标删除不重建，归档重试不重新生成。两类本地输入限 30 秒、200MiB、3840×2160 像素数。RunningHub 使用已发布的单视频输入契约，不接受任意工作流或请求。
+         * @description 深度视频和视频高清派生同一视频产物的独立节点；音频分离创建独立音频产物/节点和来源视频产物的无声视频派生节点，同一任务提交两个结果。所有结果使用空白草稿及可删除派生线，来源选择不变。固定功能设置版本、能力版本、来源视频版本及参数；同键异参冲突。视频高清只执行管理员绑定的兼容 AI 能力。本地深度输出最长边 518px、12fps、无音轨的相对深度视频；本地音频分离默认读取第一音轨，可选择音轨索引和WAV/MP3，输出双声道48kHz PCM WAV或192kbps MP3，并直接复制原视频流、移除音轨为无声MP4；云端音频输出也配套本地无声视频。两个目标独立核对选择epoch/草稿版本，目标删除不重建，归档重试不重新生成。本地深度输入限30秒、200MiB、3840×2160像素数；本地音频提取输入限10分钟、500MiB、4000万像素，输出音频限50MiB，WAV超预算受理前拒绝。RunningHub 使用已发布的单视频输入契约，不接受任意工作流或请求。
          */
         post: operations["runVideoOperation"];
         delete?: never;
@@ -2093,7 +2382,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 取消尚未提交到 Provider 的直接媒体任务并释放预留 */
+        /**
+         * 取消排队的直接媒体任务，或请求停止本地配音合成
+         * @description 外部媒体生成仅允许排队状态取消；本地配音合成及音频裁剪允许READY/RUNNING立即取消，SUBMITTING设置cancelRequested并由后台停止。取消后晚到的本地结果只保留历史，不自动选用。
+         */
         post: operations["cancelQueuedDirectMediaTask"];
         delete?: never;
         options?: never;
@@ -2225,7 +2517,7 @@ export interface paths {
         put?: never;
         /**
          * 向空媒体节点上传首个结果，或从已有结果派生新节点
-         * @description 从已有结果派生的新节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入，标题为来源节点当前标题加「 · 上传」；超长时截短来源部分以保留后缀。首次填充空节点保留原标题，重放不重新命名。BRUSH_MARKUP 用途从来源当前图片同步创建「 · 画笔标注」派生节点，保存为 USER 版本并记录 baseVersionId 与 frozenInput，不创建 AI Task。来源版本或 expectedVersion 不匹配返回 409，相同目标 ID 与内容、用途和来源安全重放。
+         * @description 从已有结果派生的新节点使用空白媒体草稿，不继承来源提示词、参数、能力或图片输入，标题为来源节点当前标题加「 · 上传」；超长时截短来源部分以保留后缀。首次填充空节点保留原标题，重放不重新命名。BRUSH_MARKUP 用途创建「 · 画笔标注」派生节点；DIRECTOR_3D 将场景截图与可编辑 directorScene 保存为 USER 版本，已有图片派生「 · 3D 导演台」节点，空图片首次填充自身，不创建 AI Task。来源版本或 expectedVersion 不匹配返回 409，相同目标 ID 与内容、用途、来源和场景安全重放。
          */
         post: operations["uploadCanvasItemVersion"];
         delete?: never;
@@ -2311,7 +2603,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects/{projectId}/agents": {
+    "/api/v1/projects/{projectId}/director": {
         parameters: {
             query?: never;
             header?: {
@@ -2326,11 +2618,13 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 获取项目中的 Creator Agent 配置 */
-        get: operations["listAgents"];
-        put?: never;
-        /** 创建一个空闲的导演 Agent */
-        post: operations["createAgent"];
+        get?: never;
+        /**
+         * 恢复或初始化项目唯一导演
+         * @description 无请求正文。在项目锁内恢复唯一导演，不存在时复制固定内置 agent.director 提示词一次；并发和重复请求返回同一身份，不覆盖已保存配置、不启动模型或创建会话。数据库约束每项目最多一个实例。
+         */
+        put: operations["ensureProjectDirector"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2362,32 +2656,6 @@ export interface paths {
         head?: never;
         /** 乐观更新项目助手配置 */
         patch: operations["updateAgent"];
-        trace?: never;
-    };
-    "/api/v1/projects/{projectId}/agents/{agentId}/outputs": {
-        parameters: {
-            query?: never;
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-            };
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-                agentId: string;
-            };
-            cookie?: never;
-        };
-        /** 按当前选用版本的运行来源查询助手产物节点 */
-        get: operations["listAgentOutputs"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
     "/api/v1/projects/{projectId}/agents/{agentId}/conversations": {
@@ -2486,8 +2754,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 分页查看一个 Agent 的持久化运行记录 */
-        get: operations["listAgentRuns"];
+        get?: never;
         put?: never;
         /** 幂等创建一个持久化 Agent Run */
         post: operations["createRun"];
@@ -2628,7 +2895,11 @@ export interface paths {
         };
         /** 获取媒体审批、固定输出与最终结果 */
         get: operations["getAgentMediaApproval"];
-        put?: never;
+        /**
+         * 修改待审批视频的能力与生成参数并重新估算费用
+         * @description 仅 PENDING 且未过期批次可修改。保留提示词、精确素材、目标及镜头依据；输入不兼容则事务回滚。不创建 Task，不延长期限。保存后以返回的新版本另行批准。
+         */
+        put: operations["reviseAgentMediaApproval"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2767,6 +3038,88 @@ export interface paths {
          * @description 仅接受未取消的 UNKNOWN（无外部请求 ID）或 BLOCKED（已有外部请求 ID）直连媒体任务。重试创建新的生成任务并独立预留用量；保留原任务、请求 ID、输入与费用记录，原任务不再占用发起卡片。不会恢复原请求查询。已变化的任务版本或能力配置返回冲突。
          */
         post: operations["createManualUnknownAttempt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/editor": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        /** Read authoritative canvas items and persistent presentation groups */
+        get: operations["getCanvasEditor"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/edits": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Atomically edit presentation, groups or copy up to 100 independent content nodes
+         * @description Command identities and request fingerprints are durable. The latest 100 receipt snapshots per project are retained; retries after their snapshot expires return CANVAS_EDIT_EXPIRED and never execute again. Copies freeze saved text/media/character state and inherit no tasks or connections. Group membership changes must explicitly include all changed nodes. Locked nodes may be renamed, unlocked or copied, but cannot move or change group. No provider calls are made.
+         */
+        post: operations["editCanvas"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas/edits/{receiptId}/replay": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                receiptId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo or redo one retained presentation receipt under semantic and revision preconditions
+         * @description Only receipt-owned presentation changes are replayed. Clone undo refuses any subsequent content, draft, selection, role, connection, task, approval or composition usage. Redo restores fixed clone content and never rereads a changed source. A stale, expired or unsafe receipt returns 409 without partial changes. Existing delete/connect commands have no undo receipt.
+         */
+        post: operations["replayCanvasEdit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3404,10 +3757,346 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/characters": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        get: operations["listCharacters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/characters/{characterId}": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["saveCharacter"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/characters/{characterId}/preview-change": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewCharacterChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/characters/{characterId}/archive": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["archiveCharacter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/character-bindings/preview": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewCharacterBindings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/character-bindings/apply": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["applyCharacterBindings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/character-bindings/review": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["reviewCharacterBindings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        CharacterView: {
+            /** Format: uuid */
+            versionId: string;
+            purpose: string;
+            description: string;
+        };
+        CharacterVoice: {
+            /** Format: uuid */
+            versionId: string | null;
+            speakerId: string | null;
+            description: string;
+        };
+        CharacterLook: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            clothing: string;
+            expression: string;
+            description: string;
+            views: components["schemas"]["CharacterView"][];
+        };
+        CharacterContent: {
+            name: string;
+            description: string;
+            looks: components["schemas"]["CharacterLook"][];
+            voice: components["schemas"]["CharacterVoice"] | null;
+        };
+        CharacterProfile: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            content: components["schemas"]["CharacterContent"];
+            /** Format: int64 */
+            version: number;
+            archived: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CharacterSnapshot: {
+            /** Format: uuid */
+            characterId: string;
+            /** Format: int64 */
+            characterVersion: number;
+            name: string;
+            description: string;
+            look: components["schemas"]["CharacterLook"] | null;
+            voice: components["schemas"]["CharacterVoice"] | null;
+            useAppearance: boolean;
+            useVoice: boolean;
+        };
+        CharacterBindingSelection: {
+            /** Format: uuid */
+            characterId: string;
+            /** Format: int64 */
+            characterVersion: number;
+            /** Format: uuid */
+            lookId: string | null;
+            useAppearance: boolean;
+            useVoice: boolean;
+        };
+        SaveCharacter: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            content: components["schemas"]["CharacterContent"];
+        };
+        ArchiveCharacter: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+        };
+        CharacterAffectedItem: {
+            /** Format: uuid */
+            canvasItemId: string;
+            title: string;
+            /** Format: int64 */
+            bindingVersion: number;
+        };
+        CharacterChangePreview: {
+            /** Format: uuid */
+            characterId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            affectedItems: components["schemas"]["CharacterAffectedItem"][];
+        };
+        /**
+         * @description KEEP_INPUTS removes bindings but retains media inputs and description; REMOVE_OWNED removes only still-owned contributions, preserving manual/shared references.
+         * @enum {string}
+         */
+        CharacterClearMode: "KEEP_INPUTS" | "REMOVE_OWNED";
+        PreviewCharacterBindings: {
+            /** Format: int64 */
+            expectedBindingVersion: number;
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            selections: components["schemas"]["CharacterBindingSelection"][];
+            clearMode: components["schemas"]["CharacterClearMode"];
+        };
+        ApplyCharacterBindings: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedBindingVersion: number;
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            selections: components["schemas"]["CharacterBindingSelection"][];
+            clearMode: components["schemas"]["CharacterClearMode"];
+            previewHash: string;
+        };
+        ReviewCharacterBindings: {
+            /** Format: int64 */
+            expectedBindingVersion: number;
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            /** Format: uuid */
+            selectedVersionId: string;
+        };
+        CharacterContribution: {
+            versionIds: string[];
+            promptBlock: string;
+            speakerId: string | null;
+        };
+        CharacterBinding: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: int64 */
+            draftVersion: number;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            snapshots: components["schemas"]["CharacterSnapshot"][];
+            needsReview: boolean;
+            reviewReasons: ("PROFILE_CHANGED" | "DRAFT_CHANGED" | "RESULT_CHANGED" | "NOT_REVIEWED" | "CHARACTER_ARCHIVED")[];
+            contribution: components["schemas"]["CharacterContribution"];
+            /** Format: date-time */
+            reviewedAt: string | null;
+        };
+        CharacterBindingPreview: {
+            previewHash: string;
+            /** Format: int64 */
+            expectedBindingVersion: number;
+            /** Format: int64 */
+            expectedDraftVersion: number;
+            snapshots: components["schemas"]["CharacterSnapshot"][];
+            candidateDraft: components["schemas"]["MediaDraft"];
+            warnings: string[];
+            changes: string[];
+        };
+        CharacterBindingApplied: {
+            binding: components["schemas"]["CharacterBinding"];
+            draft: components["schemas"]["MediaDraft"];
+        };
+        CharacterIndex: {
+            characters: components["schemas"]["CharacterProfile"][];
+            bindings: components["schemas"]["CharacterBinding"][];
+        };
         MediaStyleSummary: {
             /** Format: uuid */
             id: string;
@@ -3670,6 +4359,50 @@ export interface components {
             retentionDays: number | null;
             version: number;
         };
+        DirectorSettings: {
+            /** @default 1000000 */
+            contextWindowTokens: number;
+            /** @default 50 */
+            compactionThresholdPercent: number;
+            /** @default 8192 */
+            responseReserveTokens: number;
+            /** @default 2048 */
+            summaryTokens: number;
+            /** @default 4 */
+            recentToolRounds: number;
+            /** @default 1440 */
+            recoveryWindowMinutes: number;
+            /** @default 288 */
+            maxModelRetries: number;
+            /** @default 300 */
+            retryMaxDelaySeconds: number;
+            /** @default 4 */
+            maxRepairAttempts: number;
+            /** Format: int64 */
+            version: number;
+        };
+        UpdateDirectorSettingsRequest: {
+            /** @default 1000000 */
+            contextWindowTokens: number;
+            /** @default 50 */
+            compactionThresholdPercent: number;
+            /** @default 8192 */
+            responseReserveTokens: number;
+            /** @default 2048 */
+            summaryTokens: number;
+            /** @default 4 */
+            recentToolRounds: number;
+            /** @default 1440 */
+            recoveryWindowMinutes: number;
+            /** @default 288 */
+            maxModelRetries: number;
+            /** @default 300 */
+            retryMaxDelaySeconds: number;
+            /** @default 4 */
+            maxRepairAttempts: number;
+            /** Format: int64 */
+            expectedVersion: number;
+        };
         DebugSettings: {
             /** @default false */
             debugMode: boolean;
@@ -3914,8 +4647,8 @@ export interface components {
                 nodeId: string;
                 inputName: string;
                 /** @enum {string} */
-                source: "PROMPT" | "NEGATIVE_PROMPT" | "SEED" | "WIDTH" | "HEIGHT" | "REFERENCE_IMAGE" | "DURATION_SECONDS" | "FRAME_COUNT" | "FPS" | "BATCH_SIZE";
-                /** @description Required for REFERENCE_IMAGE; zero-based contiguous indices of frozen project image inputs. All mapped images are required. */
+                source: "PROMPT" | "NEGATIVE_PROMPT" | "SEED" | "WIDTH" | "HEIGHT" | "REFERENCE_IMAGE" | "REFERENCE_VIDEO" | "REFERENCE_AUDIO" | "DURATION_SECONDS" | "FRAME_COUNT" | "FPS" | "BATCH_SIZE";
+                /** @description Required for REFERENCE_IMAGE/REFERENCE_VIDEO/REFERENCE_AUDIO; zero-based contiguous indices within each media type. All mapped media are required; at most 14 media slots in total. */
                 referenceIndex?: number | null;
             }[];
             /** @description Optional administrator-declared scalar inputs exposed in the creator extended-parameters table. Supports STRING/NUMBER/INTEGER/BOOLEAN/SELECT with PARAMETER source and native encoding only. Targets must be existing scalar inputs on the selected output ancestry and cannot overlap bindings. Missing defaults derive from the published graph literal. Keys prompt, durationSeconds and reference_* are reserved. Existing schemaVersion=1 definitions without parameters remain valid. */
@@ -4043,6 +4776,8 @@ export interface components {
             key: string;
             label: string;
             description?: string | null;
+            /** @description Optional administrator-defined creator-facing stage or group name. Display metadata only; does not change field identity, order, conditions or provider mappings. */
+            group?: string | null;
             /** @enum {string} */
             type: "STRING" | "NUMBER" | "INTEGER" | "BOOLEAN" | "SELECT" | "IMAGE" | "AUDIO" | "VIDEO";
             /** @default false */
@@ -4069,6 +4804,8 @@ export interface components {
             key: string;
             label: string;
             description?: string | null;
+            /** @description Optional administrator-defined creator stage. Display metadata only; does not change field identity, conditions or provider mappings. */
+            group?: string | null;
             /** @enum {string} */
             type: "STRING" | "NUMBER" | "INTEGER" | "BOOLEAN" | "SELECT" | "IMAGE" | "AUDIO" | "VIDEO";
             /** @default false */
@@ -4108,12 +4845,22 @@ export interface components {
         };
         RunningHubImportPreview: {
             definition: components["schemas"]["RunningHubDefinition"];
+            /** @description Per-field discovery evidence for administrator review. Matched by nodeId and fieldName when candidate keys are merged. These suggestions are not persisted in the capability or used to authorize execution. */
+            fieldInsights?: components["schemas"]["RunningHubFieldInsight"][];
             /** @description Optional trimmed AI app or workflow display name from read-only discovery. Null when unavailable or importing local JSON. Autofills an empty capability name only; not retained in the imported input contract. */
             targetName: string | null;
-            /** @description Suggested exposed candidate keys for the editor (unambiguous canvas prompt and media inputs). Other fields remain available for manual exposure. Editor selection only; never stored in a capability or used to authorize execution. */
+            /** @description Suggested creator-facing candidate keys (unambiguous canvas prompt, media, negative prompt, duration, aspect ratio, dimensions, resolution, frame rate and quality). Types, bounds and valid defaults use declared input and widget metadata; sampler/model internals and ambiguous fields remain manual. Existing administrator mappings and selections take precedence when importing again. Editor selection only; never stored in a capability or used to authorize execution. */
             recommendedFieldKeys: string[];
             /** @description Public discovery warnings localized using Accept-Language. Imported field labels and definition values retain their original content. */
             warnings: string[];
+        };
+        RunningHubFieldInsight: {
+            key: string;
+            nodeId: string;
+            fieldName: string;
+            /** @enum {string} */
+            confidence: "DECLARED" | "INFERRED" | "UNCERTAIN";
+            reasons: ("TYPE_DECLARATION" | "WIDGET_TYPE" | "JSON_VALUE" | "UPLOAD_WIDGET" | "NAME_HINT" | "DIRECT_CREATIVE_CONNECTION" | "PRIMARY_PROMPT" | "NEGATIVE_PROMPT" | "AMBIGUOUS_PROMPT" | "CONFLICTING_MEDIA_METADATA" | "MISSING_ENUM_OPTIONS" | "RESOURCE_URL_NODE" | "RESOURCE_FILE_NODE" | "RESOURCE_FORMAT_UNCERTAIN" | "EXPLICIT_GROUP" | "MISSING_TYPE_METADATA")[];
         };
         MediaCapabilityPricing: {
             /** @description Administrator supplied unit price; up to six decimal places. */
@@ -4379,13 +5126,115 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        Storyboard: {
+            /** Format: uuid */
+            projectId: string;
+            /** Format: int64 */
+            version: number;
+            shots: components["schemas"]["StoryboardShot"][];
+            composition: components["schemas"]["StoryboardComposition"] | null;
+        };
+        SaveStoryboardRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            shots: components["schemas"]["StoryboardShotInput"][];
+            composition: components["schemas"]["StoryboardCompositionInput"] | null;
+        };
+        StoryboardShotInput: {
+            /** Format: uuid */
+            id: string;
+            /** @description 同板唯一的镜号，不含首尾空白。 */
+            code: string;
+            scene: string;
+            title: string;
+            description: string;
+            dialogue: string;
+            durationSeconds: number;
+            /**
+             * Format: uuid
+             * @description 同项目精确 TEXT 版本。
+             */
+            sourceVersionId: string | null;
+            /** @description 同项目精确媒体版本。 */
+            referenceVersionIds: string[];
+            productions: components["schemas"]["StoryboardProductionInput"][];
+        };
+        StoryboardShot: {
+            /** Format: uuid */
+            id: string;
+            /** @description 同板唯一的镜号，不含首尾空白。 */
+            code: string;
+            scene: string;
+            title: string;
+            description: string;
+            dialogue: string;
+            durationSeconds: number;
+            /**
+             * Format: uuid
+             * @description 同项目精确 TEXT 版本。
+             */
+            sourceVersionId: string | null;
+            /** @description 同项目精确媒体版本。 */
+            referenceVersionIds: string[];
+            /** @description 仅创作正文、台词、时长、源文稿或参考变化时由服务器推进。 */
+            revision: number;
+            productions: components["schemas"]["StoryboardProduction"][];
+        };
+        StoryboardProductionInput: {
+            /** @enum {string} */
+            role: "KEYFRAME" | "VIDEO" | "AUDIO";
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            /**
+             * @description 显式确认当前镜头修订；不会产生任务。
+             * @default false
+             */
+            confirmReviewed: boolean;
+        };
+        StoryboardProduction: {
+            /** @enum {string} */
+            role: "KEYFRAME" | "VIDEO" | "AUDIO";
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            reviewedRevision: number;
+            needsReview: boolean;
+        };
+        StoryboardCompositionInput: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            /** @default false */
+            confirmReviewed: boolean;
+        };
+        StoryboardComposition: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            selectedVersionId: string | null;
+            needsReview: boolean;
+        };
+        StoryboardRevisionPage: {
+            items: components["schemas"]["Storyboard"][];
+            /** Format: int64 */
+            nextAfterVersion: number | null;
+        };
         ProjectExportManifest: {
-            /** @description 已安装或由 Agent 默认绑定的固定版本，包含 version、mapping 和 agentBindings（agentId、skillId、skillVersionId、position）；未安装时 mapping.assets 为空。 */
+            characters: components["schemas"]["CharacterIndex"];
+            storyboard: components["schemas"]["Storyboard"];
+            storyboardRevisions: components["schemas"]["Storyboard"][];
+            /** @description 当前项目的安全分组名称、折叠状态与版本；不含编辑回执或命令指纹。 */
+            canvasGroups: components["schemas"]["CanvasGroup"][];
+            /** @description 已安装或由项目导演默认绑定的固定版本，包含 version、mapping 和可空的 directorBinding（skillId、skillVersionId、position）；未安装时 mapping.assets 为空，不导出多助手绑定列表。 */
             creativeSkills?: {
                 [key: string]: unknown;
             }[];
             /** @constant */
-            schemaVersion: 7;
+            schemaVersion: 11;
             /** Format: date-time */
             generatedAt: string;
             /** Format: int64 */
@@ -4423,9 +5272,7 @@ export interface components {
             schemaVersion: number;
             /** Format: uuid */
             baseVersionId: string | null;
-            frozenInput: {
-                [key: string]: unknown;
-            } | null;
+            frozenInput: components["schemas"]["MediaFrozenInput"] | null;
             /** Format: date-time */
             createdAt: string;
             content: components["schemas"]["ManifestVersionContent"];
@@ -4451,7 +5298,7 @@ export interface components {
             sha256: string;
             width?: number | null;
             height?: number | null;
-            /** @description Verified media duration: videos up to 60000ms; audio up to 600000ms. */
+            /** @description Verified media duration: videos up to 600000ms; audio up to 600000ms. */
             durationMs: number | null;
             thumbnailSha256?: string | null;
             /** Format: date-time */
@@ -4533,6 +5380,42 @@ export interface components {
             currentPassword: string;
             newPassword: string;
         };
+        /** @enum {string} */
+        McpTokenScope: "READ" | "CONTENT_WRITE" | "MEDIA_GENERATE";
+        McpTokenSummary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description 非敏感显示前缀，不可用于认证 */
+            tokenHint: string;
+            scopes: components["schemas"]["McpTokenScope"][];
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            revokedAt: string | null;
+            /** Format: date-time */
+            lastUsedAt: string | null;
+        };
+        CreateMcpTokenRequest: {
+            name: string;
+            /** @description READ 必选；CONTENT_WRITE 和 MEDIA_GENERATE 可独立选择 */
+            scopes: components["schemas"]["McpTokenScope"][];
+            /** @default 30 */
+            expiresInDays: number;
+        };
+        McpTokenCreatedResponse: {
+            credential: components["schemas"]["McpTokenSummary"];
+            /** @description 仅创建时返回的完整 Bearer 凭据 */
+            token: string;
+        };
+        RevokeMcpTokenRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+        };
         CurrentUser: {
             /** Format: uuid */
             id: string;
@@ -4590,7 +5473,7 @@ export interface components {
             sha256: string;
             width: number | null;
             height: number | null;
-            /** @description Verified media duration: videos up to 60000ms; audio up to 600000ms. */
+            /** @description Verified media duration: videos up to 600000ms; audio up to 600000ms. */
             durationMs: number | null;
             /** Format: date-time */
             createdAt: string;
@@ -4651,6 +5534,99 @@ export interface components {
             /** Format: int64 */
             version: number;
         };
+        VideoCompositionPreview: {
+            durationMs: number;
+            frames: number;
+            fontFamily: string;
+            shots: {
+                /** Format: uuid */
+                videoVersionId: string;
+                timelineStartMs: number;
+                durationMs: number;
+                lines: {
+                    /** Format: uuid */
+                    audioVersionId: string;
+                    startMs: number;
+                    endMs: number;
+                    trimStartMs: number;
+                    trimEndMs: number;
+                    speed: number;
+                }[];
+            }[];
+        };
+        VideoCompositionRequest: {
+            title: string;
+            /** @description 面向用户的简短编排依据，不保存模型私有推理 */
+            rationale?: string;
+            /**
+             * @default MUTE
+             * @enum {string}
+             */
+            originalAudioMode: "MUTE" | "BACKGROUND" | "KEEP";
+            output?: {
+                /**
+                 * @default 720P
+                 * @enum {string}
+                 */
+                resolution: "720P" | "1080P";
+                /**
+                 * @default 16:9
+                 * @enum {string}
+                 */
+                aspectRatio: "16:9" | "9:16" | "1:1";
+            };
+            music?: {
+                /** Format: uuid */
+                audioVersionId: string;
+                /** @default 0 */
+                sourceStartMs: number;
+                /** @default 0.2 */
+                volume: number;
+            };
+            subtitles?: {
+                text: string;
+                startMs: number;
+                endMs: number;
+            }[];
+            shots: {
+                /** Format: uuid */
+                videoVersionId: string;
+                /** @default 0 */
+                sourceStartMs: number;
+                /** @description 取源时长；省略时取素材剩余长度；成片时长按速度换算并受60秒总限约束 */
+                durationMs?: number;
+                /** @default 1 */
+                speed: number;
+                /**
+                 * @description 每镜开头及结尾的淡黑时长，不重叠镜头
+                 * @default 0
+                 */
+                fadeMs: number;
+                lines: {
+                    /** Format: uuid */
+                    audioVersionId: string;
+                    /** @description 可选镜内锚点；省略时依声音活动自动排布 */
+                    startMs?: number;
+                }[];
+            }[];
+        };
+        RunAudioTrimRequest: {
+            /** Format: uuid */
+            canvasItemId: string;
+            /** Format: uuid */
+            sourceVersionId: string;
+            /** Format: int64 */
+            expectedCanvasItemVersion: number;
+            /** @description 包含此起点，单位毫秒 */
+            startMs: number;
+            /** @description 不包含此终点，至少比起点晚100ms，且不超过来源时长 */
+            endMs: number;
+            /**
+             * @default WAV
+             * @enum {string}
+             */
+            format: "WAV" | "MP3";
+        };
         RunVideoOperationRequest: {
             /** Format: uuid */
             canvasItemId: string;
@@ -4664,6 +5640,13 @@ export interface components {
             expectedCapabilityVersion: number;
             prompt?: string | null;
             parameters: {
+                /**
+                 * @description 仅本地音频提取；缺省WAV，长素材可显式选MP3
+                 * @enum {string}
+                 */
+                format?: "WAV" | "MP3";
+                /** @description 仅本地音频提取，音轨索引从0开始 */
+                trackIndex?: number;
                 dynamicValues?: {
                     [key: string]: string | number | boolean;
                 };
@@ -4907,16 +5890,73 @@ export interface components {
             /** Format: int64 */
             expectedVersion: number;
             /**
-             * @description 不传时为 UPLOAD。BRUSH_MARKUP 直接保存客户端合成图片，不调用模型或创建生成任务；必须固定来源图片版本并派生独立节点。
+             * @description 不传时为 UPLOAD。BRUSH_MARKUP 和 DIRECTOR_3D 直接保存客户端合成图片，不调用模型或创建生成任务。前者必须固定来源图片版本并派生独立节点；后者可首次填充空图片节点，否则固定来源版本并派生独立节点。
              * @enum {string}
              */
-            purpose?: "UPLOAD" | "BRUSH_MARKUP";
+            purpose?: "UPLOAD" | "BRUSH_MARKUP" | "DIRECTOR_3D";
             /**
              * Format: uuid
-             * @description BRUSH_MARKUP 必填，必须等于来源节点当前选用图片版本；普通上传不传。
+             * @description BRUSH_MARKUP 必填；DIRECTOR_3D 在空图片节点首次填充时为空，已有图片时必填。必须等于来源节点当前选用图片版本；普通上传不传。
              */
             sourceVersionId?: string | null;
+            /** @description 仅 DIRECTOR_3D 必填；保存到结果版本的 frozenInput.directorScene，用于重新打开导演台。 */
+            directorScene?: components["schemas"]["DirectorScene"];
             content: components["schemas"]["WritableArtifactContent"];
+        };
+        /** @description 新场景使用 v2 三轴缩放；v1 统一缩放场景保留原样提交与重放，不改写既有版本。 */
+        DirectorScene: components["schemas"]["DirectorSceneV1"] | components["schemas"]["DirectorSceneV2"];
+        DirectorSceneV1: {
+            /** @enum {integer} */
+            schemaVersion: 1;
+            /** @enum {string} */
+            aspectRatio: "16:9" | "9:16" | "1:1" | "4:3";
+            camera: components["schemas"]["DirectorCamera"];
+            objects: components["schemas"]["DirectorObjectV1"][];
+        };
+        DirectorSceneV2: {
+            /** @enum {integer} */
+            schemaVersion: 2;
+            /** @enum {string} */
+            aspectRatio: "16:9" | "9:16" | "1:1" | "4:3";
+            camera: components["schemas"]["DirectorCamera"];
+            objects: components["schemas"]["DirectorObjectV2"][];
+        };
+        DirectorCamera: {
+            azimuth: number;
+            elevation: number;
+            distance: number;
+            target: components["schemas"]["DirectorVector3"];
+            focalLength: number;
+        };
+        DirectorObjectV1: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "ACTOR" | "BOX" | "SPHERE" | "CYLINDER";
+            position: components["schemas"]["DirectorVector3"];
+            rotation: number;
+            scale: number;
+            color: string;
+        };
+        DirectorObjectV2: {
+            id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "ACTOR" | "BOX" | "SPHERE" | "CYLINDER";
+            position: components["schemas"]["DirectorVector3"];
+            rotation: number;
+            /** @description 独立轴缩放倍率，X 为宽、Y 为高、Z 为深；每轴作用于对象的基础几何尺寸。 */
+            scale: {
+                x: number;
+                y: number;
+                z: number;
+            };
+            color: string;
+        };
+        DirectorVector3: {
+            x: number;
+            y: number;
+            z: number;
         };
         ArtifactInputReference: {
             /** Format: uuid */
@@ -4924,6 +5964,14 @@ export interface components {
             role: string;
             order: number;
             kind: components["schemas"]["ArtifactKind"];
+        };
+        /** @description Immutable input of a media Task and its result; schema 7 fixes applicable applied character snapshots without resolving later profile revisions. */
+        MediaFrozenInput: {
+            schemaVersion?: number;
+            characterBindings?: components["schemas"]["CharacterSnapshot"][];
+            characterContribution?: components["schemas"]["CharacterContribution"];
+        } & {
+            [key: string]: unknown;
         };
         ArtifactVersion: {
             /** Format: uuid */
@@ -4933,13 +5981,11 @@ export interface components {
             schemaVersion: 1 | 2;
             /** Format: uuid */
             baseVersionId?: string | null;
-            frozenInput?: {
-                [key: string]: unknown;
-            } | null;
+            frozenInput?: components["schemas"]["MediaFrozenInput"] | null;
             content: components["schemas"]["ArtifactContent"];
             inputReferences: components["schemas"]["ArtifactInputReference"][];
             /** @enum {string} */
-            createdByKind: "USER" | "AGENT" | "TASK";
+            createdByKind: "USER" | "AGENT" | "TASK" | "EXTERNAL_TOOL";
             /** Format: uuid */
             runId?: string | null;
             /** Format: date-time */
@@ -5010,8 +6056,6 @@ export interface components {
         };
         CreatePromptRequest: {
             key: string;
-            /** @enum {string} */
-            kind: "AGENT" | "FUNCTION";
             name: string;
             description?: string;
             content: string;
@@ -5022,21 +6066,6 @@ export interface components {
             name: string;
             description?: string;
             content: string;
-        };
-        AgentPreset: {
-            key: string;
-            name: string;
-        };
-        AgentPresetList: {
-            items: components["schemas"]["AgentPreset"][];
-        };
-        CreateAgentRequest: {
-            /** @description 选择 AGENT 提示词条目；省略时使用 agent.director，FUNCTION 不能用于创建 Agent。 */
-            promptKey?: string;
-            /** @description 省略时在创建事务内复制当前默认名称。 */
-            name?: string;
-            /** @description 省略时复制当前默认创作系统提示词；不自动运行，已有实例可单独修改。 */
-            instruction?: string;
         };
         UpdateAgentRequest: {
             /** Format: int64 */
@@ -5060,13 +6089,6 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
-        };
-        AgentOutputList: {
-            /** @description 当前画布实际选用版本由该 Agent 的运行产生的节点；依据不可变版本来源，不依赖布局分组。不含尚未归档的审批草稿。 */
-            canvasItemIds: string[];
-        };
-        AgentList: {
-            items: components["schemas"]["Agent"][];
         };
         AgentConversation: {
             /** Format: uuid */
@@ -5107,6 +6129,17 @@ export interface components {
             /** @enum {string} */
             decision: "APPROVE" | "REJECT";
         };
+        AgentMediaApprovalRevisionRequest: {
+            /** Format: int64 */
+            expectedVersion: number;
+            outputIndex: number;
+            /** Format: uuid */
+            capabilityId: string;
+            parameters: components["schemas"]["ImageGenerationParameters"];
+            durationSeconds?: number | null;
+            /** @enum {string} */
+            videoInputMode: "TEXT" | "START_END" | "GENERAL_REFERENCE";
+        };
         AgentMediaApprovalOutput: {
             /** @enum {string} */
             kind: "IMAGE" | "VIDEO" | "AUDIO";
@@ -5120,10 +6153,71 @@ export interface components {
             canvasItemId: string;
             /** Format: int64 */
             draftVersion: number;
-            /** @description 固定提示词、参数、能力、mediaInputs 精确素材版本、视频 videoInputMode 及估算费用/费用未知的安全预检摘要；不返回 endpoint、Key 或签名下载地址。 */
+            /** @description 提案时由服务端验证并冻结的镜头关联；不绑定制作目标、不批准生成，也不选用结果。历史或独立素材提案可为空。 */
+            storyboard?: components["schemas"]["AgentMediaStoryboardLink"] | null;
+            /** @description 固定提示词、参数、能力、mediaInputs 精确素材版本、视频 videoInputMode、已应用角色快照 characterBindings 及估算费用/费用未知的安全预检摘要；不返回 endpoint、Key 或签名下载地址。 */
             preview: {
+                characterBindings?: components["schemas"]["CharacterSnapshot"][];
+                characterContribution?: components["schemas"]["CharacterContribution"];
+            } & {
                 [key: string]: unknown;
             };
+        };
+        AgentMediaStoryboardLink: {
+            /** Format: uuid */
+            shotId: string;
+            /** @description 提案时的镜号；改名不改历史关联。 */
+            shotCode: string;
+            /** @description 提案冻结的镜头创作修订；批准前须仍匹配，生成期间改稿保留旧依据。 */
+            shotRevision: number;
+            /** @enum {string} */
+            role: "KEYFRAME" | "VIDEO" | "AUDIO";
+        };
+        AgentMediaApprovalAdditionalResult: {
+            ordinal?: number;
+            /** Format: uuid */
+            artifactId: string;
+            /** Format: uuid */
+            canvasItemId?: string | null;
+            /** Format: uuid */
+            artifactVersionId: string;
+            /** @description 画布节点的历史选用状态，不表示分镜已选用。 */
+            selected: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        AgentMediaApprovalTaskResult: {
+            /** Format: uuid */
+            taskId: string;
+            kind: string;
+            status: components["schemas"]["TaskStatus"];
+            errorCode?: string | null;
+            possibleExternalCost?: boolean;
+            /** @description 对应冻结 outputs 的索引；旧结果可能未记录。 */
+            outputIndex?: number;
+            /**
+             * Format: uuid
+             * @description 该主结果的冻结目标；旧结果可能未记录。
+             */
+            canvasItemId?: string;
+            storyboard?: components["schemas"]["AgentMediaStoryboardLink"] | null;
+            /** Format: uuid */
+            artifactId?: string;
+            /** Format: uuid */
+            artifactVersionId?: string;
+            /** @description 画布节点的历史选用状态，不表示分镜已选用。 */
+            selected?: boolean;
+            additionalResults?: components["schemas"]["AgentMediaApprovalAdditionalResult"][];
+        } & {
+            [key: string]: unknown;
+        };
+        AgentMediaApprovalResult: {
+            schemaVersion: number;
+            status: components["schemas"]["AgentMediaApprovalStatus"];
+            errorCode?: string;
+            tasks: components["schemas"]["AgentMediaApprovalTaskResult"][];
+        } & {
+            [key: string]: unknown;
         };
         AgentMediaApproval: {
             /** Format: uuid */
@@ -5140,10 +6234,10 @@ export interface components {
             outputs: components["schemas"]["AgentMediaApprovalOutput"][];
             /** @description 批准后受理的持久媒体任务；批准之前为空。 */
             taskIds: string[];
-            /** @description 终态批次结果，包括可验证的输出和逐任务状态；等待时为空，不包含私有推理或凭据。 */
-            result: {
-                [key: string]: unknown;
-            } | null;
+            /** @description 从当前可信任务输出读取的已归档结果候选，每个归档记录一项，同一 taskId 可含多次归档，包括部分成功及终态审批后的晚到结果；不改写冻结 result 或审批状态，不代表已选用。 */
+            archivedResults?: components["schemas"]["AgentMediaApprovalTaskResult"][];
+            /** @description 终态批次结果，包括可验证的输出和逐任务状态；等待时为空。镜头结果仅成为候选，须用户显式选用，不包含私有推理或凭据。 */
+            result: components["schemas"]["AgentMediaApprovalResult"] | null;
             /** Format: date-time */
             createdAt: string;
             /**
@@ -5192,12 +6286,7 @@ export interface components {
             profileVersion: number;
             /**
              * Format: uuid
-             * @description 仅历史运行冻结的布局分组；新运行不再写入或依赖 Agent 输出分组。
-             */
-            outputGroupId?: string;
-            /**
-             * Format: uuid
-             * @description 新 Run 冻结的会话作用域；升级前旧快照保持原值，可能没有此字段
+             * @description Run 所属会话作用域
              */
             conversationId?: string;
             /**
@@ -5206,22 +6295,16 @@ export interface components {
              */
             conversationHistoryThroughTurn?: number;
             conversationMemory?: components["schemas"]["ConversationMemory"];
-            canvasScope?: components["schemas"]["RunCanvasScope"];
-            /** @description Selected immutable Skill snapshots; complete content is persisted here but only names and descriptions are disclosed initially. Historical Runs may retain creativeSkill instead. */
+            /** @description Selected immutable Skill snapshots; complete content and explicit read-only input mappings are persisted here but only names and descriptions are disclosed initially. */
             creativeSkills?: {
                 [key: string]: unknown;
             }[];
-            /** @description 本 Run 显式选择的 Skill 输入或仍在画布范围内的会话精确输入；升级前快照可保留历史 Agent 绑定。新 Run 不读取长期素材绑定。 */
-            bindings?: components["schemas"]["RunInputSnapshot"][];
             /** @description 创建 Run 时由服务端核对并固定的画布选择；新协议通过 read_selection 分页按需读取，首轮只提供数量；不扩大工具权限 */
             selection?: {
                 /** Format: uuid */
                 itemId: string;
-                /**
-                 * @description 新 Run 固定为 ARTIFACT；AGENT 仅用于读取升级前的不可变选择快照。
-                 * @enum {string}
-                 */
-                subjectType: "ARTIFACT" | "AGENT";
+                /** @constant */
+                subjectType: "ARTIFACT";
                 /** Format: uuid */
                 subjectId: string;
                 /** Format: uuid */
@@ -5230,33 +6313,6 @@ export interface components {
             }[];
         } & {
             [key: string]: unknown;
-        };
-        /** @description 新 Run 在受理事务冻结的当前画布授权范围；目录按 read_canvas 分页提供，首轮模型仅接收节点数。旧 Run 缺省保留绑定和输出组权限。 */
-        RunCanvasScope: {
-            /** @constant */
-            version: 1;
-            /** @description 当前画布所有 Artifact 节点；没有旧显式绑定40项限制，不包含不可变正文、原图或凭证。 */
-            items: {
-                /** Format: uuid */
-                itemId: string;
-                /** Format: uuid */
-                artifactId: string;
-                kind: components["schemas"]["ArtifactKind"];
-                title: string;
-                /** Format: uuid */
-                selectedVersionId?: string;
-                /** Format: int64 */
-                itemVersion: number;
-                /** Format: int64 */
-                artifactVersion: number;
-                locked: boolean;
-                x: number;
-                y: number;
-                width: number;
-                height: number;
-                zIndex: number;
-                mediaDraft?: components["schemas"]["MediaDraft"];
-            }[];
         };
         /** @description 创建 Run 时冻结的公开用户指令、assistant 回复与已提交业务动作摘要；不包含私有推理、原始协议、工具参数或凭证，也不授予额外权限 */
         ConversationMemory: {
@@ -5268,31 +6324,6 @@ export interface components {
             }[];
             truncated: boolean;
             priorRunCount: number;
-        };
-        RunInputSnapshot: {
-            /** Format: uuid */
-            artifactId: string;
-            /** Format: uuid */
-            selectedVersionId: string;
-            kind?: components["schemas"]["ArtifactKind"];
-            title?: string;
-            /** Format: int64 */
-            expectedVersion?: number;
-            /** @enum {string} */
-            source?: "CONVERSATION_OUTPUT" | "SKILL_INPUT";
-            /**
-             * Format: uuid
-             * @description Skill reference disclosed only after activation.
-             */
-            skillVersionId?: string;
-        };
-        RunPreflightBinding: {
-            /** Format: uuid */
-            artifactId: string;
-            /** Format: uuid */
-            selectedVersionId: string;
-            artifactTitle: string;
-            artifactKind: components["schemas"]["ArtifactKind"];
         };
         RunPreflight: {
             /** Format: uuid */
@@ -5307,35 +6338,30 @@ export interface components {
             conversationVersion: number | null;
             /** Format: int64 */
             conversationTurnCount: number;
-            inheritedBindingCount: number;
             creativeSkills: components["schemas"]["RunSkillSummary"][];
-            /** @description 历史消息或继承产物超过本轮上下文预算，完整记录仍保留。 */
+            /** @description 公开历史消息超过本轮上下文预算，完整记录仍保留。 */
             memoryTruncated: boolean;
-            bindings: components["schemas"]["RunPreflightBinding"][];
             modelAvailable: boolean;
             providerAdapter: string | null;
             modelId: string | null;
             toolCalling: boolean;
             policySnapshot: components["schemas"]["RunPolicySnapshot"];
         };
-        /** @description New policies are schema v6 with systemPromptVersion=12 and toolPolicyVersion=4. Canvas nodes are authorized by a frozen, paged canvasScope; read_canvas, manage_canvas_node and update_media_draft share project ownership, immutable version checks, locks and optimistic CAS with normal application services. Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. Historical numeric policies retain their frozen protocol and limits. */
+        /** @description Policies are schema v7 with systemPromptVersion=14 and toolPolicyVersion=6; retired protocols are rejected. The director manages the entire current project canvas, including nodes added or changed during a Run. read_canvas, manage_canvas_node and update_media_draft share project ownership, current selected-version checks, locks and optimistic CAS with normal application services. Explicit Skill inputs grant exact-version read access only. Existing-node media proposals use canvasItemId, expectedItemVersion and expectedDraftVersion and still require approval. Storyboard media outputs may pair shotId with expectedShotRevision; the server freezes their shot identity, revision and inferred role. Approval checks the same shot revision before acceptance. Archived outcomes return as candidates, requiring explicit user selection. extract_audio and trim_audio accept the current canvasItemId, exact sourceVersionId and observed expectedCanvasItemVersion; they create immutable local audio results through the same authorized application services, with no external generation or media approval. extract_audio uses a fixed local processor, independent of administrator-configured cloud function routes. These tools and compose_video persist their task receipts and wait in WAITING_TASKS until the server freezes their terminal outcomes. The original tool reply then supplies the archived artifactVersionId or actual failure; acceptance alone does not mean completion and the model must not poll. Local tasks remain independent after acceptance: canceling the Run stops subsequent model turns but does not cancel these tasks. Task reads require the same Run's committed local-tool receipt; UNKNOWN and late results never trigger automatic regeneration or rewrite a frozen outcome. Selected Skills initially disclose only name, description and immutable version ID; read_skill activates their main instructions, then read_skill_resource reads text and read_skill_asset supplies fixed images directly to the LLM without project imports. New image reads are sequential with only the current image attached; bounded public context projections retain prior observations and exact references. Null count limits mean no per-Run model/tool count cap. */
         RunPolicySnapshot: {
-            /** @enum {integer} */
-            schemaVersion: 1 | 2 | 3 | 4 | 5 | 6;
-            /** @enum {integer} */
-            toolPolicyVersion?: 1 | 2 | 3 | 4;
-            allowedTools?: string[];
-            /**
-             * @description New v6 snapshots pin version 12; historical rules and creative message roles remain frozen.
-             * @enum {integer}
-             */
-            systemPromptVersion?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+            /** @constant */
+            schemaVersion: 7;
+            /** @constant */
+            toolPolicyVersion: 6;
+            allowedTools: string[];
+            /** @constant */
+            systemPromptVersion: 14;
             modelConfigSource: string;
             modelConfigVersion: number;
-            /** @description Null means no model-turn count limit; historical numeric policies remain frozen. */
-            maxModelTurns: number | null;
-            /** @description Null means no per-Run tool execution count limit; historical numeric policies remain frozen. */
-            maxToolExecutions: number | null;
+            /** @description No model-turn count limit. */
+            maxModelTurns: null;
+            /** @description No per-Run tool execution count limit. */
+            maxToolExecutions: null;
         };
         AgentRun: {
             /** Format: uuid */
@@ -5429,6 +6455,13 @@ export interface components {
             /** Format: int64 */
             expectedTaskVersion: number;
         };
+        VideoPromptOptimizationRequest: {
+            /** @description 当前本地提示词，结构化提及转为 [[REF_n]] 占位符；不自动读取服务器草稿 */
+            prompt: string;
+            maxLength: number;
+            /** @description 可选的已发布方法版本；只使用主说明与文字附件，不继承导演默认 Skill */
+            skill?: components["schemas"]["SkillVersionRef"] | null;
+        };
         ImagePromptRequest: {
             /** Format: uuid */
             canvasItemId: string;
@@ -5450,6 +6483,8 @@ export interface components {
             /** @description 已要求停止本系统后续编排，不表示外部任务已停止或退款 */
             cancelRequested: boolean;
             input: {
+                mediaInput?: components["schemas"]["MediaFrozenInput"];
+            } & {
                 [key: string]: unknown;
             };
             /**
@@ -5457,10 +6492,15 @@ export interface components {
              *     AssistantTurnStream；这不是已提交的工具响应。完整回合提交后
              *     assistantText 为最终公开文本。失败或取消保留 INTERRUPTED 文本。
              *     modelRetry 是 AgentModelRetry 投影；READY 使用 nextActionAt 显示下次重试时间。
-             *     TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时仅返回 prompt、sourceVersionId、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
+             *     内部上下文压缩完成时 contextCompacted=true；不包含 assistantText、assistantStream 或交接摘要正文。
+             *     媒体故障或恢复中可包含有界 providerFailure 诊断；成功后使用实际归档结果，不保留旧故障正文。
+             *     TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时仅返回 prompt、sourceVersionId、mock；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
              */
             output?: ({
                 modelRetry?: components["schemas"]["AgentModelRetry"];
+                providerFailure?: components["schemas"]["ProviderFailure"];
+                /** @description 内部上下文压缩已完成；不代表创作任务完成。 */
+                contextCompacted?: boolean;
             } & {
                 [key: string]: unknown;
             }) | null;
@@ -5470,7 +6510,7 @@ export interface components {
             nextActionAt: string;
             /** Format: int64 */
             version: number;
-            /** @description 稳定安全原因码；Agent 模型临时故障按 modelRetry 有界重试，达到次数/期限为 LLM_RETRY_EXHAUSTED；媒体提交不自动重试。 */
+            /** @description 稳定安全原因码；Agent 模型临时故障按 modelRetry 有界重试，达到次数/期限为 LLM_RETRY_EXHAUSTED；固定输入超出上下文预算为 AGENT_CONTEXT_BUDGET_EXCEEDED；媒体提交不自动重试。 */
             errorCode?: string | null;
             /** Format: date-time */
             createdAt: string;
@@ -5479,13 +6519,24 @@ export interface components {
             /** Format: date-time */
             completedAt?: string | null;
         };
-        /** @description 同一固定模型请求的持久退避信息；首次调用外最多重试 10 次，首次失败起 5 分钟内。成功保留历史投影，终态不会继续重试。 */
+        /** @description Bounded provider diagnostic containing only a stage, safe classification, numeric status/code and validated node/field identifiers. Never includes upstream messages, bodies, credentials, media URLs or input values. Retryability of the underlying task remains controlled by its state; a diagnostic never authorizes a new generation. */
+        ProviderFailure: {
+            /** @enum {string} */
+            stage: "DISCOVERY" | "UPLOAD" | "SUBMIT" | "POLL" | "DOWNLOAD";
+            /** @enum {string} */
+            category: "AUTHENTICATION" | "BALANCE" | "PARAMETER" | "RATE_LIMIT" | "UPLOAD" | "GENERATION" | "DOWNLOAD_EXPIRED" | "UNAVAILABLE" | "PROTOCOL";
+            httpStatus: number | null;
+            /** Format: int64 */
+            upstreamCode: number | null;
+            nodeId: string | null;
+            fieldName: string | null;
+        };
+        /** @description 同一固定模型请求的持久退避信息；默认首次失败起 24 小时内最多重试 288 次，可由部署配置调整。首次失败固定次数与截止时间，重启不重置。成功保留历史投影，终态不会继续重试。 */
         AgentModelRetry: {
             /** @constant */
             schemaVersion: 1;
             retryCount: number;
-            /** @constant */
-            maxRetries: 10;
+            maxRetries: number;
             /** Format: date-time */
             firstFailureAt: string;
             /** Format: date-time */
@@ -5553,7 +6604,8 @@ export interface components {
             project: components["schemas"]["Project"];
             canvas: components["schemas"]["Canvas"];
             connections: components["schemas"]["CanvasConnection"][];
-            agents: components["schemas"]["Agent"][];
+            /** @description 项目唯一导演，首次打开前可为空；由 ensureProjectDirector 初始化。 */
+            director: components["schemas"]["Agent"] | null;
             activeRun: components["schemas"]["AgentRun"] | null;
             activeTasks: components["schemas"]["Task"][];
             /** @description 最近 100 个未核对的外部提交，取消 Run 后仍可见 */
@@ -5654,6 +6706,106 @@ export interface components {
             expectedVersion: number;
         };
         CanvasCommand: components["schemas"]["PlaceArtifactCommand"] | components["schemas"]["UpdateCanvasItemTitleCommand"] | components["schemas"]["UpdateLayoutCommand"] | components["schemas"]["SetCanvasItemLockedCommand"] | components["schemas"]["RemoveCanvasItemCommand"];
+        CanvasGroup: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            projectId: string;
+            /** @description Trimmed name measured in Unicode code points. */
+            name: string;
+            collapsed: boolean;
+            /** Format: int64 */
+            version: number;
+        };
+        CanvasEditReceipt: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            operation: "DISPLAY" | "GROUP" | "DUPLICATE";
+            /** Format: int64 */
+            revision: number;
+            /** @enum {string} */
+            state: "APPLIED" | "UNDONE";
+        };
+        CanvasEditorState: {
+            items: components["schemas"]["CanvasItem"][];
+            groups: components["schemas"]["CanvasGroup"][];
+            receipt?: null;
+        };
+        CanvasEditResponse: {
+            items: components["schemas"]["CanvasItem"][];
+            groups: components["schemas"]["CanvasGroup"][];
+            receipt: components["schemas"]["CanvasEditReceipt"];
+        };
+        CanvasEditItemChange: {
+            /** Format: uuid */
+            itemId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            title: string;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            zIndex: number;
+            /** Format: uuid */
+            groupId?: string | null;
+            locked: boolean;
+        };
+        CanvasEditGroupChange: {
+            /** @enum {string} */
+            type: "UPSERT" | "DELETE";
+            /** Format: uuid */
+            groupId: string;
+            /** Format: int64 */
+            expectedVersion: number;
+            /** @description Required for UPSERT. */
+            name?: string;
+            /** @description Required for UPSERT. */
+            collapsed?: boolean;
+        };
+        CanvasEditCopy: {
+            /** Format: uuid */
+            sourceItemId: string;
+            /** Format: uuid */
+            targetItemId: string;
+            /** Format: int64 */
+            expectedSourceVersion: number;
+            /**
+             * Format: int64
+             * @description Required for media.
+             */
+            expectedSourceDraftVersion?: number | null;
+            /**
+             * Format: uuid
+             * @description Exact current text version; null for empty text.
+             */
+            expectedSourceContentVersion?: string | null;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            zIndex: number;
+            /** Format: uuid */
+            groupId?: string | null;
+        };
+        CanvasEditRequest: {
+            /** Format: uuid */
+            commandId: string;
+            /** @enum {string} */
+            operation: "DISPLAY" | "GROUP" | "DUPLICATE";
+            itemChanges?: components["schemas"]["CanvasEditItemChange"][];
+            groupChanges?: components["schemas"]["CanvasEditGroupChange"][];
+            copies?: components["schemas"]["CanvasEditCopy"][];
+        };
+        CanvasEditReplayRequest: {
+            /** Format: uuid */
+            commandId: string;
+            /** Format: int64 */
+            expectedRevision: number;
+            /** @enum {string} */
+            direction: "UNDO" | "REDO";
+        };
         CanvasCommandBatchRequest: {
             commands: components["schemas"]["CanvasCommand"][];
         };
@@ -5675,6 +6827,17 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** @enum {string} */
+        SkillCategory: "STORY" | "ADVERTISING" | "ANIMATION" | "EXPLAINER" | "MUSIC" | "PROMPT";
+        BuiltinSkillSource: {
+            name: string;
+            /** Format: uri */
+            repository: string;
+            revision: string;
+            license: string;
+            /** Format: uri */
+            licenseUrl: string;
+        };
         CreativeSkill: {
             /** Format: uuid */
             id: string;
@@ -5683,6 +6846,9 @@ export interface components {
             trashed: boolean;
             /** @description Packaged read-only Skill. It can be selected and tried */
             builtin: boolean;
+            /** @description Purpose assigned by the current packaged catalogue; null for personal or retired skills. Does not change fixed versions. */
+            category?: components["schemas"]["SkillCategory"] | null;
+            builtinSource?: components["schemas"]["BuiltinSkillSource"] | null;
             /** Format: uuid */
             currentVersionId: string | null;
             /** Format: int64 */
@@ -7460,27 +8626,6 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
-    listAgentPresets: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 仅名称和标识，不含正文及功能提示词；Cache-Control no-store */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentPresetList"];
-                };
-            };
-            401: components["responses"]["Unauthenticated"];
-        };
-    };
     listPrompts: {
         parameters: {
             query?: never;
@@ -7496,7 +8641,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 所有 Agent 与功能提示词；Cache-Control no-store */
+            /** @description 固定内置导演与功能提示词；Cache-Control no-store */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7641,6 +8786,68 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getDirectorSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前持久设置；Cache-Control 为 no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectorSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateDirectorSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDirectorSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存后的设置和递增版本；Cache-Control 为 no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectorSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
         };
     };
@@ -7946,6 +9153,109 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             429: components["responses"]["RateLimited"];
+        };
+    };
+    listMcpTokens: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前用户的凭据；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenSummary"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createMcpToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMcpTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description 凭据已创建；明文仅展示一次 */
+            201: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenCreatedResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            503: components["responses"]["Unavailable"];
+        };
+    };
+    revokeMcpToken: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                tokenId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevokeMcpTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description 凭据已撤销；Cache-Control no-store */
+            200: {
+                headers: {
+                    "Cache-Control"?: "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpTokenSummary"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["Unavailable"];
         };
     };
     getStorageSettings: {
@@ -8944,6 +10254,139 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    getStoryboard: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前分镜板 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Storyboard"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    saveStoryboard: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveStoryboardRequest"];
+            };
+        };
+        responses: {
+            /** @description 服务器计算镜头修订及复核状态后的分镜板 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Storyboard"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listStoryboardRevisions: {
+        parameters: {
+            query?: {
+                afterVersion?: number;
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分镜板修订页 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoryboardRevisionPage"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listStoryboardMediaApprovals: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最多 100 条关联批次，PENDING、APPROVED 优先，各状态组内按创建时间倒序；镜头关联无需先绑定生产节点。超过上限的待处理批次需回原导演对话处理。决策仍调用既有审批接口，归档结果须用户显式选用并保存分镜。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AgentMediaApproval"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     archiveProject: {
         parameters: {
             query?: never;
@@ -9849,6 +11292,108 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    listVideoPromptTasks: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最近任务，新任务在前；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    runVideoPromptOptimization: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoPromptOptimizationRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理或重放的持久任务；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cancelVideoPromptOptimization: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已取消的任务 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listImagePromptTasks: {
         parameters: {
             query: {
@@ -10063,6 +11608,123 @@ export interface operations {
             422: components["responses"]["ValidationError"];
         };
     };
+    composeVideo: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoCompositionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理或重放的本地合成任务，不代表合成完成 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    previewVideoComposition: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoCompositionRequest"];
+            };
+        };
+        responses: {
+            /** @description 当前输入的只读预览时间表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoCompositionPreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
+            429: components["responses"]["ValidationError"];
+            503: components["responses"]["ValidationError"];
+        };
+    };
+    runAudioTrim: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                artifactId: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunAudioTrimRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理或重放的裁剪Task，不代表处理完成 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
     runVideoOperation: {
         parameters: {
             query?: never;
@@ -10191,7 +11853,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 已取消的任务 */
+            /** @description 任务状态；本地合成可能正在等待后台确认cancelRequested */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10481,7 +12143,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    listAgents: {
+    ensureProjectDirector: {
         parameters: {
             query?: never;
             header?: {
@@ -10498,47 +12160,9 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Agent 列表及其明确绑定的输入 */
+            /** @description 项目唯一导演的当前配置；已存在时不追加变更事件 */
             200: {
                 headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentList"];
-                };
-            };
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    createAgent: {
-        parameters: {
-            query?: never;
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-                /** @description 创建卡片使用此键；同键同请求重放首次配置（默认提示词之后变化也不重算），异参返回 409。 */
-                "Idempotency-Key"?: string;
-            };
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateAgentRequest"];
-            };
-        };
-        responses: {
-            /** @description 新建的 Agent，或原创建请求的重放结果 */
-            201: {
-                headers: {
-                    /** @description 提供幂等键时标识是否重放首次结果 */
-                    "Idempotency-Replayed"?: boolean;
                     [name: string]: unknown;
                 };
                 content: {
@@ -10617,37 +12241,6 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-        };
-    };
-    listAgentOutputs: {
-        parameters: {
-            query?: never;
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-            };
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-                agentId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 当前画布可定位的真实产物 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentOutputList"];
-                };
-            };
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
         };
     };
     listAgentConversations: {
@@ -10774,41 +12367,6 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description 同一会话的 Run 摘要 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentRunList"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthenticated"];
-            404: components["responses"]["NotFound"];
-        };
-    };
-    listAgentRuns: {
-        parameters: {
-            query: {
-                agentId: string;
-                cursor?: string;
-                limit?: number;
-            };
-            header?: {
-                /**
-                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
-                 * @example ru-RU, en;q=0.8
-                 */
-                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
-            };
-            path: {
-                projectId: components["parameters"]["ProjectId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 不含模型原始消息的运行摘要，按创建时间倒序 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11057,6 +12615,45 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    reviseAgentMediaApproval: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                runId: string;
+                approvalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentMediaApprovalRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已重新校验的待审批批次与费用摘要 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMediaApproval"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
     decideAgentMediaApproval: {
         parameters: {
             query?: never;
@@ -11224,6 +12821,111 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getCanvasEditor: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canvas editor state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEditorState"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    editCanvas: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Authoritative state and replay receipt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEditResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    replayCanvasEdit: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                receiptId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CanvasEditReplayRequest"];
+            };
+        };
+        responses: {
+            /** @description Authoritative state with the incremented receipt revision and direction */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CanvasEditResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
         };
@@ -12026,6 +13728,8 @@ export interface operations {
     listSkills: {
         parameters: {
             query?: {
+                /** @description Filter packaged skills by purpose before pagination; omitted includes personal skills. */
+                category?: components["schemas"]["SkillCategory"];
                 query?: string;
                 cursor?: string;
                 trash?: boolean;
@@ -12566,6 +14270,260 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentSkillBinding"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listCharacters: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterIndex"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    saveCharacter: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCharacter"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterProfile"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    previewCharacterChange: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveCharacter"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterChangePreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    archiveCharacter: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                characterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveCharacter"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterProfile"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    previewCharacterBindings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewCharacterBindings"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterBindingPreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    applyCharacterBindings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyCharacterBindings"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterBindingApplied"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    reviewCharacterBindings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: components["parameters"]["CanvasItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewCharacterBindings"];
+            };
+        };
+        responses: {
+            /** @description Successful character operation; saves only mark affected shots for review and never run generation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CharacterBinding"];
                 };
             };
             400: components["responses"]["ValidationError"];

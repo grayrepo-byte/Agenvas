@@ -7,6 +7,7 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.artifact.domain.ArtifactVersion;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.canvas.domain.MediaUploadPurpose;
+import dev.agenvas.character.application.CharacterService;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -18,6 +19,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,7 @@ public class CanvasService {
 
     /** 一次画布提交允许的最大命令数。 */
     private static final int MAX_COMMANDS = 100;
+    private static final int MAX_GROUP_MEMBERS = 100;
     /** 卡片展示标题允许的最大字符数。 */
     private static final int MAX_TITLE_LENGTH = 160;
     private static final String DERIVATION_TITLE_SEPARATOR = " · ";
@@ -78,6 +81,7 @@ public class CanvasService {
     private final ObjectMapper objectMapper;
     /** 为新布局项提供统一时间。 */
     private final Clock clock;
+    private final ObjectProvider<CharacterService> characters;
 
     /** 组装空间投影、布局并发校验和项目事件写入能力。
      * @param projects 校验项目归属和活动状态
@@ -95,7 +99,7 @@ public class CanvasService {
             CanvasConnectionService connections,
             ProjectEventService events,
             ObjectMapper objectMapper,
-            Clock clock) {
+            Clock clock, ObjectProvider<CharacterService> characters) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.mediaDrafts = mediaDrafts;
@@ -104,6 +108,7 @@ public class CanvasService {
         this.events = events;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.characters = characters;
     }
 
     /** 读取持久化产物布局和其内容版本。 */
@@ -115,46 +120,12 @@ public class CanvasService {
                 .toList();
     }
 
-    /** Freeze authorization and exact node selections without copying immutable content or media bytes.
-     * The directory is paged by the Agent tools; it is never inlined into the first model request.
-     */
-    @Transactional(readOnly = true)
-    public ObjectNode freezeRunScope(UUID ownerId, UUID projectId) {
-        ObjectNode scope = objectMapper.createObjectNode().put("version", dev.agenvas.run.domain.RunCanvasScope.VERSION);
-        var items = scope.putArray("items");
-        for (CanvasEntry entry : list(ownerId, projectId)) {
-            if (entry.item().subjectType() != CanvasItem.SubjectType.ARTIFACT) continue;
-            CanvasItem item = entry.item();
-            var artifact = entry.artifact().artifact();
-            var node = items.addObject().put("itemId", item.id().toString())
-                    .put("artifactId", item.subjectId().toString()).put("kind", artifact.kind().name())
-                    .put("title", item.title()).put("itemVersion", item.version())
-                    .put("artifactVersion", artifact.version()).put("locked", item.locked())
-                    .put("x", item.x()).put("y", item.y()).put("width", item.width())
-                    .put("height", item.height()).put("zIndex", item.zIndex());
-            ArtifactVersion selected = artifact.kind() == Artifact.Kind.TEXT
-                    ? entry.artifact().resourceDefaultVersion() : entry.selectedVersion();
-            if (selected != null) node.put("selectedVersionId", selected.id().toString());
-            if (artifact.kind() != Artifact.Kind.TEXT) {
-                node.set("mediaDraft", objectMapper.valueToTree(mediaDrafts.get(ownerId, projectId, item.id())));
-            }
-        }
-        return scope;
-    }
-
-    /** Reads only the trusted node selections needed to freeze continuation inputs. */
-    @Transactional(readOnly = true)
-    public List<UUID> selectedMediaVersionIds(UUID ownerId, UUID projectId) {
-        projects.get(ownerId, projectId);
-        return canvasItems.selectedMediaVersionIds(ownerId, projectId);
-    }
-
     /** Creates an independent media work branch from one fully persisted source card. */
     @Transactional
     public DuplicateResult duplicate(UUID ownerId, UUID projectId, UUID sourceItemId,
             UUID targetItemId, long expectedSourceVersion, long expectedSourceDraftVersion,
             BigDecimal x, BigDecimal y, BigDecimal width, BigDecimal height, int zIndex) {
-        return events.recordChange(ownerId, projectId, () -> {
+        DuplicateResult copied = events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
             validateGeometry(x, y, width, height, zIndex);
             CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
@@ -184,6 +155,10 @@ public class CanvasService {
                     new ProjectEventService.EventDraft("canvas.item.duplicated", 1,
                             targetItemId, target.version(), payload));
         }).value();
+        // The canvas event has already advanced the locked project sequence. A separate
+        // character event can now be appended without nesting changed sequence snapshots.
+        characters.getObject().copyBindingsWithinChange(ownerId, projectId, sourceItemId, targetItemId);
+        return copied;
     }
 
     public record DuplicateResult(CanvasEntry item,
@@ -328,6 +303,8 @@ public class CanvasService {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.putArray("itemIds").add(item.id().toString());
         events.append(ownerId, projectId, new ProjectEventService.EventDraft("canvas.items.changed", 1, projectId, 0, payload));
+        if (source.subjectId().equals(artifactId))
+            characters.getObject().copyFrozenBindingsWithinChange(ownerId, projectId, item.id(), frozenInput);
         return item;
     }
 
@@ -499,47 +476,12 @@ public class CanvasService {
         return new OutputPlacements(List.copyOf(created), List.copyOf(alreadyPresent));
     }
 
-    /** Select exact versions without confusing sibling nodes that share one artifact identity. */
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
-    public OutputPlacements placeArtifactVersionsWithinChange(UUID ownerId, UUID projectId,
-            List<ArtifactVersionPlacement> versions, UUID groupId) {
-        if (versions == null || versions.stream().anyMatch(java.util.Objects::isNull)) {
-            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
-        }
-        if (versions.stream().anyMatch(requested -> requested.artifactId() == null)) {
-            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
-        }
-        requireDistinctPlacements(versions.stream().map(ArtifactVersionPlacement::versionId).toList());
-        projects.requireActiveProject(ownerId, projectId);
-        List<CanvasItem> created = new ArrayList<>();
-        List<CanvasItem> alreadyPresent = new ArrayList<>();
-        for (ArtifactVersionPlacement requested : versions) {
-            ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, requested.artifactId());
-            artifacts.requireVersion(ownerId, projectId, requested.artifactId(), requested.versionId());
-            if (artifact.artifact().kind() == Artifact.Kind.TEXT && (artifact.resourceDefaultVersion() == null
-                    || !requested.versionId().equals(artifact.resourceDefaultVersion().id()))) {
-                var message = ApiMessage.of("api.creative-artifact-tool-service.product-version-has-changed");
-                throw new ApiProblemException(HttpStatus.CONFLICT, "ARTIFACT_VERSION_CONFLICT", message, message, false);
-            }
-            CanvasItem current = canvasItems.list(ownerId, projectId).stream()
-                    .filter(item -> item.subjectId().equals(requested.artifactId())
-                            && (artifact.artifact().kind() == Artifact.Kind.TEXT || requested.versionId().equals(item.selectedVersionId())))
-                    .findFirst().orElse(null);
-            if (current != null) alreadyPresent.add(current);
-            else created.add(placeGeneratedArtifact(ownerId, projectId, artifact,
-                    artifact.artifact().kind() == Artifact.Kind.TEXT ? null : requested.versionId(), groupId));
-        }
-        return new OutputPlacements(List.copyOf(created), List.copyOf(alreadyPresent));
-    }
-
     private void requireDistinctPlacements(List<UUID> ids) {
         if (ids == null || ids.isEmpty() || ids.size() > 6 || ids.stream().anyMatch(java.util.Objects::isNull)
                 || new HashSet<>(ids).size() != ids.size()) {
-            throw validation(ApiMessage.of("api.canvas-service.output-group-placement-must-contain-1-to-6-distinct-artifacts"));
+            throw validation(ApiMessage.of("api.tool-execution-service.tool-parameter-is-invalid"));
         }
     }
-
-    public record ArtifactVersionPlacement(UUID artifactId, UUID versionId) {}
 
     /** Created nodes and unchanged reused nodes are reported separately for the tool ledger. */
     public record OutputPlacements(List<CanvasItem> created, List<CanvasItem> alreadyPresent) {}
@@ -645,20 +587,40 @@ public class CanvasService {
     public CanvasEntry uploadVersion(UUID ownerId, UUID projectId, UUID itemId,
             UUID targetItemId, long expectedVersion, JsonNode content,
             MediaUploadPurpose purpose, UUID sourceVersionId) {
+        return uploadVersion(ownerId, projectId, itemId, targetItemId, expectedVersion,
+                content, purpose, sourceVersionId, null);
+    }
+
+    /** Archives a local director render and its bounded editable scene as one immutable version. */
+    @Transactional
+    public CanvasEntry uploadVersion(UUID ownerId, UUID projectId, UUID itemId,
+            UUID targetItemId, long expectedVersion, JsonNode content,
+            MediaUploadPurpose purpose, UUID sourceVersionId, JsonNode directorScene) {
         MediaUploadPurpose uploadPurpose = purpose == null ? MediaUploadPurpose.UPLOAD : purpose;
         boolean markup = uploadPurpose == MediaUploadPurpose.BRUSH_MARKUP;
+        boolean director = uploadPurpose == MediaUploadPurpose.DIRECTOR_3D;
+        if (director) {
+            DirectorSceneValidator.validate(directorScene);
+            // Filling an empty image has no parent; every later render derives a separate node.
+            if ((sourceVersionId == null) != targetItemId.equals(itemId)) {
+                throw validation(ApiMessage.of("api.canvas-service.director-source-required"));
+            }
+        } else if (directorScene != null) {
+            throw validation(ApiMessage.of("api.canvas-service.director-scene-purpose-required"));
+        }
         if (markup && (sourceVersionId == null || targetItemId.equals(itemId))) {
             throw validation(ApiMessage.of("api.canvas-service.brush-annotations-must-be-fixed-to-the-source-image-version"));
         }
-        if (!markup && sourceVersionId != null) {
+        if (!markup && !director && sourceVersionId != null) {
             throw validation(ApiMessage.of("api.canvas-service.ordinary-uploads-do-not-accept-source-versions"));
         }
-        ObjectNode frozenInput = markup ? objectMapper.createObjectNode() : null;
-        if (markup) {
+        ObjectNode frozenInput = markup || director ? objectMapper.createObjectNode() : null;
+        if (markup || director) {
             frozenInput.put("schemaVersion", 1);
             frozenInput.put("operation", uploadPurpose.name());
             frozenInput.put("sourceCanvasItemId", itemId.toString());
-            frozenInput.put("parentVersionId", sourceVersionId.toString());
+            if (sourceVersionId != null) frozenInput.put("parentVersionId", sourceVersionId.toString());
+            if (director) frozenInput.set("directorScene", directorScene.deepCopy());
         }
         return events.recordChange(ownerId, projectId, () -> {
             projects.requireActiveProject(ownerId, projectId);
@@ -683,6 +645,9 @@ public class CanvasService {
             if (replay != null && !fillsCurrent) throw conflict();
             if (current.version() != expectedVersion) throw conflict();
             if (markup && !sourceVersionId.equals(current.selectedVersionId())) throw conflict();
+            if (director && !java.util.Objects.equals(sourceVersionId, current.selectedVersionId())) {
+                throw conflict();
+            }
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     current.subjectId());
             if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
@@ -690,6 +655,9 @@ public class CanvasService {
             }
             if (markup && artifact.artifact().kind() != Artifact.Kind.IMAGE) {
                 throw validation(ApiMessage.of("api.canvas-service.brush-annotation-only-supports-images"));
+            }
+            if (director && artifact.artifact().kind() != Artifact.Kind.IMAGE) {
+                throw validation(ApiMessage.of("api.canvas-service.director-only-supports-images"));
             }
             CanvasItem target;
             if (fillsCurrent) {
@@ -785,6 +753,17 @@ public class CanvasService {
 
     /** 核验产物权限和坐标后创建卡片；客户端 ID 只允许完全相同的布局重放。 */
     private void placeArtifact(UUID ownerId, UUID projectId, PlaceArtifact command) {
+        if (command.groupId() != null && !canvasItems.groupExists(ownerId, projectId, command.groupId())) throw conflict();
+        if (command.groupId() != null) {
+            // Direct creation uses this placement path too. Check under the project event lock,
+            // but allow an identical placement retry even when the group has reached its limit.
+            List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
+            if (existing.stream().noneMatch(item -> item.id().equals(command.itemId()))
+                    && existing.stream().filter(item -> command.groupId().equals(item.groupId())).count() >= MAX_GROUP_MEMBERS) {
+                throw new ApiProblemException(HttpStatus.BAD_REQUEST, "CANVAS_EDIT_LIMIT",
+                        ApiMessage.of("api.canvas-controller.canvas-command-is-invalid"), ApiMessage.of("api.canvas-edit.limit"), false);
+            }
+        }
         validateGeometry(
                 command.x(),
                 command.y(),
@@ -906,6 +885,8 @@ public class CanvasService {
         if (current.version() != command.expectedVersion()) {
             throw conflict();
         }
+        if (command.groupId() != null && !java.util.Objects.equals(command.groupId(), current.groupId())
+                && !canvasItems.groupExists(ownerId, projectId, command.groupId())) throw conflict();
         CanvasItem updated = current.withLayout(
                 command.x(), command.y(), command.width(), command.height(),
                 command.zIndex(), command.groupId());
@@ -953,7 +934,7 @@ public class CanvasService {
     }
 
     /** Layout rows refer only to artifacts; the database remains the source of immutable content. */
-    private CanvasEntry toEntry(UUID ownerId, CanvasItem item) {
+    CanvasEntry toEntry(UUID ownerId, CanvasItem item) {
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, item.projectId(), item.subjectId());
         return new CanvasEntry(item, artifact, selectedVersion(ownerId, item, artifact));
     }
@@ -1013,7 +994,7 @@ public class CanvasService {
     }
 
     /** 拒绝 null、越界坐标/尺寸及超出 [-1000,1000] 的层级。 */
-    private void validateGeometry(
+    void validateGeometry(
             BigDecimal x,
             BigDecimal y,
             BigDecimal width,
@@ -1050,7 +1031,7 @@ public class CanvasService {
     }
 
     /** 规范化卡片标题并保持数据库、合约和应用层的同一长度约束。 */
-    private String validateTitle(String title) {
+    String validateTitle(String title) {
         String normalized = title == null ? "" : title.trim();
         if (normalized.isEmpty() || normalized.length() > MAX_TITLE_LENGTH) {
             throw validation(ApiMessage.of("api.canvas-service.card-title-must-contain-1-to-160-characters"));

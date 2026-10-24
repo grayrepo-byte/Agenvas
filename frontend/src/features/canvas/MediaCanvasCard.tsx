@@ -1,7 +1,7 @@
 import {
 ArrowClockwise,
 ArrowsOutSimple,
-Buildings,CaretDown,
+CaretDown,
 CopySimple,
 Crop,Cube,
 HighDefinition,
@@ -10,17 +10,16 @@ Eraser,Image as ImageIcon,
 MagicWand,
 MusicNotes,
 PaintBrush,
-PersonSimple,Play,Scissors,SlidersHorizontal,Smiley,
+Play,Scissors,SlidersHorizontal,Smiley,
 Stack,
 Sun,UploadSimple,
-VideoCamera,
-X
+VideoCamera
 } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { useEffect,useRef,useState,type ReactNode } from "react";
 import {
-ApiError,assetContentUrl,assetThumbnailUrl,getMediaSettings,getMediaFunctions,listDirectMediaTasks,
-runImageOperation,runVideoOperation,type Artifact,type CanvasItem,type MediaCapability,
+assetContentUrl,assetThumbnailUrl,getMediaSettings,getMediaFunctions,listDirectMediaTasks,
+runImageOperation,runVideoOperation,type Artifact,type CanvasItem,
 type RunImageOperationRequest,type RunVideoOperationRequest,type VideoOperation,type Task
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -29,13 +28,15 @@ import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState
 import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuSub,DropdownMenuSubContent,DropdownMenuSubTrigger,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Input } from "../../shared/ui/primitives/input";
-import { Textarea } from "../../shared/ui/primitives/textarea";
-import { Select } from "../../shared/ui/Select";
 import { SaveToLibraryButton } from "../library/SaveToLibraryButton";
 import { ArtifactCardFrame } from "./ArtifactCardFrame";
 import { readContentText } from "./artifactContent";
 import { AudioPlayer } from "./AudioPlayer";
+import { AudioTrimDialog } from "./AudioTrimDialog";
 import { BrushMarkupEditor } from "./BrushMarkupEditor";
+import { DirectorWorkbench } from "./DirectorWorkbench";
+import { ImageOperationPanel } from "./ImageOperationPanel";
+import { THREE_VIEW_OPTIONS, type ThreeViewType } from "./imageOperationOptions";
 import { ImageResizePanel } from "./ImageResizePanel";
 import { ImageReversePromptDialog } from "./ImageReversePromptDialog";
 import { CropPanel } from "./CropPanel";
@@ -60,19 +61,7 @@ const TASK_LABELS: Partial<Record<Task["status"], string>> = {
 };
 type ImageOperation = RunImageOperationRequest["operation"];
 type ImageTool = ImageOperation | "BRUSH_MARKUP";
-type ThreeViewType = NonNullable<RunImageOperationRequest["parameters"]["threeViewType"]>;
-type AspectRatio = NonNullable<RunImageOperationRequest["parameters"]["aspectRatio"]>;
-const THREE_VIEW_OPTIONS = [
-  { value: "CHARACTER", get label() { return t("media.card.characterViews"); }, get summary() { return t("media.card.characterViewsHint"); }, icon: PersonSimple,
-    aspectRatio: "16:9" },
-  { value: "FACE", get label() { return t("media.card.faceViews"); }, get summary() { return t("media.card.faceViewsHint"); }, icon: Smiley,
-    aspectRatio: "16:9" },
-  { value: "PROP", get label() { return t("media.card.objectViews"); }, get summary() { return t("media.card.objectViewsHint"); }, icon: Cube,
-    aspectRatio: "16:9" },
-  { value: "SCENE_GRID", get label() { return t("media.card.sceneGrid"); }, get summary() { return t("media.card.sceneViewsHint"); }, icon: Buildings,
-    aspectRatio: "1:1" },
-] as const satisfies readonly { value: ThreeViewType; label: string; summary: string;
-  icon: typeof Cube; aspectRatio: "1:1" | "16:9" }[];
+
 const EXTENSIONS = [
   { get label() { return t("media.card.threeView"); }, icon: Cube, operation: "THREE_VIEW", submenu: true },
   { get label() { return t("media.card.splitLayers"); }, icon: Stack, operation: "LAYER_SPLIT", submenu: false },
@@ -91,9 +80,12 @@ const EXTENSIONS = [
 
 /** The media surface contains only the preview; editing and history live outside its bounds. */
 export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, locked, onEdit,
-  onDuplicate, onMakeMV, children }: {
+  onDuplicate, onMakeMV, onComposeVideo, onEditVideo, compositionDisabledReason, children }: {
   artifact: Artifact; item: CanvasItem; selected: boolean; toolbarVisible?: boolean; locked: boolean; onEdit: () => void;
   onDuplicate?: () => void;
+  onComposeVideo?: () => void;
+  onEditVideo?: () => void;
+  compositionDisabledReason?: string | null;
   onMakeMV?: () => void; children: ReactNode;
 }) {
   useLocale();
@@ -102,9 +94,11 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const [operationOpen, setOperationOpen] = useState<ImageTool | null>(null);
   const [reversePrompt, setReversePrompt] = useState<{ assetId: string; sourceVersionId: string; expectedCanvasItemVersion: number; open: boolean } | null>(null);
   const [videoOperationOpen, setVideoOperationOpen] = useState<VideoOperation | null>(null);
+  const [audioTrim, setAudioTrim] = useState<{ assetId: string; sourceVersionId: string; expectedCanvasItemVersion: number; durationMs: number } | null>(null);
   const videoCommand = useRef<{ payload: string; key: string; input: RunVideoOperationRequest } | null>(null);
   const [threeViewType, setThreeViewType] = useState<ThreeViewType | null>(null);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [directorOpen, setDirectorOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const uploadInput = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -128,7 +122,9 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const isImage = artifact.kind === "IMAGE";
   const isAudio = artifact.kind === "AUDIO";
   const isVideo = artifact.kind === "VIDEO";
-  const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, isImage || artifact.kind === "VIDEO" ? assetId : null));
+  const metadata = useQuery(assetMetadataQueryOptions(artifact.projectId, assetId));
+  const audioDurationMs = metadata.data?.durationMs;
+  const canTrimAudio = Number.isSafeInteger(audioDurationMs) && (audioDurationMs ?? 0) > 0;
   const settings = useQuery({ queryKey: ["settings", "media"], queryFn: getMediaSettings,
     enabled: isImage && Boolean(assetId) });
   const functions = useQuery({ queryKey: MEDIA_FUNCTIONS_QUERY_KEY, queryFn: getMediaFunctions,
@@ -222,11 +218,13 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
     titleIcon={isImage ? <ImageIcon size={16} /> : isAudio ? <MusicNotes size={16} /> : <VideoCamera size={16} />}
     className={isAudio && assetId ? "audio-canvas-card" : undefined}
     selected={selected} locked={locked} toolbarVisible={toolbarVisible}
-    toolbarRaised={menuOpen || operationOpen !== null || videoOperationOpen !== null || Boolean(reversePrompt?.open)}
+    toolbarRaised={directorOpen || menuOpen || operationOpen !== null || videoOperationOpen !== null || Boolean(reversePrompt?.open) || audioTrim !== null}
     editableTitle={{ projectId: artifact.projectId, item }}
     toolbarLabel={t("media.card.toolbarLabel")} toolbar={<>
         <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={!assetId} />
         {isImage ? <>
+          <Button variant="ghost" type="button" disabled={locked || Boolean(busy) || operation.isPending}
+            onClick={() => setDirectorOpen(true)}><Cube data-icon="inline-start" />{t("director.title")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || !item.selectedVersionId}
             onClick={() => { if (assetId && item.selectedVersionId) setReversePrompt({ assetId,
               sourceVersionId: item.selectedVersionId, expectedCanvasItemVersion: item.version, open: true }); }}>
@@ -284,6 +282,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
                   busy={operation.isPending} error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
                   onSubmit={(parameters, instruction) => submit(parameters, instruction)} />
                 : operationOpen === "RESIZE" ? <ImageResizePanel key={item.selectedVersionId}
+                  sourceUrl={assetContentUrl(artifact.projectId, assetId)} sourceTitle={item.title}
                   sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height}
                   loading={metadata.isPending} metadataError={metadata.error} onRetryMetadata={() => void metadata.refetch()}
                   busy={operation.isPending} error={operation.error} extraControls={controls} submitDisabled={submitDisabled}
@@ -291,13 +290,19 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
                 : operationOpen === "CROP" ? <CropPanel sourceUrl={assetContentUrl(artifact.projectId, assetId)}
                   sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height} busy={operation.isPending}
                   error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }} onSubmit={(parameters) => submit(parameters)} />
-                : <ImageOperationPanel operation={operationOpen} initialThreeViewType={threeViewType ?? undefined}
+                : <ImageOperationPanel operation={operationOpen}
+                  sourceUrl={assetContentUrl(artifact.projectId, assetId)} sourceTitle={item.title}
+                  sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height} initialThreeViewType={threeViewType ?? undefined}
                   capabilities={[capability]} extraControls={controls} submitDisabled={submitDisabled}
                   busy={operation.isPending} error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
                   onSubmit={(parameters, instruction) => submit(parameters, instruction)} />}
             </ImageFunctionConfiguration> : null}
         </> : null}
         {isVideo ? <>
+          {onComposeVideo ? <Button variant="ghost" type="button"
+            disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending || Boolean(compositionDisabledReason)}
+            title={compositionDisabledReason ?? (!item.selectedVersionId ? t("canvas.workspace.compositionResultRequired") : t("canvas.workspace.compositionHint"))}
+            onClick={onComposeVideo}><MusicNotes data-icon="inline-start" />{t("canvas.workspace.composeVideo")}</Button> : null}
           <span className="media-toolbar-divider" aria-hidden="true" />
           <Button variant="ghost" type="button" disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending}
             onClick={() => { videoOperation.reset(); setVideoOperationOpen("UPSCALE"); }}><HighDefinition size={17} />{t("media.video.upscale")}</Button>
@@ -308,6 +313,8 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
             <DropdownMenuTrigger asChild><Button variant="ghost" type="button"><MagicWand size={17} />{t("media.video.edit")}<CaretDown size={14} /></Button></DropdownMenuTrigger>
             <DropdownMenuContent aria-label={t("media.video.editTools")} className="w-max p-2 nodrag nowheel nopan"><DropdownMenuGroup>
+              {onEditVideo ? <DropdownMenuItem disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending}
+                onSelect={() => { setMenuOpen(false); onEditVideo(); }}>{t("video.edit.title")}</DropdownMenuItem> : null}
               <DropdownMenuItem className="py-2" disabled={!assetId || !item.selectedVersionId || Boolean(busy) || videoPending}
                 onSelect={() => { setMenuOpen(false); videoOperation.reset(); setVideoOperationOpen("EXTRACT_AUDIO"); }}>
                 <MusicNotes size={17} /><span>{t("media.video.extractAudio")}</span>
@@ -315,11 +322,19 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             </DropdownMenuGroup></DropdownMenuContent>
           </DropdownMenu>
           {videoOperationOpen && item.selectedVersionId ? <VideoOperationPanel operation={videoOperationOpen}
+            sourceUrl={assetId ? assetContentUrl(artifact.projectId, assetId) : undefined}
+            posterUrl={assetId ? assetThumbnailUrl(artifact.projectId, assetId) : undefined}
             sourceVersionId={item.selectedVersionId} sourceTitle={item.title} busy={videoPending} error={videoOperation.error}
             onClose={() => { setVideoOperationOpen(null); videoOperation.reset(); }}
             onSubmit={(input) => videoOperation.mutate({ ...input, operation: videoOperationOpen,
               canvasItemId: item.id, sourceVersionId: item.selectedVersionId ?? "", expectedCanvasItemVersion: item.version })} /> : null}
         </> : null}
+        {isAudio ? <Button variant="ghost" type="button"
+          disabled={locked || !assetId || !item.selectedVersionId || Boolean(busy) || !canTrimAudio}
+          title={!canTrimAudio ? t("audio.trim.durationRequired") : undefined}
+          onClick={() => { if (assetId && item.selectedVersionId && metadata.data?.durationMs) setAudioTrim({ assetId,
+            sourceVersionId: item.selectedVersionId, expectedCanvasItemVersion: item.version, durationMs: metadata.data.durationMs }); }}>
+          <Scissors data-icon="inline-start" />{t("audio.trim.title")}</Button> : null}
         {isAudio && assetId && onMakeMV ? <Button variant="ghost" type="button" onClick={onMakeMV}><VideoCamera size={17} />{t("media.card.musicVideo")}</Button> : null}
         <Button variant="ghost" type="button" onClick={onEdit} title={t("media.card.regenerateHint")}>
           <ArrowClockwise size={17} />{item.selectedVersionId ? t("media.card.regenerate") : t("media.card.editDraft")}</Button>
@@ -330,6 +345,15 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           aria-label={isImage ? t("media.card.downloadImage") : isAudio ? t("media.card.downloadAudio") : t("media.card.downloadVideo")}><DownloadSimple size={19} /></a> : null}
     </>}>
       {children}
+      {audioTrim ? <AudioTrimDialog projectId={artifact.projectId} artifactId={artifact.id}
+        source={{ canvasItemId: item.id, sourceVersionId: audioTrim.sourceVersionId, expectedCanvasItemVersion: audioTrim.expectedCanvasItemVersion }}
+        src={assetContentUrl(artifact.projectId, audioTrim.assetId)} title={item.title} durationMs={audioTrim.durationMs}
+        onClose={() => setAudioTrim(null)} /> : null}
+      {/* A modal editing session outlives toolbar visibility and selection changes. */}
+      {isImage && directorOpen ? <DirectorWorkbench key={item.id} projectId={artifact.projectId} artifactId={artifact.id}
+        canvasItemId={item.id} expectedVersion={item.version} sourceVersionId={item.selectedVersionId}
+        sourceTitle={item.title} sourceUrl={assetId ? assetContentUrl(artifact.projectId, assetId) : undefined}
+        initialScene={item.selectedVersion?.frozenInput?.directorScene} onClose={() => setDirectorOpen(false)} /> : null}
       {(isImage || isAudio) && !assetId ? <Input ref={uploadInput} className="sr-only nodrag" type="file"
         aria-label={isAudio ? t("media.card.chooseAudioUpload") : t("media.card.chooseImageUpload")} accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
         onClick={(event) => event.stopPropagation()}
@@ -340,15 +364,15 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
           if (selectedFile) setUploadFile(selectedFile);
         }} /> : null}
       {assetId ? <><MediaPreview key={assetId} assetId={assetId} artifact={artifact}
-        title={item.title} audioDescription={readContentText(content, "prompt")} demo={demo} selected={selected}
+        title={item.title} audioDescription={readContentText(content, "prompt")} demo={demo} selected={selected} audioEditing={audioTrim !== null}
         width={metadata.data?.width ?? undefined} height={metadata.data?.height ?? undefined}
         contentType={metadata.data?.contentType} />
         {metadata.error ? <p className="media-card-error media-card-size-error nodrag" role="alert">
-          {metadata.data
+          {isAudio ? t("audio.trim.metadataFailed") : metadata.data
             ? isImage ? t("media.card.imageDimensionsRefreshFailed") : t("media.card.videoDimensionsRefreshFailed")
             : isImage ? t("media.card.imageDimensionsLoadFailed") : t("media.card.videoDimensionsLoadFailed")}
           <Button variant="ghost" type="button" onClick={() => void metadata.refetch()} disabled={metadata.isFetching}>
-            {metadata.isFetching ? t("common.retrying") : t("media.card.retryDimensions")}</Button></p> : null}</>
+            {metadata.isFetching ? t("common.retrying") : isAudio ? t("audio.trim.retryMetadata") : t("media.card.retryDimensions")}</Button></p> : null}</>
         : <div className="media-card-empty">
           {busy ? <CanvasLoadingState label={status ?? t("media.card.generating")} /> : <>
             {isImage ? <ImageIcon className="media-empty-icon" size={44} />
@@ -377,133 +401,14 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   </ArtifactCardFrame>;
 }
 
-const OPERATION_TITLES: Record<ImageOperation, string> = {
-  get SMART_EDIT() { return t("media.card.smartEdit"); }, get RELIGHT() { return t("media.card.lighting"); }, get OUTPAINT() { return t("media.card.outpaint"); },
-  get THREE_VIEW() { return t("media.card.threeView"); }, get LAYER_SPLIT() { return t("media.card.splitLayers"); }, get EXPRESSION_EDIT() { return t("media.card.changeExpression"); },
-  get REMOVE_BACKGROUND() { return t("media.card.removeBackground"); },
-  get OBJECT_REMOVE() { return t("media.card.removeObject"); }, get VIEW_ANGLE() { return t("media.card.changeAngle"); },
-  get DEPTH_MAP() { return t("media.card.extractDepth"); }, get UPSCALE() { return t("media.card.upscaleTitle"); }, get CROP() { return t("media.card.crop"); },
-  get RESIZE() { return t("image.resize.title"); },
-  get ROTATE() { return t("media.card.rotate"); }, get FLIP_HORIZONTAL() { return t("media.card.flipHorizontal"); }, get FLIP_VERTICAL() { return t("media.card.flipVertical"); },
-};
-
-const INSTRUCTION_COPY: Partial<Record<ImageOperation, { label: string; placeholder: string;
-  required?: boolean }>> = {
-  SMART_EDIT: { get label() { return t("media.card.editInstruction"); }, get placeholder() { return t("media.card.editInstructionPlaceholder"); }, required: true },
-  OUTPAINT: { get label() { return t("media.card.additionalInstruction"); }, get placeholder() { return t("media.card.outpaintInstructionPlaceholder"); } },
-  THREE_VIEW: { get label() { return t("media.card.subjectInstruction"); }, get placeholder() { return t("media.card.threeViewInstructionPlaceholder"); } },
-  LAYER_SPLIT: { get label() { return t("media.card.layerInstruction"); }, get placeholder() { return t("media.card.layerInstructionPlaceholder"); } },
-  EXPRESSION_EDIT: { get label() { return t("media.card.expression"); }, get placeholder() { return t("media.card.expressionInstructionPlaceholder"); }, required: true },
-  REMOVE_BACKGROUND: { get label() { return t("media.card.subjectInstruction"); }, get placeholder() { return t("media.card.backgroundInstructionPlaceholder"); } },
-  OBJECT_REMOVE: { get label() { return t("media.card.removeInstruction"); }, get placeholder() { return t("media.card.removeInstructionPlaceholder"); }, required: true },
-  VIEW_ANGLE: { get label() { return t("media.card.additionalInstruction"); }, get placeholder() { return t("media.card.angleInstructionPlaceholder"); } },
-};
-
-const VIEW_ANGLE_OPTIONS = [
-  ["FRONT", "media.card.front"], ["LEFT_THREE_QUARTER", "media.card.leftThreeQuarter"],
-  ["RIGHT_THREE_QUARTER", "media.card.rightThreeQuarter"], ["LEFT_PROFILE", "media.card.leftProfile"],
-  ["RIGHT_PROFILE", "media.card.rightProfile"], ["HIGH_ANGLE", "media.card.highAngle"],
-  ["LOW_ANGLE", "media.card.lowAngle"], ["BACK", "media.card.back"],
-] as const;
-
-function ImageOperationPanel({ operation, initialThreeViewType, capabilities, busy, error, extraControls, submitDisabled,
-  onClose, onSubmit }: {
-  operation: ImageOperation; capabilities: MediaCapability[]; busy: boolean; error: Error | null;
-  initialThreeViewType?: ThreeViewType; extraControls: ReactNode; submitDisabled: boolean;
-  onClose: () => void;
-  onSubmit: (parameters: RunImageOperationRequest["parameters"], instruction?: string,
-    capabilityId?: string) => void;
-}) {
-  useLocale();
-  const cloud = capabilities[0]?.adapterId !== "LOCAL_IMAGE_PROCESSOR";
-  const [instruction, setInstruction] = useState("");
-  const capabilityId = capabilities[0]?.id ?? "";
-  const [scale, setScale] = useState<2 | 4>(2);
-  const initialThreeView = initialThreeViewType ?? "CHARACTER";
-  const [threeViewType, setThreeViewType] = useState<ThreeViewType>(initialThreeView);
-  const [ratio, setRatio] = useState<AspectRatio>(THREE_VIEW_OPTIONS.find(
-    (option) => option.value === initialThreeView)?.aspectRatio ?? "16:9");
-  const [layerTarget, setLayerTarget] = useState<"FOREGROUND" | "BACKGROUND">("FOREGROUND");
-  const [viewAngle, setViewAngle] = useState<typeof VIEW_ANGLE_OPTIONS[number][0]>("FRONT");
-  const transparentOutput = operation === "REMOVE_BACKGROUND"
-    || operation === "LAYER_SPLIT" && layerTarget === "FOREGROUND";
-  const eligibleCapabilities = capabilities.filter((capability) =>
-    !transparentOutput || capability.supportsTransparentBackground);
-  const selectedCapabilityId = eligibleCapabilities.some((capability) => capability.id === capabilityId)
-    ? capabilityId : eligibleCapabilities[0]?.id ?? "";
-  const instructionCopy = INSTRUCTION_COPY[operation];
-  const canSubmit = !busy && !submitDisabled && (!cloud || Boolean(selectedCapabilityId))
-    && (!instructionCopy?.required || instruction.trim().length > 0);
-
-  function submit() {
-    if (!canSubmit) return;
-    const parameters: RunImageOperationRequest["parameters"] = operation === "UPSCALE"
-      ? capabilities[0]?.settings.runningHub ? {} : { scale } : operation === "THREE_VIEW"
-        ? { aspectRatio: ratio, threeViewType }
-        : operation === "OUTPAINT" ? { aspectRatio: ratio }
-        : operation === "LAYER_SPLIT" ? { layerTarget }
-          : operation === "VIEW_ANGLE" ? { viewAngle }
-            : operation === "ROTATE" ? { quarterTurns: 1 } : {};
-    onSubmit(parameters, instruction.trim(), selectedCapabilityId || undefined);
-  }
-
-  const threeViewLabel = THREE_VIEW_OPTIONS.find((option) => option.value === threeViewType)?.label;
-  return <div className="media-operation-panel nodrag nowheel nopan" role="dialog"
-    aria-label={operation === "THREE_VIEW" ? threeViewLabel : OPERATION_TITLES[operation]}
-    onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
-    <header><div><strong>{operation === "THREE_VIEW" ? threeViewLabel : OPERATION_TITLES[operation]}</strong>
-      <span>{cloud ? t("media.card.cloudProcessingHint") : t("media.card.localProcessingHint")}</span></div>
-      <Button variant="ghost" type="button" aria-label={t("media.card.closeOperation")} onClick={onClose}><X size={16} /></Button>
-    </header>
-    {operation === "THREE_VIEW" ? <fieldset className="media-three-view-types">
-      <legend>{t("media.card.outputType")}</legend>
-      {THREE_VIEW_OPTIONS.map((option) => <label key={option.value}
-        className={threeViewType === option.value ? "is-selected" : ""}>
-        <input type="radio" name="three-view-type" value={option.value}
-          checked={threeViewType === option.value} onChange={() => {
-            setThreeViewType(option.value); setRatio(option.aspectRatio);
-          }} />
-        <option.icon size={18} /><span><strong>{option.label}</strong><small>{option.summary}</small></span>
-      </label>)}
-    </fieldset> : null}
-    {operation === "LAYER_SPLIT" ? <label>{t("media.card.outputLayer")}<Select value={layerTarget}
-      onChange={(event) => setLayerTarget(event.target.value as "FOREGROUND" | "BACKGROUND")}>
-      <option value="FOREGROUND">{t("media.card.foregroundLayer")}</option>
-      <option value="BACKGROUND">{t("media.card.backgroundLayer")}</option>
-    </Select></label> : null}
-    {operation === "VIEW_ANGLE" ? <label>{t("media.card.viewAngle")}<Select value={viewAngle}
-      onChange={(event) => setViewAngle(event.target.value as typeof viewAngle)}>
-      {VIEW_ANGLE_OPTIONS.map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
-    </Select></label> : null}
-    {instructionCopy
-      ? <label>{instructionCopy.label}
-        <Textarea value={instruction} maxLength={4000}
-          placeholder={instructionCopy.placeholder}
-          onChange={(event) => setInstruction(event.target.value)} /></label> : null}
-    {operation === "UPSCALE" && !capabilities[0]?.settings.runningHub ? <label>{t("media.card.upscaleFactor")}<Select value={scale}
-      onChange={(event) => setScale(Number(event.target.value) as 2 | 4)}>
-      <option value={2}>{t("media.card.upscaleDouble")}</option><option value={4}>{t("media.card.upscaleQuadruple")}</option>
-    </Select></label> : null}
-    {operation === "OUTPAINT" || operation === "THREE_VIEW" ? <label>{t("media.card.aspectRatio")}<Select value={ratio}
-      onChange={(event) => setRatio(event.target.value as AspectRatio)}>
-      {["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"].filter((value) =>
-        !capabilities[0]?.supportedImageAspectRatios?.length || capabilities[0].supportedImageAspectRatios.some((ratio) => ratio === value)).map((value) =>
-        <option key={value} value={value}>{value}</option>)}</Select></label> : null}
-    {extraControls}
-    {error ? <p role="alert">{error instanceof ApiError ? error.message : t("media.card.operationFailed")}</p> : null}
-    <footer><Button variant="ghost" type="button" onClick={onClose}>{t("common.cancel")}</Button>
-      <Button variant="ghost" type="button" className="is-primary" disabled={!canSubmit} onClick={submit}>
-        {busy ? t("media.card.accepting") : t("media.card.startOperation")}</Button></footer>
-  </div>;
-}
-
 /**
  * Image cards load the archived original so a resized node stays sharp; the archived 480px
  * preview is kept for later list-style surfaces and is not used here. Videos load only their
  * cover frame until the pointer enters the preview.
  */
-function MediaPreview({ artifact, assetId, title, audioDescription, demo, selected, width, height, contentType }: {
+function MediaPreview({ artifact, assetId, title, audioDescription, demo, selected, audioEditing, width, height, contentType }: {
   artifact: Artifact; assetId: string; title: string; audioDescription: string; demo: boolean; selected: boolean;
+  audioEditing?: boolean;
   width?: number; height?: number; contentType?: string;
 }) {
   useLocale();
@@ -511,7 +416,7 @@ function MediaPreview({ artifact, assetId, title, audioDescription, demo, select
   const [expanded, setExpanded] = useState(false);
 
   if (artifact.kind === "AUDIO") return <AudioPlayer key={assetId} src={assetContentUrl(artifact.projectId, assetId)} title={title}
-    description={audioDescription || title} selected={selected} demo={demo} />;
+    description={audioDescription || title} selected={selected} demo={demo} playbackResetKey={audioEditing ? "editing" : "preview"} />;
   if (artifact.kind === "VIDEO") return <VideoPreview key={assetId} title={title} demo={demo}
     src={assetContentUrl(artifact.projectId, assetId)} posterSrc={assetThumbnailUrl(artifact.projectId, assetId)}
     width={width} height={height} contentType={contentType} />;

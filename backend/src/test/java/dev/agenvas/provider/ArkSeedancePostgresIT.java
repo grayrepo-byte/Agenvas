@@ -29,6 +29,7 @@ import java.util.Base64;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,6 +61,7 @@ class ArkSeedancePostgresIT {
     private static final AtomicInteger CREATES = new AtomicInteger();
     private static final AtomicInteger QUERIES = new AtomicInteger();
     private static final AtomicBoolean DROP_NEXT_CREATE = new AtomicBoolean();
+    private static final AtomicReference<String> LAST_CREATE_RATIO = new AtomicReference<>();
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {
@@ -96,9 +98,23 @@ class ArkSeedancePostgresIT {
         AdminPrincipal owner = identities.setup("ark-admin", "ark-password-123");
 
         Fixture accepted = fixture(owner.userId(), "Accepted Seedance");
+        var landscapePreflight = directMedia.preflight(owner.userId(), accepted.project().id(),
+                accepted.card().artifact().id(), accepted.canvasItemId(), accepted.draftVersion());
+        Project portrait = projects.update(owner.userId(), accepted.project().id(), accepted.project().version(), null,
+                Project.AspectRatio.PORTRAIT_9_16);
+        assertThat(directMedia.preflight(owner.userId(), accepted.project().id(),
+                accepted.card().artifact().id(), accepted.canvasItemId(), accepted.draftVersion()).frozenInputHash())
+                .isNotEqualTo(landscapePreflight.frozenInputHash());
+        projects.update(owner.userId(), portrait.id(), portrait.version(), null, Project.AspectRatio.LANDSCAPE_16_9);
         Task acceptedTask = approve(owner.userId(), accepted);
         assertThat(acceptedTask.input().path("durationSeconds").asInt()).isEqualTo(CLIP_SECONDS);
+        assertThat(acceptedTask.input().at("/mediaInput/providerParameters/aspectRatio").asText()).isEqualTo("16:9");
+        // A queued AUTO task must keep the project's ratio at acceptance.
+        Project beforeEdit = projects.get(owner.userId(), accepted.project().id());
+        projects.update(owner.userId(), beforeEdit.id(), beforeEdit.version(), null,
+                Project.AspectRatio.PORTRAIT_9_16);
         assertThat(worker.submitOnce("ark-submit-worker")).isEqualTo(1);
+        assertThat(LAST_CREATE_RATIO).hasValue("16:9");
         Task waiting = tasks.get(owner.userId(), accepted.project().id(), acceptedTask.id());
         assertThat(waiting.status()).isEqualTo(Task.Status.WAITING_PROVIDER);
         assertThat(waiting.providerRequestId()).isEqualTo(TASK_ID);
@@ -163,6 +179,7 @@ class ArkSeedancePostgresIT {
                     assertThat(body.path("model").asText())
                             .isEqualTo("doubao-seedance-2-0-260128");
                     assertThat(body.path("duration").asInt()).isEqualTo(CLIP_SECONDS);
+                    LAST_CREATE_RATIO.set(body.path("ratio").asText());
                     assertThat(body.path("generate_audio").booleanValue()).isFalse();
                     assertThat(body.path("content").get(1).path("role").asText())
                             .isEqualTo("first_frame");

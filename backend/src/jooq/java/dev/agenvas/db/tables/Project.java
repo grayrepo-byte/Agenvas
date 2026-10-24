@@ -13,12 +13,19 @@ import dev.agenvas.db.tables.AppUser.AppUserPath;
 import dev.agenvas.db.tables.Artifact.ArtifactPath;
 import dev.agenvas.db.tables.Asset.AssetPath;
 import dev.agenvas.db.tables.AssetStorageRoute.AssetStorageRoutePath;
+import dev.agenvas.db.tables.CanvasEditCommand.CanvasEditCommandPath;
+import dev.agenvas.db.tables.CanvasEditReceipt.CanvasEditReceiptPath;
+import dev.agenvas.db.tables.CanvasGroup.CanvasGroupPath;
 import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
+import dev.agenvas.db.tables.McpOperation.McpOperationPath;
 import dev.agenvas.db.tables.MediaTemplateImportCommand.MediaTemplateImportCommandPath;
+import dev.agenvas.db.tables.ProjectCharacter.ProjectCharacterPath;
+import dev.agenvas.db.tables.ProjectCharacterCommand.ProjectCharacterCommandPath;
 import dev.agenvas.db.tables.ProjectEvent.ProjectEventPath;
 import dev.agenvas.db.tables.SkillBindingCommand.SkillBindingCommandPath;
 import dev.agenvas.db.tables.SkillInstallCommand.SkillInstallCommandPath;
 import dev.agenvas.db.tables.SkillInstallOperation.SkillInstallOperationPath;
+import dev.agenvas.db.tables.Storyboard.StoryboardPath;
 import dev.agenvas.db.tables.Task.TaskPath;
 import dev.agenvas.db.tables.ThirdPartyPromptImport.ThirdPartyPromptImportPath;
 import dev.agenvas.db.tables.records.ProjectRecord;
@@ -289,6 +296,45 @@ public class Project extends TableImpl<ProjectRecord> {
         return _asset;
     }
 
+    private transient CanvasEditCommandPath _canvasEditCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_edit_command</code> table
+     */
+    public CanvasEditCommandPath canvasEditCommand() {
+        if (_canvasEditCommand == null)
+            _canvasEditCommand = new CanvasEditCommandPath(this, null, Keys.CANVAS_EDIT_COMMAND__FK_CANVAS_EDIT_COMMAND_PROJECT.getInverseKey());
+
+        return _canvasEditCommand;
+    }
+
+    private transient CanvasEditReceiptPath _canvasEditReceipt;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_edit_receipt</code> table
+     */
+    public CanvasEditReceiptPath canvasEditReceipt() {
+        if (_canvasEditReceipt == null)
+            _canvasEditReceipt = new CanvasEditReceiptPath(this, null, Keys.CANVAS_EDIT_RECEIPT__FK_CANVAS_EDIT_RECEIPT_PROJECT.getInverseKey());
+
+        return _canvasEditReceipt;
+    }
+
+    private transient CanvasGroupPath _canvasGroup;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.canvas_group</code> table
+     */
+    public CanvasGroupPath canvasGroup() {
+        if (_canvasGroup == null)
+            _canvasGroup = new CanvasGroupPath(this, null, Keys.CANVAS_GROUP__FK_CANVAS_GROUP_PROJECT.getInverseKey());
+
+        return _canvasGroup;
+    }
+
     private transient CanvasItemPath _canvasItem;
 
     /**
@@ -302,6 +348,45 @@ public class Project extends TableImpl<ProjectRecord> {
         return _canvasItem;
     }
 
+    private transient ProjectCharacterCommandPath _projectCharacterCommand;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.project_character_command</code> table
+     */
+    public ProjectCharacterCommandPath projectCharacterCommand() {
+        if (_projectCharacterCommand == null)
+            _projectCharacterCommand = new ProjectCharacterCommandPath(this, null, Keys.PROJECT_CHARACTER_COMMAND__FK_CHARACTER_COMMAND_PROJECT.getInverseKey());
+
+        return _projectCharacterCommand;
+    }
+
+    private transient McpOperationPath _mcpOperation;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.mcp_operation</code> table
+     */
+    public McpOperationPath mcpOperation() {
+        if (_mcpOperation == null)
+            _mcpOperation = new McpOperationPath(this, null, Keys.MCP_OPERATION__FK_MCP_OPERATION_PROJECT.getInverseKey());
+
+        return _mcpOperation;
+    }
+
+    private transient ProjectCharacterPath _projectCharacter;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.project_character</code> table
+     */
+    public ProjectCharacterPath projectCharacter() {
+        if (_projectCharacter == null)
+            _projectCharacter = new ProjectCharacterPath(this, null, Keys.PROJECT_CHARACTER__FK_PROJECT_CHARACTER_PROJECT.getInverseKey());
+
+        return _projectCharacter;
+    }
+
     private transient ProjectEventPath _projectEvent;
 
     /**
@@ -313,6 +398,19 @@ public class Project extends TableImpl<ProjectRecord> {
             _projectEvent = new ProjectEventPath(this, null, Keys.PROJECT_EVENT__FK_PROJECT_EVENT_PROJECT.getInverseKey());
 
         return _projectEvent;
+    }
+
+    private transient StoryboardPath _storyboard;
+
+    /**
+     * Get the implicit to-many join path to the <code>public.storyboard</code>
+     * table
+     */
+    public StoryboardPath storyboard() {
+        if (_storyboard == null)
+            _storyboard = new StoryboardPath(this, null, Keys.STORYBOARD__FK_STORYBOARD_PROJECT.getInverseKey());
+
+        return _storyboard;
     }
 
     private transient TaskPath _task;

@@ -14,6 +14,8 @@ import dev.agenvas.db.tables.CanvasItem.CanvasItemPath;
 import dev.agenvas.db.tables.CanvasItemMediaInput.CanvasItemMediaInputPath;
 import dev.agenvas.db.tables.CanvasItemMediaVersion.CanvasItemMediaVersionPath;
 import dev.agenvas.db.tables.LibraryImport.LibraryImportPath;
+import dev.agenvas.db.tables.McpOperation.McpOperationPath;
+import dev.agenvas.db.tables.McpOperationVersion.McpOperationVersionPath;
 import dev.agenvas.db.tables.MediaTemplateImportImage.MediaTemplateImportImagePath;
 import dev.agenvas.db.tables.TaskArtifactTarget.TaskArtifactTargetPath;
 import dev.agenvas.db.tables.records.ArtifactVersionRecord;
@@ -318,6 +320,19 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
         return _canvasItem;
     }
 
+    private transient McpOperationVersionPath _mcpOperationVersion;
+
+    /**
+     * Get the implicit to-many join path to the
+     * <code>public.mcp_operation_version</code> table
+     */
+    public McpOperationVersionPath mcpOperationVersion() {
+        if (_mcpOperationVersion == null)
+            _mcpOperationVersion = new McpOperationVersionPath(this, null, Keys.MCP_OPERATION_VERSION__FK_MCP_OPERATION_VERSION_VERSION.getInverseKey());
+
+        return _mcpOperationVersion;
+    }
+
     private transient TaskArtifactTargetPath _taskArtifactTarget;
 
     /**
@@ -357,11 +372,19 @@ public class ArtifactVersion extends TableImpl<ArtifactVersionRecord> {
         return _mediaTemplateImportImage;
     }
 
+    /**
+     * Get the implicit many-to-many join path to the
+     * <code>public.mcp_operation</code> table
+     */
+    public McpOperationPath mcpOperation() {
+        return mcpOperationVersion().mcpOperation();
+    }
+
     @Override
     public List<Check<ArtifactVersionRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_artifact_content_object"), "((jsonb_typeof(content_json) = 'object'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_artifact_created_by_kind"), "(((created_by_kind)::text = ANY ((ARRAY['USER'::character varying, 'AGENT'::character varying, 'TASK'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_artifact_created_by_kind"), "(((created_by_kind)::text = ANY ((ARRAY['USER'::character varying, 'AGENT'::character varying, 'TASK'::character varying, 'EXTERNAL_TOOL'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_artifact_input_refs_array"), "((jsonb_typeof(input_refs_json) = 'array'::text))", true),
             Internal.createCheck(this, DSL.name("ck_artifact_schema_version_positive"), "((schema_version > 0))", true),
             Internal.createCheck(this, DSL.name("ck_artifact_version_frozen_input_object"), "(((frozen_input_json IS NULL) OR (jsonb_typeof(frozen_input_json) = 'object'::text)))", true),

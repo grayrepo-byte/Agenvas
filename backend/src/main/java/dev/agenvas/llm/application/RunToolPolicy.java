@@ -4,26 +4,16 @@ import java.util.List;
 import java.util.LinkedHashSet;
 import tools.jackson.databind.JsonNode;
 
-/** Pins definitions and execution to the same Run policy, including historical checkpoints. */
+/** Pins definitions and execution to the same Run policy, without retired protocol fallbacks. */
 public final class RunToolPolicy {
-    public static final int PROGRESSIVE_VERSION = 2;
-    public static final int SKILL_IMAGE_VERSION = 3;
-    public static final int CURRENT_VERSION = 4;
-    private static final List<String> LEGACY = List.of("read_project_summary", "read_selection",
-            "read_artifacts", "read_task_status", "create_text", "revise_artifact",
-            "place_artifacts", "arrange_items");
-    private static final List<String> MEDIA = java.util.stream.Stream.concat(LEGACY.stream(),
-            java.util.stream.Stream.of("list_media_capabilities", "propose_media_generation")).toList();
-    private static final List<String> V1 = java.util.stream.Stream.concat(MEDIA.stream(),
-            java.util.stream.Stream.of("read_skill_resource")).toList();
-
-    private static final List<String> V2 = java.util.stream.Stream.concat(V1.stream(),
-            java.util.stream.Stream.of("read_skill")).toList();
-    private static final List<String> V3 = java.util.stream.Stream.concat(V2.stream(),
-            java.util.stream.Stream.of("read_skill_asset")).toList();
-
-    public static final List<String> CURRENT = java.util.stream.Stream.concat(V3.stream(),
-            java.util.stream.Stream.of("read_canvas", "manage_canvas_node", "update_media_draft")).toList();
+    public static final int CURRENT_SCHEMA_VERSION = 7;
+    public static final int CURRENT_VERSION = 6;
+    public static final List<String> CURRENT = List.of("read_project_summary", "read_selection",
+            "read_artifacts", "read_media_sample", "read_task_status", "create_text", "revise_artifact",
+            "arrange_items", "list_media_capabilities", "propose_media_generation",
+            "read_skill_resource", "read_skill", "read_skill_asset", "read_canvas",
+            "manage_canvas_node", "update_media_draft", "compose_video", "extract_audio", "trim_audio",
+            "read_storyboard", "write_storyboard_shots");
 
     private RunToolPolicy() {}
 
@@ -40,26 +30,23 @@ public final class RunToolPolicy {
     }
 
     public static List<String> allowed(JsonNode policy) {
-        if (!policy.has("toolPolicyVersion")) {
-            int prompt = policy.path("systemPromptVersion").asInt(1);
-            if (prompt < 1 || prompt > 3) throw new IllegalStateException("Missing pinned tool policy");
-            return prompt == 3 ? MEDIA : LEGACY;
-        }
+        JsonNode schema = policy.path("schemaVersion");
+        JsonNode prompt = policy.path("systemPromptVersion");
+        if (!schema.isIntegralNumber() || !schema.canConvertToInt()
+                || schema.intValue() != CURRENT_SCHEMA_VERSION
+                || !prompt.isIntegralNumber() || !prompt.canConvertToInt()
+                || prompt.intValue() != InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION)
+            throw new IllegalStateException("Unsupported Run protocol");
         JsonNode version = policy.path("toolPolicyVersion");
         JsonNode tools = policy.path("allowedTools");
-        if (!version.isIntegralNumber() || !version.canConvertToInt() || (version.intValue() != 1 && version.intValue() != PROGRESSIVE_VERSION && version.intValue() != SKILL_IMAGE_VERSION && version.intValue() != CURRENT_VERSION) || !tools.isArray()
+        if (!version.isIntegralNumber() || !version.canConvertToInt()
+                || version.intValue() != CURRENT_VERSION || !tools.isArray()
                 || tools.isEmpty() || tools.size() > CURRENT.size()) {
             throw new IllegalStateException("Unsupported Run tool policy");
         }
-        List<String> supported = switch (version.intValue()) {
-            case 1 -> V1;
-            case PROGRESSIVE_VERSION -> V2;
-            case SKILL_IMAGE_VERSION -> V3;
-            default -> CURRENT;
-        };
         LinkedHashSet<String> result = new LinkedHashSet<>();
         for (JsonNode tool : tools) {
-            if (!tool.isTextual() || !supported.contains(tool.asText()) || !result.add(tool.asText())) {
+            if (!tool.isTextual() || !CURRENT.contains(tool.asText()) || !result.add(tool.asText())) {
                 throw new IllegalStateException("Malformed Run tool allowlist");
             }
         }
