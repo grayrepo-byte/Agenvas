@@ -102,6 +102,7 @@ export function VideoCameraMotionPreview({ preset }: { preset: VideoPromptPreset
       } catch { setUnavailable(true); setPlaying(false); return; }
       if (sliderRef.current) {
         sliderRef.current.value = String(Math.round(progress * 1000));
+        sliderRef.current.style.setProperty("--video-camera-progress", `${progress * 100}%`);
         sliderRef.current.setAttribute("aria-valuetext", translate(locale, "video.presets.preview.progressValue", { value: Math.round(progress * 100) }));
       }
       if (timeRef.current) timeRef.current.textContent = translate(locale, "video.presets.preview.elapsed", {

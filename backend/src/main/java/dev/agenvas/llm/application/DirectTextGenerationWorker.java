@@ -80,11 +80,13 @@ public class DirectTextGenerationWorker {
             if (checkpoint == null) checkpoint = invokeAndCheckpoint(lease, workerId, execution);
             ObjectNode content = textContent(lease, checkpoint);
             execution.checkActive();
-            if (lease.isImagePrompt()) {
+            if (lease.isPromptAssistance()) {
                 ObjectNode output = (ObjectNode) checkpoint.deepCopy();
-                ObjectNode result = mapper.createObjectNode().put("prompt", content.path("text").asText())
-                        .put("sourceVersionId", lease.input().path("sourceVersionId").asText())
+                String prompt = content.path("text").asText();
+                if (lease.isVideoPromptOptimization()) VideoPromptOptimization.validate(lease, prompt);
+                ObjectNode result = mapper.createObjectNode().put("prompt", prompt)
                         .put("mock", "mock".equals(lease.input().path("modelConfigSource").asText()));
+                if (lease.isImagePrompt()) result.put("sourceVersionId", lease.input().path("sourceVersionId").asText());
                 output.set("result", result);
                 tasks.succeed(lease, workerId, output);
             } else tasks.succeedWithTextArtifact(lease, workerId, content);
@@ -126,7 +128,8 @@ public class DirectTextGenerationWorker {
 
     private JsonNode invokeAndCheckpoint(Task lease, String workerId, LeasedModelExecutor.Execution execution)
             throws InterruptedException, ExecutionException, TimeoutException {
-        List<Message> messages = lease.isImagePrompt() ? images.messages(lease) : List.of(
+        List<Message> messages = lease.isImagePrompt() ? images.messages(lease)
+                : lease.isVideoPromptOptimization() ? VideoPromptOptimization.messages(lease) : List.of(
                 new SystemMessage(frozenSystemPrompt(lease)),
                 new UserMessage("Instruction:\n" + lease.input().path("prompt").asText()
                         + "\n\nCurrent card content:\n"

@@ -72,12 +72,8 @@
 }
 .text-card-done:hover:enabled { background: var(--ui-hover); color: var(--ui-text); }
 .text-card-done:disabled { cursor: not-allowed; opacity: .45; }
-.text-card-save:focus-visible, .text-card-version-tag:focus-visible,
-.text-card-version-option:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
+.text-card-save:focus-visible, .text-card-version-tag:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
 .text-card-version-picker { position: relative; flex: none; }
-.text-card-version-menu {   width: 190px; max-height: 240px; }
-
-.text-card-version-option { justify-content: space-between; }
 
 .text-card-notice, .text-card-error {
   flex: none; margin: 0 0 8px; border-radius: var(--ui-radius-sm); padding: 6px 8px; font-size: var(--ui-text-xs); line-height: 1.5;

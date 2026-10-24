@@ -1996,6 +1996,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/video-prompt-optimizations": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: string;
+            };
+            cookie?: never;
+        };
+        /** 查询视频节点最近的提示词优化任务 */
+        get: operations["listVideoPromptTasks"];
+        put?: never;
+        /**
+         * 优化当前视频提示词，可选择一个已发布的 Skill 版本
+         * @description 使用 TEXT_GENERATION 的 VIDEO_PROMPT_OPTIMIZATION 用途与输入 schema 4。固定用户提供的本地提示词、输出长度、可选 Skill 的主说明及全部文字附件、功能提示词和文字模型配置。仅进行文字转换，不读取 Skill 图片、输入槽位或画布素材，不创建媒体或修改草稿。相同幂等键重放原任务，异参冲突；同节点仅有一个活动优化任务。成功 output 仅含 prompt、mock。引用占位符 [[REF_n]] 必须原样保留各自出现次数。浏览器显式确认后通过原草稿保存流程回填，草稿已变化时保留结果并提示冲突。
+         */
+        post: operations["runVideoPromptOptimization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{projectId}/canvas-items/{canvasItemId}/video-prompt-optimizations/{taskId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 取消视频提示词优化任务
+         * @description 取消阻止晚到响应发布；不保证服务方停止或退款。重复取消重放原取消状态。
+         */
+        post: operations["cancelVideoPromptOptimization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{projectId}/artifacts/{artifactId}/image-prompts": {
         parameters: {
             query?: never;
@@ -6295,6 +6355,13 @@ export interface components {
             /** Format: int64 */
             expectedTaskVersion: number;
         };
+        VideoPromptOptimizationRequest: {
+            /** @description 当前本地提示词，结构化提及转为 [[REF_n]] 占位符；不自动读取服务器草稿 */
+            prompt: string;
+            maxLength: number;
+            /** @description 可选的已发布方法版本；只使用主说明与文字附件，不继承导演默认 Skill */
+            skill?: components["schemas"]["SkillVersionRef"] | null;
+        };
         ImagePromptRequest: {
             /** Format: uuid */
             canvasItemId: string;
@@ -6325,7 +6392,7 @@ export interface components {
              *     AssistantTurnStream；这不是已提交的工具响应。完整回合提交后
              *     assistantText 为最终公开文本。失败或取消保留 INTERRUPTED 文本。
              *     modelRetry 是 AgentModelRetry 投影；READY 使用 nextActionAt 显示下次重试时间。
-             *     TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时仅返回 prompt、sourceVersionId、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
+             *     TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时仅返回 prompt、sourceVersionId、mock；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
              */
             output?: ({
                 modelRetry?: components["schemas"]["AgentModelRetry"];
@@ -11028,6 +11095,108 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listVideoPromptTasks: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最近任务，新任务在前；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"][];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    runVideoPromptOptimization: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+                "Idempotency-Key": string;
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoPromptOptimizationRequest"];
+            };
+        };
+        responses: {
+            /** @description 已受理或重放的持久任务；Cache-Control no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    cancelVideoPromptOptimization: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+                canvasItemId: string;
+                taskId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已取消的任务 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];

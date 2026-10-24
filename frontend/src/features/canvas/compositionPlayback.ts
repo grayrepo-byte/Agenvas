@@ -105,12 +105,14 @@ export class CompositionPlayback {
   }
   toggle = () => {
     if (this.wanted) { this.pause(); return; }
-    if (!this.model.timeline.valid || this.model.blocked || !this.video) return;
+    if (!this.model.timeline.valid || this.model.blocked || !this.video || this.snapshot.error) return;
     if (this.snapshot.positionMs >= frameTimeMs(this.model.timeline.frames)) this.seek(0);
     this.stopAtClip = undefined;
     this.wanted = true; this.update({ playing: true, error: false }); this.synchronize(); this.schedule();
   };
   playClip(clipId: string) {
+    if (!this.model.timeline.valid || this.model.blocked || !this.video || this.snapshot.error
+      || !this.model.timeline.clips.some((clip) => clip.id === clipId)) return;
     this.pause(); this.seekToClip(clipId); this.stopAtClip = clipId;
     this.wanted = true; this.update({ playing: true, error: false }); this.synchronize(); this.schedule();
   }

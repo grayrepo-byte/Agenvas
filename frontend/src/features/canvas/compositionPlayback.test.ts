@@ -19,6 +19,14 @@ function setup(overrides: Partial<CompositionPlaybackModel> = {}) {
 }
 afterEach(() => vi.unstubAllGlobals());
 describe('composition playback', () => {
+  it('blocks both full and selected-clip playback until the current voice plan is ready', () => {
+    const { controller, video, model, detach } = setup({ blocked: true });
+    controller.toggle(); controller.playClip('a');
+    expect(controller.getSnapshot().playing).toBe(false); expect(video.element.play).not.toHaveBeenCalled();
+    controller.configure({ ...model, blocked: false }); controller.playClip('missing');
+    expect(controller.getSnapshot().playing).toBe(false);
+    controller.playClip('a'); expect(controller.getSnapshot().playing).toBe(true); detach();
+  });
   it('plays the whole ordered composition, applies speed and original audio gain, and stops at the final output frame', async () => {
     const { controller, video, detach } = setup(); controller.toggle(); await Promise.resolve();
     expect(video.element.currentTime).toBe(1); expect(video.element.playbackRate).toBe(2); expect(video.element.preservesPitch).toBe(true); expect(video.element.volume).toBe(.15);

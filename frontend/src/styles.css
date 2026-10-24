@@ -1146,8 +1146,5 @@ button:disabled {
 .workspace-canvas.is-hand-tool .react-flow__node * { pointer-events: none !important; }
 /* Media history belongs to the node whose toolbar opens this menu. */
 .media-version-picker { position: relative; }
-.media-version-menu {    width: 230px; max-height: 320px; }
-
-.media-version-menu > button { justify-content: space-between; }
 
 .media-toolbar-divider { width: 1px; height: 24px; flex: 0 0 1px; margin: 0 4px; background: var(--ui-border-strong); }

@@ -115,6 +115,7 @@ public class TaskController {
                 ObjectNode safeInput = (ObjectNode) task.input().deepCopy();
                 safeInput.remove("currentText");
                 safeInput.remove("systemPrompt");
+                safeInput.remove("skillContext");
                 input = safeInput;
                 // A RUNNING Task may contain the private full-response checkpoint. Only the
                 // terminal public artifact summary is returned to the browser.

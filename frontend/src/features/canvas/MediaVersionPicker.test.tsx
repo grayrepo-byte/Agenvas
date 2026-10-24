@@ -57,6 +57,37 @@ describe("MediaVersionPicker", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
+  it("shows image previews and frozen prompt summaries, keeping selection usable if a thumbnail fails", async () => {
+    const preview = { ...version("v2", 2), content: { assetId: "asset-v2", prompt: "A rainy street at blue hour",
+      workflowVersion: "fixed-v1", parameters: {}, sourceTaskId: "task-1" } };
+    let request: unknown;
+    server.use(http.post(`${base}/select-media-version`, async ({ request: incoming }) => {
+      request = await incoming.json();
+      return HttpResponse.json({ ...item, version: 8, selectedVersionId: "v1" });
+    }));
+    setup([preview, version("v1", 1)]);
+    await clickControl(await screen.findByRole("button", { name: "版本 v2" }));
+    const current = screen.getByRole("menuitem", { name: "v2 当前选用" });
+    const image = current.querySelector("img");
+    expect(image).toHaveAttribute("src", "/api/v1/projects/project-1/assets/asset-v2/thumbnail");
+    expect(current).toHaveTextContent("A rainy street at blue hour");
+    fireEvent.error(image!);
+    expect(current).toBeVisible();
+    await clickControl(screen.getByRole("menuitem", { name: "v1 选用此版本" }));
+    await waitFor(() => expect(request).toEqual({ versionId: "v1", expectedVersion: 7 }));
+  });
+
+  it("shows audio prompt summaries without requesting image thumbnails", async () => {
+    const audio = { ...version("v2", 2), content: { assetId: "asset-v2", prompt: "A quiet acoustic guitar phrase",
+      workflowVersion: "fixed-v1", parameters: {}, sourceTaskId: "task-1" } };
+    setup([audio, version("v1", 1)], { ...item, artifact: { ...item.artifact, kind: "AUDIO" } });
+    await clickControl(await screen.findByRole("button", { name: "版本 v2" }));
+    const current = screen.getByRole("menuitem", { name: "v2 当前选用" });
+    expect(current).toHaveTextContent("A quiet acoustic guitar phrase");
+    expect(current.querySelector("img")).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "视频审片与对比" })).not.toBeInTheDocument();
+  });
+
   it("lets an empty node select its only completed result", async () => {
     let request: unknown;
     server.use(http.post(`${base}/select-media-version`, async ({ request: incoming }) => {

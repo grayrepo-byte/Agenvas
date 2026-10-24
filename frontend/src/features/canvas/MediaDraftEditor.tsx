@@ -3,7 +3,7 @@ import { ToggleGroup, ToggleGroupItem } from "../../shared/ui/primitives/toggle-
 import { FieldSet, FieldLegend } from "../../shared/ui/primitives/field";
 import { Switch } from "../../shared/ui/primitives/switch";
 import {
-ArrowUp,Camera,CaretDown,Check,Coins,Cube,
+ArrowUp,Camera,CaretDown,Check,Coins,Cube,MagicWand,
 ImageSquare,
 MusicNotes,
 PaintBrush,SlidersHorizontal,VideoCamera,
@@ -71,6 +71,8 @@ import { promptForMediaInputs, removePromptReferences } from "./mediaPrompt";
 import { mediaStylesQueryOptions } from "../../shared/mediaStyles";
 import { MediaStylePicker } from "./MediaStylePicker";
 import { CharacterBindingsDialog } from "../characters/CharacterBindingsDialog";
+import { encodeOptimizationPrompt, decodeOptimizationPrompt } from "./videoPromptOptimization";
+import { VideoPromptOptimizationDialog } from "./VideoPromptOptimizationDialog";
 import { appendVideoPrompt } from "./videoPromptAppend";
 
 const VideoPromptPresetsDialog = lazy(() => import("./VideoPromptPresetsDialog")
@@ -216,6 +218,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   });
   const [stylePickerOpen, setStylePickerOpen] = useState(false);
   const [cameraPresetsOpen, setCameraPresetsOpen] = useState(false);
+  const [optimizationSource, setOptimizationSource] = useState<{ prompt: string; mentions: DraftFields["mentions"]; fingerprint: string } | null>(null);
   const [extendedParametersOpen, setExtendedParametersOpen] = useState(false);
   const [workflowUploading, setWorkflowUploading] = useState(false);
   const workflowUploads = useRef(new Set<string>());
@@ -1065,6 +1068,20 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     {cameraPresetsOpen && artifact.kind === "VIDEO" && promptEnabled ? <Suspense fallback={<CanvasLoadingState compact label={t("common.loading")} />}><VideoPromptPresetsDialog
       prompt={displayedPrompt} maxLength={promptField?.maxLength ?? MAX_PROMPT_LENGTH}
       onApply={applyCameraPreset} onClose={() => setCameraPresetsOpen(false)} /></Suspense> : null}
+    {optimizationSource && artifact.kind === "VIDEO" && promptEnabled ? <VideoPromptOptimizationDialog
+      projectId={artifact.projectId} canvasItemId={canvasItemId} prompt={optimizationSource.prompt}
+      maxLength={promptField?.maxLength ?? MAX_PROMPT_LENGTH} onClose={() => setOptimizationSource(null)}
+      onApply={(value) => {
+        const latest = session.getLatest().fields;
+        const decoded = decodeOptimizationPrompt(value, optimizationSource.mentions);
+        // A stale result must not overwrite typing, input remapping or a capability change.
+        if (!latest || session.isReadOnly() || cameraPresetsBusy || run.isPending || !decoded
+          || decoded.prompt.length > (promptField?.maxLength ?? MAX_PROMPT_LENGTH)
+          || JSON.stringify(latest) !== optimizationSource.fingerprint) return false;
+        edit(decoded);
+        setOptimizationSource(null);
+        return true;
+      }} /> : null}
     {workflow ? <WorkflowParametersDialog open={extendedParametersOpen} onOpenChange={setExtendedParametersOpen}
       definition={workflow} values={workflowValues} prompt={fields.prompt} durationSeconds={duration}
       disabled={editorReadOnly || run.isPending} onChange={changeDynamicField} /> : null}
@@ -1075,6 +1092,17 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         disabled={cameraPresetsBusy || editorReadOnly || run.isPending}
         onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setCameraPresetsOpen(true); }}>
         <Camera data-icon="inline-start" aria-hidden="true" />{t("video.presets.entry")}</Button> : null}
+      {artifact.kind === "VIDEO" && promptEnabled ? <Button variant="ghost" className="media-draft-tab" type="button"
+        title={encodeOptimizationPrompt(displayedPrompt, displayedPrompt === fields.prompt ? fields.mentions : []) === null ? t("video.optimize.referenceInvalid") : undefined}
+        disabled={cameraPresetsBusy || editorReadOnly || run.isPending || !displayedPrompt.trim()
+          || encodeOptimizationPrompt(displayedPrompt, displayedPrompt === fields.prompt ? fields.mentions : []) === null}
+        onClick={() => {
+          const mentions = displayedPrompt === fields.prompt ? fields.mentions : [];
+          const encoded = encodeOptimizationPrompt(displayedPrompt, mentions);
+          if (encoded === null) return;
+          setPopover(null); setReferenceSourcesOpen(false);
+          setOptimizationSource({ prompt: encoded, mentions, fingerprint: JSON.stringify(session.getLatest().fields) });
+        }}><MagicWand data-icon="inline-start" />{t("video.optimize.title")}</Button> : null}
       <Button variant="ghost" className="media-draft-tab" type="button" disabled={characterBusy || templateBusy || libraryBusy || run.isPending}
         onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setCharacterOpen(true); }}>{t("character.bindingsTitle")}</Button>
       {(artifact.kind === "IMAGE" || artifact.kind === "VIDEO") ? <Button variant="ghost" className="media-draft-tab" type="button"

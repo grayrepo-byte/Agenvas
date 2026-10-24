@@ -67,9 +67,9 @@ export function VideoCompositionPlayer({ controller, model, captions, resolution
 }
 
 /** Trim inputs and point-setting use the same composition cursor as the timeline. */
-export function VideoCompositionClipControls({ controller, timeline, clipId, startMs, endMs, sourceDurationMs, disabled, onChange }: {
+export function VideoCompositionClipControls({ controller, timeline, clipId, startMs, endMs, sourceDurationMs, disabled, playbackBlocked, onChange }: {
   controller: CompositionPlayback; timeline: CompositionPlaybackModel['timeline']; clipId: string; startMs: number; endMs: number;
-  sourceDurationMs: number; disabled?: boolean; onChange: (range: { startMs: number; endMs: number }) => void;
+  sourceDurationMs: number; disabled?: boolean; playbackBlocked?: boolean; onChange: (range: { startMs: number; endMs: number }) => void;
 }) {
   useLocale();
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
@@ -88,6 +88,6 @@ export function VideoCompositionClipControls({ controller, timeline, clipId, sta
     {!valid ? <FieldError>{t('video.review.rangeInvalid')}</FieldError> : null}
     <div className="video-edit-range-buttons"><Button type="button" variant="outline" size="sm" disabled={!ready} onClick={() => onChange({ startMs: point, endMs })}>{t('video.review.setStart')}</Button>
       <Button type="button" variant="outline" size="sm" disabled={!ready} onClick={() => onChange({ startMs, endMs: point })}>{t('video.review.setEnd')}</Button>
-      <Button type="button" variant="secondary" size="sm" disabled={disabled || !valid || !timeline.valid} onClick={() => controller.playClip(clipId)}>{t('video.review.rangePreview')}</Button></div>
+      <Button type="button" variant="secondary" size="sm" disabled={disabled || playbackBlocked || state.error || !valid || !timeline.valid} onClick={() => controller.playClip(clipId)}>{t('video.review.rangePreview')}</Button></div>
   </FieldGroup>;
 }

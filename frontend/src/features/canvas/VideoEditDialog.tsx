@@ -246,6 +246,7 @@ export function VideoEditDialog({ projectId, items, initialIds, onClose }: {
                     {sourceError(activeShot.videoVersionId)}
                     <VideoCompositionClipControls controller={playback} timeline={timeline} clipId={activeShot.id} startMs={activeShot.startMs} endMs={duration(activeShot)}
                       sourceDurationMs={details.get(activeShot.videoVersionId)?.data?.durationMs ?? 0} disabled={submit.isPending}
+                      playbackBlocked={metadataPending || metadataError || invalidMusic || voicePreview.blocked}
                       onChange={(range) => patch(activeShot.id, range)} />
                     <FieldGroup className="video-edit-grid">
                       <Field data-invalid={invalidSpeed(activeShot)}><FieldLabel htmlFor={`${prefix}-speed`}>{t("video.edit.speed")}</FieldLabel>
