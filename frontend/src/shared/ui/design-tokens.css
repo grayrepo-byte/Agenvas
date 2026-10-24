@@ -19,9 +19,15 @@
   --ui-text-secondary: #c8d2e1;
   --ui-text-muted: #a2afc2;
   --ui-text-subtle: #8998ad;
-  --ui-scrollbar-size: 8px;
-  --ui-scrollbar-thumb: var(--ui-border-strong);
-  --ui-scrollbar-thumb-hover: var(--ui-text-subtle);
+  /* A 4px resting thumb inside a 10px native drag lane; hover expands only the paint. */
+  --ui-scrollbar-size: 10px;
+  --ui-scrollbar-inset: 3px;
+  --ui-scrollbar-inset-active: 2px;
+  --ui-scrollbar-min-thumb: 32px;
+  --ui-scrollbar-radius: 999px;
+  --ui-scrollbar-thumb: color-mix(in srgb, var(--ui-text-muted) 38%, transparent);
+  --ui-scrollbar-thumb-hover: color-mix(in srgb, var(--ui-text-muted) 64%, transparent);
+  --ui-scrollbar-thumb-active: color-mix(in srgb, var(--ui-text-secondary) 76%, transparent);
   --ui-editor-text-size: 14px;
   --ui-editor-line-height: 1.75;
   /* Reference button's dominant fill: RGB(61, 154, 255). */

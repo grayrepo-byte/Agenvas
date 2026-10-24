@@ -28,7 +28,7 @@ function Fixture() {
   const [published, setPublished] = useState<RunningHubDefinition>();
   return <main className="app-page">
     <Button onClick={() => setOpen(true)}>打开配置</Button>
-    <output data-testid="published-definition">{published ? JSON.stringify(published) : ""}</output>
+    <output hidden data-testid="published-definition">{published ? JSON.stringify(published) : ""}</output>
     {open ? <Dialog title="合成 RunningHub 配置" className="runninghub-capability-dialog"
       onClose={() => setOpen(false)} onSubmit={(event) => {
         event.preventDefault(); setPublished(selectRunningHubNodes(definition, selectedNodeIds, selectedFieldKeys));

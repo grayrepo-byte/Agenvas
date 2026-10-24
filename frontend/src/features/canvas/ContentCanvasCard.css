@@ -24,8 +24,6 @@
   overflow: auto;
   padding: 14px 20px 20px;
   overscroll-behavior: contain;
-  scrollbar-color: var(--ui-scrollbar-thumb) transparent;
-  scrollbar-width: thin;
   cursor: inherit;
   user-select: text;
   -webkit-user-select: text;

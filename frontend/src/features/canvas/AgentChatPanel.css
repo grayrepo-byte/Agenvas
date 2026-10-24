@@ -22,7 +22,7 @@
 .agent-chat-active-session { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px 16px; background: var(--ui-warning-bg); color: var(--ui-warning); font-size: 11px; }
 .agent-chat-active-session button { flex: none; text-decoration: underline; text-underline-offset: 3px; }
 .agent-chat-scroll-area { flex: 1; min-height: 0; }
-.agent-chat-body { position: relative; padding: 22px 18px; scrollbar-width: thin; scrollbar-color: var(--ui-scrollbar-thumb) transparent; }
+.agent-chat-body { position: relative; padding: 22px 18px; }
 .agent-chat-transcript { gap: 26px; }
 .agent-run-conversation { display: flex; flex-direction: column; gap: 16px; }
 .agent-chat-surface .agent-chat-message { --agent-chat-ink: var(--ui-text); --agent-chat-muted: var(--ui-text-muted); --agent-chat-faint: var(--ui-text-subtle); --agent-chat-surface: var(--ui-surface); --agent-chat-field: var(--ui-surface-raised); --agent-chat-hover: var(--ui-hover); --agent-chat-line: var(--ui-border); --agent-chat-success: var(--ui-success); --agent-chat-failure: var(--ui-danger); --agent-chat-unknown: var(--ui-warning); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }

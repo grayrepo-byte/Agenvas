@@ -87,7 +87,7 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio .ui-field small { line-height: 1.8; }
 
 /* Tables have a quiet header, generous primary rows and a visible local scroll boundary. */
-.app-shell--studio .media-table-scroll { border: 1px solid var(--settings-rule); border-radius: 10px; scrollbar-width: thin; }
+.app-shell--studio .media-table-scroll { border: 1px solid var(--settings-rule); border-radius: 10px; }
 .app-shell--studio .media-settings-table th { padding: 10px 14px; border-color: var(--settings-rule); font-size: 10px; letter-spacing: .025em; background: var(--ui-field); }
 .app-shell--studio .media-settings-table td { padding: 14px 14px; border-color: var(--settings-rule); }
 .app-shell--studio .media-settings-table tbody tr { transition: background-color 180ms; }

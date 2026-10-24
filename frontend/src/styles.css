@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./shared/ui/design-tokens.css";
+@import "./shared/ui/Scrollbars.css";
 @import "./features/canvas/agentConversation.css";
 @import "./features/canvas/CanvasWorkspace.css";
 
@@ -46,28 +47,10 @@
   font-size: var(--ui-editor-text-size);
   font-weight: 400;
   line-height: var(--ui-editor-line-height);
-  scrollbar-width: thin;
-  scrollbar-color: var(--ui-scrollbar-thumb) transparent;
   scrollbar-gutter: stable;
   overscroll-behavior: contain;
   overflow-wrap: anywhere;
 }
-
-.ui-multiline:is(:hover, :focus-visible) {
-  scrollbar-color: var(--ui-scrollbar-thumb-hover) transparent;
-}
-
-/* Fallback for engines that do not support the standard scrollbar properties. */
-.ui-multiline::-webkit-scrollbar { width: var(--ui-scrollbar-size); height: var(--ui-scrollbar-size); }
-.ui-multiline::-webkit-scrollbar-track,
-.ui-multiline::-webkit-scrollbar-corner { background: transparent; }
-.ui-multiline::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background: var(--ui-scrollbar-thumb);
-  background-clip: padding-box;
-}
-.ui-multiline::-webkit-scrollbar-thumb:hover { background-color: var(--ui-scrollbar-thumb-hover); }
 
 :root {
   font-family:
@@ -824,8 +807,6 @@ button:disabled {
   max-height: 218px;
   padding-right: 7px;
   overflow-y: auto;
-  scrollbar-color: var(--ui-border-strong) transparent;
-  scrollbar-width: thin;
 }
 .relight-preset-grid button {
   position: relative;
