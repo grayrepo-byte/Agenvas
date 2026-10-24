@@ -1,3 +1,4 @@
+import { Range } from "../../shared/ui/Range";
 import {
 ArrowClockwise,
 ArrowCounterClockwise,
@@ -194,7 +195,7 @@ export function BrushMarkupEditor(props: {
               <entry.icon size={20} /></Button>)}
           </div>
         </div>
-        {sizeOpen ? <label className="markup-stroke-size">{t("image.brushSize")}<input aria-label={t("image.brushSize")} type="range"
+        {sizeOpen ? <label className="markup-stroke-size">{t("image.brushSize")}<Range aria-label={t("image.brushSize")}
           min={MIN_STROKE_SIZE} max={MAX_STROKE_SIZE} value={strokeSize} disabled={save.isPending}
           onChange={(event) => setStrokeSize(Number(event.target.value))} /></label> : null}
       </div>

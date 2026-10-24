@@ -1,6 +1,6 @@
 .video-review-controls { display: flex; min-width: 0; flex-direction: column; gap: var(--ui-space-3); color: var(--ui-text); }
 .video-review-transport { display: flex; min-width: 0; align-items: center; gap: var(--ui-space-2); flex-wrap: wrap; }
-.video-review-transport input[type="range"] { min-width: 80px; flex: 1; accent-color: var(--ui-accent); }
+.video-review-transport .ui-range { min-width: 80px; flex: 1; }
 .video-review-time { color: var(--ui-text-secondary); font-size: var(--ui-text-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .video-review-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--ui-space-3); }
 .video-review-options [data-slot="field"] { min-width: 0; gap: var(--ui-space-1); }

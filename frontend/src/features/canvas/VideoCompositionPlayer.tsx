@@ -1,5 +1,6 @@
+import { Range } from "../../shared/ui/Range";
 import { CaretLeft, CaretRight, CircleNotch, Pause, Play, SpeakerHigh, SpeakerSlash } from '@/shared/ui/icons';
-import { type CSSProperties, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { t, useLocale } from '../../shared/i18n';
 import { Alert, AlertDescription } from '../../shared/ui/primitives/alert';
 import { Button } from '../../shared/ui/primitives/button';
@@ -35,9 +36,6 @@ export function VideoCompositionPlayer({ controller, model, captions, resolution
   const displayPosition = Math.min(state.positionMs, Math.max(0, total - frameTimeMs(1)));
   const text = visibleCompositionCaptions(captions, displayPosition);
   const ready = !disabled && model.timeline.valid && !model.blocked && !state.error;
-  const progressStyle: CSSProperties & { '--playback-progress': string } = {
-    '--playback-progress': `${total > 0 ? Math.min(100, Math.max(0, state.positionMs / total * 100)) : 0}%`,
-  };
   return <div className="video-composition-player">
     <div ref={area} className="video-composition-stage">
       <div className="video-composition-frame" style={{ width: output.width * scale, height: output.height * scale }}>
@@ -53,7 +51,7 @@ export function VideoCompositionPlayer({ controller, model, captions, resolution
     </div>
     <audio ref={music} preload="auto" data-composition-audio="music" /><audio ref={voice} preload="auto" data-composition-audio="voice" />
     <div className="video-composition-transport">
-      <input data-slot="video-composition-scrubber" className="video-composition-scrubber" style={progressStyle} type="range" aria-label={t('video.edit.compositionProgress')} min={0} max={model.timeline.frames} step={1} value={Math.min(model.timeline.frames, Math.round(state.positionMs * COMPOSITION_FPS / 1000))} disabled={!ready}
+      <Range variant="media" aria-label={t('video.edit.compositionProgress')} min={0} max={model.timeline.frames} step={1} value={Math.min(model.timeline.frames, Math.round(state.positionMs * COMPOSITION_FPS / 1000))} disabled={!ready}
         aria-valuetext={`${videoTimeLabel(state.positionMs / 1000)} / ${videoTimeLabel(total / 1000)}`}
         onChange={(event) => controller.seek(frameTimeMs(event.target.valueAsNumber))} />
       <div className="video-composition-transport-row">

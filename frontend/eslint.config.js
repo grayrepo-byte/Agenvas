@@ -25,7 +25,7 @@ export default tseslint.config(
   },
   {
     files: ["src/**/*.tsx"],
-    ignores: ["src/shared/ui/Select.tsx"],
+    ignores: ["src/shared/ui/Select.tsx", "src/shared/ui/Range.tsx"],
     rules: {
       "no-restricted-syntax": ["error", {
         selector: "JSXOpeningElement[name.name='select']",
@@ -33,6 +33,9 @@ export default tseslint.config(
       }, {
         selector: "JSXOpeningElement[name.name='div']:has(JSXAttribute[name.name='role'][value.value=/^(menu|listbox)$/])",
         message: "Use shared/ui/primitives/dropdown-menu or command for menu and listbox surfaces.",
+      }, {
+        selector: "JSXOpeningElement[name.name=/^(input|Input)$/]:has(JSXAttribute[name.name='type'][value.value='range'])",
+        message: "Use shared/ui/Range. Slider tracks, thumbs, focus and disabled states belong to the shared UI layer.",
       }],
     },
   },

@@ -58,7 +58,6 @@
 .video-edit-inspector-content [data-slot="field-label"] { font-size: var(--ui-text-xs); line-height: 1.5; }
 .video-edit-inspector-content [data-slot="input"], .video-edit-inspector-content [data-slot="textarea"] { font-size: var(--ui-text-sm); }
 .video-edit-inspector-content [data-slot="input"] { font-variant-numeric: tabular-nums; }
-.video-edit-inspector-content [data-slot="select-trigger"] { font-size: var(--ui-text-sm); }
 .video-edit-section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-2); margin-bottom: var(--ui-space-4); }
 .video-edit-section-heading > span:not([data-slot]) { color: var(--ui-text-subtle); font-size: var(--ui-text-xs); }
 .video-edit-inspector-content [data-slot="field-group"] > .video-edit-section-heading { margin: var(--ui-space-2) 0 0; }

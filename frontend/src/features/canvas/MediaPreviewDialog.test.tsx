@@ -85,13 +85,13 @@ describe("MediaPreviewDialog", () => {
     expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("uses the Video plugin with native controls and metadata preload without autoplay", async () => {
+  it("uses shared review controls with metadata preload without autoplay", async () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     render(<PreviewHarness kind="video" />);
     const { dialog } = await openPreview();
     expect(dialog).toHaveAttribute("aria-label", "合成素材 的视频预览");
     const video = dialog.querySelector("video");
-    expect(video).toHaveAttribute("controls");
+    expect(video).not.toHaveAttribute("controls");
     expect(video).toHaveAttribute("preload", "metadata");
     expect(video).toHaveAttribute("playsinline");
     expect(video).not.toHaveAttribute("autoplay");
@@ -100,7 +100,9 @@ describe("MediaPreviewDialog", () => {
     expect(video?.querySelector("source")).toHaveAttribute("type", "video/webm");
     expect(within(dialog).queryByRole("button", { name: "放大" })).not.toBeInTheDocument();
     expect(play).not.toHaveBeenCalled();
+    Object.defineProperty(video, "duration", { configurable: true, value: 5 });
     fireEvent.loadedMetadata(video!);
+    expect(within(dialog).getByRole("slider", { name: "审片进度" })).toHaveAttribute("data-slot", "range");
     expect(within(dialog).queryByRole("status")).not.toBeInTheDocument();
     expect(Number(video?.getAttribute("width")) / Number(video?.getAttribute("height")))
       .toBeCloseTo(IMAGE_WIDTH / IMAGE_HEIGHT);

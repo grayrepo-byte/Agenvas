@@ -20,6 +20,7 @@
 | 多行编辑的字体、行高与滚动条 | `styles.css` 的 `ui-multiline`，消费 `design-tokens.css` 的编辑器与滚动条变量 |
 | 日期与时间选择 | `frontend/src/shared/ui/DateTimePicker.tsx`，组合 `primitives/calendar.tsx`、`popover.tsx`、`input.tsx` |
 | 单选表单兼容层 | `frontend/src/shared/ui/Select.tsx`、`Dropdown.css` |
+| 单值参数滑块、媒体播放进度与色温轨道 | `frontend/src/shared/ui/Range.tsx`、`Range.css`，基于 shadcn Input 扩展 |
 | 动作、模型、版本、输入模式与引用菜单 | `frontend/src/shared/ui/primitives/dropdown-menu.tsx`、`command.tsx` |
 | 页面表单、面板、提示、状态、摘要与图标容器 | `PagePrimitives.tsx`、`PageTheme.css` |
 | 导航与页面框架 | `PageShell.tsx`、`PageShell.css` |
@@ -47,9 +48,30 @@
 
 ## 单选控件
 
-使用基于 shadcn/Radix 的 `Select` 兼容层，继续传入标准 `option`、`optgroup`、`value/defaultValue`、`onChange`、`name`、`required` 和 `disabled`。常规控件使用 shadcn 默认尺寸；画布使用 `density="compact"`。视觉、交互和选项结构由 `primitives/select.tsx` 维护，语义颜色映射到现有 `--ui-*` 主题。
+使用基于 shadcn/Radix 的 `Select` 兼容层，继续传入标准 `option`、`optgroup`、`value/defaultValue`、`onChange`、`name`、`required` 和 `disabled`。常规字段高36px、字号13px；紧凑筛选与画布工具栏使用 `density="compact"`，高32px、字号12px。`variant="ghost"` 只用于已经有容器的工具栏，保持相同尺寸与焦点规则。视觉由 `Dropdown.css` 统一维护，结构与交互由 `primitives/select.tsx` 管理，语义颜色映射到现有 `--ui-*` 主题。
 
 隐藏原生 select 只作为表单提交、必填校验和 change 事件桥接；label 指向可见的 shadcn 触发器。选项由 Radix Portal 与定位机制管理，避开画布缩放和祖先容器裁切；靠近视口底部向上展开，宽度与高度限制在视口内。提供方向键、Home/End、Enter/Space、前缀键入、Escape、Tab 和外部点击；禁用选项与禁用 optgroup 不可选择，禁用 fieldset 不可打开。选项更新会同步到已打开的面板，保存与业务版本检查仍由原应用服务处理。
+
+### 下拉框与滑块的统一视觉规范
+
+表单选择、富信息模型选择、动作/版本菜单、Command 选项共用冷调表面、文字层级、圆角与交互色。字段使用 `--ui-field`，菜单使用 `--ui-surface-raised`、细描边和 `--ui-menu-shadow`；菜单内留白6px、普通选项最小高34px，富信息行最小高56px。菜单左侧对齐触发器，Radix 负责碰撞翻转；触发器与菜单相距6px，不再叠加额外位移。长标题在触发器中省略，在菜单中按可用宽度换行；列表有界滚动，预留至少8px视口边距。
+
+选中项使用浅强调底色和勾选标记，悬停/键盘活动项使用 `--ui-hover`；不能把整行填成高饱和主色。展开时箭头翻转，错误边框使用 `--ui-danger` 并关联 `FieldError`，禁用项降低对比且不能操作。键盘聚焦仍使用统一的2px轮廓与2px偏移，减少动态效果偏好同时关闭箭头和选项过渡。业务 CSS 只负责宽度、排列、滚动和信息布局，不覆盖公共触发器的字体、颜色、圆角、边框或高度；密度通过组件属性选择。
+
+所有单值滑块使用 `Range`，由 shadcn Input 扩展原生 `input[type=range]`，保留原生事件、label、键盘、表单及媒体时钟的 ref 接口。不要在业务中直接创建原生 range，也不要用普通 Input 冒充滑块。
+
+| 使用场景 | `variant` | 轨道 / 拖柄 | 视觉与反馈 |
+| --- | --- | --- | --- |
+| 画笔大小、亮度等数值参数 | `parameter`（默认） | 4px / 12px | 主色已选范围、白色小圆柄，32px操作热区 |
+| 视频、审片、成片与运镜播放进度 | `media` | 3px / 8px | 中性浅色已播放范围；24px操作热区，粗指针设备至少32px |
+| 补光色温 | `temperature` | 4px / 12px | 公共 token 的暖色→中性→冷色连续轨道；取值仍显示为K |
+| 已解码音频波形 | `waveform` | 真实波形作为轨道 | 隐形 range 覆盖波形热区，外容器显示键盘焦点；不绘制第二根轨道 |
+
+轨道和拖柄的尺寸、色温端点、控件高度都从 `design-tokens.css` 获取。拖动时立即更新填充与业务预览，不对轨道位置做缓动；悬停、拖动和键盘焦点轻微放大拖柄，禁用时降低对比。非零/负数区间按 `(value-min)/(max-min)` 计算填充，无效或零长度区间不出现NaN样式。受控值通过 `value/onChange` 更新；运镜动画等不重绘React的时钟通过 `setRangeValue(input, value)` 同步原生值与填充，不在业务中操作公共CSS变量。
+
+应用内放大预览、区间裁切与对比复用 `VideoReviewControls`，音频卡片和分镜试听复用 `AudioPlayer`；不再并列显示浏览器系统播放器的另一套进度条。字幕、混音、逐帧、步长、取消/受理锁定、错误重试和关闭停止播放等语义由原业务组件维护。带真实帧胶片的剪辑时间线、波形和区间双端裁切手柄是媒体专用视图，继续保留其信息结构与可访问操作；不把它们替换成单值参数滑块。没有可测总量的后台状态使用加载/状态文案，不伪造完成百分比。
+
+`frontend/e2e/controls.html` 提供真实公共组件的合成验证页，覆盖常规/紧凑/富信息/长列表/错误/禁用选择器、参数/媒体/色温滑块与动作菜单。验收应同时检查桌面和窄屏、鼠标拖动、键盘Home/End/方向键、分组禁用、表单语义和菜单视口边界。ESLint 拒绝公共入口之外的原生 select/range，防止再次出现零散的系统默认控件；执行范围与结果记录在开发清单。
 
 ## 日期与时间
 

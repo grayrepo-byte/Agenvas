@@ -37,7 +37,7 @@ export function ResourceBrowser() {
       <Field className="library-search-field"><FieldLabel htmlFor={`${id}-search`}>{t("resources.search")}</FieldLabel>
         <Input id={`${id}-search`} type="search" maxLength={MAX_LIBRARY_NAME_LENGTH} value={query} placeholder={t("resources.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} /></Field>
       <Field className="library-select-field"><FieldLabel htmlFor={`${id}-kind`}>{t("media.kind")}</FieldLabel>
-        <Select id={`${id}-kind`} value={kind ?? ""} onChange={(event) => setKind(event.target.value ? event.target.value as MediaKind : undefined)}>
+        <Select density="compact" id={`${id}-kind`} value={kind ?? ""} onChange={(event) => setKind(event.target.value ? event.target.value as MediaKind : undefined)}>
           <option value="">{t("common.allKinds")}</option>{MEDIA_ASSET_KINDS.map((value) => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}
         </Select></Field>
       <div className="library-filter-actions"><Button variant="outline" type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>{t("resources.refresh")}</Button></div>

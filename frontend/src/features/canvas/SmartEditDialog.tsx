@@ -1,3 +1,4 @@
+import { Range } from "../../shared/ui/Range";
 import {
 ArrowClockwise,ArrowCounterClockwise,ArrowUp,BoundingBox,Coins,Cube,Eraser,
 PaintBrush,Plus,UploadSimple,X
@@ -337,7 +338,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
           aria-label={t("image.smartEdit.eraseMask")} aria-pressed={strokeMode === "ERASE"}
           onClick={() => setStrokeMode("ERASE")}><Eraser size={18} /></Button>
         <label className="smart-edit-brush-size"><span className="sr-only">{t("image.brushSize")}</span>
-          <input type="range" min={8} max={120} value={brushSize}
+          <Range min={8} max={120} value={brushSize}
             onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
         <Button variant="ghost" type="button" className="is-icon" aria-label={t("image.smartEdit.undoMask")} disabled={!historyState.canUndo}
           onClick={() => restoreHistory(historyIndex.current - 1)}><ArrowCounterClockwise size={18} /></Button>

@@ -111,7 +111,7 @@ export function MediaPreviewDialog({ kind,title,sourceUrl,posterSrc,contentType,
     type: "video", poster: posterSrc, width, height,
     // An absent MIME lets the browser inspect the source instead of guessing MP4.
     sources: [{ src: sourceUrl, type: contentType ?? "" }],
-    autoPlay: false, controls: true, preload: "metadata", playsInline: true,
+    autoPlay: false, controls: false, preload: "metadata", playsInline: true,
   }];
   function retry() {
     closeRef.current?.focus();
@@ -128,7 +128,7 @@ export function MediaPreviewDialog({ kind,title,sourceUrl,posterSrc,contentType,
     controller={{ ref: controllerRef, closeOnBackdropClick: true, disableSwipeNavigation: true }}
     animation={{ fade: PREVIEW_FADE_DURATION_MS }}
     zoom={{ scrollToZoom: true }}
-    video={{ autoPlay: false, controls: true, preload: "metadata", playsInline: true }}
+    video={{ autoPlay: false, controls: false, preload: "metadata", playsInline: true }}
     toolbar={{ buttons: kind === "image" ? ["zoom", "fullscreen", "close"] : ["fullscreen", "close"] }}
     labels={{
       Lightbox: previewLabel, "Photo gallery": previewLabel, Carousel: previewLabel, Slide: previewLabel,

@@ -7,15 +7,6 @@
 .video-composition-buffering { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: var(--ui-space-2); background: color-mix(in srgb, var(--ui-video-output-background) 45%, transparent); color: var(--ui-video-subtitle-foreground); font-size: var(--ui-text-xs); }
 .video-composition-buffering svg { width: 18px; height: 18px; }
 .video-composition-transport { display: flex; flex: none; flex-direction: column; min-width: 0; container-type: inline-size; container-name: video-transport; }
-.video-composition-scrubber { appearance: none; display: block; width: 100%; min-width: 0; height: 24px; margin: 0; padding: 0; border: 0; border-radius: var(--ui-radius-sm); box-shadow: none; background: transparent; cursor: pointer; }
-.video-composition-scrubber::-webkit-slider-runnable-track { height: 3px; border-radius: 999px; background: linear-gradient(to right, var(--ui-text-secondary) var(--playback-progress), var(--ui-border-strong) var(--playback-progress)); }
-.video-composition-scrubber::-moz-range-track { height: 3px; border-radius: 999px; background: linear-gradient(to right, var(--ui-text-secondary) var(--playback-progress), var(--ui-border-strong) var(--playback-progress)); }
-.video-composition-scrubber::-webkit-slider-thumb { appearance: none; width: 8px; height: 8px; margin-top: -2.5px; border: 0; border-radius: 50%; background: var(--ui-text); transition: transform var(--ui-duration); }
-.video-composition-scrubber::-moz-range-thumb { width: 8px; height: 8px; border: 0; border-radius: 50%; background: var(--ui-text); transition: transform var(--ui-duration); }
-.video-composition-scrubber:is(:hover, :active, :focus-visible)::-webkit-slider-thumb { transform: scale(1.4); }
-.video-composition-scrubber:is(:hover, :active, :focus-visible)::-moz-range-thumb { transform: scale(1.4); }
-.video-composition-scrubber:focus-visible { outline: var(--ui-focus-width) solid var(--ui-focus); outline-offset: var(--ui-focus-offset); }
-.video-composition-scrubber:disabled { opacity: .4; cursor: default; }
 .video-composition-transport-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--ui-space-2); min-height: 32px; }
 .video-composition-time { display: flex; align-items: baseline; gap: var(--ui-space-2); color: var(--ui-text-secondary); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: var(--ui-text-xs); font-variant-numeric: tabular-nums; line-height: 1.4; white-space: nowrap; }
 .video-composition-time-total { color: var(--ui-text-subtle); }

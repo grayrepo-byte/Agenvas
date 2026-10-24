@@ -1,3 +1,4 @@
+import { Range } from "../../shared/ui/Range";
 import { ArrowUp,Stack,X } from "@/shared/ui/icons";
 import { useState,type ReactNode,type PointerEvent } from "react";
 import { createPortal } from "react-dom";
@@ -104,12 +105,12 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, extraContro
 
         <label className="relight-slider-label">
           <span>{t("image.relight.brightness")}<output>{brightness > 0 ? "+" : ""}{brightness}</output></span>
-          <input type="range" min={MIN_BRIGHTNESS} max={MAX_BRIGHTNESS} value={brightness}
+          <Range min={MIN_BRIGHTNESS} max={MAX_BRIGHTNESS} value={brightness}
             onChange={(event) => setBrightness(Number(event.target.value))} />
         </label>
         <label className="relight-slider-label relight-temperature">
           <span>{t("image.relight.colorTemperature")}<output>{colorTemperature}K</output></span>
-          <input type="range" min={MIN_COLOR_TEMPERATURE} max={MAX_COLOR_TEMPERATURE}
+          <Range variant="temperature" min={MIN_COLOR_TEMPERATURE} max={MAX_COLOR_TEMPERATURE}
             step={100} value={colorTemperature}
             onChange={(event) => setColorTemperature(Number(event.target.value))} />
         </label>

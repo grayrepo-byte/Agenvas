@@ -5,7 +5,7 @@ import { Alert, AlertDescription } from "../../shared/ui/primitives/alert";
 import { Badge } from "../../shared/ui/primitives/badge";
 import { Button } from "../../shared/ui/primitives/button";
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
-import { Input } from "../../shared/ui/primitives/input";
+import { Range, setRangeValue } from "../../shared/ui/Range";
 import { sampleVideoCameraMotion, VIDEO_CAMERA_MOTIONS } from "./videoCameraMotion";
 import { disposeVideoCameraPreview, drawVideoCameraPreview, type VideoCameraPreviewPalette } from "./videoCameraPreviewRenderer";
 import type { VideoPromptPreset } from "./videoPromptPresets";
@@ -101,8 +101,7 @@ export function VideoCameraMotionPreview({ preset }: { preset: VideoPromptPreset
         }
       } catch { setUnavailable(true); setPlaying(false); return; }
       if (sliderRef.current) {
-        sliderRef.current.value = String(Math.round(progress * 1000));
-        sliderRef.current.style.setProperty("--video-camera-progress", `${progress * 100}%`);
+        setRangeValue(sliderRef.current, Math.round(progress * 1000));
         sliderRef.current.setAttribute("aria-valuetext", translate(locale, "video.presets.preview.progressValue", { value: Math.round(progress * 100) }));
       }
       if (timeRef.current) timeRef.current.textContent = translate(locale, "video.presets.preview.elapsed", {
@@ -166,7 +165,7 @@ export function VideoCameraMotionPreview({ preset }: { preset: VideoPromptPreset
       aria-label={t(playing ? "video.presets.preview.pause" : "video.presets.preview.play")} onClick={() => { if (playing) setPlaying(false); else play(); }}>
       {playing ? <Pause /> : <Play />}</Button>
       <Field className="video-camera-timeline"><FieldLabel htmlFor={timelineId} className="sr-only">{t("video.presets.preview.timeline")}</FieldLabel>
-        <Input ref={sliderRef} id={timelineId} type="range" min={0} max={1000} step={1} defaultValue={0} disabled={unavailable}
+        <Range variant="media" ref={sliderRef} id={timelineId} min={0} max={1000} step={1} defaultValue={0} disabled={unavailable}
           onPointerDown={() => setPlaying(false)} onChange={(event) => { setPlaying(false); progressRef.current = Number(event.target.value) / 1000; drawRef.current(); }} /></Field>
       <output ref={timeRef} role="timer" aria-live="off" htmlFor={timelineId}>{t("video.presets.preview.elapsed", { current: 0, duration: durationSeconds })}</output>
       <Button type="button" variant="ghost" size="icon-sm" disabled={unavailable} aria-label={t("video.presets.preview.replay")}

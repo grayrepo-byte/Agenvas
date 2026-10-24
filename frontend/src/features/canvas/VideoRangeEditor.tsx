@@ -50,7 +50,7 @@ export function VideoRangeEditor({ src, posterSrc, title, startMs, endMs, onChan
     </fieldset>;
   return <div className={studio ? "video-range-editor video-range-editor--studio" : "video-range-editor"}>
     <video key={`${src}:${attempt}`} ref={setVideo} src={src} poster={posterSrc} aria-label={title}
-      controls={!studio} playsInline preload="metadata" onLoadedMetadata={(event) => {
+      playsInline preload="metadata" onLoadedMetadata={(event) => {
         const duration = event.currentTarget.duration;
         setDurationMs(Number.isFinite(duration) ? Math.round(duration * 1000) : 0); setFailed(false);
       }} onError={() => { setFailed(true); previewing.current = false; }} onTimeUpdate={(event) => {

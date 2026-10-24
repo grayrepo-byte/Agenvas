@@ -1,3 +1,4 @@
+import { AudioPlayer } from "./AudioPlayer";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { assetContentUrl, listCanvasMediaVersions, type AgentMediaApproval, type CanvasItem, type StoryboardShot } from "../../shared/api/client";
@@ -56,7 +57,7 @@ function Candidate({ projectId, candidate, shot, base, approvals, items, disable
     {preview && role && role !== "AUDIO" ? <MediaPreviewDialog kind={role === "KEYFRAME" ? "image" : "video"} title={candidate.title}
       sourceUrl={sourceUrl} onClose={() => setPreview(false)} /> : null}
     {preview && role === "AUDIO" ? <Dialog open onOpenChange={(open) => { if (!open) setPreview(false); }}><DialogContent className="app-page" aria-describedby={undefined}>
-      <DialogHeader><DialogTitle>{candidate.title}</DialogTitle></DialogHeader><audio controls src={sourceUrl} />
+      <DialogHeader><DialogTitle>{candidate.title}</DialogTitle></DialogHeader><AudioPlayer src={sourceUrl} title={candidate.title} />
     </DialogContent></Dialog> : null}
   </section>;
 }

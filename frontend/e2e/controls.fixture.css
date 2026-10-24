@@ -1,0 +1,10 @@
+.controls-fixture { max-width: 1180px; margin: auto; padding: 40px 28px; }
+.controls-fixture > header { margin-bottom: var(--ui-space-8); }
+.controls-fixture > header > p { margin: 0; color: var(--ui-accent-text); font-size: var(--ui-text-xs); letter-spacing: .15em; }
+.controls-fixture h1 { margin: var(--ui-space-3) 0; color: var(--ui-text); font-size: 30px; font-weight: 500; }
+.controls-fixture header > span { color: var(--ui-text-muted); font-size: var(--ui-text-sm); }
+.controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ui-space-5); align-items: start; }
+.controls-fixture [data-slot="field-label"] { display: flex; justify-content: space-between; }
+.controls-fixture output { color: var(--ui-text-muted); font-variant-numeric: tabular-nums; }
+.controls-action { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-3); margin-top: var(--ui-space-5); font-size: var(--ui-text-xs); }
+@media (max-width: 700px) { .controls-fixture { padding: 24px 16px; } .controls-fixture h1 { font-size: 24px; } .controls-grid { grid-template-columns: 1fr; } }

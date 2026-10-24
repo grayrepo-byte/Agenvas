@@ -47,7 +47,7 @@
 .app-shell--studio .library-page .library-filters { display:grid; grid-template-columns:minmax(160px,1fr) 128px 138px auto; align-items:end; gap:10px; margin:0; }
 .app-shell--studio .library-page .library-filters [data-slot=field] { gap:6px; width:auto; min-width:0; }
 .app-shell--studio .library-page .library-filters [data-slot=field-label] { color:var(--ui-text-muted); font-size:11px; font-weight:500; }
-.app-shell--studio .library-page .library-filters :is([data-slot=input],[data-slot=select-trigger]) { min-width:0; min-height:34px; height:34px; margin:0; padding:6px 10px; font-size:12px; background:var(--ui-field); }
+.app-shell--studio .library-page .library-filters [data-slot=input] { min-width:0; min-height:34px; height:34px; margin:0; padding:6px 10px; font-size:12px; background:var(--ui-field); }
 .app-shell--studio .library-page .library-filter-actions { gap:7px; flex-wrap:nowrap; }
 .app-shell--studio .library-page .library-filter-actions>[data-slot=button] { height:34px; padding:6px 10px; gap:6px; font-size:11px; }
 .app-shell--studio .library-page .library-filter-actions svg { width:14px; height:14px; }
@@ -107,7 +107,7 @@ body:has(.app-shell--studio .library-page) .library-detail-sidebar { display:fle
 body:has(.app-shell--studio .library-page) .library-detail-fields { gap:14px; }
 body:has(.app-shell--studio .library-page) :is(.library-detail-dialog,.library-upload-dialog) [data-slot=field] { min-width:0; gap:6px; }
 body:has(.app-shell--studio .library-page) :is(.library-detail-dialog,.library-upload-dialog) [data-slot=field-label] { font-size:11px; color:var(--ui-text-secondary); }
-body:has(.app-shell--studio .library-page) :is(.library-detail-dialog,.library-upload-dialog) :is([data-slot=input],[data-slot=select-trigger]) { min-width:0; height:34px; font-size:12px; }
+body:has(.app-shell--studio .library-page) :is(.library-detail-dialog,.library-upload-dialog) [data-slot=input] { min-width:0; height:34px; font-size:12px; }
 body:has(.app-shell--studio .library-page) .library-detail-favorite { gap:8px; }
 body:has(.app-shell--studio .library-page) .library-detail-actions { display:flex; flex-direction:column; gap:12px; }
 body:has(.app-shell--studio .library-page) .library-detail-actions .ui-form-actions { gap:6px; }
