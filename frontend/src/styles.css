@@ -246,19 +246,11 @@ button:disabled {
   box-shadow: var(--ui-canvas-shadow-raised);
 }
 
-.workspace-drawer-heading,
-.resource-entry {
+.workspace-drawer-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-}
-
-.resource-entry {
-  border: 1px solid var(--line);
-  border-radius: var(--ui-radius-md);
-  padding: 12px;
-  font-size: 0.82rem;
 }
 
 .workspace-canvas {

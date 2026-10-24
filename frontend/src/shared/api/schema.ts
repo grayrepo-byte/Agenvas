@@ -3177,6 +3177,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/resources": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Browse exact project results, including historical and unselected results after canvas removal. Excludes empty media identities, blank text revisions, archived artifacts and internal Skill imports. Does not change resource defaults. */
+        get: operations["listProjectResources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/resources": {
         parameters: {
             query?: never;
@@ -6642,6 +6667,11 @@ export interface components {
             itemId: string;
             /** Format: uuid */
             artifactId: string;
+            /**
+             * Format: uuid
+             * @description Optional exact IMAGE/VIDEO/AUDIO result belonging to this artifact and project. Initializes only this new node and its one-result history with a blank draft; never changes the resource default. Omit for ordinary creation or TEXT. Identical retries reuse the itemId and complete command.
+             */
+            versionId?: string;
             x: number;
             y: number;
             width: number;
@@ -12988,6 +13018,48 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listProjectResources: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["ArtifactKind"];
+                query?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact results ordered by creation time and version ID descending. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourcePage"];
+                };
+            };
+            /** @description ProblemDetail; unauthorized project access follows project read semantics. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listResources: {

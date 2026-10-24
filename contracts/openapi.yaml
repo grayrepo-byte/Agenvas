@@ -3877,6 +3877,40 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /api/v1/projects/{projectId}/resources:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+      - name: projectId
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      operationId: listProjectResources
+      description: "Browse exact project results, including historical and unselected results after canvas removal. Excludes empty media identities, blank text revisions, archived artifacts and internal Skill imports. Does not change resource defaults."
+      parameters:
+        - name: kind
+          in: query
+          schema: {$ref: "#/components/schemas/ArtifactKind"}
+        - name: query
+          in: query
+          schema: {type: string, maxLength: 160, default: ""}
+        - name: cursor
+          in: query
+          schema: {type: string, maxLength: 256}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 40}
+      responses:
+        "200":
+          description: "Exact results ordered by creation time and version ID descending."
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ResourcePage"}
+        default:
+          description: "ProblemDetail; unauthorized project access follows project read semantics."
+          content:
+            application/problem+json:
+              schema: {$ref: "#/components/schemas/Problem"}
   /api/v1/resources:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -8411,6 +8445,7 @@ components:
         type: {type: string, const: PLACE_ARTIFACT}
         itemId: {type: string, format: uuid}
         artifactId: {type: string, format: uuid}
+        versionId: {type: string, format: uuid, description: "Optional exact IMAGE/VIDEO/AUDIO result belonging to this artifact and project. Initializes only this new node and its one-result history with a blank draft; never changes the resource default. Omit for ordinary creation or TEXT. Identical retries reuse the itemId and complete command."}
         x: {type: number, minimum: -1000000, maximum: 1000000}
         y: {type: number, minimum: -1000000, maximum: 1000000}
         width: {type: number, minimum: 120, maximum: 2000}

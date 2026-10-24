@@ -70,6 +70,14 @@ export function listResources(filters: ResourceFilters): Promise<components["sch
   Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
   return readJson(`/api/v1/resources?${query}`, t("resources.loadFailed"));
 }
+
+/** Exact project results, including meaningful text revisions and media with no resource default. */
+export function listProjectResources(projectId: string,
+  filters: NonNullable<paths["/api/v1/projects/{projectId}/resources"]["get"]["parameters"]["query"]>): Promise<components["schemas"]["ResourcePage"]> {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
+  return readJson(`/api/v1/projects/${encodeURIComponent(projectId)}/resources?${query}`, t("api.errors.projectResourcesUnavailable"));
+}
 export type Storyboard = components["schemas"]["Storyboard"];
 export type StoryboardShot = components["schemas"]["StoryboardShot"];
 export type StoryboardProduction = components["schemas"]["StoryboardProduction"];

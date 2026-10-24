@@ -47,6 +47,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
         invalidate("canvas-media-versions");
       }
       if (event.type.startsWith("canvas.")) invalidate("canvas-editor");
+      if (event.type.startsWith("artifact.") || event.type === "task.status.changed") invalidate("project-resources");
       if (event.type === "canvas.edited" && event.payload.operation === "DUPLICATE") {
         invalidate("canvas-connections", "media-draft", "artifacts");
       }
@@ -103,7 +104,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       // A missed event may have changed any of them while the stream was unavailable.
       invalidate(...HISTORY_QUERY_PREFIXES, "run-tasks", "direct-media-tasks", "media-draft",
         "canvas-media-versions", "project-usage", "storyboard", "storyboard-revisions",
-        "storyboard-media-approvals", "project-characters", "canvas-editor");
+        "storyboard-media-approvals", "project-characters", "canvas-editor", "project-resources");
     },
   };
 }

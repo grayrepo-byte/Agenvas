@@ -123,6 +123,7 @@ describe("ProjectWorkspacePage", () => {
         defaults: [{ kind: "IMAGE_GENERATION", capabilityId: "mock-image", version: 0 }],
       })),
       http.get("/api/v1/projects/:projectId/artifacts", () => HttpResponse.json({ items: [], nextCursor: null })),
+      http.get("/api/v1/projects/:projectId/resources", () => HttpResponse.json({ items: [], nextCursor: null })),
       http.get("/api/v1/settings/llm", () => HttpResponse.json({ configured: false, version: 0 })),
       http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({ llmMode: "MOCK" })),
       http.get("/api/v1/projects/:projectId/artifacts/:artifactId/text-generations", () =>

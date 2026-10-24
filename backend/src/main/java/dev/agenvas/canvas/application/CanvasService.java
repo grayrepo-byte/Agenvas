@@ -772,12 +772,19 @@ public class CanvasService {
                 command.zIndex());
         ArtifactService.ArtifactView artifact = artifacts.get(
                 ownerId, projectId, command.artifactId());
+        UUID selectedVersionId = mediaSelection(artifact);
+        if (command.versionId() != null) {
+            // A resource pick fixes an immutable media result without changing the shared default.
+            if (artifact.artifact().kind() == Artifact.Kind.TEXT || artifact.artifact().archivedAt() != null) throw conflict();
+            artifacts.requireVersion(ownerId, projectId, command.artifactId(), command.versionId());
+            selectedVersionId = command.versionId();
+        }
         CanvasItem requested = placement(
                 command.itemId(),
                 projectId,
                 CanvasItem.SubjectType.ARTIFACT,
                 command.artifactId(),
-                mediaSelection(artifact),
+                selectedVersionId,
                 artifact.artifact().title(),
                 command.x(),
                 command.y(),
@@ -1090,6 +1097,7 @@ public class CanvasService {
      * @param zIndex 显示层级
      * @param groupId 可选画布分组
      * @param locked 是否创建后锁定布局
+     * @param versionId 可选的精确媒体结果；缺省沿用资源默认版本
      */
     public record PlaceArtifact(
             UUID itemId,
@@ -1100,8 +1108,15 @@ public class CanvasService {
             BigDecimal height,
             int zIndex,
             UUID groupId,
-            boolean locked)
-            implements CanvasCommand {}
+            boolean locked,
+            UUID versionId)
+            implements CanvasCommand {
+        /** Ordinary node creation uses the resource default, including empty media placeholders. */
+        public PlaceArtifact(UUID itemId, UUID artifactId, BigDecimal x, BigDecimal y,
+                BigDecimal width, BigDecimal height, int zIndex, UUID groupId, boolean locked) {
+            this(itemId, artifactId, x, y, width, height, zIndex, groupId, locked, null);
+        }
+    }
 
     /**
      * 修改单张卡片的展示标题；同一业务对象的其他卡片不受影响。

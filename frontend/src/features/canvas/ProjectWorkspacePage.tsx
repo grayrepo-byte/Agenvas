@@ -32,7 +32,6 @@ getCurrentUser,
 getMediaDraft,
 getProject,
 getProjectSnapshot,
-listArtifacts,
 listCanvasConnections,
 listCanvasItems,
 projectExportManifestUrl,
@@ -43,7 +42,6 @@ uploadVideoAsset,
 type Agent,
 type Artifact,
 type Canvas,
-type CanvasCommand,
 type CanvasItem,
 type ProjectSnapshot,
 } from "../../shared/api/client";
@@ -52,9 +50,10 @@ import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { Tooltip,TooltipContent,TooltipProvider,TooltipTrigger } from "../../shared/ui/primitives/tooltip";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
-import { Input } from "../../shared/ui/primitives/input";
 import { Separator } from "../../shared/ui/primitives/separator";
 import { Empty,EmptyContent,EmptyDescription,EmptyHeader,EmptyMedia,EmptyTitle } from "../../shared/ui/primitives/empty";
+import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
+import { ProjectResourceBrowser } from "./ProjectResourceBrowser";
 import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
 import { AgentChatDock } from "./AgentChatDock";
 import type { AgentChatRunRequest } from "./AgentChatPanel";
@@ -89,7 +88,6 @@ import { AUDIO_CARD_HEIGHT,AUDIO_CARD_WIDTH,prepareMediaNode,VISUAL_MEDIA_CARD_H
 import { subscribeProjectEvents,type EventSyncStatus } from "./projectEvents";
 import { projectCacheCallbacks } from "./projectCache";
 import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
-import { KIND_LABELS } from "../library/libraryLabels";
 import { useMediaNodeRatios } from "./useMediaNodeRatios";
 import { useCanvasLayoutSave } from "./useCanvasLayoutSave";
 import { CharacterManagerDialog } from "../characters/CharacterManagerDialog";
@@ -111,7 +109,6 @@ type CreationPoint = { x: number; y: number; groupId?: string };
 type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
   zIndex: number; assetId?: string; artifactId?: string };
 type CreationMenu = { x: number; y: number; point: CreationPoint; centerAtPoint: boolean };
-type RestorableResource = { subjectType: "ARTIFACT"; subjectId: string; kind: Artifact["kind"] };
 /** Card under the pointer during a connection gesture; the drop lands on the card, not on an exact port. */
 type ConnectionTarget = { itemId: string; targetHandle: "artifact-input"; valid: boolean };
 const EDITOR_NODE_GAP = 32;
@@ -272,8 +269,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [agentChatOpen, setAgentChatOpen] = useState(false);
   const [videoEditIds, setVideoEditIds] = useState<string[] | null>(null);
   const [agentRunRequest, setAgentRunRequest] = useState<AgentChatRunRequest | null>(null);
-  const [resourceTab, setResourceTab] = useState<"PROJECT" | "LIBRARY">("PROJECT");
-  const [resourceSearch, setResourceSearch] = useState("");
   const mediaProgress = useRef<{ fingerprint: string; createKey: string;
     itemId: string; artifactId?: string } | null>(null);
   const drafts = useCanvasStore((state) => state.drafts);
@@ -345,11 +340,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const retained = current.selectedIds.filter((id) => visible.has(id));
     if (retained.length !== current.selectedIds.length) setSelectedIds(retained, current.selectionMode);
   }, [canvas.data, canvas.isSuccess, organization.groups, setSelectedIds]);
-  const resources = useQuery({
-    queryKey: ["artifacts", projectId],
-    queryFn: () => listArtifacts(projectId),
-    enabled: resourcesOpen,
-  });
 
   useEffect(() => {
     if (initialEventSequence.current === null || typeof EventSource === "undefined") return;
@@ -629,27 +619,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       : { x: DEFAULT_CANVAS_ORIGIN, y: DEFAULT_CANVAS_ORIGIN };
   }
 
-  const restoreResource = useMutation({
-    mutationFn: async (resource: RestorableResource) => {
-      const point = canvasCenter();
-      const itemId = crypto.randomUUID();
-      const placement = {
-        itemId, x: point.x, y: point.y,
-        zIndex: canvas.data?.items.length ?? 0, locked: false,
-      };
-      const command: CanvasCommand = { ...placement, type: "PLACE_ARTIFACT", artifactId: resource.subjectId,
-        ...DEFAULT_ARTIFACT_CARD_SIZES[resource.kind] };
-      const saved = await applyCanvasCommands(projectId, [command]);
-      return { saved, itemId };
-    },
-    ...canvasMutationFeedback,
-    onSuccess: ({ saved, itemId }) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      setSelectedIds([itemId]);
-      setResourcesOpen(false);
-      setSaveState("saved");
-    },
-  });
 
   const saveLayoutMutate = saveLayout.mutate;
   const removeItemMutate = removeItem.mutate;
@@ -1007,7 +976,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setSelectedEdgeIds([]);
   }, [setSelectedEdgeIds, setSelectedIds]);
 
-
   useEffect(() => {
     if (creationMenu) creationMenuElement.current?.focus();
   }, [creationMenu]);
@@ -1081,12 +1049,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setAgentChatOpen(true);
     if (!director && !ensureDirector.isPending) ensureDirector.mutate();
   }, [projectId, tryLocation.search, snapshot.isSuccess, director, ensureDirector]);
-  const projectResources = [
-    ...(resources.data?.items ?? []).map((artifact) => ({
-      subjectType: "ARTIFACT" as const, subjectId: artifact.id, kind: artifact.kind,
-      label: `${artifact.title} · ${KIND_LABELS[artifact.kind]} · ${artifact.resourceDefaultVersionId ? t("canvas.workspace.defaultSelected") : t("canvas.workspace.noDefault")}`,
-    })),
-  ];
 
   function locateFeedbackNodes(ids: string[]) {
     const existing = ids.filter((id) => canvas.data?.items.some((item) => item.id === id));
@@ -1166,27 +1128,19 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           }} type="button">{t("common.close")}</Button>
         </div>
         {resourcesOpen ? <>
-          <div className="library-tabs"><Button variant="ghost" type="button" aria-pressed={resourceTab === "PROJECT"} onClick={() => setResourceTab("PROJECT")}>{t("canvas.workspace.resourceTitle")}</Button><Button variant="ghost" type="button" aria-pressed={resourceTab === "LIBRARY"} onClick={() => setResourceTab("LIBRARY")}>{t("library.title")}</Button></div>
-          {resourceTab === "LIBRARY" ? <LibraryCanvasPicker projectId={projectId} position={canvasCenter} /> : <>
-          <label className="mt-3 block text-sm">{t("canvas.workspace.searchResources")}<Input value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)}
-              placeholder={t("canvas.workspace.searchPlaceholder")} /></label>
-          {resources.isPending ? <p className="mt-3 text-sm">{t("canvas.workspace.resourcesLoading")}</p> : null}
-          {resources.error ? <WorkspaceError error={resources.error} /> : null}
-          <ul className="mt-3 space-y-2">
-            {projectResources.filter((resource) => resource.label.toLowerCase()
-              .includes(resourceSearch.trim().toLowerCase())).map((resource) => {
-              const placed = canvas.data?.items.some((item) =>
-                item.subjectType === resource.subjectType && item.subjectId === resource.subjectId);
-              return <li className="resource-entry" key={`${resource.subjectType}:${resource.subjectId}`}>
-                <span>{resource.label}</span>
-                <Button variant="ghost" className="node-action" disabled={restoreResource.isPending}
-                  onClick={() => restoreResource.mutate(resource)} type="button">
-                  {placed ? t("canvas.workspace.placeAnother") : t("canvas.place")}</Button>
-              </li>;
-            })}
-          </ul>
-          {restoreResource.error ? <WorkspaceError error={restoreResource.error} /> : null}
-          </>}
+          <Tabs defaultValue="PROJECT">
+            <TabsList aria-label={t("canvas.workspace.resourceTitle")}>
+              <TabsTrigger value="PROJECT">{t("canvas.workspace.resourceTitle")}</TabsTrigger>
+              <TabsTrigger value="LIBRARY">{t("library.title")}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="PROJECT"><ProjectResourceBrowser projectId={projectId} position={canvasCenter}
+              zIndex={canvas.data?.items.length ?? 0} onPlacing={canvasMutationFeedback.onMutate} onPlaceError={setSaveError}
+              onPlaced={(saved, itemId) => {
+                queryClient.setQueryData(["canvas", projectId], saved);
+                setSelectedIds([itemId]); setResourcesOpen(false); setSaveState("saved");
+              }} /></TabsContent>
+            <TabsContent value="LIBRARY"><LibraryCanvasPicker projectId={projectId} position={canvasCenter} /></TabsContent>
+          </Tabs>
         </> : null}
         {editAgent.error ? <WorkspaceError error={editAgent.error} /> : null}
         {toolsKind === "ALIGN" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
@@ -1579,7 +1533,6 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
     </>
   );
 });
-
 
 const nodeTypes = { canvasCard: CanvasCardNode, canvasGroup: CanvasGroupNode };
 

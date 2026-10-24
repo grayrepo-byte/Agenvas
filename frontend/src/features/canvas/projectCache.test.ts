@@ -64,9 +64,9 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("project cache callbacks", () => {
   it.each([
-    { type: "artifact.created", prefixes: ["canvas", "media-draft"] },
-    { type: "artifact.version.created", prefixes: ["canvas", "media-draft", "project-characters"] },
-    { type: "artifact.resource_default_version.changed", prefixes: ["canvas", "media-draft"] },
+    { type: "artifact.created", prefixes: ["canvas", "media-draft", "project-resources"] },
+    { type: "artifact.version.created", prefixes: ["canvas", "media-draft", "project-characters", "project-resources"] },
+    { type: "artifact.resource_default_version.changed", prefixes: ["canvas", "media-draft", "project-resources"] },
     { type: "canvas.items.changed", prefixes: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft", "project-characters"] },
     { type: "canvas.connection.created", prefixes: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft", "project-characters"] },
     { type: "canvas.connection.deleted", prefixes: ["canvas-media-versions", "canvas-editor", "canvas", "canvas-connections", "media-draft", "project-characters"] },
@@ -139,7 +139,7 @@ describe("project cache callbacks", () => {
     const tracked = trackCache(activeRunId);
     tracked.callbacks.onChange(event("task.status.changed", { artifactId, runId: "other-run" }));
     expectCacheEffects(tracked, [
-      ...invalidations("canvas-media-versions", "snapshot", ...historyPrefixes),
+      ...invalidations("canvas-media-versions", "project-resources", "snapshot", ...historyPrefixes),
       ...invalidations(...(artifactId ? ["canvas", "media-draft"] : [])),
       ...(activeRunId ? [["invalidate", ["run-tasks", projectId, activeRunId]] satisfies CacheCall] : []),
       ...invalidations("direct-media-tasks", "direct-media-queue", "storyboard-media-approvals"),
@@ -156,7 +156,7 @@ describe("project cache callbacks", () => {
     const tracked = trackCache("old-run");
     const refreshedPrefixes = [
       ...historyPrefixes, "run-tasks", "direct-media-tasks", "media-draft", "canvas-media-versions", "project-usage",
-      "storyboard", "storyboard-revisions", "storyboard-media-approvals", "project-characters", "canvas-editor",
+      "storyboard", "storyboard-revisions", "storyboard-media-approvals", "project-characters", "canvas-editor", "project-resources",
     ];
     const refreshedKeys = refreshedPrefixes.map((prefix) => [prefix, projectId, "scope-1"]);
     const unchangedKeys = [

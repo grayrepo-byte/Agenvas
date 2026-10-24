@@ -1,6 +1,7 @@
 package dev.agenvas.artifact.application;
 
 import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import java.nio.charset.StandardCharsets;
@@ -13,7 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Account-wide read-only catalog. It neither saves LibraryEntries nor changes selected versions. */
+/** Read-only account and project catalogs; browsing never saves LibraryEntries or changes selections. */
 @Service
 public class ResourceCatalogService {
     public static final int MAX_QUERY_LENGTH = 160;
@@ -23,18 +24,33 @@ public class ResourceCatalogService {
     private static final String CURSOR_SEPARATOR = "|";
     private static final int CURSOR_PARTS = 2;
     private final ArtifactRepository artifacts;
+    private final ProjectService projects;
 
-    public ResourceCatalogService(ArtifactRepository artifacts) {
+    public ResourceCatalogService(ArtifactRepository artifacts, ProjectService projects) {
         this.artifacts = artifacts;
+        this.projects = projects;
     }
 
     @Transactional(readOnly = true)
     public ResourcePage list(UUID ownerId, Artifact.Kind kind, String query, String encodedCursor, Integer requestedLimit) {
-        int limit = requestedLimit == null ? DEFAULT_PAGE_SIZE : requestedLimit;
         if (kind == Artifact.Kind.TEXT) throw invalidRequest();
+        return listResults(ownerId, null, kind, query, encodedCursor, requestedLimit);
+    }
+
+    /** Project results include nonblank text revisions; empty node identities never become resources. */
+    @Transactional(readOnly = true)
+    public ResourcePage listProject(UUID ownerId, UUID projectId, Artifact.Kind kind, String query,
+            String encodedCursor, Integer requestedLimit) {
+        projects.get(ownerId, projectId);
+        return listResults(ownerId, projectId, kind, query, encodedCursor, requestedLimit);
+    }
+
+    private ResourcePage listResults(UUID ownerId, UUID projectId, Artifact.Kind kind, String query,
+            String encodedCursor, Integer requestedLimit) {
+        int limit = requestedLimit == null ? DEFAULT_PAGE_SIZE : requestedLimit;
         if (limit < 1 || limit > MAX_PAGE_SIZE || query.length() > MAX_QUERY_LENGTH) throw invalidRequest();
         Cursor cursor = decode(encodedCursor);
-        var rows = artifacts.listResources(ownerId, kind, query.trim(), cursor == null ? null : cursor.createdAt(),
+        var rows = artifacts.listResources(ownerId, projectId, kind, query.trim(), cursor == null ? null : cursor.createdAt(),
                 cursor == null ? null : cursor.id(), limit + 1);
         boolean hasMore = rows.size() > limit;
         var items = List.copyOf(rows.subList(0, Math.min(limit, rows.size())));
