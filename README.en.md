@@ -231,6 +231,8 @@ cd backend
 
 For a standalone JVM, provide `AGENVAS_DB_URL`, `AGENVAS_DB_USER`, and `AGENVAS_DB_PASSWORD`; `.env.example` lists these variables but is not automatically loaded. Automatic installation secrets apply to container entrypoints. Source execution defaults to Mock. Media processing requires FFmpeg / FFprobe; see [local image processing](docs/local-image-processing.md) for depth extraction.
 
+The director supports token-budgeted context compaction and durable long tasks, with a default 24-hour transient model recovery window. See [Agent runtime configuration (Chinese)](docs/agent-runtime.md) for context, handoff, and retry budgets.
+
 Vite runs on port `5173` and proxies `/api` to `localhost:8080`.
 
 </details>

@@ -25,7 +25,7 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 public class LlmProtocolCodec {
     /** Per-request resource bound; Run turn counts are governed by their frozen policy. */
-    public static final int MAX_MESSAGES = 80;
+    public static final int MAX_MESSAGES = 4096;
 
     /** 单轮请求检查点的 UTF-8 字节上限，防止无界上下文进入数据库。 */
     private static final int MAX_REQUEST_BYTES = 32 * 1024 * 1024;

@@ -109,7 +109,7 @@ class InitialModelContextServiceTest {
         assertThat(messages).anySatisfy(message -> {
             assertThat(message).isInstanceOf(AssistantMessage.class);
             assertThat(message.getText()).isEqualTo("公开回复：已记录品牌。");
-            assertThat(message.getMetadata()).containsOnlyKeys("messageType");
+            assertThat(message.getMetadata()).containsOnlyKeys("messageType", AgentContextService.HISTORY);
         });
         assertThat(messages.getLast().getText()).isEqualTo("Current Run request:\n新的用户请求");
         String request = new LlmProtocolCodec(mapper).request(messages, List.of()).toString();

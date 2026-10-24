@@ -56,6 +56,7 @@ class AgentTurnRepairPostgresIT {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
+        properties.add("agenvas.llm.agent.max-repair-attempts", () -> 2);
     }
 
     @Autowired private IdentityService identities;

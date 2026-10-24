@@ -63,6 +63,8 @@ for compose_file in "${compose_files[@]}"; do
     (.services | all(.[]; .healthcheck.test | length > 0)) and
     .services.server.environment.AGENVAS_STORAGE_ROOT == "/opt/agenvas/data/assets" and
     .services.server.environment.AGENVAS_MCP_ENABLED == "true" and
+    .services.server.environment.AGENVAS_AGENT_CONTEXT_WINDOW_TOKENS == "1000000" and
+    .services.server.environment.AGENVAS_AGENT_COMPACTION_THRESHOLD_PERCENT == "50" and
     .volumes."postgres-data".name == (.name + "_postgres-data") and
     .volumes."asset-data".name == (.name + "_asset-data") and
     .volumes."credentials-data".name == (.name + "_credentials-data") and

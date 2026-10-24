@@ -1013,7 +1013,7 @@ it("pins retry feedback and restores send after exhausted retries despite a stal
   expect(await screen.findByRole("button", { name: "发送" })).toBeInTheDocument();
   expect(screen.queryByText(/^下次重试：/)).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "停止" })).not.toBeInTheDocument();
-  expect((await screen.findAllByText(/^已达到 10 次重试或 5 分钟期限/)).some((element) =>
+  expect((await screen.findAllByText(/^已达到本回合配置的重试次数或恢复期限/)).some((element) =>
     element.closest(".agent-chat-feedback"))).toBe(true);
 });
 

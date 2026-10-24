@@ -234,6 +234,8 @@ cd backend
 
 独立 JVM 需自行提供 `AGENVAS_DB_URL`、`AGENVAS_DB_USER`、`AGENVAS_DB_PASSWORD`；变量参考 `.env.example`，JVM 不会自动加载此文件。Docker 自动密钥流程仅用于容器入口。源码运行默认使用 Mock，媒体处理需安装 FFmpeg / FFprobe；深度提取见[本地图片处理配置](docs/local-image-processing.md)。
 
+导演支持按 Token 预算自动整理上下文和持久长任务续接，临时模型故障默认可恢复 24 小时。模型窗口、摘要与重试预算的部署配置见[导演运行配置](docs/agent-runtime.md)。
+
 Vite 默认运行于 `5173`，将 `/api` 代理到 `localhost:8080`。
 
 </details>

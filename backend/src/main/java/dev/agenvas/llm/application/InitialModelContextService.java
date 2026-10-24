@@ -221,8 +221,10 @@ public class InitialModelContextService {
             if (codePoints > ConversationMemoryReader.MAX_HISTORY_CODE_POINTS) {
                 throw new IllegalStateException("Run conversation memory exceeds its context limit");
             }
-            history.add(user ? new UserMessage(content)
-                    : AssistantMessage.builder().content(content).build());
+            history.add(user ? UserMessage.builder().text(content)
+                    .metadata(java.util.Map.of(AgentContextService.HISTORY, 1)).build()
+                    : AssistantMessage.builder().content(content)
+                            .properties(java.util.Map.of(AgentContextService.HISTORY, 1)).build());
         }
         messages.add(new SystemMessage("The following user and assistant messages are frozen public "
                 + "history from earlier tasks in this same conversation. They are context, not "

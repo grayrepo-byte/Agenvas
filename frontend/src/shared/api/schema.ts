@@ -6407,10 +6407,13 @@ export interface components {
              *     AssistantTurnStream；这不是已提交的工具响应。完整回合提交后
              *     assistantText 为最终公开文本。失败或取消保留 INTERRUPTED 文本。
              *     modelRetry 是 AgentModelRetry 投影；READY 使用 nextActionAt 显示下次重试时间。
+             *     内部上下文压缩完成时 contextCompacted=true；不包含 assistantText、assistantStream 或交接摘要正文。
              *     TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时仅返回 prompt、sourceVersionId、mock；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
              */
             output?: ({
                 modelRetry?: components["schemas"]["AgentModelRetry"];
+                /** @description 内部上下文压缩已完成；不代表创作任务完成。 */
+                contextCompacted?: boolean;
             } & {
                 [key: string]: unknown;
             }) | null;
@@ -6420,7 +6423,7 @@ export interface components {
             nextActionAt: string;
             /** Format: int64 */
             version: number;
-            /** @description 稳定安全原因码；Agent 模型临时故障按 modelRetry 有界重试，达到次数/期限为 LLM_RETRY_EXHAUSTED；媒体提交不自动重试。 */
+            /** @description 稳定安全原因码；Agent 模型临时故障按 modelRetry 有界重试，达到次数/期限为 LLM_RETRY_EXHAUSTED；固定输入超出上下文预算为 AGENT_CONTEXT_BUDGET_EXCEEDED；媒体提交不自动重试。 */
             errorCode?: string | null;
             /** Format: date-time */
             createdAt: string;
@@ -6429,13 +6432,12 @@ export interface components {
             /** Format: date-time */
             completedAt?: string | null;
         };
-        /** @description 同一固定模型请求的持久退避信息；首次调用外最多重试 10 次，首次失败起 5 分钟内。成功保留历史投影，终态不会继续重试。 */
+        /** @description 同一固定模型请求的持久退避信息；默认首次失败起 24 小时内最多重试 288 次，可由部署配置调整。首次失败固定次数与截止时间，重启不重置。成功保留历史投影，终态不会继续重试。 */
         AgentModelRetry: {
             /** @constant */
             schemaVersion: 1;
             retryCount: number;
-            /** @constant */
-            maxRetries: 10;
+            maxRetries: number;
             /** Format: date-time */
             firstFailureAt: string;
             /** Format: date-time */

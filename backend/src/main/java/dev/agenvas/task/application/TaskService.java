@@ -564,7 +564,8 @@ public class TaskService {
             JsonNode finalOutput = output;
             if (current.kind() == Task.Kind.AGENT_TURN && output != null && output.isObject()) {
                 ObjectNode combined = (ObjectNode) output.deepCopy();
-                if (stream(current).isObject()) combined.set(AGENT_STREAM_PROPERTY, stream(current).deepCopy());
+                if (stream(current).isObject() && !stream(current).isEmpty())
+                    combined.set(AGENT_STREAM_PROPERTY, stream(current).deepCopy());
                 if (current.output() != null && current.output().has(Task.MODEL_RETRY_PROPERTY)) {
                     combined.set(Task.MODEL_RETRY_PROPERTY, current.output().get(Task.MODEL_RETRY_PROPERTY).deepCopy());
                 }

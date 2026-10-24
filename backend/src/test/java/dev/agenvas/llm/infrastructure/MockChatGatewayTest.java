@@ -17,6 +17,15 @@ import org.springframework.ai.tool.ToolCallback;
  * 并且不伪造任何工具调用或业务副作用。
  */
 class MockChatGatewayTest {
+    @Test
+    void offlineCompactionReturnsALabelledHandoffWithoutEchoingTheTranscriptOrCallingTools() {
+        var exchange = gateway.call(List.of(new UserMessage("Synthetic source")),
+                List.of(), Map.of(dev.agenvas.llm.application.AgentContextService.CALL_PURPOSE, true));
+        var assistant = exchange.response().getResult().getOutput();
+        assertThat(assistant.getToolCalls()).isEmpty();
+        assertThat(assistant.getText()).contains("Mock handoff", "\"pending\"", "\"references\"")
+                .doesNotContain("Synthetic source");
+    }
 
     private static final int CONFIG_VERSION = 7;
 

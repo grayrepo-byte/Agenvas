@@ -96,6 +96,16 @@ agenvas:
     config-version: ${AGENVAS_LLM_CONFIG_VERSION:1}
     tool-calling-verified: ${AGENVAS_LLM_TOOL_CALLING_VERIFIED:false}
     scheduler-enabled: ${AGENVAS_LLM_SCHEDULER_ENABLED:true}
+    agent:
+      context-window-tokens: ${AGENVAS_AGENT_CONTEXT_WINDOW_TOKENS:1000000}
+      compaction-threshold-percent: ${AGENVAS_AGENT_COMPACTION_THRESHOLD_PERCENT:50}
+      response-reserve-tokens: ${AGENVAS_AGENT_RESPONSE_RESERVE_TOKENS:8192}
+      summary-tokens: ${AGENVAS_AGENT_SUMMARY_TOKENS:2048}
+      recent-tool-rounds: ${AGENVAS_AGENT_RECENT_TOOL_ROUNDS:4}
+      recovery-window: ${AGENVAS_AGENT_RECOVERY_WINDOW:24h}
+      max-model-retries: ${AGENVAS_AGENT_MAX_MODEL_RETRIES:288}
+      retry-max-delay: ${AGENVAS_AGENT_RETRY_MAX_DELAY:5m}
+      max-repair-attempts: ${AGENVAS_AGENT_MAX_REPAIR_ATTEMPTS:4}
   task:
     # 租约必须同时覆盖两件事：整次同步 Provider 调用，以及客户端的超时上限
     # （OpenAiImage2Client / GoogleNanoBananaClient 均为 5 分钟）。短于调用耗时的租约会让

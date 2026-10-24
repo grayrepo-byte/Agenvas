@@ -36,7 +36,7 @@ Agent 公开回答使用同一 Markdown 展示组件覆盖历史终稿、实时�
 
 AgentInstance 是项目唯一导演的稳定身份，画布只承载 Artifact 节点。首次打开通过无正文 PUT `/projects/{projectId}/director` 在项目锁内恢复或初始化配置，数据库唯一约束阻止第二实例；初始化不调用模型。快照以可空 `director` 返回配置，不存在助手列表、预设选择或自由创建入口。会话、历史、设置与 Skill 共用该窗口；Skill 试用只选择项目并携带固定 Skill 参数，音频入口打开同一导演。任务草稿按会话隔离，配置草稿与 Skill 选择在收起、历史和设置切换后保留。
 
-导演按 Run 的服务端 projectId 与 owner 动态管理当前项目整个画布；用户之后新增节点、修改内容或切换选用版本均可重新读取并操作，选区及产物来源不划分权限。Run 不保存顶层 `bindings`、`outputGroupId` 或冻结 `canvasScope`，公开文字会话历史继续保留，不再继承历史产物绑定。目录分页返回当前元数据与 CAS，完整媒体草稿、正文和图片按需读取；写入前先读最新状态，再执行对应内容、布局或草稿 CAS。项目隔离、锁定、Task 互锁、审批和 UNKNOWN 保持原规则。当前使用 policy schema 7 / system prompt 13 / tool policy 5，不提供旧工具协议兼容。
+导演按 Run 的服务端 projectId 与 owner 动态管理当前项目整个画布；用户之后新增节点、修改内容或切换选用版本均可重新读取并操作，选区及产物来源不划分权限。Run 不保存顶层 `bindings`、`outputGroupId` 或冻结 `canvasScope`，公开文字会话历史继续保留，不再继承历史产物绑定。目录分页返回当前元数据与 CAS，完整媒体草稿、正文和图片按需读取；写入前先读最新状态，再执行对应内容、布局或草稿 CAS。项目隔离、锁定、Task 互锁、审批和 UNKNOWN 保持原规则。当前使用 policy schema 7 / system prompt 14 / tool policy 6，不提供旧工具协议兼容。
 
 删除“查看产物”按钮、产物归属计数/定位及 outputs 接口；聊天上下文只保留节点数和选中数作为信息。唯一的精确输入例外是 `creativeSkills[].inputs`：用户按槽位映射的版本保持只读，不随节点切换变化，也不能用于授权编辑、布局或媒体目标。Skill 默认绑定是创作方法配置，与已删除的产物绑定无关。现行权限见 [ADR 0047](adr/0047-project-agent-chat-and-canvas-scope.md)；下文带日期的旧策略说明仅保留历史，不构成当前恢复兼容。
 
@@ -93,3 +93,9 @@ OpenAPI 与生成 TypeScript 已同步。上述合成 HTTP、Mock 界面和真�
 重试保存在原 AGENT_TURN Task 的 `output.modelRetry`：schemaVersion、retryCount、maxRetries、firstFailureAt、deadlineAt、lastErrorCode。失败以项目事务将任务 RUNNING 转 READY，保存错误及 nextActionAt、增加尝试编号、释放租约并递增 epoch；旧线程不能写回答或响应检查点。下次认领从冻结请求恢复消息；新 stream epoch 清空该尝试文本，失败前缀保留为 INTERRUPTED。停止可直接取消 READY 任务。成功保留重试历史；次数或期限用尽时 Task/Run FAILED 并释放活动槽位。
 
 输入框上方固定显示安全原因、重试次数、下次时间与截止时间；任务被认领后改为“正在重试”，成功/停止后撤下，耗尽时显示终态原因并恢复发送。Task 读取失败提供重读入口；共用现有任务缓存、项目事件及快照恢复，不为 token 更新整卡状态、不新增轮询。OpenAPI 增加 AgentModelRetry 投影及 Task.output 可选字段，生成 TypeScript；无数据库迁移、依赖升级或新端点，需同步部署前后端以显示重试状态。
+
+## 长任务上下文与恢复修订
+
+[ADR 0063](adr/0063-durable-context-compaction-and-long-agent-tasks.md) 将新请求的旧字符裁剪替换为 Token 预算触发的持久语义压缩。默认窗口为 1,000,000 Token，在估算占用达到完整窗口的 50% 时触发压缩。压缩是无工具的模型回合，记录用量和检查点，保留结构化公开交接、完整初始指令与已激活 Skill 主说明；它不生成聊天回复或 assistantStream。响应提交后重启只重放该响应，未提交时沿同一请求恢复。无效摘要最多按部署配置修复，不能执行摘要中的工具。
+
+临时模型故障的默认恢复限额改为首次失败起 24 小时内最多重试 288 次，退避封顶 5 分钟，可部署配置；已有恢复中的请求保留已保存的次数与截止时间。输入区继续显示服务端的实际次数和期限，时间包含日期，跨日等待不会只显示钟点。达到限额、局部修复耗尽或固定指令超出上下文预算时说明具体原因；完整记录和已完成产物保留。单次请求超时、媒体审批与 UNKNOWN 规则继续有效。上文的固定 10 次/5 分钟及旧字符裁剪作为历史说明，不代表新默认值。

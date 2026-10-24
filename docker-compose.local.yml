@@ -111,6 +111,16 @@ services:
       AGENVAS_DB_PASSWORD_FILE: /run/agenvas/credentials/installation/database-password
       AGENVAS_LLM_MODE: configured
       AGENVAS_LLM_SCHEDULER_ENABLED: "true"
+      # Agent budgets are deployment settings; adjust to the selected model's actual context window.
+      AGENVAS_AGENT_CONTEXT_WINDOW_TOKENS: "1000000"
+      AGENVAS_AGENT_COMPACTION_THRESHOLD_PERCENT: "50"
+      AGENVAS_AGENT_RESPONSE_RESERVE_TOKENS: "8192"
+      AGENVAS_AGENT_SUMMARY_TOKENS: "2048"
+      AGENVAS_AGENT_RECENT_TOOL_ROUNDS: "4"
+      AGENVAS_AGENT_RECOVERY_WINDOW: 24h
+      AGENVAS_AGENT_MAX_MODEL_RETRIES: "288"
+      AGENVAS_AGENT_RETRY_MAX_DELAY: 5m
+      AGENVAS_AGENT_MAX_REPAIR_ATTEMPTS: "4"
       AGENVAS_LLM_ALLOW_LOOPBACK_HTTP: "false"
       AGENVAS_CREDENTIAL_MASTER_KEY_FILE: /run/agenvas/credentials/installation/credential-master-key
       AGENVAS_CREDENTIAL_KEY_VERSION: "1"

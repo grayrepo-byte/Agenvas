@@ -56,6 +56,7 @@ public class AgentTurnWorker {
     private final ToolRegistry registry;
     /** 核验本次 Run 钉住的模型配置具有工具调用能力。 */
     private final ChatGateway gateway;
+    private final AgentContextService context;
     /** 独立于直连文本的有界模型调用与租约心跳生命周期。 */
     private final LeasedModelExecutor modelExecutor;
 
@@ -79,9 +80,10 @@ public class AgentTurnWorker {
             InitialModelContextService initialContext, LlmConversationService conversation,
             RepairModelContextService repairContext,
             LlmRoundService rounds, LlmTurnRepository turns, LlmProtocolCodec codec,
-            ToolBatchExecutionService executor, ToolRegistry registry, ChatGateway gateway, Clock clock) {
+            ToolBatchExecutionService executor, ToolRegistry registry, ChatGateway gateway, Clock clock,
+            AgentContextService context) {
         this(tasks, taskProperties, commits, initialContext, conversation, repairContext, rounds,
-                turns, codec, executor, registry, gateway, clock,
+                turns, codec, executor, registry, gateway, clock, context,
                 new LeasedModelExecutor("agent-turn", tasks, taskProperties));
     }
 
@@ -91,6 +93,7 @@ public class AgentTurnWorker {
             RepairModelContextService repairContext,
             LlmRoundService rounds, LlmTurnRepository turns, LlmProtocolCodec codec,
             ToolBatchExecutionService executor, ToolRegistry registry, ChatGateway gateway, Clock clock,
+            AgentContextService context,
             LeasedModelExecutor modelExecutor) {
         this.clock = clock;
         this.tasks = tasks;
@@ -105,6 +108,7 @@ public class AgentTurnWorker {
         this.executor = executor;
         this.registry = registry;
         this.gateway = gateway;
+        this.context = context;
         this.modelExecutor = modelExecutor;
     }
 
@@ -180,31 +184,38 @@ public class AgentTurnWorker {
             if (recorded != null) applyResponse(lease, workerId, ownerId, stepIndex, recorded, execution);
             return;
         }
-        List<Message> messages = frozenMessages(lease, ownerId, stepIndex, saved);
-        List<ToolCallback> definitions = saved == null ? registry.modelDefinitions(run.policySnapshot())
-                : codec.requestTools(saved.request(), RunToolPolicy.allowed(run.policySnapshot()));
+        JsonNode request = frozenRequest(lease, ownerId, stepIndex, saved, run);
+        List<ToolCallback> definitions = codec.requestTools(request, RunToolPolicy.allowed(run.policySnapshot()));
         JsonNode response = awaitModelResponse(lease, workerId, ownerId, stepIndex,
-                messages, definitions, remaining, saved != null && saved.status() == LlmTurn.Status.RESPONDED, execution);
+                request, definitions, remaining, saved != null && saved.status() == LlmTurn.Status.RESPONDED, execution);
         applyResponse(lease, workerId, ownerId, stepIndex, response, execution);
     }
 
     /** Retry and restart replay the saved request instead of assembling changed user content. */
-    private List<Message> frozenMessages(Task lease, UUID ownerId, int stepIndex, LlmTurn saved) {
-        if (saved != null) return codec.requestMessages(saved.request());
-        if (lease.input().has("repairFromStep")) return repairContext.assemble(ownerId, lease);
-        if (stepIndex == 0) return initialContext.assemble(ownerId, lease.projectId(), lease.runId());
-        return conversation.afterToolRound(ownerId, lease.projectId(), lease.runId(), stepIndex - 1);
+    private JsonNode frozenRequest(Task lease, UUID ownerId, int stepIndex, LlmTurn saved, AgentRun run) {
+        if (saved != null) return saved.request();
+        if (stepIndex > 0) {
+            LlmTurn previous = turns.find(lease.projectId(), lease.runId(), stepIndex - 1).orElseThrow();
+            if (AgentContextService.isCompaction(previous.request())) {
+                return lease.input().has("repairFromStep") ? context.repair(previous.request())
+                        : context.afterCompaction(previous.request(), previous.response());
+            }
+        }
+        List<Message> messages = lease.input().has("repairFromStep") ? repairContext.assemble(ownerId, lease)
+                : stepIndex == 0 ? initialContext.assemble(ownerId, lease.projectId(), lease.runId())
+                : conversation.afterToolRound(ownerId, lease.projectId(), lease.runId(), stepIndex - 1);
+        return context.prepare(messages, registry.modelDefinitions(run.policySnapshot()));
     }
 
     private JsonNode awaitModelResponse(Task lease, String workerId, UUID ownerId, int stepIndex,
-            List<Message> messages, List<ToolCallback> definitions, Duration remaining, boolean recorded,
+            JsonNode request, List<ToolCallback> definitions, Duration remaining, boolean recorded,
             LeasedModelExecutor.Execution execution) throws Exception {
         // rounds.callLeased 在网络请求两侧提交带租约校验的检查点；这里不持有数据库事务。
         Duration wait = remaining.compareTo(MODEL_TIMEOUT) < 0 ? remaining : MODEL_TIMEOUT;
         // Replaying a saved response is allowed after the retry deadline, without a request.
         Duration timeout = recorded ? MODEL_TIMEOUT : Duration.ofMillis(Math.max(1, wait.toMillis()));
         return execution.call(() -> rounds.callLeased(ownerId,
-                lease.projectId(), lease.runId(), stepIndex, messages,
+                lease.projectId(), lease.runId(), stepIndex, request,
                 definitions,
                 Map.of("projectId", lease.projectId().toString(),
                         "runId", lease.runId().toString()), lease, workerId), timeout);
@@ -245,6 +256,17 @@ public class AgentTurnWorker {
     private void applyResponse(Task lease, String workerId, UUID ownerId, int stepIndex, JsonNode response,
             LeasedModelExecutor.Execution execution) {
         execution.checkActive();
+        LlmTurn saved = turns.find(lease.projectId(), lease.runId(), stepIndex).orElse(null);
+        if (saved != null && AgentContextService.isCompaction(saved.request())) {
+            try {
+                context.summary(saved.request(), response);
+            } catch (IllegalArgumentException invalid) {
+                commits.scheduleRepair(lease, workerId, "AGENT_CONTEXT_SUMMARY_INVALID", "Return a bounded public task handoff JSON");
+                return;
+            }
+            commits.complete(lease, workerId);
+            return;
+        }
         try {
             AssistantMessage assistant = codec.selectedAssistant(response);
             validateCalls(assistant);
@@ -277,6 +299,7 @@ public class AgentTurnWorker {
      */
     static String failureCode(Throwable failure) {
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof AgentContextService.BudgetExceeded) return AgentContextService.BUDGET_EXCEEDED;
             if (cause instanceof ApiProblemException problem
                     && ("CREDENTIAL_KEY_VERSION_MISSING".equals(problem.code())
                             || "LLM_CONFIG_UNAVAILABLE".equals(problem.code())

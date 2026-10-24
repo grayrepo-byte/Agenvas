@@ -15,14 +15,20 @@ describe("AgentModelRetryNotice", () => {
     render(<AgentModelRetryNotice task={task} />);
     expect(screen.getByRole("status")).toHaveTextContent("等待自动重试 · 重试 2/10");
     expect(screen.getByRole("status")).toHaveTextContent("模型响应等待超时");
-    expect(screen.getByText(/^下次重试：/)).toHaveTextContent(new Date(task.nextActionAt).toLocaleTimeString("zh-CN"));
-    expect(screen.getByText(/^重试截止：/)).toHaveTextContent(new Date(retry.deadlineAt).toLocaleTimeString("zh-CN"));
+    expect(screen.getByText(/^下次重试：/)).toHaveTextContent(new Date(task.nextActionAt).toLocaleString("zh-CN"));
+    expect(screen.getByText(/^重试截止：/)).toHaveTextContent(new Date(retry.deadlineAt).toLocaleString("zh-CN"));
     expect(screen.getByRole("status")).not.toHaveTextContent("private-test-input");
   });
   it("changes to retrying when the server claims the attempt", () => {
     render(<AgentModelRetryNotice task={{ ...task, status: "RUNNING" }} />);
     expect(screen.getByRole("status")).toHaveTextContent("正在重试模型调用");
     expect(screen.queryByText(/^下次重试：/)).not.toBeInTheDocument();
+  });
+  it("shows the date and configured attempt limit for recovery on the following day", () => {
+    const deadlineAt = "2026-10-05T01:00:00Z";
+    render(<AgentModelRetryNotice task={{ ...task, output: { modelRetry: { ...retry, maxRetries: 288, deadlineAt } } }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("重试 2/288");
+    expect(screen.getByText(/^重试截止：/)).toHaveTextContent(new Date(deadlineAt).toLocaleString("zh-CN"));
   });
   it.each(["SUCCEEDED", "FAILED", "CANCELED", "UNKNOWN"] as const)("hides historical metadata in %s", (status) => {
     render(<AgentModelRetryNotice task={{ ...task, status }} />);

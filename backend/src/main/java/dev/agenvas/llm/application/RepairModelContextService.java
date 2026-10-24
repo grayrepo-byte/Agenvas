@@ -62,16 +62,11 @@ public class RepairModelContextService {
                 codec.requestMessages(failed.request()), mapper));
         String code = repairTask.input().path("repairErrorCode").asText("");
         String detail = repairTask.input().path("repairErrorDetail").asText("");
-        if (messages.size() <= LlmConversationService.MAX_HISTORY_MESSAGES - 3) {
-            appendRejectedCalls(messages, failed.response(), code, detail);
-        }
-        if (messages.size() >= LlmConversationService.MAX_HISTORY_MESSAGES) {
-            throw new IllegalStateException("Repair prompt exceeds the message limit");
-        }
+        appendRejectedCalls(messages, failed.response(), code, detail);
         messages.add(new UserMessage("The previous structured tool output was rejected ("
                 + code + "): " + detail + ". Regenerate the entire response with valid "
                 + "tool arguments. No tools from that response were applied. Do not claim approval."));
-        return RunContextWindow.project(messages, mapper);
+        return List.copyOf(messages);
     }
 
     /** 对安全且有界的调用 ID 回放合成拒绝结果；不会再次调用任何业务工具。 */

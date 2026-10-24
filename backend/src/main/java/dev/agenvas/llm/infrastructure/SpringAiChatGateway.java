@@ -98,7 +98,7 @@ public class SpringAiChatGateway implements ChatGateway {
     @Override
     public Exchange call(List<Message> messages, List<ToolCallback> tools,
             Map<String, Object> toolContext) {
-        if (messages == null || messages.isEmpty() || messages.size() > 80
+        if (messages == null || messages.isEmpty() || messages.size() > LlmProtocolCodec.MAX_MESSAGES
                 || tools == null || toolContext == null) {
             throw new IllegalArgumentException("Invalid bounded ChatGateway round");
         }
@@ -131,7 +131,7 @@ public class SpringAiChatGateway implements ChatGateway {
         if (!configIdentity().equals(expected)) {
             throw new IllegalStateException("ChatGateway configuration changed before model stream");
         }
-        if (messages == null || messages.isEmpty() || messages.size() > 80
+        if (messages == null || messages.isEmpty() || messages.size() > LlmProtocolCodec.MAX_MESSAGES
                 || tools == null || toolContext == null || publicDelta == null || streamLog == null) {
             throw new IllegalArgumentException("Invalid bounded ChatGateway stream");
         }

@@ -48,6 +48,7 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get ARTIFACT_VERSION_CONFLICT() { return t("agent.blocked.artifactVersionConflictDetail"); },
   get STORYBOARD_VERSION_CONFLICT() { return t("agent.failure.storyboardVersionConflict"); },
   get LLM_RETRY_EXHAUSTED() { return t("agent.retry.exhausted"); },
+  get AGENT_CONTEXT_BUDGET_EXCEEDED() { return t("agent.blocked.contextBudget"); },
   get LLM_CONNECTION_FAILED() { return t("agent.retry.connection"); },
   get LLM_RATE_LIMITED() { return t("agent.retry.rateLimited"); },
   get LLM_SERVICE_UNAVAILABLE() { return t("agent.retry.unavailable"); },
