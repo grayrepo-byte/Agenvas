@@ -55,13 +55,13 @@ public class AgentContextService {
             no tools and cannot perform actions. Return concise JSON within the requested token budget.
             """;
 
-    private final AgentRuntimeProperties properties;
+    private final DirectorSettingsService settings;
     private final ObjectMapper mapper;
     private final LlmProtocolCodec codec;
     private final JTokkitTokenCountEstimator tokens = new JTokkitTokenCountEstimator();
 
-    public AgentContextService(AgentRuntimeProperties properties, ObjectMapper mapper, LlmProtocolCodec codec) {
-        this.properties = properties;
+    public AgentContextService(DirectorSettingsService settings, ObjectMapper mapper, LlmProtocolCodec codec) {
+        this.settings = settings;
         this.mapper = mapper;
         this.codec = codec;
     }
@@ -87,6 +87,7 @@ public class AgentContextService {
 
     /** Already frozen requests bypass planning; only newly assembled requests may be transformed. */
     public ObjectNode prepare(List<Message> history, List<ToolCallback> tools) {
+        DirectorSettings properties = settings.get();
         if (history.size() <= LlmProtocolCodec.MAX_MESSAGES - MESSAGE_MARGIN
                 && estimate(history, tools) < properties.compactionTriggerTokens()) return codec.request(history, tools);
 

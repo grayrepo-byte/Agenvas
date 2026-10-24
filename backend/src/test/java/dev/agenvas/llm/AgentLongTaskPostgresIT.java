@@ -78,8 +78,6 @@ class AgentLongTaskPostgresIT {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
-        // Deliberately use a small window to exercise many compactions without a million-token fixture.
-        registry.add("agenvas.llm.agent.context-window-tokens", () -> 32768);
     }
     @Autowired IdentityService identities;
     @Autowired AgentInstanceService agents;
@@ -103,6 +101,7 @@ class AgentLongTaskPostgresIT {
 
     @BeforeAll void setupOwner() { owner = identities.setup("long-task-admin", "synthetic-long-task-password"); }
     @BeforeEach void setupRun() {
+        jdbc.sql("update director_settings set context_window_tokens=32768").update();
         gateway.written = 0;
         gateway.compactions = 0;
         gateway.failed = false;

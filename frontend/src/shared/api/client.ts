@@ -186,6 +186,8 @@ export type CallLogCleanupResult = components["schemas"]["CallLogCleanupResult"]
 export type CleanupCallLogsRequest = NonNullable<paths["/api/v1/settings/call-log-retention/cleanup"]["post"]["requestBody"]>["content"]["application/json"];
 export type CallLogRetentionSettings = components["schemas"]["CallLogRetentionSettings"];
 export type UpdateCallLogRetentionRequest = NonNullable<paths["/api/v1/settings/call-log-retention"]["put"]["requestBody"]>["content"]["application/json"];
+export type DirectorSettings = components["schemas"]["DirectorSettings"];
+export type UpdateDirectorSettingsRequest = components["schemas"]["UpdateDirectorSettingsRequest"];
 export type DebugSettings = components["schemas"]["DebugSettings"];
 export type CallDebug = components["schemas"]["CallDebug"];
 export type DebugBody = components["schemas"]["DebugBody"];
@@ -281,6 +283,13 @@ export async function updateCallLogRetentionSettings(request: UpdateCallLogReten
   return writeJson<CallLogRetentionSettings>("/api/v1/settings/call-log-retention", {
     method: "PUT", body: JSON.stringify(request),
   });
+}
+
+export function getDirectorSettings(): Promise<DirectorSettings> {
+  return readJson("/api/v1/settings/director", t("settings.director.loadFailed"));
+}
+export function updateDirectorSettings(request: UpdateDirectorSettingsRequest): Promise<DirectorSettings> {
+  return writeJson("/api/v1/settings/director", { method: "PUT", body: JSON.stringify(request) }, t("settings.director.saveFailed"));
 }
 
 export async function getDebugSettings(): Promise<DebugSettings> {

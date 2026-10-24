@@ -57,10 +57,10 @@ public final class AgentModelRetryPolicy {
                 : Duration.between(now, Instant.parse(retry.path("deadlineAt").asText()));
     }
     static Decision afterFailure(Task task, String code, Instant now, ObjectMapper mapper) {
-        return afterFailure(task, code, now, mapper, AgentRuntimeProperties.defaults());
+        return afterFailure(task, code, now, mapper, DirectorSettings.defaults());
     }
     static Decision afterFailure(Task task, String code, Instant now, ObjectMapper mapper,
-            AgentRuntimeProperties properties) {
+            DirectorSettings properties) {
         JsonNode previous = progress(task);
         Instant first = previous == null ? now : Instant.parse(previous.path("firstFailureAt").asText());
         // Restarts and deployment edits cannot extend an already persisted recovery window.

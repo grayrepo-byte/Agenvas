@@ -72,7 +72,7 @@ class AgentTurnCommitServiceTest {
         });
         var service = new AgentTurnCommitService(repository, tasks, runs, mock(AgentTurnLeaseGuard.class), events,
                 mapper, turns, mock(ToolExecutionRepository.class), codec, mock(AgentMediaOutcomeService.class),
-                Clock.systemUTC(), AgentRuntimeProperties.defaults());
+                Clock.systemUTC(), source(DirectorSettings.defaults()));
 
         assertThat(service.complete(lease, "worker")).isEqualTo(AgentTurnCommitService.Decision.CONTINUE);
 
@@ -119,11 +119,11 @@ class AgentTurnCommitServiceTest {
         });
         var service = new AgentTurnCommitService(repository, tasks, runs, mock(AgentTurnLeaseGuard.class),
                 events, mapper, turns, mock(ToolExecutionRepository.class), new LlmProtocolCodec(mapper),
-                mock(AgentMediaOutcomeService.class), Clock.systemUTC(), AgentRuntimeProperties.defaults());
+                mock(AgentMediaOutcomeService.class), Clock.systemUTC(), source(DirectorSettings.defaults()));
 
         assertThat(service.scheduleRepair(lease, "worker", "TOOL_ARGUMENT_INVALID", "Synthetic invalid argument"))
-                .isEqualTo(attempt < AgentRuntimeProperties.defaults().maxRepairAttempts());
-        if (attempt < AgentRuntimeProperties.defaults().maxRepairAttempts()) {
+                .isEqualTo(attempt < DirectorSettings.defaults().maxRepairAttempts());
+        if (attempt < DirectorSettings.defaults().maxRepairAttempts()) {
             verify(tasks).create(eq(owner), eq(project), eq(runId), eq("agent-turn-91"),
                     eq(Task.Kind.AGENT_TURN), any(), eq(1));
             verify(runs).advanceStep(owner, project, runId, 3L, 90);
@@ -163,11 +163,17 @@ class AgentTurnCommitServiceTest {
         }).when(events).recordChange(any(), any(), any());
         var service = new AgentTurnCommitService(repository, tasks, runs, mock(AgentTurnLeaseGuard.class),
                 events, mapper, mock(LlmTurnRepository.class), mock(ToolExecutionRepository.class),
-                new LlmProtocolCodec(mapper), mock(AgentMediaOutcomeService.class), Clock.systemUTC(), AgentRuntimeProperties.defaults());
+                new LlmProtocolCodec(mapper), mock(AgentMediaOutcomeService.class), Clock.systemUTC(), source(DirectorSettings.defaults()));
 
         service.finishFailure(lease, "worker", "AGENT_TURN_FAILED");
 
         verify(tasks).fail(lease, "worker", "AGENT_TURN_FAILED");
         verify(runs).transition(owner, project, runId, 3L, AgentRun.Status.FAILED);
     }
+    private static DirectorSettingsService source(DirectorSettings value) {
+        var source = org.mockito.Mockito.mock(DirectorSettingsService.class);
+        org.mockito.Mockito.when(source.get()).thenReturn(value);
+        return source;
+    }
+
 }

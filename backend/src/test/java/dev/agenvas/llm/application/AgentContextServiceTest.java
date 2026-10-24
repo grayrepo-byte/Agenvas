@@ -3,7 +3,6 @@ package dev.agenvas.llm.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -21,9 +20,9 @@ import tools.jackson.databind.json.JsonMapper;
 class AgentContextServiceTest {
     private final JsonMapper mapper = new JsonMapper();
     private final LlmProtocolCodec codec = new LlmProtocolCodec(mapper);
-    private final AgentRuntimeProperties properties = new AgentRuntimeProperties(8192, 50, 1024, 512, 2,
-            Duration.ofHours(24), 288, Duration.ofMinutes(5), 4);
-    private final AgentContextService context = new AgentContextService(properties, mapper, codec);
+    private final DirectorSettings properties = new DirectorSettings(8192, 50, 1024, 512, 2,
+            1440, 288, 300, 4, 1);
+    private final AgentContextService context = new AgentContextService(source(properties), mapper, codec);
     private static final String HANDOFF = """
             {"goal":"Finish all 100 shots","completed":["Shots 1-20 saved"],"decisions":["Keep the blue coat"],
              "pending":["Shots 21-100"],"nextSteps":["Read the current storyboard CAS"],
@@ -66,7 +65,7 @@ class AgentContextServiceTest {
     }
 
     @Test void resourceMessageGuardStillCompactsBelowTheTokenTriggerAndKeepsPreviousHandoffs() {
-        var large = new AgentContextService(AgentRuntimeProperties.defaults(), mapper, codec);
+        var large = new AgentContextService(source(DirectorSettings.defaults()), mapper, codec);
         var history = history(LlmProtocolCodec.MAX_MESSAGES / 2, "Small public fact");
         history.add(2, UserMessage.builder().text("Earlier summary: keep the blue coat")
                 .metadata(Map.of(AgentContextService.SUMMARY, 1)).build());
@@ -117,7 +116,7 @@ class AgentContextServiceTest {
     }
 
     @Test void oneMillionWindowTriggersAtHalfTheWindowBeforeTheHardInputBudget() {
-        var defaults = AgentRuntimeProperties.defaults();
+        var defaults = DirectorSettings.defaults();
         assertThat(defaults.contextWindowTokens()).isEqualTo(1_000_000);
         assertThat(defaults.compactionThresholdPercent()).isEqualTo(50);
         assertThat(defaults.compactionTriggerTokens()).isEqualTo(500_000);
@@ -131,7 +130,7 @@ class AgentContextServiceTest {
     }
 
     @Test void smallHistoriesAboveTheFormerEightyMessageLimitRemainIntactInTheOneMillionWindow() {
-        var large = new AgentContextService(AgentRuntimeProperties.defaults(), mapper, codec);
+        var large = new AgentContextService(source(DirectorSettings.defaults()), mapper, codec);
         var history = history(60, "Small public fact");
         assertThat(large.prepare(history, List.of())).isEqualTo(codec.request(history, List.of()));
     }
@@ -156,4 +155,10 @@ class AgentContextServiceTest {
         return messages;
     }
     private JsonNode response(String text) { return codec.response(new ChatResponse(List.of(new Generation(new AssistantMessage(text))))); }
+    private static DirectorSettingsService source(DirectorSettings value) {
+        var source = org.mockito.Mockito.mock(DirectorSettingsService.class);
+        org.mockito.Mockito.when(source.get()).thenReturn(value);
+        return source;
+    }
+
 }

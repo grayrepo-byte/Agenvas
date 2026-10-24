@@ -9,3 +9,9 @@
 取舍是压缩增加模型调用和费用，语义摘要也可能遗漏事实；原始检查点及业务内容保留，关键内容按精确版本重读。默认模型窗口预算为 1,000,000 Token，达到窗口的 50%（500,000 个估算 Token）触发压缩，预留 8,192 Token 给响应，摘要最多 2,048 个估算 Token，近期最多保留 4 个完整工具回合。部署者应按实际模型容量配置，估算器不是 Provider tokenizer，也不代表已测得真实模型窗口；固定指令与主说明超出预算时明确结束并给出配置提示。此工作不新增数据库迁移或专属远程服务，Mock 保持离线可运行；升级需同步部署后端及生成类型后的前端，以接受可配置的重试次数和跨日时间显示。
 
 设计参考：[Effective context engineering](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents) 的 compaction 与结构化记录，以及 [Effective harnesses for long-running agents](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) 的持久任务交接；实现使用现有 Spring AI ChatGateway，不依赖这些厂商的专属运行服务。验证范围与未完成的真实长时间验收见开发清单。
+
+## 管理员界面修订
+
+按用户明确决定，运行预算改由独立“导演设置”页统一管理，取消环境变量入口。V41 新增单例 `director_settings`，初始化 1M / 50% 及现有恢复默认值；旧环境值不自动导入，升级后自定义安装需在界面重新保存。运行时读取数据库，不缓存进程级可变配置；设置保存通过 expectedVersion/CAS，过期页面不能覆盖新值。管理员 GET/PUT `/api/v1/settings/director`，写请求仍受 CSRF 保护，不触发模型调用或授予业务权限。
+
+该修订替代上文的部署参数来源及“无迁移”范围。普通新模型请求读取一份一致设置快照；已保存的请求/压缩计划、首次失败固定的恢复期限与次数、既有修复链上限继续原样消费。前端草稿固定开始编辑时的版本，保存失败或后台刷新不覆盖草稿，冲突须显式载入最新版。取舍是运行配置读取依赖数据库，与任务持久状态的可用性一致；不保留环境变量与数据库双重来源。

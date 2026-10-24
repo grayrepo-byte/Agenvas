@@ -85,10 +85,6 @@ class AgentModelRetryPostgresIT {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
-        // Exercise custom short limits; long-task defaults have their own clock-driven coverage.
-        properties.add("agenvas.llm.agent.recovery-window", () -> "5m");
-        properties.add("agenvas.llm.agent.max-model-retries", () -> 10);
-        properties.add("agenvas.llm.agent.retry-max-delay", () -> "30s");
     }
     @Autowired private IdentityService identities;
     @Autowired private ProjectService projects;
@@ -113,6 +109,7 @@ class AgentModelRetryPostgresIT {
         owner = identities.setup("retry-admin", "retry-password-123");
     }
     @BeforeEach void setupRun() {
+        jdbc.sql("update director_settings set recovery_window_minutes=5, max_model_retries=10, retry_max_delay_seconds=30").update();
         clock.ticking = false;
         // Exact completion-time assertions use PostgreSQL's persisted microsecond precision.
         clock.now = Instant.now().truncatedTo(ChronoUnit.MICROS);

@@ -59,7 +59,7 @@ class AgentModelRetryPolicyTest {
         assertThat(decision.progress().path("maxRetries").asInt()).isEqualTo(288);
         assertThat(decision.progress().path("deadlineAt").asText()).isEqualTo(first.plus(Duration.ofHours(24)).toString());
         when(task.output()).thenReturn(mapper.createObjectNode().set("modelRetry", decision.progress()));
-        var changed = new AgentRuntimeProperties(32768, 50, 8192, 2048, 4, Duration.ofMinutes(1), 1, Duration.ofSeconds(2), 4);
+        var changed = new DirectorSettings(32768, 50, 8192, 2048, 4, 1, 1, 2, 4, 1);
         var resumed = AgentModelRetryPolicy.afterFailure(task, "LLM_CONNECTION_FAILED", first.plus(Duration.ofHours(16)), mapper, changed);
         assertThat(resumed.exhausted()).isFalse();
         assertThat(resumed.progress().path("maxRetries").asInt()).isEqualTo(288);

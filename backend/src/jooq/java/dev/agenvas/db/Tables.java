@@ -30,6 +30,7 @@ import dev.agenvas.db.tables.CanvasItemMediaInput;
 import dev.agenvas.db.tables.CanvasItemMediaInputSource;
 import dev.agenvas.db.tables.CanvasItemMediaVersion;
 import dev.agenvas.db.tables.CreativeSkill;
+import dev.agenvas.db.tables.DirectorSettings;
 import dev.agenvas.db.tables.IdempotencyRecord;
 import dev.agenvas.db.tables.InstallationLock;
 import dev.agenvas.db.tables.LibraryCleanup;
@@ -229,6 +230,11 @@ public class Tables {
      * 用户创作 Skill 身份、当前发布版本和回收站状态
      */
     public static final CreativeSkill CREATIVE_SKILL = CreativeSkill.CREATIVE_SKILL;
+
+    /**
+     * 管理员维护的全局导演上下文、压缩与恢复设置；新请求读取当前值，已有检查点不改写
+     */
+    public static final DirectorSettings DIRECTOR_SETTINGS = DirectorSettings.DIRECTOR_SETTINGS;
 
     /**
      * 按可信身份和作用域记录命令摘要与响应，拒绝同键不同载荷

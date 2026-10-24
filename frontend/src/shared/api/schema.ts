@@ -634,6 +634,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/director": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取全局导演上下文与恢复设置（仅管理员） */
+        get: operations["getDirectorSettings"];
+        /**
+         * 以版本比较保存全局导演设置
+         * @description 保存后新请求立即读取，不需要重启。已冻结模型请求、压缩计划、恢复期限和修复链上限保持原值。不会触发模型调用或更改权限与媒体审批。响应预留至少1024且小于窗口一半；摘要至少256且不超过输入预算四分之一。环境变量不再覆盖这些设置。
+         */
+        put: operations["updateDirectorSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/debug": {
         parameters: {
             query?: never;
@@ -4331,6 +4358,50 @@ export interface components {
             /** @default null */
             retentionDays: number | null;
             version: number;
+        };
+        DirectorSettings: {
+            /** @default 1000000 */
+            contextWindowTokens: number;
+            /** @default 50 */
+            compactionThresholdPercent: number;
+            /** @default 8192 */
+            responseReserveTokens: number;
+            /** @default 2048 */
+            summaryTokens: number;
+            /** @default 4 */
+            recentToolRounds: number;
+            /** @default 1440 */
+            recoveryWindowMinutes: number;
+            /** @default 288 */
+            maxModelRetries: number;
+            /** @default 300 */
+            retryMaxDelaySeconds: number;
+            /** @default 4 */
+            maxRepairAttempts: number;
+            /** Format: int64 */
+            version: number;
+        };
+        UpdateDirectorSettingsRequest: {
+            /** @default 1000000 */
+            contextWindowTokens: number;
+            /** @default 50 */
+            compactionThresholdPercent: number;
+            /** @default 8192 */
+            responseReserveTokens: number;
+            /** @default 2048 */
+            summaryTokens: number;
+            /** @default 4 */
+            recentToolRounds: number;
+            /** @default 1440 */
+            recoveryWindowMinutes: number;
+            /** @default 288 */
+            maxModelRetries: number;
+            /** @default 300 */
+            retryMaxDelaySeconds: number;
+            /** @default 4 */
+            maxRepairAttempts: number;
+            /** Format: int64 */
+            expectedVersion: number;
         };
         DebugSettings: {
             /** @default false */
@@ -8701,6 +8772,68 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getDirectorSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前持久设置；Cache-Control 为 no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectorSettings"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateDirectorSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDirectorSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存后的设置和递增版本；Cache-Control 为 no-store */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectorSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
         };
     };

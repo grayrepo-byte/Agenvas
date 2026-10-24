@@ -29,7 +29,7 @@ public class AgentTurnCommitService {
     /** 反查任务所有者，并核验回合任务的持久化状态。 */
     private final TaskRepository taskRepository;
     private final Clock clock;
-    private final AgentRuntimeProperties properties;
+    private final DirectorSettingsService settings;
     /** 带租约 fencing 的任务完成、失败与下一回合创建入口。 */
     private final TaskService tasks;
     /** 使用 Run 的预期版本推进状态和步骤游标。 */
@@ -63,9 +63,9 @@ public class AgentTurnCommitService {
             AgentRunService runs, AgentTurnLeaseGuard leaseGuard,
             ProjectEventService events, ObjectMapper mapper,
             LlmTurnRepository turns, ToolExecutionRepository toolExecutions,
-            LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes, Clock clock, AgentRuntimeProperties properties) {
+            LlmProtocolCodec codec, AgentMediaOutcomeService mediaOutcomes, Clock clock, DirectorSettingsService settings) {
         this.clock = clock;
-        this.properties = properties;
+        this.settings = settings;
         this.taskRepository = taskRepository;
         this.tasks = tasks;
         this.runs = runs;
@@ -155,7 +155,7 @@ public class AgentTurnCommitService {
                     // repairFromStep is deliberately absent: resume the saved handoff, not its repair prompt.
                     if (compacting && lease.input().has("repairAttempt")) {
                         input.set("repairAttempt", lease.input().get("repairAttempt"));
-                        input.put("maxRepairAttempts", lease.input().path("maxRepairAttempts").asInt(properties.maxRepairAttempts()));
+                        input.put("maxRepairAttempts", lease.input().path("maxRepairAttempts").asInt(settings.get().maxRepairAttempts()));
                     }
                     tasks.create(ownerId, lease.projectId(), lease.runId(),
                             "agent-turn-" + (stepIndex + 1), Task.Kind.AGENT_TURN, input, 1);
@@ -205,7 +205,7 @@ public class AgentTurnCommitService {
                 throw new IllegalStateException("Run cannot repair this model response");
             }
             int attempt = lease.input().path("repairAttempt").asInt(0);
-            int maximum = lease.input().path("maxRepairAttempts").asInt(properties.maxRepairAttempts());
+            int maximum = lease.input().path("maxRepairAttempts").asInt(settings.get().maxRepairAttempts());
             if (attempt < 0 || attempt > maximum) {
                 throw new IllegalStateException("Invalid model repair count");
             }
@@ -308,7 +308,7 @@ public class AgentTurnCommitService {
             }
             Task current = taskRepository.findById(lease.id()).orElseThrow();
             AgentModelRetryPolicy.Decision decision = AgentModelRetryPolicy.afterFailure(
-                    current, errorCode, clock.instant(), mapper, properties);
+                    current, errorCode, clock.instant(), mapper, settings.get());
             tasks.recordAgentModelFailure(lease, workerId, decision.progress(),
                     decision.exhausted() ? AgentModelRetryPolicy.EXHAUSTED_CODE : errorCode,
                     decision.nextActionAt(), decision.exhausted());

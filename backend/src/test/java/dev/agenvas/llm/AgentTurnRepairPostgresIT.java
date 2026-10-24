@@ -56,7 +56,6 @@ class AgentTurnRepairPostgresIT {
         properties.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         properties.add("spring.datasource.username", POSTGRES::getUsername);
         properties.add("spring.datasource.password", POSTGRES::getPassword);
-        properties.add("agenvas.llm.agent.max-repair-attempts", () -> 2);
     }
 
     @Autowired private IdentityService identities;
@@ -70,6 +69,7 @@ class AgentTurnRepairPostgresIT {
 
     @Test
     void repairsWholeInvalidRoundOnceAndBlocksAfterTwoFailedRepairs() {
+        jdbc.sql("update director_settings set max_repair_attempts=2").update();
         AdminPrincipal owner = identities.setup("repair-admin", "repair-password-123");
         Project project = projects.create(owner.userId(), "Repair project",
                 Project.AspectRatio.LANDSCAPE_16_9);

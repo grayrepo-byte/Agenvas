@@ -1112,6 +1112,41 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /api/v1/settings/director:
+    parameters:
+      - {$ref: "#/components/parameters/AcceptLanguage"}
+    get:
+      operationId: getDirectorSettings
+      summary: 读取全局导演上下文与恢复设置（仅管理员）
+      tags: [Settings]
+      responses:
+        "200":
+          description: 当前持久设置；Cache-Control 为 no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DirectorSettings"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    put:
+      operationId: updateDirectorSettings
+      summary: 以版本比较保存全局导演设置
+      description: 保存后新请求立即读取，不需要重启。已冻结模型请求、压缩计划、恢复期限和修复链上限保持原值。不会触发模型调用或更改权限与媒体审批。响应预留至少1024且小于窗口一半；摘要至少256且不超过输入预算四分之一。环境变量不再覆盖这些设置。
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateDirectorSettingsRequest"}
+      responses:
+        "200":
+          description: 保存后的设置和递增版本；Cache-Control 为 no-store
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DirectorSettings"}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/settings/debug:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -5697,6 +5732,36 @@ components:
       properties:
         retentionDays: {type: [integer, "null"], minimum: 1, maximum: 3650, default: null}
         version: {type: integer, minimum: 1}
+    DirectorSettings:
+      type: object
+      additionalProperties: false
+      required: [contextWindowTokens, compactionThresholdPercent, responseReserveTokens, summaryTokens, recentToolRounds, recoveryWindowMinutes, maxModelRetries, retryMaxDelaySeconds, maxRepairAttempts, version]
+      properties:
+        contextWindowTokens: {type: integer, minimum: 8192, maximum: 2000000, default: 1000000}
+        compactionThresholdPercent: {type: integer, minimum: 1, maximum: 100, default: 50}
+        responseReserveTokens: {type: integer, minimum: 1024, default: 8192}
+        summaryTokens: {type: integer, minimum: 256, default: 2048}
+        recentToolRounds: {type: integer, minimum: 0, maximum: 16, default: 4}
+        recoveryWindowMinutes: {type: integer, minimum: 1, maximum: 10080, default: 1440}
+        maxModelRetries: {type: integer, minimum: 1, maximum: 10000, default: 288}
+        retryMaxDelaySeconds: {type: integer, minimum: 2, maximum: 3600, default: 300}
+        maxRepairAttempts: {type: integer, minimum: 1, maximum: 10, default: 4}
+        version: {type: integer, format: int64, minimum: 1}
+    UpdateDirectorSettingsRequest:
+      type: object
+      additionalProperties: false
+      required: [contextWindowTokens, compactionThresholdPercent, responseReserveTokens, summaryTokens, recentToolRounds, recoveryWindowMinutes, maxModelRetries, retryMaxDelaySeconds, maxRepairAttempts, expectedVersion]
+      properties:
+        contextWindowTokens: {type: integer, minimum: 8192, maximum: 2000000, default: 1000000}
+        compactionThresholdPercent: {type: integer, minimum: 1, maximum: 100, default: 50}
+        responseReserveTokens: {type: integer, minimum: 1024, default: 8192}
+        summaryTokens: {type: integer, minimum: 256, default: 2048}
+        recentToolRounds: {type: integer, minimum: 0, maximum: 16, default: 4}
+        recoveryWindowMinutes: {type: integer, minimum: 1, maximum: 10080, default: 1440}
+        maxModelRetries: {type: integer, minimum: 1, maximum: 10000, default: 288}
+        retryMaxDelaySeconds: {type: integer, minimum: 2, maximum: 3600, default: 300}
+        maxRepairAttempts: {type: integer, minimum: 1, maximum: 10, default: 4}
+        expectedVersion: {type: integer, format: int64, minimum: 1}
     DebugSettings:
       type: object
       required: [debugMode, version]

@@ -78,7 +78,7 @@ class AgentTurnWorkerTest {
         worker = new AgentTurnWorker(tasks, new TaskProperties(Duration.ofMinutes(30), 16), commits,
                 initialContext, conversation, repairContext, rounds, turns, codec, tools, registry,
                 gateway, Clock.fixed(NOW, ZoneOffset.UTC),
-                new AgentContextService(AgentRuntimeProperties.defaults(), mapper, codec), modelExecutor);
+                new AgentContextService(source(DirectorSettings.defaults()), mapper, codec), modelExecutor);
         when(modelExecutor.open(lease, WORKER)).thenReturn(execution);
         when(lease.id()).thenReturn(UUID.randomUUID());
         when(lease.projectId()).thenReturn(project);
@@ -328,4 +328,10 @@ class AgentTurnWorkerTest {
         verify(commits).complete(lease, WORKER);
         verify(commits, never()).finishFailure(any(), anyString(), anyString());
     }
+    private static DirectorSettingsService source(DirectorSettings value) {
+        var source = org.mockito.Mockito.mock(DirectorSettingsService.class);
+        org.mockito.Mockito.when(source.get()).thenReturn(value);
+        return source;
+    }
+
 }
