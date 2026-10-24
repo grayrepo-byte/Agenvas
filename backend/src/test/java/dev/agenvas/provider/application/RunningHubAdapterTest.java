@@ -13,8 +13,16 @@ import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.RunningHubDefinition;
+import dev.agenvas.provider.domain.ProviderFailure;
+import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
 import dev.agenvas.provider.infrastructure.RunningHubClient;
+import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.domain.Artifact;
+import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.settings.application.CredentialCipher;
 import dev.agenvas.task.domain.Task;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -35,6 +43,56 @@ class RunningHubAdapterTest {
     private final RunningHubDefinition definition = new RunningHubDefinition(1, "V2", RunningHubDefinition.TargetType.AI_APP,
             "2039199752025280513", List.of(), List.of(), List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.VIDEO, true, 1)),
             "default", false, false, null, null, null, null);
+
+    @Test void uploadFailureNamesTheFrozenAssetSlotAndPreservesAuthenticationClassificationBeforeAnySubmission() {
+        var catalog = mock(JooqMediaCapabilityRepository.class);
+        var cipher = mock(CredentialCipher.class);
+        var artifacts = mock(ArtifactService.class);
+        var assets = mock(AssetService.class);
+        var client = mock(RunningHubClient.class);
+        var binding = new MediaCapabilityBinding(UUID.randomUUID(), 1, UUID.randomUUID(), 1, "RUNNINGHUB_VIDEO", "hash");
+        var connection = new JooqMediaCapabilityRepository.ConnectionVersion(binding.connectionId(), 1,
+                "https://www.runninghub.ai", "origin-hash", new byte[]{1}, new byte[]{2}, 1, null);
+        var field = new RunningHubDefinition.Field("reference", "Reference", null, RunningHubDefinition.FieldType.IMAGE,
+                true, null, null, null, null, List.of(), false, "9", "image", null, null, null, null);
+        var contract = new RunningHubDefinition(1, "V2", definition.targetType(), definition.targetId(), List.of(field),
+                List.of(), definition.outputs(), "default", false, false, null, null, null, null);
+        var spec = mapper.createObjectNode(); spec.putObject("settings").set("runningHub", mapper.valueToTree(contract));
+        when(catalog.snapshotAt(binding.capabilityId(), 1, binding.connectionId(), 1)).thenReturn(Optional.of(
+                new JooqMediaCapabilityRepository.Snapshot(null, null, connection, "RUNNINGHUB_VIDEO", "hash", spec.toString())));
+        when(cipher.decryptMedia(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq(1), org.mockito.ArgumentMatchers.any()))
+                .thenReturn("synthetic-secret-key");
+        UUID owner = UUID.randomUUID(), project = UUID.randomUUID(), versionId = UUID.randomUUID(), artifactId = UUID.randomUUID(), assetId = UUID.randomUUID();
+        var task = mock(Task.class);
+        var input = mapper.createObjectNode(); var media = input.putObject("mediaInput");
+        media.putObject("parameters").putObject("dynamicValues").put("reference", versionId.toString());
+        media.putArray("images").addObject().put("versionId", versionId.toString()).put("artifactId", artifactId.toString());
+        when(task.input()).thenReturn(input); when(task.projectId()).thenReturn(project);
+        var version = mock(ArtifactVersion.class);
+        when(version.artifactId()).thenReturn(artifactId);
+        when(version.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
+        when(artifacts.requireMediaVersionForTask(owner, project, versionId, Artifact.Kind.IMAGE)).thenReturn(version);
+        var asset = mock(Asset.class);
+        when(asset.mediaKind()).thenReturn(Asset.MediaKind.IMAGE); when(asset.byteSize()).thenReturn(1L);
+        when(asset.contentType()).thenReturn("image/png");
+        var path = java.nio.file.Path.of("/unused-synthetic-reference.png");
+        when(assets.get(owner, project, assetId)).thenReturn(new AssetService.AssetFile(asset, path));
+        when(client.upload(connection.origin(), "synthetic-secret-key", path, "image/png", RunningHubDefinition.ResourceFormat.FILE_NAME))
+                .thenThrow(new RunningHubClient.Rejected(new ProviderFailure(ProviderFailure.Stage.UPLOAD,
+                        ProviderFailure.Category.AUTHENTICATION, 401, 802L, null, null)));
+        var adapter = new RunningHubAdapter("RUNNINGHUB_VIDEO", Task.Kind.VIDEO_GENERATION, catalog, cipher,
+                artifacts, assets, client, mapper, Clock.systemUTC());
+
+        var result = adapter.submit(new AttemptContext(task, binding, owner, "request-key", null));
+
+        assertThat(result).isInstanceOfSatisfying(Submission.Rejected.class, rejected -> {
+            assertThat(rejected.code()).isEqualTo("RUNNINGHUB_AUTHENTICATION_FAILED");
+            assertThat(rejected.providerFailure()).isEqualTo(new ProviderFailure(ProviderFailure.Stage.UPLOAD,
+                    ProviderFailure.Category.AUTHENTICATION, 401, 802L, "9", "image"));
+        });
+        verify(client, org.mockito.Mockito.never()).submit(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
 
     @Test void realProviderNumericStringsAreRecordedWithoutLosingNullOrInferringCurrency() {
         var response = mapper.readTree("""
@@ -122,6 +180,51 @@ class RunningHubAdapterTest {
             {"schemaVersion":1,"results":[{"ordinal":0,"nodeId":"1","kind":"VIDEO","primary":true,"url":"https://cdn.example.com/video.mp4"}],"usage":null}
             """, ProviderResultManifest.class);
         assertThat(old.results().getFirst().archiveEntry()).isNull();
+    }
+
+    @Test void refreshedLinksMatchFrozenFileIdentityAcrossProviderReorderingAndKeepOrdinalsAndUsage() {
+        var usage = mapper.createObjectNode().put("consumeCoins", 3);
+        var frozen = new ProviderResultManifest(1, List.of(
+                new ProviderResultManifest.Result(0, "10", RunningHubDefinition.OutputKind.VIDEO, true, "https://old-cdn.example.com/output/a.mp4?token=old"),
+                new ProviderResultManifest.Result(1, "10", RunningHubDefinition.OutputKind.VIDEO, false, "https://old-cdn.example.com/output/b.mp4?token=old")), usage);
+        var response = mapper.readTree("""
+                {"results":[{"nodeId":"10","outputType":"mp4","url":"https://new-cdn.example.com/output/b.mp4?token=new"},
+                            {"nodeId":"10","outputType":"mp4","url":"https://new-cdn.example.com/output/a.mp4?token=new"}],
+                 "usage":{"consumeCoins":99}}
+                """);
+        var refreshed = adapter.refreshedManifest(frozen, response, "https://www.runninghub.ai");
+        assertThat(refreshed.results()).extracting(ProviderResultManifest.Result::url).containsExactly(
+                "https://new-cdn.example.com/output/a.mp4?token=new", "https://new-cdn.example.com/output/b.mp4?token=new");
+        assertThat(refreshed.results()).extracting(ProviderResultManifest.Result::ordinal).containsExactly(0, 1);
+        assertThat(refreshed.results()).extracting(ProviderResultManifest.Result::primary).containsExactly(true, false);
+        assertThat(refreshed.usage()).isEqualTo(usage);
+        assertThat(frozen.results().getFirst().url()).endsWith("token=old");
+    }
+
+    @Test void refreshedLinksRejectMissingChangedOrAmbiguousIdentityAndKeepZipMemberHashes() {
+        var frozen = new ProviderResultManifest(1, List.of(new ProviderResultManifest.Result(0, "10",
+                RunningHubDefinition.OutputKind.VIDEO, true, "https://cdn.example.com/a.mp4?token=old")), null);
+        for (String results : List.of("[]",
+                "[{\"nodeId\":\"10\",\"outputType\":\"mp4\",\"url\":\"https://cdn.example.com/changed.mp4\"}]",
+                "[{\"nodeId\":\"11\",\"outputType\":\"mp4\",\"url\":\"https://cdn.example.com/a.mp4\"}]",
+                "[{\"nodeId\":\"10\",\"outputType\":\"mp4\",\"url\":\"https://cdn.example.com/a.mp4?one\"},"
+                  + "{\"nodeId\":\"10\",\"outputType\":\"mp4\",\"url\":\"https://cdn.example.com/a.mp4?two\"}]")) {
+            assertThatThrownBy(() -> adapter.refreshedManifest(frozen, mapper.readTree("{\"results\":" + results + "}"), "https://www.runninghub.ai"))
+                    .isInstanceOf(RunningHubClient.ResultIdentityChanged.class);
+        }
+        var identityQuery = new ProviderResultManifest(1, List.of(new ProviderResultManifest.Result(0, "10",
+                RunningHubDefinition.OutputKind.VIDEO, true, "https://cdn.example.com/a.mp4?file=original&token=old")), null);
+        assertThatThrownBy(() -> adapter.refreshedManifest(identityQuery, mapper.readTree("""
+                {"results":[{"nodeId":"10","outputType":"mp4","url":"https://cdn.example.com/a.mp4?file=other&token=new"}]}
+                """), "https://www.runninghub.ai")).isInstanceOf(RunningHubClient.ResultIdentityChanged.class);
+        var entry = new ProviderResultManifest.ArchiveEntry("output/a.mp4", "a".repeat(64));
+        var zip = new ProviderResultManifest(1, List.of(new ProviderResultManifest.Result(0, "10",
+                RunningHubDefinition.OutputKind.VIDEO, true, "https://cdn.example.com/output.zip?token=old", entry)), null);
+        var refreshed = adapter.refreshedManifest(zip, mapper.readTree("""
+                {"results":[{"nodeId":"10","outputType":"zip","url":"https://new-cdn.example.com/output.zip?token=new"}]}
+                """), "https://www.runninghub.ai");
+        assertThat(refreshed.results().getFirst().archiveEntry()).isEqualTo(entry);
+        assertThat(refreshed.results().getFirst().url()).endsWith("?token=new");
     }
 
     @Test void zipWithoutPrimaryMediaFailsButUnmappedCompanionsAreIgnored() throws Exception {

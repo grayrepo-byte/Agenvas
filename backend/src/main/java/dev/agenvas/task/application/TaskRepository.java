@@ -23,6 +23,14 @@ public interface TaskRepository {
     boolean checkpointProviderResults(Task lease, String workerId,
             dev.agenvas.provider.domain.ProviderResultManifest manifest, Instant now);
 
+    /** Safe diagnostics are public progress; protect concurrent updates with both version and worker epoch. */
+    boolean recordProviderFailure(Task current, String workerId, JsonNode output, Instant now);
+
+    /** Replace transport URLs only after the application verifies the frozen result identities. */
+    boolean refreshProviderResultUrls(Task lease, String workerId,
+            dev.agenvas.provider.domain.ProviderResultManifest expected,
+            dev.agenvas.provider.domain.ProviderResultManifest refreshed, Instant now);
+
     /** 写入应用层已校验的 READY 任务。 */
     void create(Task task);
 

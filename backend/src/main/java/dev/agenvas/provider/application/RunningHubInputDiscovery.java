@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 
 /** Deterministic editor suggestions only. Unknown inputs remain manual parameters;
@@ -30,6 +31,10 @@ final class RunningHubInputDiscovery {
     private static final Set<String> FLOAT_PRIMITIVES = Set.of("primitivefloat", "float", "easyfloat");
     private static final Set<String> SCALAR_PRIMITIVES = Set.of("primitivefloat", "float", "easyfloat", "primitiveint", "int", "easyint",
             "primitivestring", "primitivestringmultiline", "primitiveboolean", "boolean");
+    private static final Set<String> URL_LOADERS = Set.of("loadimagefromurl", "loadaudiofromurl", "loadvideofromurl",
+            "loadimageurl", "loadaudiourl", "loadvideourl");
+    private static final Pattern EXPLICIT_STAGE = Pattern.compile(
+            "(?iu)^(stage\\s*[0-9]+|phase\\s*[0-9]+|第?[一二三四五六七八九十0-9]+阶段|阶段\\s*[一二三四五六七八九十0-9]+|基础生成|放大输出|最终输出|后期处理|base generation|output upscale|final output|post[ -]processing)(?=$|[\\s:：·—–\\-()（）])");
 
     enum PromptRole { NONE, TEXT, EXPLICIT, POSITIVE_CONDITIONING }
     record Hint(RunningHubDefinition.FieldType type, PromptRole promptPriority) {}
@@ -43,6 +48,33 @@ final class RunningHubInputDiscovery {
             return value.isIntegralNumber() ? RunningHubDefinition.FieldType.INTEGER : RunningHubDefinition.FieldType.NUMBER;
         }
         return RunningHubDefinition.FieldType.STRING;
+    }
+
+    static boolean declaredWorkflowType(String fieldName, String nodeType) {
+        return inputName(fieldName).equals("value") && FLOAT_PRIMITIVES.contains(normalize(nodeType));
+    }
+
+    /** These are display suggestions only; graph order and node numbers do not imply a creation stage. */
+    static String group(String title) {
+        if (title == null) return null;
+        var match = EXPLICIT_STAGE.matcher(title.strip());
+        if (!match.find()) return null;
+        String group = match.group(1);
+        return group.length() <= RunningHubDefinition.MAX_GROUP_LENGTH ? group : null;
+    }
+
+    /** The loader class wins over its generic image/audio/video port name.
+     * Unknown classes keep the format unset for the administrator to inspect. */
+    static RunningHubDefinition.ResourceFormat resourceFormat(String fieldName, String nodeType) {
+        if (urlLoader(nodeType) || urlInput(fieldName)) return RunningHubDefinition.ResourceFormat.URL;
+        if (fileLoader(nodeType) || inputName(fieldName).equals("filename")) return RunningHubDefinition.ResourceFormat.FILE_NAME;
+        return null;
+    }
+
+    static boolean urlLoader(String nodeType) { return URL_LOADERS.contains(normalize(nodeType)); }
+    static boolean fileLoader(String nodeType) { return normalize(nodeType).equals("loadimage"); }
+    static boolean negativeInput(String fieldName, String nodeType, String label) {
+        return negative(inputName(fieldName)) || negative(normalize(nodeType)) || negative(normalize(label));
     }
 
     /** A direct primitive feeding a known creative port carries that port's purpose.

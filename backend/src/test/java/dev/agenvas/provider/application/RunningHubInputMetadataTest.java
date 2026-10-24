@@ -16,6 +16,21 @@ import tools.jackson.databind.node.ObjectNode;
 class RunningHubInputMetadataTest {
     private final ObjectMapper mapper = new ObjectMapper();
 
+    @Test void typeEvidenceDistinguishesExplicitMetadataFromValuesAndUncertainFallbacks() {
+        assertThat(parse("{\"fieldType\":\"FLOAT\",\"fieldValue\":1}").reasons())
+                .containsExactly(RunningHubImportService.InsightReason.TYPE_DECLARATION);
+        assertThat(parse("{\"fieldType\":\"STRING\",\"fieldData\":[\"FLOAT\",{}]}").reasons())
+                .containsExactly(RunningHubImportService.InsightReason.WIDGET_TYPE);
+        assertThat(parse("{\"fieldData\":[\"STRING\",{\"image_upload\":true}]}").reasons())
+                .containsExactly(RunningHubImportService.InsightReason.UPLOAD_WIDGET);
+        var value = parse("{\"fieldValue\":1.5}");
+        assertThat(value.confidence()).isEqualTo(RunningHubImportService.Confidence.INFERRED);
+        assertThat(value.reasons()).containsExactly(RunningHubImportService.InsightReason.JSON_VALUE);
+        var unknown = parse("{}");
+        assertThat(unknown.confidence()).isEqualTo(RunningHubImportService.Confidence.UNCERTAIN);
+        assertThat(unknown.reasons()).containsExactly(RunningHubImportService.InsightReason.MISSING_TYPE_METADATA);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"IMAGE", "AUDIO", "VIDEO"})
     void explicitMediaTypesWinOverConflictingWidgetMetadataAndClearRemoteDefaults(String type) {

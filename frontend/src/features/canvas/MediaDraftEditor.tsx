@@ -1485,7 +1485,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {((chosenCapability?.adapterId === "ARK_SEEDANCE_2_I2V" || minimax) && videoCount > 0
         || chosenCapability?.adapterId === "WAN_VIDEO" && videoCount + audioCount > 0) ? <EditorFeedbackRow>{t("media.editor.videoRelayHint")}</EditorFeedbackRow> : null}
       {latestTask && (latestTask.status === "FAILED" || latestTask.status === "BLOCKED")
-        ? <EditorFeedbackRow tone="danger">{t("media.editor.generationIncomplete", { "0": taskErrorDetail(latestTask.errorCode) })}</EditorFeedbackRow> : null}
+        ? <EditorFeedbackRow tone="danger">{t("media.editor.generationIncomplete", { "0": taskErrorDetail(latestTask.errorCode, latestTask.output?.providerFailure) })}</EditorFeedbackRow> : null}
       {localProcessing && latestTask.runId === null && ["READY", "RUNNING", "SUBMITTING"].includes(latestTask.status)
         ? <EditorFeedbackRow tone="neutral" action={
           <Button variant="ghost" size="xs" type="button" disabled={cancel.isPending || latestTask.cancelRequested}
@@ -1500,7 +1500,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         : t("tasks.status.queued")}</EditorFeedbackRow> : null}
       {cancel.error ? <EditorFeedbackRow tone="danger">{t("media.editor.cancelFailed", { "0": cancel.error.message })}</EditorFeedbackRow> : null}
       {latestTask && (latestTask.status === "UNKNOWN" || latestTask.status === "BLOCKED" && Boolean(latestTask.providerRequestId))
-        ? latestTask.runId === null ? <UnknownTaskRetryPanel compact errorCode={latestTask.errorCode} taskStatus={latestTask.status}
+        ? latestTask.runId === null ? <UnknownTaskRetryPanel compact errorCode={latestTask.errorCode} providerFailure={latestTask.output?.providerFailure} taskStatus={latestTask.status}
         projectId={artifact.projectId} taskId={latestTask.id} taskVersion={latestTask.version} />
         : <EditorFeedbackRow tone="warning">{t("tasks.status.unknown")}</EditorFeedbackRow> : null}
       {error ? <EditorFeedbackRow tone="danger" action={

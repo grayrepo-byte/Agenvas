@@ -9,6 +9,7 @@ import { t } from "../../shared/i18n";
  * 未登记的码由调用方回退展示原始码，而不是隐藏——未知码至少还能拿去检索。
  */
 import type { Task } from "../../shared/api/client";
+export type ProviderFailureDiagnostic = NonNullable<NonNullable<Task["output"]>["providerFailure"]>;
 
 /** 与后端 `dev.agenvas.shared.error.ProviderFailureCodes` 一一对应，改一处必须同步另一处。 */
 export const PROVIDER_FAILURE_CODES = {
@@ -42,6 +43,16 @@ export const PROVIDER_FAILURE_CODES = {
   RESPONSE_TOO_LARGE: "PROVIDER_RESPONSE_TOO_LARGE",
   RESULT_TOO_LARGE: "PROVIDER_RESULT_TOO_LARGE",
   SUBMISSION_UNKNOWN: "PROVIDER_SUBMISSION_UNKNOWN",
+  RUNNINGHUB_AUTHENTICATION_FAILED: "RUNNINGHUB_AUTHENTICATION_FAILED",
+  RUNNINGHUB_BALANCE_INSUFFICIENT: "RUNNINGHUB_BALANCE_INSUFFICIENT",
+  RUNNINGHUB_PARAMETER_INVALID: "RUNNINGHUB_PARAMETER_INVALID",
+  RUNNINGHUB_RATE_LIMITED: "RUNNINGHUB_RATE_LIMITED",
+  RUNNINGHUB_UPLOAD_FAILED: "RUNNINGHUB_UPLOAD_FAILED",
+  RUNNINGHUB_GENERATION_FAILED: "RUNNINGHUB_GENERATION_FAILED",
+  RUNNINGHUB_RESULT_EXPIRED: "RUNNINGHUB_RESULT_EXPIRED",
+  RUNNINGHUB_RESULT_IDENTITY_CHANGED: "RUNNINGHUB_RESULT_IDENTITY_CHANGED",
+  RUNNINGHUB_PROTOCOL_INVALID: "RUNNINGHUB_PROTOCOL_INVALID",
+  RUNNINGHUB_UNAVAILABLE: "RUNNINGHUB_UNAVAILABLE",
 } as const;
 
 const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
@@ -67,6 +78,16 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get [PROVIDER_FAILURE_CODES.RESPONSE_TOO_LARGE]() { return t("tasks.errors.responseTooLarge"); },
   get [PROVIDER_FAILURE_CODES.RESULT_TOO_LARGE]() { return t("tasks.errors.resultTooLarge"); },
   get [PROVIDER_FAILURE_CODES.SUBMISSION_UNKNOWN]() { return t("tasks.errors.submissionVerificationRequired"); },
+  get RUNNINGHUB_AUTHENTICATION_FAILED() { return t("tasks.errors.runningHubAuthentication"); },
+  get RUNNINGHUB_BALANCE_INSUFFICIENT() { return t("tasks.errors.runningHubBalance"); },
+  get RUNNINGHUB_PARAMETER_INVALID() { return t("tasks.errors.runningHubParameter"); },
+  get RUNNINGHUB_RATE_LIMITED() { return t("tasks.errors.runningHubRateLimit"); },
+  get RUNNINGHUB_UPLOAD_FAILED() { return t("tasks.errors.runningHubUpload"); },
+  get RUNNINGHUB_GENERATION_FAILED() { return t("tasks.errors.runningHubGeneration"); },
+  get RUNNINGHUB_RESULT_EXPIRED() { return t("tasks.errors.runningHubResultExpired"); },
+  get RUNNINGHUB_RESULT_IDENTITY_CHANGED() { return t("tasks.errors.runningHubResultIdentity"); },
+  get RUNNINGHUB_PROTOCOL_INVALID() { return t("tasks.errors.runningHubProtocol"); },
+  get RUNNINGHUB_UNAVAILABLE() { return t("tasks.errors.runningHubUnavailable"); },
   get SEED_AUDIO_RESULT_UNKNOWN() { return t("tasks.errors.audioResultUnknown"); },
   get SEED_AUDIO_REJECTED() { return t("tasks.errors.audioRequestRejected"); },
   get AUTODL_CREATE_UNCERTAIN() { return t("tasks.errors.autoDlSubmissionUnknown"); },
@@ -139,7 +160,29 @@ export function taskErrorMessage(errorCode: Task["errorCode"]): string | null {
  *
  * @returns 形如 {@code " · 调用超时，结果未知"}；未登记的码回退为该码本身
  */
-export function taskErrorDetail(errorCode: Task["errorCode"]): string {
-  if (!errorCode) return "";
-  return ` · ${taskErrorMessage(errorCode) ?? errorCode}`;
+export function taskErrorDetail(errorCode: Task["errorCode"], diagnostic?: ProviderFailureDiagnostic | null): string {
+  if (!errorCode && !diagnostic) return "";
+  const reason = errorCode ? taskErrorMessage(errorCode) ?? errorCode : "";
+  const includeAdvice = !diagnostic || reason !== t(RUNNINGHUB_CATEGORY_KEYS[diagnostic.category]);
+  return ` · ${[reason, providerFailureMessage(diagnostic, includeAdvice)].filter(Boolean).join(" · ")}`;
+}
+
+const RUNNINGHUB_CATEGORY_KEYS = {
+  AUTHENTICATION: "tasks.errors.runningHubAuthentication", BALANCE: "tasks.errors.runningHubBalance",
+  PARAMETER: "tasks.errors.runningHubParameter", RATE_LIMIT: "tasks.errors.runningHubRateLimit",
+  UPLOAD: "tasks.errors.runningHubUpload", GENERATION: "tasks.errors.runningHubGeneration",
+  DOWNLOAD_EXPIRED: "tasks.errors.runningHubResultExpired", UNAVAILABLE: "tasks.errors.runningHubUnavailable",
+  PROTOCOL: "tasks.errors.runningHubProtocol",
+} as const satisfies Record<ProviderFailureDiagnostic["category"], Parameters<typeof t>[0]>;
+const PROVIDER_STAGE_KEYS = { DISCOVERY: "tasks.providerStage.discovery", UPLOAD: "tasks.providerStage.upload",
+  SUBMIT: "tasks.providerStage.submit", POLL: "tasks.providerStage.poll", DOWNLOAD: "tasks.providerStage.download" } as const;
+
+/** Uses only the server's bounded diagnostic; upstream messages, bodies and URLs never enter this text. */
+export function providerFailureMessage(diagnostic?: ProviderFailureDiagnostic | null, includeAdvice = true): string {
+  if (!diagnostic) return "";
+  const parts = [t(PROVIDER_STAGE_KEYS[diagnostic.stage])];
+  if (includeAdvice) parts.push(t(RUNNINGHUB_CATEGORY_KEYS[diagnostic.category]));
+  if (diagnostic.nodeId) parts.push(t("tasks.providerLocation.node", { "0": diagnostic.nodeId }));
+  if (diagnostic.fieldName) parts.push(t("tasks.providerLocation.field", { "0": diagnostic.fieldName }));
+  return parts.join(" · ");
 }

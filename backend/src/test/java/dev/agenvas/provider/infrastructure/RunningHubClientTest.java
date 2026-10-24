@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.sun.net.httpserver.HttpServer;
 import dev.agenvas.provider.domain.RunningHubDefinition;
+import dev.agenvas.provider.domain.ProviderFailure;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -36,7 +37,7 @@ class RunningHubClientTest {
         }
     }
     @Test void uncertain503AndRedirectNeverResubmit() throws Exception {
-        for (int status : new int[]{503, 307}) try (var fixture = new Server(status, "{}")) {
+        for (int status : new int[]{503, 307, 429, 408}) try (var fixture = new Server(status, "{}")) {
             assertThatThrownBy(() -> new RunningHubClient(mapper).submit(fixture.origin(), "test-key", definition(RunningHubDefinition.TargetType.WORKFLOW), mapper.createArrayNode())).isInstanceOf(RunningHubClient.Uncertain.class);
             assertThat(fixture.calls).hasValue(1);
         }
@@ -47,6 +48,67 @@ class RunningHubClientTest {
         }
         try (var fixture = new Server(200, "{\"status\":\"RUNNING\"}")) {
             assertThatThrownBy(() -> new RunningHubClient(mapper).submit(fixture.origin(), "test-key", definition(RunningHubDefinition.TargetType.AI_APP), mapper.createArrayNode())).isInstanceOf(RunningHubClient.Uncertain.class);
+        }
+    }
+    @Test void businessFailuresKeepOnlyTypedDiagnosticsAndNeverCopyUpstreamSecretsOrMessages() throws Exception {
+        try (var fixture = new Server(200, """
+                {"code":803,"nodeId":"27","fieldName":"aspect_ratio","msg":"test-key private prompt https://signed.invalid/token",
+                 "debug":{"nodeId":"99","fieldName":"private_content"}}
+                """)) {
+            assertThatThrownBy(() -> new RunningHubClient(mapper).submit(fixture.origin(), "test-key", definition(RunningHubDefinition.TargetType.WORKFLOW), mapper.createArrayNode()))
+                    .isInstanceOfSatisfying(RunningHubClient.Rejected.class, failure -> {
+                        assertThat(failure.code()).isEqualTo("RUNNINGHUB_PARAMETER_INVALID");
+                        assertThat(failure.diagnostic()).isEqualTo(new ProviderFailure(ProviderFailure.Stage.SUBMIT,
+                                ProviderFailure.Category.PARAMETER, 200, 803L, "27", "aspect_ratio"));
+                        assertThat(mapper.writeValueAsString(failure.diagnostic())).doesNotContain("test-key", "private", "signed", "msg");
+                        assertThat(failure.getMessage()).doesNotContain("test-key", "private");
+                    });
+        }
+        for (String body : List.of("{\"code\":802,\"nodeId\":\"test-key\",\"fieldName\":\"test-key\"}",
+                "{\"code\":802,\"error\":{\"nodeId\":\"99 https://private\",\"fieldName\":\"apiKey\"}}")) {
+            try (var fixture = new Server(200, body)) {
+                assertThatThrownBy(() -> new RunningHubClient(mapper).query(fixture.origin(), "test-key", "task-1"))
+                        .isInstanceOfSatisfying(RunningHubClient.Rejected.class, failure -> {
+                            assertThat(failure.diagnostic().nodeId()).isNull();
+                            assertThat(failure.diagnostic().fieldName()).isNull();
+                            assertThat(failure.code()).isEqualTo("RUNNINGHUB_AUTHENTICATION_FAILED");
+                        });
+            }
+        }
+    }
+    @Test void numericAndNamedFailureCodesClassifyBalanceAndFailedTaskWithoutCopyingProse() throws Exception {
+        try (var fixture = new Server(200, "{\"code\":416,\"msg\":\"private balance data\"}")) {
+            assertThatThrownBy(() -> new RunningHubClient(mapper).submit(fixture.origin(), "test-key", definition(RunningHubDefinition.TargetType.AI_APP), mapper.createArrayNode()))
+                    .isInstanceOfSatisfying(RunningHubClient.Rejected.class, failure -> assertThat(failure.code()).isEqualTo("RUNNINGHUB_BALANCE_INSUFFICIENT"));
+        }
+        var failure = new RunningHubClient(mapper).generationFailure(mapper.readTree("""
+                {"status":"FAILED","errorCode":"APIKEY_INVALID_NODE_INFO","errorMessage":"test-key private prompt",
+                 "error":{"nodeId":"27","fieldName":"duration"}}
+                """), "test-key");
+        assertThat(failure.category()).isEqualTo(ProviderFailure.Category.PARAMETER);
+        assertThat(failure.nodeId()).isEqualTo("27");
+        assertThat(failure.fieldName()).isEqualTo("duration");
+        assertThat(failure.upstreamCode()).isNull();
+    }
+    @Test void runningAndQueuedBusinessCodesRequireAnAcknowledgedTaskIdAndNeverResubmit() throws Exception {
+        for (int code : new int[]{804, 813}) try (var fixture = new Server(200, "{\"code\":" + code + "}")) {
+            var client = new RunningHubClient(mapper);
+            assertThatThrownBy(() -> client.submit(fixture.origin(), "test-key", definition(RunningHubDefinition.TargetType.WORKFLOW), mapper.createArrayNode()))
+                    .isInstanceOf(RunningHubClient.Uncertain.class);
+            assertThat(fixture.calls).hasValue(1);
+            fixture.reply.set("{\"code\":" + code + ",\"taskId\":\"accepted-task\"}");
+            assertThat(client.submit(fixture.origin(), "test-key", definition(RunningHubDefinition.TargetType.WORKFLOW), mapper.createArrayNode())).isEqualTo("accepted-task");
+        }
+    }
+    @Test void expiredDownloadsKeepHttpStatusAndCarryNoCredentials() throws Exception {
+        for (int status : new int[]{403, 404, 410}) try (var fixture = new Server(status, "private response")) {
+            assertThatThrownBy(() -> new RunningHubClient(mapper).download(fixture.origin(), fixture.origin() + "/result.mp4?signature=private"))
+                    .isInstanceOfSatisfying(RunningHubClient.DownloadExpired.class, failure -> {
+                        assertThat(failure.diagnostic().stage()).isEqualTo(ProviderFailure.Stage.DOWNLOAD);
+                        assertThat(failure.diagnostic().httpStatus()).isEqualTo(status);
+                        assertThat(mapper.writeValueAsString(failure.diagnostic())).doesNotContain("signature", "private", "result.mp4");
+                    });
+            assertThat(fixture.authorization.get()).isNull();
         }
     }
     @Test void queryUsesSavedTaskIdAndAppDiscoveryNeverPutsKeyInUrl() throws Exception {

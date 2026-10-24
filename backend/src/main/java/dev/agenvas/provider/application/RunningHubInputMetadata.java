@@ -2,6 +2,8 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.RunningHubDefinition.FieldType;
+import dev.agenvas.provider.application.RunningHubImportService.Confidence;
+import dev.agenvas.provider.application.RunningHubImportService.InsightReason;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -20,7 +22,7 @@ final class RunningHubInputMetadata {
 
     record Parsed(FieldType type, JsonNode defaultValue, BigDecimal minimum, BigDecimal maximum,
             Integer maxLength, boolean required, List<RunningHubDefinition.Option> options, boolean missingOptions,
-            boolean ambiguousMedia) {}
+            boolean ambiguousMedia, Confidence confidence, List<InsightReason> reasons) {}
 
     private record Widget(FieldType type, JsonNode settings, JsonNode choices) {}
 
@@ -44,6 +46,27 @@ final class RunningHubInputMetadata {
                 ? options(widget.choices()) : List.of();
         boolean missingOptions = resolved == FieldType.SELECT && options.isEmpty();
         if (missingOptions) resolved = FieldType.STRING;
+        boolean ambiguousMedia = (generic || declared == FieldType.SELECT) && uploads.size() > 1;
+        List<InsightReason> reasons = new ArrayList<>();
+        Confidence confidence = Confidence.DECLARED;
+        if (media(declared) || !generic && declared != FieldType.SELECT) reasons.add(InsightReason.TYPE_DECLARATION);
+        else if ((generic || declared == FieldType.SELECT) && uploads.size() == 1) reasons.add(InsightReason.UPLOAD_WIDGET);
+        else if (ambiguousMedia) {
+            reasons.add(InsightReason.CONFLICTING_MEDIA_METADATA);
+            confidence = Confidence.UNCERTAIN;
+        } else if (generic && widget.type() != null) reasons.add(InsightReason.WIDGET_TYPE);
+        else if (declared != null) reasons.add(InsightReason.TYPE_DECLARATION);
+        else if (scalar(input.get("fieldValue"))) {
+            reasons.add(InsightReason.JSON_VALUE);
+            confidence = Confidence.INFERRED;
+        } else {
+            reasons.add(InsightReason.MISSING_TYPE_METADATA);
+            confidence = Confidence.UNCERTAIN;
+        }
+        if (missingOptions) {
+            reasons.add(InsightReason.MISSING_ENUM_OPTIONS);
+            confidence = Confidence.UNCERTAIN;
+        }
 
         boolean numeric = resolved == FieldType.NUMBER || resolved == FieldType.INTEGER;
         BigDecimal minimum = numeric ? bound(input, widget.settings(), "minimum", "min") : null;
@@ -59,7 +82,7 @@ final class RunningHubInputMetadata {
         if (value == null) value = normalize(mapper, widget.settings().get("default"), resolved, options, minimum, maximum, maxLength);
         return new Parsed(resolved, value, minimum, maximum, maxLength,
                 required != null && required.isBoolean() && required.asBoolean(), options, missingOptions,
-                (generic || declared == FieldType.SELECT) && uploads.size() > 1);
+                ambiguousMedia, confidence, List.copyOf(reasons));
     }
 
     private static Widget widget(ObjectMapper mapper, JsonNode raw) {

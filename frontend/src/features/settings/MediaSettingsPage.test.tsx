@@ -602,7 +602,7 @@ describe("MediaSettingsPage", () => {
       await user.keyboard("{Escape}");
     }
     await choose("清空选择");
-    expect(input).toBeDisabled(); expect(fixed).toBeDisabled();
+    expect(input).not.toBeInTheDocument(); expect(fixed).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), { target: { value: "321" } });
     const save = within(dialog).getByRole("button", { name: "保存能力" });
     await user.click(save);
@@ -610,8 +610,10 @@ describe("MediaSettingsPage", () => {
     expect(writes).toEqual([{ expectedVersion: 4, name: "Portrait", enabled: true, adapterId: "RUNNINGHUB_IMAGE",
       settings: { runningHub: { ...definition, targetId: "321", fields: [], fixedBindings: [] } } }]);
     await choose("全选节点");
-    expect(input).toHaveValue("invalid"); expect(input).toBeEnabled();
-    expect(fixed).toHaveValue("invalid"); expect(fixed).toBeEnabled();
+    const restoredInput = within(within(dialog).getByRole("row", { name: "强度" })).getByRole("textbox", { name: "默认值" });
+    const restoredFixed = within(dialog).getByRole("textbox", { name: "固定值（JSON 标量）" });
+    expect(restoredInput).toHaveValue("invalid"); expect(restoredInput).toBeEnabled();
+    expect(restoredFixed).toHaveValue("invalid"); expect(restoredFixed).toBeEnabled();
     await choose("清空选择");
     await user.click(save);
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

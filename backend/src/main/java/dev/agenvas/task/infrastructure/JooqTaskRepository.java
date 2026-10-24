@@ -120,6 +120,29 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
     }
 
     @Override
+    public boolean recordProviderFailure(Task current, String workerId, JsonNode output, Instant now) {
+        return dsl.update(TASK).set(TASK.OUTPUT_JSON, JSONB.valueOf(output.toString()))
+                .set(TASK.UPDATED_AT, utc(now)).set(TASK.VERSION, TASK.VERSION.plus(1))
+                .where(currentWorkerLease(current.id(), workerId, current.leaseEpoch(), now))
+                .and(TASK.PROJECT_ID.eq(current.projectId())).and(TASK.VERSION.eq(current.version()))
+                .and(TASK.STATUS.in(Task.Status.RUNNING.name(), Task.Status.SUBMITTING.name()))
+                .and(TASK.CANCEL_REQUESTED.isFalse()).execute() == 1;
+    }
+
+    @Override
+    public boolean refreshProviderResultUrls(Task lease, String workerId,
+            dev.agenvas.provider.domain.ProviderResultManifest expected,
+            dev.agenvas.provider.domain.ProviderResultManifest refreshed, Instant now) {
+        return dsl.update(TASK)
+                .set(TASK.PROVIDER_RESULT_MANIFEST, JSONB.valueOf(objectMapper.writeValueAsString(refreshed)))
+                .where(currentWorkerLease(lease.id(), workerId, lease.leaseEpoch(), now))
+                .and(TASK.PROJECT_ID.eq(lease.projectId())).and(TASK.STATUS.eq(Task.Status.RUNNING.name()))
+                .and(TASK.PROVIDER_REQUEST_ID.isNotNull())
+                .and(TASK.PROVIDER_RESULT_MANIFEST.eq(JSONB.valueOf(objectMapper.writeValueAsString(expected))))
+                .execute() == 1;
+    }
+
+    @Override
     public void bindMediaTask(UUID taskId, MediaCapabilityBinding binding) {
         int changed = dsl.update(TASK)
                 .set(TASK.CAPABILITY_ID, binding.capabilityId())

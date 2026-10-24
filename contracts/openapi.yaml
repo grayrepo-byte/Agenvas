@@ -6207,6 +6207,10 @@ components:
         key: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"}
         label: {type: string, minLength: 1, maxLength: 160}
         description: {type: [string, "null"], maxLength: 1000}
+        group:
+          type: [string, "null"]
+          maxLength: 80
+          description: Optional administrator-defined creator-facing stage or group name. Display metadata only; does not change field identity, order, conditions or provider mappings.
         type: {type: string, enum: [STRING, NUMBER, INTEGER, BOOLEAN, SELECT, IMAGE, AUDIO, VIDEO]}
         required: {type: boolean, default: false}
         advanced: {type: boolean, default: false}
@@ -6244,6 +6248,10 @@ components:
         key: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"}
         label: {type: string, minLength: 1, maxLength: 160}
         description: {type: [string, "null"], maxLength: 1000}
+        group:
+          type: [string, "null"]
+          maxLength: 80
+          description: Optional administrator-defined creator stage. Display metadata only; does not change field identity, conditions or provider mappings.
         type: {type: string, enum: [STRING, NUMBER, INTEGER, BOOLEAN, SELECT, IMAGE, AUDIO, VIDEO]}
         required: {type: boolean, default: false}
         advanced: {type: boolean, default: false}
@@ -6292,6 +6300,11 @@ components:
       required: [definition, warnings, recommendedFieldKeys, targetName]
       properties:
         definition: {$ref: "#/components/schemas/RunningHubDefinition"}
+        fieldInsights:
+          type: array
+          maxItems: 1024
+          description: Per-field discovery evidence for administrator review. Matched by nodeId and fieldName when candidate keys are merged. These suggestions are not persisted in the capability or used to authorize execution.
+          items: {$ref: "#/components/schemas/RunningHubFieldInsight"}
         targetName:
           type: [string, "null"]
           maxLength: 160
@@ -6306,6 +6319,22 @@ components:
           type: array
           description: Public discovery warnings localized using Accept-Language. Imported field labels and definition values retain their original content.
           items: {type: string}
+    RunningHubFieldInsight:
+      type: object
+      additionalProperties: false
+      required: [key, nodeId, fieldName, confidence, reasons]
+      properties:
+        key: {type: string, pattern: "^[A-Za-z][A-Za-z0-9_]{0,63}$"}
+        nodeId: {type: string, pattern: "^[0-9]{1,32}$"}
+        fieldName: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_.]{0,79}$"}
+        confidence: {type: string, enum: [DECLARED, INFERRED, UNCERTAIN]}
+        reasons:
+          type: array
+          uniqueItems: true
+          maxItems: 16
+          items:
+            type: string
+            enum: [TYPE_DECLARATION, WIDGET_TYPE, JSON_VALUE, UPLOAD_WIDGET, NAME_HINT, DIRECT_CREATIVE_CONNECTION, PRIMARY_PROMPT, NEGATIVE_PROMPT, AMBIGUOUS_PROMPT, CONFLICTING_MEDIA_METADATA, MISSING_ENUM_OPTIONS, RESOURCE_URL_NODE, RESOURCE_FILE_NODE, RESOURCE_FORMAT_UNCERTAIN, EXPLICIT_GROUP, MISSING_TYPE_METADATA]
     MediaCapabilityPricing:
       type: object
       additionalProperties: false
@@ -8172,12 +8201,14 @@ components:
             assistantText 为最终公开文本。失败或取消保留 INTERRUPTED 文本。
             modelRetry 是 AgentModelRetry 投影；READY 使用 nextActionAt 显示下次重试时间。
             内部上下文压缩完成时 contextCompacted=true；不包含 assistantText、assistantStream 或交接摘要正文。
+            媒体故障或恢复中可包含有界 providerFailure 诊断；成功后使用实际归档结果，不保留旧故障正文。
             TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时仅返回 prompt、sourceVersionId、mock；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
           oneOf:
             - type: object
               additionalProperties: true
               properties:
                 modelRetry: {$ref: "#/components/schemas/AgentModelRetry"}
+                providerFailure: {$ref: "#/components/schemas/ProviderFailure"}
                 contextCompacted: {type: boolean, description: 内部上下文压缩已完成；不代表创作任务完成。}
             - {type: "null"}
         providerRequestId: {type: [string, "null"], maxLength: 512}
@@ -8188,6 +8219,18 @@ components:
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
         completedAt: {type: [string, "null"], format: date-time}
+    ProviderFailure:
+      type: object
+      additionalProperties: false
+      description: Bounded provider diagnostic containing only a stage, safe classification, numeric status/code and validated node/field identifiers. Never includes upstream messages, bodies, credentials, media URLs or input values. Retryability of the underlying task remains controlled by its state; a diagnostic never authorizes a new generation.
+      required: [stage, category, httpStatus, upstreamCode, nodeId, fieldName]
+      properties:
+        stage: {type: string, enum: [DISCOVERY, UPLOAD, SUBMIT, POLL, DOWNLOAD]}
+        category: {type: string, enum: [AUTHENTICATION, BALANCE, PARAMETER, RATE_LIMIT, UPLOAD, GENERATION, DOWNLOAD_EXPIRED, UNAVAILABLE, PROTOCOL]}
+        httpStatus: {type: [integer, "null"], minimum: 100, maximum: 599}
+        upstreamCode: {type: [integer, "null"], format: int64, minimum: 0, maximum: 999999999}
+        nodeId: {type: [string, "null"], pattern: "^[0-9]{1,32}$"}
+        fieldName: {type: [string, "null"], pattern: "^[A-Za-z_][A-Za-z0-9_.]{0,79}$"}
     AgentModelRetry:
       type: object
       additionalProperties: false
