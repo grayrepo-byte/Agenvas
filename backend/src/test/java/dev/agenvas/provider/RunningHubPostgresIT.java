@@ -455,11 +455,16 @@ class RunningHubPostgresIT {
                     new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "rh-admin"), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
             String url = "/api/v1/settings/media-connections/" + connection.id() + "/runninghub/preview";
             String body = """
-                {"targetType":"AI_APP","targetId":"123","kind":"IMAGE_GENERATION","source":{"nodeInfoList":[
+                {"targetType":"AI_APP","targetId":"123","kind":"VIDEO_GENERATION","source":{"nodeInfoList":[
                   {"nodeId":"516","fieldName":"sampling_mode.top_p","fieldType":"NUMBER","fieldValue":0.9},
                   {"nodeId":"1","nodeName":"Text","fieldName":"text","fieldType":"STRING","fieldValue":"synthetic scene"},
                   {"nodeId":"2","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE",
-                   "fieldData":[["synthetic.png","None","synthetic.png"],{"image_upload":true}]}]}}
+                   "fieldData":[["synthetic.png","None","synthetic.png"],{"image_upload":true}]},
+                  {"nodeId":"3","fieldName":"value","fieldType":"FLOAT","description":"时长（秒）","fieldValue":"12.5",
+                   "fieldData":["FLOAT",{"min":0.1,"max":30,"default":6}]},
+                  {"nodeId":"4","fieldName":"aspect_ratio","fieldType":"LIST","fieldValue":"16:9","fieldData":["1:1","16:9"]},
+                  {"nodeId":"5","fieldName":"megapixels","fieldType":"FLOAT","fieldValue":"1.5",
+                   "fieldData":["FLOAT",{"min":0.1,"max":16,"default":1}]}]}}
                 """;
             mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post(url).contentType("application/json").content(body)
                     .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf()))
@@ -474,8 +479,15 @@ class RunningHubPostgresIT {
             assertThat(mapper.readTree(response).path("targetName").isNull()).isTrue();
             assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(0).asText()).isEqualTo("input2");
             assertThat(mapper.readTree(response).path("recommendedFieldKeys").get(1).asText()).isEqualTo("input3");
-            assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(3);
+            assertThat(mapper.readTree(response).path("definition").path("fields")).hasSize(6);
             assertThat(mapper.readTree(response).path("definition").path("fields").get(2).path("options")).isEmpty();
+            assertThat(mapper.readTree(response).path("recommendedFieldKeys"))
+                    .extracting(tools.jackson.databind.JsonNode::asText).containsExactly("input2", "input3", "input4", "input5", "input6");
+            var duration = mapper.readTree(response).path("definition").path("fields").get(3);
+            assertThat(duration.path("type").asText()).isEqualTo("NUMBER");
+            assertThat(duration.path("defaultValue").asDouble()).isEqualTo(12.5);
+            assertThat(duration.path("minimum").asDouble()).isEqualTo(0.1);
+            assertThat(duration.path("maximum").asDouble()).isEqualTo(30);
             assertThat(mapper.readTree(response).path("definition").path("fields").get(0).path("fieldName").asText())
                     .isEqualTo("sampling_mode.top_p");
             var discoveryCalls = new AtomicInteger();
@@ -484,8 +496,10 @@ class RunningHubPostgresIT {
             appInputs.addObject().put("nodeId", "1").put("fieldName", "text").put("fieldType", "STRING").put("fieldValue", "scene");
             // Exercise the full automatic HTTP discovery path at the published field limit.
             for (int index = 2; index <= 1024; index++) {
-                ((ObjectNode) graph).putObject(Integer.toString(index)).put("class_type", "SyntheticSampler")
-                        .putObject("inputs").put("steps", 20);
+                var node = ((ObjectNode) graph).putObject(Integer.toString(index));
+                node.put("class_type", index == 2 ? "PrimitiveFloat" : "SyntheticSampler")
+                        .putObject("inputs").put(index == 2 ? "value" : "steps", 20);
+                if (index == 2) node.putObject("_meta").put("title", "Float (Duration)");
                 appInputs.addObject().put("nodeId", Integer.toString(index)).put("fieldName", "steps")
                         .put("fieldType", "INTEGER").put("fieldValue", 20);
             }
@@ -521,6 +535,11 @@ class RunningHubPostgresIT {
                 var preview = mapper.readTree(automatic);
                 assertThat(preview.path("targetName").asText()).isEqualTo(targetType.equals("AI_APP") ? "Synthetic app" : "Synthetic workflow");
                 assertThat(preview.path("definition").path("fields")).hasSize(1024);
+                if (targetType.equals("WORKFLOW")) {
+                    assertThat(preview.path("definition").path("fields").get(1).path("type").asText()).isEqualTo("NUMBER");
+                    assertThat(preview.path("recommendedFieldKeys")).extracting(tools.jackson.databind.JsonNode::asText)
+                            .contains("input2");
+                }
                 assertThat(preview.path("definition").path("importSource").toString()).doesNotContain("Synthetic app", "Synthetic workflow");
                 assertThat(automatic).doesNotContain("Private owner", "fake-runninghub-key", "curl");
             }

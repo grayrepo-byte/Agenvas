@@ -695,13 +695,15 @@ describe("MediaSettingsPage", () => {
     } finally { discovery.release(); }
   });
 
-  it("publishes only discovered prompt and media inputs and preserves field choices after a save failure", async () => {
+  it("publishes suggested creation inputs and preserves field choices after a save failure", async () => {
     const definition: NonNullable<MediaCapability["settings"]["runningHub"]> = {
       schemaVersion: 1, protocolVersion: "V2", targetType: "WORKFLOW", targetId: "123", usePersonalQueue: false, addMetadata: false,
       fields: [
         { key: "prompt", label: "场景提示", type: "STRING", source: "PROMPT", nodeId: "1", fieldName: "text", defaultValue: "scene", required: false, advanced: false },
         { key: "seed", label: "随机种子", type: "INTEGER", nodeId: "1", fieldName: "seed", defaultValue: 42, required: false, advanced: false },
         { key: "image", label: "参考图片", type: "IMAGE", nodeId: "2", fieldName: "image", required: false, advanced: false },
+        { key: "ratio", label: "画幅", type: "SELECT", source: "PARAMETER", nodeId: "3", fieldName: "aspect_ratio", defaultValue: "16:9",
+          options: [{ label: "横屏", value: "16:9" }, { label: "竖屏", value: "9:16" }], required: false, advanced: false },
       ], outputs: [{ kind: "IMAGE", primary: true, maxCount: 1 }],
     };
     const fixture = settingsFixture({ platform: "RUNNINGHUB", capabilities: [] });
@@ -710,7 +712,7 @@ describe("MediaSettingsPage", () => {
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
       http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
-      http.post("/api/v1/settings/media-connections/openai-1/runninghub/preview", () => HttpResponse.json({ definition, warnings: [], recommendedFieldKeys: ["prompt", "image"] })),
+      http.post("/api/v1/settings/media-connections/openai-1/runninghub/preview", () => HttpResponse.json({ definition, warnings: [], recommendedFieldKeys: ["prompt", "image", "ratio"] })),
       http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
         writes.push(await request.json());
         return writes.length === 1 ? HttpResponse.json({ detail: "合成保存失败" }, { status: 503 }) : HttpResponse.json(fixture);
@@ -726,10 +728,11 @@ describe("MediaSettingsPage", () => {
     expect(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" })).not.toBeChecked();
     await user.click(within(dialog).getByText("创作者表单预览 · 离线"));
     expect(within(dialog).queryByRole("spinbutton", { name: "随机种子" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("combobox", { name: "画幅" })).toHaveValue("0");
     const publish = within(dialog).getByRole("button", { name: "发布能力" });
     await user.click(publish);
     await waitFor(() => expect(writes).toHaveLength(1));
-    expect(writes[0]).toEqual({ name: "智能工作流", adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: { ...definition, fields: [definition.fields[0], definition.fields[2]] } } });
+    expect(writes[0]).toEqual({ name: "智能工作流", adapterId: "RUNNINGHUB_IMAGE", settings: { runningHub: { ...definition, fields: [definition.fields[0], definition.fields[2], definition.fields[3]] } } });
     await waitFor(() => expect(publish).toBeEnabled());
     expect(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" })).not.toBeChecked();
     await user.click(publish);

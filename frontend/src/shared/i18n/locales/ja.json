@@ -1742,7 +1742,7 @@
   "settings.runningHub.numberInput": "数値",
   "settings.runningHub.defaultOrFormat": "初期値 / 素材形式",
   "settings.runningHub.mappingTable": "パラメーターの対応付け",
-  "settings.runningHub.mappingHint": "プロンプトと画像・動画・音声入力を識別し、既定で公開します。他のパラメーターは未選択です。ノードを選んで「公開」を個別に選択できます。範囲、説明、表示条件は詳細設定で調整できます。",
+  "settings.runningHub.mappingHint": "用途が明確なプロンプト、画像・動画・音声素材と、長さ、アスペクト比・寸法、解像度、フレームレート、画質などの創作用パラメーターを既定で推奨します。シード、モデル、サンプラー、ステップ数などの内部パラメーターは手動で「公開」を選択してください。再検出でも既存の手動設定と選択を保持します。範囲、説明、表示条件は詳細設定で調整できます。",
   "settings.runningHub.moreSettings": "詳細設定",
   "settings.runningHub.mappingActions": "操作",
   "settings.runningHub.organizeFields": "フィールドを整理する",

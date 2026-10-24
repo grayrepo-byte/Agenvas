@@ -1742,7 +1742,7 @@
   "settings.runningHub.numberInput": "numerical value",
   "settings.runningHub.defaultOrFormat": "Default / resource format",
   "settings.runningHub.mappingTable": "Parameter mappings",
-  "settings.runningHub.mappingHint": "Prompt and image, video, and audio inputs are detected and exposed by default. Other parameters start unchecked: select their node and check Expose. Expand more settings for ranges, descriptions, and visibility conditions.",
+  "settings.runningHub.mappingHint": "Discovery recommends clearly identified prompts, image/video/audio inputs, and creative controls such as duration, aspect ratio/dimensions, resolution, frame rate and quality. Select “Expose” manually for internal parameters such as seeds, models, samplers and steps. Rediscovery preserves existing manual settings and selections. More settings lets you edit bounds, descriptions and visibility conditions.",
   "settings.runningHub.moreSettings": "More settings",
   "settings.runningHub.mappingActions": "Actions",
   "settings.runningHub.organizeFields": "Organize fields",

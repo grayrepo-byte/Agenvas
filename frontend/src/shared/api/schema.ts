@@ -4680,7 +4680,7 @@ export interface components {
             definition: components["schemas"]["RunningHubDefinition"];
             /** @description Optional trimmed AI app or workflow display name from read-only discovery. Null when unavailable or importing local JSON. Autofills an empty capability name only; not retained in the imported input contract. */
             targetName: string | null;
-            /** @description Suggested exposed candidate keys for the editor (unambiguous canvas prompt and media inputs). Other fields remain available for manual exposure. Editor selection only; never stored in a capability or used to authorize execution. */
+            /** @description Suggested creator-facing candidate keys (unambiguous canvas prompt, media, negative prompt, duration, aspect ratio, dimensions, resolution, frame rate and quality). Types, bounds and valid defaults use declared input and widget metadata; sampler/model internals and ambiguous fields remain manual. Existing administrator mappings and selections take precedence when importing again. Editor selection only; never stored in a capability or used to authorize execution. */
             recommendedFieldKeys: string[];
             /** @description Public discovery warnings localized using Accept-Language. Imported field labels and definition values retain their original content. */
             warnings: string[];
