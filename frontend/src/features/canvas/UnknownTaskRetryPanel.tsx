@@ -5,19 +5,19 @@ import { createManualUnknownAttempt,type Task } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import "./AgentChatPanels.css";
-import { taskErrorMessage } from "./taskErrorMessages";
+import { taskErrorDetail, type ProviderFailureDiagnostic } from "./taskErrorMessages";
 import { EditorFeedbackRow } from "./EditorFeedbackRow";
 
 /** Offers one explicit retry for a task whose external result could not be confirmed. */
-export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCode, taskStatus = "UNKNOWN", onChanged, compact = false }: {
+export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCode, taskStatus = "UNKNOWN", providerFailure, onChanged, compact = false }: {
   projectId: string; taskId: string; taskVersion: number;
   errorCode?: Task["errorCode"]; taskStatus?: "UNKNOWN" | "BLOCKED"; onChanged?: () => void | Promise<void>;
-  compact?: boolean;
+  compact?: boolean; providerFailure?: ProviderFailureDiagnostic | null;
 }) {
   useLocale();
   const retryKey = useRef<string | null>(null);
   const queryClient = useQueryClient();
-  const reason = taskErrorMessage(errorCode);
+  const reason = taskErrorDetail(errorCode, providerFailure).replace(/^ · /, "");
   const retry = useMutation({
     mutationFn: () => {
       retryKey.current ??= crypto.randomUUID();

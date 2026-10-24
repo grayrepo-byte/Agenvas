@@ -9,6 +9,7 @@ import dev.agenvas.provider.domain.MediaAdapter;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.PortInput;
 import dev.agenvas.provider.domain.ProviderResultManifest;
+import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
@@ -19,6 +20,9 @@ import dev.agenvas.task.domain.Task;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -87,7 +91,17 @@ public final class RunningHubAdapter implements MediaAdapter {
                     String remote = uploaded.get(uploadKey);
                     if (remote == null) {
                         var file = reference(context, field, value);
-                        remote = client.upload(origin, key, file.path(), file.asset().contentType(), field.effectiveResourceFormat());
+                        try {
+                            remote = client.upload(origin, key, file.path(), file.asset().contentType(), field.effectiveResourceFormat());
+                        } catch (RunningHubClient.Failure failure) {
+                            // The current frozen slot supplies a trusted location when an upload endpoint omits one.
+                            String name = field.fieldName().matches("(?i).*(apikey|api_key|authorization|token|secret|password).*")
+                                    ? null : field.fieldName();
+                            var located = new ProviderFailure(ProviderFailure.Stage.UPLOAD, failure.diagnostic().category(),
+                                    failure.diagnostic().httpStatus(), failure.diagnostic().upstreamCode(), field.nodeId(), name);
+                            if (failure instanceof RunningHubClient.Rejected) throw new RunningHubClient.Rejected(located);
+                            throw new RunningHubClient.ProtocolFailure(located);
+                        }
                         uploaded.put(uploadKey, remote);
                     }
                     value = mapper.valueToTree(remote);
@@ -97,22 +111,104 @@ public final class RunningHubAdapter implements MediaAdapter {
             if (definition.fixedBindings() != null) for (var fixed : definition.fixedBindings())
                 addNode(nodes, fixed.nodeId(), fixed.fieldName(), fixed.value(), fixed.encoding());
         } catch (RunningHubClient.Rejected | RunningHubClient.ProtocolFailure invalid) {
-            return new Submission.Rejected("RUNNINGHUB_UPLOAD_FAILED");
+            var safe = safeFailure(invalid.diagnostic(), definition);
+            if (safe.stage() != ProviderFailure.Stage.UPLOAD) safe = new ProviderFailure(ProviderFailure.Stage.UPLOAD,
+                    ProviderFailure.Category.UPLOAD, safe.httpStatus(), safe.upstreamCode(), safe.nodeId(), safe.fieldName());
+            return new Submission.Rejected(safe.code(), safe);
         }
         try { return new Submission.Accepted(client.submit(origin, key, definition, nodes)); }
-        catch (RunningHubClient.Rejected rejected) { return new Submission.Rejected("RUNNINGHUB_SUBMISSION_REJECTED"); }
-        catch (RunningHubClient.Uncertain uncertain) { return new Submission.Unknown("PROVIDER_SUBMISSION_UNKNOWN"); }
+        catch (RunningHubClient.Rejected rejected) {
+            var safe = safeFailure(rejected.diagnostic(), definition);
+            return new Submission.Rejected(safe.code(), safe);
+        }
+        catch (RunningHubClient.Uncertain uncertain) { return new Submission.Unknown("PROVIDER_SUBMISSION_UNKNOWN", safeFailure(uncertain.diagnostic(), definition)); }
     }
 
     @Override public Submission reconcile(AttemptContext context) {
         var snapshot = snapshot(context);
-        JsonNode response = client.query(snapshot.connectionVersion().origin(), credential(snapshot), context.originalRequestId());
+        var definition = definition(snapshot);
+        JsonNode response = query(context, snapshot, definition);
         return switch (response.path("status").asText()) {
             case "QUEUED", "RUNNING" -> new Submission.Pending(clock.instant().plusSeconds(POLL_SECONDS));
-            case "FAILED" -> new Submission.Rejected("RUNNINGHUB_GENERATION_FAILED");
-            case "SUCCESS" -> new Submission.CompletedResults(manifest(response, definition(snapshot), snapshot.connectionVersion().origin()));
+            case "FAILED" -> {
+                var failure = safeFailure(client.generationFailure(response, credential(snapshot)), definition);
+                yield new Submission.Rejected(failure.code(), failure);
+            }
+            case "SUCCESS" -> new Submission.CompletedResults(manifest(response, definition, snapshot.connectionVersion().origin()));
             default -> throw new RunningHubClient.ProtocolFailure();
         };
+    }
+
+    @Override public ProviderResultManifest refreshResults(AttemptContext context, ProviderResultManifest frozen) {
+        var snapshot = snapshot(context);
+        String origin = snapshot.connectionVersion().origin();
+        JsonNode response = query(context, snapshot, definition(snapshot));
+        if (!"SUCCESS".equals(response.path("status").asText())) throw new RunningHubClient.ProtocolFailure();
+        return refreshedManifest(frozen, response, origin);
+    }
+
+    private JsonNode query(AttemptContext context, JooqMediaCapabilityRepository.Snapshot snapshot, RunningHubDefinition definition) {
+        try { return client.query(snapshot.connectionVersion().origin(), credential(snapshot), context.originalRequestId()); }
+        catch (RunningHubClient.Rejected failure) { throw new RunningHubClient.Rejected(safeFailure(failure.diagnostic(), definition)); }
+        catch (RunningHubClient.ProtocolFailure failure) { throw new RunningHubClient.ProtocolFailure(safeFailure(failure.diagnostic(), definition)); }
+    }
+
+    /** Locations must name an input in the frozen contract, not merely resemble an identifier. */
+    private ProviderFailure safeFailure(ProviderFailure failure, RunningHubDefinition definition) {
+        String node = failure.nodeId();
+        String field = failure.fieldName();
+        boolean matches = definition.fields().stream().anyMatch(binding ->
+                (node == null || node.equals(binding.nodeId())) && (field == null || field.equals(binding.fieldName())));
+        if (!matches && definition.fixedBindings() != null) matches = definition.fixedBindings().stream().anyMatch(binding ->
+                (node == null || node.equals(binding.nodeId())) && (field == null || field.equals(binding.fieldName())));
+        return new ProviderFailure(failure.stage(), failure.category(), failure.httpStatus(), failure.upstreamCode(),
+                matches ? node : null, matches ? field : null);
+    }
+
+    /** A fresh query may reorder candidates. Only exact, unique file paths may renew a frozen result URL. */
+    ProviderResultManifest refreshedManifest(ProviderResultManifest frozen, JsonNode response, String origin) {
+        JsonNode raw = response.path("results");
+        if (!raw.isArray()) throw new RunningHubClient.ResultIdentityChanged();
+        List<ProviderResultManifest.Result> refreshed = new ArrayList<>();
+        for (var result : frozen.results()) {
+            String identity = resultIdentity(result.url());
+            List<String> matches = new ArrayList<>();
+            for (JsonNode item : raw) {
+                if (!result.nodeId().equals(item.path("nodeId").asText(""))) continue;
+                String type = item.path("outputType").asText("");
+                if (result.archiveEntry() == null ? result.kind() != RunningHubResultArchive.outputKind(type)
+                        : !ARCHIVE_TYPE.equalsIgnoreCase(type)) continue;
+                String url = item.path("url").asText("");
+                RunningHubClient.validateDownload(origin, url);
+                if (identity.equals(resultIdentity(url))) matches.add(url);
+            }
+            // Never attach an ordinal to a different file, even if it is now first in the provider list.
+            if (matches.size() != 1) throw new RunningHubClient.ResultIdentityChanged();
+            refreshed.add(new ProviderResultManifest.Result(result.ordinal(), result.nodeId(), result.kind(),
+                    result.primary(), matches.getFirst(), result.archiveEntry(), result.providerMetadata()));
+        }
+        return new ProviderResultManifest(frozen.schemaVersion(), List.copyOf(refreshed), frozen.usage());
+    }
+
+    private static String resultIdentity(String url) {
+        try {
+            URI uri = URI.create(url);
+            String path = uri.getRawPath();
+            // An opaque download endpoint may select a different file solely through its query.
+            // Require a concrete media/archive path and retain every query parameter except known signing fields.
+            if (path == null || !path.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(png|jpe?g|webp|mp4|mp3|wav|flac|zip)$"))
+                throw new RunningHubClient.ResultIdentityChanged();
+            List<String> identityQuery = new ArrayList<>();
+            if (uri.getRawQuery() != null) for (String pair : uri.getRawQuery().split("&")) {
+                String name = URLDecoder.decode(pair.split("=", 2)[0], StandardCharsets.UTF_8).toLowerCase(java.util.Locale.ROOT);
+                if (Set.of("signature", "sig", "token", "expires", "expire", "expiry", "auth_key", "authorization",
+                        "policy", "key-pair-id", "ossaccesskeyid", "accesskeyid", "q-ak", "q-key-time", "q-signature").contains(name)
+                        || name.startsWith("x-amz-") || name.startsWith("x-oss-") || name.startsWith("q-sign-")) continue;
+                identityQuery.add(pair);
+            }
+            identityQuery.sort(String::compareTo);
+            return path + "?" + String.join("&", identityQuery);
+        } catch (IllegalArgumentException invalid) { throw new RunningHubClient.ResultIdentityChanged(); }
     }
 
     @Override public MediaPayload downloadResult(AttemptContext context, ProviderResultManifest.Result result) {

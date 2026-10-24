@@ -4705,6 +4705,8 @@ export interface components {
             key: string;
             label: string;
             description?: string | null;
+            /** @description Optional administrator-defined creator-facing stage or group name. Display metadata only; does not change field identity, order, conditions or provider mappings. */
+            group?: string | null;
             /** @enum {string} */
             type: "STRING" | "NUMBER" | "INTEGER" | "BOOLEAN" | "SELECT" | "IMAGE" | "AUDIO" | "VIDEO";
             /** @default false */
@@ -4731,6 +4733,8 @@ export interface components {
             key: string;
             label: string;
             description?: string | null;
+            /** @description Optional administrator-defined creator stage. Display metadata only; does not change field identity, conditions or provider mappings. */
+            group?: string | null;
             /** @enum {string} */
             type: "STRING" | "NUMBER" | "INTEGER" | "BOOLEAN" | "SELECT" | "IMAGE" | "AUDIO" | "VIDEO";
             /** @default false */
@@ -4770,12 +4774,22 @@ export interface components {
         };
         RunningHubImportPreview: {
             definition: components["schemas"]["RunningHubDefinition"];
+            /** @description Per-field discovery evidence for administrator review. Matched by nodeId and fieldName when candidate keys are merged. These suggestions are not persisted in the capability or used to authorize execution. */
+            fieldInsights?: components["schemas"]["RunningHubFieldInsight"][];
             /** @description Optional trimmed AI app or workflow display name from read-only discovery. Null when unavailable or importing local JSON. Autofills an empty capability name only; not retained in the imported input contract. */
             targetName: string | null;
             /** @description Suggested creator-facing candidate keys (unambiguous canvas prompt, media, negative prompt, duration, aspect ratio, dimensions, resolution, frame rate and quality). Types, bounds and valid defaults use declared input and widget metadata; sampler/model internals and ambiguous fields remain manual. Existing administrator mappings and selections take precedence when importing again. Editor selection only; never stored in a capability or used to authorize execution. */
             recommendedFieldKeys: string[];
             /** @description Public discovery warnings localized using Accept-Language. Imported field labels and definition values retain their original content. */
             warnings: string[];
+        };
+        RunningHubFieldInsight: {
+            key: string;
+            nodeId: string;
+            fieldName: string;
+            /** @enum {string} */
+            confidence: "DECLARED" | "INFERRED" | "UNCERTAIN";
+            reasons: ("TYPE_DECLARATION" | "WIDGET_TYPE" | "JSON_VALUE" | "UPLOAD_WIDGET" | "NAME_HINT" | "DIRECT_CREATIVE_CONNECTION" | "PRIMARY_PROMPT" | "NEGATIVE_PROMPT" | "AMBIGUOUS_PROMPT" | "CONFLICTING_MEDIA_METADATA" | "MISSING_ENUM_OPTIONS" | "RESOURCE_URL_NODE" | "RESOURCE_FILE_NODE" | "RESOURCE_FORMAT_UNCERTAIN" | "EXPLICIT_GROUP" | "MISSING_TYPE_METADATA")[];
         };
         MediaCapabilityPricing: {
             /** @description Administrator supplied unit price; up to six decimal places. */
@@ -6408,10 +6422,12 @@ export interface components {
              *     assistantText 为最终公开文本。失败或取消保留 INTERRUPTED 文本。
              *     modelRetry 是 AgentModelRetry 投影；READY 使用 nextActionAt 显示下次重试时间。
              *     内部上下文压缩完成时 contextCompacted=true；不包含 assistantText、assistantStream 或交接摘要正文。
+             *     媒体故障或恢复中可包含有界 providerFailure 诊断；成功后使用实际归档结果，不保留旧故障正文。
              *     TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时仅返回 prompt、sourceVersionId、mock；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
              */
             output?: ({
                 modelRetry?: components["schemas"]["AgentModelRetry"];
+                providerFailure?: components["schemas"]["ProviderFailure"];
                 /** @description 内部上下文压缩已完成；不代表创作任务完成。 */
                 contextCompacted?: boolean;
             } & {
@@ -6431,6 +6447,18 @@ export interface components {
             updatedAt: string;
             /** Format: date-time */
             completedAt?: string | null;
+        };
+        /** @description Bounded provider diagnostic containing only a stage, safe classification, numeric status/code and validated node/field identifiers. Never includes upstream messages, bodies, credentials, media URLs or input values. Retryability of the underlying task remains controlled by its state; a diagnostic never authorizes a new generation. */
+        ProviderFailure: {
+            /** @enum {string} */
+            stage: "DISCOVERY" | "UPLOAD" | "SUBMIT" | "POLL" | "DOWNLOAD";
+            /** @enum {string} */
+            category: "AUTHENTICATION" | "BALANCE" | "PARAMETER" | "RATE_LIMIT" | "UPLOAD" | "GENERATION" | "DOWNLOAD_EXPIRED" | "UNAVAILABLE" | "PROTOCOL";
+            httpStatus: number | null;
+            /** Format: int64 */
+            upstreamCode: number | null;
+            nodeId: string | null;
+            fieldName: string | null;
         };
         /** @description 同一固定模型请求的持久退避信息；默认首次失败起 24 小时内最多重试 288 次，可由部署配置调整。首次失败固定次数与截止时间，重启不重置。成功保留历史投影，终态不会继续重试。 */
         AgentModelRetry: {

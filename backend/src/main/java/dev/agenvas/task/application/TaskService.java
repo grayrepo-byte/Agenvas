@@ -19,6 +19,7 @@ import dev.agenvas.task.domain.VideoOperation;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.ProviderResultManifest;
+import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.task.domain.ProviderAttempt;
 import dev.agenvas.shared.error.ApiProblemException;
@@ -466,7 +467,17 @@ public class TaskService {
     }
 
     private JsonNode interruptedAgentOutput(Task task) {
-        if (task.kind() != Task.Kind.AGENT_TURN || task.output() == null) return null;
+        if (task.output() == null) return null;
+        if (task.kind() != Task.Kind.AGENT_TURN) {
+            // Media failures retain only the bounded public diagnostic, never an unfinished result payload.
+            if (java.util.Set.of(Task.Kind.IMAGE_GENERATION, Task.Kind.VIDEO_GENERATION, Task.Kind.AUDIO_GENERATION)
+                    .contains(task.kind()) && task.output().hasNonNull("providerFailure")) {
+                ObjectNode diagnostic = objectMapper.createObjectNode();
+                diagnostic.set("providerFailure", task.output().get("providerFailure").deepCopy());
+                return diagnostic;
+            }
+            return null;
+        }
         ObjectNode output = (ObjectNode) task.output().deepCopy();
         JsonNode progress = output.path(AGENT_STREAM_PROPERTY);
         if (progress.isObject() && progress.path("status").asText().equals(AgentStreamStatus.STREAMING.name())) {
@@ -592,6 +603,61 @@ public class TaskService {
     public Optional<ProviderResultManifest> providerResultManifest(Task lease) {
         if (tasks.findById(lease.id()).filter(task -> task.projectId().equals(lease.projectId())).isEmpty()) throw notFound();
         return tasks.providerResultManifest(lease.id());
+    }
+
+    /** A diagnostic never changes task state or grants permission to retry a billable request.
+     * Losing a lease is a best-effort miss here so UNKNOWN recovery can still classify the request. */
+    @Transactional
+    public boolean recordProviderFailure(Task lease, String workerId, ProviderFailure failure) {
+        if (failure == null) return false;
+        String worker = validateWorkerId(workerId);
+        if (tasks.mediaBinding(lease.id()).filter(binding ->
+                MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())).isEmpty()) return false;
+        UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
+        return events.recordChange(ownerId, lease.projectId(), () -> {
+            Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            if (!current.projectId().equals(lease.projectId()) || current.leaseEpoch() != lease.leaseEpoch())
+                return ProjectEventService.Change.unchanged(false);
+            ObjectNode output = current.output() != null && current.output().isObject()
+                    ? (ObjectNode) current.output().deepCopy() : objectMapper.createObjectNode();
+            output.set("providerFailure", objectMapper.valueToTree(failure));
+            if (!tasks.recordProviderFailure(current, worker, output, clock.instant()))
+                return ProjectEventService.Change.unchanged(false);
+            Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            events.append(ownerId, lease.projectId(), taskEvent(updated, updated.providerRequestId() != null));
+            return ProjectEventService.Change.unchanged(true);
+        }).value();
+    }
+
+    /** The result set is immutable; an authenticated query may refresh only its expiring transport URLs.
+     * CAS checks the original private checkpoint, preventing a stale worker from replacing a newer refresh. */
+    @Transactional
+    public void refreshProviderResultUrls(Task lease, String workerId,
+            ProviderResultManifest frozen, ProviderResultManifest refreshed) {
+        if (frozen == null || refreshed == null || frozen.schemaVersion() != refreshed.schemaVersion()
+                || frozen.schemaVersion() != ProviderResultManifest.SCHEMA_VERSION
+                || frozen.results() == null || refreshed.results() == null || frozen.results().isEmpty()
+                || frozen.results().size() != refreshed.results().size()
+                || !java.util.Objects.equals(frozen.usage(), refreshed.usage()))
+            throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
+        for (int index = 0; index < frozen.results().size(); index++) {
+            var original = frozen.results().get(index);
+            var next = refreshed.results().get(index);
+            if (original == null || next == null || original.ordinal() != index || next.ordinal() != index
+                    || !java.util.Objects.equals(original.nodeId(), next.nodeId())
+                    || original.kind() != next.kind() || original.primary() != next.primary()
+                    || !java.util.Objects.equals(original.archiveEntry(), next.archiveEntry())
+                    || !java.util.Objects.equals(original.providerMetadata(), next.providerMetadata())
+                    || next.url() == null || next.url().isBlank())
+                throw validation(ApiMessage.of("api.task-service.the-result-list-has-an-invalid-order-or-media-type"));
+        }
+        if (refreshed.results().stream().mapToLong(result -> result.url().length()).sum() > 96L * 1024 * 1024)
+            throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
+        if (tasks.mediaBinding(lease.id()).filter(binding ->
+                MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())).isEmpty())
+            throw validation(ApiMessage.of("api.task-service.the-resulting-list-is-invalid"));
+        if (!tasks.refreshProviderResultUrls(lease, validateWorkerId(workerId), frozen, refreshed, clock.instant()))
+            throw leaseLost();
     }
 
     /** Immutable download checkpoint under the same fencing epoch, before any result bytes are archived. */

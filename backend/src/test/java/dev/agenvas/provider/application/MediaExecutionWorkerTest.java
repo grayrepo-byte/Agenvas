@@ -27,6 +27,8 @@ import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.ProviderResultManifest;
+import dev.agenvas.provider.domain.ProviderFailure;
+import dev.agenvas.provider.infrastructure.RunningHubClient;
 import dev.agenvas.provider.domain.RunningHubDefinition.OutputKind;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Connection;
@@ -54,6 +56,74 @@ import tools.jackson.databind.node.ObjectNode;
 /** Synthetic provider responses exercise recovery and archival boundaries without external traffic. */
 class MediaExecutionWorkerTest {
     private static final String WORKER = "media-worker";
+
+    @Test void expiredRunningHubDownloadRefreshesTheOriginalTaskOnceAndCheckpointsUrlsBeforeArchiving() {
+        Fixture fixture = new Fixture(true, Task.Kind.IMAGE_GENERATION, "RUNNINGHUB_IMAGE");
+        var original = fixture.manifest(List.of(new ProviderResultManifest.Result(0, "9", OutputKind.IMAGE,
+                true, "https://cdn.example.com/image.png?old")));
+        var refreshed = fixture.manifest(List.of(new ProviderResultManifest.Result(0, "9", OutputKind.IMAGE,
+                true, "https://cdn.example.com/image.png?new")));
+        when(fixture.tasks.providerResultManifest(fixture.task)).thenReturn(Optional.of(original));
+        fixture.downloads(refreshed);
+        when(fixture.downloads.download(original.results().getFirst())).thenThrow(expired());
+        when(fixture.adapter.refreshResults(any(), eq(original))).thenReturn(refreshed);
+
+        assertThat(fixture.worker.pollOnce(WORKER)).isEqualTo(1);
+
+        var order = inOrder(fixture.tasks, fixture.adapter, fixture.downloads);
+        order.verify(fixture.adapter).openResultDownloads(any());
+        order.verify(fixture.downloads).download(original.results().getFirst());
+        order.verify(fixture.downloads).close();
+        ArgumentCaptor<AttemptContext> context = ArgumentCaptor.forClass(AttemptContext.class);
+        order.verify(fixture.adapter).refreshResults(context.capture(), eq(original));
+        assertThat(context.getValue().originalRequestId()).isEqualTo("original-request");
+        assertThat(context.getValue().requestKey()).isNull();
+        order.verify(fixture.tasks).refreshProviderResultUrls(fixture.task, WORKER, original, refreshed);
+        order.verify(fixture.adapter).openResultDownloads(any());
+        order.verify(fixture.downloads).download(refreshed.results().getFirst());
+        verify(fixture.tasks).succeedWithArtifacts(eq(fixture.task), eq(WORKER), anyList(), eq(original.usage()));
+        verify(fixture.adapter, never()).submit(any());
+        verify(fixture.adapter, never()).reconcile(any());
+    }
+
+    @Test void failedRefreshOrRepeatedExpiryBlocksSafelyWithoutAnotherGeneration() {
+        for (boolean changedIdentity : new boolean[]{false, true}) {
+            Fixture fixture = new Fixture(true, Task.Kind.IMAGE_GENERATION, "RUNNINGHUB_IMAGE");
+            var manifest = fixture.manifest(List.of(new ProviderResultManifest.Result(0, "9", OutputKind.IMAGE,
+                    true, "https://cdn.example.com/image.png?old")));
+            when(fixture.tasks.providerResultManifest(fixture.task)).thenReturn(Optional.of(manifest));
+            when(fixture.adapter.openResultDownloads(any())).thenReturn(fixture.downloads);
+            when(fixture.downloads.download(any())).thenThrow(expired());
+            if (changedIdentity) when(fixture.adapter.refreshResults(any(), eq(manifest))).thenThrow(new RunningHubClient.ResultIdentityChanged());
+            else when(fixture.adapter.refreshResults(any(), eq(manifest))).thenReturn(manifest);
+
+            assertThat(fixture.worker.pollOnce(WORKER)).isEqualTo(1);
+
+            verify(fixture.adapter).refreshResults(any(), eq(manifest));
+            verify(fixture.tasks).blockProviderPoll(fixture.task, WORKER,
+                    changedIdentity ? "RUNNINGHUB_RESULT_IDENTITY_CHANGED" : "RUNNINGHUB_RESULT_EXPIRED");
+            verify(fixture.tasks).recordProviderFailure(eq(fixture.task), eq(WORKER), any(ProviderFailure.class));
+            verify(fixture.adapter, never()).submit(any());
+            verify(fixture.tasks, never()).succeedWithArtifacts(any(), anyString(), anyList(), any());
+        }
+    }
+
+    @Test void submissionDiagnosticsAreRecordedWithoutInterferingWithExpiredUnknownLeaseRecovery() {
+        Fixture fixture = new Fixture(false, Task.Kind.IMAGE_GENERATION, "RUNNINGHUB_IMAGE");
+        var diagnostic = new ProviderFailure(ProviderFailure.Stage.SUBMIT, ProviderFailure.Category.RATE_LIMIT,
+                429, null, null, null);
+        when(fixture.adapter.submit(any())).thenReturn(new Submission.Unknown("PROVIDER_SUBMISSION_UNKNOWN", diagnostic));
+        when(fixture.tasks.recordProviderFailure(fixture.task, WORKER, diagnostic)).thenReturn(false);
+        when(fixture.tasks.markSubmissionUnknown(fixture.task, WORKER, "PROVIDER_SUBMISSION_UNKNOWN")).thenReturn(false);
+        assertThat(fixture.worker.submitOnce(WORKER)).isEqualTo(1);
+        verify(fixture.tasks).recordProviderFailure(fixture.task, WORKER, diagnostic);
+        verify(fixture.tasks).markSubmissionUnknown(fixture.task, WORKER, "PROVIDER_SUBMISSION_UNKNOWN");
+    }
+
+    private static RunningHubClient.DownloadExpired expired() {
+        return new RunningHubClient.DownloadExpired(new ProviderFailure(ProviderFailure.Stage.DOWNLOAD,
+                ProviderFailure.Category.DOWNLOAD_EXPIRED, 403, null, null, null));
+    }
 
     @Test
     void restoresMixedPersistedOutputsWithoutQueryingOrGeneratingAgain() {

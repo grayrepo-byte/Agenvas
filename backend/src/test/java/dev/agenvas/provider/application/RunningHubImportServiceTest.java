@@ -127,6 +127,93 @@ class RunningHubImportServiceTest {
         assertThat(preview.targetName()).isNull();
         assertThat(preview.definition().sourceSha256()).hasSize(64);
     }
+    @Test void fieldInsightsExplainTypeRoleConnectionsAndOnlyExplicitStagesWithoutChangingTheSource() {
+        var source = mapper.readTree("""
+            {"1":{"class_type":"PrimitiveFloat","_meta":{"title":"Stage 1: Base duration"},"inputs":{"value":15}},
+             "2":{"class_type":"ResolutionSelector","_meta":{"title":"latent upscale"},"inputs":{"megapixels":["1",0]}},
+             "3":{"class_type":"Text","_meta":{"title":"Prompt"},"inputs":{"text":"synthetic scene"}},
+             "4":{"class_type":"Text","_meta":{"title":"Negative prompt"},"inputs":{"text":"synthetic exclusions"}},
+             "5":{"class_type":"KSampler","inputs":{"positive":["3",0],"negative":["4",0],"steps":20}}}
+            """);
+        var before = source.deepCopy();
+        var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.VIDEO_GENERATION, source);
+        assertThat(preview.fieldInsights()).hasSize(preview.definition().fields().size());
+        assertThat(preview.fieldInsights().getFirst().confidence()).isEqualTo(RunningHubImportService.Confidence.DECLARED);
+        assertThat(preview.fieldInsights().getFirst().reasons()).contains(
+                RunningHubImportService.InsightReason.TYPE_DECLARATION,
+                RunningHubImportService.InsightReason.DIRECT_CREATIVE_CONNECTION,
+                RunningHubImportService.InsightReason.EXPLICIT_GROUP);
+        assertThat(preview.definition().fields().getFirst().group()).isEqualTo("Stage 1");
+        assertThat(preview.definition().fields().get(1).group()).isNull();
+        assertThat(preview.fieldInsights().get(1).reasons()).contains(RunningHubImportService.InsightReason.PRIMARY_PROMPT);
+        assertThat(preview.fieldInsights().get(2).reasons()).contains(RunningHubImportService.InsightReason.NEGATIVE_PROMPT)
+                .doesNotContain(RunningHubImportService.InsightReason.PRIMARY_PROMPT);
+        assertThat(preview.fieldInsights().get(3).reasons()).containsExactly(RunningHubImportService.InsightReason.JSON_VALUE);
+        assertThat(preview.definition().fields().get(3).group()).isNull();
+        assertThat(preview.definition().importSource()).isEqualTo(before);
+        assertThat(source).isEqualTo(before);
+    }
+    @Test void fieldInsightsExposeAmbiguousPromptAndMetadataWithoutForcingSelection() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.VIDEO_GENERATION,
+                mapper.readTree("""
+                    [{"nodeId":"1","fieldName":"prompt","nodeName":"Text","fieldType":"STRING","fieldValue":"first"},
+                     {"nodeId":"2","fieldName":"prompt","nodeName":"Text","fieldType":"STRING","fieldValue":"second"},
+                     {"nodeId":"3","fieldName":"file","description":"参考图","fieldType":"STRING",
+                      "fieldData":["STRING",{"image_upload":true,"audio_upload":true}]},
+                     {"nodeId":"4","fieldName":"mode","fieldType":"LIST","fieldData":{}},
+                     {"nodeId":"5","fieldName":"value"}]
+                    """));
+        assertThat(preview.recommendedFieldKeys()).isEmpty();
+        assertThat(preview.fieldInsights()).allMatch(insight -> insight.confidence() == RunningHubImportService.Confidence.UNCERTAIN);
+        assertThat(preview.fieldInsights().getFirst().reasons()).contains(RunningHubImportService.InsightReason.AMBIGUOUS_PROMPT);
+        assertThat(preview.fieldInsights().get(2).reasons()).contains(RunningHubImportService.InsightReason.CONFLICTING_MEDIA_METADATA);
+        assertThat(preview.fieldInsights().get(3).reasons()).contains(RunningHubImportService.InsightReason.MISSING_ENUM_OPTIONS);
+        assertThat(preview.fieldInsights().get(4).reasons()).containsExactly(RunningHubImportService.InsightReason.MISSING_TYPE_METADATA);
+        assertThat(preview.definition().fields()).allMatch(field -> field.effectiveSource() == RunningHubDefinition.Source.PARAMETER);
+    }
+    @Test void loaderClassDeterminesResourceFormatAndUnknownMediaPortsRemainEditable() {
+        for (var targetType : RunningHubDefinition.TargetType.values()) {
+            var source = targetType == RunningHubDefinition.TargetType.WORKFLOW ? mapper.readTree("""
+                {"1":{"class_type":"LoadImageFromUrl","inputs":{"image":"https://media.invalid/synthetic.png"}},
+                 "2":{"class_type":"LoadImage","inputs":{"image":"synthetic.png"}},
+                 "3":{"class_type":"LoadAudioFromUrl","inputs":{"audio":"https://media.invalid/synthetic.wav"}},
+                 "4":{"class_type":"LoadVideoFromUrl","inputs":{"video":"https://media.invalid/synthetic.mp4"}},
+                 "5":{"class_type":"UnknownVideoInput","inputs":{"reference_video":"synthetic.mp4"}},
+                 "6":{"class_type":"AudioInput","inputs":{"audio_url":"https://media.invalid/synthetic.wav"}}}
+                """) : mapper.readTree("""
+                [{"nodeId":"1","nodeName":"LoadImageFromUrl","fieldName":"image","fieldType":"IMAGE","fieldValue":"https://media.invalid/synthetic.png"},
+                 {"nodeId":"2","nodeName":"LoadImage","fieldName":"image","fieldType":"IMAGE","fieldValue":"synthetic.png"},
+                 {"nodeId":"3","nodeName":"LoadAudioFromUrl","fieldName":"audio","fieldType":"AUDIO"},
+                 {"nodeId":"4","nodeName":"LoadVideoFromUrl","fieldName":"video","fieldType":"VIDEO"},
+                 {"nodeId":"5","nodeName":"UnknownVideoInput","fieldName":"reference_video","fieldType":"VIDEO"},
+                 {"nodeId":"6","nodeName":"AudioInput","fieldName":"audio_url","fieldType":"AUDIO"}]
+                """);
+            var preview = imports.candidates(targetType, "123", Task.Kind.VIDEO_GENERATION, source);
+            assertThat(preview.definition().fields()).extracting(RunningHubDefinition.Field::resourceFormat)
+                    .containsExactly(RunningHubDefinition.ResourceFormat.URL, RunningHubDefinition.ResourceFormat.FILE_NAME,
+                            RunningHubDefinition.ResourceFormat.URL, RunningHubDefinition.ResourceFormat.URL, null,
+                            RunningHubDefinition.ResourceFormat.URL);
+            assertThat(preview.definition().fields()).allMatch(field -> field.defaultValue() == null);
+            assertThat(preview.fieldInsights().getFirst().reasons()).contains(RunningHubImportService.InsightReason.RESOURCE_URL_NODE);
+            assertThat(preview.fieldInsights().get(1).reasons()).contains(RunningHubImportService.InsightReason.RESOURCE_FILE_NODE);
+            assertThat(preview.fieldInsights().get(4).confidence()).isEqualTo(RunningHubImportService.Confidence.UNCERTAIN);
+            assertThat(preview.fieldInsights().get(4).reasons()).contains(RunningHubImportService.InsightReason.RESOURCE_FORMAT_UNCERTAIN);
+            assertThat(preview.recommendedFieldKeys()).hasSize(6);
+        }
+    }
+    @Test void genericTextPromotedToMediaReportsInferenceAndStageSuggestionsStayBounded() {
+        var preview = imports.candidates(RunningHubDefinition.TargetType.AI_APP, "123", Task.Kind.IMAGE_GENERATION,
+                mapper.readTree("""
+                    [{"nodeId":"1","nodeName":"LoadImage","fieldName":"reference_image","fieldType":"STRING","fieldValue":"synthetic.png"}]
+                    """));
+        assertThat(preview.definition().fields().getFirst().type()).isEqualTo(RunningHubDefinition.FieldType.IMAGE);
+        assertThat(preview.fieldInsights().getFirst().confidence()).isEqualTo(RunningHubImportService.Confidence.INFERRED);
+        assertThat(preview.fieldInsights().getFirst().reasons()).contains(RunningHubImportService.InsightReason.NAME_HINT);
+        assertThat(RunningHubInputDiscovery.group("放大输出：清晰度")).isEqualTo("放大输出");
+        assertThat(RunningHubInputDiscovery.group("Phase 2 — Resolution")).isEqualTo("Phase 2");
+        assertThat(RunningHubInputDiscovery.group("Latent upscale")).isNull();
+        assertThat(RunningHubInputDiscovery.group("Stage " + "1".repeat(100) + ": Duration")).isNull();
+    }
     @Test void workflowDiscoverySuggestsPromptAndMediaWhileLeavingSameNodeTuningParametersManual() {
         var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.VIDEO_GENERATION,
                 mapper.readTree("""

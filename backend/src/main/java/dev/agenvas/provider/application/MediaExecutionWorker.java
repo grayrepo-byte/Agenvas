@@ -11,6 +11,7 @@ import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.MediaPayload;
 import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.ProviderResultManifest;
+import dev.agenvas.provider.infrastructure.RunningHubClient;
 import dev.agenvas.provider.domain.RunningHubDefinition.OutputKind;
 import dev.agenvas.provider.domain.Submission;
 import dev.agenvas.task.application.TaskService;
@@ -115,6 +116,9 @@ public class MediaExecutionWorker {
                         : callLogs.record(descriptor(task, binding, CallLog.Operation.POLL),
                             () -> adapter.reconcile(attempt), resultValue -> callOutcome(resultValue, task.providerRequestId()));
             } catch (RuntimeException transientFailure) {
+                recordProviderFailure(task, workerId, transientFailure);
+                String runningHub = runningHubPermanentFailure(transientFailure);
+                if (runningHub != null) { tasks.blockProviderPoll(task, workerId, runningHub); continue; }
                 String permanent = klingArchiveFailure(binding, transientFailure);
                 if (permanent != null) { tasks.blockProviderPoll(task, workerId, permanent); continue; }
                 tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
@@ -129,7 +133,10 @@ public class MediaExecutionWorker {
                     completeArtifact(attempt, workerId, completed.content());
                 case Submission.CompletedResults completed ->
                     finishPolledManifest(attempt, workerId, adapter, completed.manifest());
-                case Submission.Rejected rejected -> tasks.fail(task, workerId, rejected.code());
+                case Submission.Rejected rejected -> {
+                    if (rejected.providerFailure() != null) tasks.recordProviderFailure(task, workerId, rejected.providerFailure());
+                    tasks.fail(task, workerId, rejected.code());
+                }
                 case Submission.Blocked blocked -> tasks.blockProviderPoll(task, workerId,
                         blocked.code());
                 case Submission.Unknown ignored ->
@@ -177,13 +184,38 @@ public class MediaExecutionWorker {
             if (tasks.providerResultManifest(task).isEmpty()) {
                 tasks.checkpointProviderResults(task, workerId, manifest);
             }
-            var results = archiveResults(attempt, adapter, manifest);
+            List<TaskService.ArchivedProviderResult> results;
+            try {
+                results = archiveResults(attempt, adapter, manifest);
+            } catch (RunningHubClient.DownloadExpired expired) {
+                // Refresh the original task once per archive attempt. No path here can submit a new generation.
+                var refreshed = adapter.refreshResults(attempt, manifest);
+                tasks.refreshProviderResultUrls(task, workerId, manifest, refreshed);
+                manifest = refreshed;
+                results = archiveResults(attempt, adapter, refreshed);
+            }
             tasks.succeedWithArtifacts(task, workerId, withSilentVideo(attempt, results), manifest.usage());
         } catch (RuntimeException archiveFailure) {
+            recordProviderFailure(task, workerId, archiveFailure);
+            String runningHub = runningHubPermanentFailure(archiveFailure);
+            if (runningHub != null) { tasks.blockProviderPoll(task, workerId, runningHub); return; }
             String permanent = klingArchiveFailure(attempt.binding(), archiveFailure);
             if (permanent != null) tasks.blockProviderPoll(task, workerId, permanent);
             else tasks.retryProviderPoll(task, workerId, "PROVIDER_POLL_TECHNICAL_FAILURE");
         }
+    }
+
+    private void recordProviderFailure(Task task, String workerId, RuntimeException failure) {
+        if (failure instanceof RunningHubClient.Failure runningHub)
+            tasks.recordProviderFailure(task, workerId, runningHub.diagnostic());
+    }
+
+    private String runningHubPermanentFailure(RuntimeException failure) {
+        if (!(failure instanceof RunningHubClient.Failure runningHub)) return null;
+        return switch (runningHub.diagnostic().category()) {
+            case AUTHENTICATION, BALANCE, PARAMETER, GENERATION, DOWNLOAD_EXPIRED, PROTOCOL -> runningHub.code();
+            case RATE_LIMIT, UPLOAD, UNAVAILABLE -> null;
+        };
     }
 
     private CallLogService.CallDescriptor descriptor(Task task, MediaCapabilityBinding binding,
@@ -226,9 +258,12 @@ public class MediaExecutionWorker {
                     archive(attempt, completed.payload()));
             case Submission.CompletedArtifact completed ->
                     completeArtifact(attempt, workerId, completed.content());
-            case Submission.Rejected rejected -> tasks.rejectSubmission(task, workerId,
-                    rejected.code());
+            case Submission.Rejected rejected -> {
+                if (rejected.providerFailure() != null) tasks.recordProviderFailure(task, workerId, rejected.providerFailure());
+                tasks.rejectSubmission(task, workerId, rejected.code());
+            }
             case Submission.Unknown unknown -> {
+                if (unknown.providerFailure() != null) tasks.recordProviderFailure(task, workerId, unknown.providerFailure());
                 // 拿到「无法确认外部是否完成」的确定结论时就立即按原因码判定，不再让用户
                 // 盯着「正在提交」空等整个租约。租约若已在调用期间过期（例如租约被配得
                 // 短于客户端超时），兜底扫描会接手同一条记录，这里不把它当成错误抛出。

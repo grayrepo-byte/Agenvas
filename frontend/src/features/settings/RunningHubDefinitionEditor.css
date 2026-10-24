@@ -76,6 +76,13 @@
 .runninghub-import-source [data-slot="textarea"] { field-sizing: fixed; min-height: 144px; max-height: 360px; font-family: var(--ui-font-mono, monospace); font-size: var(--ui-text-xs); }
 .runninghub-section-content [data-slot="field-group"] { gap: var(--ui-space-4); }
 .runninghub-scope-summary { flex-wrap: wrap; }
+.runninghub-candidate-tools { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--ui-space-3); }
+.runninghub-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-3); font-size: var(--ui-text-sm); }
+.runninghub-field-evidence { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ui-space-2); margin-bottom: var(--ui-space-3); color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.runninghub-node-search { padding: var(--ui-space-2); }
+.runninghub-diff-list { display: flex; flex-direction: column; gap: var(--ui-space-3); padding-inline-start: var(--ui-space-4); font-size: var(--ui-text-sm); }
+.runninghub-diff-list li { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ui-space-2); overflow-wrap: anywhere; }
+.runninghub-diff-list code { color: var(--ui-text-secondary); }
 @media (max-width: 1100px) {
   .runninghub-definition-editor { grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-4); }
   .runninghub-workbench-nav { position: static; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 0; }

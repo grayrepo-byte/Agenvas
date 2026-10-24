@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import type { RunningHubDefinition } from "../../shared/api/client";
 import { clickControl, selectValue } from "../../test/controls";
@@ -58,6 +58,93 @@ function currentDefinition() {
 function publishedDefinition() {
   return JSON.parse(screen.getByTestId("published").textContent ?? "") as RunningHubDefinition;
 }
+
+describe("RunningHubDefinitionEditor review and large candidate sets", () => {
+  beforeEach(() => server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" }))));
+  it("shows server evidence and filters recommended, exposed and uncertain candidates", async () => {
+    const fields: RunningHubDefinition["fields"] = [
+      { ...initialDefinition.fields[0]!, key: "seconds", nodeId: "10", fieldName: "duration", label: "时长", type: "NUMBER", defaultValue: 5.5 },
+      { ...initialDefinition.fields[0]!, key: "uncertain", nodeId: "10", fieldName: "asset", label: "待定素材", type: "STRING", defaultValue: null },
+    ];
+    server.use(http.post("/api/v1/settings/media-connections/connection/runninghub/preview", () => HttpResponse.json({
+      definition: { ...initialDefinition, fields, fixedBindings: [] }, targetName: null, warnings: [], recommendedFieldKeys: ["seconds"],
+      fieldInsights: [{ key: "seconds", nodeId: "10", fieldName: "duration", confidence: "DECLARED", reasons: ["WIDGET_TYPE"] },
+        { key: "uncertain", nodeId: "10", fieldName: "asset", confidence: "UNCERTAIN", reasons: ["CONFLICTING_MEDIA_METADATA"] }],
+    })));
+    await mount(false, { ...initialDefinition, fields: [], fixedBindings: [] });
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    await screen.findByRole("row", { name: "时长" });
+    expect(within(screen.getByRole("row", { name: "时长" })).getByText("来自控件类型")).toBeInTheDocument();
+    await selectValue(screen.getByRole("combobox", { name: "参数筛选" }), "UNCERTAIN");
+    expect(screen.queryByRole("row", { name: "时长" })).not.toBeInTheDocument();
+    expect(screen.getByRole("row", { name: "待定素材" })).toHaveTextContent("素材元数据冲突，请核对类型");
+    await selectValue(screen.getByRole("combobox", { name: "参数筛选" }), "RECOMMENDED");
+    expect(screen.getByRole("row", { name: "时长" })).toBeInTheDocument();
+    expect(screen.queryByRole("row", { name: "待定素材" })).not.toBeInTheDocument();
+    await selectValue(screen.getByRole("combobox", { name: "参数筛选" }), "EXPOSED");
+    expect(screen.getByRole("row", { name: "时长" })).toBeInTheDocument();
+    expect(publishedDefinition().fields.map((item) => item.key)).toEqual(["seconds"]);
+  });
+
+  it("mounts one page of 1024 fields and preserves invalid scalar text across pages", async () => {
+    const fields = Array.from({ length: 1024 }, (_, index) => ({ ...initialDefinition.fields[1]!, key: `field${index + 1}`,
+      nodeId: "1", fieldName: `value${index + 1}`, label: `参数${index + 1}`, enabledWhen: null }));
+    await mount(false, { ...initialDefinition, fields, fixedBindings: [] });
+    expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(20);
+    const first = screen.getByRole("row", { name: "参数1" });
+    const input = within(first).getByRole("textbox", { name: "默认值" });
+    fireEvent.change(input, { target: { value: "invalid draft" } }); fireEvent.blur(input);
+    await clickControl(screen.getByRole("button", { name: "下一页" }));
+    expect(screen.queryByRole("row", { name: "参数1" })).not.toBeInTheDocument();
+    expect(screen.getByRole("row", { name: "参数21" })).toBeInTheDocument();
+    expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(20);
+    await clickControl(screen.getByRole("button", { name: "上一页" }));
+    const restored = within(screen.getByRole("row", { name: "参数1" })).getByRole("textbox", { name: "默认值" });
+    expect(restored).toHaveValue("invalid draft"); expect(restored).toHaveProperty("validity.valid", false);
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索字段、节点或分组" }), { target: { value: "参数1024" } });
+    expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(1);
+    expect(screen.getByRole("row", { name: "参数1024" })).toBeInTheDocument();
+    expect(currentDefinition().fields).toHaveLength(1024);
+  });
+
+  it("validates selected fields outside the mounted page, clears filters and reveals the invalid field", async () => {
+    const submitted = vi.fn();
+    const fields = Array.from({ length: 45 }, (_, index) => ({ ...initialDefinition.fields[1]!, key: `field${index + 1}`,
+      nodeId: "1", fieldName: `value${index + 1}`, label: `参数${index + 1}`, enabledWhen: null, defaultValue: index === 44 ? "invalid number" : 0 }));
+    function Form() {
+      const [value, setValue] = useState<RunningHubDefinition>({ ...initialDefinition, fields, fixedBindings: [] });
+      return <form aria-label="validation" onSubmit={submitted}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={value} onChange={setValue} /><button type="submit">Submit</button></form>;
+    }
+    render(<QueryClientProvider client={new QueryClient()}><Form /></QueryClientProvider>);
+    fireEvent.change(screen.getByRole("textbox", { name: "搜索字段、节点或分组" }), { target: { value: "参数1" } });
+    fireEvent.submit(screen.getByRole("form", { name: "validation" }));
+    expect(submitted).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox", { name: "搜索字段、节点或分组" })).toHaveValue("");
+    expect(screen.getByRole("row", { name: "参数45" })).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("参数45");
+    expect(screen.getByRole("status")).toHaveTextContent("第 3 / 3 页");
+  });
+
+  it("compares saved source metadata and preserves manual settings until explicit adoption", async () => {
+    const oldSource = { "2": { class_type: "PrimitiveFloat", inputs: { value: 1 } } };
+    const oldField = { ...initialDefinition.fields[1]!, key: "oldInput", fieldName: "value", label: "old source", type: "INTEGER" as const, enabledWhen: null, defaultValue: 1 };
+    const newField = { ...oldField, key: "input1", type: "NUMBER" as const, maximum: 10, label: "new source", defaultValue: 2 };
+    const requests: { source?: unknown }[] = [];
+    server.use(http.post("/api/v1/settings/media-connections/connection/runninghub/preview", async ({ request }) => {
+      const body = await request.json() as { source?: unknown }; requests.push(body);
+      return HttpResponse.json({ definition: { ...initialDefinition, importSource: body.source ?? { changed: true }, fixedBindings: [], fields: [body.source ? oldField : newField] },
+        targetName: null, recommendedFieldKeys: ["input1"], warnings: [] });
+    }));
+    await mount(false, { ...initialDefinition, fields: [{ ...oldField, key: "duration", label: "手工时长", defaultValue: 4, group: "基础生成" }], fixedBindings: [], importSource: oldSource });
+    await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
+    await screen.findByText("INTEGER → NUMBER");
+    expect(requests).toHaveLength(2);
+    expect(screen.getByText("类型变化 · 范围 / 必填规则变化")).toBeInTheDocument();
+    expect(currentDefinition().fields[0]).toMatchObject({ key: "duration", label: "手工时长", type: "INTEGER", defaultValue: 4, group: "基础生成" });
+    await clickControl(screen.getByRole("button", { name: "采纳类型、选项及约束" }));
+    expect(currentDefinition().fields[0]).toMatchObject({ key: "duration", label: "手工时长", type: "NUMBER", maximum: 10, defaultValue: 4, group: "基础生成" });
+  });
+});
 
 describe("RunningHubDefinitionEditor intelligent discovery", () => {
   const discovered: RunningHubDefinition = { ...initialDefinition, fixedBindings: [], fields: [
@@ -531,10 +618,10 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     fireEvent.blur(input);
     await showNodes("1");
     await showNodes("1", "2");
-    expect(inputFor("默认值")).toBe(input);
-    expect(input).toHaveValue("invalid");
-    // checkValidity() dispatches invalid and moves focus; inspect draft validity without submitting.
-    expect(input).toHaveProperty("validity.valid", false);
+    const restored = inputFor("默认值");
+    expect(restored).toHaveValue("invalid");
+    // Pagination remounts controls; their raw draft and validation state survive.
+    expect(restored).toHaveProperty("validity.valid", false);
     expect(currentDefinition().fields[1]?.defaultValue).toBe(0);
     await showNodes("2");
     fireEvent.click(screen.getByRole("button", { name: "手动添加字段" }));
@@ -626,19 +713,19 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     fireEvent.change(fixed, { target: { value: "invalid fixed value" } });
     fireEvent.blur(fixed);
     await showNodes("1");
-    expect(input).toBeDisabled();
-    expect(fixed).toBeDisabled();
-    expect((input as HTMLInputElement).checkValidity()).toBe(true);
-    expect((fixed as HTMLInputElement).checkValidity()).toBe(true);
+    expect(input).not.toBeInTheDocument();
+    expect(fixed).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "默认值" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "固定值（JSON 标量）" })).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     await showNodes("1", "2");
-    expect(inputFor("默认值")).toBe(input);
-    expect(input).toHaveValue("invalid");
-    expect(input).toBeEnabled();
-    expect(input).toHaveProperty("validity.valid", false);
-    expect(inputFor("固定值（JSON 标量）")).toBe(fixed);
-    expect(fixed).toHaveValue("invalid fixed value");
-    expect(fixed).toHaveProperty("validity.valid", false);
+    const restoredInput = inputFor("默认值");
+    expect(restoredInput).toHaveValue("invalid");
+    expect(restoredInput).toBeEnabled();
+    expect(restoredInput).toHaveProperty("validity.valid", false);
+    const restoredFixed = inputFor("固定值（JSON 标量）");
+    expect(restoredFixed).toHaveValue("invalid fixed value");
+    expect(restoredFixed).toHaveProperty("validity.valid", false);
   });
 });
 

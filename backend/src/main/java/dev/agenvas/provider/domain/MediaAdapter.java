@@ -15,6 +15,10 @@ public interface MediaAdapter {
     default ResultDownloads openResultDownloads(AttemptContext context) {
         return result -> downloadResult(context, result);
     }
+    /** Refresh only locations of already frozen results by querying the original accepted request. */
+    default ProviderResultManifest refreshResults(AttemptContext context, ProviderResultManifest frozen) {
+        throw new UnsupportedOperationException("Adapter has no result refresh protocol");
+    }
     interface ResultDownloads extends AutoCloseable {
         MediaPayload download(ProviderResultManifest.Result result);
         @Override default void close() {}

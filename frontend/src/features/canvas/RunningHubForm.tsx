@@ -1,4 +1,4 @@
-import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldGroup, FieldLabel, FieldSet, FieldLegend } from "../../shared/ui/primitives/field";
 import { useId, useState } from "react";
 import type { CreatorInputDefinition, CreatorInputField } from "../../shared/creatorInputs";
 import { t,useLocale } from "../../shared/i18n";
@@ -69,8 +69,21 @@ export function RunningHubForm({ definition, values, prompt, durationSeconds, ch
       {isMedia && onUpload ? <UploadSlot field={field} disabled={disabled} onUpload={onUpload} /> : null}
     </FieldGroup>;
   }
+  function controls(fields: CreatorInputField[]) {
+    // Group only adjacent fields: stage headings must not reorder mappings, conditional slots or media.
+    const groups: { label: string; fields: CreatorInputField[] }[] = [];
+    for (const field of fields) {
+      const label = field.group?.trim() ?? "";
+      const previous = groups.at(-1);
+      if (previous?.label === label) previous.fields.push(field);
+      else groups.push({ label, fields: [field] });
+    }
+    return groups.map((group) => group.label
+      ? <FieldSet key={group.fields[0]!.key} className="runninghub-creator-group"><FieldLegend>{group.label}</FieldLegend><FieldGroup>{group.fields.map(control)}</FieldGroup></FieldSet>
+      : <FieldGroup key={group.fields[0]!.key}>{group.fields.map(control)}</FieldGroup>);
+  }
   return <FieldGroup className="runninghub-form" aria-label={t("media.runningHub.parameters")}>
-    {activeFields.filter((field) => !field.advanced).map(control)}
-    {definition.fields.some((field) => field.advanced) ? <details className="runninghub-form-advanced"><summary>{t("media.runningHub.advancedParameters")}</summary><FieldGroup>{activeFields.filter((field) => field.advanced).map(control)}</FieldGroup></details> : null}
+    {controls(activeFields.filter((field) => !field.advanced))}
+    {definition.fields.some((field) => field.advanced) ? <details className="runninghub-form-advanced"><summary>{t("media.runningHub.advancedParameters")}</summary><FieldGroup>{controls(activeFields.filter((field) => field.advanced))}</FieldGroup></details> : null}
   </FieldGroup>;
 }

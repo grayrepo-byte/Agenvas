@@ -61,14 +61,17 @@ class LocalizedResponseTest {
                 List.of(new RunningHubDefinition.Output(null, RunningHubDefinition.OutputKind.IMAGE, true, 1)),
                 "default", false, false, null, "source-hash", List.of(new RunningHubDefinition.NodeOption("20", "保存图片")), null);
         var warning = ApiMessage.of("api.running-hub-import-service.node-field-uses-an-unsupported-mapping-format-and-was-skipped", "6", "用户字段");
+        var insight = new RunningHubImportService.FieldInsight("input1", "6", "text",
+                RunningHubImportService.Confidence.INFERRED, List.of(RunningHubImportService.InsightReason.PRIMARY_PROMPT));
         when(service.preview(eq(connectionId), eq(definition.targetType()), eq("123"), eq(Task.Kind.IMAGE_GENERATION), any()))
-                .thenReturn(new RunningHubImportService.Preview(definition, List.of(warning), List.of(), "原始工作流名称"));
+                .thenReturn(new RunningHubImportService.Preview(definition, List.of(warning), List.of(), "原始工作流名称", List.of(insight)));
         var input = new RunningHubImportController.ImportRequest(definition.targetType(), "123", Task.Kind.IMAGE_GENERATION, mapper.createObjectNode());
         for (var locale : SupportedLocales.SUPPORTED) {
             var response = controller.preview(principal, connectionId, input, request(locale.toLanguageTag()));
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
             assertThat(response.getBody().definition()).isSameAs(definition);
             assertThat(response.getBody().targetName()).isEqualTo("原始工作流名称");
+            assertThat(response.getBody().fieldInsights()).containsExactly(insight);
             assertThat(response.getBody().warnings()).containsExactly(messages.text(warning, locale));
             assertThat(response.getBody().warnings().getFirst()).contains("6", "用户字段");
             assertThat(mapper.valueToTree(response.getBody()).path("warnings").get(0).isTextual()).isTrue();

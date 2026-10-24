@@ -54,7 +54,8 @@ async function page(fn, ...args) {
 async function waitFor(fn, ...args) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (await page(fn, ...args)) return;
+    const value = await page(fn, ...args);
+    if (value) return value;
     await pause();
   }
   throw new Error(`Timed out waiting for the node picker fixture: ${await page(() => document.body.innerText.slice(0, 1200))}`);
@@ -76,11 +77,25 @@ async function pointerClick(selector) {
     const y = candidates.find((candidate) => element.contains(document.elementFromPoint(x, candidate)));
     return y === undefined ? false : { x, y };
   }
-  await waitFor(visiblePoint, selector);
-  const point = await page(visiblePoint, selector);
+  const point = await waitFor(visiblePoint, selector);
   await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
   await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
   await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
+}
+
+async function scrollControlIntoView(selector) {
+  await page((target) => {
+    const element = document.querySelector(target);
+    const body = element.closest(".ui-dialog-body");
+    const rect = element.getBoundingClientRect();
+    const bounds = body.getBoundingClientRect();
+    const navigation = body.querySelector(".runninghub-workbench-nav");
+    const navBounds = navigation?.getBoundingClientRect();
+    const overlaps = navBounds && navBounds.left < rect.right && navBounds.right > rect.left;
+    const inset = overlaps && getComputedStyle(navigation).position === "sticky" ? navigation.offsetHeight + 12 : 0;
+    // Scroll only the dialog body. Native scrollIntoView also moves the fixed dialog's hidden ancestors.
+    body.scrollTop += rect.top + rect.height / 2 - (bounds.top + inset + (bounds.height - inset) / 2);
+  }, selector);
 }
 
 async function wheel(deltaY) {
@@ -147,7 +162,7 @@ try {
     await waitFor(() => Boolean(document.querySelector("main > button")));
     await pointerClick("main > button");
     await waitFor(() => Boolean(document.querySelector("button[aria-label='选择节点']")));
-    await page(() => document.querySelector("button[aria-label='选择节点']").scrollIntoView({block:"center"}));
+    await scrollControlIntoView("button[aria-label='选择节点']");
     await pointerClick("button[aria-label='选择节点']");
     await waitFor(() => Boolean(document.querySelector('[role="menu"][aria-label="选择节点"]')));
     const before = await page(scrollState);
@@ -176,12 +191,12 @@ try {
     assert.equal(await page(() => Boolean(document.querySelector('[role="dialog"]'))),true,"Escape must close only the node menu");
     await waitFor(() => document.activeElement?.getAttribute("aria-label") === "选择节点");
     const exposeSeed = "button[role='checkbox'][aria-label='暴露参数 · 随机种子']";
-    await page((selector) => document.querySelector(selector).scrollIntoView({ block: "center", inline: "center" }), exposeSeed);
+    await scrollControlIntoView(exposeSeed);
     await pointerClick(exposeSeed);
     assert.equal(await page((selector) => document.querySelector(selector).getAttribute("aria-checked"), exposeSeed), "false", "An individual field can be excluded while its node stays selected");
     assert.equal(await page(() => document.querySelector('[data-parameter-key="manualSeed"] input[required]').disabled), true, "Unexposed invalid fields must bypass native validation");
     const outputPicker = "button[role='combobox'][aria-label='输出节点']";
-    await page((selector) => document.querySelector(selector).scrollIntoView({ block: "center", inline: "center" }), outputPicker);
+    await scrollControlIntoView(outputPicker);
     await pointerClick(outputPicker);
     await waitFor(() => Boolean(document.querySelector('[role="listbox"]')));
     // Wait for the popup's opening transform before measuring and clicking items.
@@ -193,8 +208,12 @@ try {
     });
     assert.ok(bounds.top >= 0 && bounds.bottom <= viewport.height && bounds.left >= 0 && bounds.right <= viewport.width,
       "Output node list must fit in the viewport");
-    await page(() => document.querySelector('[role="option"][data-value="102"]').scrollIntoView({ block: "end" }));
-    await pointerClick('[role="option"][data-value="102"]');
+    // The input-node menu has pointer coverage above. Exercise keyboard navigation for the long output label.
+    await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "End", code: "End", windowsVirtualKeyCode: 35 });
+    await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "End", code: "End", windowsVirtualKeyCode: 35 });
+    await waitFor(() => document.activeElement?.getAttribute("data-value") === "102");
+    await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+    await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
     await waitFor((selector) => document.querySelector(selector).textContent.includes("节点 102 · 保存图片"), outputPicker);
     assert.equal(await page((selector) => document.querySelector(selector).getAttribute("value"), outputPicker), "102",
       "Selecting an output-only node must store its exact ID");
@@ -214,7 +233,7 @@ try {
     assert.equal(published.outputs[0].nodeId, "102", "Input selection must preserve the selected output node");
     console.log(JSON.stringify({viewport,before,down,up}));
   }
-  console.log("RunningHub node picker scrolling and selected-mapping save regression passed (four production-CSS viewports)");
+  console.log(`RunningHub node picker scrolling and selected-mapping save regression passed (four ${production ? "production" : "development"}-CSS viewports; long output selection uses keyboard)`);
 
 } finally {
   socket?.close();

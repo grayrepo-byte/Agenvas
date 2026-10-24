@@ -1,6 +1,6 @@
 import { Image as ImageIcon, MusicNotes, VideoCamera, X } from "@/shared/ui/icons";
 import { cn } from "cn";
-import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { creatorInputMapping, type CreatorInputDefinition, type CreatorInputField } from "../../shared/creatorInputs";
 import { t, useLocale } from "../../shared/i18n";
 import { isAudioFile, isVideoFile, MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
@@ -233,13 +233,15 @@ export function WorkflowParameterFields({ disabled = false, ...props }: Workflow
     .activeFields.filter((field) => !isWorkflowMediaField(field) && field.source !== "PROMPT");
   return fields.length ? <Table className="workflow-parameters-table"><TableHeader><TableRow>
       <TableHead>{t("media.workflow.parameter")}</TableHead><TableHead>{t("media.workflow.value")}</TableHead><TableHead>{t("media.workflow.constraints")}</TableHead>
-    </TableRow></TableHeader><TableBody>{fields.map((field) => <TableRow key={field.key}>
+    </TableRow></TableHeader><TableBody>{fields.map((field, index) => <Fragment key={field.key}>
+      {field.group?.trim() && field.group.trim() !== fields[index - 1]?.group?.trim() ? <TableRow><TableHead colSpan={3} scope="colgroup">{field.group.trim()}</TableHead></TableRow> : null}
+      <TableRow>
       <TableCell><strong title={workflowFieldHint(field)}>{workflowFieldLabel(field)}{field.required ? " *" : ""}</strong></TableCell>
       <TableCell><WorkflowParameterControl field={field} value={workflowFieldValue(field, props.values, props.prompt, props.durationSeconds)}
         disabled={disabled} onChange={props.onChange} /></TableCell>
       <TableCell><span>{parameterConstraints(field)}</span>
         {!creatorInputMapping(field) && field.description ? <p className="ui-muted">{field.description}</p> : null}</TableCell>
-    </TableRow>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyDescription>{t("media.workflow.noParameters")}</EmptyDescription></EmptyHeader></Empty>;
+    </TableRow></Fragment>)}</TableBody></Table> : <Empty><EmptyHeader><EmptyDescription>{t("media.workflow.noParameters")}</EmptyDescription></EmptyHeader></Empty>;
 }
 
 /** Declared provider inputs share controls with workflows without exposing transport details. */

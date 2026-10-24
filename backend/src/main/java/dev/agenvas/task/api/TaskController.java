@@ -75,7 +75,7 @@ public class TaskController {
      * @param status 持久化任务状态
      * @param cancelRequested 是否已记录取消意图
      * @param input 创建时固定的任务输入快照
-     * @param output 成功后归档的结果摘要；未成功时为空
+     * @param output 已归档结果、公开执行进度或有界 Provider 故障诊断；不包含私有结果地址
      * @param providerRequestId Provider 已确认受理的请求 ID
      * @param attemptNo 当前生成尝试序号
      * @param nextActionAt 下次允许 Worker 执行的时间
