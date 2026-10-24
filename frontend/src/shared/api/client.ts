@@ -600,6 +600,13 @@ export async function archiveProject(project: Project): Promise<Project> {
   });
 }
 
+/** Removes an archived project with the version confirmed by the user. */
+export async function deleteProject(projectId: string, expectedVersion: number): Promise<void> {
+  return writeEmpty(`/api/v1/projects/${encodeURIComponent(projectId)}?expectedVersion=${expectedVersion}`, {
+    method: "DELETE",
+  });
+}
+
 /** Creates a stable Artifact and its first validated immutable revision. */
 export async function createArtifact(
   projectId: string,

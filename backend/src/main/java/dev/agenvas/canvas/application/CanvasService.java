@@ -10,6 +10,7 @@ import dev.agenvas.canvas.domain.MediaUploadPurpose;
 import dev.agenvas.character.application.CharacterService;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -241,6 +242,8 @@ public class CanvasService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void recordTaskMediaVersionWithinChange(UUID ownerId, UUID projectId, UUID itemId,
             UUID artifactId, UUID versionId) {
+        // A deleted project keeps Artifact audit results without changing its retired canvas projection.
+        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return;
         CanvasItem item = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
         if (item == null) return;
         if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT
@@ -283,7 +286,7 @@ public class CanvasService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem placeTaskMediaOutputWithinChange(UUID ownerId, UUID projectId, UUID sourceItemId,
             UUID artifactId, int outputIndex, JsonNode frozenInput) {
-        projects.get(ownerId, projectId);
+        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return null;
         // TaskService validates each protocol's count before placement; decomposition can include 16 extra layers.
         if (outputIndex < 1 || outputIndex >= dev.agenvas.provider.domain.NativeMediaProtocol.MAX_RESULTS) throw validation(ApiMessage.of("api.canvas-service.the-result-sequence-number-is-invalid"));
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId).orElse(null);

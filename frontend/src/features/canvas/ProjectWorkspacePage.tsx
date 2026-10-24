@@ -8,6 +8,7 @@ NodeResizer,
 NodeToolbar,
 Position,
 ReactFlow,
+SelectionMode,
 type Connection,
 type Edge,
 type EdgeChange,
@@ -1397,6 +1398,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           onInit={(instance) => { flow.current = instance; }}
           onMoveStart={(event) => { if (event) { cancelCameraMotion(); clearSelection(); } }}
           selectionOnDrag={selecting}
+          selectionMode={SelectionMode.Partial}
           ariaLabelConfig={{
             "controls.ariaLabel": t("canvas.workspace.viewportControls"), "controls.zoomIn.ariaLabel": t("canvas.workspace.zoomIn"),
             "controls.zoomOut.ariaLabel": t("canvas.workspace.zoomOut"), "controls.fitView.ariaLabel": t("canvas.workspace.fitView"),

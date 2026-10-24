@@ -940,9 +940,9 @@ describe("workspace selection with real React Flow", () => {
     expect(editor).toHaveValue("尚未保存的正文");
   });
 
-  it("keeps a single box-selected node in multi-select mode without opening its editor", async () => {
+  it("keeps a single partially box-selected node in multi-select mode without opening its editor", async () => {
     await renderInteractiveFlow();
-    boxSelectNodes({ startX: -10, startY: -10, endX: 300, endY: 300 });
+    boxSelectNodes({ startX: -10, startY: -10, endX: 10, endY: 10 });
     expect(selectedIds()).toEqual(["image-card"]);
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("媒体卡片操作")).not.toBeInTheDocument();
@@ -1086,12 +1086,12 @@ describe("workspace selection with real React Flow", () => {
     expect(selectedIds()).toEqual(["image-card"]);
   });
 
-  it("box-selects nodes and replaces the box selection with an ordinary click", async () => {
+  it("box-selects fully and partially overlapped nodes and replaces the selection with an ordinary click", async () => {
     await renderInteractiveFlow();
     fireEvent.keyDown(window, { key: "Shift", code: "ShiftLeft", shiftKey: true });
     boxSelectNodes();
     fireEvent.keyUp(window, { key: "Shift", code: "ShiftLeft" });
-    expect(selectedIds()).toEqual(["image-card", "middle-card"]);
+    expect(selectedIds()).toEqual(["image-card", "middle-card", "text-card"]);
     fireEvent.click(nodeElement("text-card"));
     expect(selectedIds()).toEqual(["text-card"]);
   });

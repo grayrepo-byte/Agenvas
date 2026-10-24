@@ -201,8 +201,8 @@ class TaskMediaCompletionTest {
                 Optional.of(task(Task.Status.SUCCEEDED, lease.kind(), (ObjectNode) lease.input())));
         when(repository.finishSubmitting(eq(lease), eq(WORKER), any(), eq(NOW))).thenReturn(true);
         Artifact.Kind kind = Artifact.Kind.valueOf(lease.kind().name().replace("_GENERATION", ""));
-        when(artifacts.get(OWNER, PROJECT, ARTIFACT)).thenReturn(new ArtifactService.ArtifactView(
-                new Artifact(ARTIFACT, PROJECT, kind, "Synthetic outputs", null, null, 0, NOW, NOW), null));
+        when(artifacts.getTaskResultTarget(OWNER, PROJECT, ARTIFACT)).thenReturn(
+                new Artifact(ARTIFACT, PROJECT, kind, "Synthetic outputs", null, null, 0, NOW, NOW));
         when(artifacts.appendTaskVersionWithinChange(eq(OWNER), eq(PROJECT), eq(ARTIFACT), isNull(), isNull(),
                 eq(0L), any(), nullable(JsonNode.class), eq(false)))
                 .thenAnswer(call -> new ArtifactService.TaskVersionResult(UUID.randomUUID(), false));
@@ -212,7 +212,7 @@ class TaskMediaCompletionTest {
         when(repository.ownerId(TASK)).thenReturn(Optional.of(OWNER));
         when(repository.findArtifactTarget(TASK)).thenReturn(Optional.of(
                 new TaskRepository.ArtifactTarget(TASK, PROJECT, ARTIFACT, null, 0, null)));
-        when(projects.get(OWNER, PROJECT)).thenReturn(new Project(PROJECT, OWNER, "Synthetic project",
+        when(projects.getRetainedProject(OWNER, PROJECT)).thenReturn(new Project(PROJECT, OWNER, "Synthetic project",
                 Project.AspectRatio.SQUARE_1_1, Project.Status.ACTIVE, 0, 0, NOW, NOW, null));
         when(events.recordChange(eq(OWNER), eq(PROJECT), any())).thenAnswer(call -> {
             Supplier<?> mutation = call.getArgument(2);

@@ -6,6 +6,7 @@ import static dev.agenvas.db.Tables.PROJECT_EVENT;
 import dev.agenvas.db.tables.records.ProjectEventRecord;
 import dev.agenvas.event.application.ProjectEventRepository;
 import dev.agenvas.event.domain.ProjectEvent;
+import dev.agenvas.project.domain.Project;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -84,6 +85,7 @@ public class JooqProjectEventRepository implements ProjectEventRepository {
                 .join(PROJECT).on(PROJECT.ID.eq(PROJECT_EVENT.PROJECT_ID))
                 .where(PROJECT_EVENT.PROJECT_ID.eq(projectId))
                 .and(PROJECT.OWNER_ID.eq(ownerId))
+                .and(PROJECT.STATUS.ne(Project.Status.DELETED.name()))
                 .and(PROJECT_EVENT.SEQ.gt(afterSequence))
                 .orderBy(PROJECT_EVENT.SEQ)
                 .limit(limit)
@@ -101,6 +103,7 @@ public class JooqProjectEventRepository implements ProjectEventRepository {
                 .from(PROJECT)
                 .where(PROJECT.ID.eq(projectId))
                 .and(PROJECT.OWNER_ID.eq(ownerId))
+                .and(PROJECT.STATUS.ne(Project.Status.DELETED.name()))
                 .fetchOptional(record ->
                         new CursorBounds(record.get(PROJECT.EVENT_SEQ), record.get(oldestRetainedSeq)))
                 .orElse(null);

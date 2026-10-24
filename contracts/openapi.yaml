@@ -2059,6 +2059,23 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
+    delete:
+      operationId: deleteProject
+      summary: 删除已归档项目
+      description: Logical deletion hides the project and its results from user reads while retaining accepted task results and audit data. Requires an archived project without an active Agent Run. Replaying the same expectedVersion after a successful deletion returns 204; other stale versions conflict. Physical media cleanup is deferred.
+      tags: [Projects]
+      parameters:
+        - name: expectedVersion
+          in: query
+          required: true
+          schema: {type: integer, format: int64, minimum: 0}
+      responses:
+        "204": {description: 项目已删除}
+        "400": {$ref: "#/components/responses/ValidationError"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /api/v1/projects/{projectId}/storyboard:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}

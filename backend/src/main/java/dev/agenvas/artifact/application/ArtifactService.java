@@ -638,13 +638,20 @@ public class ArtifactService {
     /** Identity for a mixed-kind result of an already accepted task, including late archived-project results. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public Artifact createTaskMediaIdentityWithinChange(UUID ownerId, UUID projectId, Artifact.Kind kind, String title) {
-        projects.get(ownerId, projectId);
+        projects.getRetainedProject(ownerId, projectId);
         if (kind == Artifact.Kind.TEXT) throw new IllegalArgumentException("Media identity required");
         Instant now = clock.instant();
         Artifact artifact = new Artifact(UUID.randomUUID(), projectId, kind, validateTitle(title), null, null, 0, now, now);
         artifacts.createArtifact(artifact);
         events.append(ownerId, projectId, artifactEvent("artifact.created", new ArtifactView(artifact, null)));
         return artifact;
+    }
+
+    /** 已受理任务读取固定结果目标；用户资源读取仍经由 get 校验项目可见性。 */
+    @Transactional(readOnly = true)
+    public Artifact getTaskResultTarget(UUID ownerId, UUID projectId, UUID artifactId) {
+        projects.getRetainedProject(ownerId, projectId);
+        return requireArtifact(ownerId, projectId, artifactId);
     }
 
     /**
@@ -678,7 +685,10 @@ public class ArtifactService {
         }
         requireUploadAuthorship(current.kind(), content, ArtifactVersion.CreatedByKind.TASK);
         validateReferences(projectId, references);
-        validateMediaAsset(ownerId, projectId, current.kind(), content);
+        if (current.kind() != Artifact.Kind.TEXT) {
+            assets.requireReadyTaskMedia(ownerId, projectId, UUID.fromString(content.path("assetId").asText()),
+                    Asset.MediaKind.valueOf(current.kind().name()));
+        }
         Instant now = clock.instant();
         ArtifactVersion revision = new ArtifactVersion(UUID.randomUUID(), projectId,
                 artifactId, artifacts.nextVersionNo(projectId, artifactId),
