@@ -13,7 +13,10 @@ CODE_JOBS = (
     "compose-config", "security-images",
 )
 ALWAYS_JOBS = ("changes", "security-source")
-DOC_FILES = {"README.md", "README.en.md", "LICENSE", "CHANGELOG.md"}
+DOC_FILES = {
+    "README.md", "README.en.md", "README.zh-CN.md", "README.ja.md", "README.ru.md",
+    "LICENSE", "CHANGELOG.md",
+}
 
 
 def docs_only(paths):

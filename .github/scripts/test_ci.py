@@ -47,6 +47,9 @@ def job_run_commands(job):
 class PlanningTest(unittest.TestCase):
     def test_only_explicit_documentation_paths_can_skip_code_checks(self):
         self.assertTrue(ci.docs_only(["README.md", "docs/adr/decision.md", "LICENSE"]))
+        for readme in ["README.en.md", "README.zh-CN.md", "README.ja.md", "README.ru.md"]:
+            with self.subTest(readme=readme):
+                self.assertEqual(ci.plan("pull_request", "refs/pull/1/merge", [readme])["code_changed"], "false")
         for paths in [[], ["frontend/README.md"], [".github/workflows/ci.yml"],
                       ["README.md", "docker-compose.yml"], ["contracts/openapi.yaml"]]:
             with self.subTest(paths=paths):

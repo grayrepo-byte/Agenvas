@@ -2138,6 +2138,9 @@ agent-canvas/
   AGENTS.md
   README.md
   README.en.md
+  README.zh-CN.md
+  README.ja.md
+  README.ru.md
   CONTRIBUTING.md
   SECURITY.md
   LICENSE
