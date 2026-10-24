@@ -1,0 +1,65 @@
+/* Native scrolling keeps wheel, touch, keyboard and drag behavior in every surface,
+   including body-portaled menus. Component styles only opt out when intentionally hidden. */
+@layer base {
+  @media (forced-colors: none) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--ui-scrollbar-thumb) transparent;
+    }
+
+    /* Non-auto standard values suppress WebKit pseudo-elements in modern Chromium.
+       Restore auto here so the inset thumb can use a wider, transparent drag target. */
+    @supports selector(::-webkit-scrollbar) {
+      @media (hover: hover) and (pointer: fine) {
+        * {
+          scrollbar-width: auto;
+          scrollbar-color: auto;
+        }
+
+        ::-webkit-scrollbar {
+          width: var(--ui-scrollbar-size);
+          height: var(--ui-scrollbar-size);
+          background: transparent;
+        }
+
+        ::-webkit-scrollbar-track,
+        ::-webkit-scrollbar-corner {
+          border: 0;
+          background: transparent;
+          box-shadow: none;
+        }
+
+        ::-webkit-scrollbar-thumb {
+          min-width: var(--ui-scrollbar-min-thumb);
+          min-height: var(--ui-scrollbar-min-thumb);
+          border: var(--ui-scrollbar-inset) solid transparent;
+          border-radius: var(--ui-scrollbar-radius);
+          background: var(--ui-scrollbar-thumb);
+          background-clip: padding-box;
+          box-shadow: none;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+          border-width: var(--ui-scrollbar-inset-active);
+          background-color: var(--ui-scrollbar-thumb-hover);
+        }
+
+        ::-webkit-scrollbar-thumb:active {
+          border-width: var(--ui-scrollbar-inset-active);
+          background-color: var(--ui-scrollbar-thumb-active);
+        }
+
+        ::-webkit-scrollbar-button {
+          display: none;
+          width: 0;
+          height: 0;
+        }
+      }
+    }
+  }
+
+  /* Streaming owns its temporary hidden-scrollbar state; keep its text width stable. */
+  [data-slot="message-scroller-viewport"] { scrollbar-gutter: stable; }
+  [data-slot="message-scroller-viewport"][data-autoscrolling] { scrollbar-width: none; }
+  [data-slot="message-scroller-viewport"][data-autoscrolling]::-webkit-scrollbar { display: none; }
+}

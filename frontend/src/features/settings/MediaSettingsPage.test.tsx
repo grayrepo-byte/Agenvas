@@ -495,9 +495,10 @@ describe("MediaSettingsPage", () => {
     const importedField = within(dialog).getByRole("row", { name: "创作风格" });
     await user.click(within(importedField).getByRole("checkbox", { name: "暴露参数 · 创作风格" }));
     expect(importedField).toBeVisible();
-    expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 创作风格 · 节点 2 · 强度");
+    expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 1 · 创作风格 · 节点 2 · 强度");
+    await user.click(within(importedField).getByRole("button", { name: "更多设置" }));
     expect(within(importedField).getByRole("textbox", { name: "节点字段" })).toHaveValue("style");
-    expect(within(importedField).getByRole("textbox", { name: "默认值" })).toHaveValue('"photo"');
+    expect(within(importedField).getByRole("combobox", { name: "默认值" })).toHaveValue("0");
     await clickControl(within(dialog).getByRole("button", { name: "选择节点" }));
     expect(screen.getByRole("menuitemcheckbox", { name: "节点 1 · 创作风格" })).toHaveAttribute("aria-checked", "true");
     await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 强度" }));
@@ -594,6 +595,7 @@ describe("MediaSettingsPage", () => {
     const dialog = screen.getByRole("dialog");
     const input = within(within(dialog).getByRole("row", { name: "强度" })).getByRole("textbox", { name: "默认值" });
     fireEvent.change(input, { target: { value: "invalid" } }); fireEvent.blur(input);
+    await user.click(within(dialog).getByRole("button", { name: "编辑参数 · 固定字段 · seed" }));
     const fixed = within(dialog).getByRole("textbox", { name: "固定值（JSON 标量）" });
     fireEvent.change(fixed, { target: { value: "invalid" } }); fireEvent.blur(fixed);
     async function choose(action: string) {
@@ -610,9 +612,11 @@ describe("MediaSettingsPage", () => {
     expect(writes).toEqual([{ expectedVersion: 4, name: "Portrait", enabled: true, adapterId: "RUNNINGHUB_IMAGE",
       settings: { runningHub: { ...definition, targetId: "321", fields: [], fixedBindings: [] } } }]);
     await choose("全选节点");
+    await user.click(within(dialog).getByRole("button", { name: "编辑参数 · 强度" }));
     const restoredInput = within(within(dialog).getByRole("row", { name: "强度" })).getByRole("textbox", { name: "默认值" });
-    const restoredFixed = within(dialog).getByRole("textbox", { name: "固定值（JSON 标量）" });
     expect(restoredInput).toHaveValue("invalid"); expect(restoredInput).toBeEnabled();
+    await user.click(within(dialog).getByRole("button", { name: "编辑参数 · 固定字段 · seed" }));
+    const restoredFixed = within(dialog).getByRole("textbox", { name: "固定值（JSON 标量）" });
     expect(restoredFixed).toHaveValue("invalid"); expect(restoredFixed).toBeEnabled();
     await choose("清空选择");
     await user.click(save);
@@ -726,7 +730,8 @@ describe("MediaSettingsPage", () => {
     await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "智能工作流");
     await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
     await user.click(within(dialog).getByRole("button", { name: "自动发现参数" }));
-    const seed = await within(dialog).findByRole("row", { name: "随机种子" });
+    await user.click(await within(dialog).findByRole("button", { name: "编辑参数 · 随机种子" }));
+    const seed = within(dialog).getByRole("row", { name: "随机种子" });
     expect(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" })).not.toBeChecked();
     await user.click(within(dialog).getByText("创作者表单预览 · 离线"));
     expect(within(dialog).queryByRole("spinbutton", { name: "随机种子" })).not.toBeInTheDocument();
@@ -882,19 +887,23 @@ describe("MediaSettingsPage", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("combobox", { name: "目标类型" })).toHaveValue(targetType);
     expect(within(dialog).getByRole("textbox", { name: "真实目标 ID" })).toHaveValue("123");
-    expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 10 · 画面提示 · 节点 20 · 视频时长 · 节点 30");
+    expect(within(dialog).getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 10 · 画面提示 · 节点 20 · 视频时长 · 节点 30");
     const prompt = within(dialog).getByRole("row", { name: "画面提示" });
     expect(prompt).toBeVisible();
+    await user.click(within(prompt).getByRole("button", { name: "更多设置" }));
     expect(within(prompt).getByRole("textbox", { name: "节点 ID" })).toHaveValue("10");
     expect(within(prompt).getByRole("textbox", { name: "节点字段" })).toHaveValue("text");
     expect(within(prompt).getByRole("combobox", { name: "输入来源" })).toHaveValue("PROMPT");
     const promptDefault = within(prompt).getByRole("textbox", { name: "默认值" });
     expect(promptDefault).toHaveValue("合成提示");
+    await user.click(within(dialog).getByRole("button", { name: "编辑参数 · 视频时长" }));
     const duration = within(dialog).getByRole("row", { name: "视频时长" });
     expect(within(duration).getByRole("combobox", { name: "输入来源" })).toHaveValue("DURATION_SECONDS");
     expect(within(duration).getByRole("textbox", { name: "默认值" })).toHaveValue("4");
+    await user.click(within(dialog).getByRole("button", { name: "编辑参数 · 来源视频" }));
     const video = within(dialog).getByRole("row", { name: "来源视频" });
     expect(within(video).getByRole("combobox", { name: "上传后的引用格式" })).toHaveValue("FILE_NAME");
+    await user.click(within(dialog).getByRole("button", { name: "编辑参数 · 固定字段 · enabled" }));
     expect(within(dialog).getByRole("textbox", { name: "固定节点 ID" })).toHaveValue("30");
     expect(within(dialog).getByRole("textbox", { name: "固定字段" })).toHaveValue("enabled");
     expect(within(dialog).getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue("false");
@@ -904,7 +913,9 @@ describe("MediaSettingsPage", () => {
     expect(within(outputs).getAllByRole("spinbutton", { name: "最多结果数" }).map((input) => (input as HTMLInputElement).value)).toEqual(["2", "1"]);
     expect(discoveryRequests).toEqual([]);
 
-    await user.clear(promptDefault); await user.type(promptDefault, "修改后的合成提示");
+    await user.click(within(dialog).getByRole("button", { name: "编辑参数 · 画面提示" }));
+    const editablePrompt = within(within(dialog).getByRole("row", { name: "画面提示" })).getByRole("textbox", { name: "默认值" });
+    await user.clear(editablePrompt); await user.type(editablePrompt, "修改后的合成提示");
     await selectValue(within(outputs).getAllByRole("combobox", { name: "输出节点" })[0]!, "101");
     await user.click(within(dialog).getByRole("button", { name: "保存能力" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -914,8 +925,9 @@ describe("MediaSettingsPage", () => {
     const reopened = screen.getByRole("dialog");
     await user.click(within(reopened).getByText("导入 / 已保存的 JSON"));
     expect(JSON.parse((within(reopened).getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }) as HTMLTextAreaElement).value)).toEqual(definition.importSource);
-    expect(within(reopened).getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 10 · 画面提示 · 节点 20 · 视频时长 · 节点 30");
+    expect(within(reopened).getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 10 · 画面提示 · 节点 20 · 视频时长 · 节点 30");
     expect(within(within(reopened).getByRole("row", { name: "画面提示" })).getByRole("textbox", { name: "默认值" })).toHaveValue("修改后的合成提示");
+    await user.click(within(reopened).getByRole("button", { name: "编辑参数 · 固定字段 · enabled" }));
     expect(within(reopened).getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue("false");
     expect(within(reopened).getAllByRole("combobox", { name: "输出节点" })[0]).toHaveTextContent("节点 101 · 新视频输出");
     await clickControl(within(reopened).getAllByRole("combobox", { name: "输出节点" })[0]!);

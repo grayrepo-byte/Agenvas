@@ -1,4 +1,4 @@
-import { CaretDown,SlidersHorizontal,Trash } from "@/shared/ui/icons";
+import { CaretDown,CaretRight,FilmStrip,ImageSquare,MusicNotes,Plus,SlidersHorizontal,TextT,Trash } from "@/shared/ui/icons";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { useMutation } from "@tanstack/react-query";
 import { Fragment,useEffect,useId,useMemo,useRef,useState,type FormEvent,type ReactNode } from "react";
@@ -12,6 +12,7 @@ import { Textarea } from "../../shared/ui/primitives/textarea";
 import { Badge } from "../../shared/ui/primitives/badge";
 import { EmptyState,Notice } from "../../shared/ui/PagePrimitives";
 import { Select } from "../../shared/ui/Select";
+import { ToggleGroup, ToggleGroupItem } from "../../shared/ui/primitives/toggle-group";
 import { Table,TableBody,TableCell,TableRow } from "../../shared/ui/primitives/table";
 import "./RunningHubDefinitionEditor.css";
 import { RunningHubForm } from "../canvas/RunningHubForm";
@@ -22,6 +23,7 @@ import { invalidRunningHubEditorField, invalidRunningHubEditorFixed } from "./ru
 const MAX_FIELDS = 1024;
 const PARAMETER_PAGE_SIZE = 20;
 type FieldInsight = NonNullable<RunningHubImportPreview["fieldInsights"]>[number];
+type ParameterEntry = { kind: "FIELD" | "FIXED"; index: number; nodeId: string };
 type CandidateFilter = "ALL" | "RECOMMENDED" | "EXPOSED" | "UNCERTAIN";
 const CONFIDENCE_KEYS = { DECLARED: "settings.runningHub.confidence.declared", INFERRED: "settings.runningHub.confidence.inferred", UNCERTAIN: "settings.runningHub.confidence.uncertain", UNVERIFIED: "settings.runningHub.confidence.unverified" } as const;
 const REASON_KEYS = {
@@ -67,9 +69,9 @@ function NodeParameterAction({ nodeIds, label, getNodeLabel, onAdd, disabled = f
   const trigger = useRef<HTMLButtonElement>(null);
   const firstNode = nodeIds[0];
   if (firstNode === undefined) return null;
-  if (nodeIds.length === 1) return <Button variant={variant} type="button" disabled={disabled} onClick={() => onAdd(firstNode)}>{label}</Button>;
+  if (nodeIds.length === 1) return <Button variant={variant} size="sm" type="button" disabled={disabled} onClick={() => onAdd(firstNode)}>{label}</Button>;
   return <DropdownMenu modal={false}>
-    <DropdownMenuTrigger asChild><Button ref={trigger} variant={variant} type="button" disabled={disabled}>{label}<CaretDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
+    <DropdownMenuTrigger asChild><Button ref={trigger} variant={variant} size="sm" type="button" disabled={disabled}>{label}<CaretDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
     <DropdownMenuContent aria-label={label} aria-labelledby={undefined} align="start" className="max-w-[var(--radix-dropdown-menu-content-available-width)]"><DropdownMenuGroup>
       {nodeIds.map((nodeId) => <DropdownMenuItem key={nodeId} title={getNodeLabel(nodeId)} onSelect={() => { if (!trigger.current?.matches(":disabled")) onAdd(nodeId); }}><span className="min-w-0 whitespace-normal break-words">{getNodeLabel(nodeId)}</span></DropdownMenuItem>)}
     </DropdownMenuGroup></DropdownMenuContent>
@@ -127,6 +129,10 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
   const [nodeSearch, setNodeSearch] = useState("");
   const [candidateFilter, setCandidateFilter] = useState<CandidateFilter>("ALL");
   const [parameterPage, setParameterPage] = useState(0);
+  // Browsing a node is independent from including it in the published contract.
+  const [focusedNode, setFocusedNode] = useState<string | null>(null);
+  const [focusedParameter, setFocusedParameter] = useState<ParameterEntry | null>(null);
+  const inspector = useRef<HTMLDivElement>(null);
   const [rawDrafts, setRawDrafts] = useState<Record<string, string>>({});
   const draftKey = (item: RunningHubField, name: string) => `${item.key}:${name}`;
   function retainRaw(item: RunningHubField, name: string, raw: string) {
@@ -206,7 +212,7 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
       if (result.targetName) onDiscoveredName?.(result.targetName);
       setSource(next.importSource ? JSON.stringify(next.importSource, null, 2) : "");
       setWarnings(result.warnings); setLocalError(""); setPreviewValues({}); setExpandedField(null);
-      setSearch(""); setNodeSearch(""); setCandidateFilter("ALL"); setParameterPage(0); if (!sameTarget) setRawDrafts({});
+      setFocusedNode(null); setFocusedParameter(null); setSearch(""); setNodeSearch(""); setCandidateFilter("ALL"); setParameterPage(0); if (!sameTarget) setRawDrafts({});
       setNodeSelection(selection.nodeIds); setSavedOutputNodeIds(next.outputs.flatMap((output) => output.nodeId ? [output.nodeId] : []));
     },
   });
@@ -246,7 +252,8 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
     return !query || `${item.nodeId} ${getNodeLabel(item.nodeId)} ${item.fieldName} ${item.key} ${item.label} ${item.group ?? ""}`.toLocaleLowerCase().includes(query);
   }));
   const matchingFieldIndexes = new Set(matchingFields.map(({ index }) => index));
-  const matchingEntries = selectedNodes.flatMap((nodeId) => [
+  const browsedNodes = focusedNode !== null && selectedNodes.includes(focusedNode) ? [focusedNode] : selectedNodes;
+  const matchingEntries = browsedNodes.flatMap((nodeId) => [
     ...(fieldIndex.get(nodeId) ?? []).filter(({ index }) => matchingFieldIndexes.has(index)).map(({ index }) => ({ kind: "FIELD" as const, index, nodeId })),
     ...(candidateFilter === "ALL" || candidateFilter === "EXPOSED" ? fixedIndex.get(nodeId) ?? [] : [])
       .filter(({ binding }) => !query || `${nodeId} ${getNodeLabel(nodeId)} ${binding.fieldName}`.toLocaleLowerCase().includes(query))
@@ -255,8 +262,26 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
   const pageCount = Math.max(1, Math.ceil(matchingEntries.length / PARAMETER_PAGE_SIZE));
   const currentPage = Math.min(parameterPage, pageCount - 1);
   const pageEntries = matchingEntries.slice(currentPage * PARAMETER_PAGE_SIZE, (currentPage + 1) * PARAMETER_PAGE_SIZE);
-  const pageFieldIndexes = new Set(pageEntries.filter((entry) => entry.kind === "FIELD").map(({ index }) => index));
-  const pageFixedIndexes = new Set(pageEntries.filter((entry) => entry.kind === "FIXED").map(({ index }) => index));
+  const activeParameter = pageEntries.find((entry) => entry.kind === focusedParameter?.kind && entry.index === focusedParameter.index) ?? pageEntries[0];
+  function focusParameter(entry: ParameterEntry) {
+    setFocusedParameter(entry); setExpandedField(null);
+    if (inspector.current) inspector.current.scrollTop = 0;
+    if (window.matchMedia?.("(max-width: 700px)")?.matches) requestAnimationFrame(() => {
+      const area = workbench.current?.closest<HTMLElement>(".ui-dialog-body");
+      const panel = inspector.current;
+      if (!area || !panel) return;
+      const navigation = workbench.current?.querySelector<HTMLElement>(".runninghub-workbench-nav");
+      area.scrollTo({ top: panel.getBoundingClientRect().top - area.getBoundingClientRect().top + area.scrollTop - (navigation?.offsetHeight ?? 0) - 16,
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    });
+  }
+  function fieldTypeLabel(type: RunningHubField["type"]) {
+    return ({ STRING: t("common.text"), NUMBER: t("settings.runningHub.numberInput"), INTEGER: t("settings.runningHub.integerInput"), BOOLEAN: t("settings.runningHub.booleanInput"), SELECT: t("settings.runningHub.selectInput"), IMAGE: t("settings.runningHub.imageAsset"), AUDIO: t("settings.runningHub.audioAsset"), VIDEO: t("settings.runningHub.videoAsset") })[type];
+  }
+  function parameterIcon(type?: RunningHubField["type"]) {
+    const Icon = type === "IMAGE" ? ImageSquare : type === "VIDEO" ? FilmStrip : type === "AUDIO" ? MusicNotes : type === "STRING" ? TextT : SlidersHorizontal;
+    return <Icon size={18} aria-hidden />;
+  }
   const selectedFixed = (definition.fixedBindings ?? []).filter((binding) => selectedNodes.includes(binding.nodeId));
   useEffect(() => {
     const form = workbench.current?.closest("form");
@@ -271,6 +296,7 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
       event.preventDefault(); event.stopImmediatePropagation(); event.stopPropagation();
       const invalid = kind === "FIELD" ? definition.fields[index]! : definition.fixedBindings![index]!;
       const unselectedCondition = "enabledWhen" in invalid && invalid.enabledWhen && !exposedFields.some((candidate) => candidate.key === invalid.enabledWhen?.field);
+      setFocusedNode(null); setFocusedParameter({ kind, index, nodeId: invalid.nodeId }); setActiveSection("inputs");
       setSearch(""); setCandidateFilter("ALL"); setExpandedField(kind === "FIELD" && !unselectedCondition ? index : null);
       const ordinal = selectedNodes.flatMap((nodeId) => [
         ...(fieldIndex.get(nodeId) ?? []).map((entry) => ({ kind: "FIELD", index: entry.index })),
@@ -282,7 +308,7 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
         const rows = workbench.current?.querySelectorAll<HTMLElement>(kind === "FIELD" ? "[data-parameter-index]" : "[data-fixed-index]");
         const row = [...rows ?? []].find((entry) => (kind === "FIELD" ? entry.dataset.parameterIndex : entry.dataset.fixedIndex) === String(index));
         const input = row?.querySelector<HTMLElement>("input:invalid, textarea:invalid, button[role=combobox]:invalid") ?? row?.querySelector<HTMLElement>("input, textarea, button");
-        input?.focus(); row?.scrollIntoView?.({ block: "nearest" });
+        focusParameterControl(row, input);
       });
     };
     form.addEventListener("submit", validate, true);
@@ -344,7 +370,10 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
     const selection = patch.nodeId !== undefined ? revealNode(patch.nodeId) : nodeSelection;
     const previousKey = definition.fields[index]?.key;
     const keys = patch.key !== undefined ? fieldSelection.map((key) => key === previousKey ? patch.key! : key) : fieldSelection;
-    update({ ...definition, fields: definition.fields.map((item, i) => i === index ? { ...item, ...patch } : item) }, undefined, selection, keys);
+    const next = { ...definition, fields: definition.fields.map((item, i) => i === index ? { ...item, ...patch } : item) };
+    setFocusedParameter({ kind: "FIELD", index, nodeId: patch.nodeId ?? current!.nodeId });
+    if (patch.nodeId !== undefined && patch.nodeId !== current?.nodeId) revealParameterPage(next, selection, patch.nodeId, "FIELD", index, false);
+    update(next, undefined, selection, keys);
   }
   function addField(nodeId: string) {
     let ordinal = definition.fields.length + 1;
@@ -352,14 +381,38 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
     const selection = revealNode(nodeId);
     const next: RunningHubDefinition = { ...definition, fields: [...definition.fields, { key: `field${ordinal}`, label: t("settings.runningHub.newParameter"),
       type: "STRING", nodeId, fieldName: "", required: true, advanced: false, source: "PARAMETER" }] };
-    revealNewParameterPage(next, selection, nodeId, "FIELD");
+    revealParameterPage(next, selection, nodeId, "FIELD", next.fields.length - 1);
     update(next, undefined, selection, [...fieldSelection, `field${ordinal}`]);
   }
-  function revealNewParameterPage(next: RunningHubDefinition, selection: string[], nodeId: string, kind: "FIELD" | "FIXED") {
-    const precedingNodes = inputNodeIds(next).filter((id) => selection.includes(id)).slice(0, inputNodeIds(next).filter((id) => selection.includes(id)).indexOf(nodeId));
-    const preceding = next.fields.filter((item) => precedingNodes.includes(item.nodeId)).length + (next.fixedBindings ?? []).filter((item) => precedingNodes.includes(item.nodeId)).length;
-    const withinNode = next.fields.filter((item) => item.nodeId === nodeId).length + (kind === "FIXED" ? (next.fixedBindings ?? []).filter((item) => item.nodeId === nodeId).length : 0) - 1;
-    setSearch(""); setCandidateFilter("ALL"); setParameterPage(Math.floor((preceding + withinNode) / PARAMETER_PAGE_SIZE));
+  function revealParameterPage(next: RunningHubDefinition, selection: string[], nodeId: string, kind: "FIELD" | "FIXED", index: number, resetExpanded = true) {
+    const ordinal = inputNodeIds(next).filter((id) => selection.includes(id)).flatMap((id) => [
+      ...next.fields.flatMap((item, index) => item.nodeId === id ? [{ kind: "FIELD", index }] : []),
+      ...(next.fixedBindings ?? []).flatMap((item, index) => item.nodeId === id ? [{ kind: "FIXED", index }] : []),
+    ]).findIndex((entry) => entry.kind === kind && entry.index === index);
+    setFocusedNode(null); setFocusedParameter({ kind, index, nodeId });
+    if (resetExpanded) setExpandedField(kind === "FIELD" ? index : null);
+    setSearch(""); setCandidateFilter("ALL"); setParameterPage(Math.max(0, Math.floor(ordinal / PARAMETER_PAGE_SIZE)));
+  }
+  /** Focus without scrolling overflow-hidden dialog ancestors, which would hide its fixed chrome. */
+  function focusParameterControl(row: HTMLElement | undefined, input: HTMLElement | null | undefined) {
+    input?.focus({ preventScroll: true });
+    const target = input ?? row;
+    if (!target) return;
+    const panel = inspector.current;
+    if (panel && getComputedStyle(panel).overflowY === "auto") {
+      const headingHeight = panel.querySelector<HTMLElement>(".runninghub-pane-heading")?.offsetHeight ?? 0;
+      const bounds = panel.getBoundingClientRect();
+      const control = target.getBoundingClientRect();
+      if (control.top < bounds.top + headingHeight + 16) panel.scrollTop += control.top - bounds.top - headingHeight - 16;
+      else if (control.bottom > bounds.bottom - 16) panel.scrollTop += control.bottom - bounds.bottom + 16;
+    }
+    const area = workbench.current?.closest<HTMLElement>(".ui-dialog-body");
+    if (!area) { row?.scrollIntoView?.({ block: "nearest" }); return; }
+    const navigationHeight = workbench.current?.querySelector<HTMLElement>(".runninghub-workbench-nav")?.offsetHeight ?? 0;
+    const bounds = area.getBoundingClientRect();
+    const control = target.getBoundingClientRect();
+    if (control.top < bounds.top + navigationHeight + 16) area.scrollTop += control.top - bounds.top - navigationHeight - 16;
+    else if (control.bottom > bounds.bottom - 16) area.scrollTop += control.bottom - bounds.bottom + 16;
   }
   function revealInvalidParameter(event: FormEvent<HTMLFieldSetElement>) {
     const input = event.target;
@@ -373,7 +426,7 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
     invalidParameter.current = input;
     revealNode(row.dataset.parameterNode ?? "");
     if (row.dataset.parameterIndex !== undefined) setExpandedField(Number(row.dataset.parameterIndex));
-    requestAnimationFrame(() => { input.focus(); invalidParameter.current = null; });
+    requestAnimationFrame(() => { focusParameterControl(row, input); invalidParameter.current = null; });
   }
   function restoreScalarValidity(input: HTMLInputElement | null, raw: string | undefined, message: string, allowEmpty = true) {
     if (!input || raw === undefined) return;
@@ -396,29 +449,29 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
     }
   }
   function renderParameter(item: RunningHubField, index: number) {
+    const selectedDefault = item.options?.findIndex((option) => option.value === item.defaultValue) ?? -1;
     const insight = insightIndex.get(runningHubFieldIdentity(item));
     return <Fragment key={`field-${item.key}`}>
       <TableRow data-parameter-index={index} className="runninghub-parameter-card" data-exposed={fieldSelected(item)} data-parameter-node={item.nodeId} data-parameter-key={item.key} aria-label={item.label || t("settings.runningHub.fieldLabel", { "0": index + 1 })}>
         <TableCell>
           <div className="runninghub-parameter-header">
-            <div><strong>{item.label || t("settings.runningHub.fieldLabel", { "0": index + 1 })}</strong><code>{item.nodeId || "—"} / {item.fieldName || "—"}</code></div>
+            <div className="runninghub-parameter-title"><span className="runninghub-type-icon">{parameterIcon(item.type)}</span><div><strong>{item.label || t("settings.runningHub.fieldLabel", { "0": index + 1 })}</strong><code>{item.nodeId || "—"} / {item.fieldName || "—"}</code></div></div>
             <div className="runninghub-parameter-toggles">
               <Field orientation="horizontal" className="runninghub-expose-control"><FieldLabel><Checkbox disabled={!selectedNodes.includes(item.nodeId)} aria-label={t("settings.runningHub.exposeFieldLabel", { "0": item.label })} checked={fieldSelection.includes(item.key)} onCheckedChange={(checked) => selectField(item.key, checked === true)} /><span>{t("settings.runningHub.exposeField")}</span></FieldLabel></Field>
               <Field orientation="horizontal" className="runninghub-expose-control"><FieldLabel><Checkbox disabled={!fieldSelected(item)} aria-label={t("settings.runningHub.requiredSuffix")} checked={item.required ?? false} onCheckedChange={(checked) => field(index, { required: checked === true })} /><span>{t("settings.runningHub.requiredSuffix")}</span></FieldLabel></Field>
               <div className="runninghub-mapping-actions">
-              <Button variant="ghost" size="icon-sm" type="button" aria-label={t("settings.runningHub.moreSettings")} title={t("settings.runningHub.moreSettings")} aria-expanded={expandedField === index}
-                onClick={() => setExpandedField(expandedField === index ? null : index)}>
-                <SlidersHorizontal /></Button>
               <Button variant="ghost" size="icon-sm" type="button" aria-label={`${t("settings.runningHub.removeCandidate")} · ${item.label}`}
                 onClick={() => { setExpandedField(null); setRawDrafts((before) => Object.fromEntries(Object.entries(before).filter(([key]) => !key.startsWith(`${item.key}:`)))); update({ ...definition, fields: definition.fields.filter((_, i) => i !== index) }); }}><Trash /></Button>
             </div>
             </div>
           </div>
+          <p className="runninghub-inspector-hint">{t("settings.runningHub.parameterEditorHint")}</p>
           <div className="runninghub-field-evidence">
             <Badge variant="outline">{t(CONFIDENCE_KEYS[insight?.confidence ?? "UNVERIFIED"])}</Badge>
             {recommendedIdentities.has(runningHubFieldIdentity(item)) ? <Badge variant="secondary">{t("settings.runningHub.recommended")}</Badge> : null}
-            {insight?.reasons.map((reason) => <span key={reason}>{t(REASON_KEYS[reason])}</span>)}
+            {insight?.reasons.length ? <span>{insight.reasons.map((reason) => t(REASON_KEYS[reason])).join(" · ")}</span> : null}
           </div>
+          <h4 className="runninghub-form-heading">{t("settings.runningHub.creatorSettings")}</h4>
           <FieldGroup className="runninghub-parameter-grid">
             <Field><FieldLabel className="ui-field block"><span>{t("settings.runningHub.label")}</span><Input disabled={!fieldSelected(item)} required maxLength={160} value={item.label} onChange={(event) => field(index, { label: event.target.value })} /></FieldLabel></Field>
             <Field><FieldLabel className="ui-field block"><span>{t("settings.runningHub.type")}</span><Select disabled={!fieldSelected(item)} value={item.type} onChange={(event) => field(index, { type: event.target.value as RunningHubField["type"], defaultValue: null, options: [] })}>
@@ -429,7 +482,12 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
           </Select></FieldLabel></Field>
             {["IMAGE", "AUDIO", "VIDEO"].includes(item.type) ? <Field><FieldLabel className="ui-field block"><span>{t("settings.runningHub.uploadReferenceFormat")}</span><Select disabled={!fieldSelected(item)} value={item.resourceFormat ?? ""} onChange={(event) => field(index, { resourceFormat: event.target.value ? event.target.value as RunningHubField["resourceFormat"] : null })}>
             <option value="">{t("settings.runningHub.resourceFormatUncertain")}</option><option value="FILE_NAME">{t("settings.runningHub.filenameReference")}</option><option value="URL">{t("settings.runningHub.urlReference")}</option>
-          </Select></FieldLabel></Field> : <Field><FieldLabel className="ui-field block"><span>{t("settings.runningHub.defaultValue")}</span>{item.type === "BOOLEAN" ? <Select disabled={!fieldSelected(item)} value={item.defaultValue == null ? "" : String(item.defaultValue)} onChange={(event) => field(index, { defaultValue: event.target.value ? event.target.value === "true" : null })}><option value="">{t("settings.runningHub.noDefault")}</option><option value="true">{t("common.enabled")}</option><option value="false">{t("common.close")}</option></Select>
+          </Select></FieldLabel></Field> : <Field data-wide={item.source === "PROMPT"}><FieldLabel className="ui-field block"><span>{t("settings.runningHub.defaultValue")}</span>{item.type === "BOOLEAN" ? <Select disabled={!fieldSelected(item)} value={item.defaultValue == null ? "" : String(item.defaultValue)} onChange={(event) => field(index, { defaultValue: event.target.value ? event.target.value === "true" : null })}><option value="">{t("settings.runningHub.noDefault")}</option><option value="true">{t("common.enabled")}</option><option value="false">{t("common.close")}</option></Select>
+            : item.type === "SELECT" ? <Select disabled={!fieldSelected(item)} value={item.defaultValue == null ? "__none" : selectedDefault < 0 ? "__invalid" : String(selectedDefault)} onChange={(event) => field(index, { defaultValue: item.options?.[Number(event.target.value)]?.value ?? null })}>
+              <option value="__none">{t("settings.runningHub.noDefault")}</option>{item.defaultValue != null && selectedDefault < 0 ? <option value="__invalid" disabled>{t("settings.runningHub.invalidDefault")}</option> : null}
+              {(item.options ?? []).map((option, ordinal) => <option key={ordinal} value={String(ordinal)}>{option.label}</option>)}
+            </Select>
+            : item.type === "STRING" && item.source === "PROMPT" ? <Textarea disabled={!fieldSelected(item)} rows={4} value={String(item.defaultValue ?? "")} onChange={(event) => field(index, { defaultValue: event.target.value })} />
             : item.type === "STRING" ? <Input disabled={!fieldSelected(item)} value={String(item.defaultValue ?? "")} onChange={(event) => field(index, { defaultValue: event.target.value })} />
             : <Input disabled={!fieldSelected(item)} key={JSON.stringify(item.defaultValue)} ref={(input) => restoreScalarValidity(input, rawDrafts[draftKey(item, "default")], t("settings.runningHub.invalidDefault"))} value={rawDrafts[draftKey(item, "default")] ?? (item.defaultValue == null ? "" : JSON.stringify(item.defaultValue))} onChange={(event) => retainRaw(item, "default", event.target.value)} onBlur={(event) => {
               const raw = event.target.value;
@@ -437,17 +495,26 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
               commitScalar(event.target, t("settings.runningHub.invalidDefault"), (defaultValue) => field(index, { defaultValue }));
             }} />}</FieldLabel></Field>}
           </FieldGroup>
+        {item.type === "SELECT" ? <Field><FieldLabel className="ui-field block">{t("settings.runningHub.choices")}<Textarea disabled={!fieldSelected(item)} key={JSON.stringify(item.options)} value={rawDrafts[draftKey(item, "options")] ?? (item.options ?? []).map((option) => String(option.value)).join("\n")} onChange={(event) => retainRaw(item, "options", event.target.value)} onBlur={(event) => field(index, { options: event.target.value.split("\n").filter(Boolean).map((text) => item.options?.find((option) => String(option.value) === text) ?? ({ label: text, value: text })) })} />
+        </FieldLabel></Field> : null}
+          {!fieldSelected(item) ? <Notice>{t("settings.runningHub.parameterNotExposed")}</Notice> : null}
+          <Button variant="outline" size="sm" className="runninghub-advanced-trigger" type="button" aria-expanded={expandedField === index} onClick={() => setExpandedField(expandedField === index ? null : index)}><SlidersHorizontal data-icon="inline-start" />{t("settings.runningHub.moreSettings")}<CaretDown data-icon="inline-end" /></Button>
+
+          {expandedField === index ? <div className="runninghub-mapping-settings">
           <div className="runninghub-technical-label">{t("settings.runningHub.technicalMapping")}</div>
           <FieldGroup className="runninghub-technical-grid">
             <Field><FieldLabel className="ui-field block"><span>{t("settings.runningHub.nodeId")}</span><Input disabled={!fieldSelected(item)} required pattern="[0-9]{1,32}" value={item.nodeId} onChange={(event) => field(index, { nodeId: event.target.value })} /></FieldLabel></Field>
             <Field><FieldLabel className="ui-field block"><span>{t("settings.runningHub.nodeField")}</span><Input disabled={!fieldSelected(item)} required pattern="[A-Za-z_][A-Za-z0-9_.]{0,79}" value={item.fieldName} onChange={(event) => field(index, { fieldName: event.target.value })} /></FieldLabel></Field>
             <Field><FieldLabel className="ui-field block"><span>{t("settings.runningHub.fieldKey")}</span><Input disabled={!fieldSelected(item)} required pattern="[A-Za-z][A-Za-z0-9_]{0,63}" value={item.key} onChange={(event) => field(index, { key: event.target.value })} /></FieldLabel></Field>
           </FieldGroup>
+          </div> : null}
         </TableCell>
       </TableRow>
-          {definition.fields.length <= PARAMETER_PAGE_SIZE || expandedField === index ? <TableRow data-parameter-node={item.nodeId} data-parameter-key={item.key} data-parameter-index={index} aria-label={`${t("settings.runningHub.moreSettings")} · ${item.label}`} hidden={!selectedNodes.includes(item.nodeId) || expandedField !== index}>
+          {expandedField === index ? <TableRow data-parameter-node={item.nodeId} data-parameter-key={item.key} data-parameter-index={index} aria-label={`${t("settings.runningHub.moreSettings")} · ${item.label}`} hidden={!selectedNodes.includes(item.nodeId) || expandedField !== index}>
             <TableCell className="runninghub-parameter-details">
               <fieldset className="runninghub-field-details ui-stack"><legend>{item.label || t("settings.runningHub.fieldLabel", { "0": index + 1 })}</legend>
+
+                <h4 className="runninghub-form-heading">{t("settings.runningHub.constraintsSettings")}</h4>
                 <FieldGroup className="ui-form-grid">
                   <Field><FieldLabel className="ui-field block">{t("settings.runningHub.description")}<Input disabled={!fieldSelected(item)} maxLength={1000} value={item.description ?? ""} onChange={(event) => field(index, { description: event.target.value })} /></FieldLabel></Field>
                   <Field><FieldLabel className="ui-field block">{t("settings.runningHub.group")}<Input disabled={!fieldSelected(item)} maxLength={80} value={item.group ?? ""} onChange={(event) => field(index, { group: event.target.value || null })} /></FieldLabel></Field>
@@ -462,8 +529,7 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
                   }} /></FieldLabel></Field> : null}
                   <Field><FieldLabel className="ui-field block">{t("settings.runningHub.encoding")}<Select disabled={!fieldSelected(item)} value={item.encoding ?? "NATIVE"} onChange={(event) => field(index, { encoding: event.target.value as RunningHubField["encoding"] })}><option value="NATIVE">{t("settings.runningHub.preserveType")}</option><option value="STRING">{t("settings.runningHub.stringEncoding")}</option></Select></FieldLabel></Field>
                 </FieldGroup>
-        {item.type === "SELECT" ? <Field><FieldLabel className="ui-field block">{t("settings.runningHub.choices")}<Textarea disabled={!fieldSelected(item)} key={JSON.stringify(item.options)} value={rawDrafts[draftKey(item, "options")] ?? (item.options ?? []).map((option) => String(option.value)).join("\n")} onChange={(event) => retainRaw(item, "options", event.target.value)} onBlur={(event) => field(index, { options: event.target.value.split("\n").filter(Boolean).map((text) => item.options?.find((option) => String(option.value) === text) ?? ({ label: text, value: text })) })} />
-        </FieldLabel></Field> : null}
+
               </fieldset>
             </TableCell>
           </TableRow> : null}
@@ -479,8 +545,11 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
       if (!(oldKey in before)) return before;
       const drafts = { ...before, [nextKey]: before[oldKey]! }; delete drafts[oldKey]; return drafts;
     });
-    update({ ...definition, fixedBindings: definition.fixedBindings?.map((item, i) => i === index ? next : item) }, undefined,
-      patch.nodeId !== undefined ? revealNode(patch.nodeId) : nodeSelection);
+    const selection = patch.nodeId !== undefined ? revealNode(patch.nodeId) : nodeSelection;
+    const updated = { ...definition, fixedBindings: definition.fixedBindings?.map((item, i) => i === index ? next : item) };
+    setFocusedParameter({ kind: "FIXED", index, nodeId: next.nodeId });
+    if (next.nodeId !== current.nodeId) revealParameterPage(updated, selection, next.nodeId, "FIXED", index);
+    update(updated, undefined, selection);
   }
   function removeFixed(index: number) {
     setRawDrafts((before) => Object.fromEntries(Object.entries(before).flatMap(([key, value]) => {
@@ -578,13 +647,16 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
     <section data-workbench-section="inputs" id={`${sectionId}-inputs`} className="runninghub-workbench-section" aria-label={sections[1]!.label}>
     {sectionHeading(1)}
     <fieldset className="ui-stack runninghub-input-fields" disabled={imported.isPending} onInvalidCapture={revealInvalidParameter}><legend className="sr-only">{t("settings.runningHub.mappingTable")}</legend>
-      <p className="ui-muted">{t("settings.runningHub.mappingHint")}</p>
+      <div className="runninghub-input-intro"><p>{t("settings.runningHub.inputWorkspaceHint")}</p>
+        <div className="runninghub-scope-summary"><Badge variant="secondary">{t("settings.runningHub.exposedCount", { "0": exposedFields.length })}</Badge><Badge variant="outline">{t("settings.runningHub.fixedCount", { "0": selectedFixed.length })}</Badge></div>
+      </div>
+      <div className="runninghub-publish-scope">
       <Field className="runninghub-node-picker"><FieldLabel htmlFor={nodePickerId}>{t("settings.runningHub.selectNode")}</FieldLabel>
         {/* A modal menu grants its portal a scroll boundary inside the parent dialog's scroll lock. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild><Button ref={nodePickerTrigger} id={nodePickerId} variant="outline" type="button" className="w-full justify-between"
             aria-label={t("settings.runningHub.selectNode")} aria-describedby={nodePickerHintId} disabled={!nodeIds.length} title={nodeSummary || undefined}>
-            <span className="truncate">{nodeSummary || t("settings.runningHub.selectNodePlaceholder")}</span><CaretDown data-icon="inline-end" />
+            <span className="truncate">{t("settings.runningHub.nodeCount", { "0": selectedNodes.length })}</span><CaretDown data-icon="inline-end" />
           </Button></DropdownMenuTrigger>
           <DropdownMenuContent aria-label={t("settings.runningHub.selectNode")} aria-labelledby={undefined} align="start" className="w-[var(--radix-dropdown-menu-trigger-width)] max-w-[var(--radix-dropdown-menu-content-available-width)]">
             <DropdownMenuGroup>
@@ -601,40 +673,69 @@ function RunningHubWorkbench({ connectionId, adapterId, value, selectedNodeIds, 
             </DropdownMenuGroup>
           </DropdownMenuContent>
         </DropdownMenu>
-        <FieldDescription id={nodePickerHintId}>{t("settings.runningHub.selectNodeHint")}</FieldDescription></Field>
-      <Button variant="outline" type="button" disabled={definition.fields.length >= MAX_FIELDS} onClick={() => addField("")}>{t("settings.runningHub.addNode")}</Button>
-      {!selectedNodes.length ? <EmptyState title={t("settings.runningHub.emptySelection")} description={t("settings.runningHub.emptySelectionHint")} /> : null}
-      <FieldGroup className="runninghub-candidate-tools">
-        <Field><FieldLabel>{t("settings.runningHub.searchFields")}<Input value={search} onChange={(event) => { setSearch(event.target.value); setParameterPage(0); }} /></FieldLabel></Field>
-        <Field><FieldLabel>{t("settings.runningHub.filterFields")}<Select value={candidateFilter} onChange={(event) => { setCandidateFilter(event.target.value as CandidateFilter); setParameterPage(0); }}>
-          {(["ALL", "RECOMMENDED", "EXPOSED", "UNCERTAIN"] as const).map((filter) => <option key={filter} value={filter}>{t(FILTER_KEYS[filter])}</option>)}
-        </Select></FieldLabel></Field>
-      </FieldGroup>
-      {selectedNodes.length && !matchingEntries.length ? <p className="ui-muted">{t("settings.runningHub.noMatchingFields")}</p> : null}
-      <div hidden={!selectedNodes.length} className="runninghub-parameters" role="region" aria-label={t("settings.runningHub.mappingTable")}>
-        <Table className="runninghub-parameter-table" aria-label={t("settings.runningHub.mappingTable")}>
-          <TableBody>{selectedNodes.filter((nodeId) => pageEntries.some((entry) => entry.nodeId === nodeId)).flatMap((nodeId) => [
-            <TableRow key={`node-${nodeId}`} className="runninghub-node-heading">
-              <TableCell><div><h4>{getNodeLabel(nodeId)}</h4><Badge variant="secondary">{t("settings.runningHub.exposedCount", { "0": (fieldIndex.get(nodeId) ?? []).filter(({ item }) => fieldSelected(item)).length })}</Badge></div></TableCell>
-            </TableRow>,
-            ...(fieldIndex.get(nodeId) ?? []).flatMap(({ item, index }) => pageFieldIndexes.has(index) ? [renderParameter(item, index)] : []),
-            ...(fixedIndex.get(nodeId) ?? []).flatMap(({ binding, index }) => pageFixedIndexes.has(index) ? [renderFixed(binding, index)] : []),
-          ])}</TableBody>
-        </Table>
+      </Field>
+        <Button variant="outline" size="sm" type="button" disabled={definition.fields.length >= MAX_FIELDS} onClick={() => addField("")}><Plus data-icon="inline-start" />{t("settings.runningHub.addNode")}</Button>
+        <FieldDescription id={nodePickerHintId}>{t("settings.runningHub.selectNodeHint")}</FieldDescription>
       </div>
-      {pageCount > 1 ? <div className="runninghub-pagination" aria-label={t("settings.runningHub.parameterPages")}>
-        <Button type="button" variant="outline" disabled={currentPage === 0} onClick={() => setParameterPage(currentPage - 1)}>{t("settings.runningHub.previousPage")}</Button>
-        <span role="status">{t("settings.runningHub.pageSummary", { "0": currentPage + 1, "1": pageCount, "2": matchingEntries.length })}</span>
-        <Button type="button" variant="outline" disabled={currentPage + 1 >= pageCount} onClick={() => setParameterPage(currentPage + 1)}>{t("settings.runningHub.nextPage")}</Button>
-      </div> : null}
-      <NodeParameterAction nodeIds={selectedNodes} getNodeLabel={getNodeLabel} label={t("settings.runningHub.addField")} disabled={definition.fields.length >= MAX_FIELDS} onAdd={addField} />
-      <p hidden={!selectedNodes.length}>{t("settings.runningHub.fixedParametersHint")}</p>
-      <NodeParameterAction nodeIds={selectedNodes} getNodeLabel={getNodeLabel} label={t("settings.runningHub.addFixedMapping")} variant="ghost" onAdd={(nodeId) => {
-        const selection = revealNode(nodeId);
-        const next: RunningHubDefinition = { ...definition, fixedBindings: [...(definition.fixedBindings ?? []), { nodeId, fieldName: "", value: "", encoding: "NATIVE" }] };
-        revealNewParameterPage(next, selection, nodeId, "FIXED");
-        update(next, undefined, selection);
-      }} />
+      {!selectedNodes.length ? <EmptyState title={t("settings.runningHub.emptySelection")} description={t("settings.runningHub.emptySelectionHint")} /> : <div className="runninghub-input-workspace">
+        <aside className="runninghub-node-directory" aria-label={t("settings.runningHub.nodeDirectory")}>
+          <div className="runninghub-pane-heading"><h4>{t("settings.runningHub.nodeDirectory")}</h4><Badge variant="outline">{selectedNodes.length}</Badge></div>
+          <ToggleGroup type="single" orientation="vertical" value={focusedNode !== null && selectedNodes.includes(focusedNode) ? focusedNode || "__unassigned" : "__all"} onValueChange={(nodeId) => {
+            if (!nodeId) return;
+            setFocusedNode(nodeId === "__all" ? null : nodeId === "__unassigned" ? "" : nodeId); setParameterPage(0);
+          }} className="runninghub-node-navigation" aria-label={t("settings.runningHub.browseNodes")}>
+            <ToggleGroupItem value="__all"><span>{t("settings.runningHub.allNodes")}</span><span>{selectedNodes.length}</span></ToggleGroupItem>
+            {selectedNodes.map((nodeId) => <ToggleGroupItem key={nodeId} value={nodeId || "__unassigned"} title={getNodeLabel(nodeId)}><span>{getNodeLabel(nodeId)}</span><span>{(fieldIndex.get(nodeId)?.length ?? 0) + (fixedIndex.get(nodeId)?.length ?? 0)}</span></ToggleGroupItem>)}
+          </ToggleGroup>
+          <p>{t("settings.runningHub.browseNodesHint")}</p>
+        </aside>
+        <div className="runninghub-parameter-catalog">
+          <div className="runninghub-pane-heading"><h4>{t("settings.runningHub.parameterCatalog")}</h4><Badge variant="outline">{matchingEntries.length}</Badge></div>
+          <FieldGroup className="runninghub-candidate-tools">
+            <Field><FieldLabel className="sr-only" htmlFor={`${nodePickerId}-search`}>{t("settings.runningHub.searchFields")}</FieldLabel><Input id={`${nodePickerId}-search`} placeholder={t("settings.runningHub.searchFields")} value={search} onChange={(event) => { setSearch(event.target.value); setParameterPage(0); }} /></Field>
+            <Field><FieldLabel className="sr-only" htmlFor={`${nodePickerId}-filter`}>{t("settings.runningHub.filterFields")}</FieldLabel><Select id={`${nodePickerId}-filter`} value={candidateFilter} onChange={(event) => { setCandidateFilter(event.target.value as CandidateFilter); setParameterPage(0); }}>
+              {(["ALL", "RECOMMENDED", "EXPOSED", "UNCERTAIN"] as const).map((filter) => <option key={filter} value={filter}>{t(FILTER_KEYS[filter])}</option>)}
+            </Select></Field>
+          </FieldGroup>
+          <ul className="runninghub-catalog-list" aria-label={t("settings.runningHub.parameterCatalog")}>
+            {pageEntries.map((entry) => {
+              const item = entry.kind === "FIELD" ? definition.fields[entry.index]! : undefined;
+              const binding = entry.kind === "FIXED" ? definition.fixedBindings![entry.index]! : undefined;
+              const label = item?.label || (binding ? `${t("settings.runningHub.fixedFields")} · ${binding.fieldName || "—"}` : t("settings.runningHub.fieldLabel", { "0": entry.index + 1 }));
+              const active = activeParameter?.kind === entry.kind && activeParameter.index === entry.index;
+              return <li key={`${entry.kind}-${entry.index}`} className="runninghub-catalog-item" data-active={active} data-exposed={item ? fieldSelected(item) : true}>
+                {item ? <Checkbox aria-label={t("settings.runningHub.includeParameter", { "0": label })} checked={fieldSelection.includes(item.key)} onCheckedChange={(checked) => selectField(item.key, checked === true)} /> : <span className="runninghub-fixed-marker" title={t("settings.runningHub.fixedFields")}>{parameterIcon()}</span>}
+                <Button variant="ghost" type="button" className="runninghub-catalog-button" aria-label={t("settings.runningHub.editParameter", { "0": label })} aria-description={`${entry.nodeId || "—"} / ${item?.fieldName || binding?.fieldName || "—"}`} aria-current={active ? "true" : undefined} aria-controls={`${nodePickerId}-editor`} onClick={() => focusParameter(entry)}>
+                  <span className="runninghub-catalog-copy"><strong>{label}</strong><span>{item ? fieldTypeLabel(item.type) : t("settings.runningHub.fixedFields")}<span aria-hidden> · </span>{entry.nodeId || "—"} / {item?.fieldName || binding?.fieldName || "—"}</span>
+                    {item && recommendedIdentities.has(runningHubFieldIdentity(item)) ? <Badge variant="secondary">{t("settings.runningHub.recommended")}</Badge> : null}
+                  </span><CaretRight data-icon="inline-end" />
+                </Button>
+              </li>;
+            })}
+          </ul>
+          {!matchingEntries.length ? <EmptyState title={t("settings.runningHub.noMatchingFields")} description={t("settings.runningHub.adjustSearchHint")} /> : null}
+          <div className="runninghub-catalog-footer">
+            {pageCount > 1 ? <div className="runninghub-pagination" aria-label={t("settings.runningHub.parameterPages")}>
+              <Button size="icon-sm" type="button" variant="outline" aria-label={t("settings.runningHub.previousPage")} disabled={currentPage === 0} onClick={() => setParameterPage(currentPage - 1)}><CaretRight className="rotate-180" /></Button>
+              <span role="status">{t("settings.runningHub.compactPageSummary", { "0": currentPage + 1, "1": pageCount })}</span>
+              <Button size="icon-sm" type="button" variant="outline" aria-label={t("settings.runningHub.nextPage")} disabled={currentPage + 1 >= pageCount} onClick={() => setParameterPage(currentPage + 1)}><CaretRight /></Button>
+            </div> : null}
+            <NodeParameterAction nodeIds={focusedNode !== null && selectedNodes.includes(focusedNode) ? [focusedNode] : selectedNodes} getNodeLabel={getNodeLabel} label={t("settings.runningHub.addField")} disabled={definition.fields.length >= MAX_FIELDS} onAdd={addField} />
+            <NodeParameterAction nodeIds={focusedNode !== null && selectedNodes.includes(focusedNode) ? [focusedNode] : selectedNodes} getNodeLabel={getNodeLabel} label={t("settings.runningHub.addFixedMapping")} variant="ghost" onAdd={(nodeId) => {
+              const selection = revealNode(nodeId);
+              const next: RunningHubDefinition = { ...definition, fixedBindings: [...(definition.fixedBindings ?? []), { nodeId, fieldName: "", value: "", encoding: "NATIVE" }] };
+              revealParameterPage(next, selection, nodeId, "FIXED", next.fixedBindings!.length - 1); update(next, undefined, selection);
+            }} />
+          </div>
+        </div>
+        <div ref={inspector} id={`${nodePickerId}-editor`} className="runninghub-parameter-inspector" role="region" aria-label={t("settings.runningHub.parameterEditor")}>
+          <div className="runninghub-pane-heading"><h4>{t("settings.runningHub.parameterEditor")}</h4><span>{t("settings.runningHub.autoDraftHint")}</span></div>
+          {activeParameter ? <Table className="runninghub-parameter-table" aria-label={t("settings.runningHub.mappingTable")}><TableBody>
+            {activeParameter.kind === "FIELD" ? renderParameter(definition.fields[activeParameter.index]!, activeParameter.index) : renderFixed(definition.fixedBindings![activeParameter.index]!, activeParameter.index)}
+          </TableBody></Table> : <EmptyState icon={<SlidersHorizontal />} title={t("settings.runningHub.selectParameter")} />}
+        </div>
+      </div>}
+      <details className="runninghub-editor-section runninghub-input-help"><summary>{t("settings.runningHub.mappingGuide")}</summary><p>{t("settings.runningHub.mappingHint")}</p><p>{t("settings.runningHub.fixedParametersHint")}</p></details>
     </fieldset>
     </section>
     <section data-workbench-section="outputs" id={`${sectionId}-outputs`} className="runninghub-workbench-section" aria-label={sections[2]!.label}>
