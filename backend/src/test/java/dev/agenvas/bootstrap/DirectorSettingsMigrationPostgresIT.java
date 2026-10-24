@@ -28,8 +28,8 @@ class DirectorSettingsMigrationPostgresIT {
                 statement.executeUpdate("update prompt_definition set content='Synthetic retained creative direction', version=42 where key='agent.director'");
             }
         }
-        var result = migration.migrate();
-        if (upgrade) assertThat(result.migrationsExecuted).isEqualTo(1);
+        int pending = migration.info().pending().length;
+        assertThat(migration.migrate().migrationsExecuted).isEqualTo(pending);
         try (var connection = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
                 var statement = connection.createStatement()) {
             try (var rows = statement.executeQuery("select * from director_settings")) {
@@ -52,6 +52,14 @@ class DirectorSettingsMigrationPostgresIT {
                 rows.next(); assertThat(rows.getInt(1)).isZero();
             }
             try (var rows = statement.executeQuery("select count(*) from pg_constraint where conrelid='director_settings'::regclass and obj_description(oid) is null")) {
+                rows.next(); assertThat(rows.getInt(1)).isZero();
+            }
+            try (var rows = statement.executeQuery("""
+                    select count(*) from pg_class c where
+                    (c.oid='director_settings'::regclass or c.oid in (
+                        select indexrelid from pg_index where indrelid='director_settings'::regclass))
+                    and nullif(btrim(obj_description(c.oid,'pg_class')),'') is null
+                    """)) {
                 rows.next(); assertThat(rows.getInt(1)).isZero();
             }
         }

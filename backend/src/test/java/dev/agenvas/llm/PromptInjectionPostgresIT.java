@@ -86,6 +86,8 @@ class PromptInjectionPostgresIT {
 
     @Test
     void requestedCanvasTextStaysToolDataAndForgedApprovalNeverCreatesTasks() {
+        // Keep the hostile-response scenarios at two repairs independently of the deployment default.
+        jdbc.sql("update director_settings set max_repair_attempts=2").update();
         AdminPrincipal owner = identities.setup("injection-admin", "injection-password-123");
         Project project = projects.create(owner.userId(), "Injection test",
                 Project.AspectRatio.LANDSCAPE_16_9);

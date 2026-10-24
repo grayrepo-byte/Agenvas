@@ -86,7 +86,8 @@ describe("RunningHubDefinitionEditor review and large candidate sets", () => {
     expect(publishedDefinition().fields.map((item) => item.key)).toEqual(["seconds"]);
   });
 
-  it("mounts one page of 1024 fields and preserves invalid scalar text across pages", async () => {
+  // The full-capacity fixture exercises several rendered pages; hosted CI can exceed 5s in jsdom.
+  it("mounts one page of 1024 fields and preserves invalid scalar text across pages", { timeout: 15_000 }, async () => {
     const fields = Array.from({ length: 1024 }, (_, index) => ({ ...initialDefinition.fields[1]!, key: `field${index + 1}`,
       nodeId: "1", fieldName: `value${index + 1}`, label: `参数${index + 1}`, enabledWhen: null }));
     await mount(false, { ...initialDefinition, fields, fixedBindings: [] });

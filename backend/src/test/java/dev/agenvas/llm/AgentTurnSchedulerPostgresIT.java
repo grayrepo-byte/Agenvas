@@ -11,6 +11,7 @@ import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.identity.application.IdentityService;
 import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.AgentTurnWorker;
+import dev.agenvas.llm.application.LlmProtocolCodec;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
 import dev.agenvas.run.application.AgentRunService;
@@ -129,7 +130,7 @@ class AgentTurnSchedulerPostgresIT {
     }
 
     @Test
-    void unboundedRunPassesTwelveAndFortyTurnsWithBoundedContextAndCanFinish() throws Exception {
+    void unboundedRunPassesNinetyToolTurnsWithoutPrematurelyTruncatingContext() throws Exception {
         AdminPrincipal owner = owner();
         Project project = projects.create(owner.userId(), "Long synthetic run", Project.AspectRatio.LANDSCAPE_16_9);
         AgentInstance agent = configureDirector(agents, owner.userId(), project.id(), "Reader", "Keep concise public observations");
@@ -150,9 +151,14 @@ class AgentTurnSchedulerPostgresIT {
             assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id").param("id", queued.id())
                     .query(Long.class).single()).isEqualTo(90);
             assertThat(jdbc.sql("select max(jsonb_array_length(request_json->'messages')) from llm_turn where run_id = :id")
-                    .param("id", queued.id()).query(Integer.class).single()).isLessThan(80);
+                    .param("id", queued.id()).query(Integer.class).single())
+                    .isBetween(180, LlmProtocolCodec.MAX_MESSAGES);
+            // This short transcript fits the default 1M window: retain its first and latest
+            // observations instead of applying the retired 80-message clipping policy.
             assertThat(jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 90")
-                    .param("id", queued.id()).query(String.class).single()).contains("runContextMemory", "Public observation");
+                    .param("id", queued.id()).query(String.class).single())
+                    .contains("Public observation for call " + (before + 1),
+                            "Public observation for call " + (before + 90));
         } finally { gateway.stopAfter.set(0); }
     }
 
