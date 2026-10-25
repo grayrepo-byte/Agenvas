@@ -406,6 +406,7 @@
   "canvas.workspace.syncRetrying": "同期に失敗しました。再試行しています",
   "canvas.workspace.toggleInteraction": "キャンバスの操作を切り替え",
   "canvas.workspace.unsupportedConnection": "既存のメディアバージョンを対応するメディア入力に接続してください。",
+  "canvas.workspace.noCompatibleModel": "この素材を選択した種類のノードの入力に使用できる有効なモデルがありません。先にメディア設定で対応モデルを設定してください。",
   "canvas.workspace.viewportControls": "キャンバス表示の操作",
   "canvas.workspace.viewportHint": "キャンバスの編集には少なくとも 1024 ピクセルの幅が必要です。現在、読み取り専用のプレビューのみが利用可能です。",
   "canvas.workspace.zoomIn": "拡大",

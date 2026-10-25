@@ -31,10 +31,12 @@ createCanvasConnection,
 disconnectCanvasConnection,
 getCurrentUser,
 getMediaDraft,
+getMediaSettings,
 getProject,
 getProjectSnapshot,
 listCanvasConnections,
 listCanvasItems,
+saveMediaDraft,
 projectExportManifestUrl,
 updateAgent,
 uploadAudioAsset,
@@ -102,6 +104,8 @@ import { canvasGroupCreationPoint, canvasGroupDropTarget, canvasGroupIdFromNodeI
 import { hasOpenCanvasEditingOverlay, resolveCanvasEditingShortcut } from "./canvasEditingShortcuts";
 import { CanvasEditingContext, canvasItemPresentation } from "./useCanvasEditing";
 import { CANVAS_EDIT_ITEM_LIMIT, useCanvasOrganization } from "./useCanvasOrganization";
+import { connectedMediaModel, type ConnectedMediaModel } from "./connectedMediaModel";
+import { fieldsFromMediaDraft } from "./useMediaDraftSession";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height"> & { groupId?: string | null };
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
@@ -452,6 +456,15 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           itemId: crypto.randomUUID() };
       }
       const pending = mediaProgress.current;
+      let initialModel: ConnectedMediaModel | undefined;
+      if (connectionSource) {
+        const source = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items
+          .find((item) => item.id === connectionSource.sourceCanvasItemId);
+        const settings = await queryClient.fetchQuery({ queryKey: ["media-settings"], queryFn: getMediaSettings });
+        const model = source && connectedMediaModel(settings, kind, source.artifact.kind);
+        if (!model) throw new CanvasConnectionError(t("canvas.workspace.noCompatibleModel"));
+        initialModel = model;
+      }
       if (!pending.artifactId) {
         const artifact = await createArtifact(projectId, { kind,
           title: director ? t("director.title") : t("canvas.workspace.newMediaTitle", { "0": ARTIFACT_LABELS[kind] }), content: null }, pending.createKey);
@@ -462,13 +475,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         type: "PLACE_ARTIFACT", itemId: pending.itemId, artifactId: pending.artifactId,
         x: point.x, y: point.y, groupId: point.groupId, ...DEFAULT_ARTIFACT_CARD_SIZES[kind], zIndex: index, locked: false,
       }]);
-      return { saved, itemId: pending.itemId, director };
+      return { saved, itemId: pending.itemId, director, initialModel };
     },
     ...canvasMutationFeedback,
-    onSuccess: ({ saved, itemId, director }, { connectionSource }) => {
+    onSuccess: ({ saved, itemId, director, initialModel }, { connectionSource }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
-      setSelectedIds([itemId]);
+      if (!connectionSource) setSelectedIds([itemId]);
       if (director) setDirectorItem(saved.items.find((item) => item.id === itemId) ?? null);
       mediaProgress.current = null;
       setSaveState("saved");
@@ -476,7 +489,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       // while a failed placement keeps this frozen source in the creation variables.
       if (connectionSource) connectInput.mutate({ source: connectionSource.sourceCanvasItemId,
         sourceHandle: "artifact-output", target: itemId, targetHandle: "artifact-input",
-        sourceVersionId: connectionSource.sourceVersionId });
+        sourceVersionId: connectionSource.sourceVersionId, initialModel }, {
+        // Open the editor after initialization so its autosave cannot race the model CAS.
+        onSettled: () => setSelectedIds([itemId]),
+      });
     },
   });
   const mvProgress = useRef(new Map<string, PreparedMediaNode>());
@@ -544,14 +560,21 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
   });
   const connectInput = useMutation({
-    mutationFn: async (connection: Connection & { sourceVersionId?: string }) => {
+    mutationFn: async (connection: Connection & { sourceVersionId?: string; initialModel?: ConnectedMediaModel }) => {
       // Creation updates the cache before React renders again; resolve its new target
       // from the confirmed projection rather than the previous render's item list.
       const items = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items ?? [];
       const media = mediaInputConnection(items, connection);
       if (!media || (connection.sourceVersionId && media.sourceVersionId !== connection.sourceVersionId))
         throw new CanvasConnectionError(t("canvas.workspace.unsupportedConnection"));
-      const targetDraft = await getMediaDraft(projectId, media.targetCanvasItemId);
+      let targetDraft = await getMediaDraft(projectId, media.targetCanvasItemId);
+      // Initialize only the new, untouched draft. Retries keep confirmed saves and later user edits.
+      if (connection.initialModel && targetDraft.version === 0 && targetDraft.mediaInputs.length === 0) {
+        targetDraft = await saveMediaDraft(projectId, media.targetCanvasItemId, {
+          ...fieldsFromMediaDraft(targetDraft), ...connection.initialModel, expectedVersion: targetDraft.version,
+        });
+        queryClient.setQueryData(["media-draft", projectId, media.targetCanvasItemId], targetDraft);
+      }
       await createCanvasConnection(projectId, { ...media, relationType: "MEDIA_INPUT",
         expectedTargetDraftVersion: targetDraft.version });
     },

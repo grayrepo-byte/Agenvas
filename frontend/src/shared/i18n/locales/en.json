@@ -406,6 +406,7 @@
   "canvas.workspace.syncRetrying": "Sync failed, retrying",
   "canvas.workspace.toggleInteraction": "Toggle canvas interactivity",
   "canvas.workspace.unsupportedConnection": "Connect an existing media version to a compatible media input.",
+  "canvas.workspace.noCompatibleModel": "No enabled model accepts this media as input for the selected node type. Configure a compatible model in media settings first.",
   "canvas.workspace.viewportControls": "Canvas view controls",
   "canvas.workspace.viewportHint": "Canvas editing requires at least 1024px width; currently only a read-only preview is available.",
   "canvas.workspace.zoomIn": "Zoom in",

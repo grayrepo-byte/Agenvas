@@ -6,7 +6,7 @@ import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import type { Artifact, CanvasCommand, CanvasItem, CreateArtifactRequest, ProjectSnapshot } from "../../shared/api/client";
+import type { Artifact, CanvasCommand, CanvasItem, CreateArtifactRequest, MediaCapability, MediaDraft, MediaSettings, ProjectSnapshot, SaveMediaDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 
@@ -37,6 +37,20 @@ vi.mock("@xyflow/react", async (importOriginal) => {
 
 const now = "2026-09-27T00:00:00Z";
 const imageVersionId = "11111111-1111-4111-8111-111111111111";
+const textOnly: MediaCapability = { id: "text-only", name: "文生图", enabled: true, version: 0,
+  capabilityVersion: 1, adapterId: "MOCK_IMAGE", kind: "IMAGE_GENERATION", minimumSeconds: 0, maximumSeconds: 0,
+  maxReferenceImages: 0, maxReferenceVideos: 0, maxReferenceAudios: 0, supportedVideoInputModes: [],
+  defaultVideoInputMode: null, supportsEndFrame: false, supportedImageAspectRatios: ["AUTO"],
+  supportedImageResolutions: ["1K"], supportedImageQualities: [], supportsTransparentBackground: false,
+  supportsImageMask: false, mappingSha256: "0".repeat(64), settings: {} };
+const compatible = { ...textOnly, id: "image-input", name: "图生图", maxReferenceImages: 1 };
+function mediaSettings(capabilities: MediaCapability[] = [compatible,
+  { ...compatible, id: "video-input", adapterId: "MOCK_VIDEO", kind: "VIDEO_GENERATION", supportedVideoInputModes: ["GENERAL_REFERENCE"] },
+  { ...compatible, id: "audio-input", adapterId: "MOCK_AUDIO", kind: "AUDIO_GENERATION" }], defaultId = compatible.id): MediaSettings {
+  return { defaults: [{ kind: capabilities.find((item) => item.id === defaultId)?.kind ?? "IMAGE_GENERATION", capabilityId: defaultId, version: 0 }],
+    connections: [{ id: "mock", name: "合成模型", platform: "MOCK", enabled: true, version: 0, connectionVersion: 1,
+      origin: null, keyMask: null, connectivityStatus: "NOT_CHECKED", realGenerationTested: false, capabilities }] };
+}
 
 function card(id: string, kind: Artifact["kind"], title: string, versionId: string,
   content: NonNullable<Artifact["resourceDefaultVersion"]>["content"]): CanvasItem {
@@ -74,6 +88,8 @@ const revisions: string[] = [];
 let currentItems: CanvasItem[] = [];
 const createdArtifacts: Artifact[] = [];
 const placements: CanvasCommand[] = [];
+const mediaDrafts = new Map<string, MediaDraft>();
+const draftSaves: SaveMediaDraftRequest[] = [];
 
 function snapshot(): ProjectSnapshot {
   return { project: { id: "project-1", name: "落点项目", status: "ACTIVE",
@@ -88,6 +104,8 @@ beforeEach(() => {
   currentItems = [...items];
   createdArtifacts.length = 0;
   placements.length = 0;
+  mediaDrafts.clear();
+  draftSaves.length = 0;
   flowProps = {};
   server.use(
     http.get("/api/v1/auth/me", () => HttpResponse.json({
@@ -121,13 +139,24 @@ beforeEach(() => {
     http.get("/api/v1/projects/:projectId/exports", () => HttpResponse.json([])),
     http.get("/api/v1/projects/:projectId/export-proposals", () => HttpResponse.json([])),
     http.get("/api/v1/projects/:projectId/usage", () => HttpResponse.json([])),
+    http.get("/api/v1/settings/media-connections", () => HttpResponse.json(mediaSettings())),
     http.get("/api/v1/projects/:projectId/assets/:assetId", ({ params }) => HttpResponse.json({
       id: params.assetId, width: 1024, height: 1024 })),
     http.get("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", ({ params }) =>
-      HttpResponse.json({ projectId: "project-1", canvasItemId: params.canvasItemId, prompt: "",
+      HttpResponse.json(mediaDrafts.get(String(params.canvasItemId)) ?? { projectId: "project-1", canvasItemId: params.canvasItemId, prompt: "",
         parameters: {}, durationSeconds: null, capabilityId: null, videoInputMode: "START_END",
         mediaInputs: [], mentions: [], displayMode: "RESULT", version: 0,
         createdAt: now, updatedAt: now })),
+    http.put("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", async ({ request, params }) => {
+      const body = await request.json() as SaveMediaDraftRequest;
+      draftSaves.push(body);
+      const draft: MediaDraft = { ...body, projectId: "project-1", canvasItemId: String(params.canvasItemId),
+        durationSeconds: body.durationSeconds ?? null, capabilityId: body.capabilityId ?? null, styleId: body.styleId ?? null,
+        videoInputMode: body.videoInputMode ?? null, mediaInputs: [], displayMode: "RESULT",
+        version: body.expectedVersion + 1, createdAt: now, updatedAt: now };
+      mediaDrafts.set(draft.canvasItemId, draft);
+      return HttpResponse.json(draft);
+    }),
     http.post("/api/v1/projects/:projectId/canvas/connections", async ({ request }) => {
       const body = await request.json() as Record<string, unknown>;
       canvasConnections.push(body);
@@ -200,6 +229,86 @@ async function dropOn(nodeId: string | null) {
 }
 
 describe("canvas connection drop target", () => {
+  it("selects an image-input model before connecting when the default only supports text-to-image", async () => {
+    const settings = mediaSettings([textOnly, compatible], textOnly.id);
+    let saved: SaveMediaDraftRequest | undefined;
+    server.use(
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.put("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", async ({ request, params }) => {
+        saved = await request.json() as SaveMediaDraftRequest;
+        return HttpResponse.json({ ...saved, projectId: "project-1", canvasItemId: params.canvasItemId,
+          version: saved.expectedVersion + 1, createdAt: now, updatedAt: now });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/connections", async ({ request }) => {
+        if (saved?.capabilityId !== compatible.id) return HttpResponse.json({ code: "UNSUPPORTED_MEDIA_INPUT",
+          detail: "文生图模型不支持图片输入", retryable: false }, { status: 400 });
+        canvasConnections.push(await request.json() as Record<string, unknown>);
+        return HttpResponse.json({ connection: {}, draft: null }, { status: 201 });
+      }));
+    await renderFlow();
+    await releaseOnPane();
+    await userEvent.setup().click(screen.getByRole("option", { name: "图片" }));
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(saved?.capabilityId).toBe(compatible.id);
+    expect(canvasConnections[0]).toMatchObject({ sourceVersionId: imageVersionId, expectedTargetDraftVersion: 1 });
+    expect(createdArtifacts).toHaveLength(1);
+  });
+
+  it("saves a compatible video model and image mode before the connection", async () => {
+    const textVideo: MediaCapability = { ...textOnly, id: "text-video", kind: "VIDEO_GENERATION", supportedVideoInputModes: ["TEXT"] };
+    const imageVideo: MediaCapability = { ...textVideo, id: "image-video", maxReferenceImages: 1, supportedVideoInputModes: ["START_END"] };
+    server.use(http.get("/api/v1/settings/media-connections", () => HttpResponse.json(mediaSettings([textVideo, imageVideo], textVideo.id))));
+    await renderFlow();
+    await releaseOnPane();
+    await userEvent.setup().click(screen.getByRole("option", { name: "视频" }));
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(draftSaves).toEqual([expect.objectContaining({ capabilityId: imageVideo.id, videoInputMode: "START_END", expectedVersion: 0 })]);
+    expect(canvasConnections[0]).toMatchObject({ expectedTargetDraftVersion: 1 });
+  });
+
+  it("explains missing compatible models before creating a node and can retry after configuration", async () => {
+    server.use(http.get("/api/v1/settings/media-connections", () => HttpResponse.json(mediaSettings([textOnly], textOnly.id))));
+    await renderFlow();
+    await releaseOnPane();
+    await userEvent.setup().click(screen.getByRole("option", { name: "图片" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("没有已启用的模型支持");
+    expect(createdArtifacts).toHaveLength(0);
+    expect(placements).toHaveLength(0);
+    expect(canvasConnections).toHaveLength(0);
+    server.use(http.get("/api/v1/settings/media-connections", () => HttpResponse.json(mediaSettings())));
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(createdArtifacts).toHaveLength(1);
+  });
+
+  it("retries a settings read failure without creating a node first", async () => {
+    server.use(http.get("/api/v1/settings/media-connections", () =>
+      HttpResponse.json({ code: "UNAVAILABLE", retryable: true }, { status: 503 }), { once: true }));
+    await renderFlow();
+    await releaseOnPane();
+    await userEvent.setup().click(screen.getByRole("option", { name: "图片" }));
+    await screen.findByRole("alert");
+    expect(createdArtifacts).toHaveLength(0);
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(createdArtifacts).toHaveLength(1);
+  });
+
+  it("retries model initialization without creating or placing another node", async () => {
+    server.use(http.put("/api/v1/projects/:projectId/canvas-items/:canvasItemId/media-draft", () =>
+      HttpResponse.json({ code: "UNAVAILABLE", retryable: true }, { status: 503 }), { once: true }));
+    await renderFlow();
+    await releaseOnPane();
+    await userEvent.setup().click(screen.getByRole("option", { name: "图片" }));
+    await screen.findByRole("alert");
+    expect(canvasConnections).toHaveLength(0);
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(createdArtifacts).toHaveLength(1);
+    expect(placements).toHaveLength(1);
+    expect(draftSaves).toHaveLength(1);
+  });
+
   it.each(["图片", "视频", "音频"])("creates %s at the release point and connects the selected source version", async (label) => {
     await renderFlow();
     await releaseOnPane();
@@ -212,7 +321,7 @@ describe("canvas connection drop target", () => {
     expect(placements).toEqual([expect.objectContaining({ x: 240, y: 160 })]);
     expect(canvasConnections[0]).toMatchObject({ sourceCanvasItemId: "image-id-card",
       targetCanvasItemId: currentItems.at(-1)?.id, sourceVersionId: imageVersionId,
-      relationType: "MEDIA_INPUT", expectedTargetDraftVersion: 0 });
+      relationType: "MEDIA_INPUT", expectedTargetDraftVersion: 1 });
     expect(screen.queryByRole("listbox", { name: "添加卡片" })).not.toBeInTheDocument();
   });
 
@@ -254,6 +363,7 @@ describe("canvas connection drop target", () => {
     await waitFor(() => expect(attempts).toBe(2));
     expect(createdArtifacts).toHaveLength(1);
     expect(placements).toHaveLength(1);
+    expect(draftSaves).toHaveLength(1);
   });
 
   it("keeps the pending connection when retrying failed placement", async () => {
@@ -266,6 +376,24 @@ describe("canvas connection drop target", () => {
     await userEvent.setup().click(await screen.findByRole("button", { name: "重试" }));
     await waitFor(() => expect(canvasConnections).toHaveLength(1));
     expect(createdArtifacts).toHaveLength(1);
+    expect(placements).toHaveLength(1);
+  });
+
+  it("preserves later user model edits when retrying a failed connection", async () => {
+    server.use(http.post("/api/v1/projects/:projectId/canvas/connections", () =>
+      HttpResponse.json({ code: "CONFLICT", retryable: true }, { status: 409 }), { once: true }));
+    await renderFlow();
+    await releaseOnPane();
+    await userEvent.setup().click(screen.getByRole("option", { name: "图片" }));
+    await screen.findByRole("alert");
+    const itemId = currentItems.at(-1)!.id;
+    const before = mediaDrafts.get(itemId)!;
+    mediaDrafts.set(itemId, { ...before, capabilityId: "user-selected-model", prompt: "User edit", version: before.version + 1 });
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(canvasConnections).toHaveLength(1));
+    expect(draftSaves).toHaveLength(1);
+    expect(mediaDrafts.get(itemId)).toMatchObject({ capabilityId: "user-selected-model", prompt: "User edit" });
+    expect(canvasConnections[0]).toMatchObject({ expectedTargetDraftVersion: 2 });
     expect(placements).toHaveLength(1);
   });
 
