@@ -3,7 +3,7 @@ import { useEffect,useRef,useState,type FormEvent } from "react";
 import {
 HTTP_STATUS,ApiError,listCanvasItems,
 uploadAudioAsset,
-uploadCanvasItemVersion,uploadImageAsset,
+uploadCanvasItemVersion,uploadImageAsset,uploadVideoAsset,
 type Artifact,type CanvasItem
 } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -17,7 +17,8 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
 }) {
   useLocale();
   const isAudio = artifact.kind === "AUDIO";
-  const label = isAudio ? t("common.audio") : t("common.image");
+  const isVideo = artifact.kind === "VIDEO";
+  const label = isAudio ? t("common.audio") : isVideo ? t("common.video") : t("common.image");
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(initialFile);
   const [expectedVersion, setExpectedVersion] = useState(item.version);
@@ -29,13 +30,13 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
     targetItemId: item.selectedVersionId ? crypto.randomUUID() : item.id,
   });
   const upload = useMutation({
-    mutationFn: async (image: File) => {
-      if (progress.current?.file !== image) progress.current = {
-        file: image,
+    mutationFn: async (media: File) => {
+      if (progress.current?.file !== media) progress.current = {
+        file: media,
         targetItemId: item.selectedVersionId ? crypto.randomUUID() : item.id,
       };
       const pending = progress.current;
-      if (!pending.assetId) pending.assetId = (await (isAudio ? uploadAudioAsset : uploadImageAsset)(artifact.projectId, image)).id;
+      if (!pending.assetId) pending.assetId = (await (isAudio ? uploadAudioAsset : isVideo ? uploadVideoAsset : uploadImageAsset)(artifact.projectId, media)).id;
       const request = { targetItemId: pending.targetItemId, expectedVersion,
         content: { sourceType: "UPLOAD" as const, assetId: pending.assetId } };
       try {
@@ -98,14 +99,14 @@ export function MediaCardUpload({ artifact, item, initialFile, onDone, compact =
     <p>{item.selectedVersionId ? t("media.upload.derivedUploadHint", { "0": artifact.title, "1": label })
       : t("media.upload.uploadHint", { "0": label, "1": artifact.title })}</p>
     <p className="text-xs text-[var(--muted)]">{t("media.upload.selectedFile", { "0": file?.name })}</p>
-    <label>{t("media.upload.replaceTitle", { "0": label })}<Input type="file" accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
+    <label>{t("media.upload.replaceTitle", { "0": label })}<Input type="file" accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : isVideo ? MEDIA_FILE_ACCEPT.VIDEO : MEDIA_FILE_ACCEPT.IMAGE}
       disabled={upload.isPending} onChange={(event) => {
         const selected = event.target.files?.[0] ?? null;
         setFile(selected);
         upload.reset();
         if (selected) upload.mutate(selected);
       }} /></label>
-    <p className="text-xs text-[var(--muted)]">{isAudio ? t("media.upload.audioFormatsHint") : t("media.upload.imageFormatsHint")}</p>
+    <p className="text-xs text-[var(--muted)]">{isAudio ? t("media.upload.audioFormatsHint") : isVideo ? t("media.upload.videoFormatsHint") : t("media.upload.imageFormatsHint")}</p>
     <Button variant="default"  type="submit" disabled={!file || upload.isPending || refreshing}>
       {upload.isPending ? t("media.upload.uploading") : upload.error ? t("media.retryUpload") : t("media.upload.uploadAndCreate")}</Button>
     {upload.error ? <p role="alert">{errorMessage}</p> : null}

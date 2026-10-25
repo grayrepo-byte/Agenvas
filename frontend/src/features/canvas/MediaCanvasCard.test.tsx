@@ -1100,7 +1100,7 @@ describe("MediaCanvasCard", () => {
         const loading = await screen.findByRole("status");
         expect(loading).toHaveClass("canvas-loading-state");
         expect(loading).toHaveTextContent(status === "READY" ? "排队中" : "正在生成");
-        expect(screen.queryByRole("button", { name: /上传图片|上传音频|生成视频/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /上传图片|上传音频|上传视频|生成视频/ })).not.toBeInTheDocument();
       });
   });
 
@@ -1120,16 +1120,16 @@ describe("MediaCanvasCard", () => {
       status ? [{ id: "agent-media-task", runId: "agent-run", status, errorCode: null }] : [])));
     const { client } = showCard({ ...artifact, kind: "VIDEO" });
     await waitFor(() => expect(client.getQueryData(["direct-media-tasks", "project-1", "item-1"])).toEqual([]));
-    expect(screen.getByRole("button", { name: "生成视频" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传视频" })).toBeInTheDocument();
     status = "WAITING_PROVIDER";
     await client.invalidateQueries({ queryKey: ["direct-media-tasks", "project-1"] });
     expect(await screen.findByText("正在生成")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "生成视频" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上传视频" })).not.toBeInTheDocument();
     status = "FAILED";
     await client.invalidateQueries({ queryKey: ["direct-media-tasks", "project-1"] });
     expect(await screen.findByText("生成失败")).toBeInTheDocument();
     expect(screen.queryByText("正在生成")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "生成视频" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传视频" })).toBeInTheDocument();
   });
 
   it("shows UNKNOWN as an explicit retry state instead of a running animation", async () => {
@@ -1192,11 +1192,61 @@ describe("MediaCanvasCard", () => {
     expect(document.querySelector(".video-card-with-references")).toBeNull();
   });
 
-  it("opens video generation from an empty surface without offering unsupported upload", async () => {
+  it("opens the MP4 picker from an empty video surface and leaves canceled selection empty", async () => {
+    const { onEdit, onCardClick } = showCard({ ...artifact, kind: "VIDEO" });
+    const pickerClick = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
+    await clickControl(await screen.findByRole("button", { name: "上传视频" }));
+    expect(pickerClick).toHaveBeenCalledOnce();
+    const input = screen.getByLabelText("选择要上传的视频");
+    expect(input).toHaveAttribute("accept", "video/mp4");
+    fireEvent.change(input, { target: { files: [] } });
+    expect(screen.getByRole("button", { name: "上传视频" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "生成视频" })).not.toBeInTheDocument();
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(onCardClick).not.toHaveBeenCalled();
+    pickerClick.mockRestore();
+  });
+
+  it("uploads a selected MP4 into the current empty video node", async () => {
+    const videoArtifact: Artifact = { ...artifact, kind: "VIDEO" };
+    const requests: unknown[] = [];
+    server.use(
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/projects/project-1/canvas-items/item-1/upload-version", async ({ request }) => {
+        requests.push(await request.json());
+        return HttpResponse.json({ ...itemFor(videoArtifact), selectedVersionId: "uploaded-video-version", version: 1 });
+      }),
+    );
+    const interceptedFetch = globalThis.fetch;
+    const uploadRequest = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (input === "/api/v1/projects/project-1/assets/video") {
+        expect(init?.body).toBeInstanceOf(FormData);
+        expect((init?.body as FormData).get("file")).toHaveProperty("name", "clip.mp4");
+        uploadRequest();
+        return HttpResponse.json({ id: "uploaded-video", mediaKind: "VIDEO" }, { status: 201 });
+      }
+      return interceptedFetch(input, init);
+    });
+    const { onEdit, onCardClick } = showCard(videoArtifact);
+    await userEvent.setup().upload(screen.getByLabelText("选择要上传的视频"),
+      new File(["synthetic video bytes"], "clip.mp4", { type: "video/mp4" }));
+    await waitFor(() => expect(requests).toEqual([{ targetItemId: "item-1", expectedVersion: 0,
+      content: { sourceType: "UPLOAD", assetId: "uploaded-video" } }]));
+    await waitFor(() => expect(screen.queryByText("正在上传视频…")).not.toBeInTheDocument());
+    expect(uploadRequest).toHaveBeenCalledOnce();
+    expect(onEdit).not.toHaveBeenCalled();
+    expect(onCardClick).not.toHaveBeenCalled();
+  });
+
+  it.each(["UNKNOWN", "BLOCKED"] as const)("keeps the task action instead of video upload for %s", async (status) => {
+    server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
+      { id: "video-task", status, errorCode: null },
+    ])));
     const { onEdit } = showCard({ ...artifact, kind: "VIDEO" });
-    await clickControl(await screen.findByRole("button", { name: "生成视频" }));
+    await clickControl(await screen.findByRole("button", { name: "查看任务" }));
     expect(onEdit).toHaveBeenCalledOnce();
-    expect(screen.queryByRole("button", { name: /上传/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上传视频" })).not.toBeInTheDocument();
   });
 
   it("loads only the video poster until hover, then handles loading, retry and pause on leave", async () => {

@@ -10,7 +10,7 @@ Eraser,Image as ImageIcon,
 MagicWand,
 MusicNotes,
 PaintBrush,
-Play,Scissors,SlidersHorizontal,Smiley,
+Scissors,SlidersHorizontal,Smiley,
 Stack,
 Sun,UploadSimple,
 VideoCamera
@@ -354,8 +354,9 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
         canvasItemId={item.id} expectedVersion={item.version} sourceVersionId={item.selectedVersionId}
         sourceTitle={item.title} sourceUrl={assetId ? assetContentUrl(artifact.projectId, assetId) : undefined}
         initialScene={item.selectedVersion?.frozenInput?.directorScene} onClose={() => setDirectorOpen(false)} /> : null}
-      {(isImage || isAudio) && !assetId ? <Input ref={uploadInput} className="sr-only nodrag" type="file"
-        aria-label={isAudio ? t("media.card.chooseAudioUpload") : t("media.card.chooseImageUpload")} accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : MEDIA_FILE_ACCEPT.IMAGE}
+      {(isImage || isAudio || isVideo) && !assetId ? <Input ref={uploadInput} className="sr-only nodrag" type="file"
+        aria-label={isAudio ? t("media.card.chooseAudioUpload") : isVideo ? t("media.card.chooseVideoUpload") : t("media.card.chooseImageUpload")}
+        accept={isAudio ? MEDIA_FILE_ACCEPT.AUDIO : isVideo ? MEDIA_FILE_ACCEPT.VIDEO : MEDIA_FILE_ACCEPT.IMAGE}
         onClick={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
         onChange={(event) => {
@@ -388,12 +389,10 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             : latest?.status === "UNKNOWN" || latest?.status === "BLOCKED" ?
               <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={onEdit}>
                 <SlidersHorizontal size={15} />{t("media.card.viewTask")}</Button>
-              : showSavedResults ? null : isImage || isAudio ? <Button variant="ghost" className="media-upload-button nodrag" type="button"
+              : showSavedResults ? null : <Button variant="ghost" className="media-upload-button nodrag" type="button"
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={(event) => { event.stopPropagation(); uploadInput.current?.click(); }}>
-              <UploadSimple size={15} />{isAudio ? t("media.card.uploadAudio") : t("media.uploadImage")}</Button>
-              : <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={onEdit}>
-                <Play size={15} />{t("media.generateVideo")}</Button>}
+              <UploadSimple data-icon="inline-start" />{isAudio ? t("media.card.uploadAudio") : isVideo ? t("media.card.uploadVideo") : t("media.uploadImage")}</Button>}
           </>}
           {draft.error ? <p className="media-card-error" role="alert">{t("media.card.draftLoadFailed")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void draft.refetch()}>{t("common.retry")}</Button></p> : null}
           {tasks.error ? <p className="media-card-error" role="alert">{t("media.card.statusUnavailable")}<Button variant="ghost" type="button" className="nodrag" onClick={() => void tasks.refetch()}>{t("media.card.retryStatus")}</Button></p> : null}
