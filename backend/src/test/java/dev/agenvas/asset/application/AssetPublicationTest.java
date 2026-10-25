@@ -132,6 +132,36 @@ class AssetPublicationTest {
         verify(storage).discard(THUMBNAIL);
     }
 
+    @ParameterizedTest
+    @EnumSource(Asset.MediaKind.class)
+    void rejectedNativeUploadCleansUnpublishedFilesButKeepsRegisteredReplays(Asset.MediaKind kind) {
+        UUID id = UUID.randomUUID();
+        var failure = new IllegalStateException("synthetic command conflict");
+        var prepared = service.withPreparedUpload(OWNER, PROJECT, id, kind,
+                () -> new ByteArrayInputStream(new byte[] {1, 2, 3}), asset -> asset);
+        when(repository.find(PROJECT, id)).thenReturn(Optional.of(prepared));
+        assertThatThrownBy(() -> service.withPreparedUpload(OWNER, PROJECT, id, kind,
+                () -> new ByteArrayInputStream(new byte[] {1, 2, 3}), asset -> { throw failure; })).isSameAs(failure);
+        verify(storage, never()).discard(any());
+        when(repository.find(PROJECT, id)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.withPreparedUpload(OWNER, PROJECT, id, kind,
+                () -> new ByteArrayInputStream(new byte[] {1, 2, 3}), asset -> { throw failure; })).isSameAs(failure);
+        verify(storage).discard(ORIGINAL);
+        if (kind != Asset.MediaKind.AUDIO) verify(storage).discard(THUMBNAIL);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = Asset.MediaKind.class, names = {"IMAGE", "VIDEO"})
+    void nativeUploadCleansThumbnailWhenOriginalCleanupFailsAndPreservesPublicationFailure(Asset.MediaKind kind) {
+        var failure = new IllegalStateException("synthetic publication conflict");
+        var cleanupFailure = new IllegalStateException("synthetic original cleanup failure");
+        doThrow(cleanupFailure).when(storage).discard(ORIGINAL);
+        assertThatThrownBy(() -> service.withPreparedUpload(OWNER, PROJECT, UUID.randomUUID(), kind,
+                () -> new ByteArrayInputStream(new byte[] {1, 2, 3}), asset -> { throw failure; })).isSameAs(failure);
+        assertThat(failure.getSuppressed()).containsExactly(cleanupFailure);
+        verify(storage).discard(THUMBNAIL);
+    }
+
     private Asset archive(Asset.MediaKind kind, boolean task) {
         Supplier<java.io.InputStream> input = () -> new ByteArrayInputStream(new byte[] {1, 2, 3});
         UUID taskId = UUID.randomUUID();

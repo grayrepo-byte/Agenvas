@@ -77,19 +77,24 @@ class McpHttpPostgresIT {
                 Set.of(McpScope.READ, McpScope.CONTENT_WRITE, McpScope.MEDIA_GENERATE), 30));
     }
 
-    @Test void officialClientRunsAllTwelveToolsIncludingDirectMockMediaAndImageContent() {
+    @Test void officialClientDiscoversTheCatalogAndExercisesCreativeToolsAndUploadPreparation() {
         try (var client = client(credential.token())) {
             var initialized = client.initialize();
             assertThat(initialized.protocolVersion()).isEqualTo("2025-11-25");
             assertThat(initialized.capabilities().tools()).isNotNull();
             assertThat(initialized.capabilities().resources()).isNull();
             var definitions = client.listTools().tools();
-            assertThat(definitions).hasSize(13);
+            assertThat(definitions).hasSize(14);
             assertThat(definitions).allSatisfy(tool -> {
                 assertThat(McpJsonDefaults.getSchemaValidator().validateSchema(tool.outputSchema()).valid()).isTrue();
                 assertThat(tool.inputSchema().get("additionalProperties")).isEqualTo(false);
             });
             assertThat(call(client, "list_projects", Map.of()).path("items")).hasSize(1);
+            assertThat(call(client, "read_project_summary", read()).path("artifactCount").asInt()).isZero();
+            JsonNode upload = call(client, "prepare_media_upload", command("prepare-upload", Map.of(
+                    "kind", "IMAGE", "title", "Local reference", "byteSize", 512, "sha256", "a".repeat(64))));
+            assertThat(upload.path("path").asText()).isEqualTo("/mcp/uploads");
+            assertThat(upload.path("maximumFileBytes").asLong()).isEqualTo(20L * 1024 * 1024);
             assertThat(call(client, "read_project_summary", read()).path("artifactCount").asInt()).isZero();
             JsonNode created = call(client, "create_text", command("create", Map.of("title", "SDK text", "text", "First")));
             JsonNode node = created.path("node");
@@ -164,7 +169,7 @@ class McpHttpPostgresIT {
         assertThat(version.statusCode()).isEqualTo(400);
         try (var client = client(credential.token())) {
             client.initialize();
-            assertThat(client.listTools().tools()).hasSize(13);
+            assertThat(client.listTools().tools()).hasSize(14);
             tokens.revoke(user, credential.credential().id(), 0);
             assertThat(request(credential.token(), null, "{}").statusCode()).isEqualTo(401);
         }

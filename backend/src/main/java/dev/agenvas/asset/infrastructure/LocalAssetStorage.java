@@ -45,9 +45,9 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
         }
     }
     /** 原始图片和缩略图的最大归档字节数。 */
-    private static final long MAX_IMAGE_BYTES = 20L * 1024 * 1024;
+    private static final long MAX_IMAGE_BYTES = dev.agenvas.asset.domain.MediaUploadLimits.IMAGE_BYTES;
     /** 原始视频的最大归档字节数。 */
-    private static final long MAX_VIDEO_BYTES = 500L * 1024 * 1024;
+    private static final long MAX_VIDEO_BYTES = dev.agenvas.asset.domain.MediaUploadLimits.VIDEO_BYTES;
     /** Covers provider video extension while retaining a finite archive/decode bound. */
     private static final int MAX_VIDEO_DURATION_MS = 600_000;
     /** 图片与视频允许解码的最大像素面积。 */
@@ -222,7 +222,7 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     private record VideoDetails(int width, int height, int durationMs) {}
 
     /** 限流保存视频字节，实测容器与视频流后解码首帧并原子安装 MP4 和海报。 */
-    public static final long MAX_AUDIO_BYTES = 50L * 1024 * 1024;
+    public static final long MAX_AUDIO_BYTES = dev.agenvas.asset.domain.MediaUploadLimits.AUDIO_BYTES;
     public static final int MAX_AUDIO_DURATION_MS = 600_000;
     private static final int AUDIO_VALIDATION_SAMPLE_RATE = 48_000;
     private static final int AUDIO_VALIDATION_BYTES_PER_SECOND = AUDIO_VALIDATION_SAMPLE_RATE * Short.BYTES;

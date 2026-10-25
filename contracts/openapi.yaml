@@ -10,6 +10,75 @@ info:
 servers:
   - url: /
 paths:
+  /mcp/uploads:
+    post:
+      operationId: uploadMcpMedia
+      summary: 使用 MCP 令牌上传项目媒体并创建精确内容版本
+      description: >-
+        原生客户端调用 prepare_media_upload 后，以同一 Bearer 令牌 POST metadata JSON part 和 file 二进制 part。要求 READ +
+        CONTENT_WRITE；不接受 Session、Origin 或本地文件路径。实际大小与 SHA-256 必须匹配；同 commandId
+        同参数重放返回原结果，异参返回409。默认只创建项目资源，提供 placement 时同时放置节点。图片20 MiB、音频50 MiB、MP4视频500 MiB，请求总限501
+        MiB，实际解码与像素/时长限制沿用普通上传。恢复模式与关闭MCP时拒绝，不触发生成。
+      tags:
+        - MCP
+      security:
+        - McpBearer: []
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - metadata
+                - file
+              properties:
+                metadata:
+                  $ref: '#/components/schemas/McpMediaUploadMetadata'
+                file:
+                  type: string
+                  format: binary
+            encoding:
+              metadata:
+                contentType: application/json
+      responses:
+        '201':
+          description: 已归档的不可变版本和可选节点；重放返回同一结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpMediaUploadResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          description: 文件或请求超过上限
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          description: 实际大小/摘要不符或媒体解码失败
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: 恢复模式只读或存储暂不可用
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/media-templates/third-party/sources:
     get:
       operationId: listThirdPartyPromptSources
@@ -4995,7 +5064,371 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
 components:
+  securitySchemes:
+    McpBearer:
+      type: http
+      scheme: bearer
+      description: 用户级 MCP 访问令牌，仅用于明确列出的 MCP 接口。
   schemas:
+    McpMediaUploadMetadata:
+      type: object
+      additionalProperties: false
+      required:
+        - projectId
+        - commandId
+        - kind
+        - title
+        - byteSize
+        - sha256
+      properties:
+        commandId:
+          type: string
+          maxLength: 200
+          minLength: 1
+        projectId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            - IMAGE
+            - VIDEO
+            - AUDIO
+        title:
+          type: string
+          maxLength: 160
+          minLength: 1
+        placement:
+          type: object
+          properties:
+            x:
+              type: number
+            'y':
+              type: number
+            width:
+              type: number
+              minimum: 120
+              maximum: 2000
+            height:
+              type: number
+              minimum: 80
+              maximum: 2000
+            zIndex:
+              type: integer
+              minimum: -1000
+              maximum: 1000
+          required:
+            - x
+            - 'y'
+            - width
+            - height
+          additionalProperties: false
+        byteSize:
+          type: integer
+          minimum: 1
+          maximum: 524288000
+        sha256:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+    McpMediaUploadResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - operationId
+        - artifact
+        - media
+      properties:
+        operationId:
+          type: string
+          format: uuid
+        artifact:
+          type: object
+          properties:
+            artifactId:
+              type: string
+              format: uuid
+            versionId:
+              type: string
+              format: uuid
+            kind:
+              type: string
+              enum:
+                - IMAGE
+                - VIDEO
+                - AUDIO
+            title:
+              type: string
+              maxLength: 160
+            versionNo:
+              type: integer
+              minimum: 0
+              maximum: 9223372036854775807
+            createdByKind:
+              type: string
+              enum:
+                - EXTERNAL_TOOL
+            expectedVersion:
+              type: integer
+              minimum: 0
+              maximum: 9223372036854775807
+            contentTruncated:
+              type: boolean
+            generationPrompt:
+              type: string
+              maxLength: 20000
+          required:
+            - artifactId
+            - versionId
+            - kind
+            - title
+            - versionNo
+            - createdByKind
+            - contentTruncated
+            - expectedVersion
+            - generationPrompt
+          additionalProperties: false
+        media:
+          type: object
+          additionalProperties: false
+          required:
+            - kind
+            - contentType
+            - byteSize
+            - sha256
+          properties:
+            kind:
+              type: string
+              enum:
+                - IMAGE
+                - VIDEO
+                - AUDIO
+            contentType:
+              type: string
+            byteSize:
+              type: integer
+              format: int64
+              minimum: 1
+            sha256:
+              type: string
+              pattern: ^[0-9a-f]{64}$
+            width:
+              type: integer
+              minimum: 1
+            height:
+              type: integer
+              minimum: 1
+            durationMs:
+              type: integer
+              minimum: 1
+        node:
+          type: object
+          properties:
+            canvasItemId:
+              type: string
+              format: uuid
+            artifactId:
+              type: string
+              format: uuid
+            kind:
+              type: string
+              enum:
+                - TEXT
+                - IMAGE
+                - VIDEO
+                - AUDIO
+            title:
+              type: string
+              maxLength: 160
+            expectedVersion:
+              type: integer
+              minimum: 0
+              maximum: 9223372036854775807
+            artifactVersion:
+              type: integer
+              minimum: 0
+              maximum: 9223372036854775807
+            versionId:
+              anyOf:
+                - type: string
+                  format: uuid
+                - type: 'null'
+            locked:
+              type: boolean
+            x:
+              type: number
+            'y':
+              type: number
+            width:
+              type: number
+            height:
+              type: number
+            zIndex:
+              type: integer
+              minimum: -1000
+              maximum: 1000
+            mediaDraft:
+              anyOf:
+                - type: object
+                  properties:
+                    version:
+                      type: integer
+                      minimum: 0
+                    capabilityId:
+                      anyOf:
+                        - type: string
+                          format: uuid
+                        - type: 'null'
+                    styleId:
+                      anyOf:
+                        - type: string
+                          format: uuid
+                        - type: 'null'
+                    videoInputMode:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - TEXT
+                            - START_END
+                            - GENERAL_REFERENCE
+                        - type: 'null'
+                    durationSeconds:
+                      anyOf:
+                        - type: integer
+                          minimum: 1
+                          maximum: 60
+                        - type: 'null'
+                    prompt:
+                      type: string
+                      maxLength: 20000
+                    parameters:
+                      type: object
+                    mediaInputs:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          versionId:
+                            type: string
+                            format: uuid
+                          artifactId:
+                            type: string
+                            format: uuid
+                          role:
+                            type: string
+                            enum:
+                              - REFERENCE
+                              - START_FRAME
+                              - END_FRAME
+                              - AUDIO_REFERENCE
+                              - VIDEO_REFERENCE
+                          order:
+                            type: integer
+                            minimum: 0
+                          color:
+                            type: string
+                            pattern: ^#[0-9A-F]{6}$
+                        required:
+                          - versionId
+                          - artifactId
+                          - role
+                          - order
+                          - color
+                        additionalProperties: false
+                      maxItems: 14
+                    mentions:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          versionId:
+                            type: string
+                            format: uuid
+                          role:
+                            type: string
+                            enum:
+                              - REFERENCE
+                              - START_FRAME
+                              - END_FRAME
+                              - AUDIO_REFERENCE
+                              - VIDEO_REFERENCE
+                        required:
+                          - versionId
+                          - role
+                        additionalProperties: false
+                      maxItems: 100
+                  required:
+                    - version
+                    - capabilityId
+                    - styleId
+                    - videoInputMode
+                    - durationSeconds
+                    - prompt
+                    - parameters
+                    - mediaInputs
+                    - mentions
+                  additionalProperties: false
+                - type: object
+                  properties:
+                    version:
+                      type: integer
+                      minimum: 0
+                    capabilityId:
+                      anyOf:
+                        - type: string
+                          format: uuid
+                        - type: 'null'
+                    styleId:
+                      anyOf:
+                        - type: string
+                          format: uuid
+                        - type: 'null'
+                    videoInputMode:
+                      anyOf:
+                        - type: string
+                          enum:
+                            - TEXT
+                            - START_END
+                            - GENERAL_REFERENCE
+                        - type: 'null'
+                    durationSeconds:
+                      anyOf:
+                        - type: integer
+                          minimum: 1
+                          maximum: 60
+                        - type: 'null'
+                    promptCharacters:
+                      type: integer
+                      minimum: 0
+                    mediaInputCount:
+                      type: integer
+                      minimum: 0
+                    mentionCount:
+                      type: integer
+                      minimum: 0
+                  required:
+                    - version
+                    - capabilityId
+                    - styleId
+                    - videoInputMode
+                    - durationSeconds
+                    - promptCharacters
+                    - mediaInputCount
+                    - mentionCount
+                  additionalProperties: false
+          required:
+            - canvasItemId
+            - artifactId
+            - kind
+            - title
+            - expectedVersion
+            - artifactVersion
+            - locked
+            - x
+            - 'y'
+            - width
+            - height
+            - zIndex
+          additionalProperties: false
     CharacterView:
       type: object
       additionalProperties: false

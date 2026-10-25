@@ -2,6 +2,8 @@ package dev.agenvas.mcp.security;
 
 import dev.agenvas.mcp.application.McpTokenService;
 import dev.agenvas.mcp.domain.McpPrincipal;
+import dev.agenvas.mcp.domain.McpScope;
+import dev.agenvas.mcp.domain.McpHttpEndpoints;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import jakarta.servlet.FilterChain;
@@ -35,9 +37,15 @@ public class McpRequestLimitsFilter extends OncePerRequestFilter {
     private final Semaphore total = new Semaphore(MAX_TOTAL);
     private final ConcurrentHashMap<UUID, Integer> activeByUser = new ConcurrentHashMap<>();
     private final HandlerExceptionResolver resolver;
+    private final boolean recoveryMode;
 
     public McpRequestLimitsFilter(HandlerExceptionResolver resolver) {
+        this(resolver, false);
+    }
+
+    public McpRequestLimitsFilter(HandlerExceptionResolver resolver, boolean recoveryMode) {
         this.resolver = resolver;
+        this.recoveryMode = recoveryMode;
     }
 
     @Override
@@ -56,6 +64,26 @@ public class McpRequestLimitsFilter extends OncePerRequestFilter {
             return;
         }
         try {
+            if ((request.getContextPath() + McpHttpEndpoints.UPLOAD).equals(request.getRequestURI())) {
+                try {
+                    if (!principal.scopes().contains(McpScope.CONTENT_WRITE))
+                        throw rejected(HttpStatus.FORBIDDEN, "MCP_SCOPE_DENIED", "api.mcp.scope-denied");
+                    if (request.getHeader(HttpHeaders.ORIGIN) != null)
+                        throw rejected(HttpStatus.FORBIDDEN, "MCP_ORIGIN_DENIED", "mcp.upload.origin-denied");
+                    if (recoveryMode) throw rejected(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY",
+                            "api.recovery-mode-write-guard.database-and-media-backups-are-being-reconciled-project-and-model");
+                    if (request.getContentLengthLong() > McpHttpEndpoints.MAX_UPLOAD_REQUEST_BYTES)
+                        throw rejected(HttpStatus.PAYLOAD_TOO_LARGE, "MCP_UPLOAD_TOO_LARGE", "mcp.upload.too-large");
+                } catch (ApiProblemException rejected) {
+                    resolver.resolveException(request, response, null, rejected);
+                    return;
+                }
+                // The servlet multipart parser spools to private disk and enforces its actual
+                // 501 MiB request / 500 MiB part limits, including chunked requests. Never copy
+                // an upload into the protocol's small in-memory JSON buffer.
+                chain.doFilter(request, response);
+                return;
+            }
             byte[] body;
             try {
                 if (request.getContentLengthLong() > MAX_BODY_BYTES) throw tooLarge();
@@ -71,6 +99,10 @@ public class McpRequestLimitsFilter extends OncePerRequestFilter {
             activeByUser.computeIfPresent(principal.userId(), (user, count) -> count == 1 ? null : count - 1);
             total.release();
         }
+    }
+
+    private ApiProblemException rejected(HttpStatus status, String code, String message) {
+        return new ApiProblemException(status, code, ApiMessage.of(message), ApiMessage.of(message), false);
     }
 
     private boolean acquire(UUID userId) {

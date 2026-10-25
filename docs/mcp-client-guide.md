@@ -19,7 +19,7 @@ MCP 是 Agenvas 的附加创作入口。外部客户端负责自己的对话和�
 | 权限 | 能力 |
 | --- | --- |
 | `READ`，必选 | 读取当前用户有权访问的项目、画布、内容、已发布能力和任务结果 |
-| `CONTENT_WRITE`，可选 | 创建或修改文字、调整节点、创建媒体节点和保存草稿 |
+| `CONTENT_WRITE`，可选 | 创建或修改文字、调整节点、创建媒体节点、上传媒体和保存草稿 |
 | `MEDIA_GENERATE`，可选 | 运行已有媒体草稿，直接受理生成任务 |
 
 令牌属于用户，不属于某个项目。每次工具调用仍校验当前用户、项目权限及对象归属。创建草稿和生成媒体分别需要对应权限；只有 `CONTENT_WRITE` 不能生成，只有 `READ + MEDIA_GENERATE` 不能修改草稿。
@@ -54,7 +54,7 @@ MCP 是 Agenvas 的附加创作入口。外部客户端负责自己的对话和�
 
 连接后先执行工具发现，再调用 `list_projects`。工具列表按令牌权限过滤；服务器在执行时还会重新鉴权。客户端自己的工具确认或工作区信任提示由客户端控制，Agenvas 不增加每次媒体调用的收费审批。
 
-## 当前 13 个工具
+## 当前 14 个工具
 
 工具输入、输出的权威 Schema 是 [`contracts/mcp/tools.json`](../contracts/mcp/tools.json)，运行时通过 MCP 工具发现获取。除 `list_projects` 外均必填 `projectId`；所有写工具都必填稳定的 `commandId`。
 
@@ -67,6 +67,7 @@ MCP 是 Agenvas 的附加创作入口。外部客户端负责自己的对话和�
 | `create_text` | `CONTENT_WRITE` | 原子创建文字产物与画布节点；输入 `title`、`text`，可选 `format` 和 `placement` |
 | `revise_artifact` | `CONTENT_WRITE` | 为文字追加不可变版本；输入 `artifactId`、当前 `expectedVersion` 和 `text` |
 | `manage_canvas_node` | `CONTENT_WRITE` | `RENAME`、`MOVE`、`RESIZE`；输入节点 ID、当前节点 `expectedVersion` 及动作字段 |
+| `prepare_media_upload` | `CONTENT_WRITE` | 为本地图片、音频或视频返回同源二进制上传要求；输入 `kind`、`title`、实际 `byteSize` 和小写 `sha256`，可选 `placement` |
 | `create_media_node` | `CONTENT_WRITE` | 创建 `IMAGE`、`VIDEO` 或 `AUDIO` 空节点与初始草稿；不会开始生成 |
 | `update_media_draft` | `CONTENT_WRITE` | 输入 `canvasItemId`、当前 `expectedDraftVersion` 和 `patch`，保存提示词、能力、参数及精确素材引用 |
 | `list_media_capabilities` | `READ` | 按 `kind` 和分页发现已发布能力及支持参数；不返回 Provider 地址、密钥或原始工作流 |
@@ -109,6 +110,42 @@ list_media_capabilities(projectId, kind=IMAGE)
 
 视频和音频沿相同流程使用对应能力。`patch` 的参数、视频模式、角色、mentions 和素材引用按能力及 Schema 填写；浏览器当前选中项不会自动成为外部客户端的输入。批量生成可能受理多个 Task，必须保留并查询完整集合。结果会通过原有项目事件更新网页画布；外部客户端通过查询继续自己的工作，不向内置导演会话注入消息。
 
+### 上传本地媒体
+
+上传使用 `READ + CONTENT_WRITE`，不要求 `MEDIA_GENERATE`，也不触发模型调用。客户端先调用 `prepare_media_upload`，再以同一 MCP Bearer 向返回的相对路径发送二进制文件。需要客户端具备本地文件读取及普通 HTTP 上传能力；只支持 MCP 工具调用而不能发送文件的客户端无法完成第二步。
+
+```text
+本地计算文件实际字节数和 SHA-256
+→ prepare_media_upload(projectId, commandId, kind, title, byteSize, sha256, placement?)
+→ POST /mcp/uploads（metadata JSON part + file 二进制 part）
+→ artifact.versionId
+→ update_media_draft(..., patch={mediaInputs:[{versionId, role:REFERENCE, color}]})
+```
+
+`prepare_media_upload` 只校验权限、项目及元数据，返回 `method`、相对 `path`、part 名称、大小上限及原始 `metadata`；不预留命令、不创建产物或临时令牌。默认上传后仅增加项目资源；提供 `placement: {x,y,width,height,zIndex?}` 时，在同一提交中创建选用该精确版本的画布节点。上传响应包含 `operationId`、`artifact`、`media` 和可选 `node`。文件来源记为 `UPLOAD`，版本作者记为 `EXTERNAL_TOOL`。实际 HTTP 合约见 [`contracts/openapi.yaml`](../contracts/openapi.yaml) 的 `/mcp/uploads`。
+
+将工具返回的完整结果保存为不含凭据的 `upload-plan.json`。下面的示例将 Bearer 经标准输入传给 curl，文件以流式 multipart 发送；`AGENVAS_BASE_URL` 应是 MCP 服务所在的可信站点源地址，不含 `/mcp`。令牌从安全凭据环境注入，勿把真实值粘到命令或日志中。
+
+```sh
+# upload.json 是 upload-plan.json 中的 metadata 对象，保留原 commandId。
+python3 - <<'PYUPLOAD'
+import json
+from pathlib import Path
+plan = json.loads(Path("upload-plan.json").read_text())
+assert plan["method"] == "POST" and plan["path"] == "/mcp/uploads"
+Path("upload.json").write_text(json.dumps(plan["metadata"], ensure_ascii=False))
+PYUPLOAD
+printf 'header = "Authorization: Bearer %s"\n' "$AGENVAS_MCP_TOKEN" |
+  curl --config - --fail-with-body --request POST \
+    "${AGENVAS_BASE_URL}/mcp/uploads" \
+    --form 'metadata=@upload.json;type=application/json' \
+    --form 'file=@reference.png;type=application/octet-stream'
+```
+
+不要添加 `--location` 或将凭据转发给不同源地址。客户端读取本地文件并发送其字节；不能提交服务端文件路径、远程 URL、Base64 或内联字节。`metadata` part 限 16 KiB；两部分的名称固定为 `metadata`、`file`。文件名和声明 MIME 不决定媒体类型，服务端读取实际字节、核对大小与摘要并完整验证媒体：图片 PNG/JPEG/WebP，最大 20 MiB、40 MP；音频 MP3/WAV/OGG Opus，最大 50 MiB；视频 MP4，最大 500 MiB、10 分钟。整个 multipart 请求限 501 MiB，通过私有磁盘暂存，不进入 MCP 的 JSON 内存缓冲。
+
+断线后保留原 `commandId`、元数据和文件重传，返回同一版本和节点；同键改标题、位置、文件摘要等参数返回 `409 MCP_COMMAND_CONFLICT`。文件大小或摘要不符返回 `422 MCP_UPLOAD_CONTENT_MISMATCH`，校验失败不发布半成品。上传时会再次检查凭据和项目权限，准备成功不代表之后仍有权限；只读、撤销、过期、跨用户项目、带 Origin 的浏览器请求、恢复模式及关闭 MCP 均不能上传。
+
 ### 重放、冲突与 UNKNOWN
 
 - **每次新的写操作先生成一个稳定 `commandId`**，建议使用 UUID。保留工具名、完整参数和原命令 ID，直到收到确定结果。响应丢失时以相同命令、相同参数重放，服务器返回该操作已提交的结果，不重复放置节点或受理媒体任务。
@@ -133,17 +170,19 @@ docker compose -f docker-compose.yml up -d --no-deps server
 | `401` | Bearer 是否存在、环境变量是否可见、令牌是否过期/撤销、所属用户是否仍有效；网页登录 Cookie 不适用于 MCP |
 | `403` 或工具不可见 | 令牌权限是否包含目标工具要求的 scope，当前项目和资源是否归属该用户；客户端可能缓存工具列表，需要重新发现 |
 | 返回 HTML 页面 | 地址应为精确 `/mcp`，检查部署使用的 Nginx 是否包含 `location = /mcp` 反代 |
-| `413` | 后端实际请求体上限 300 KiB，工具参数上限 256 KiB；Nginx 外层上限 2 MiB。减少批量输入并按工具分页，MCP 不能当作文件上传入口 |
+| `413` | `/mcp` 的 JSON 实际上限 300 KiB，工具参数 256 KiB，Nginx 外层 2 MiB；文件走独立 `/mcp/uploads`，按媒体种类限制 20/50/500 MiB，总请求 501 MiB |
 | `429` | 同一用户跨令牌共用最多 4 个在途请求，进程总计最多 64 个；按 `Retry-After: 1` 等待后重放原命令，不生成新 commandId |
 | 带 Origin 的请求被拒绝 | 首版面向本地原生客户端，拒绝带 Origin 的浏览器跨域调用；没有 CORS 接入入口 |
 | 恢复模式只读 | `AGENVAS_RECOVERY_MODE=true` 时 MCP 读取仍可用，写入和生成被拒绝；不能只因 MCP 使用 HTTP POST 就把读取当作写入 |
 | 连接失败或工具错误 | 分别检查 HTTP 状态、MCP 协议错误及工具返回的 `isError`；业务错误提供 `code`、`status`、`detail`、`retryable`，不要把错误文本当成受理成功 |
 
-默认 Nginx 对 `/mcp` 透传认证和 MCP 协议请求头，关闭缓存及代理缓冲；在外部 HTTPS 代理上也应保留相同行为，不缓存私有工具响应或记录认证头。
+默认 Nginx 对精确 `/mcp` 和 `/mcp/uploads` 反代；前者透传认证和 MCP 协议请求头，后者透传 Bearer 并提供独立上传大小限制。两者关闭缓存及代理缓冲；在外部 HTTPS 代理上也应保留相同行为，不缓存私有工具响应或记录认证头。
 
 ## 已验证的客户端范围
 
 官方 Java SDK 2.0.0 的实际 HTTP 客户端已逐一调用 12 个工具并验证输出 Schema；MCP Inspector 2.12.0 通过实际 Nginx 反代完成发现、文字写入/重放、画布、直接 Mock 图片任务、查询与图片读取。Claude Code 2.1.296 的环境变量 Bearer 健康连接通过，未运行其模型驱动对话。上述初始客户端兼容验证使用隔离账号和 Mock Provider。另有显式启用的 `McpRealServiceIT` 已复用现有第三方配置，完成一份真实 GPT Image 2 兼容图片能力的全部 12 工具闭环及单张生成。另一次真实创作验收通过 Python HTTP JSON-RPC 客户端提交同一身份参考驱动的 6 段视频和 10 句 SeedAudio 配音，全部成功；本地剪辑为 60 秒并通过普通上传 API 回写测试项目。原服务数据与待核对任务保持不动；其他未列 Provider 及 Claude 模型驱动对话未实测，不代表所有客户端兼容。视频抽帧未见明显人物替换，但存在口型和门链细节瑕疵；未连续观看或听验，不能将解码成功等同于成片质量验收。
+
+上传扩展的本次验证使用合成 PNG/WAV/MP4、真实 HTTP multipart/分块传输、官方 SDK 工具发现及 PostgreSQL；实际结果与未验证范围见开发清单。本次未重新运行上述真实 Provider、Inspector 或 Claude 验收，也未部署到运行中的服务。
 
 ## 运行真实服务验收
 

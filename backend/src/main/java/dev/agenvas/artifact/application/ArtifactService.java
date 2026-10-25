@@ -271,6 +271,22 @@ public class ArtifactService {
         }).value();
     }
 
+    /** Publishes a verified native-client upload without granting generic tools media authorship. */
+    @Transactional
+    public ArtifactView createUploadedMediaFromExternalTool(UUID ownerId, UUID projectId,
+            Artifact.Kind kind, String title, UUID assetId) {
+        if (!isMediaKind(kind)) throw new IllegalArgumentException("Media kind required");
+        // Only this trusted upload boundary constructs UPLOAD content for an external author.
+        // Generic external create/revise commands still cannot assert an archived media origin.
+        JsonNode content = objectMapper.createObjectNode()
+                .put("sourceType", ArtifactVersion.MediaSourceType.UPLOAD.name()).put("assetId", assetId.toString());
+        return events.recordChange(ownerId, projectId, () -> {
+            ArtifactView created = createLocked(ownerId, projectId, kind, title, content,
+                    ArtifactVersion.CreatedByKind.EXTERNAL_TOOL, null, true);
+            return ProjectEventService.Change.changed(created, artifactEvent("artifact.created", created));
+        }).value();
+    }
+
     /** External revisions retain ordinary content CAS and locked-node protections. */
     @Transactional
     public ArtifactView reviseFromExternalTool(UUID ownerId, UUID projectId, UUID artifactId,

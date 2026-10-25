@@ -52,6 +52,43 @@ class McpRequestLimitsFilterTest {
     }
 
     @Test
+    void binaryUploadsRequireWriteGrantAndRejectOriginsAndRecoveryBeforeReading() throws Exception {
+        UUID user = UUID.randomUUID();
+        authenticate(user);
+        var denied = new MockHttpServletResponse();
+        var request = new MockHttpServletRequest("POST", "/mcp/uploads") {
+            @Override public ServletInputStream getInputStream() { throw new AssertionError("must not buffer upload bytes"); }
+        };
+        filter.doFilter(request, denied, mustNotDispatch());
+        assertThat(denied.getStatus()).isEqualTo(403);
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                new McpPrincipal(user, UUID.randomUUID(), Set.of(McpScope.READ, McpScope.CONTENT_WRITE)), null, List.of()));
+        filter.doFilter(request, new MockHttpServletResponse(), (original, response) -> assertThat(original).isSameAs(request));
+        request.addHeader("Origin", "https://foreign.example");
+        var origin = new MockHttpServletResponse();
+        filter.doFilter(request, origin, mustNotDispatch());
+        assertThat(origin.getHeader("X-Test-Problem-Code")).isEqualTo("MCP_ORIGIN_DENIED");
+        request.removeHeader("Origin");
+        var recovery = new MockHttpServletResponse();
+        new McpRequestLimitsFilter(errors, true).doFilter(request, recovery, mustNotDispatch());
+        assertThat(recovery.getStatus()).isEqualTo(503);
+    }
+
+    @Test
+    void binaryUploadsRejectOversizedDeclaredRequestsBeforeReading() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
+                new McpPrincipal(UUID.randomUUID(), UUID.randomUUID(), Set.of(McpScope.READ, McpScope.CONTENT_WRITE)), null, List.of()));
+        var request = new MockHttpServletRequest("POST", "/mcp/uploads") {
+            @Override public long getContentLengthLong() { return 501L * 1024 * 1024 + 1; }
+            @Override public ServletInputStream getInputStream() { throw new AssertionError("must reject before reading upload"); }
+        };
+        var response = new MockHttpServletResponse();
+        filter.doFilter(request, response, mustNotDispatch());
+        assertThat(response.getStatus()).isEqualTo(413);
+        assertThat(response.getHeader("X-Test-Problem-Code")).isEqualTo("MCP_UPLOAD_TOO_LARGE");
+    }
+
+    @Test
     void checksActualChunkedBytesAndPreservesTheBoundedBodyForTheSdk() throws Exception {
         authenticate(UUID.randomUUID());
         var oversized = chunked(new byte[MAX_BODY + 1]);

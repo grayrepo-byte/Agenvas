@@ -101,7 +101,7 @@ public class McpTransportConfiguration {
         for (var definition : policy.definitions()) {
             String name = definition.path("name").asText();
             McpScope scope = policy.requiredScope(name);
-            boolean readOnly = scope == McpScope.READ;
+            boolean readOnly = scope == McpScope.READ || "prepare_media_upload".equals(name);
             var tool = McpSchema.Tool.builder().name(name).description(definition.path("description").asText())
                     .inputSchema(json, definition.path("inputSchema").toString())
                     .outputSchema(json, definition.path("outputSchema").toString())
