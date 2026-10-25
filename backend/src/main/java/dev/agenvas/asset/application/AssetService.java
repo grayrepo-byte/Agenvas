@@ -2,6 +2,7 @@ package dev.agenvas.asset.application;
 
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.asset.domain.MediaUploadLimits;
 import dev.agenvas.asset.infrastructure.LocalAssetStorage;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
@@ -87,29 +88,78 @@ public class AssetService {
     private Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
             Supplier<InputStream> source, BooleanSupplier stillActive) {
         projects.requireActiveProject(owner, project);
+        return withMediaLock(project, id, kind, () -> prepareMedia(owner, project, id, kind, source, stillActive));
+    }
+
+    private Asset prepareMedia(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
+            Supplier<InputStream> source, BooleanSupplier stillActive) {
         return switch (kind) {
-                case IMAGE -> storage.withTaskImageLock(project, id, () -> {
-                    requireActivePreparation(stillActive);
-                    var file = storage.recoverImage(project, id).orElseGet(() -> readImport(source, input -> storage.storeImage(project, id, input)));
-                    return new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
-                            file.sha256(), file.width(), file.height(), null, file.thumbnailKey(),
-                            file.thumbnailByteSize(), file.thumbnailSha256(), now());
-                });
-                case VIDEO -> storage.withTaskVideoLock(project, id, () -> {
-                    requireActivePreparation(stillActive);
-                    var file = storage.recoverVideo(project, id).orElseGet(() -> readImport(source, input -> storage.storeVideo(project, id, input)));
-                    return new Asset(id, project, kind, file.objectKey(), "video/mp4", file.byteSize(),
-                            file.sha256(), file.width(), file.height(), file.durationMs(), file.thumbnailKey(),
-                            file.thumbnailByteSize(), file.thumbnailSha256(), now());
-                });
-                case AUDIO -> storage.withTaskAudioLock(project, id, () -> {
-                    requireActivePreparation(stillActive);
-                    var file = storage.recoverAudio(project, id).orElseGet(() -> readImport(source, input -> storage.storeAudio(project, id, input)));
-                    return new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
-                            file.sha256(), null, null, file.durationMs(), null, null, null, now());
-                });
+            case IMAGE -> {
+                requireActivePreparation(stillActive);
+                var file = storage.recoverImage(project, id).orElseGet(() -> readImport(source, input -> storage.storeImage(project, id, input)));
+                yield new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
+                        file.sha256(), file.width(), file.height(), null, file.thumbnailKey(),
+                        file.thumbnailByteSize(), file.thumbnailSha256(), now());
+            }
+            case VIDEO -> {
+                requireActivePreparation(stillActive);
+                var file = storage.recoverVideo(project, id).orElseGet(() -> readImport(source, input -> storage.storeVideo(project, id, input)));
+                yield new Asset(id, project, kind, file.objectKey(), "video/mp4", file.byteSize(),
+                        file.sha256(), file.width(), file.height(), file.durationMs(), file.thumbnailKey(),
+                        file.thumbnailByteSize(), file.thumbnailSha256(), now());
+            }
+            case AUDIO -> {
+                requireActivePreparation(stillActive);
+                var file = storage.recoverAudio(project, id).orElseGet(() -> readImport(source, input -> storage.storeAudio(project, id, input)));
+                yield new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
+                        file.sha256(), null, null, file.durationMs(), null, null, null, now());
+            }
         };
     }
+
+    /** Exposes validation limits without letting another module depend on the storage implementation. */
+    public long maximumUploadBytes(Asset.MediaKind kind) {
+        return switch (kind) {
+            case IMAGE -> MediaUploadLimits.IMAGE_BYTES;
+            case AUDIO -> MediaUploadLimits.AUDIO_BYTES;
+            case VIDEO -> MediaUploadLimits.VIDEO_BYTES;
+        };
+    }
+
+    /**
+     * Prepare immutable upload bytes before the caller starts its short publication transaction.
+     * The same file lock covers publication and rejected-install cleanup, so concurrent replays
+     * cannot delete a file another request is about to register. No database transaction spans storage I/O.
+     */
+    public <T> T withPreparedUpload(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
+            Supplier<InputStream> source, java.util.function.Function<Asset, T> publish) {
+        projects.requireActiveProject(owner, project);
+        return withMediaLock(project, id, kind, () -> {
+            Asset prepared = prepareMedia(owner, project, id, kind, source, () -> true);
+            try {
+                return publish.apply(prepared);
+            } catch (RuntimeException failure) {
+                if (assets.find(project, id).isEmpty()) {
+                    try {
+                        try { storage.discard(prepared.objectKey()); }
+                        finally { if (prepared.thumbnailKey() != null) storage.discard(prepared.thumbnailKey()); }
+                    } catch (RuntimeException cleanupFailure) {
+                        failure.addSuppressed(cleanupFailure);
+                    }
+                }
+                throw failure;
+            }
+        });
+    }
+
+    private <T> T withMediaLock(UUID project, UUID id, Asset.MediaKind kind, Supplier<T> action) {
+        return switch (kind) {
+            case IMAGE -> storage.withTaskImageLock(project, id, action);
+            case VIDEO -> storage.withTaskVideoLock(project, id, action);
+            case AUDIO -> storage.withTaskAudioLock(project, id, action);
+        };
+    }
+
     private <T> T readImport(Supplier<InputStream> source, java.util.function.Function<InputStream, T> store) {
         try (InputStream input = source.get()) { return store.apply(input); }
         catch (IOException failure) { throw new IllegalStateException("Cannot close library import", failure); }

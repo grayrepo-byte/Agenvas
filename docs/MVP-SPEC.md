@@ -299,7 +299,9 @@ LLM 调用、文件下载、视频生成、FFmpeg 运行都不放在数据库长
 
 首批 12 工具覆盖项目、目录、精确版本、文字、节点布局、媒体节点/草稿、能力和 Task 状态；目录 Schema 为 `contracts/mcp/tools.json`。文字来源为 `EXTERNAL_TOOL`，媒体来源通过可信 Task 与关联表追踪。锁定、占用、独立草稿 CAS、能力与用量规则继续执行。`UNKNOWN` 查询和归档恢复不重提生成；本版不提供外部重试/取消工具。
 
-精确 `/mcp` 使用独立无状态安全链并免 CSRF；网页登录/API 继续使用 Session 与 CSRF，MCP 凭据不能调用管理 REST。入口拒绝带 Origin 的浏览器调用，实际请求体上限 300 KiB、工具参数 256 KiB，每用户最多 4 个、进程 64 个在途请求。运维可通过 `AGENVAS_MCP_ENABLED=false` 关闭新入口；已受理任务继续执行。首版是手工 Bearer，最高协商 `2025-11-25`，不提供 OAuth 登录发现。
+精确 `/mcp` 与二进制上传 `/mcp/uploads` 使用独立无状态安全链并免 CSRF；网页登录/API 继续使用 Session 与 CSRF，MCP 凭据不能调用管理 REST。入口拒绝带 Origin 的浏览器调用；`/mcp` JSON 实际请求体上限 300 KiB、工具参数 256 KiB，每用户最多 4 个、进程 64 个在途请求。运维可通过 `AGENVAS_MCP_ENABLED=false` 关闭新入口；已受理任务继续执行。首版是手工 Bearer，最高协商 `2025-11-25`，不提供 OAuth 登录发现。
+
+媒体上传扩展增加 `prepare_media_upload`，与已有 `compose_video` 合计 14 个工具。准备工具要求 `READ + CONTENT_WRITE`，只返回同源 multipart 上传说明，不创建业务内容或命令预留；客户端用同一 Bearer POST `/mcp/uploads`，不传服务端路径、远程 URL 或内联字节。元数据限 16 KiB，包含稳定 `commandId`、项目、种类、标题、实际大小和 SHA-256；文件沿用实际媒体校验，图片/音频/视频分别限 20/50/500 MiB，请求总限 501 MiB。上传与 JSON 共享用户/进程在途限额，二进制由私有磁盘暂存。存储 I/O 与解码在事务外完成，短事务内复核授权并原子登记 Asset、`UPLOAD` 内容的 `EXTERNAL_TOOL` 版本、命令结果和项目事件；可选 placement 同时创建选用该精确版本的节点。重传原命令、元数据和文件只返回原结果，同键异参冲突；恢复模式及关闭 MCP 均拒绝新上传。上传不创建 Task、不要求生成权限，不触发模型。
 
 首批工具、模块与实施细节见 [MCP 实施计划](mcp-extension-implementation-plan.md)，接入取舍见 [ADR 0048](adr/0048-additive-mcp-access.md)，使用见[客户端指南](mcp-client-guide.md)，实际验证范围见开发清单。
 

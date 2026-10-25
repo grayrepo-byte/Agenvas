@@ -2991,3 +2991,13 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] AgentChatPanel、ContentCanvasCard、RunningHubDefinitionEditor 三文件定向 Vitest 108 项通过；类型检查、生产构建、主题/四语言/ESLint 与差异空白检查通过。
 - [x] 应用内浏览器以生产 CSS 和本地合成数据核对 RunningHub 嵌套区域、节点下拉菜单、Skill 列表/原文与导演聊天/多行输入：统一 10px 滚动区与透明轨道；实际拖拽参数滑块能移动列表且外层弹窗位置不变，聊天滚轮查看历史后退出自动跟随并恢复统一滚动条。
 - [ ] 全量测试、Firefox/Safari、真实触屏设备与系统强制配色专项未运行；标准回退与对应媒体规则已实现，不以 Chromium 检查替代其他浏览器/设备验收。未运行后端、真实 Provider 或部署。
+
+
+## 2026-10-25 MCP 本地媒体上传
+
+- [x] 新增 `prepare_media_upload` 与同源 `POST /mcp/uploads`，支持 IMAGE/AUDIO/VIDEO。准备阶段只返回上传要求；二进制经 Bearer、CONTENT_WRITE、实际大小/SHA-256 和媒体解码验证后，原子创建 UPLOAD 来源的 EXTERNAL_TOOL 内容版本，可选放置精确版本节点。返回版本可直接供媒体草稿引用，不创建生成 Task。
+- [x] 上传共用用户 4 / 进程 64 在途配额；JSON 300 KiB / 参数 256 KiB 限制保持独立，multipart 元数据 16 KiB、总请求 501 MiB，文件按 20/50/500 MiB 校验并私有磁盘暂存。存储和解码在数据库事务外；发布再次复核授权，同命令重传只返回原结果，异参冲突。拒绝只读、撤销、跨账号项目、Origin、恢复模式和关闭 MCP；清理未发布文件时保留原始错误与已提交重放文件。
+- [x] 同步 MCP 14 工具目录、HTTP OpenAPI、生成 TypeScript、四语言错误、Nginx 精确上传反代、客户端指南、规格与 ADR 0048；无数据库迁移和依赖升级。
+- [x] 39 项定向单元测试通过：MCP 工具/命令 Schema、Bearer、请求限制、Asset 发布与失败清理、API i18n。9 项真实 PostgreSQL 集成测试通过：McpUploadPostgresIT、McpHttpPostgresIT、McpRecoveryModePostgresIT、McpDisabledPostgresIT；上传专项另行复跑 4 项并通过 OpenAPI 响应校验。使用合成 PNG/WAV/MP4 与真实 FFmpeg、原生 multipart/分块 HTTP、官方 MCP SDK，覆盖三类文件、超 JSON 大小图片、精确草稿引用、节点放置、并发重传、异参冲突、大小/摘要错误及权限隔离；不依赖真实 Provider。
+- [x] OpenAPI TypeScript 生成、完整 TypeScript 检查、Nginx 配置 `nginx -t` 与差异空白检查通过。测试日志在仓库外私有目录。
+- [ ] 全量测试、500 MiB 实际大文件/吞吐压力、云对象存储故障、真实 Provider、外部 AI 客户端自动上传、浏览器交互和运行中服务部署未运行；MCP 配置生效需要重建后端与 Web 镜像。

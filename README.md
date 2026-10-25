@@ -34,7 +34,7 @@
 | Creative canvas | Drag, box-select, connect, auto-arrange, name/collapse groups, duplicate nodes or groups, undo/redo presentation edits within the current session, and upload local media |
 | Multimodal generation | Run text, image, video, and audio cards with queues, cancellation, regeneration, and version history |
 | Agent collaboration | Use director chat in the bottom-right corner to read and work with the current canvas, with persistent conversations and Skills; media proposals require user approval |
-| MCP access | Keep the built-in director and expose 13 creative tools (including intelligent voiceover synthesis) to external clients through user tokens; authorized media calls accept tasks without per-call paid approval |
+| MCP access | Keep the built-in director and expose 14 creative tools (including local media upload and intelligent voiceover synthesis) to external clients through user tokens; authorized media calls accept tasks without per-call paid approval |
 | Reusable materials | Project resources, personal assets, prompt templates, visual styles, and mixed references |
 | Character consistency | Project characters, multiple looks, image and voice references; preview and apply to shot drafts, track affected shots, and review results separately |
 | Image tools | Annotate, crop, rotate, mirror, resize, extract depth, and use configured AI editing capabilities |
