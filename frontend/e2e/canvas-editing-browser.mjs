@@ -567,6 +567,10 @@ async function runConnectionDropRegression(baseUrl) {
     assert.equal(result.connections[0].sourceCanvasItemId, "synthetic-card-0");
     assert.equal(result.connections[0].targetCanvasItemId, result.placements[0].itemId);
     assert.equal(result.connections[0].sourceArtifactVersionId, "synthetic-card-0-v1");
+    const targetDraft = result.mediaDrafts.find((draft) => draft.canvasItemId === result.placements[0].itemId);
+    assert.equal(targetDraft.capabilityId, `synthetic-${kind.toLowerCase()}-input`, "The new draft persists a compatible model");
+    if (kind === "VIDEO") assert.equal(targetDraft.videoInputMode, "GENERAL_REFERENCE");
+    assert.equal(targetDraft.mediaInputs[0].versionId, "synthetic-card-0-v1");
     assert.deepEqual(result.unexpected, []);
     await screenshot(`connection-drop-${kind.toLowerCase()}`);
   }

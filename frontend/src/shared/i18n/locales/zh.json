@@ -406,6 +406,7 @@
   "canvas.workspace.syncRetrying": "同步失败，正在重试",
   "canvas.workspace.toggleInteraction": "切换画布交互",
   "canvas.workspace.unsupportedConnection": "仅支持将已有媒体版本连到兼容的媒体输入。",
+  "canvas.workspace.noCompatibleModel": "没有已启用的模型支持将此素材作为该类型节点的输入，请先在媒体设置中配置兼容模型。",
   "canvas.workspace.viewportControls": "画布视图控制",
   "canvas.workspace.viewportHint": "画布编辑需要至少 1024px 宽度；当前仅提供只读预览。",
   "canvas.workspace.zoomIn": "放大画布",

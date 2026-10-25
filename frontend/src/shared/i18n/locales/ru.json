@@ -406,6 +406,7 @@
   "canvas.workspace.syncRetrying": "Синхронизация не удалась, повторите попытку.",
   "canvas.workspace.toggleInteraction": "Переключить взаимодействие с холстом",
   "canvas.workspace.unsupportedConnection": "Соедините существующую медиаверсию с совместимым медиавходом.",
+  "canvas.workspace.noCompatibleModel": "Нет включённой модели, принимающей этот материал для выбранного типа узла. Сначала настройте совместимую модель в настройках медиа.",
   "canvas.workspace.viewportControls": "Управление видом холста",
   "canvas.workspace.viewportHint": "Для редактирования холста требуется ширина не менее 1024 пикселей; в настоящее время доступен только предварительный просмотр только для чтения.",
   "canvas.workspace.zoomIn": "Увеличить",
