@@ -3029,3 +3029,8 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 复现基础词典缺少三条 MCP 上传消息导致的资源不一致。合并中文内容到唯一 `messages.properties`，移除重复中文资源；`ApiMessage` 明确从根资源包读取中文诊断，四语言显示与既有消息值保持。
 - [x] 词典校验按语言执行，精确报告缺失/多余键及有问题的条目；保留翻译键集合、非空、占位符次数、英俄中文混入、真实构造与四语言渲染检查，增加重复键拒绝及中文显示与诊断来源一致校验。修复前新检查仅列出三条问题键，不再打印整本词典。
 - [x] `./mvnw clean -Dtest=MessageCatalogTest,ApiI18nTest,LocalizedResponseTest,SecurityI18nTest,CanvasMediaDerivationDraftTest,CanvasOutputPlacementTest,ProjectServiceTest test`：41 项通过；补充中文运行时一致校验后，`./mvnw -Dtest=MessageCatalogTest test` 的 5 项定向复验通过。画布派生测试补齐活动项目 Mock，真实项目状态保护未改变。同步 i18n 开发说明，删除已撤回的 AST 校验描述；差异空白检查通过。
+
+## 预设列表键盘遍历测试（2026-11-03）
+
+- [x] 发布 CI 两次复现预设列表完整 Tab 遍历在 5 秒上限内超时；同一提交的 main/PR 完整 CI 和本地定向复验曾通过。将正向与反向遍历拆为独立参数化用例，分别完整检查 112 个预设的可访问名称、焦点、挂载数量上限和列表出口，保留原超时与交互行为。
+- [x] `pnpm exec vitest run src/features/canvas/VideoPromptPresetList.test.tsx --maxWorkers=1` 连续三轮共 45 项通过，单方向最慢约 1.29 秒；定向 ESLint 和差异空白检查通过。只调整测试，保留全部方向与选项覆盖。

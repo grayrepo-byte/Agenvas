@@ -168,23 +168,21 @@ describe("VideoPromptPresetList", () => {
     expect(list().scrollTop).toBe(Number.parseFloat(focused.style.top));
   });
 
-  it("keeps every option reachable in both tab directions and lets focus leave the list", async () => {
+  it.each([
+    { direction: "forward", shift: false, entry: "Before", exit: "After" },
+    { direction: "reverse", shift: true, entry: "After", exit: "Before" },
+  ])("keeps every option reachable with $direction Tab and lets focus leave the list", async ({ shift, entry, exit }) => {
     const user = userEvent.setup();
     render(<><button>Before</button><VideoPromptPresetList presets={VIDEO_PROMPT_PRESETS} selectedId={undefined} onSelect={vi.fn()} resetKey="all" onReset={vi.fn()} /><button>After</button></>);
-    screen.getByRole("button", { name: "Before" }).focus();
-    for (const preset of VIDEO_PROMPT_PRESETS) {
-      await user.tab();
+    screen.getByRole("button", { name: entry }).focus();
+    const presets = shift ? [...VIDEO_PROMPT_PRESETS].reverse() : VIDEO_PROMPT_PRESETS;
+    for (const preset of presets) {
+      await user.tab({ shift });
       expect(document.activeElement).toHaveAccessibleName(preset.copy.zh.name);
       expect(options().length).toBeLessThanOrEqual(20);
     }
-    await user.tab();
-    expect(screen.getByRole("button", { name: "After" })).toHaveFocus();
-    for (const preset of [...VIDEO_PROMPT_PRESETS].reverse()) {
-      await user.tab({ shift: true });
-      expect(document.activeElement).toHaveAccessibleName(preset.copy.zh.name);
-    }
-    await user.tab({ shift: true });
-    expect(screen.getByRole("button", { name: "Before" })).toHaveFocus();
+    await user.tab({ shift });
+    expect(screen.getByRole("button", { name: exit })).toHaveFocus();
   });
 
   it("keeps a focused option mounted when the user scrolls it out of the visible window", () => {
