@@ -10,7 +10,7 @@ import java.util.UUID;
  * @param ownerId 唯一所有者用户 ID
  * @param name 项目名称
  * @param aspectRatio 画布及导出的默认画幅
- * @param status 活动或归档状态
+ * @param status 活动、归档或逻辑删除状态
  * @param eventSeq 项目事件序号水位
  * @param version 项目设置乐观锁版本
  * @param createdAt 创建时间
@@ -44,6 +44,8 @@ public record Project(
         /** 可编辑并可启动 Run。 */
         ACTIVE,
         /** 保留历史读取，禁止新编辑和运行。 */
-        ARCHIVED
+        ARCHIVED,
+        /** 从用户读取中移除，保留已受理任务和审计所需的数据。 */
+        DELETED
     }
 }

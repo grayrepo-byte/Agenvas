@@ -22,7 +22,8 @@ import tools.jackson.databind.ObjectMapper;
 
 class ResourceCatalogServiceTest {
     private final ArtifactRepository repository = mock(ArtifactRepository.class);
-    private final ResourceCatalogService service = new ResourceCatalogService(repository);
+    private final dev.agenvas.project.application.ProjectService projects = mock(dev.agenvas.project.application.ProjectService.class);
+    private final ResourceCatalogService service = new ResourceCatalogService(repository, projects);
     private final UUID owner = UUID.randomUUID();
 
     @Test
@@ -30,16 +31,16 @@ class ResourceCatalogServiceTest {
         Instant createdAt = Instant.parse("2026-10-04T00:00:00.123456Z");
         var first = result(createdAt);
         var extra = result(createdAt);
-        when(repository.listResources(eq(owner), eq(Artifact.Kind.IMAGE), eq("Example"), isNull(), isNull(), eq(2)))
+        when(repository.listResources(eq(owner), isNull(), eq(Artifact.Kind.IMAGE), eq("Example"), isNull(), isNull(), eq(2)))
                 .thenReturn(List.of(first, extra));
         var page = service.list(owner, Artifact.Kind.IMAGE, " Example ", null, 1);
         assertThat(page.items()).containsExactly(first);
-        when(repository.listResources(eq(owner), any(), any(), eq(createdAt), eq(first.versionId()), anyInt()))
+        when(repository.listResources(eq(owner), isNull(), any(), any(), eq(createdAt), eq(first.versionId()), anyInt()))
                 .thenReturn(List.of(extra));
         var lastPage = service.list(owner, Artifact.Kind.IMAGE, "Example", page.nextCursor(), 1);
         assertThat(lastPage.items()).containsExactly(extra);
         assertThat(lastPage.nextCursor()).isNull();
-        verify(repository).listResources(owner, Artifact.Kind.IMAGE, "Example", createdAt, first.versionId(), 2);
+        verify(repository).listResources(owner, null, Artifact.Kind.IMAGE, "Example", createdAt, first.versionId(), 2);
     }
 
     @Test
@@ -63,10 +64,20 @@ class ResourceCatalogServiceTest {
         assertThatThrownBy(() -> service.list(owner, Artifact.Kind.TEXT, "", null, null))
                 .isInstanceOfSatisfying(ApiProblemException.class,
                         error -> assertThat(error.code()).isEqualTo("RESOURCE_QUERY_INVALID"));
-        when(repository.listResources(eq(owner), eq(Artifact.Kind.AUDIO), eq(""), isNull(), isNull(), anyInt()))
+        when(repository.listResources(eq(owner), isNull(), eq(Artifact.Kind.AUDIO), eq(""), isNull(), isNull(), anyInt()))
                 .thenReturn(List.of());
         assertThat(service.list(owner, Artifact.Kind.AUDIO, "", null, null).items()).isEmpty();
-        verify(repository).listResources(owner, Artifact.Kind.AUDIO, "", null, null, ResourceCatalogService.DEFAULT_PAGE_SIZE + 1);
+        verify(repository).listResources(owner, null, Artifact.Kind.AUDIO, "", null, null, ResourceCatalogService.DEFAULT_PAGE_SIZE + 1);
+    }
+
+    @Test
+    void authorizesProjectReadsAndKeepsProjectScopeDuringPagination() {
+        UUID project = UUID.randomUUID();
+        when(repository.listResources(eq(owner), eq(project), eq(Artifact.Kind.TEXT), eq(""), isNull(), isNull(), anyInt()))
+                .thenReturn(List.of());
+        assertThat(service.listProject(owner, project, Artifact.Kind.TEXT, "", null, 1).items()).isEmpty();
+        verify(projects).get(owner, project);
+        verify(repository).listResources(owner, project, Artifact.Kind.TEXT, "", null, null, 2);
     }
 
     private ArtifactRepository.ResourceResult result(Instant createdAt) {

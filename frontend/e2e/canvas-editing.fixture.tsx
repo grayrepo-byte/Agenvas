@@ -4,7 +4,8 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { ProjectWorkspacePage } from "../src/features/canvas/ProjectWorkspacePage";
 import { useCanvasStore } from "../src/features/canvas/canvasStore";
 import type { Artifact, CanvasCommand, CreateArtifactRequest, CanvasEditReceipt, CanvasEditReplayRequest, CanvasEditRequest, CanvasEditResponse,
-  CanvasEditorState, CanvasGroup, CanvasItem, ProjectSnapshot, ReviseArtifactRequest } from "../src/shared/api/client";
+  CanvasEditorState, CanvasGroup, CanvasItem, CreateCanvasConnectionRequest, MediaCapability, MediaDraft, MediaSettings,
+  ProjectSnapshot, ReviseArtifactRequest, SaveMediaDraftRequest } from "../src/shared/api/client";
 import { resolveLocale, setLocale } from "../src/shared/i18n";
 import "../src/styles.css";
 
@@ -32,6 +33,16 @@ function textItem(index: number): CanvasItem {
 }
 let items: CanvasItem[] = Array.from({ length: 100 }, (_, index) => textItem(index));
 if (options.has("group-entry")) items = items.slice(0, 3);
+if (options.has("connection-drop")) {
+  const source = textItem(0);
+  const version: NonNullable<CanvasItem["selectedVersion"]> = {
+    ...source.selectedVersion!, content: { sourceType: "UPLOAD", assetId: "synthetic-image" },
+  };
+  source.title = "SYNTHETIC IMAGE SOURCE";
+  source.selectedVersion = version;
+  source.artifact = { ...source.artifact, kind: "IMAGE", title: source.title, resourceDefaultVersion: version };
+  items = [source, textItem(1)];
+}
 if (options.has("hand-drag")) {
   const empty = textItem(1);
   empty.artifact.resourceDefaultVersion!.content = { format: "PLAIN_TEXT", text: "" };
@@ -46,7 +57,7 @@ if (options.has("hand-drag")) {
   items = [textItem(0), empty, ...media, ...(options.has("motion-large") ? items.slice(4).map((item) => ({ ...item, y: item.y + 310 })) : [])];
 }
 let groups: CanvasGroup[] = [];
-const connections: ProjectSnapshot["connections"] = options.has("hand-drag") ? [] : [
+const connections: ProjectSnapshot["connections"] = options.has("hand-drag") || options.has("connection-drop") ? [] : [
   { id: "synthetic-internal-connection", projectId, sourceCanvasItemId: items[0]!.id, targetCanvasItemId: items[1]!.id,
     sourceArtifactVersionId: items[0]!.selectedVersionId!, relationType: "MEDIA_DERIVATION", version: 0, createdAt: now, updatedAt: now },
   { id: "synthetic-external-connection", projectId, sourceCanvasItemId: items[1]!.id, targetCanvasItemId: items[2]!.id,
@@ -57,7 +68,28 @@ const edits: CanvasEditRequest[] = [];
 const replays: CanvasEditReplayRequest[] = [];
 const textSaves: Array<{ artifactId: string; request: ReviseArtifactRequest }> = [];
 const placements: CanvasCommand[] = [];
+const removals: CanvasCommand[] = [];
 const createdArtifacts = new Map<string, Artifact>();
+const mediaDrafts = new Map<string, MediaDraft>();
+const draftSaves: SaveMediaDraftRequest[] = [];
+function mediaModel(kind: "IMAGE" | "VIDEO" | "AUDIO", acceptsImage = true): MediaCapability {
+  return { id: `synthetic-${kind.toLowerCase()}-${acceptsImage ? "input" : "text-only"}`, name: `Synthetic ${kind} model`,
+    enabled: true, version: 0, capabilityVersion: 1, adapterId: `MOCK_${kind}`, kind: `${kind}_GENERATION`,
+    minimumSeconds: 0, maximumSeconds: 30, maxReferenceImages: acceptsImage ? 1 : 0,
+    maxReferenceVideos: 0, maxReferenceAudios: 0, supportedVideoInputModes: kind === "VIDEO" ? ["TEXT", "GENERAL_REFERENCE"] : [],
+    defaultVideoInputMode: kind === "VIDEO" ? "TEXT" : null, supportsEndFrame: false, supportedImageAspectRatios: ["AUTO"],
+    supportedImageResolutions: ["1K"], supportedImageQualities: [], supportsTransparentBackground: false,
+    supportsImageMask: false, mappingSha256: "0".repeat(64), settings: {} };
+}
+const mediaSettings: MediaSettings = { defaults: [{ kind: "IMAGE_GENERATION", capabilityId: mediaModel("IMAGE", false).id, version: 0 }],
+  connections: [{ id: "synthetic-provider", name: "Synthetic provider", platform: "MOCK", enabled: true, version: 0,
+    connectionVersion: 1, origin: null, keyMask: null, connectivityStatus: "NOT_CHECKED", realGenerationTested: false,
+    capabilities: [mediaModel("IMAGE", false), mediaModel("IMAGE"), mediaModel("VIDEO"), mediaModel("AUDIO")] }] };
+function mediaDraft(canvasItemId: string): MediaDraft {
+  return mediaDrafts.get(canvasItemId) ?? { projectId, canvasItemId, prompt: "", parameters: {}, videoInputMode: null,
+    mediaInputs: [], mentions: [], durationSeconds: null, capabilityId: null, styleId: null, displayMode: "RESULT", version: 0,
+    createdAt: now, updatedAt: now };
+}
 const unexpected: string[] = [];
 type ReceiptRecord = { receipt: CanvasEditReceipt; before: CanvasEditorState; after: CanvasEditorState };
 const receipts = new Map<string, ReceiptRecord>();
@@ -69,7 +101,8 @@ let nextPlacementFailure: number | null = null;
 const copy = <T,>(value: T): T => structuredClone(value);
 const state = (): CanvasEditorState => copy({ items, groups });
 const diagnostics = {
-  evidence: () => copy({ items, groups, requests, edits, replays, textSaves, placements, unexpected,
+  evidence: () => copy({ items, groups, connections, requests, edits, replays, textSaves, placements, removals, unexpected,
+    mediaDrafts: [...mediaDrafts.values()], draftSaves,
     layoutDrafts: useCanvasStore.getState().drafts,
     mediaDraftRecoveryCount: Object.keys(useCanvasStore.getState().mediaDraftRecoveries).length,
     receipts: [...receipts.values()].map(({ receipt }) => receipt) }),
@@ -177,6 +210,22 @@ window.fetch = async (input, init) => {
   else if (path.endsWith("/canvas/editor") && method === "GET") value = state();
   else if (path.endsWith("/canvas/items") && method === "GET") value = { items };
   else if (path.endsWith("/canvas/connections") && method === "GET") value = { items: connections };
+  else if (path.endsWith("/canvas/connections") && method === "POST") {
+    const request = JSON.parse(String(init?.body)) as CreateCanvasConnectionRequest;
+    const before = mediaDraft(request.targetCanvasItemId);
+    const model = mediaSettings.connections[0]!.capabilities.find((candidate) => candidate.id === before.capabilityId);
+    if (!model || model.maxReferenceImages < 1) return problem(400, "Synthetic text-only model rejects image inputs");
+    if (before.version !== request.expectedTargetDraftVersion) return problem(409, "Synthetic stale draft version");
+    const connection: ProjectSnapshot["connections"][number] = { id: crypto.randomUUID(), projectId,
+      sourceCanvasItemId: request.sourceCanvasItemId, targetCanvasItemId: request.targetCanvasItemId,
+      sourceArtifactVersionId: request.sourceVersionId, relationType: request.relationType,
+      version: 0, createdAt: now, updatedAt: now };
+    const draft: MediaDraft = { ...before, version: before.version + 1, mediaInputs: [{ versionId: request.sourceVersionId,
+      artifactId: items.find((item) => item.id === request.sourceCanvasItemId)!.subjectId, role: "REFERENCE", order: 0,
+      color: "#67C7F3", sources: [{ id: crypto.randomUUID(), type: "CONNECTION", connectionId: connection.id }] }] };
+    mediaDrafts.set(draft.canvasItemId, draft);
+    connections.push(connection); value = { connection, draft };
+  }
   else if (path.endsWith("/canvas/edits") && method === "POST") {
     const request = JSON.parse(String(init?.body)) as CanvasEditRequest; edits.push(copy(request)); value = persistEdit(request);
   } else if (/\/canvas\/edits\/[^/]+\/replay$/.test(path) && method === "POST") {
@@ -192,9 +241,20 @@ window.fetch = async (input, init) => {
     createdArtifacts.set(id, artifact); value = artifact;
   } else if (path.endsWith("/canvas/commands") && method === "POST") {
     const request = JSON.parse(String(init?.body)) as { commands: CanvasCommand[] };
-    placements.push(...copy(request.commands));
     for (const command of request.commands) {
+      if (command.type === "REMOVE") {
+        const item = items.find((candidate) => candidate.id === command.itemId);
+        if (!item || item.version !== command.expectedVersion) return problem(409, "Synthetic stale removal");
+        removals.push(copy(command));
+        items = items.filter((candidate) => candidate.id !== command.itemId);
+        for (let index = connections.length - 1; index >= 0; index--) {
+          const connection = connections[index]!;
+          if (connection.sourceCanvasItemId === command.itemId || connection.targetCanvasItemId === command.itemId) connections.splice(index, 1);
+        }
+        continue;
+      }
       if (command.type !== "PLACE_ARTIFACT") return problem(400, "Unsupported synthetic placement");
+      placements.push(copy(command));
       const artifact = createdArtifacts.get(command.artifactId);
       if (!artifact) return problem(404, "Missing synthetic artifact");
       if (!items.some((item) => item.id === command.itemId)) items.push({ id: command.itemId, subjectType: "ARTIFACT",
@@ -223,13 +283,24 @@ window.fetch = async (input, init) => {
   else if (path.endsWith("/artifacts") && method === "GET") value = { items: items.map((item) => item.artifact) };
   else if (path.endsWith("/versions") && method === "GET") value = { items: [items.find((item) => item.artifact.id === path.split("/").at(-2))?.artifact.resourceDefaultVersion].filter(Boolean) };
   else if (path.endsWith("/characters") && method === "GET") value = { characters: [], bindings: [] };
-  else if (path.endsWith("/media-draft") && method === "GET") value = { projectId, canvasItemId: path.split("/").at(-2),
-    prompt: "", parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [], durationSeconds: null,
-    capabilityId: null, displayMode: "RESULT", version: 0, createdAt: now, updatedAt: now };
+  else if (path.endsWith("/media-draft") && method === "GET") value = mediaDraft(path.split("/").at(-2)!);
+  else if (path.endsWith("/media-draft") && method === "PUT") {
+    const body = JSON.parse(String(init?.body)) as SaveMediaDraftRequest;
+    const before = mediaDraft(path.split("/").at(-2)!);
+    if (body.expectedVersion !== before.version) return problem(409, "Synthetic stale draft save");
+    draftSaves.push(copy(body));
+    const draft: MediaDraft = { ...before, ...body, version: before.version + 1,
+      mediaInputs: body.mediaInputs.map((input, order) => ({ ...input, order,
+        artifactId: before.mediaInputs.find((existing) => existing.versionId === input.versionId)?.artifactId ?? "synthetic-source",
+        sources: before.mediaInputs.find((existing) => existing.versionId === input.versionId)?.sources ?? [] })) };
+    mediaDrafts.set(draft.canvasItemId, draft); value = draft;
+  }
   else if (path.endsWith("/media-versions") && method === "GET") value = { items: [] };
+  else if (path.endsWith("/assets/synthetic-image") && method === "GET") value = { id: "synthetic-image", width: 330, height: 240 };
   else if (path.endsWith("/settings/llm")) value = { configured: false, version: 0 };
   else if (path.endsWith("/settings/diagnostics")) value = { llmMode: "MOCK" };
-  else if (path.endsWith("/settings/media-connections")) value = { connections: [], defaults: [] };
+  else if (path.endsWith("/settings/media-connections")) value = options.has("connection-drop") ? mediaSettings : { connections: [], defaults: [] };
+  else if (path.endsWith("/settings/media-functions")) value = [];
   else if (method === "GET" && /\/(text-generations|run|tasks|exports|export-proposals|usage|media-approvals)$/.test(path)) value = [];
   else {
     unexpected.push(`${method} ${path}`);

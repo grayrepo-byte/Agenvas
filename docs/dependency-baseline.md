@@ -78,6 +78,8 @@ Web 运行镜像在固定 Alpine 基础镜像上执行 `apk upgrade --no-cache`�
 
 附加 MCP 入口保持 Java 21、Boot 4.0.8、Spring AI 2.0.1 与 Jackson 3 基线；没有引入预览版本。依赖解析、实际 TCP SDK 客户端、12 工具 Schema、真实 PostgreSQL 鉴权/并发/恢复、Mock 媒体归档与图片返回已定向验证；客户端兼容和非回归结果见[开发清单](DEVELOPMENT-CHECKLIST.md)。Maven 从 `contracts/mcp/tools.json` 打包唯一目录，源码 Docker 构建同步复制该目录。首版手工 Bearer 不提供 OAuth 授权发现，不声明支持 `2026-07-28` 传输或所有客户端。
 
+MCP 上传扩展复用现有 Spring MVC multipart、JDK SHA-256、Asset 解码/存储和命令账本，没有新增或升级依赖。新增工具目录共 14 项；本次定向验证覆盖三类合成媒体的实际 HTTP 上传、分块传输、真实 PostgreSQL 并发/隔离/恢复、官方 SDK 发现、OpenAPI 输出与 TypeScript 生成；Nginx 仅做配置语法检查，未部署现有服务。详见开发清单“2026-10-25 MCP 本地媒体上传”。
+
 ## 源码构建缓存与本地更新
 
 不改变 Maven、Java、Node、基础镜像或应用依赖版本。源码 Compose 显式传入 `MAVEN_CACHE_MOUNT=true`，用 BuildKit 的 `agenvas-maven` 缓存保存 Maven wrapper 与依赖包，串行锁保护共享目录；POM 层失效时仍可复用已下载文件，不再预解析部署不使用的 install/site 插件。没有自动复制宿主机 `~/.m2`。首次使用、换 builder 或清理 Docker 缓存后需要重新填充。

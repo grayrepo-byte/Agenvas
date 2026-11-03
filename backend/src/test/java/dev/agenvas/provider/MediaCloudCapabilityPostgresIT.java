@@ -120,7 +120,7 @@ class MediaCloudCapabilityPostgresIT {
         assertThat(mapper.readTree(catalog.capabilitySnapshot(defaultImage.id()).specJson())
                 .path("settings").path("quality").asText()).isEqualTo("medium");
         assertThat(videoSpec.path("modelId").asText()).isEqualTo("doubao-seedance-2-0-260128");
-        assertThat(videoSpec.path("generateAudio").booleanValue()).isFalse();
+        assertThat(videoSpec.has("generateAudio")).isFalse();
         assertThat(googleSpec.path("modelId").asText()).isEqualTo("gemini-3.1-flash-image");
         assertThat(googleSpec.path("maxReferenceImages").asInt()).isEqualTo(14);
         assertThat(googleSpec.path("imageSize").asText()).isEqualTo("1K");

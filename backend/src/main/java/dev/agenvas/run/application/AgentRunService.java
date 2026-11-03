@@ -348,6 +348,13 @@ public class AgentRunService {
         return require(ownerId, projectId, runId);
     }
 
+    /** 只供已受理任务处理晚到结果；逻辑删除不能丢失原运行的取消状态和审计。 */
+    @Transactional(readOnly = true)
+    public AgentRun getForTaskCompletion(UUID ownerId, UUID projectId, UUID runId) {
+        projects.getRetainedProject(ownerId, projectId);
+        return require(ownerId, projectId, runId);
+    }
+
     /** Internal bounded recovery scan; it does not change frozen policies or restart any work. */
     @Transactional(readOnly = true)
     public List<BlockedRunCandidate> blockedRecoveryCandidates(UUID afterId, int limit) {

@@ -16,6 +16,7 @@ import dev.agenvas.artifact.domain.MediaDraft;
 import dev.agenvas.db.tables.records.ArtifactRecord;
 import dev.agenvas.db.tables.records.ArtifactVersionRecord;
 import dev.agenvas.db.tables.records.MediaDraftRecord;
+import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.idempotency.IdempotencyState;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -409,14 +410,19 @@ public class JooqArtifactRepository implements ArtifactRepository {
 
     /** One owner-scoped query exposes historical results without loading each project's canvas. */
     @Override
-    public List<ResourceResult> listResources(UUID ownerId, Artifact.Kind kind, String query,
+    public List<ResourceResult> listResources(UUID ownerId, UUID projectId, Artifact.Kind kind, String query,
             Instant beforeCreatedAt, UUID beforeId, int limit) {
         var sourceType = DSL.jsonbGetAttributeAsText(ARTIFACT_VERSION.CONTENT_JSON, "sourceType");
+        var media = ARTIFACT.KIND.in(Artifact.Kind.IMAGE.name(), Artifact.Kind.VIDEO.name(), Artifact.Kind.AUDIO.name());
+        var text = ARTIFACT.KIND.eq(Artifact.Kind.TEXT.name())
+                .and(DSL.jsonbGetAttributeAsText(ARTIFACT_VERSION.CONTENT_JSON, "text").likeRegex("[^[:space:]]"));
         var condition = PROJECT.OWNER_ID.eq(ownerId)
-                .and(ARTIFACT.KIND.in(Artifact.Kind.IMAGE.name(), Artifact.Kind.VIDEO.name(), Artifact.Kind.AUDIO.name()))
+                .and(PROJECT.STATUS.ne(Project.Status.DELETED.name()))
+                .and(projectId == null ? media : media.or(text))
                 .and(ARTIFACT.ARCHIVED_AT.isNull())
                 // Skill installation material is internal context, rather than a creation result.
                 .and(sourceType.isNull().or(sourceType.ne(ArtifactVersion.MediaSourceType.SKILL_IMPORT.name())));
+        if (projectId != null) condition = condition.and(PROJECT.ID.eq(projectId));
         if (kind != null) condition = condition.and(ARTIFACT.KIND.eq(kind.name()));
         if (!query.isBlank()) condition = condition.and(ARTIFACT.TITLE.containsIgnoreCase(query)
                 .or(PROJECT.NAME.containsIgnoreCase(query)));

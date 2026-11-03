@@ -113,7 +113,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
                 return new Submission.Rejected("MEDIA_REFERENCE_PREPARATION_FAILED");
             }
             String id = client.create(key, prompt, references,
-                    task.input().path("durationSeconds").asInt(-1), ratio(context), hasAudioReferences(context));
+                    task.input().path("durationSeconds").asInt(-1), ratio(context));
             return new Submission.Accepted(id);
         } catch (ArkSeedanceClient.Rejected rejected) {
             return new Submission.Rejected("ARK_CREATE_REJECTED");
@@ -155,7 +155,7 @@ public class ArkSeedance2Adapter implements MediaAdapter {
         }
         try {
             return new Submission.Completed(downloadVideo(url,
-                    context.lease().input().path("durationSeconds").asInt(-1), hasAudioReferences(context)));
+                    context.lease().input().path("durationSeconds").asInt(-1)));
         } catch (ArkMediaDownloadPolicy.Expired expired) {
             ArkSeedanceClient.TaskState refreshed = client.query(
                     credential(snapshot(context)), context.originalRequestId());
@@ -165,14 +165,15 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             }
             try {
                 return new Submission.Completed(downloadVideo(URI.create(refreshed.videoUrl()),
-                        context.lease().input().path("durationSeconds").asInt(-1), hasAudioReferences(context)));
+                        context.lease().input().path("durationSeconds").asInt(-1)));
             } catch (IllegalArgumentException | ArkMediaDownloadPolicy.Expired invalid) {
                 return new Submission.Blocked("ARK_MEDIA_URL_EXPIRED");
             }
         }
     }
 
-    private MediaPayload downloadVideo(URI url, int expectedSeconds, boolean preserveAudio) {
+    /** Archive the provider's original bytes, including every audio track, regardless of input references. */
+    private MediaPayload downloadVideo(URI url, int expectedSeconds) {
         downloads.validate(url);
         Path directory;
         try {
@@ -181,72 +182,56 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             throw new ArkMediaDownloadPolicy.TechnicalFailure("Ark scratch unavailable");
         }
         Path raw = directory.resolve("result.mp4");
-        Path silent = directory.resolve("silent.mp4");
         try {
             try (OutputStream sink = Files.newOutputStream(raw)) {
                 downloads.download(url, sink, 500L * 1024 * 1024);
             }
-            VideoProbe original = probe(raw, expectedSeconds);
-            Path selected = raw;
-            if (original.hasAudio() && !preserveAudio) {
-                mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
-                        "-i", raw.toString(), "-map", "0:v:0", "-an", "-c:v", "copy",
-                        "-movflags", "+faststart", "-y", silent.toString()));
-                if (probe(silent, expectedSeconds).hasAudio()) {
-                    throw new InvalidMedia();
-                }
-                selected = silent;
-            }
-            InputStream file = Files.newInputStream(selected);
+            probe(raw, expectedSeconds);
+            InputStream file = Files.newInputStream(raw);
             return new MediaPayload(new FilterInputStream(file) {
                 @Override public void close() throws IOException {
-                    try { super.close(); } finally { cleanup(raw, silent, directory); }
+                    try { super.close(); } finally { cleanup(raw, directory); }
                 }
             }, "video/mp4");
         } catch (IOException failure) {
-            cleanup(raw, silent, directory);
+            cleanup(raw, directory);
             throw new ArkMediaDownloadPolicy.TechnicalFailure("Ark scratch write failed");
         } catch (MediaToolRunner.MediaToolException failure) {
-            cleanup(raw, silent, directory);
+            cleanup(raw, directory);
             if (failure.invalidInput()) throw new InvalidMedia();
             throw failure;
         } catch (RuntimeException failure) {
-            cleanup(raw, silent, directory);
+            cleanup(raw, directory);
             throw failure;
         }
     }
 
-    private VideoProbe probe(Path file, int expectedSeconds) {
+    private void probe(Path file, int expectedSeconds) {
         JsonNode details = mapper.readTree(mediaTools.ffprobe(List.of("-v", "error",
                 "-show_entries", "stream=codec_type:format=format_name,duration",
                 "-of", "json", file.toString())));
         double duration = details.path("format").path("duration").asDouble(-1);
         String format = details.path("format").path("format_name").asText();
         boolean video = false;
-        boolean audio = false;
         for (JsonNode stream : details.path("streams")) {
             video |= "video".equals(stream.path("codec_type").asText());
-            audio |= "audio".equals(stream.path("codec_type").asText());
         }
         if (!video || !format.contains("mp4") || !Double.isFinite(duration)
                 || expectedSeconds < 4 || expectedSeconds > 15
                 || duration < expectedSeconds - 1.0 || duration > expectedSeconds + 1.5) {
             throw new InvalidMedia();
         }
-        return new VideoProbe(audio);
     }
 
-    private static void cleanup(Path raw, Path silent, Path directory) {
+    private static void cleanup(Path raw, Path directory) {
         try {
             Files.deleteIfExists(raw);
-            Files.deleteIfExists(silent);
             Files.deleteIfExists(directory);
         } catch (IOException ignored) {
             // Scratch cleanup is best effort after the response stream has been closed.
         }
     }
 
-    private record VideoProbe(boolean hasAudio) {}
     private static final class InvalidMedia extends RuntimeException {}
 
     private Snapshot snapshot(AttemptContext context) {
@@ -293,10 +278,6 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             case PORTRAIT_9_16 -> VideoGenerationParameters.PORTRAIT_ASPECT_RATIO;
             case SQUARE_1_1 -> VideoGenerationParameters.SQUARE_ASPECT_RATIO;
         };
-    }
-
-    private boolean hasAudioReferences(AttemptContext context) {
-        return !FrozenMediaInputs.audios(context.lease()).isEmpty();
     }
 
     private List<ArkSeedanceClient.Reference> references(AttemptContext context, boolean submitting) {

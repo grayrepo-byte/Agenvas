@@ -271,6 +271,22 @@ public class ArtifactService {
         }).value();
     }
 
+    /** Publishes a verified native-client upload without granting generic tools media authorship. */
+    @Transactional
+    public ArtifactView createUploadedMediaFromExternalTool(UUID ownerId, UUID projectId,
+            Artifact.Kind kind, String title, UUID assetId) {
+        if (!isMediaKind(kind)) throw new IllegalArgumentException("Media kind required");
+        // Only this trusted upload boundary constructs UPLOAD content for an external author.
+        // Generic external create/revise commands still cannot assert an archived media origin.
+        JsonNode content = objectMapper.createObjectNode()
+                .put("sourceType", ArtifactVersion.MediaSourceType.UPLOAD.name()).put("assetId", assetId.toString());
+        return events.recordChange(ownerId, projectId, () -> {
+            ArtifactView created = createLocked(ownerId, projectId, kind, title, content,
+                    ArtifactVersion.CreatedByKind.EXTERNAL_TOOL, null, true);
+            return ProjectEventService.Change.changed(created, artifactEvent("artifact.created", created));
+        }).value();
+    }
+
     /** External revisions retain ordinary content CAS and locked-node protections. */
     @Transactional
     public ArtifactView reviseFromExternalTool(UUID ownerId, UUID projectId, UUID artifactId,
@@ -638,13 +654,20 @@ public class ArtifactService {
     /** Identity for a mixed-kind result of an already accepted task, including late archived-project results. */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public Artifact createTaskMediaIdentityWithinChange(UUID ownerId, UUID projectId, Artifact.Kind kind, String title) {
-        projects.get(ownerId, projectId);
+        projects.getRetainedProject(ownerId, projectId);
         if (kind == Artifact.Kind.TEXT) throw new IllegalArgumentException("Media identity required");
         Instant now = clock.instant();
         Artifact artifact = new Artifact(UUID.randomUUID(), projectId, kind, validateTitle(title), null, null, 0, now, now);
         artifacts.createArtifact(artifact);
         events.append(ownerId, projectId, artifactEvent("artifact.created", new ArtifactView(artifact, null)));
         return artifact;
+    }
+
+    /** 已受理任务读取固定结果目标；用户资源读取仍经由 get 校验项目可见性。 */
+    @Transactional(readOnly = true)
+    public Artifact getTaskResultTarget(UUID ownerId, UUID projectId, UUID artifactId) {
+        projects.getRetainedProject(ownerId, projectId);
+        return requireArtifact(ownerId, projectId, artifactId);
     }
 
     /**
@@ -678,7 +701,10 @@ public class ArtifactService {
         }
         requireUploadAuthorship(current.kind(), content, ArtifactVersion.CreatedByKind.TASK);
         validateReferences(projectId, references);
-        validateMediaAsset(ownerId, projectId, current.kind(), content);
+        if (current.kind() != Artifact.Kind.TEXT) {
+            assets.requireReadyTaskMedia(ownerId, projectId, UUID.fromString(content.path("assetId").asText()),
+                    Asset.MediaKind.valueOf(current.kind().name()));
+        }
         Instant now = clock.instant();
         ArtifactVersion revision = new ArtifactVersion(UUID.randomUUID(), projectId,
                 artifactId, artifacts.nextVersionNo(projectId, artifactId),

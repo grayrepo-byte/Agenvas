@@ -134,7 +134,7 @@ describe("ProjectsPage", () => {
     expect(calls).toBe(1); expect(screen.getByRole("article", { name: "森林漫游" })).toBeInTheDocument();
   });
 
-  it("retries list errors and shows archived cards without write actions", async () => {
+  it("retries list errors and offers deletion only on archived cards", async () => {
     let calls = 0;
     server.use(http.get("/api/v1/projects", ({ request }) => {
       calls += 1; if (calls === 1) return problem("读取失败", 503);
@@ -148,7 +148,78 @@ describe("ProjectsPage", () => {
     await user.click(screen.getByRole("checkbox", { name: "显示已归档" }));
     const card = await screen.findByRole("article", { name: "森林漫游" });
     expect(within(card).getByText("已归档")).toBeInTheDocument();
-    expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "删除 森林漫游" })).toBeEnabled();
+    expect(within(card).queryByRole("button", { name: "重命名 森林漫游" })).not.toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "归档 森林漫游" })).not.toBeInTheDocument();
+  });
+
+  it("confirms deletion, supports cancellation and clears project data after success", async () => {
+    let deleted = false; let calls = 0;
+    server.use(
+      http.get("/api/v1/projects", () => HttpResponse.json({ items: deleted ? [] : [{ ...project, status: "ARCHIVED" }] })),
+      http.delete("/api/v1/projects/project-a", ({ request }) => {
+        expect(new URL(request.url).searchParams.get("expectedVersion")).toBe("2");
+        calls += 1; deleted = true; return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const client = showPage(); const user = userEvent.setup();
+    client.setQueryData(["project", project.id], project);
+    client.setQueryData(["resources", {}], { items: [] });
+    const trigger = await screen.findByRole("button", { name: "删除 森林漫游" });
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "删除项目「森林漫游」？" });
+    expect(within(dialog).getByText(/已收藏的个人资产不受影响/)).toBeInTheDocument();
+    expect(calls).toBe(0);
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(calls).toBe(0);
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect(screen.queryByRole("article", { name: "森林漫游" })).not.toBeInTheDocument());
+    expect(calls).toBe(1);
+    expect(client.getQueryData(["project", project.id])).toBeUndefined();
+    expect(client.getQueryState(["resources", {}])?.isInvalidated).toBe(true);
+  });
+
+  it("keeps a failed deletion open, prevents duplicates while pending and retries the confirmed version", async () => {
+    let finish: (() => void) | undefined; let calls = 0; let deleted = false;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    server.use(
+      http.get("/api/v1/projects", () => HttpResponse.json({ items: deleted ? [] : [{ ...project, status: "ARCHIVED" }] })),
+      http.delete("/api/v1/projects/project-a", async ({ request }) => {
+        expect(new URL(request.url).searchParams.get("expectedVersion")).toBe("2"); calls += 1;
+        if (calls === 1) { await pending; return problem("删除失败，请重试", 503); }
+        deleted = true; return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    showPage(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "删除 森林漫游" }));
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    expect(screen.getByRole("button", { name: "正在删除…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "正在删除…" }));
+    finish?.();
+    expect(await screen.findByRole("alert")).toHaveTextContent("删除失败，请重试");
+    expect(calls).toBe(1);
+    await user.click(screen.getByRole("button", { name: "确认删除" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(calls).toBe(2);
+  });
+
+  it("does not silently delete a newer project version when the list refreshes during confirmation", async () => {
+    let saved: Project = { ...project, status: "ARCHIVED" };
+    server.use(http.get("/api/v1/projects", () => HttpResponse.json({ items: [saved] })));
+    const client = showPage(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "删除 森林漫游" }));
+    saved = { ...saved, version: 3 };
+    await client.invalidateQueries({ queryKey: ["projects"] });
+    expect(await screen.findByText("项目已更新，请取消后重新打开确认窗口。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认删除" })).toBeDisabled();
   });
 
   it("does not redirect a temporary session failure to login", async () => {

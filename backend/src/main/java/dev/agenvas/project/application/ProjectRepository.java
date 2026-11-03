@@ -49,6 +49,9 @@ public interface ProjectRepository {
     boolean archive(
             UUID ownerId, UUID projectId, long expectedVersion, Instant archivedAt);
 
+    /** 在预期版本及归档状态匹配时逻辑删除，保留不可变内容与任务审计。 */
+    boolean delete(UUID ownerId, UUID projectId, long expectedVersion, Instant deletedAt);
+
     /** Run 活动槽仲裁需要的最小锁定投影。
      * @param projectStatus 项目是否仍允许新 Run
      * @param activeRunId 当前占用槽位的 Run；没有活动 Run 时为空

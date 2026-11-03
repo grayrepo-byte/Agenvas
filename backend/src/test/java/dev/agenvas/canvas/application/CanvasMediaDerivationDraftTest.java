@@ -17,6 +17,7 @@ import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.canvas.domain.MediaUploadPurpose;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -38,10 +39,11 @@ class CanvasMediaDerivationDraftTest {
     private final CanvasItemRepository items = mock(CanvasItemRepository.class);
     private final MediaDraftService drafts = mock(MediaDraftService.class);
     private final ArtifactService artifacts = mock(ArtifactService.class);
+    private final ProjectService projects = mock(ProjectService.class);
     private final CanvasConnectionService connections = mock(CanvasConnectionService.class);
     private final dev.agenvas.character.application.CharacterService characters =
             mock(dev.agenvas.character.application.CharacterService.class);
-    private final CanvasService canvas = new CanvasService(mock(ProjectService.class), artifacts,
+    private final CanvasService canvas = new CanvasService(projects, artifacts,
             drafts, items, connections,
             mock(ProjectEventService.class), new ObjectMapper(), Clock.systemUTC(),
                     new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
@@ -50,6 +52,9 @@ class CanvasMediaDerivationDraftTest {
 
     @BeforeEach
     void source() {
+        Instant now = Instant.now();
+        when(projects.getRetainedProject(owner, project)).thenReturn(new Project(project, owner,
+                "Synthetic project", Project.AspectRatio.SQUARE_1_1, Project.Status.ACTIVE, 0, 0, now, now, null));
         CanvasItem item = sourceItem("Source");
         when(items.findForUpdate(owner, project, source)).thenReturn(Optional.of(item));
         when(items.list(owner, project)).thenReturn(List.of(item));

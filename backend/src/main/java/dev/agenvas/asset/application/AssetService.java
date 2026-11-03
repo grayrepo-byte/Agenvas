@@ -2,6 +2,7 @@ package dev.agenvas.asset.application;
 
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.asset.domain.MediaUploadLimits;
 import dev.agenvas.asset.infrastructure.LocalAssetStorage;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
@@ -87,29 +88,78 @@ public class AssetService {
     private Asset prepareLibraryImport(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
             Supplier<InputStream> source, BooleanSupplier stillActive) {
         projects.requireActiveProject(owner, project);
+        return withMediaLock(project, id, kind, () -> prepareMedia(owner, project, id, kind, source, stillActive));
+    }
+
+    private Asset prepareMedia(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
+            Supplier<InputStream> source, BooleanSupplier stillActive) {
         return switch (kind) {
-                case IMAGE -> storage.withTaskImageLock(project, id, () -> {
-                    requireActivePreparation(stillActive);
-                    var file = storage.recoverImage(project, id).orElseGet(() -> readImport(source, input -> storage.storeImage(project, id, input)));
-                    return new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
-                            file.sha256(), file.width(), file.height(), null, file.thumbnailKey(),
-                            file.thumbnailByteSize(), file.thumbnailSha256(), now());
-                });
-                case VIDEO -> storage.withTaskVideoLock(project, id, () -> {
-                    requireActivePreparation(stillActive);
-                    var file = storage.recoverVideo(project, id).orElseGet(() -> readImport(source, input -> storage.storeVideo(project, id, input)));
-                    return new Asset(id, project, kind, file.objectKey(), "video/mp4", file.byteSize(),
-                            file.sha256(), file.width(), file.height(), file.durationMs(), file.thumbnailKey(),
-                            file.thumbnailByteSize(), file.thumbnailSha256(), now());
-                });
-                case AUDIO -> storage.withTaskAudioLock(project, id, () -> {
-                    requireActivePreparation(stillActive);
-                    var file = storage.recoverAudio(project, id).orElseGet(() -> readImport(source, input -> storage.storeAudio(project, id, input)));
-                    return new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
-                            file.sha256(), null, null, file.durationMs(), null, null, null, now());
-                });
+            case IMAGE -> {
+                requireActivePreparation(stillActive);
+                var file = storage.recoverImage(project, id).orElseGet(() -> readImport(source, input -> storage.storeImage(project, id, input)));
+                yield new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
+                        file.sha256(), file.width(), file.height(), null, file.thumbnailKey(),
+                        file.thumbnailByteSize(), file.thumbnailSha256(), now());
+            }
+            case VIDEO -> {
+                requireActivePreparation(stillActive);
+                var file = storage.recoverVideo(project, id).orElseGet(() -> readImport(source, input -> storage.storeVideo(project, id, input)));
+                yield new Asset(id, project, kind, file.objectKey(), "video/mp4", file.byteSize(),
+                        file.sha256(), file.width(), file.height(), file.durationMs(), file.thumbnailKey(),
+                        file.thumbnailByteSize(), file.thumbnailSha256(), now());
+            }
+            case AUDIO -> {
+                requireActivePreparation(stillActive);
+                var file = storage.recoverAudio(project, id).orElseGet(() -> readImport(source, input -> storage.storeAudio(project, id, input)));
+                yield new Asset(id, project, kind, file.objectKey(), file.contentType(), file.byteSize(),
+                        file.sha256(), null, null, file.durationMs(), null, null, null, now());
+            }
         };
     }
+
+    /** Exposes validation limits without letting another module depend on the storage implementation. */
+    public long maximumUploadBytes(Asset.MediaKind kind) {
+        return switch (kind) {
+            case IMAGE -> MediaUploadLimits.IMAGE_BYTES;
+            case AUDIO -> MediaUploadLimits.AUDIO_BYTES;
+            case VIDEO -> MediaUploadLimits.VIDEO_BYTES;
+        };
+    }
+
+    /**
+     * Prepare immutable upload bytes before the caller starts its short publication transaction.
+     * The same file lock covers publication and rejected-install cleanup, so concurrent replays
+     * cannot delete a file another request is about to register. No database transaction spans storage I/O.
+     */
+    public <T> T withPreparedUpload(UUID owner, UUID project, UUID id, Asset.MediaKind kind,
+            Supplier<InputStream> source, java.util.function.Function<Asset, T> publish) {
+        projects.requireActiveProject(owner, project);
+        return withMediaLock(project, id, kind, () -> {
+            Asset prepared = prepareMedia(owner, project, id, kind, source, () -> true);
+            try {
+                return publish.apply(prepared);
+            } catch (RuntimeException failure) {
+                if (assets.find(project, id).isEmpty()) {
+                    try {
+                        try { storage.discard(prepared.objectKey()); }
+                        finally { if (prepared.thumbnailKey() != null) storage.discard(prepared.thumbnailKey()); }
+                    } catch (RuntimeException cleanupFailure) {
+                        failure.addSuppressed(cleanupFailure);
+                    }
+                }
+                throw failure;
+            }
+        });
+    }
+
+    private <T> T withMediaLock(UUID project, UUID id, Asset.MediaKind kind, Supplier<T> action) {
+        return switch (kind) {
+            case IMAGE -> storage.withTaskImageLock(project, id, action);
+            case VIDEO -> storage.withTaskVideoLock(project, id, action);
+            case AUDIO -> storage.withTaskAudioLock(project, id, action);
+        };
+    }
+
     private <T> T readImport(Supplier<InputStream> source, java.util.function.Function<InputStream, T> store) {
         try (InputStream input = source.get()) { return store.apply(input); }
         catch (IOException failure) { throw new IllegalStateException("Cannot close library import", failure); }
@@ -192,7 +242,7 @@ public class AssetService {
 
     /** Recovery reads installed bytes only; no provider request is made. */
     public java.util.Optional<Asset> recoverTaskAudio(UUID ownerId, UUID projectId, UUID taskId) {
-        projects.get(ownerId, projectId);
+        projects.getRetainedProject(ownerId, projectId);
         UUID id = UUID.nameUUIDFromBytes(("agenvas:task-audio:v1:" + taskId).getBytes(StandardCharsets.UTF_8));
         return storage.withTaskAudioLock(projectId, id, () -> {
             var stored = storage.recoverAudio(projectId, id);
@@ -211,7 +261,7 @@ public class AssetService {
 
     public Asset archiveTaskAudio(UUID ownerId, UUID projectId, UUID taskId,
             Supplier<InputStream> download) {
-        projects.get(ownerId, projectId);
+        projects.getRetainedProject(ownerId, projectId);
         UUID id = UUID.nameUUIDFromBytes(("agenvas:task-audio:v1:" + taskId).getBytes(StandardCharsets.UTF_8));
         return storage.withTaskAudioLock(projectId, id, () -> {
             var recovered = storage.recoverAudio(projectId, id);
@@ -251,7 +301,7 @@ public class AssetService {
     /** 以任务 ID 派生稳定素材 ID，并在共享卷锁内恢复或完成唯一图片归档。 */
     public Asset archiveTaskImage(UUID ownerId, UUID projectId, UUID taskId,
             Supplier<InputStream> download) {
-        projects.get(ownerId, projectId);
+        projects.getRetainedProject(ownerId, projectId);
         UUID assetId = taskImageAssetId(taskId);
         return storage.withTaskImageLock(projectId, assetId,
                 () -> archiveTaskImageLocked(ownerId, projectId, assetId, download));
@@ -324,7 +374,7 @@ public class AssetService {
     /** 以任务 ID 派生稳定素材 ID，在共享卷锁内恢复唯一 MP4 和海报图。 */
     public Asset archiveTaskVideo(UUID ownerId, UUID projectId, UUID taskId,
             Supplier<InputStream> download) {
-        projects.get(ownerId, projectId);
+        projects.getRetainedProject(ownerId, projectId);
         UUID assetId = taskVideoAssetId(taskId);
         return storage.withTaskVideoLock(projectId, assetId,
                 () -> archiveTaskVideoLocked(ownerId, projectId, assetId, download));
@@ -396,7 +446,7 @@ public class AssetService {
     /** Uploads require an active project; accepted task output may finish after archival. */
     private Asset registerReadyAsset(UUID ownerId, Asset asset, boolean taskOutput) {
         return events.recordChange(ownerId, asset.projectId(), () -> {
-            if (taskOutput) projects.get(ownerId, asset.projectId());
+            if (taskOutput) projects.getRetainedProject(ownerId, asset.projectId());
             else projects.requireActiveProject(ownerId, asset.projectId());
             assets.insert(asset);
             return ProjectEventService.Change.changed(asset, assetReadyEvent(asset));
@@ -457,6 +507,18 @@ public class AssetService {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "ARTIFACT_ASSET_KIND_INVALID",
                     ApiMessage.of("api.asset-service.material-type-mismatch"), ApiMessage.of("api.asset-service.the-material-type-referenced-by-the-product-does-not-match"), false);
         }
+        return asset;
+    }
+
+    /** 已受理任务追加历史时仍可验证被逻辑删除项目的固定结果，不开放用户素材读取。 */
+    public Asset requireReadyTaskMedia(UUID ownerId, UUID projectId, UUID assetId, Asset.MediaKind expectedKind) {
+        projects.getRetainedProject(ownerId, projectId);
+        Asset asset = assets.find(projectId, assetId).orElseThrow(() -> new ApiProblemException(HttpStatus.NOT_FOUND,
+                "ASSET_NOT_FOUND", ApiMessage.of("api.asset-service.material-does-not-exist"),
+                ApiMessage.of("api.asset-service.the-assets-in-this-project-were-not-found"), false));
+        if (asset.mediaKind() != expectedKind) throw new ApiProblemException(HttpStatus.BAD_REQUEST,
+                "ARTIFACT_ASSET_KIND_INVALID", ApiMessage.of("api.asset-service.material-type-mismatch"),
+                ApiMessage.of("api.asset-service.the-material-type-referenced-by-the-product-does-not-match"), false);
         return asset;
     }
 

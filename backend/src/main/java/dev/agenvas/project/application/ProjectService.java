@@ -59,6 +59,14 @@ public class ProjectService {
     /** 只读取当前用户拥有的项目；越权 ID 与不存在返回相同的 404。 */
     @Transactional(readOnly = true)
     public Project get(UUID ownerId, UUID projectId) {
+        Project project = getRetainedProject(ownerId, projectId);
+        if (project.status() == Project.Status.DELETED) throw notFound();
+        return project;
+    }
+
+    /** 仅供已受理执行的结果归档与审计使用；不能作为用户读取或新任务的授权入口。 */
+    @Transactional(readOnly = true)
+    public Project getRetainedProject(UUID ownerId, UUID projectId) {
         return projects.findById(ownerId, projectId).orElseThrow(this::notFound);
     }
 
@@ -87,6 +95,7 @@ public class ProjectService {
     public void requireAvailableRunSlot(UUID ownerId, UUID projectId) {
         ProjectRepository.RunSlot slot = projects.lockRunSlot(ownerId, projectId)
                 .orElseThrow(this::notFound);
+        if (slot.projectStatus() == Project.Status.DELETED) throw notFound();
         if (slot.projectStatus() == Project.Status.ARCHIVED) {
             throw new ApiProblemException(
                     HttpStatus.CONFLICT,
@@ -198,6 +207,27 @@ public class ProjectService {
             throw versionConflict();
         }
         return get(ownerId, projectId);
+    }
+
+    /** 仅删除归档且无活动 Agent Run 的项目；项目锁串行化删除、槽位和重复命令。 */
+    @Transactional
+    public void delete(UUID ownerId, UUID projectId, long expectedVersion) {
+        if (expectedVersion < 0) throw validation(ApiMessage.of("api.project-service.invalid-expected-version"));
+        ProjectRepository.RunSlot slot = projects.lockRunSlot(ownerId, projectId).orElseThrow(this::notFound);
+        Project current = getRetainedProject(ownerId, projectId);
+        if (current.status() == Project.Status.DELETED && current.version() == expectedVersion + 1) return;
+        if (current.version() != expectedVersion || current.status() == Project.Status.DELETED) throw versionConflict();
+        if (current.status() != Project.Status.ARCHIVED) {
+            throw new ApiProblemException(HttpStatus.CONFLICT, "PROJECT_NOT_ARCHIVED",
+                    ApiMessage.of("api.project-service.delete-rejected"),
+                    ApiMessage.of("api.project-service.archive-before-delete"), false);
+        }
+        if (slot.activeRunId() != null) {
+            throw new ApiProblemException(HttpStatus.CONFLICT, "ACTIVE_RUN_EXISTS",
+                    ApiMessage.of("api.project-service.delete-rejected"),
+                    ApiMessage.of("api.project-service.finish-run-before-delete"), false);
+        }
+        if (!projects.delete(ownerId, projectId, expectedVersion, clock.instant())) throw versionConflict();
     }
 
     /** 归档项目仍可读取，但不能修改设置或启动新 Run。 */

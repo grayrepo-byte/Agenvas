@@ -36,8 +36,21 @@ async function mount(selectNode = true, startingDefinition = initialDefinition) 
   render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
   if (selectNode) {
     await showNodes("2");
-    fireEvent.click(within(screen.getByRole("row", { name: "强度" })).getByRole("button", { name: "更多设置" }));
+    fireEvent.click(within(parameterRow("强度")).getByRole("button", { name: "更多设置" }));
   }
+}
+
+function parameterRow(label: string, advanced = false) {
+  const current = screen.queryByRole("row", { name: label });
+  if (!current) fireEvent.click(screen.getByRole("button", { name: `编辑参数 · ${label}` }));
+  const row = screen.getByRole("row", { name: label });
+  const more = within(row).queryByRole("button", { name: "更多设置" });
+  if (advanced && more?.getAttribute("aria-expanded") !== "true") fireEvent.click(more!);
+  return row;
+}
+async function findParameterRow(label: string) {
+  await screen.findByRole("button", { name: `编辑参数 · ${label}` });
+  return parameterRow(label);
 }
 
 async function showNodes(...nodeIds: string[]) {
@@ -73,16 +86,16 @@ describe("RunningHubDefinitionEditor review and large candidate sets", () => {
     })));
     await mount(false, { ...initialDefinition, fields: [], fixedBindings: [] });
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
-    await screen.findByRole("row", { name: "时长" });
-    expect(within(screen.getByRole("row", { name: "时长" })).getByText("来自控件类型")).toBeInTheDocument();
+    await findParameterRow("时长");
+    expect(within(parameterRow("时长")).getByText("来自控件类型")).toBeInTheDocument();
     await selectValue(screen.getByRole("combobox", { name: "参数筛选" }), "UNCERTAIN");
-    expect(screen.queryByRole("row", { name: "时长" })).not.toBeInTheDocument();
-    expect(screen.getByRole("row", { name: "待定素材" })).toHaveTextContent("素材元数据冲突，请核对类型");
+    expect(screen.queryByRole("button", { name: "编辑参数 · 时长" })).not.toBeInTheDocument();
+    expect(parameterRow("待定素材")).toHaveTextContent("素材元数据冲突，请核对类型");
     await selectValue(screen.getByRole("combobox", { name: "参数筛选" }), "RECOMMENDED");
-    expect(screen.getByRole("row", { name: "时长" })).toBeInTheDocument();
-    expect(screen.queryByRole("row", { name: "待定素材" })).not.toBeInTheDocument();
+    expect(parameterRow("时长")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑参数 · 待定素材" })).not.toBeInTheDocument();
     await selectValue(screen.getByRole("combobox", { name: "参数筛选" }), "EXPOSED");
-    expect(screen.getByRole("row", { name: "时长" })).toBeInTheDocument();
+    expect(parameterRow("时长")).toBeInTheDocument();
     expect(publishedDefinition().fields.map((item) => item.key)).toEqual(["seconds"]);
   });
 
@@ -91,20 +104,22 @@ describe("RunningHubDefinitionEditor review and large candidate sets", () => {
     const fields = Array.from({ length: 1024 }, (_, index) => ({ ...initialDefinition.fields[1]!, key: `field${index + 1}`,
       nodeId: "1", fieldName: `value${index + 1}`, label: `参数${index + 1}`, enabledWhen: null }));
     await mount(false, { ...initialDefinition, fields, fixedBindings: [] });
-    expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(20);
-    const first = screen.getByRole("row", { name: "参数1" });
+    expect(document.querySelectorAll(".runninghub-catalog-item")).toHaveLength(20);
+    expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(1);
+    const first = parameterRow("参数1");
     const input = within(first).getByRole("textbox", { name: "默认值" });
     fireEvent.change(input, { target: { value: "invalid draft" } }); fireEvent.blur(input);
     await clickControl(screen.getByRole("button", { name: "下一页" }));
-    expect(screen.queryByRole("row", { name: "参数1" })).not.toBeInTheDocument();
-    expect(screen.getByRole("row", { name: "参数21" })).toBeInTheDocument();
-    expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(20);
+    expect(screen.queryByRole("button", { name: "编辑参数 · 参数1" })).not.toBeInTheDocument();
+    expect(parameterRow("参数21")).toBeInTheDocument();
+    expect(document.querySelectorAll(".runninghub-catalog-item")).toHaveLength(20);
+    expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(1);
     await clickControl(screen.getByRole("button", { name: "上一页" }));
-    const restored = within(screen.getByRole("row", { name: "参数1" })).getByRole("textbox", { name: "默认值" });
+    const restored = within(parameterRow("参数1")).getByRole("textbox", { name: "默认值" });
     expect(restored).toHaveValue("invalid draft"); expect(restored).toHaveProperty("validity.valid", false);
     fireEvent.change(screen.getByRole("textbox", { name: "搜索字段、节点或分组" }), { target: { value: "参数1024" } });
     expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(1);
-    expect(screen.getByRole("row", { name: "参数1024" })).toBeInTheDocument();
+    expect(parameterRow("参数1024")).toBeInTheDocument();
     expect(currentDefinition().fields).toHaveLength(1024);
   });
 
@@ -123,7 +138,7 @@ describe("RunningHubDefinitionEditor review and large candidate sets", () => {
     expect(screen.getByRole("textbox", { name: "搜索字段、节点或分组" })).toHaveValue("");
     expect(screen.getByRole("row", { name: "参数45" })).toBeVisible();
     expect(screen.getByRole("alert")).toHaveTextContent("参数45");
-    expect(screen.getByRole("status")).toHaveTextContent("第 3 / 3 页");
+    expect(screen.getByRole("status")).toHaveTextContent("3 / 3 页");
   });
 
   it("compares saved source metadata and preserves manual settings until explicit adoption", async () => {
@@ -144,6 +159,53 @@ describe("RunningHubDefinitionEditor review and large candidate sets", () => {
     expect(currentDefinition().fields[0]).toMatchObject({ key: "duration", label: "手工时长", type: "INTEGER", defaultValue: 4, group: "基础生成" });
     await clickControl(screen.getByRole("button", { name: "采纳类型、选项及约束" }));
     expect(currentDefinition().fields[0]).toMatchObject({ key: "duration", label: "手工时长", type: "NUMBER", maximum: 10, defaultValue: 4, group: "基础生成" });
+  });
+});
+
+describe("RunningHubDefinitionEditor parameter workspace", () => {
+  it("browses a node without changing published mappings and keeps scalar drafts when switching inspectors", async () => {
+    await mount(false);
+    const before = publishedDefinition();
+    const scalar = within(parameterRow("强度")).getByRole("textbox", { name: "默认值" });
+    fireEvent.change(scalar, { target: { value: "unfinished" } }); fireEvent.blur(scalar);
+    await clickControl(screen.getByRole("radio", { name: /节点 1 · 模式/ }));
+    expect(screen.queryByRole("button", { name: "编辑参数 · 强度" })).not.toBeInTheDocument();
+    expect(screen.getByRole("row", { name: "模式" })).toBeInTheDocument();
+    expect(publishedDefinition()).toEqual(before);
+    await clickControl(screen.getByRole("radio", { name: /全部节点/ }));
+    const restored = within(parameterRow("强度")).getByRole("textbox", { name: "默认值" });
+    expect(restored).toHaveValue("unfinished");
+    expect(restored).toHaveProperty("validity.valid", false);
+    expect(document.querySelectorAll(".runninghub-parameter-card")).toHaveLength(1);
+  });
+
+  it("includes parameters directly in the catalog and adds a parameter to the browsed node", async () => {
+    await mount(false);
+    await clickControl(screen.getByRole("checkbox", { name: "发布此参数 · 强度" }));
+    expect(screen.getByRole("row", { name: "模式" })).toBeInTheDocument();
+    expect(publishedDefinition().fields.map((item) => item.key)).toEqual(["mode"]);
+    expect(currentDefinition().fields[1]).toEqual(initialDefinition.fields[1]);
+    await clickControl(screen.getByRole("radio", { name: /节点 2 · 强度/ }));
+    expect(within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "显示名称" })).toBeDisabled();
+    await clickControl(screen.getByRole("button", { name: "手动添加字段" }));
+    expect(currentDefinition().fields.at(-1)?.nodeId).toBe("2");
+    expect(within(screen.getByRole("row", { name: "新参数" })).getByRole("textbox", { name: "节点 ID" })).toHaveValue("2");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("uses enum choices for defaults while preserving scalar types and supports clearing the default", async () => {
+    await mount(false, { ...initialDefinition, fixedBindings: [], fields: [{ ...initialDefinition.fields[0]!,
+      type: "SELECT", defaultValue: false, options: [{ label: "关闭", value: false }, { label: "双倍", value: 2 }, { label: "自动", value: "auto" }] }] });
+    const row = screen.getByRole("row", { name: "模式" });
+    expect(within(row).getByRole("combobox", { name: "默认值" })).toHaveValue("0");
+    expect(within(row).getByRole("textbox", { name: /下拉选项/ })).toBeInTheDocument();
+    await selectValue(within(row).getByRole("combobox", { name: "默认值" }), "1");
+    expect(currentDefinition().fields[0]?.defaultValue).toBe(2);
+    await selectValue(within(row).getByRole("combobox", { name: "默认值" }), "2");
+    expect(currentDefinition().fields[0]?.defaultValue).toBe("auto");
+    await selectValue(within(row).getByRole("combobox", { name: "默认值" }), "__none");
+    expect(currentDefinition().fields[0]?.defaultValue).toBeNull();
+    expect(within(row).queryByRole("textbox", { name: "稳定字段键" })).not.toBeInTheDocument();
   });
 });
 
@@ -175,15 +237,15 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     discovery();
     await mount(false, { ...initialDefinition, fields: [], fixedBindings: [] });
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
-    const prompt = await screen.findByRole("row", { name: "画面提示" });
+    const prompt = await findParameterRow("画面提示");
     expect(within(prompt).getByRole("combobox", { name: "输入来源" })).toHaveValue("PROMPT");
-    const seed = screen.getByRole("row", { name: "随机种子" });
+    const seed = parameterRow("随机种子");
     expect(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" })).not.toBeChecked();
     expect(within(seed).getByRole("textbox", { name: "默认值" })).toBeDisabled();
-    expect(screen.queryByRole("row", { name: "采样步数" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑参数 · 采样步数" })).not.toBeInTheDocument();
     expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["prompt", "image"]);
     await showNodes("10", "20", "30");
-    const steps = screen.getByRole("row", { name: "采样步数" });
+    const steps = parameterRow("采样步数");
     await clickControl(within(steps).getByRole("checkbox", { name: "暴露参数 · 采样步数" }));
     expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["prompt", "image", "steps"]);
     expect(currentDefinition().fields).toEqual(discovered.fields);
@@ -192,9 +254,9 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     discovery(creationInputs, creationInputs.fields.map((field) => field.key));
     await mount(false, { ...initialDefinition, fields: [], fixedBindings: [] });
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
-    await screen.findByRole("row", { name: "片段时长" });
+    await findParameterRow("片段时长");
     for (const field of creationInputs.fields) {
-      const row = screen.getByRole("row", { name: field.label });
+      const row = parameterRow(field.label);
       expect(within(row).getByRole("checkbox", { name: `暴露参数 · ${field.label}` })).toBeChecked();
       expect(within(row).getByRole("combobox", { name: "类型" })).toHaveValue(field.type);
     }
@@ -210,7 +272,7 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
   it("preserves deselected creation parameters and their edited types, defaults and constraints on rediscovery", async () => {
     discovery(creationInputs, creationInputs.fields.map((field) => field.key));
     await mount(false, creationInputs);
-    const duration = screen.getByRole("row", { name: "片段时长" });
+    const duration = parameterRow("片段时长");
     await selectValue(within(duration).getByRole("combobox", { name: "类型" }), "INTEGER");
     const defaultValue = within(duration).getByRole("textbox", { name: "默认值" });
     fireEvent.change(defaultValue, { target: { value: "7" } }); fireEvent.blur(defaultValue);
@@ -218,7 +280,7 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     const constraints = screen.getByRole("row", { name: "更多设置 · 片段时长" });
     fireEvent.change(within(constraints).getByRole("spinbutton", { name: "最小值" }), { target: { value: "3" } });
     fireEvent.change(within(constraints).getByRole("spinbutton", { name: "最大值" }), { target: { value: "20" } });
-    await clickControl(within(screen.getByRole("row", { name: "画幅" })).getByRole("checkbox", { name: "暴露参数 · 画幅" }));
+    await clickControl(within(parameterRow("画幅")).getByRole("checkbox", { name: "暴露参数 · 画幅" }));
     await showNodes("10", "20", "30", "40");
     const configured = currentDefinition();
     expect(configured.fields.find((field) => field.key === "duration")).toMatchObject({ type: "INTEGER", defaultValue: 7, minimum: 3, maximum: 20 });
@@ -226,15 +288,15 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "自动发现参数" })).toBeEnabled());
     expect(currentDefinition().fields).toEqual(configured.fields);
     expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["prompt", "image", "duration", "width", "height"]);
-    expect(within(screen.getByRole("row", { name: "画幅" })).getByRole("checkbox", { name: "暴露参数 · 画幅" })).not.toBeChecked();
-    expect(screen.queryByRole("row", { name: "保留声音" })).not.toBeInTheDocument();
+    expect(within(parameterRow("画幅")).getByRole("checkbox", { name: "暴露参数 · 画幅" })).not.toBeChecked();
+    expect(screen.queryByRole("button", { name: "编辑参数 · 保留声音" })).not.toBeInTheDocument();
   });
   it("keeps manual deselection, scalar drafts and renamed exposed keys when rediscovering the same target", async () => {
     discovery();
     await mount(false, discovered);
-    const prompt = screen.getByRole("row", { name: "画面提示" });
+    const prompt = parameterRow("画面提示");
     await clickControl(within(prompt).getByRole("checkbox", { name: "暴露参数 · 画面提示" }));
-    const seed = screen.getByRole("row", { name: "随机种子" });
+    const seed = parameterRow("随机种子");
     const input = within(seed).getByRole("textbox", { name: "默认值" });
     fireEvent.change(input, { target: { value: "invalid" } }); fireEvent.blur(input);
     await clickControl(within(seed).getByRole("checkbox", { name: "暴露参数 · 随机种子" }));
@@ -244,12 +306,12 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     expect(input).toHaveValue("invalid");
     expect(input).toHaveProperty("validity.valid", false);
     fireEvent.change(input, { target: { value: "100" } }); fireEvent.blur(input);
-    fireEvent.change(within(seed).getByRole("textbox", { name: "稳定字段键" }), { target: { value: "customSeed" } });
+    fireEvent.change(within(parameterRow("随机种子", true)).getByRole("textbox", { name: "稳定字段键" }), { target: { value: "customSeed" } });
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "自动发现参数" })).toBeEnabled());
     expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["customSeed", "image", "steps"]);
     expect(currentDefinition().fields[1]?.defaultValue).toBe(100);
-    expect(within(screen.getByRole("row", { name: "画面提示" })).getByRole("checkbox", { name: "暴露参数 · 画面提示" })).not.toBeChecked();
+    expect(within(parameterRow("画面提示")).getByRole("checkbox", { name: "暴露参数 · 画面提示" })).not.toBeChecked();
   });
   it("applies new media suggestions after key collision renaming without reselecting an existing node", async () => {
     const existing: RunningHubDefinition = { ...initialDefinition, fixedBindings: [], fields: [{ ...initialDefinition.fields[0]!, key: "input1" }] };
@@ -262,8 +324,8 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     await mount(false, existing);
     await showNodes();
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
-    await screen.findByRole("row", { name: "参考图" });
-    expect(screen.queryByRole("row", { name: "模式" })).not.toBeInTheDocument();
+    await findParameterRow("参考图");
+    expect(screen.queryByRole("button", { name: "编辑参数 · 模式" })).not.toBeInTheDocument();
     expect(publishedDefinition().fields).toEqual([{ ...discovered.fields[2], key: "input2" }]);
     expect(currentDefinition().fields[0]).toEqual(existing.fields[0]);
   });
@@ -274,7 +336,7 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
     discovery();
     await mount(false, existing);
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
-    await screen.findByRole("row", { name: "参考图" });
+    await findParameterRow("参考图");
     expect(publishedDefinition().fields.map((field) => field.key)).toEqual(["savedPrompt", "image"]);
     expect(currentDefinition().fields.filter((field) => field.source === "PROMPT")).toHaveLength(1);
     expect(currentDefinition().fields.find((field) => field.key === "prompt")?.source).toBe("PARAMETER");
@@ -284,20 +346,15 @@ describe("RunningHubDefinitionEditor intelligent discovery", () => {
 describe("RunningHubDefinitionEditor node field names", () => {
   it("accepts dotted open and fixed bindings without changing local parameter keys", async () => {
     await mount();
-    const open = within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "节点字段" });
-    const fixed = screen.getByRole("textbox", { name: "固定字段" });
-    fireEvent.change(open, { target: { value: "sampling_mode.top_p" } });
-    fireEvent.change(fixed, { target: { value: "sampling_mode.seed" } });
-    expect(open).toHaveProperty("validity.valid", true);
-    expect(fixed).toHaveProperty("validity.valid", true);
-    expect(currentDefinition().fields[1]).toMatchObject({ key: "strength", fieldName: "sampling_mode.top_p" });
-    expect(currentDefinition().fixedBindings?.[0]).toMatchObject({ fieldName: "sampling_mode.seed" });
-    for (const value of [".top_p", "sampling_mode/top_p", "sampling mode.top_p", "a".repeat(81)]) {
-      fireEvent.change(open, { target: { value } });
-      fireEvent.change(fixed, { target: { value } });
-      expect(open).toHaveProperty("validity.valid", false);
-      expect(fixed).toHaveProperty("validity.valid", false);
+    for (const value of ["sampling_mode.top_p", ".top_p", "sampling_mode/top_p", "sampling mode.top_p", "a".repeat(81)]) {
+      const fieldInput = within(parameterRow("强度", true)).getByRole("textbox", { name: "节点字段" });
+      fireEvent.change(fieldInput, { target: { value } });
+      expect(fieldInput).toHaveProperty("validity.valid", value === "sampling_mode.top_p");
+      const fixedInput = inputFor("固定字段");
+      fireEvent.change(fixedInput, { target: { value } });
+      expect(fixedInput).toHaveProperty("validity.valid", value === "sampling_mode.top_p");
     }
+    expect(currentDefinition().fields[1]?.key).toBe("strength");
   });
 });
 
@@ -391,7 +448,7 @@ describe("RunningHubDefinitionEditor field capacity", () => {
     await clickControl(screen.getByRole("button", { name: "导入 JSON 字段" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("合并后开放字段超过 1024 个，原配置已保留。");
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole("row", { name: "模式" })).toBeInTheDocument();
+    expect(parameterRow("模式")).toBeInTheDocument();
     expect(source).toHaveValue('{"draft":true}');
   });
 });
@@ -450,8 +507,12 @@ describe("RunningHubDefinitionEditor output node selection", () => {
 });
 
 function inputFor(label: string) {
-  const scope = label === "默认值" ? within(screen.getByRole("row", { name: "强度" })) : screen;
-  return scope.getByRole("textbox", { name: label });
+  if (label.startsWith("固定")) {
+    fireEvent.click(screen.getByRole("button", { name: /^编辑参数 · 固定字段 · / }));
+  } else {
+    parameterRow("强度", label !== "默认值");
+  }
+  return within(screen.getByRole("region", { name: "参数设置" })).getByRole("textbox", { name: label });
 }
 
 describe("RunningHubDefinitionEditor scalar inputs", () => {
@@ -515,9 +576,9 @@ describe("RunningHubDefinitionEditor node labels", () => {
     await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 115 · LoRA · Loader" }));
     await clickControl(screen.getByRole("menuitemcheckbox", { name: "节点 116 · 采样器 · 自定义名称" }));
     await userEvent.setup().keyboard("{Escape}");
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 115 · LoRA · Loader · 节点 116 · 采样器 · 自定义名称");
-    expect(screen.getByRole("row", { name: "LoRA · Loader · lora_name" })).toBeVisible();
-    expect(screen.getByRole("row", { name: "LoRA · Loader · strength" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 115 · LoRA · Loader · 节点 116 · 采样器 · 自定义名称");
+    expect(parameterRow("LoRA · Loader · lora_name")).toBeVisible();
+    expect(parameterRow("LoRA · Loader · strength")).toBeVisible();
     expect(currentDefinition()).toEqual(definition);
   });
 
@@ -529,7 +590,7 @@ describe("RunningHubDefinitionEditor node labels", () => {
     };
     await mount(false, definition);
     await showNodes("8");
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 8 · 输入 · prompt");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 8 · 输入 · prompt");
     expect(currentDefinition()).toEqual(definition);
   });
 
@@ -554,17 +615,17 @@ describe("RunningHubDefinitionEditor node labels", () => {
     ]);
     await clickControl(screen.getByRole("menuitem", { name: "全选节点" }));
     await userEvent.setup().keyboard("{Escape}");
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("待配置节点 · 节点 3 · 节点 4 · 节点 5 · 节点 6 · 节点 7 · 命名节点 · 节点 8");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "待配置节点 · 节点 3 · 节点 4 · 节点 5 · 节点 6 · 节点 7 · 命名节点 · 节点 8");
     expect(currentDefinition()).toEqual(definition);
   });
 
   it("updates the picker and selected summary when an existing saved field label is edited", async () => {
     await mount(false);
     await showNodes("2");
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 2 · 强度");
-    fireEvent.change(within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "显示名称" }),
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 2 · 强度");
+    fireEvent.change(within(parameterRow("强度")).getByRole("textbox", { name: "显示名称" }),
       { target: { value: "采样强度" } });
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 2 · 采样强度");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 2 · 采样强度");
     await clickControl(screen.getByRole("button", { name: "选择节点" }));
     expect(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 采样强度" })).toHaveAttribute("aria-checked", "true");
     expect(screen.queryByRole("menuitemcheckbox", { name: "节点 2 · 强度" })).not.toBeInTheDocument();
@@ -577,13 +638,13 @@ describe("RunningHubDefinitionEditor node labels", () => {
 describe("RunningHubDefinitionEditor mapping table", () => {
   it("shows saved nodes and their parameter mappings immediately when opening the editor", async () => {
     await mount(false);
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 模式 · 节点 2 · 强度");
-    expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
-    const strength = screen.getByRole("row", { name: "强度" });
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 1 · 模式 · 节点 2 · 强度");
+    expect(parameterRow("模式")).toBeVisible();
+    const strength = parameterRow("强度", true);
     expect(within(strength).getByRole("textbox", { name: "节点 ID" })).toHaveValue("2");
     expect(within(strength).getByRole("textbox", { name: "节点字段" })).toHaveValue("strength");
     expect(within(strength).getByRole("textbox", { name: "默认值" })).toHaveValue("0");
-    expect(screen.getByRole("textbox", { name: "固定值（JSON 标量）" })).toHaveValue('"initial"');
+    expect(inputFor("固定值（JSON 标量）")).toHaveValue('"initial"');
     expect(currentDefinition()).toEqual(initialDefinition);
   });
 
@@ -598,11 +659,11 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     expect(screen.getByRole("menuitemcheckbox", { name: "节点 2 · 强度" })).toHaveAttribute("aria-checked", "true");
     // Modal menu isolates the background until it closes, while both selections stay active.
     await userEvent.setup().keyboard("{Escape}");
-    expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
-    expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
-    expect(screen.getByRole("textbox", { name: "固定值（JSON 标量）" })).toBeVisible();
+    expect(parameterRow("模式")).toBeVisible();
+    expect(parameterRow("强度")).toBeVisible();
+    expect(inputFor("固定值（JSON 标量）")).toBeVisible();
     expect(currentDefinition()).toEqual(initialDefinition);
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 模式 · 节点 2 · 强度");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 1 · 模式 · 节点 2 · 强度");
   });
 
   it("retains scalar drafts across clearing the selection and switching nodes", async () => {
@@ -610,10 +671,10 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     await showNodes();
     expect(screen.queryByRole("table", { name: "参数绑定" })).not.toBeInTheDocument();
     await showNodes("1");
-    expect(screen.getByRole("row", { name: "模式" })).toBeInTheDocument();
-    expect(screen.queryByRole("row", { name: "强度" })).not.toBeInTheDocument();
+    expect(parameterRow("模式")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑参数 · 强度" })).not.toBeInTheDocument();
     await showNodes("2");
-    expect(screen.queryByRole("row", { name: "模式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑参数 · 模式" })).not.toBeInTheDocument();
     const input = inputFor("默认值");
     fireEvent.change(input, { target: { value: "invalid" } });
     fireEvent.blur(input);
@@ -634,8 +695,8 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     await clickControl(screen.getByRole("button", { name: "选择节点" }));
     await clickControl(screen.getByRole("menuitem", { name: "全选节点" }));
     await userEvent.setup().keyboard("{Escape}");
-    expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
-    expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
+    expect(parameterRow("模式")).toBeVisible();
+    expect(parameterRow("强度")).toBeVisible();
     await clickControl(screen.getByRole("button", { name: "选择节点" }));
     await clickControl(screen.getByRole("menuitem", { name: "清空选择" }));
     expect(screen.getAllByRole("menuitemcheckbox")).toHaveLength(2);
@@ -653,12 +714,12 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     expect(currentDefinition().fields).toHaveLength(2);
     await clickControl(screen.getByRole("menuitem", { name: "节点 1 · 模式" }));
     expect(currentDefinition().fields.at(-1)?.nodeId).toBe("1");
-    expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
+    expect(parameterRow("强度")).toBeVisible();
     await clickControl(screen.getByRole("button", { name: "添加固定映射" }));
     expect(currentDefinition().fixedBindings).toHaveLength(1);
     await clickControl(screen.getByRole("menuitem", { name: "节点 2 · 强度" }));
     expect(currentDefinition().fixedBindings?.at(-1)).toMatchObject({ nodeId: "2", fieldName: "", value: "" });
-    expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
+    expect(parameterRow("模式")).toBeVisible();
   });
 
   it("supports keyboard selection and returns focus to the picker after Escape", async () => {
@@ -671,13 +732,12 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     expect(screen.getByRole("menu")).toBeInTheDocument();
     await userEvent.setup().keyboard("{Escape}");
     expect(picker).toHaveFocus();
-    expect(screen.getByRole("row", { name: "强度" })).toBeVisible();
+    expect(parameterRow("强度")).toBeVisible();
   });
 
   it("edits each row independently and preserves other mappings when one is removed", async () => {
     await mount();
-    const table = screen.getByRole("table", { name: "参数绑定" });
-    const strength = within(table).getByRole("row", { name: "强度" });
+    const strength = parameterRow("强度", true);
     fireEvent.change(within(strength).getByRole("textbox", { name: "节点 ID" }), { target: { value: "42" } });
     fireEvent.change(within(strength).getByRole("textbox", { name: "节点字段" }), { target: { value: "scale" } });
     fireEvent.change(within(strength).getByRole("textbox", { name: "显示名称" }), { target: { value: "采样强度" } });
@@ -689,20 +749,22 @@ describe("RunningHubDefinitionEditor mapping table", () => {
     expect(currentDefinition().fixedBindings).toEqual(initialDefinition.fixedBindings);
   });
 
-  it("expands hidden settings when form validation targets an invalid condition", async () => {
-    await mount();
+  it("reveals another node and its advanced settings when a hidden condition fails validation", async () => {
+    const submitted = vi.fn();
+    function Editor() {
+      const [definition, setDefinition] = useState(initialDefinition);
+      return <form aria-label="condition validation" onSubmit={submitted}><RunningHubDefinitionEditor connectionId="connection" adapterId="RUNNINGHUB_IMAGE" value={definition} onChange={setDefinition} /></form>;
+    }
+    render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
+    parameterRow("强度", true);
     const input = screen.getByRole("textbox", { name: "条件值（JSON 标量）" });
-    fireEvent.change(input, { target: { value: "invalid" } });
-    fireEvent.blur(input);
-    const row = screen.getByRole("row", { name: "强度" });
-    fireEvent.click(within(row).getByRole("button", { name: "更多设置" }));
-    await showNodes("1", "2");
+    fireEvent.change(input, { target: { value: "invalid" } }); fireEvent.blur(input);
+    await clickControl(screen.getByRole("radio", { name: /节点 1 · 模式/ }));
     expect(screen.queryByRole("textbox", { name: "条件值（JSON 标量）" })).not.toBeInTheDocument();
-    fireEvent.invalid(input);
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 1 · 模式 · 节点 2 · 强度");
-    expect(screen.getByRole("row", { name: "模式" })).toBeVisible();
-    expect(screen.getByRole("textbox", { name: "条件值（JSON 标量）" })).toBe(input);
-    expect(currentDefinition().fields[1]?.enabledWhen?.value).toBe(true);
+    fireEvent.submit(screen.getByRole("form", { name: "condition validation" }));
+    expect(submitted).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox", { name: "条件值（JSON 标量）" })).toHaveValue("invalid");
+    expect(screen.getByRole("radio", { name: /全部节点/ })).toHaveAttribute("aria-checked", "true");
   });
 
   it("excludes unchecked scalar controls from validation and restores their invalid drafts on reselect", async () => {
@@ -743,8 +805,9 @@ describe("RunningHubDefinitionEditor workbench session", () => {
     expect(within(screen.getByRole("region", { name: "目标与来源" })).getByText("Identity fields")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "预览与费用" })).getByText("Pricing fields")).toBeInTheDocument();
     const mappings = screen.getByRole("table", { name: "参数绑定" });
-    expect(within(mappings).getByRole("heading", { name: "节点 1 · 模式" })).toBeInTheDocument();
-    expect(within(mappings).getByRole("heading", { name: "节点 2 · 强度" })).toBeInTheDocument();
+    const directory = within(screen.getByRole("complementary", { name: "节点目录" }));
+    expect(directory.getByRole("radio", { name: /节点 1 · 模式/ })).toBeInTheDocument();
+    expect(directory.getByRole("radio", { name: /节点 2 · 强度/ })).toBeInTheDocument();
     expect(within(mappings).queryByRole("columnheader")).not.toBeInTheDocument();
     const summary = within(screen.getByRole("region", { name: "预览与费用" }));
     expect(summary.getByText("2 个节点")).toBeInTheDocument();
@@ -820,7 +883,7 @@ describe("RunningHubDefinitionEditor workbench session", () => {
     render(<QueryClientProvider client={new QueryClient()}><Editor /></QueryClientProvider>);
     await clickControl(screen.getByRole("button", { name: "自动发现参数" }));
     await waitFor(() => expect(screen.getByTestId("busy")).toHaveTextContent("true"));
-    expect(within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "显示名称" })).toBeDisabled();
+    expect(within(screen.getByRole("region", { name: "参数设置" })).getByRole("textbox", { name: "显示名称" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "选择节点" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "输出节点" })).toBeDisabled();
     expect(screen.getByRole("textbox", { name: "Capability name" })).toBeEnabled();
@@ -884,7 +947,7 @@ describe("RunningHubDefinitionEditor workbench session", () => {
       adapterId="RUNNINGHUB_IMAGE" value={starting} onChange={onChange} resetKey={0} /></QueryClientProvider>);
     await clickControl(screen.getByText("导入 / 已保存的 JSON"));
     fireEvent.change(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), { target: { value: "unfinished JSON draft" } });
-    const scalar = within(screen.getByRole("row", { name: "强度" })).getByRole("textbox", { name: "默认值" });
+    const scalar = within(parameterRow("强度")).getByRole("textbox", { name: "默认值" });
     fireEvent.change(scalar, { target: { value: "invalid scalar" } }); fireEvent.blur(scalar);
     expect(screen.getByRole("alert")).toBeInTheDocument();
     view.rerender(<QueryClientProvider client={queryClient}><RunningHubDefinitionEditor connectionId="connection"
@@ -894,7 +957,7 @@ describe("RunningHubDefinitionEditor workbench session", () => {
       adapterId="RUNNINGHUB_IMAGE" value={latest} onChange={onChange} resetKey={1} /></QueryClientProvider>);
     await clickControl(screen.getByText("导入 / 已保存的 JSON"));
     expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue(JSON.stringify(latest.importSource, null, 2));
-    expect(screen.getByRole("button", { name: "选择节点" })).toHaveTextContent("节点 44 · 最新参数");
+    expect(screen.getByRole("button", { name: "选择节点" })).toHaveAttribute("title", "节点 44 · 最新参数");
     expect(screen.getByRole("textbox", { name: "真实目标 ID" })).toHaveValue("987");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();

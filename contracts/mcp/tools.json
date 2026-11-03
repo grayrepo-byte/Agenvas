@@ -3575,6 +3575,217 @@
         ],
         "additionalProperties": false
       }
+    },
+    {
+      "name": "prepare_media_upload",
+      "description": "Prepare an authenticated binary upload of a local IMAGE, VIDEO or AUDIO file. Does not transfer bytes or create content. Compute file byteSize and SHA-256 locally, then POST multipart metadata (application/json) and file to the returned relative path on the SAME origin as /mcp using the current Bearer credential. Never send a server filesystem path or inline file bytes. The upload returns an immutable artifact version usable in update_media_draft; optional placement adds a canvas node. Reuse commandId and identical metadata/file after a lost upload response.",
+      "requiredScope": "CONTENT_WRITE",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectId",
+          "commandId",
+          "kind",
+          "title",
+          "byteSize",
+          "sha256"
+        ],
+        "properties": {
+          "commandId": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "IMAGE",
+              "VIDEO",
+              "AUDIO"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 1
+          },
+          "placement": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number",
+                "minimum": 120,
+                "maximum": 2000
+              },
+              "height": {
+                "type": "number",
+                "minimum": 80,
+                "maximum": 2000
+              },
+              "zIndex": {
+                "type": "integer",
+                "minimum": -1000,
+                "maximum": 1000
+              }
+            },
+            "required": [
+              "x",
+              "y",
+              "width",
+              "height"
+            ],
+            "additionalProperties": false
+          },
+          "byteSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 524288000
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "method",
+          "path",
+          "contentType",
+          "metadataPart",
+          "filePart",
+          "maximumFileBytes",
+          "metadata"
+        ],
+        "properties": {
+          "method": {
+            "type": "string",
+            "enum": [
+              "POST"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "enum": [
+              "/mcp/uploads"
+            ]
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "multipart/form-data"
+            ]
+          },
+          "metadataPart": {
+            "type": "string",
+            "enum": [
+              "metadata"
+            ]
+          },
+          "filePart": {
+            "type": "string",
+            "enum": [
+              "file"
+            ]
+          },
+          "maximumFileBytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 524288000
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "projectId",
+              "commandId",
+              "kind",
+              "title",
+              "byteSize",
+              "sha256"
+            ],
+            "properties": {
+              "commandId": {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              "projectId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "IMAGE",
+                  "VIDEO",
+                  "AUDIO"
+                ]
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 160,
+                "minLength": 1
+              },
+              "placement": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  },
+                  "width": {
+                    "type": "number",
+                    "minimum": 120,
+                    "maximum": 2000
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 80,
+                    "maximum": 2000
+                  },
+                  "zIndex": {
+                    "type": "integer",
+                    "minimum": -1000,
+                    "maximum": 1000
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ],
+                "additionalProperties": false
+              },
+              "byteSize": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 524288000
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }

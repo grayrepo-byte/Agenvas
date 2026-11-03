@@ -14,12 +14,23 @@ class McpToolPolicyTest {
     private final String project = UUID.randomUUID().toString();
 
     @Test void catalogKeepsWriteAndGenerationGrantsIndependent() {
-        assertThat(policy.definitions()).hasSize(13);
+        assertThat(policy.definitions()).hasSize(14);
         assertThat(policy.requiredScope("run_media")).isEqualTo(McpScope.MEDIA_GENERATE);
         assertThat(policy.requiredScope("compose_video")).isEqualTo(McpScope.MEDIA_GENERATE);
         assertThat(policy.requiredScope("update_media_draft")).isEqualTo(McpScope.CONTENT_WRITE);
+        assertThat(policy.requiredScope("prepare_media_upload")).isEqualTo(McpScope.CONTENT_WRITE);
         assertThat(policy.requiredScope("list_projects")).isEqualTo(McpScope.READ);
         assertThatThrownBy(() -> policy.requiredScope("approve_media_batch")).isInstanceOf(ApiProblemException.class);
+    }
+    @Test void uploadMetadataCannotGrantLocalFileOrRemoteUrlAccess() {
+        String metadata = "{\"projectId\":\"" + project + "\",\"commandId\":\"upload\",\"title\":\"Reference\","
+                + "\"kind\":\"IMAGE\",\"byteSize\":4096,\"sha256\":\"" + "a".repeat(64) + "\"}";
+        policy.validate("prepare_media_upload", mapper.readTree(metadata));
+        invalid("prepare_media_upload", metadata.replace("4096", "0"));
+        invalid("prepare_media_upload", metadata.replace("a".repeat(64), "not-a-digest"));
+        invalid("prepare_media_upload", metadata.replace("\"Reference\"", "\"  \""));
+        invalid("prepare_media_upload", metadata.replace("\"kind\":", "\"path\":\"/private/file.png\",\"kind\":"));
+        invalid("prepare_media_upload", metadata.replace("\"kind\":", "\"url\":\"https://example.test/file.png\",\"kind\":"));
     }
     @Test void compositionContractBoundsSourcesAndAllowsCompleteFrozenReferenceSummary() {
         var definition = policy.definition("compose_video");

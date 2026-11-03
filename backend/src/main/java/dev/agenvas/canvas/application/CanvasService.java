@@ -10,6 +10,7 @@ import dev.agenvas.canvas.domain.MediaUploadPurpose;
 import dev.agenvas.character.application.CharacterService;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -241,6 +242,8 @@ public class CanvasService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void recordTaskMediaVersionWithinChange(UUID ownerId, UUID projectId, UUID itemId,
             UUID artifactId, UUID versionId) {
+        // A deleted project keeps Artifact audit results without changing its retired canvas projection.
+        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return;
         CanvasItem item = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
         if (item == null) return;
         if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT
@@ -283,7 +286,7 @@ public class CanvasService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public CanvasItem placeTaskMediaOutputWithinChange(UUID ownerId, UUID projectId, UUID sourceItemId,
             UUID artifactId, int outputIndex, JsonNode frozenInput) {
-        projects.get(ownerId, projectId);
+        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return null;
         // TaskService validates each protocol's count before placement; decomposition can include 16 extra layers.
         if (outputIndex < 1 || outputIndex >= dev.agenvas.provider.domain.NativeMediaProtocol.MAX_RESULTS) throw validation(ApiMessage.of("api.canvas-service.the-result-sequence-number-is-invalid"));
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId).orElse(null);
@@ -772,12 +775,19 @@ public class CanvasService {
                 command.zIndex());
         ArtifactService.ArtifactView artifact = artifacts.get(
                 ownerId, projectId, command.artifactId());
+        UUID selectedVersionId = mediaSelection(artifact);
+        if (command.versionId() != null) {
+            // A resource pick fixes an immutable media result without changing the shared default.
+            if (artifact.artifact().kind() == Artifact.Kind.TEXT || artifact.artifact().archivedAt() != null) throw conflict();
+            artifacts.requireVersion(ownerId, projectId, command.artifactId(), command.versionId());
+            selectedVersionId = command.versionId();
+        }
         CanvasItem requested = placement(
                 command.itemId(),
                 projectId,
                 CanvasItem.SubjectType.ARTIFACT,
                 command.artifactId(),
-                mediaSelection(artifact),
+                selectedVersionId,
                 artifact.artifact().title(),
                 command.x(),
                 command.y(),
@@ -1090,6 +1100,7 @@ public class CanvasService {
      * @param zIndex 显示层级
      * @param groupId 可选画布分组
      * @param locked 是否创建后锁定布局
+     * @param versionId 可选的精确媒体结果；缺省沿用资源默认版本
      */
     public record PlaceArtifact(
             UUID itemId,
@@ -1100,8 +1111,15 @@ public class CanvasService {
             BigDecimal height,
             int zIndex,
             UUID groupId,
-            boolean locked)
-            implements CanvasCommand {}
+            boolean locked,
+            UUID versionId)
+            implements CanvasCommand {
+        /** Ordinary node creation uses the resource default, including empty media placeholders. */
+        public PlaceArtifact(UUID itemId, UUID artifactId, BigDecimal x, BigDecimal y,
+                BigDecimal width, BigDecimal height, int zIndex, UUID groupId, boolean locked) {
+            this(itemId, artifactId, x, y, width, height, zIndex, groupId, locked, null);
+        }
+    }
 
     /**
      * 修改单张卡片的展示标题；同一业务对象的其他卡片不受影响。

@@ -17,7 +17,7 @@
 :is(.skills-layout, .skills-dialog) [data-slot=button][data-size=default]:not(.skills-list-item) { height:var(--ui-control-height-compact); }
 :is(.skills-layout, .skills-dialog) .ui-empty-state { padding:var(--ui-space-6) var(--ui-space-4); }
 .skills-sidebar > [data-slot=toggle-group] { margin-bottom:var(--ui-space-4); }
-.skills-list { display:flex; flex-direction:column; gap:var(--ui-space-2); max-height:min(560px,50dvh); overflow-y:auto; scrollbar-width:thin; padding:3px; margin:var(--ui-space-4) -3px; }
+.skills-list { display:flex; flex-direction:column; gap:var(--ui-space-2); max-height:min(560px,50dvh); overflow-y:auto; padding:3px; margin:var(--ui-space-4) -3px; }
 /* List labels can span several lines; compact action heights must never apply here. */
 .skills-layout .skills-list-item { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:start; gap:var(--ui-space-2); width:100%; height:auto; min-height:56px; padding:var(--ui-space-3); white-space:normal; text-align:left; }
 .skills-list-item > svg { margin-top:2px; }
@@ -34,7 +34,7 @@
 .skills-version-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--ui-space-3); }
 .skills-version-toolbar > p { margin:0; color:var(--ui-text-muted); }
 .skills-version-preview h3 { display:flex; align-items:center; gap:var(--ui-space-2); margin:0 0 var(--ui-space-3); font-size:var(--ui-text-md); font-weight:500; }
-.skills-version-preview .skills-source-preview { margin:0; padding:var(--ui-space-4); font-size:var(--ui-text-md); line-height:1.75; scrollbar-width:thin; }
+.skills-version-preview .skills-source-preview { margin:0; padding:var(--ui-space-4); font-size:var(--ui-text-md); line-height:1.75; }
 .skills-version-preview .skills-document > .skills-source-preview { max-height:480px; }
 .skills-resource-list { display:flex; flex-direction:column; gap:var(--ui-space-2); list-style:none; padding:0; margin:0; }
 .skills-resource-list details { min-width:0; border:1px solid var(--ui-border); border-radius:var(--ui-radius-md); }

@@ -16,6 +16,7 @@ import dev.agenvas.artifact.domain.Artifact;
 import dev.agenvas.canvas.domain.CanvasItem;
 import dev.agenvas.event.application.ProjectEventService;
 import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.project.domain.Project;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -43,7 +44,8 @@ class CanvasOutputPlacementTest {
     private final MediaDraftService drafts = mock(MediaDraftService.class);
     private final ProjectEventService events = mock(ProjectEventService.class);
     private final ObjectMapper mapper = new ObjectMapper();
-    private final CanvasService canvas = new CanvasService(mock(ProjectService.class), artifacts,
+    private final ProjectService projects = mock(ProjectService.class);
+    private final CanvasService canvas = new CanvasService(projects, artifacts,
             drafts, items, mock(CanvasConnectionService.class),
             events, mapper, Clock.fixed(NOW, java.time.ZoneOffset.UTC),
                     new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
@@ -52,6 +54,8 @@ class CanvasOutputPlacementTest {
 
     @BeforeEach
     void setup() {
+        when(projects.getRetainedProject(owner, project)).thenReturn(new Project(project, owner,
+                "Synthetic project", Project.AspectRatio.SQUARE_1_1, Project.Status.ACTIVE, 0, 0, NOW, NOW, null));
         when(items.create(any())).thenReturn(true);
         when(artifacts.get(owner, project, artifactId)).thenReturn(artifactView(artifactId, Artifact.Kind.IMAGE));
     }

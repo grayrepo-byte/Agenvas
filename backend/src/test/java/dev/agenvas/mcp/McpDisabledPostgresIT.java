@@ -84,6 +84,12 @@ class McpDisabledPostgresIT {
             assertThat(missing.headers().allValues("Set-Cookie")).isEmpty();
             assertThat(missing.body()).doesNotContain("protocolVersion", "serverInfo", credential.token());
             assertThat(anonymous.send(mcp(null).build(), HttpResponse.BodyHandlers.ofString()).statusCode()).isEqualTo(401);
+            var disabledUpload = anonymous.send(HttpRequest.newBuilder(uri("/mcp/uploads"))
+                    .header("Authorization", "Bearer " + credential.token())
+                    .header("Content-Type", "multipart/form-data; boundary=synthetic")
+                    .POST(HttpRequest.BodyPublishers.ofString("--synthetic--\r\n")).build(), HttpResponse.BodyHandlers.ofString());
+            assertThat(disabledUpload.statusCode()).isEqualTo(404);
+            assertThat(mapper.readTree(disabledUpload.body()).path("code").asText()).isEqualTo("RESOURCE_NOT_FOUND");
 
             JsonNode csrf = csrf(browser);
             var login = browser.send(HttpRequest.newBuilder(uri("/api/v1/auth/login"))
