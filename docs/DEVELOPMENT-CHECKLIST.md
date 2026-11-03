@@ -3023,3 +3023,9 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] Seedance 的纯文本、首尾帧和全能参考均不发送 `generate_audio`，覆盖有无音频参考；移除根据参考音频决定输出去音的分支及能力元数据中的音频开关。其他视频 Provider 与公共归档路径经代码核对没有主动去音，单结果、多结果、下载重试、归档恢复及取消晚到结果继续使用原样归档。
 - [x] `./mvnw -Dtest=ArkSeedanceClientTest,ArkSeedance2AdapterTest,LocalAssetStorageVideoTest,LocalVideoAudioRealMediaTest test`：19 项通过；`./mvnw -Pci-integration -Dit.test=ArkSeedanceArchivePostgresIT,ArkSeedancePostgresIT,MediaCloudCapabilityPostgresIT,VideoOperationPostgresIT verify`：15 项通过，使用真实 PostgreSQL 17.11、FFmpeg、本地假 HTTP 和合成媒体。覆盖 4/15 秒无音频参考请求不携带开关、图片/视频/音频参考请求同样省略字段、两条音轨保留且归档字节与响应完全一致、同一原任务链接刷新与下载重试不重新生成、UNKNOWN 不自动重提、能力元数据，以及显式音频分离的双结果与来源不变。修复前定向测试已复现请求音频开关及归档音轨丢失；本次没有真实 Provider 调用。
 - [ ] 全量测试、真实 Provider 输出音轨验证、真实浏览器播放与部署：未运行；Mock 或假 HTTP/合成媒体不能证明真实 Seedance 已生成声音。
+
+## 后端中文词典与校验诊断（2026-11-03）
+
+- [x] 复现基础词典缺少三条 MCP 上传消息导致的资源不一致。合并中文内容到唯一 `messages.properties`，移除重复中文资源；`ApiMessage` 明确从根资源包读取中文诊断，四语言显示与既有消息值保持。
+- [x] 词典校验按语言执行，精确报告缺失/多余键及有问题的条目；保留翻译键集合、非空、占位符次数、英俄中文混入、真实构造与四语言渲染检查，增加重复键拒绝及中文显示与诊断来源一致校验。修复前新检查仅列出三条问题键，不再打印整本词典。
+- [x] `./mvnw clean -Dtest=MessageCatalogTest,ApiI18nTest,LocalizedResponseTest,SecurityI18nTest,CanvasMediaDerivationDraftTest,CanvasOutputPlacementTest,ProjectServiceTest test`：41 项通过；补充中文运行时一致校验后，`./mvnw -Dtest=MessageCatalogTest test` 的 5 项定向复验通过。画布派生测试补齐活动项目 Mock，真实项目状态保护未改变。同步 i18n 开发说明，删除已撤回的 AST 校验描述；差异空白检查通过。

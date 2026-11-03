@@ -9,7 +9,8 @@ import java.util.regex.Pattern;
 
 /** A public message retains its key and arguments until the requesting user's locale is known. */
 public record ApiMessage(String key, List<String> arguments) {
-    private static final ResourceBundle SOURCE = ResourceBundle.getBundle("i18n/messages", Locale.CHINESE,
+    // The base bundle is the single Chinese source, independent of request/JVM locale.
+    private static final ResourceBundle SOURCE = ResourceBundle.getBundle("i18n/messages", Locale.ROOT,
             ResourceBundle.Control.getNoFallbackControl(ResourceBundle.Control.FORMAT_PROPERTIES));
     private static final Pattern PARAMETER = Pattern.compile("\\{(\\d+)}");
 

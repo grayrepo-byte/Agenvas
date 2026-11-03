@@ -10,39 +10,55 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
+import org.assertj.core.api.SoftAssertions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import tools.jackson.databind.ObjectMapper;
 
 /** Validates exact catalog resources and runtime descriptors without constraining Java source syntax. */
 class MessageCatalogTest {
     private static final Pattern PARAMETER = Pattern.compile("\\{(\\d+)}");
 
-    @Test
-    void everyLanguageHasExactlyTheSameKeysAndPlaceholderCounts() throws Exception {
+    @ParameterizedTest(name = "{0} catalog matches the Chinese source")
+    @MethodSource("supportedLocales")
+    void everyLanguageHasExactlyTheSameKeysAndPlaceholderCounts(Locale locale) throws Exception {
         Properties source = load("zh");
-        assertThat(load("")).isEqualTo(source);
-        for (Locale locale : SupportedLocales.SUPPORTED) {
-            String language = locale.getLanguage();
-            Properties translated = load(language);
-            assertThat(translated.keySet()).containsExactlyInAnyOrderElementsOf(source.keySet());
-            for (String key : source.stringPropertyNames()) {
+        String language = locale.getLanguage();
+        Properties translated = load(language);
+        var missing = new TreeSet<>(source.stringPropertyNames());
+        missing.removeAll(translated.stringPropertyNames());
+        var extra = new TreeSet<>(translated.stringPropertyNames());
+        extra.removeAll(source.stringPropertyNames());
+        // Report only broken keys/values, rather than dumping every translation into CI logs.
+        SoftAssertions.assertSoftly(check -> {
+            check.assertThat(missing).as(language + ": missing translation keys").isEmpty();
+            check.assertThat(extra).as(language + ": keys missing from the Chinese source").isEmpty();
+            for (String key : new TreeSet<>(source.stringPropertyNames())) {
                 String value = translated.getProperty(key);
-                assertThat(value).as(language + ": " + key).isNotBlank();
-                assertThat(parameters(value)).as(language + ": " + key)
+                check.assertThat(value).as(language + ": " + key).isNotBlank();
+                if (value == null) continue;
+                check.assertThat(parameters(value)).as(language + ": " + key + " placeholders")
                         .isEqualTo(parameters(source.getProperty(key)));
                 if (!language.equals("zh") && !language.equals("ja"))
-                    assertThat(value).as(language + ": " + key).doesNotMatch("(?s).*\\p{IsHan}.*");
+                    check.assertThat(value).as(language + ": " + key).doesNotMatch("(?s).*\\p{IsHan}.*");
             }
-        }
+        });
+    }
+
+    private static Stream<Locale> supportedLocales() {
+        return SupportedLocales.SUPPORTED.stream();
     }
 
     @Test
     void everyRegisteredMessageValidatesItsArgumentsAndRendersInEveryLanguage() throws Exception {
         Properties source = load("zh");
         ApiMessages messages = new ApiMessages(new I18nConfiguration().messageSource(), new ObjectMapper());
-        for (String key : source.stringPropertyNames()) {
+        for (String key : new TreeSet<>(source.stringPropertyNames())) {
             int count = parameters(source.getProperty(key)).keySet().stream()
                     .mapToInt(Integer::parseInt).max().orElse(-1) + 1;
             Object[] arguments = IntStream.range(0, count).mapToObj(index -> "argument-" + index).toArray();
@@ -53,6 +69,8 @@ class MessageCatalogTest {
                 String rendered = messages.text(message, locale);
                 assertThat(rendered).as(locale + ": " + key).isNotBlank();
                 assertThat(PARAMETER.matcher(rendered).find()).as(locale + ": " + key).isFalse();
+                if (locale.equals(Locale.CHINESE))
+                    assertThat(rendered).as("Chinese source: " + key).isEqualTo(message.source());
             }
             assertThatThrownBy(() -> ApiMessage.of(key, Arrays.copyOf(arguments, count + 1)))
                     .as(key + ": extra argument").isInstanceOf(IllegalArgumentException.class);
@@ -67,8 +85,14 @@ class MessageCatalogTest {
     }
 
     private Properties load(String language) throws Exception {
-        var properties = new Properties();
-        String path = "/i18n/messages" + (language.isEmpty() ? "" : "_" + language) + ".properties";
+        // The base bundle is the sole Chinese catalog; other languages must exist as exact resources.
+        String path = "/i18n/messages" + (language.isEmpty() || language.equals("zh") ? "" : "_" + language) + ".properties";
+        var properties = new Properties() {
+            @Override public synchronized Object put(Object key, Object value) {
+                assertThat(containsKey(key)).as(path + ": duplicate key " + key).isFalse();
+                return super.put(key, value);
+            }
+        };
         try (var input = MessageCatalogTest.class.getResourceAsStream(path)) {
             assertThat(input).as(path).isNotNull();
             properties.load(new InputStreamReader(input, StandardCharsets.UTF_8));
