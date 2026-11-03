@@ -180,7 +180,7 @@ class ArkSeedancePostgresIT {
                             .isEqualTo("doubao-seedance-2-0-260128");
                     assertThat(body.path("duration").asInt()).isEqualTo(CLIP_SECONDS);
                     LAST_CREATE_RATIO.set(body.path("ratio").asText());
-                    assertThat(body.path("generate_audio").booleanValue()).isFalse();
+                    assertThat(body.has("generate_audio")).isFalse();
                     assertThat(body.path("content").get(1).path("role").asText())
                             .isEqualTo("first_frame");
                     CREATES.incrementAndGet();

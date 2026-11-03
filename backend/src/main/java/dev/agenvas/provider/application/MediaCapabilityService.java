@@ -525,7 +525,7 @@ public class MediaCapabilityService {
             case "KLING_VIDEO_3" -> target.put("modelId", dev.agenvas.provider.domain.KlingProtocol.VIDEO_MODEL_ID)
                     .put("outputFormat", "mp4").put("generateAudio", true);
             case "ARK_SEEDANCE_2_I2V" -> target.put("modelId", ArkSeedanceClient.MODEL_ID)
-                    .put("outputFormat", "mp4").put("generateAudio", false);
+                    .put("outputFormat", "mp4");
             default -> { }
         }
     }

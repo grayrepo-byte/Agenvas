@@ -11,9 +11,13 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /** Local fake Ark protocol; no paid video task is created. */
@@ -34,6 +38,22 @@ class ArkSeedanceClientTest {
     @AfterEach
     void stop() { server.stop(0); }
 
+    @ParameterizedTest
+    @CsvSource({"4,true", "15,true", "4,false", "15,false"})
+    void doesNotOverrideProviderAudioWithoutAudioReferences(int seconds, boolean textOnly) {
+        AtomicReference<JsonNode> received = new AtomicReference<>();
+        server.createContext("/api/v3/contents/generations/tasks", exchange -> {
+            received.set(mapper.readTree(exchange.getRequestBody().readAllBytes()));
+            respond(exchange, 200, "{\"id\":\"" + TASK_ID + "\"}");
+        });
+
+        String id = textOnly
+                ? client.create("fake-key", "Generate water sounds and music", java.util.List.of(), seconds, "16:9")
+                : client.create("fake-key", "Generate water sounds and music", new byte[]{1}, seconds, "16:9");
+        assertThat(id).isEqualTo(TASK_ID);
+        assertThat(received.get().has("generate_audio")).isFalse();
+    }
+
     @Test
     void submitsOneFixedFirstFrameTaskAndQueriesOnlySavedId() {
         AtomicInteger creates = new AtomicInteger();
@@ -45,7 +65,7 @@ class ArkSeedanceClientTest {
                 assertThat(body.path("model").asText()).isEqualTo("doubao-seedance-2-0-260128");
                 assertThat(body.path("duration").asInt()).isEqualTo(4);
                 assertThat(body.path("ratio").asText()).isEqualTo("16:9");
-                assertThat(body.path("generate_audio").booleanValue()).isFalse();
+                assertThat(body.has("generate_audio")).isFalse();
                 assertThat(body.path("output_format").asText()).isEqualTo("mp4");
                 assertThat(body.path("content").size()).isEqualTo(2);
                 assertThat(body.path("content").get(1).path("role").asText())
@@ -73,7 +93,7 @@ class ArkSeedanceClientTest {
     void sendsAllReferenceImagesAndAudiosWithoutSilencingReferenceVideo() {
         server.createContext("/api/v3/contents/generations/tasks", exchange -> {
             var body = mapper.readTree(exchange.getRequestBody().readAllBytes());
-            assertThat(body.path("generate_audio").asBoolean()).isTrue();
+            assertThat(body.has("generate_audio")).isFalse();
             assertThat(body.path("content").size()).isEqualTo(4);
             assertThat(body.at("/content/1/role").asText()).isEqualTo("reference_image");
             assertThat(body.at("/content/2/role").asText()).isEqualTo("reference_audio");
@@ -84,7 +104,7 @@ class ArkSeedanceClientTest {
         var references = java.util.List.of(new ArkSeedanceClient.Reference("image/png", new byte[]{1}, "reference_image"),
                 new ArkSeedanceClient.Reference("audio/mpeg", new byte[]{2}, "reference_audio"),
                 new ArkSeedanceClient.Reference("audio/wav", new byte[]{3}, "reference_audio"));
-        assertThat(client.create("fake-key", "Animate", references, 4, "16:9", true)).isEqualTo(TASK_ID);
+        assertThat(client.create("fake-key", "Animate", references, 4, "16:9")).isEqualTo(TASK_ID);
     }
 
     @Test
@@ -96,11 +116,12 @@ class ArkSeedanceClientTest {
             assertThat(body.path("content").path(1).path("role").asText()).isEqualTo("reference_video");
             assertThat(body.path("content").path(1).path("video_url").path("url").asText()).isEqualTo(signed);
             assertThat(body.path("execution_expires_after").asLong()).isEqualTo(172800);
+            assertThat(body.has("generate_audio")).isFalse();
             respond(exchange, 200, "{\"id\":\"" + TASK_ID + "\"}");
         });
         var reference = ArkSeedanceClient.Reference.video(signed);
         assertThat(reference.toString()).doesNotContain("Signature", "store.example.com");
-        assertThat(client.create("fake-key", "Animate", java.util.List.of(reference), 4, "16:9", false)).isEqualTo(TASK_ID);
+        assertThat(client.create("fake-key", "Animate", java.util.List.of(reference), 4, "16:9")).isEqualTo(TASK_ID);
     }
 
     @Test

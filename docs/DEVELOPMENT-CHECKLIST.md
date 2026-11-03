@@ -812,7 +812,7 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 
 依赖：T23–T24。
 
-交付（已撤回）：镜头顺序、输入快照、受控 FFmpeg、无声 MP4、播放与下载。按镜头顺序拼接无声 MP4 的媒体导出与 `Task.Kind.MEDIA_EXPORT`、导出提案已从产品移除；下列条目仅作为历史验收记录保留。仍成立的部分：受控 FFmpeg 子进程继续用于媒体探测与归档期规范化（读时长/尺寸、生成封面帧、结果去音），其安全约束继续适用。
+交付（已撤回）：镜头顺序、输入快照、受控 FFmpeg、无声 MP4、播放与下载。按镜头顺序拼接无声 MP4 的媒体导出与 `Task.Kind.MEDIA_EXPORT`、导出提案已从产品移除；下列条目仅作为历史验收记录保留。仍成立的部分：受控 FFmpeg 子进程继续用于媒体探测与归档辅助处理（读时长/尺寸、生成封面帧），其安全约束继续适用。旧“结果去音”要求已由 [ADR 0066](adr/0066-preserve-provider-video-audio.md) 取代，Provider 视频归档须保留返回音轨。
 
 进展（已撤回，2026-09-27，保留历史验收摘要，详细开发记录不随源码公开）：项目级持久导出、精确版本/区间快照、受控 FFmpeg 规范化、前端顺序编辑、点击后才加载的预览与私有下载已实现；服务端预览与手动入队现共用同一套精确版本/素材/区间校验，预览本身不创建 Task。Agent 可另行提出需用户审批的导出快照；Mock 三镜头黄金路径已覆盖“提案→批准→无声 MP4”，并在隔离浏览器中完成审批界面和 3 秒 MP4 下载补验，见 开发记录（不随源码公开）。PostgreSQL + FFmpeg 混合素材及原有 Mock 导出测试见 开发记录（不随源码公开）。隔离 Compose 项目中的浏览器也已完成手动顺序编辑、提交和“已完成”呈现，并经同项目已登录 HTTP 会话下载实际 15 秒无声 MP4，见 开发记录（不随源码公开）。现另以当前代码镜像在 Chrome 中完成 Mock 单段手动导出的私有 HEAD、下载链接和 1280×720 MP4 手动播放。运行中取消、工具超时/非零故障及临时清理已有受控测试；已归档但未记成功的导出现在按 Task 键恢复且不重复编码。真实服务子进程在 FFmpeg 写入期间被强杀、原租约过期后由第二进程接管并只登记一份结果的测试已通过；物理磁盘写满和容器级进程组退出仍未演练，相关验收项保持未勾选。
 
@@ -923,7 +923,7 @@ SSE 生命周期补验：真实 Tomcat＋PostgreSQL 三轮各 20 条 HTTP SSE �
 
 2026-09-27 超时复发与原因码：真实渠道再次实测到 216 秒返回、而当时上限为 180 秒，已生成并计费的结果再次被丢弃。两个同步图片客户端的读/整次调用上限提到 5 分钟；本地一旦得到确定结论（读超时、连接中断、结果下载失败、响应不符合固定协议）就**当场**按具体原因码写入 UNKNOWN，不再停在 `SUBMITTING` 空等 30 分钟租约；每个失败点都有稳定原因码（`ProviderFailureCodes`），适配器原样透传，前端统一展示可读中文原因。租约过期扫描保留为进程被杀的兜底，写笼统的 `PROVIDER_SUBMISSION_UNKNOWN`。新增不变量：`agenvas.task.lease-duration` 必须同时大于调用耗时与客户端超时。已运行：`OpenAiImage2ClientTest`、`GoogleNanoBananaClientTest`、`OutboundTimeoutsTest`、`TaskSubmissionUnknownPostgresIT`、`OpenAiImage2PostgresIT`、`GoogleNanoBananaPostgresIT`、`ArkSeedancePostgresIT`、`TaskRecoveryPostgresIT`、`ManualUnknownRetryPostgresIT`、后端单元套件 125 项；前端 `typecheck`/`lint` 与 261 项测试通过。**未做真实 Provider 调用**，「216 秒结果能正常归档」由上限提升与上述验证推断，未实测。详见 开发记录（不随源码公开）。
 - [x] OpenAI 图片连接可选自定义 HTTPS API Base URL；历史空地址仍走官方 `/v1`，已受理任务固定连接版本，拒绝不安全地址、私网 DNS 和重定向。自定义公开网关的真实生成未运行。
-- [x] 火山方舟 Seedance 固定首帧图生视频适配器完成 4–15 整数秒、异步原任务 ID 轮询、过期 URL 重查或无法刷新时阻断、带音轨结果去音归档、恶意地址阻断、下载失败后重试与创建响应丢失 UNKNOWN 的本地假服务及 PostgreSQL 验收；无真实方舟调用。
+- [x] 历史验收：火山方舟 Seedance 固定首帧图生视频适配器完成 4–15 整数秒、异步原任务 ID 轮询、过期 URL 重查或无法刷新时阻断、带音轨结果去音归档、恶意地址阻断、下载失败后重试与创建响应丢失 UNKNOWN 的本地假服务及 PostgreSQL 验收；无真实方舟调用。其中去音行为已由 [ADR 0066](adr/0066-preserve-provider-video-audio.md) 撤回，当前音轨保留验收见本清单“Provider 视频音轨保留”条目。
 - [x] 分别记录真实调用状态：GPT Image 2 **已运行**，经第三方中转站（grsai，模型 `gpt-image-2.5`）完成一次真实文字生图并归档 Asset，生成耗时约 35 秒；此为兼容中转站而非 OpenAI 官方端点。Seedance **未运行**。管理员界面保持“已配置、未实测”，不把本地假服务或 Mock 结果标记为真实生成成功。
 
 后续 Google Nano Banana 2 固定图片适配器见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)：`GOOGLE` 连接、默认 `gemini-3.1-flash-image` 模型、文字生图和最多 14 张同项目有序参考图、项目画幅、管理员配置及 V41 平台约束已接入。假 Google HTTP 服务与 PostgreSQL 覆盖两张冻结参考图顺序提交、成功归档、断线 UNKNOWN 不重提、越权参考图预检拒绝；真实 Google API 调用 **未运行**，真实模型兼容、生成效果与费用尚未验收。
@@ -3016,3 +3016,10 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 39 项定向单元测试通过：MCP 工具/命令 Schema、Bearer、请求限制、Asset 发布与失败清理、API i18n。9 项真实 PostgreSQL 集成测试通过：McpUploadPostgresIT、McpHttpPostgresIT、McpRecoveryModePostgresIT、McpDisabledPostgresIT；上传专项另行复跑 4 项并通过 OpenAPI 响应校验。使用合成 PNG/WAV/MP4 与真实 FFmpeg、原生 multipart/分块 HTTP、官方 MCP SDK，覆盖三类文件、超 JSON 大小图片、精确草稿引用、节点放置、并发重传、异参冲突、大小/摘要错误及权限隔离；不依赖真实 Provider。
 - [x] OpenAPI TypeScript 生成、完整 TypeScript 检查、Nginx 配置 `nginx -t` 与差异空白检查通过。测试日志在仓库外私有目录。
 - [ ] 全量测试、500 MiB 实际大文件/吞吐压力、云对象存储故障、真实 Provider、外部 AI 客户端自动上传、浏览器交互和运行中服务部署未运行；MCP 配置生效需要重建后端与 Web 镜像。
+
+## Provider 视频音轨保留（2026-11-03，Issue #42）
+
+- [x] 同步规格、Provider 接入指南及 [ADR 0066](adr/0066-preserve-provider-video-audio.md)，明确所有 Provider 视频结果保留返回音轨，Seedance 所有输入模式均不发送 `generate_audio`、由供应商按原生行为处理音频；旧无声输出与归档去音决策保留为已取代的历史。去音继续由用户选择既有“音频分离”，不新增前端或 API 音轨开关。
+- [x] Seedance 的纯文本、首尾帧和全能参考均不发送 `generate_audio`，覆盖有无音频参考；移除根据参考音频决定输出去音的分支及能力元数据中的音频开关。其他视频 Provider 与公共归档路径经代码核对没有主动去音，单结果、多结果、下载重试、归档恢复及取消晚到结果继续使用原样归档。
+- [x] `./mvnw -Dtest=ArkSeedanceClientTest,ArkSeedance2AdapterTest,LocalAssetStorageVideoTest,LocalVideoAudioRealMediaTest test`：19 项通过；`./mvnw -Pci-integration -Dit.test=ArkSeedanceArchivePostgresIT,ArkSeedancePostgresIT,MediaCloudCapabilityPostgresIT,VideoOperationPostgresIT verify`：15 项通过，使用真实 PostgreSQL 17.11、FFmpeg、本地假 HTTP 和合成媒体。覆盖 4/15 秒无音频参考请求不携带开关、图片/视频/音频参考请求同样省略字段、两条音轨保留且归档字节与响应完全一致、同一原任务链接刷新与下载重试不重新生成、UNKNOWN 不自动重提、能力元数据，以及显式音频分离的双结果与来源不变。修复前定向测试已复现请求音频开关及归档音轨丢失；本次没有真实 Provider 调用。
+- [ ] 全量测试、真实 Provider 输出音轨验证、真实浏览器播放与部署：未运行；Mock 或假 HTTP/合成媒体不能证明真实 Seedance 已生成声音。
