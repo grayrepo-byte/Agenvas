@@ -183,6 +183,9 @@ describe("VideoPromptPresetList", () => {
     }
     await user.tab({ shift });
     expect(screen.getByRole("button", { name: exit })).toHaveFocus();
+    await user.tab({ shift: !shift });
+    expect(document.activeElement).toHaveAccessibleName(presets.at(-1)!.copy.zh.name);
+    expect(options().length).toBeLessThanOrEqual(20);
   });
 
   it("keeps a focused option mounted when the user scrolls it out of the visible window", () => {
