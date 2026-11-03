@@ -10,7 +10,9 @@
 - `run_media` 直接受理持久媒体 Task，不创建待审批事项，不要求再次确认费用。生成权限来自用户授予凭据的 `MEDIA_GENERATE` 能力，模型不能自行增加权限。
 - 复用已有 Task、Provider、用量、归档、不可变版本、UNKNOWN 和画布事件。内置 Agent 的审批要求不因 MCP 改变。
 - 首版交付一个实际外部客户端的完整闭环，不承诺所有 MCP 客户端兼容。已验证官方 Java SDK 2.0.0 的实际 HTTP 客户端逐一调用 12 工具，以及 MCP Inspector 2.12.0 完成文字与 Mock 图片闭环；Claude Code 2.1.296 通过环境变量 Bearer 健康连接。另有 `McpRealServiceIT` 对复用三方配置的隔离服务完成真实 GPT Image 2 兼容图片能力的 12 工具及单张生成验收；另以 Python HTTP JSON-RPC 客户端完成 AutoDL 视频适配器的 6 段同人物参考生成及 10 句 SeedAudio 配音，全部成功；拼接、字幕和混音由本地完成，成片通过普通 REST 上传回写。Claude 模型驱动对话和其他未列 Provider 未运行；视频仅做抽帧与解码检查，配音未听验。
-- 首版不做 ACP、Agent Runner、OAuth 登录授权服务、外部聊天同步、完成后自动唤醒、上传工具、项目创建/删除、节点删除/复制、UNKNOWN 重试工具或 CreativeSkill 接入。既有对应功能继续工作。
+- 首版不做 ACP、Agent Runner、OAuth 登录授权服务、外部聊天同步、完成后自动唤醒、项目创建/删除、节点删除/复制、UNKNOWN 重试工具或 CreativeSkill 接入。既有对应功能继续工作。
+
+当前扩展增加 `prepare_media_upload` 与同源 `POST /mcp/uploads`，连同已实现的 `compose_video` 共 14 个工具。二进制上传及精确版本复用的当前合约见[客户端指南](mcp-client-guide.md#上传本地媒体)和 OpenAPI；下文首批 12 工具与最初验收记录保留其历史范围。
 
 ## 2. 执行拓扑
 
@@ -81,7 +83,7 @@ MCP 凭据不能调用管理凭据的 REST，也不能借由工具枚举管理�
 
 ### 4.2 认证与授权链
 
-精确 `/mcp` 使用优先的独立无状态 Spring Security 链，只接受 Bearer，拒绝 Cookie 作为替代认证，不创建网页 Session。仅 MCP 协议入口免 CSRF，现有网页/API 防护保留。MCP token 只作为凭据，不进入模型工具参数。
+精确 `/mcp` 与 `/mcp/uploads` 使用优先的独立无状态 Spring Security 链，只接受 Bearer，拒绝 Cookie 作为替代认证，不创建网页 Session。仅这两个原生客户端入口免 CSRF，现有网页/API 防护保留。MCP token 只作为凭据，不进入模型工具参数。
 
 ```text
 Bearer → 有效凭据与用户 → 工具权限与参数白名单
@@ -92,7 +94,7 @@ Bearer → 有效凭据与用户 → 工具权限与参数白名单
 
 写命令在短事务内再次锁定并核验凭据有效性。统一锁顺序为项目事务锁 → 凭据行锁 → 目标业务对象/命令账本；撤销只锁凭据，不反向取项目锁。已先取得授权锁的短事务可以提交；撤销成功返回后，后续写事务必须拒绝。撤销不回滚历史，也不取消已经受理的 Task。
 
-恢复模式按工具语义区分读写：MCP 的读取也使用 HTTP POST，不能把现有 `RecoveryModeWriteGuard` 的 HTTP 方法判断直接套过来。归档项目拒绝写入；读取继续按既有项目规则处理。原生客户端不携带 Origin；首版拒绝带 Origin 的浏览器调用，不开放 CORS。HTTPS 与 Host 按部署反代处理。后端实际请求体上限 300 KiB，工具参数 256 KiB，Nginx 外层 2 MiB；每用户跨令牌共用 4 个在途请求，进程最多 64 个，超限返回 429 和 Retry-After。SDK 原始报文日志关闭，协议解析失败不回传正文片段。
+恢复模式按工具语义区分读写：MCP 的读取也使用 HTTP POST，不能把现有 `RecoveryModeWriteGuard` 的 HTTP 方法判断直接套过来。归档项目拒绝写入；读取继续按既有项目规则处理。原生客户端不携带 Origin；首版拒绝带 Origin 的浏览器调用，不开放 CORS。HTTPS 与 Host 按部署反代处理。`/mcp` JSON 实际请求体上限 300 KiB，工具参数 256 KiB，Nginx 外层 2 MiB；上传独立使用 501 MiB 总请求上限和 16 KiB 元数据上限；每用户跨令牌共用 4 个在途请求，进程最多 64 个，超限返回 429 和 Retry-After。SDK 原始报文日志关闭，协议解析失败不回传正文片段。
 
 ## 5. 写命令、任务与来源
 
@@ -138,7 +140,7 @@ V30 新增以下表，未修改此前 V27–V29：
 | `mcp_operation_task` | 外部命令到全部受理 Task 的类型化关联和输出顺序；Task FK，防止只追踪主任务 |
 | `mcp_operation_version` | 外部命令到文字/媒体内容版本的来源关联；版本 FK，媒体归档时从可信 Task 来源补齐 |
 
-文字新增 `ArtifactVersion.CreatedByKind.EXTERNAL_TOOL`，同步枚举、数据库约束和 API 类型；不填写虚假 Run，不伪装导演产物。媒体结果仍为 `TASK`，通过 Task 和关联表记录 MCP 发起来源。原 USER/AGENT/TASK 数据不重写，旧 Agent 数据不清理。
+文字与可信 MCP 上传版本使用 `ArtifactVersion.CreatedByKind.EXTERNAL_TOOL`，同步枚举、数据库约束和 API 类型；不填写虚假 Run，不伪装导演产物。生成媒体结果仍为 `TASK`，通过 Task 和关联表记录 MCP 发起来源。原 USER/AGENT/TASK 数据不重写，旧 Agent 数据不清理。
 
 不新增 MCP 审批、模型检查点或外部会话表。MCP 命令完成表示本地业务已提交；媒体成功与否以 Task 为准。
 

@@ -51,7 +51,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** Seedance result download, audio removal and archive with a fake Ark API. */
+/** Seedance result download, audio preservation and archive with a fake Ark API. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(classes = {AgenvasApplication.class, ArkSeedanceArchivePostgresIT.FakeClient.class})
@@ -95,7 +95,7 @@ class ArkSeedanceArchivePostgresIT {
     @Autowired private ObjectMapper mapper;
 
     @Test
-    void expiredUrlRefreshesOnlyOriginalTaskThenArchivesSilentVideo() throws Exception {
+    void expiredUrlRefreshesOnlyOriginalTaskThenArchivesOriginalVideoWithAudio() throws Exception {
         VIDEO_BYTES = videoWithAudio();
         var connection = catalog.createConnection("ark-it-connection", "Ark fake", "ARK",
                 null, "fake-ark-key");
@@ -136,7 +136,10 @@ class ArkSeedanceArchivePostgresIT {
         var probe = mapper.readTree(mediaTools.ffprobe(List.of("-v", "error",
                 "-show_entries", "stream=codec_type:format=format_name,duration",
                 "-of", "json", archived.toString())));
-        assertThat(probe.path("streams").toString()).contains("video").doesNotContain("audio");
+        assertThat(probe.path("streams"))
+                .extracting(stream -> stream.path("codec_type").asText())
+                .containsExactly("video", "audio", "audio");
+        assertThat(Files.readAllBytes(archived)).isEqualTo(VIDEO_BYTES);
         assertThat(probe.path("format").path("duration").asDouble()).isBetween(3.0, 5.5);
         assertThat(jdbc.sql("select count(*) from project_event where project_id=:id")
                 .param("id", accepted.project().id()).query(Integer.class).single())
@@ -213,6 +216,8 @@ class ArkSeedanceArchivePostgresIT {
             mediaTools.ffmpeg(List.of("-hide_banner", "-loglevel", "error", "-nostdin",
                     "-f", "lavfi", "-i", "color=c=blue:s=320x180:r=16",
                     "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100",
+                    "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000",
+                    "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0",
                     "-t", "4", "-c:v", "libx264", "-pix_fmt", "yuv420p",
                     "-c:a", "aac", "-shortest", "-y", output.toString()));
             return Files.readAllBytes(output);
@@ -237,7 +242,7 @@ class ArkSeedanceArchivePostgresIT {
                     assertThat(body.path("model").asText())
                             .isEqualTo("doubao-seedance-2-0-260128");
                     assertThat(body.path("duration").asInt()).isEqualTo(CLIP_SECONDS);
-                    assertThat(body.path("generate_audio").booleanValue()).isFalse();
+                    assertThat(body.has("generate_audio")).isFalse();
                     assertThat(body.path("content").get(1).path("role").asText())
                             .isEqualTo("first_frame");
                     CREATES.incrementAndGet();

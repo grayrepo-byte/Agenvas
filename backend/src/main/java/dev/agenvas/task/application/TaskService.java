@@ -704,12 +704,12 @@ public class TaskService {
             TaskRepository.ArtifactTarget target = tasks.findArtifactTarget(lease.id())
                     .orElseThrow(() -> validation(ApiMessage.of("api.task-service.the-media-task-is-missing-a-snapshot-of-the-production")));
             AgentRun run = lease.runId() == null ? null
-                    : runs.get(ownerId, lease.projectId(), lease.runId());
+                    : runs.getForTaskCompletion(ownerId, lease.projectId(), lease.runId());
             boolean canceled = current.cancelRequested()
                     || (run != null && (run.status() == AgentRun.Status.CANCEL_REQUESTED
                             || run.status() == AgentRun.Status.CANCELED));
-            boolean projectArchived = projects.get(ownerId, lease.projectId()).status()
-                    == Project.Status.ARCHIVED;
+            boolean projectInactive = projects.getRetainedProject(ownerId, lease.projectId()).status()
+                    != Project.Status.ACTIVE;
             UUID canvasItemId = target.canvasItemId();
             if (canvasItemId != null
                     && !canvasItemId.toString().equals(
@@ -718,7 +718,7 @@ public class TaskService {
             }
             boolean explicitSelection = lease.approvedMedia()
                     && lease.input().path(Task.REQUIRE_EXPLICIT_SELECTION_PROPERTY).asBoolean(false);
-            boolean allowTargetSelection = !explicitSelection && !canceled && !projectArchived && pinnedMediaInputsCurrent(ownerId, lease);
+            boolean allowTargetSelection = !explicitSelection && !canceled && !projectInactive && pinnedMediaInputsCurrent(ownerId, lease);
             boolean selectResult = allowTargetSelection
                     && (lease.runId() != null || canvasItemId != null);
             boolean acknowledgedPoll = requireMediaResultLease(current, lease, workerId, canceled, now);
@@ -733,7 +733,7 @@ public class TaskService {
             output.put("artifactVersionId", result.versionId().toString());
             output.put("selected", result.selected());
             // New output cards have no previous selection or draft to compare with the pinned input.
-            boolean allowAdditionalSelection = !explicitSelection && !canceled && !projectArchived;
+            boolean allowAdditionalSelection = !explicitSelection && !canceled && !projectInactive;
             output.set("additionalResults", archiveAdditionalResults(ownerId, lease, target, results,
                     allowTargetSelection, allowAdditionalSelection));
             if (providerUsage != null) output.set("providerUsage", providerUsage.deepCopy());
@@ -744,7 +744,7 @@ public class TaskService {
                     : tasks.finishSubmitting(lease, validateWorkerId(workerId), output, now))) {
                 throw leaseLost();
             } else if (!selectResult && run != null && !lease.approvedMedia()) {
-                AgentRun latest = runs.get(ownerId, lease.projectId(), lease.runId());
+                AgentRun latest = runs.getForTaskCompletion(ownerId, lease.projectId(), lease.runId());
                 if (latest.status() == AgentRun.Status.WAITING_TASKS) {
                     runs.transition(ownerId, lease.projectId(), lease.runId(),
                             latest.version(), AgentRun.Status.BLOCKED);
@@ -842,7 +842,7 @@ public class TaskService {
                 output.add(archiveSilentVideoResult(ownerId, lease, extra, allowTargetSelection));
                 continue;
             }
-            Artifact extraArtifact = artifacts.get(ownerId, lease.projectId(), target.artifactId()).artifact();
+            Artifact extraArtifact = artifacts.getTaskResultTarget(ownerId, lease.projectId(), target.artifactId());
             if (extraArtifact.kind() != extra.kind()) {
                 extraArtifact = artifacts.createTaskMediaIdentityWithinChange(ownerId, lease.projectId(), extra.kind(),
                         "RunningHub " + extra.kind() + " " + (outputIndex + 1));
@@ -1178,7 +1178,7 @@ public class TaskService {
         return events.recordChange(ownerId, lease.projectId(), () -> {
             // The project-row lock also serializes draft and card changes, closing the
             // preflight-to-submission race before any provider request is sent.
-            if (projects.get(ownerId, lease.projectId()).status() == Project.Status.ARCHIVED) {
+            if (projects.getRetainedProject(ownerId, lease.projectId()).status() != Project.Status.ACTIVE) {
                 throw new ApiProblemException(HttpStatus.CONFLICT, "TASK_PROJECT_ARCHIVED",
                         ApiMessage.of("api.project-service.project-archived"), ApiMessage.of("api.task-service.no-new-media-build-requests-will-be-submitted-after-the"), false);
             }

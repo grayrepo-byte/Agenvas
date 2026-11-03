@@ -35,30 +35,33 @@ const ITEM: CanvasItem = {
   selectedVersionId: null, selectedVersion: null, version: 0, artifact: EMPTY_IMAGE,
 };
 
-function mockUpload(onUpload: () => void) {
+function mockUpload(onUpload: () => void, kind: "IMAGE" | "VIDEO") {
   server.use(http.get("/api/v1/auth/csrf", () =>
     HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })));
   // Match the existing image-upload tests: inspect browser FormData before Node's
   // fetch implementation tries to serialize jsdom's File objects.
   const interceptedFetch = globalThis.fetch;
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-    if (input === UPLOAD_URL) {
+    if (input === (kind === "VIDEO" ? `${UPLOAD_URL}/video` : UPLOAD_URL)) {
       expect(new Headers(init?.headers).get("X-XSRF-TOKEN")).toBe("test-token");
       expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
       expect(init?.body).toBeInstanceOf(FormData);
-      expect((init?.body as FormData).get("file")).toHaveProperty("name", "reference.webp");
+      expect((init?.body as FormData).get("file")).toHaveProperty("name", kind === "VIDEO" ? "clip.mp4" : "reference.webp");
       onUpload();
-      return HttpResponse.json({ id: ASSET_ID, mediaKind: "IMAGE" }, { status: 201 });
+      return HttpResponse.json({ id: ASSET_ID, mediaKind: kind }, { status: 201 });
     }
     return interceptedFetch(input, init);
   });
 }
 
-function mountUpload(initialFile = imageFile()) {
+function mountUpload(kind: "IMAGE" | "VIDEO") {
+  const initialFile = kind === "VIDEO"
+    ? new File(["synthetic video bytes"], "clip.mp4", { type: "video/mp4" }) : imageFile();
+  const artifact = { ...EMPTY_IMAGE, kind };
   const onDone = vi.fn();
   const client = createQueryClient();
   render(<QueryClientProvider client={client}>
-    <MediaCardUpload artifact={EMPTY_IMAGE} item={ITEM} initialFile={initialFile} onDone={onDone} />
+    <MediaCardUpload artifact={artifact} item={{ ...ITEM, artifact }} initialFile={initialFile} onDone={onDone} />
   </QueryClientProvider>);
   return onDone;
 }
@@ -77,10 +80,10 @@ function submitUpload() {
   fireEvent.submit(form);
 }
 
-describe("MediaCardUpload", () => {
+describe.each(["IMAGE", "VIDEO"] as const)("MediaCardUpload %s", (kind) => {
   it("uploads the chosen file immediately into the empty source node", async () => {
     const operations: string[] = [];
-    mockUpload(() => operations.push("upload"));
+    mockUpload(() => operations.push("upload"), kind);
     server.use(
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
@@ -90,7 +93,7 @@ describe("MediaCardUpload", () => {
           selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
       }),
     );
-    const onDone = mountUpload();
+    const onDone = mountUpload(kind);
 
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
     expect(operations).toEqual(["upload", "card-upload"]);
@@ -100,7 +103,7 @@ describe("MediaCardUpload", () => {
   it("retries the idempotent card operation once after a transient response failure", async () => {
     const operations: string[] = [];
     let requests = 0;
-    mockUpload(() => operations.push("upload"));
+    mockUpload(() => operations.push("upload"), kind);
     server.use(
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
@@ -114,7 +117,7 @@ describe("MediaCardUpload", () => {
           selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
       }),
     );
-    const onDone = mountUpload();
+    const onDone = mountUpload(kind);
 
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
     expect(operations).toEqual(["upload", "card-upload", "card-upload"]);
@@ -124,7 +127,7 @@ describe("MediaCardUpload", () => {
   it("retains uploaded bytes for a manual retry after repeated transient failures", async () => {
     const operations: string[] = [];
     let failing = true;
-    mockUpload(() => operations.push("upload"));
+    mockUpload(() => operations.push("upload"), kind);
     server.use(
       http.post(CARD_UPLOAD_URL, async ({ request }) => {
         operations.push("card-upload");
@@ -137,10 +140,10 @@ describe("MediaCardUpload", () => {
           selectedVersion: REVISED_IMAGE.resourceDefaultVersion, version: 1 }, { status: 201 });
       }),
     );
-    const onDone = mountUpload();
+    const onDone = mountUpload(kind);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("响应暂时不可用");
-    expect(screen.getByText("已选择：reference.webp")).toBeInTheDocument();
+    expect(screen.getByText(kind === "VIDEO" ? "已选择：clip.mp4" : "已选择：reference.webp")).toBeInTheDocument();
     failing = false;
     submitUpload();
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
@@ -153,18 +156,18 @@ describe("MediaCardUpload", () => {
     const conflict = () => HttpResponse.json({ title: "版本冲突", detail: "卡片已被其他编辑更新。",
       code: "ARTIFACT_VERSION_CONFLICT", retryable: false },
     { status: 409, headers: { "Content-Type": "application/problem+json" } });
-    mockUpload(() => operations.push("upload"));
+    mockUpload(() => operations.push("upload"), kind);
     server.use(
       http.post(CARD_UPLOAD_URL, () => {
         operations.push("card-upload");
         return conflict();
       }),
     );
-    const onDone = mountUpload();
+    const onDone = mountUpload(kind);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("卡片已有更新，文件已保留");
-    expect(screen.getByText("已选择：reference.webp")).toBeInTheDocument();
-    expect(screen.getByLabelText("更换图片")).toBeEnabled();
+    expect(screen.getByText(kind === "VIDEO" ? "已选择：clip.mp4" : "已选择：reference.webp")).toBeInTheDocument();
+    expect(screen.getByLabelText(kind === "VIDEO" ? "更换视频" : "更换图片")).toBeEnabled();
     expect(screen.getByRole("button", { name: "重试上传" })).toBeEnabled();
     expect(onDone).not.toHaveBeenCalled();
     expect(operations).toEqual(["upload", "card-upload"]);

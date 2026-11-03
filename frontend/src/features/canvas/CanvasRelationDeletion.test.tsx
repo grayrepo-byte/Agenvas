@@ -10,7 +10,6 @@ import { server } from "../../test/server";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 
 type FlowProps = {
-  deleteKeyCode?: unknown;
   edges?: Edge[];
   onBeforeDelete?: (selection: { nodes: unknown[]; edges: Edge[] }) => Promise<unknown>;
 };
@@ -172,9 +171,8 @@ function edge(prefix: string): Edge {
 }
 
 describe("canvas relation deletion", () => {
-  it("enables both Delete and Backspace and never deletes locally", async () => {
+  it("keeps local entities until server projections confirm deletion", async () => {
     await renderFlow();
-    expect(flowProps.deleteKeyCode).toEqual(["Backspace", "Delete"]);
     expect(await flowProps.onBeforeDelete!({ nodes: [], edges: [] })).toBe(false);
   });
 

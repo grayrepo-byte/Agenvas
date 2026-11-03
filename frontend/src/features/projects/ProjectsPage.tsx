@@ -1,5 +1,5 @@
 import { Field, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
-import { Archive,ArrowClockwise,ArrowRight,Folder,MagnifyingGlass,PencilSimple,Plus,X } from "@/shared/ui/icons";
+import { Archive,ArrowClockwise,ArrowRight,Folder,MagnifyingGlass,PencilSimple,Plus,Trash,X } from "@/shared/ui/icons";
 import { useInfiniteQuery,useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { type FormEvent,useRef,useState } from "react";
 import { Link } from "react-router";
@@ -7,6 +7,7 @@ import {
 ApiError,
 archiveProject,
 createProject,
+deleteProject,
 getCurrentUser,
 listProjects,
 type Project,
@@ -19,6 +20,7 @@ import { PageShell } from "../../shared/ui/PageShell";
 import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Input } from "../../shared/ui/primitives/input";
+import { Dialog,DialogContent,DialogDescription,DialogFooter,DialogHeader,DialogTitle,DialogTrigger } from "../../shared/ui/primitives/dialog";
 import { Select } from "../../shared/ui/Select";
 import { cn } from "../../shared/lib/utils";
 import "./ProjectsPage.css";
@@ -108,6 +110,8 @@ function ProjectCard({ project }: { project: Project }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(project.name);
   const [editVersion, setEditVersion] = useState(project.version);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteVersion, setDeleteVersion] = useState(project.version);
   const archived = project.status === "ARCHIVED";
   const rename = useMutation({
     mutationFn: (nextName: string) => updateProject(project.id, { expectedVersion: editVersion, name: nextName }),
@@ -117,7 +121,18 @@ function ProjectCard({ project }: { project: Project }) {
     },
   });
   const archive = useMutation({ mutationFn: () => archiveProject(project), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["projects"] }) });
-  const pending = rename.isPending || archive.isPending;
+  const remove = useMutation({
+    mutationFn: () => deleteProject(project.id, deleteVersion),
+    onSuccess: async () => {
+      setDeleteOpen(false);
+      queryClient.removeQueries({ predicate: (query) => query.queryKey.includes(project.id) });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["resources"] }),
+      ]);
+    },
+  });
+  const pending = rename.isPending || archive.isPending || remove.isPending;
 
   function startEditing() {
     setName(project.name);
@@ -147,6 +162,28 @@ function ProjectCard({ project }: { project: Project }) {
       ) : <><h3>{project.name}</h3><p className="project-card-meta"><time dateTime={project.updatedAt}>{t("projects.updated", { "0": formatDate(project.updatedAt, { month: "short", day: "numeric" }) })}</time></p></>}
       {archive.error ? <Notice tone="danger">{errorMessage(archive.error)}</Notice> : null}
       {!archived && !editing ? <footer className="project-card-actions"><Button variant="ghost" size="sm" className="project-open" asChild><Link to={`/projects/${project.id}`}>{t("projects.openCanvas")}<ArrowRight data-icon="inline-end" aria-hidden="true" /></Link></Button><Button variant="ghost" size="icon-sm" aria-label={t("projects.renameNamed", { "0": project.name })} disabled={pending} onClick={startEditing} type="button"><PencilSimple aria-hidden="true" /></Button><Button variant="ghost" size="icon-sm" aria-label={t("projects.archiveNamed", { "0": project.name })} disabled={pending} onClick={() => archive.mutate()} type="button"><Archive aria-hidden="true" /></Button></footer> : null}
+      {archived ? <footer className="project-card-actions">
+        <Dialog open={deleteOpen} onOpenChange={(open) => { if (!remove.isPending) setDeleteOpen(open); }}>
+          <DialogTrigger asChild><Button variant="ghost" size="sm" disabled={pending}
+            aria-label={t("projects.deleteNamed", { "0": project.name })}
+            onClick={() => { setDeleteVersion(project.version); remove.reset(); }} type="button">
+            <Trash data-icon="inline-start" aria-hidden="true" />{t("projects.delete")}
+          </Button></DialogTrigger>
+          <DialogContent showCloseButton={false} aria-busy={remove.isPending}>
+            <DialogHeader><DialogTitle>{t("projects.deleteTitle", { "0": project.name })}</DialogTitle>
+              <DialogDescription>{t("projects.deleteDescription")}</DialogDescription></DialogHeader>
+            {remove.error ? <Notice tone="danger">{errorMessage(remove.error)}</Notice> : null}
+            {project.version !== deleteVersion ? <Notice tone="warning">{t("projects.deleteConflict")}</Notice> : null}
+            <DialogFooter>
+              <Button variant="outline" disabled={remove.isPending} onClick={() => setDeleteOpen(false)} type="button">{t("common.cancel")}</Button>
+              <Button variant="destructive" disabled={pending || project.version !== deleteVersion}
+                onClick={() => { if (!pending && project.version === deleteVersion) remove.mutate(); }} type="button">
+                {remove.isPending ? t("projects.deleting") : t("projects.confirmDelete")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </footer> : null}
       {archive.isPending ? <LoadingState label={t("projects.archiving")} compact /> : null}
       </div>
     </article>

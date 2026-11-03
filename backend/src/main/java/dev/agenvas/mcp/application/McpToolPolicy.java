@@ -22,8 +22,8 @@ public class McpToolPolicy {
         try (var input = new ClassPathResource("mcp/tools.json").getInputStream()) {
             definitions = mapper.readTree(input).path("tools").valueStream().toList();
         } catch (IOException failure) { throw new IllegalStateException("MCP tool contract is missing", failure); }
-        if (definitions.size() != 13 || definitions.stream().map(n -> n.path("name").asText()).distinct().count() != 13)
-            throw new IllegalStateException("MCP tool catalog must contain the thirteen reviewed tools");
+        if (definitions.size() != 14 || definitions.stream().map(n -> n.path("name").asText()).distinct().count() != 14)
+            throw new IllegalStateException("MCP tool catalog must contain the fourteen reviewed tools");
     }
     public List<JsonNode> definitions() { return definitions.stream().map(JsonNode::deepCopy).toList(); }
     public JsonNode definition(String name) {
@@ -35,6 +35,7 @@ public class McpToolPolicy {
         if (arguments == null || arguments.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_ARGUMENT_BYTES
                 || !matches(definition(name).path("inputSchema"), arguments, 0)) throw invalid();
         if (arguments.has("commandId") && arguments.path("commandId").asText().isBlank()) throw invalid();
+        if ("prepare_media_upload".equals(name) && arguments.path("title").asText().isBlank()) throw invalid();
         if ("read_canvas".equals(name) && arguments.path("includeDrafts").asBoolean()
                 && arguments.path("limit").asInt(20) > 6) throw invalid();
         if ("update_media_draft".equals(name) && arguments.path("patch").isEmpty()) throw invalid();

@@ -70,6 +70,14 @@ export function listResources(filters: ResourceFilters): Promise<components["sch
   Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
   return readJson(`/api/v1/resources?${query}`, t("resources.loadFailed"));
 }
+
+/** Exact project results, including meaningful text revisions and media with no resource default. */
+export function listProjectResources(projectId: string,
+  filters: NonNullable<paths["/api/v1/projects/{projectId}/resources"]["get"]["parameters"]["query"]>): Promise<components["schemas"]["ResourcePage"]> {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined) query.set(key, String(value)); });
+  return readJson(`/api/v1/projects/${encodeURIComponent(projectId)}/resources?${query}`, t("api.errors.projectResourcesUnavailable"));
+}
 export type Storyboard = components["schemas"]["Storyboard"];
 export type StoryboardShot = components["schemas"]["StoryboardShot"];
 export type StoryboardProduction = components["schemas"]["StoryboardProduction"];
@@ -589,6 +597,13 @@ export async function archiveProject(project: Project): Promise<Project> {
   return writeJson<Project>(`/api/v1/projects/${project.id}/archive`, {
     method: "POST",
     body: JSON.stringify({ expectedVersion: project.version }),
+  });
+}
+
+/** Removes an archived project with the version confirmed by the user. */
+export async function deleteProject(projectId: string, expectedVersion: number): Promise<void> {
+  return writeEmpty(`/api/v1/projects/${encodeURIComponent(projectId)}?expectedVersion=${expectedVersion}`, {
+    method: "DELETE",
   });
 }
 

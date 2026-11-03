@@ -8,7 +8,7 @@
 .app-sidebar-toggle { display: grid; place-items: center; flex: none; width: 27px; height: 28px; color: var(--ui-text-muted); border: 0; border-radius: var(--ui-radius-sm); background: transparent; }
 .app-sidebar-toggle:hover { color: var(--ui-text); background: var(--ui-surface-raised); }
 .app-sidebar-section { display: block; margin: 0 10px 10px; font-size: 10px; color: var(--ui-text-subtle); letter-spacing: .06em; }
-.app-sidebar nav { display: flex; flex-direction: column; gap: var(--ui-space-1); min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+.app-sidebar nav { display: flex; flex-direction: column; gap: var(--ui-space-1); min-height: 0; overflow-y: auto; }
 .app-nav-item { position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; height: 38px; border: 0; border-radius: var(--ui-radius-md); padding: 0 10px; background: transparent; color: var(--ui-text-muted); text-decoration: none; text-align: left; font-size: var(--ui-text-sm); transition: color 150ms, background 150ms; }
 .app-nav-item { flex-shrink: 0; }
 .app-nav-item > svg { flex: none; }

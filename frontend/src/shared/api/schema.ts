@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/mcp/uploads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 使用 MCP 令牌上传项目媒体并创建精确内容版本
+         * @description 原生客户端调用 prepare_media_upload 后，以同一 Bearer 令牌 POST metadata JSON part 和 file 二进制 part。要求 READ + CONTENT_WRITE；不接受 Session、Origin 或本地文件路径。实际大小与 SHA-256 必须匹配；同 commandId 同参数重放返回原结果，异参返回409。默认只创建项目资源，提供 placement 时同时放置节点。图片20 MiB、音频50 MiB、MP4视频500 MiB，请求总限501 MiB，实际解码与像素/时长限制沿用普通上传。恢复模式与关闭MCP时拒绝，不触发生成。
+         */
+        post: operations["uploadMcpMedia"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/media-templates/third-party/sources": {
         parameters: {
             query?: never;
@@ -1440,7 +1460,11 @@ export interface paths {
         get: operations["getProject"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * 删除已归档项目
+         * @description Logical deletion hides the project and its results from user reads while retaining accepted task results and audit data. Requires an archived project without an active Agent Run. Replaying the same expectedVersion after a successful deletion returns 204; other stale versions conflict. Physical media cleanup is deferred.
+         */
+        delete: operations["deleteProject"];
         options?: never;
         head?: never;
         /** 乐观更新项目设置 */
@@ -3177,6 +3201,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{projectId}/resources": {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Browse exact project results, including historical and unselected results after canvas removal. Excludes empty media identities, blank text revisions, archived artifacts and internal Skill imports. Does not change resource defaults. */
+        get: operations["listProjectResources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/resources": {
         parameters: {
             query?: never;
@@ -3935,6 +3984,105 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        McpMediaUploadMetadata: {
+            commandId: string;
+            /** Format: uuid */
+            projectId: string;
+            /** @enum {string} */
+            kind: "IMAGE" | "VIDEO" | "AUDIO";
+            title: string;
+            placement?: {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+                zIndex?: number;
+            };
+            byteSize: number;
+            sha256: string;
+        };
+        McpMediaUploadResponse: {
+            /** Format: uuid */
+            operationId: string;
+            artifact: {
+                /** Format: uuid */
+                artifactId: string;
+                /** Format: uuid */
+                versionId: string;
+                /** @enum {string} */
+                kind: "IMAGE" | "VIDEO" | "AUDIO";
+                title: string;
+                versionNo: number;
+                /** @enum {string} */
+                createdByKind: "EXTERNAL_TOOL";
+                expectedVersion: number;
+                contentTruncated: boolean;
+                generationPrompt: string;
+            };
+            media: {
+                /** @enum {string} */
+                kind: "IMAGE" | "VIDEO" | "AUDIO";
+                contentType: string;
+                /** Format: int64 */
+                byteSize: number;
+                sha256: string;
+                width?: number;
+                height?: number;
+                durationMs?: number;
+            };
+            node?: {
+                /** Format: uuid */
+                canvasItemId: string;
+                /** Format: uuid */
+                artifactId: string;
+                /** @enum {string} */
+                kind: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
+                title: string;
+                expectedVersion: number;
+                artifactVersion: number;
+                versionId?: string | null;
+                locked: boolean;
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+                zIndex: number;
+                mediaDraft?: {
+                    version: number;
+                    capabilityId: string | null;
+                    styleId: string | null;
+                    videoInputMode: ("TEXT" | "START_END" | "GENERAL_REFERENCE") | null;
+                    durationSeconds: number | null;
+                    prompt: string;
+                    parameters: Record<string, never>;
+                    mediaInputs: {
+                        /** Format: uuid */
+                        versionId: string;
+                        /** Format: uuid */
+                        artifactId: string;
+                        /** @enum {string} */
+                        role: "REFERENCE" | "START_FRAME" | "END_FRAME" | "AUDIO_REFERENCE" | "VIDEO_REFERENCE";
+                        order: number;
+                        color: string;
+                    }[];
+                    mentions: {
+                        /** Format: uuid */
+                        versionId: string;
+                        /** @enum {string} */
+                        role: "REFERENCE" | "START_FRAME" | "END_FRAME" | "AUDIO_REFERENCE" | "VIDEO_REFERENCE";
+                    }[];
+                } | {
+                    version: number;
+                    capabilityId: string | null;
+                    styleId: string | null;
+                    videoInputMode: ("TEXT" | "START_END" | "GENERAL_REFERENCE") | null;
+                    durationSeconds: number | null;
+                    promptCharacters: number;
+                    mediaInputCount: number;
+                    mentionCount: number;
+                };
+            };
+        };
         CharacterView: {
             /** Format: uuid */
             versionId: string;
@@ -6642,6 +6790,11 @@ export interface components {
             itemId: string;
             /** Format: uuid */
             artifactId: string;
+            /**
+             * Format: uuid
+             * @description Optional exact IMAGE/VIDEO/AUDIO result belonging to this artifact and project. Initializes only this new node and its one-result history with a blank draft; never changes the resource default. Omit for ordinary creation or TEXT. Identical retries reuse the itemId and complete command.
+             */
+            versionId?: string;
             x: number;
             y: number;
             width: number;
@@ -7362,6 +7515,72 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    uploadMcpMedia: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    metadata: components["schemas"]["McpMediaUploadMetadata"];
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已归档的不可变版本和可选节点；重放返回同一结果 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["McpMediaUploadResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 文件或请求超过上限 */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 实际大小/摘要不符或媒体解码失败 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 恢复模式只读或存储暂不可用 */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     listThirdPartyPromptSources: {
         parameters: {
             query?: never;
@@ -10217,6 +10436,39 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    deleteProject: {
+        parameters: {
+            query: {
+                expectedVersion: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: components["parameters"]["ProjectId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 项目已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     updateProject: {
         parameters: {
             query?: never;
@@ -13002,6 +13254,48 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listProjectResources: {
+        parameters: {
+            query?: {
+                kind?: components["schemas"]["ArtifactKind"];
+                query?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description 支持 en、zh、ru、ja 及其地区变体，按质量权重选择；缺失、不支持或无效时回退 zh。
+                 * @example ru-RU, en;q=0.8
+                 */
+                "Accept-Language"?: components["parameters"]["AcceptLanguage"];
+            };
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact results ordered by creation time and version ID descending. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourcePage"];
+                };
+            };
+            /** @description ProblemDetail; unauthorized project access follows project read semantics. */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listResources: {

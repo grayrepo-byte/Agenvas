@@ -59,7 +59,7 @@ public class ArkSeedanceClient {
             throw new IllegalArgumentException("Seedance first-frame inputs are unsupported");
         }
         return create(key, prompt, List.of(new Reference("image/png", firstFramePng, "first_frame")),
-                durationSeconds, ratio, false);
+                durationSeconds, ratio);
     }
 
     public record Reference(String contentType, byte[] bytes, String role, String url) {
@@ -69,7 +69,7 @@ public class ArkSeedanceClient {
     }
 
     public String create(String key, String prompt, List<Reference> references,
-            int durationSeconds, String ratio, boolean generateAudio) {
+            int durationSeconds, String ratio) {
         if (durationSeconds < 4 || durationSeconds > 15
                 || !java.util.Set.of("16:9", "9:16", "1:1").contains(ratio))
             throw new IllegalArgumentException("Seedance parameters unsupported");
@@ -89,7 +89,7 @@ public class ArkSeedanceClient {
         request.put("duration", durationSeconds);
         request.put("ratio", ratio);
         request.put("resolution", "720p");
-        request.put("generate_audio", generateAudio);
+        // Leave native audio to the provider in every input mode; reference audio does not control output tracks.
         request.put("output_format", "mp4");
         request.put("execution_expires_after", java.time.Duration.ofHours(48).toSeconds());
         JsonNode response = request(key, "POST", TASKS,

@@ -9,6 +9,7 @@ import { createQueryClient } from "../../app/queryClient";
 import type { CanvasEditRequest,CanvasItem,ProjectSnapshot,SaveMediaDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { CANVAS_POINTER_THRESHOLD } from "./canvasInteraction";
+import { canvasGroupNodeId } from "./canvasGroups";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
 import { ProjectWorkspacePage } from "./ProjectWorkspacePage";
 
@@ -25,6 +26,7 @@ const focusProbe = vi.hoisted(() => ({
   center: vi.fn<ReactFlowInstance["setCenter"]>().mockResolvedValue(true),
   viewport: vi.fn<ReactFlowInstance["setViewport"]>().mockResolvedValue(true),
   fit: vi.fn<ReactFlowInstance["fitView"]>().mockResolvedValue(true), zoom: 1,
+  updateInternals: vi.fn(),
   instance: null as ReactFlowInstance | null,
 }));
 
@@ -45,6 +47,8 @@ vi.mock("@xyflow/react", async (importOriginal) => {
   }
   return {
     ...real,
+    // Group handle geometry is covered in native Chromium; jsdom has no DOMMatrix.
+    useUpdateNodeInternals: () => focusProbe.updateInternals,
     ReactFlow: (props: FlowProps) => {
       flowProps = props;
       // Keep a fixed viewport; node dimensions come from the actual workspace projection.
@@ -101,6 +105,8 @@ function snapshot(): ProjectSnapshot {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 beforeEach(() => {
+  // These callback tests have no browser layout; release hit testing sees empty space.
+  Object.defineProperty(document, "elementFromPoint", { configurable: true, value: () => null });
   flowProps = {};
   renderRealFlow = false;
   focusProbe.center.mockClear();
@@ -141,7 +147,7 @@ beforeEach(() => {
     }));
 });
 
-async function renderFlow() {
+async function renderFlow(expectedNodeCount = items.length) {
   const client = createQueryClient();
   client.setDefaultOptions({ queries: { retry: false } });
   render(<QueryClientProvider client={client}>
@@ -149,12 +155,150 @@ async function renderFlow() {
       <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
     </MemoryRouter>
   </QueryClientProvider>);
-  await waitFor(() => expect(flowProps.nodes).toHaveLength(items.length));
+  await waitFor(() => expect(flowProps.nodes).toHaveLength(expectedNodeCount));
+  return client;
 }
 
 const selectedIds = () => useCanvasStore.getState().selectedIds;
 const selectChange = (id: string, selected: boolean): SelectionChange =>
   ({ id, type: "select", selected });
+
+describe("canvas keyboard ownership", () => {
+  it.each([
+    { key: "c", metaKey: true }, { key: "v", ctrlKey: true }, { key: "d", metaKey: true },
+    { key: "z", metaKey: true }, { key: "Z", metaKey: true, shiftKey: true }, { key: "y", ctrlKey: true },
+    { key: "Backspace" }, { key: "Delete" },
+    { key: "c", metaKey: true, repeat: true }, { key: "v", ctrlKey: true, repeat: true },
+    { key: "z", metaKey: true, repeat: true },
+  ])("consumes unavailable canvas shortcut %j without invoking the browser", async (options) => {
+    await renderInteractiveFlow();
+    const pane = document.querySelector(".react-flow__pane")!;
+    const shortcut = createEvent.keyDown(pane, options);
+    fireEvent(pane, shortcut);
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(selectedIds()).toEqual([]);
+    expect(flowProps.nodes).toHaveLength(items.length);
+  });
+
+  it("leaves deletion to an open dialog even while a canvas node stays selected", async () => {
+    await renderInteractiveFlow();
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card"]));
+    const dialog = document.createElement("div"); dialog.setAttribute("role", "dialog");
+    const content = document.createElement("div"); dialog.append(content); document.body.append(dialog);
+    try {
+      const shortcut = createEvent.keyDown(content, { key: "Backspace", code: "Backspace" });
+      fireEvent(content, shortcut);
+      expect(shortcut.defaultPrevented).toBe(false);
+      expect(selectedIds()).toEqual(["image-card"]);
+    } finally { dialog.remove(); }
+  });
+
+  it("deletes a selected relation through the same guarded shortcut without removing its nodes", async () => {
+    let connected = true;
+    const disconnected: unknown[] = [];
+    server.use(
+      http.get("/api/v1/projects/:projectId/canvas/connections", () => HttpResponse.json({ items: connected ? [{
+        id: "media-line", projectId: "project-1", sourceCanvasItemId: "image-card", targetCanvasItemId: "text-card",
+        sourceArtifactVersionId: imageVersionId, relationType: "MEDIA_INPUT", version: 0, createdAt: now, updatedAt: now,
+      }] : [] })),
+      http.post("/api/v1/projects/:projectId/canvas/connections/:connectionId/disconnect", async ({ request }) => {
+        disconnected.push(await request.json()); connected = false;
+        return HttpResponse.json({ projectId: "project-1", canvasItemId: "text-card", prompt: "", parameters: {},
+          durationSeconds: null, capabilityId: null, videoInputMode: null, mediaInputs: [], mentions: [],
+          displayMode: "RESULT", version: 1, createdAt: now, updatedAt: now });
+      }),
+    );
+    await renderInteractiveFlow();
+    await waitFor(() => expect(flowProps.edges).toHaveLength(1));
+    act(() => flowProps.onEdgesChange?.([{ id: flowProps.edges![0]!.id, type: "select", selected: true }]));
+    await waitFor(() => expect(flowProps.edges?.[0]?.selected).toBe(true));
+    const pane = document.querySelector(".react-flow__pane")!;
+    const shortcut = createEvent.keyDown(pane, { key: "Delete" });
+    fireEvent(pane, shortcut);
+    expect(shortcut.defaultPrevented).toBe(true);
+    await waitFor(() => expect(flowProps.edges).toHaveLength(0));
+    expect(disconnected).toEqual([{ expectedTargetDraftVersion: 0 }]);
+    expect(flowProps.nodes).toHaveLength(items.length);
+  });
+
+  it("ungroups multiple selected group frames sequentially while keeping every member", async () => {
+    let grouped: CanvasItem[] = items.map((item, index) => ({ ...item, groupId: index < 2 ? "group-1" : "group-2" }));
+    let groups = ["group-1", "group-2"].map((id) => ({ id, projectId: "project-1", name: id, collapsed: true, version: 0 }));
+    const requests: CanvasEditRequest[] = [];
+    server.use(
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: grouped } })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: grouped })),
+      http.get("/api/v1/projects/:projectId/canvas/editor", () => HttpResponse.json({ items: grouped, groups })),
+      http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
+        const input = await request.json() as CanvasEditRequest; requests.push(input);
+        grouped = grouped.map((item) => input.itemChanges?.some((change) => change.itemId === item.id)
+          ? { ...item, groupId: null, version: item.version + 1 } : item);
+        groups = groups.filter((group) => !input.groupChanges?.some((change) => change.groupId === group.id));
+        return HttpResponse.json({ items: grouped, groups, receipt: {
+          id: input.commandId, operation: input.operation, revision: 0, state: "APPLIED" } });
+      }),
+    );
+    renderRealFlow = true;
+    await renderFlow(items.length + 2);
+    act(() => useCanvasStore.getState().setSelectedIds([canvasGroupNodeId("group-1"), canvasGroupNodeId("group-2")]));
+    fireEvent.keyDown(document.querySelector(".react-flow__pane")!, { key: "Delete" });
+    await waitFor(() => expect(requests).toHaveLength(2));
+    await waitFor(() => expect(flowProps.nodes).toHaveLength(items.length));
+    expect(requests.every((request) => request.operation === "GROUP")).toBe(true);
+    expect(grouped.every((item) => item.groupId === null)).toBe(true);
+  });
+
+  it("keeps native copy of a manually selected text range outside an editor", async () => {
+    await renderInteractiveFlow();
+    act(() => useCanvasStore.getState().setSelectedIds(["image-card"]));
+    const text = within(nodeElement("text-card")).getByText("选中的正文");
+    const range = document.createRange(); range.selectNodeContents(text);
+    window.getSelection()?.addRange(range);
+    try {
+      const shortcut = createEvent.keyDown(text, { key: "c", metaKey: true });
+      fireEvent(text, shortcut);
+      expect(shortcut.defaultPrevented).toBe(false);
+      expect(window.getSelection()?.toString()).toBe("选中的正文");
+      expect(selectedIds()).toEqual(["image-card"]);
+    } finally { window.getSelection()?.removeAllRanges(); }
+  });
+
+  it("consumes shortcuts during a pending edit and after its failure without submitting again", async () => {
+    const requests: CanvasEditRequest[] = [];
+    let finish: () => void = () => {};
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    server.use(
+      http.get("/api/v1/projects/:projectId/canvas/editor", () => HttpResponse.json({ items, groups: [] })),
+      http.post("/api/v1/projects/:projectId/canvas/edits", async ({ request }) => {
+        requests.push(await request.json() as CanvasEditRequest);
+        await pending;
+        return HttpResponse.json({ code: "SYNTHETIC_FAILURE", title: "Synthetic edit unavailable" }, { status: 503 });
+      }),
+    );
+    await renderInteractiveFlow();
+    act(() => useCanvasStore.getState().setSelectedIds(["middle-card"]));
+    const pane = document.querySelector(".react-flow__pane")!;
+    fireEvent.keyDown(pane, { key: "d", metaKey: true });
+    await waitFor(() => expect(requests).toHaveLength(1));
+    try {
+      for (const options of [{ key: "c", ctrlKey: true }, { key: "v", metaKey: true },
+        { key: "z", metaKey: true }, { key: "Z", metaKey: true, shiftKey: true },
+        { key: "d", metaKey: true, repeat: true }, { key: "Delete" }]) {
+        const shortcut = createEvent.keyDown(pane, options);
+        fireEvent(pane, shortcut);
+        expect(shortcut.defaultPrevented).toBe(true);
+      }
+      expect(requests).toHaveLength(1);
+    } finally { finish(); }
+    await waitFor(() => expect(useCanvasStore.getState().saveState).toBe("failed"));
+    for (const key of ["z", "y"]) {
+      const shortcut = createEvent.keyDown(pane, { key, ctrlKey: true });
+      fireEvent(pane, shortcut);
+      expect(shortcut.defaultPrevented).toBe(true);
+    }
+    expect(requests).toHaveLength(1);
+  });
+});
 
 describe("canvas selection clearing", () => {
   it("offers relevant bulk actions for any selected cards with a working close button", async () => {
@@ -723,9 +867,82 @@ describe("node click and drag gestures", () => {
 });
 
 describe("workspace selection with real React Flow", () => {
-  it("keeps a single box-selected node in multi-select mode without opening its editor", async () => {
+  it.each([{ metaKey: true }, { ctrlKey: true }, { metaKey: true, repeat: true }])("selects all nodes instead of browser text with %j + A", async (modifier) => {
     await renderInteractiveFlow();
-    boxSelectNodes({ startX: -10, startY: -10, endX: 300, endY: 300 });
+    const pane = document.querySelector(".react-flow__pane")!;
+    const range = document.createRange();
+    range.selectNodeContents(within(nodeElement("text-card")).getByText("选中的正文"));
+    window.getSelection()?.addRange(range);
+    const shortcut = createEvent.keyDown(pane, { key: "a", code: "KeyA", ...modifier });
+    fireEvent(pane, shortcut);
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(window.getSelection()?.toString()).toBe("");
+    expect(selectedIds()).toEqual(items.map((item) => item.id));
+    for (const item of items) expect(nodeElement(item.id)).toHaveClass("selected");
+    expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.MULTIPLE);
+    expect(screen.getByRole("group", { name: "批量操作" })).toBeVisible();
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])("selects grouped nodes once with collapsed=%s and includes locked/offscreen cards", async (collapsed) => {
+    const groupId = "group-1";
+    const grouped = items.map((item, index) => ({ ...item, groupId: index < 2 ? groupId : null,
+      ...(index === 2 ? { locked: true, x: 5000 } : {}) }));
+    server.use(
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: grouped })),
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: grouped } })),
+      http.get("/api/v1/projects/:projectId/canvas/editor", () => HttpResponse.json({ items: grouped, groups: [
+        { id: groupId, projectId: "project-1", name: "镜头组", collapsed, version: 0 },
+      ] })),
+    );
+    renderRealFlow = true;
+    await renderFlow(items.length + 1);
+    fireEvent.keyDown(document.querySelector(".react-flow__pane")!, { key: "a", metaKey: true });
+    expect(selectedIds()).toEqual(collapsed ? [canvasGroupNodeId(groupId), "text-card"] : items.map((item) => item.id));
+    expect(nodeElement("text-card")).toHaveClass("selected");
+    expect(nodeElement(canvasGroupNodeId(groupId)).classList.contains("selected")).toBe(collapsed);
+    expect(nodeElement("image-card").classList.contains("selected")).toBe(!collapsed);
+    expect(screen.getByText("3 张卡片已选中")).toBeVisible();
+  });
+
+  it("keeps a single-node select-all in multi-select mode and handles an empty canvas", async () => {
+    let currentItems = [items[0]!];
+    server.use(
+      http.get("/api/v1/projects/:projectId/snapshot", () => HttpResponse.json({ ...snapshot(), canvas: { items: currentItems } })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: currentItems })),
+    );
+    renderRealFlow = true;
+    const client = await renderFlow(1);
+    fireEvent.keyDown(document.body, { key: "a", ctrlKey: true });
+    expect(selectedIds()).toEqual(["image-card"]);
+    expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.MULTIPLE);
+    expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    currentItems = [];
+    act(() => client.setQueryData(["canvas", "project-1"], { items: currentItems }));
+    await waitFor(() => expect(flowProps.nodes).toHaveLength(0));
+    const shortcut = createEvent.keyDown(document.body, { key: "a", ctrlKey: true });
+    fireEvent(document.body, shortcut);
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(selectedIds()).toEqual([]);
+    expect(useCanvasStore.getState().selectionMode).toBe(CANVAS_SELECTION_MODE.SINGLE);
+  });
+
+  it("preserves native select-all and the draft inside the node text editor", async () => {
+    await renderInteractiveFlow();
+    fireEvent.click(nodeElement("text-card"));
+    fireEvent.doubleClick(within(nodeElement("text-card")).getByText("选中的正文"));
+    const editor = await screen.findByRole("textbox", { name: "内容" });
+    fireEvent.change(editor, { target: { value: "尚未保存的正文" } });
+    const shortcut = createEvent.keyDown(editor, { key: "a", metaKey: true });
+    fireEvent(editor, shortcut);
+    expect(shortcut.defaultPrevented).toBe(false);
+    expect(selectedIds()).toEqual(["text-card"]);
+    expect(editor).toHaveValue("尚未保存的正文");
+  });
+
+  it("keeps a single partially box-selected node in multi-select mode without opening its editor", async () => {
+    await renderInteractiveFlow();
+    boxSelectNodes({ startX: -10, startY: -10, endX: 10, endY: 10 });
     expect(selectedIds()).toEqual(["image-card"]);
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("媒体卡片操作")).not.toBeInTheDocument();
@@ -869,12 +1086,12 @@ describe("workspace selection with real React Flow", () => {
     expect(selectedIds()).toEqual(["image-card"]);
   });
 
-  it("box-selects nodes and replaces the box selection with an ordinary click", async () => {
+  it("box-selects fully and partially overlapped nodes and replaces the selection with an ordinary click", async () => {
     await renderInteractiveFlow();
     fireEvent.keyDown(window, { key: "Shift", code: "ShiftLeft", shiftKey: true });
     boxSelectNodes();
     fireEvent.keyUp(window, { key: "Shift", code: "ShiftLeft" });
-    expect(selectedIds()).toEqual(["image-card", "middle-card"]);
+    expect(selectedIds()).toEqual(["image-card", "middle-card", "text-card"]);
     fireEvent.click(nodeElement("text-card"));
     expect(selectedIds()).toEqual(["text-card"]);
   });

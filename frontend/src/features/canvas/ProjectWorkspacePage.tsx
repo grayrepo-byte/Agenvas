@@ -8,6 +8,7 @@ NodeResizer,
 NodeToolbar,
 Position,
 ReactFlow,
+SelectionMode,
 type Connection,
 type Edge,
 type EdgeChange,
@@ -30,11 +31,12 @@ createCanvasConnection,
 disconnectCanvasConnection,
 getCurrentUser,
 getMediaDraft,
+getMediaSettings,
 getProject,
 getProjectSnapshot,
-listArtifacts,
 listCanvasConnections,
 listCanvasItems,
+saveMediaDraft,
 projectExportManifestUrl,
 updateAgent,
 uploadAudioAsset,
@@ -43,7 +45,6 @@ uploadVideoAsset,
 type Agent,
 type Artifact,
 type Canvas,
-type CanvasCommand,
 type CanvasItem,
 type ProjectSnapshot,
 } from "../../shared/api/client";
@@ -52,9 +53,10 @@ import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { Tooltip,TooltipContent,TooltipProvider,TooltipTrigger } from "../../shared/ui/primitives/tooltip";
 import { Command,CommandGroup,CommandItem,CommandList } from "../../shared/ui/primitives/command";
-import { Input } from "../../shared/ui/primitives/input";
 import { Separator } from "../../shared/ui/primitives/separator";
 import { Empty,EmptyContent,EmptyDescription,EmptyHeader,EmptyMedia,EmptyTitle } from "../../shared/ui/primitives/empty";
+import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
+import { ProjectResourceBrowser } from "./ProjectResourceBrowser";
 import { LibraryCanvasPicker } from "../library/LibraryCanvasPicker";
 import { AgentChatDock } from "./AgentChatDock";
 import type { AgentChatRunRequest } from "./AgentChatPanel";
@@ -80,7 +82,7 @@ import { CANVAS_POINTER_THRESHOLD,useCanvasInteraction } from "./canvasInteracti
 import { arrangeCanvas,CANVAS_ARRANGE_GAP } from "./arrangeCanvas";
 import {
 canvasRelationRemoval,
-isCanvasConnectionValid,mediaInputConnection,projectCanvasRelations,
+isCanvasConnectionValid,mediaInputConnection,mediaInputSource,projectCanvasRelations,
 type CanvasRelationRemoval
 } from "./canvasRelations";
 import { CANVAS_SELECTION_MODE,useCanvasStore } from "./canvasStore";
@@ -89,7 +91,6 @@ import { AUDIO_CARD_HEIGHT,AUDIO_CARD_WIDTH,prepareMediaNode,VISUAL_MEDIA_CARD_H
 import { subscribeProjectEvents,type EventSyncStatus } from "./projectEvents";
 import { projectCacheCallbacks } from "./projectCache";
 import { useCanvasDisplayPreferences } from "./useCanvasDisplayPreferences";
-import { KIND_LABELS } from "../library/libraryLabels";
 import { useMediaNodeRatios } from "./useMediaNodeRatios";
 import { useCanvasLayoutSave } from "./useCanvasLayoutSave";
 import { CharacterManagerDialog } from "../characters/CharacterManagerDialog";
@@ -103,6 +104,8 @@ import { canvasGroupCreationPoint, canvasGroupDropTarget, canvasGroupIdFromNodeI
 import { hasOpenCanvasEditingOverlay, resolveCanvasEditingShortcut } from "./canvasEditingShortcuts";
 import { CanvasEditingContext, canvasItemPresentation } from "./useCanvasEditing";
 import { CANVAS_EDIT_ITEM_LIMIT, useCanvasOrganization } from "./useCanvasOrganization";
+import { connectedMediaModel, type ConnectedMediaModel } from "./connectedMediaModel";
+import { fieldsFromMediaDraft } from "./useMediaDraftSession";
 
 type LayoutPatch = Pick<ResizeParams, "x" | "y" | "width" | "height"> & { groupId?: string | null };
 type CreationKind = "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
@@ -110,8 +113,10 @@ type DrawerKind = "ALIGN";
 type CreationPoint = { x: number; y: number; groupId?: string };
 type UploadIntent = { file: File; point: CreationPoint; title: string; createKey: string; itemId: string;
   zIndex: number; assetId?: string; artifactId?: string };
-type CreationMenu = { x: number; y: number; point: CreationPoint; centerAtPoint: boolean };
-type RestorableResource = { subjectType: "ARTIFACT"; subjectId: string; kind: Artifact["kind"] };
+type ConnectionSource = NonNullable<ReturnType<typeof mediaInputSource>>;
+type CreationMenu = { x: number; y: number; point: CreationPoint; centerAtPoint: boolean;
+  /** undefined is ordinary creation; null is a gesture without a usable media result. */
+  connectionSource?: ConnectionSource | null };
 /** Card under the pointer during a connection gesture; the drop lands on the card, not on an exact port. */
 type ConnectionTarget = { itemId: string; targetHandle: "artifact-input"; valid: boolean };
 const EDITOR_NODE_GAP = 32;
@@ -137,8 +142,6 @@ const AUDIO_PLACEHOLDER_HEIGHTS = new Set([240, AUDIO_CARD_HEIGHT]);
 const MIN_ARTIFACT_CARD_SIZE = 120;
 /** Drop tolerance around a hidden target handle, in flow units: it keeps the same feel on screen at any zoom. */
 const CANVAS_CONNECTION_RADIUS = 80;
-/** Delete and Backspace both delete the selected cards and relation lines; React Flow ignores both while typing in a field. */
-const CANVAS_DELETE_KEY_CODES = ["Backspace", "Delete"];
 const ARTIFACT_LABELS: Record<Artifact["kind"], string> = {
   get TEXT() { return t("common.text"); }, get IMAGE() { return t("common.image"); }, get VIDEO() { return t("common.video"); }, get AUDIO() { return t("common.audio"); },
 };
@@ -206,6 +209,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     members: { id: string; x: number; y: number }[] }>());
   const editorFocusFrame = useRef<number | null>(null);
   const boxSelectionActive = useRef(false);
+  const keyboardDeletionPending = useRef(false);
   const canvasElement = useRef<HTMLElement>(null);
   const viewportMotion = useCanvasViewportMotion(flow, canvasElement);
   const cancelCameraMotion = useCallback(() => {
@@ -272,8 +276,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [agentChatOpen, setAgentChatOpen] = useState(false);
   const [videoEditIds, setVideoEditIds] = useState<string[] | null>(null);
   const [agentRunRequest, setAgentRunRequest] = useState<AgentChatRunRequest | null>(null);
-  const [resourceTab, setResourceTab] = useState<"PROJECT" | "LIBRARY">("PROJECT");
-  const [resourceSearch, setResourceSearch] = useState("");
   const mediaProgress = useRef<{ fingerprint: string; createKey: string;
     itemId: string; artifactId?: string } | null>(null);
   const drafts = useCanvasStore((state) => state.drafts);
@@ -345,11 +347,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const retained = current.selectedIds.filter((id) => visible.has(id));
     if (retained.length !== current.selectedIds.length) setSelectedIds(retained, current.selectionMode);
   }, [canvas.data, canvas.isSuccess, organization.groups, setSelectedIds]);
-  const resources = useQuery({
-    queryKey: ["artifacts", projectId],
-    queryFn: () => listArtifacts(projectId),
-    enabled: resourcesOpen,
-  });
 
   useEffect(() => {
     if (initialEventSequence.current === null || typeof EventSource === "undefined") return;
@@ -360,27 +357,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   }, [projectId, queryClient, snapshot.isSuccess]);
 
   const saveLayout = useCanvasLayoutSave(projectId, effectiveNodeSize, editing.execute);
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const action = resolveCanvasEditingShortcut(event, { overlayOpen: hasOpenCanvasEditingOverlay(document) });
-      if (!action || organization.busy || saveLayout.isPending || creationMenu || paneMenu) return;
-      // Selected document text keeps native copy, even outside an editable field.
-      if (action === "copy" && window.getSelection()?.toString()) return;
-      const selected = organization.selectedItems.length > 0;
-      if ((action === "undo" && !editing.canUndo) || (action === "redo" && !editing.canRedo)
-        || (action === "paste" && !organization.canPaste)
-        || (["duplicate", "copy", "group", "ungroup"].includes(action) && !selected)) return;
-      event.preventDefault();
-      if (action === "group") organization.requestGroup();
-      else if (action === "ungroup") void organization.ungroup().catch(() => undefined);
-      else if (action === "duplicate") void organization.duplicateItems().catch(() => undefined);
-      else if (action === "copy") void organization.copyItems().catch(() => undefined);
-      else if (action === "paste") void organization.pasteItems().catch(() => undefined);
-      else void editing.replay(action === "undo" ? "UNDO" : "REDO").catch(() => undefined);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [organization, editing, saveLayout.isPending, creationMenu, paneMenu]);
   const removeItem = useMutation({
     mutationFn: (item: CanvasItem) =>
       applyCanvasCommands(projectId, [
@@ -471,13 +447,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
   });
   const addBlankMedia = useMutation({
-    mutationFn: async ({ kind, point, director = false }: { kind: "IMAGE" | "VIDEO" | "AUDIO"; point: CreationPoint; director?: boolean }) => {
-      const fingerprint = JSON.stringify({ projectId, kind, point, director });
+    mutationFn: async ({ kind, point, director = false, connectionSource }: {
+      kind: "IMAGE" | "VIDEO" | "AUDIO"; point: CreationPoint; director?: boolean; connectionSource?: ConnectionSource;
+    }) => {
+      const fingerprint = JSON.stringify({ projectId, kind, point, director, connectionSource });
       if (mediaProgress.current?.fingerprint !== fingerprint) {
         mediaProgress.current = { fingerprint, createKey: crypto.randomUUID(),
           itemId: crypto.randomUUID() };
       }
       const pending = mediaProgress.current;
+      let initialModel: ConnectedMediaModel | undefined;
+      if (connectionSource) {
+        const source = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items
+          .find((item) => item.id === connectionSource.sourceCanvasItemId);
+        const settings = await queryClient.fetchQuery({ queryKey: ["media-settings"], queryFn: getMediaSettings });
+        const model = source && connectedMediaModel(settings, kind, source.artifact.kind);
+        if (!model) throw new CanvasConnectionError(t("canvas.workspace.noCompatibleModel"));
+        initialModel = model;
+      }
       if (!pending.artifactId) {
         const artifact = await createArtifact(projectId, { kind,
           title: director ? t("director.title") : t("canvas.workspace.newMediaTitle", { "0": ARTIFACT_LABELS[kind] }), content: null }, pending.createKey);
@@ -488,16 +475,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         type: "PLACE_ARTIFACT", itemId: pending.itemId, artifactId: pending.artifactId,
         x: point.x, y: point.y, groupId: point.groupId, ...DEFAULT_ARTIFACT_CARD_SIZES[kind], zIndex: index, locked: false,
       }]);
-      return { saved, itemId: pending.itemId, director };
+      return { saved, itemId: pending.itemId, director, initialModel };
     },
     ...canvasMutationFeedback,
-    onSuccess: ({ saved, itemId, director }) => {
+    onSuccess: ({ saved, itemId, director, initialModel }, { connectionSource }) => {
       queryClient.setQueryData(["canvas", projectId], saved);
       void queryClient.invalidateQueries({ queryKey: ["artifacts", projectId] });
-      setSelectedIds([itemId]);
+      if (!connectionSource) setSelectedIds([itemId]);
       if (director) setDirectorItem(saved.items.find((item) => item.id === itemId) ?? null);
       mediaProgress.current = null;
       setSaveState("saved");
+      // Placement is already confirmed. A failed connection retries only the relation,
+      // while a failed placement keeps this frozen source in the creation variables.
+      if (connectionSource) connectInput.mutate({ source: connectionSource.sourceCanvasItemId,
+        sourceHandle: "artifact-output", target: itemId, targetHandle: "artifact-input",
+        sourceVersionId: connectionSource.sourceVersionId, initialModel }, {
+        // Open the editor after initialization so its autosave cannot race the model CAS.
+        onSettled: () => setSelectedIds([itemId]),
+      });
     },
   });
   const mvProgress = useRef(new Map<string, PreparedMediaNode>());
@@ -565,10 +560,21 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     },
   });
   const connectInput = useMutation({
-    mutationFn: async (connection: Connection) => {
-      const media = mediaInputConnection(canvas.data?.items ?? [], connection);
-      if (!media) throw new CanvasConnectionError(t("canvas.workspace.unsupportedConnection"));
-      const targetDraft = await getMediaDraft(projectId, media.targetCanvasItemId);
+    mutationFn: async (connection: Connection & { sourceVersionId?: string; initialModel?: ConnectedMediaModel }) => {
+      // Creation updates the cache before React renders again; resolve its new target
+      // from the confirmed projection rather than the previous render's item list.
+      const items = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items ?? [];
+      const media = mediaInputConnection(items, connection);
+      if (!media || (connection.sourceVersionId && media.sourceVersionId !== connection.sourceVersionId))
+        throw new CanvasConnectionError(t("canvas.workspace.unsupportedConnection"));
+      let targetDraft = await getMediaDraft(projectId, media.targetCanvasItemId);
+      // Initialize only the new, untouched draft. Retries keep confirmed saves and later user edits.
+      if (connection.initialModel && targetDraft.version === 0 && targetDraft.mediaInputs.length === 0) {
+        targetDraft = await saveMediaDraft(projectId, media.targetCanvasItemId, {
+          ...fieldsFromMediaDraft(targetDraft), ...connection.initialModel, expectedVersion: targetDraft.version,
+        });
+        queryClient.setQueryData(["media-draft", projectId, media.targetCanvasItemId], targetDraft);
+      }
       await createCanvasConnection(projectId, { ...media, relationType: "MEDIA_INPUT",
         expectedTargetDraftVersion: targetDraft.version });
     },
@@ -629,33 +635,13 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       : { x: DEFAULT_CANVAS_ORIGIN, y: DEFAULT_CANVAS_ORIGIN };
   }
 
-  const restoreResource = useMutation({
-    mutationFn: async (resource: RestorableResource) => {
-      const point = canvasCenter();
-      const itemId = crypto.randomUUID();
-      const placement = {
-        itemId, x: point.x, y: point.y,
-        zIndex: canvas.data?.items.length ?? 0, locked: false,
-      };
-      const command: CanvasCommand = { ...placement, type: "PLACE_ARTIFACT", artifactId: resource.subjectId,
-        ...DEFAULT_ARTIFACT_CARD_SIZES[resource.kind] };
-      const saved = await applyCanvasCommands(projectId, [command]);
-      return { saved, itemId };
-    },
-    ...canvasMutationFeedback,
-    onSuccess: ({ saved, itemId }) => {
-      queryClient.setQueryData(["canvas", projectId], saved);
-      setSelectedIds([itemId]);
-      setResourcesOpen(false);
-      setSaveState("saved");
-    },
-  });
 
   const saveLayoutMutate = saveLayout.mutate;
   const removeItemMutate = removeItem.mutate;
   const toggleLockedMutate = toggleLocked.mutate;
   const editAgentMutate = editAgent.mutate;
-  const removeMediaConnectionMutate = removeMediaConnection.mutate;
+  const removeItemMutateAsync = removeItem.mutateAsync;
+  const removeMediaConnectionMutateAsync = removeMediaConnection.mutateAsync;
   const connectInputMutate = connectInput.mutate;
 
   const handleResizeEnd = useCallback(
@@ -695,19 +681,23 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const deletedIds = new Set(deletedNodes.map((node) => node.id));
       const relations = deletedEdges.filter((edge) =>
         !deletedIds.has(edge.source) && !deletedIds.has(edge.target));
+      // Group edits share one history executor, so ungroup each frame in order.
       for (const node of deletedNodes) {
-        if (node.type === "canvasGroup") {
-          await organization.ungroup(node.data.groupId).catch(() => undefined);
-        } else removeItemMutate(node.data.item);
+        if (node.type === "canvasGroup") await organization.ungroup(node.data.groupId).catch(() => undefined);
       }
+      const removals: Promise<unknown>[] = deletedNodes.flatMap((node) =>
+        node.type === "canvasGroup" ? [] : [removeItemMutateAsync(node.data.item)]);
       for (const edge of relations) {
         const removal = canvasRelationRemoval(canvasConnections.data?.items ?? [], edge);
-        if (removal?.kind === "mediaConnection") removeMediaConnectionMutate(removal);
+        if (removal?.kind === "mediaConnection") removals.push(removeMediaConnectionMutateAsync(removal));
       }
+      // Keep the keyboard gesture pending until every server request settles. Errors
+      // remain on their mutation notices, and React Flow never removes entities locally.
+      await Promise.allSettled(removals);
       return false;
     },
     [canvas.data?.items, canvasConnections.data?.items,
-      removeItemMutate, removeMediaConnectionMutate, organization],
+      removeItemMutateAsync, removeMediaConnectionMutateAsync, organization],
   );
   /**
    * A drop lands on the card under the pointer, so a big card does not require aiming at its left port.
@@ -718,7 +708,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget | null>(null);
   const [connectGesture, setConnectGesture] = useState(false);
   const nodeActionsVisible = draggingIds.length === 0 && !connectGesture;
-  const connectionSource = useRef<{ nodeId: string; handleId: string | null } | null>(null);
+  const connectionSource = useRef<{ nodeId: string; handleId: string | null; media: ConnectionSource | null } | null>(null);
   const connectionTargetRef = useRef<ConnectionTarget | null>(null);
   const trackConnectionTarget = useCallback((candidate: ConnectionTarget | null) => {
     const current = connectionTargetRef.current;
@@ -753,21 +743,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const handleConnectStart = useCallback((_: unknown,
     params: { nodeId: string | null; handleId: string | null }) => {
     connectionSource.current = params.nodeId
-      ? { nodeId: params.nodeId, handleId: params.handleId }
+      ? { nodeId: params.nodeId, handleId: params.handleId,
+        media: mediaInputSource(canvas.data?.items ?? [], params.nodeId, params.handleId) }
       : null;
     trackConnectionTarget(null);
     setConnectGesture(true);
-  }, [trackConnectionTarget]);
-  const handleConnectEnd = useCallback((_: unknown, state: { toHandle?: unknown }) => {
-    const source = connectionSource.current;
-    const target = connectionTargetRef.current;
-    connectionSource.current = null;
-    trackConnectionTarget(null);
-    setConnectGesture(false);
-    if (state.toHandle || !source || !target?.valid) return;
-    connectInputMutate({ source: source.nodeId, sourceHandle: source.handleId,
-      target: target.itemId, targetHandle: target.targetHandle });
-  }, [connectInputMutate, trackConnectionTarget]);
+  }, [canvas.data?.items, trackConnectionTarget]);
 
   const handleToggleSelection = useCallback((itemId: string) => {
     const current = useCanvasStore.getState().selectedIds;
@@ -775,7 +756,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       CANVAS_SELECTION_MODE.MULTIPLE);
   }, [setSelectedIds]);
   const lockedItemIds = useMemo(() => new Set((canvas.data?.items ?? []).filter((item) => item.locked).map((item) => item.id)), [canvas.data?.items]);
-  const openCreationMenu = useCallback((clientX: number, clientY: number, placement?: CreationPoint) => {
+  const openCreationMenu = useCallback((clientX: number, clientY: number, placement?: CreationPoint,
+    connectionSource?: ConnectionSource | null) => {
     const rect = canvasElement.current?.getBoundingClientRect();
     if (!rect) return;
     const point = placement ?? flow.current?.screenToFlowPosition({ x: clientX, y: clientY })
@@ -787,8 +769,30 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     creationMenuReturnFocus.current = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
     setPaneMenu(null);
-    setCreationMenu({ x, y, point, centerAtPoint: placement !== undefined && placement.groupId === undefined });
+    setCreationMenu({ x, y, point, centerAtPoint: placement !== undefined && placement.groupId === undefined,
+      connectionSource });
   }, []);
+  const handleConnectEnd = useCallback((event: MouseEvent | TouchEvent, state: { toHandle?: unknown }) => {
+    const source = connectionSource.current;
+    const pointer = event && ("changedTouches" in event ? event.changedTouches[0] : event);
+    // The release may land somewhere other than the last mousemove, including after auto-pan.
+    if (pointer) trackPointerTarget(pointer.clientX, pointer.clientY);
+    const target = connectionTargetRef.current;
+    connectionSource.current = null;
+    trackConnectionTarget(null);
+    setConnectGesture(false);
+    if (state.toHandle || !source) return;
+    if (target?.valid) {
+      connectInputMutate({ source: source.nodeId, sourceHandle: source.handleId,
+        target: target.itemId, targetHandle: target.targetHandle });
+      return;
+    }
+    if (!pointer) return;
+    const hit = document.elementFromPoint(pointer.clientX, pointer.clientY);
+    // Invalid cards, groups and floating controls are not empty canvas creation targets.
+    if (hit?.closest(".react-flow__node") || !hit?.closest(".react-flow__pane")) return;
+    openCreationMenu(pointer.clientX, pointer.clientY, undefined, source.media);
+  }, [connectInputMutate, openCreationMenu, trackConnectionTarget, trackPointerTarget]);
   const openGroupCreationMenu = useCallback((groupId: string, anchor: HTMLElement) => {
     const members = (canvas.data?.items ?? []).filter((item) => item.groupId === groupId).map((item) => ({
       ...item, ...useCanvasStore.getState().drafts[item.id], ...effectiveNodeSize(item),
@@ -1007,6 +1011,55 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setSelectedEdgeIds([]);
   }, [setSelectedEdgeIds, setSelectedIds]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = resolveCanvasEditingShortcut(event, { overlayOpen: hasOpenCanvasEditingOverlay(document) });
+      if (!action || creationMenu || paneMenu) return;
+      // Selected document text keeps native copy, even outside an editable field.
+      if (action === "copy" && window.getSelection()?.toString()) return;
+      // Canvas ownership does not depend on availability. Empty history/clipboard,
+      // pending saves and held keys must never fall through to browser commands.
+      event.preventDefault();
+      if (event.repeat && action !== "selectAll") return;
+      if (action === "selectAll") {
+        if (!canvas.data) return;
+        window.getSelection()?.removeAllRanges();
+        cancelCameraMotion();
+        // Collapsed groups stand in for hidden members, so later group drags
+        // process each card once. Offscreen and locked cards stay selectable.
+        const ids = [...new Set(canvas.data.items.map((item) =>
+          organization.projection.collapsedNodeByMemberId.get(item.id) ?? item.id))];
+        setSelectedIds(ids, ids.length ? CANVAS_SELECTION_MODE.MULTIPLE : CANVAS_SELECTION_MODE.SINGLE);
+        setSelectedEdgeIds([]);
+        return;
+      }
+      if (organization.busy || saveLayout.isPending || removeItem.isPending || removeMediaConnection.isPending
+        || keyboardDeletionPending.current) return;
+      if (action === "delete") {
+        const instance = flow.current;
+        const selectedNodes = nodes.filter((node) => node.selected);
+        const selectedEdges = relationEdges.filter((edge) => edge.selected);
+        if (!instance || (!selectedNodes.length && !selectedEdges.length)) return;
+        keyboardDeletionPending.current = true;
+        void instance.deleteElements({ nodes: selectedNodes, edges: selectedEdges })
+          .catch(() => undefined).finally(() => { keyboardDeletionPending.current = false; });
+        return;
+      }
+      const selected = organization.selectedItems.length > 0;
+      if ((action === "undo" && !editing.canUndo) || (action === "redo" && !editing.canRedo)
+        || (action === "paste" && !organization.canPaste)
+        || (["duplicate", "copy", "group", "ungroup"].includes(action) && !selected)) return;
+      if (action === "group") organization.requestGroup();
+      else if (action === "ungroup") void organization.ungroup().catch(() => undefined);
+      else if (action === "duplicate") void organization.duplicateItems().catch(() => undefined);
+      else if (action === "copy") void organization.copyItems().catch(() => undefined);
+      else if (action === "paste") void organization.pasteItems().catch(() => undefined);
+      else void editing.replay(action === "undo" ? "UNDO" : "REDO").catch(() => undefined);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [organization, editing, saveLayout.isPending, removeItem.isPending, removeMediaConnection.isPending,
+    creationMenu, paneMenu, canvas.data, cancelCameraMotion, setSelectedIds, nodes, relationEdges]);
 
   useEffect(() => {
     if (creationMenu) creationMenuElement.current?.focus();
@@ -1047,6 +1100,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
 
   function chooseCreationKind(kind: CreationKind, point = creationMenu?.point, centerAtPoint = creationMenu?.centerAtPoint ?? false) {
     if (!point) return;
+    const source = creationMenu?.connectionSource;
+    if (source === null || (source && kind === "TEXT")) return;
     // Center toolbar/empty-state creations without moving the viewport. Pointer placements
     // retain their original top-left anchor so double-clicking remains spatially predictable.
     const size = DEFAULT_ARTIFACT_CARD_SIZES[kind];
@@ -1058,7 +1113,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       if (kind === "TEXT") {
         setToolsKind(null);
         if (!addTextCard.isPending) addTextCard.mutate({ point: origin });
-      } else addBlankMedia.mutate({ kind, point: origin });
+      } else if (!addBlankMedia.isPending) addBlankMedia.mutate({ kind, point: origin, connectionSource: source });
     };
     // Creating inside a folded group first expands it through the ordinary edit command.
     // Failure stops creation; retries of placement keep the original group and coordinates.
@@ -1081,12 +1136,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     setAgentChatOpen(true);
     if (!director && !ensureDirector.isPending) ensureDirector.mutate();
   }, [projectId, tryLocation.search, snapshot.isSuccess, director, ensureDirector]);
-  const projectResources = [
-    ...(resources.data?.items ?? []).map((artifact) => ({
-      subjectType: "ARTIFACT" as const, subjectId: artifact.id, kind: artifact.kind,
-      label: `${artifact.title} · ${KIND_LABELS[artifact.kind]} · ${artifact.resourceDefaultVersionId ? t("canvas.workspace.defaultSelected") : t("canvas.workspace.noDefault")}`,
-    })),
-  ];
 
   function locateFeedbackNodes(ids: string[]) {
     const existing = ids.filter((id) => canvas.data?.items.some((item) => item.id === id));
@@ -1166,27 +1215,19 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           }} type="button">{t("common.close")}</Button>
         </div>
         {resourcesOpen ? <>
-          <div className="library-tabs"><Button variant="ghost" type="button" aria-pressed={resourceTab === "PROJECT"} onClick={() => setResourceTab("PROJECT")}>{t("canvas.workspace.resourceTitle")}</Button><Button variant="ghost" type="button" aria-pressed={resourceTab === "LIBRARY"} onClick={() => setResourceTab("LIBRARY")}>{t("library.title")}</Button></div>
-          {resourceTab === "LIBRARY" ? <LibraryCanvasPicker projectId={projectId} position={canvasCenter} /> : <>
-          <label className="mt-3 block text-sm">{t("canvas.workspace.searchResources")}<Input value={resourceSearch} onChange={(event) => setResourceSearch(event.target.value)}
-              placeholder={t("canvas.workspace.searchPlaceholder")} /></label>
-          {resources.isPending ? <p className="mt-3 text-sm">{t("canvas.workspace.resourcesLoading")}</p> : null}
-          {resources.error ? <WorkspaceError error={resources.error} /> : null}
-          <ul className="mt-3 space-y-2">
-            {projectResources.filter((resource) => resource.label.toLowerCase()
-              .includes(resourceSearch.trim().toLowerCase())).map((resource) => {
-              const placed = canvas.data?.items.some((item) =>
-                item.subjectType === resource.subjectType && item.subjectId === resource.subjectId);
-              return <li className="resource-entry" key={`${resource.subjectType}:${resource.subjectId}`}>
-                <span>{resource.label}</span>
-                <Button variant="ghost" className="node-action" disabled={restoreResource.isPending}
-                  onClick={() => restoreResource.mutate(resource)} type="button">
-                  {placed ? t("canvas.workspace.placeAnother") : t("canvas.place")}</Button>
-              </li>;
-            })}
-          </ul>
-          {restoreResource.error ? <WorkspaceError error={restoreResource.error} /> : null}
-          </>}
+          <Tabs defaultValue="PROJECT">
+            <TabsList aria-label={t("canvas.workspace.resourceTitle")}>
+              <TabsTrigger value="PROJECT">{t("canvas.workspace.resourceTitle")}</TabsTrigger>
+              <TabsTrigger value="LIBRARY">{t("library.title")}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="PROJECT"><ProjectResourceBrowser projectId={projectId} position={canvasCenter}
+              zIndex={canvas.data?.items.length ?? 0} onPlacing={canvasMutationFeedback.onMutate} onPlaceError={setSaveError}
+              onPlaced={(saved, itemId) => {
+                queryClient.setQueryData(["canvas", projectId], saved);
+                setSelectedIds([itemId]); setResourcesOpen(false); setSaveState("saved");
+              }} /></TabsContent>
+            <TabsContent value="LIBRARY"><LibraryCanvasPicker projectId={projectId} position={canvasCenter} /></TabsContent>
+          </Tabs>
         </> : null}
         {editAgent.error ? <WorkspaceError error={editAgent.error} /> : null}
         {toolsKind === "ALIGN" ? <div className="mt-6 border-t border-[var(--line)] pt-5">
@@ -1262,7 +1303,10 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           {saveLayout.error ? <CanvasErrorNotice error={saveLayout.error} title={feedbackTitle(t("canvas.feedback.saveLayout"), layoutErrorIds)} message={workspaceErrorMessage(saveLayout.error)}
             onLocate={layoutErrorIds.some((id) => canvas.data?.items.some((item) => item.id === id)) ? () => locateFeedbackNodes(layoutErrorIds) : undefined} /> : null}
           {connectInput.error ? <CanvasErrorNotice error={connectInput.error} title={feedbackTitle(t("canvas.feedback.connect"), connectionErrorIds)} message={workspaceErrorMessage(connectInput.error)}
-            onLocate={connectionErrorIds.some((id) => canvas.data?.items.some((item) => item.id === id)) ? () => locateFeedbackNodes(connectionErrorIds) : undefined} /> : null}
+            onLocate={connectionErrorIds.some((id) => canvas.data?.items.some((item) => item.id === id)) ? () => locateFeedbackNodes(connectionErrorIds) : undefined}>
+            <Button variant="ghost" size="xs" type="button" disabled={connectInput.isPending}
+              onClick={() => { if (connectInput.variables) connectInput.mutate(connectInput.variables); }}>{t("common.retry")}</Button>
+          </CanvasErrorNotice> : null}
           {removeItem.error ? <CanvasErrorNotice error={removeItem.error} title={feedbackTitle(t("canvas.feedback.remove"), [removeItem.variables?.id])} message={workspaceErrorMessage(removeItem.error)}
             onLocate={canvas.data?.items.some((item) => item.id === removeItem.variables?.id) ? () => locateFeedbackNodes([removeItem.variables!.id]) : undefined} /> : null}
           {toggleLocked.error ? <CanvasErrorNotice error={toggleLocked.error} title={feedbackTitle(t("canvas.feedback.lock"), [toggleLocked.variables?.id])} message={workspaceErrorMessage(toggleLocked.error)}
@@ -1273,7 +1317,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           connectOnClick={false}
           connectionLineType={ConnectionLineType.Bezier}
           connectionRadius={CANVAS_CONNECTION_RADIUS}
-          deleteKeyCode={CANVAS_DELETE_KEY_CODES}
+          deleteKeyCode={null}
           edges={relationEdges}
           edgeTypes={edgeTypes}
           fitView
@@ -1377,6 +1421,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           onInit={(instance) => { flow.current = instance; }}
           onMoveStart={(event) => { if (event) { cancelCameraMotion(); clearSelection(); } }}
           selectionOnDrag={selecting}
+          selectionMode={SelectionMode.Partial}
           ariaLabelConfig={{
             "controls.ariaLabel": t("canvas.workspace.viewportControls"), "controls.zoomIn.ariaLabel": t("canvas.workspace.zoomIn"),
             "controls.zoomOut.ariaLabel": t("canvas.workspace.zoomOut"), "controls.fitView.ariaLabel": t("canvas.workspace.fitView"),
@@ -1483,9 +1528,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         {creationMenu ? <Command loop shouldFilter={false} tabIndex={-1} className="workspace-create-menu h-auto"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>
-          <CommandList label={t("canvas.tools.addCard")}><CommandGroup heading={t(creationMenu.point.groupId ? "canvas.group.addNode" : "canvas.tools.addCard")}>
+          <CommandList label={t("canvas.tools.addCard")}><CommandGroup heading={t(creationMenu.connectionSource === null
+            ? "canvas.workspace.unsupportedConnection" : creationMenu.point.groupId ? "canvas.group.addNode" : "canvas.tools.addCard")}>
           {CREATION_KINDS.map(({ kind, label, icon: CreationIcon }) => <CommandItem key={kind} value={kind}
-            disabled={kind === "TEXT" && addTextCard.isPending}
+            disabled={creationMenu.connectionSource === null || (creationMenu.connectionSource !== undefined && kind === "TEXT")
+              || (kind === "TEXT" ? addTextCard.isPending : addBlankMedia.isPending)}
             onSelect={() => chooseCreationKind(kind, creationMenu?.point)}>
             <CreationIcon size={20} aria-hidden="true" /><span>{label}</span>
           </CommandItem>)}
@@ -1579,7 +1626,6 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
     </>
   );
 });
-
 
 const nodeTypes = { canvasCard: CanvasCardNode, canvasGroup: CanvasGroupNode };
 

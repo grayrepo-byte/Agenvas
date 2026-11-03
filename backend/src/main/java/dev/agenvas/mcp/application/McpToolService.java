@@ -89,11 +89,24 @@ public class McpToolService {
         requireScope(principal, required);
         policy.validate(name, arguments);
         if (required == McpScope.READ) return read(principal, name, arguments);
-        if (recoveryMode) throw problem(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY", ApiMessage.of("api.recovery-mode-write-guard.database-and-media-backups-are-being-reconciled-project-and-model"));
+        requireWritable();
         UUID project = uuid(arguments, "projectId");
+        if ("prepare_media_upload".equals(name)) {
+            projects.requireActiveProject(principal.userId(), project);
+            return new McpToolResponse(uploadInstructions(arguments));
+        }
+        return writeCommand(principal, project, name, arguments,
+                (locked, operation) -> write(locked, project, operation, name, arguments));
+    }
+
+    private McpToolResponse writeCommand(McpPrincipal principal, UUID project, String name, JsonNode arguments,
+            java.util.function.BiFunction<McpPrincipal, UUID, ObjectNode> action) {
+        McpScope required = McpScope.CONTENT_WRITE;
+        if (!"upload_media".equals(name)) required = policy.requiredScope(name);
+        McpScope grant = required;
         return events.recordChange(principal.userId(), project, () -> {
             McpPrincipal locked = tokens.requireValidForWrite(principal);
-            requireScope(locked, required);
+            requireScope(locked, grant);
             projects.requireActiveProject(locked.userId(), project);
             String command = arguments.path("commandId").asText();
             String hash = requestHash(name, arguments);
@@ -106,13 +119,92 @@ public class McpToolService {
                         || !previous.toolName().equals(name)) throw problem(HttpStatus.CONFLICT, "MCP_COMMAND_CONFLICT", ApiMessage.of("api.mcp.command-conflict"));
                 return ProjectEventService.Change.unchanged(new McpToolResponse(previous.result().deepCopy()));
             }
-            ObjectNode output = write(locked, project, operationId, name, arguments);
+            ObjectNode output = action.apply(locked, operationId);
             output.put("operationId", operationId.toString());
             // Persist and return the same JSON representation (e.g. integral decimal coordinates).
             JsonNode snapshot = mapper.readTree(output.toString());
             operations.complete(operationId, snapshot);
             return ProjectEventService.Change.unchanged(new McpToolResponse(snapshot));
         }).value();
+    }
+
+    /** Binary bytes travel on the authenticated upload endpoint, never in MCP JSON or a server file path. */
+    public McpToolResponse uploadMedia(McpPrincipal supplied, JsonNode metadata, long byteSize,
+            java.util.function.Supplier<java.io.InputStream> source) {
+        McpPrincipal principal = tokens.requireValidForRead(supplied);
+        requireScope(principal, McpScope.CONTENT_WRITE);
+        policy.validate("prepare_media_upload", metadata);
+        requireWritable();
+        UUID project = uuid(metadata, "projectId");
+        projects.requireActiveProject(principal.userId(), project);
+        Asset.MediaKind kind = Asset.MediaKind.valueOf(metadata.path("kind").asText());
+        validateUploadSize(metadata, kind);
+        if (byteSize != metadata.path("byteSize").longValue()) throw uploadMismatch();
+        // Verify the actual file before trusting its digest as part of command identity.
+        try (var input = source.get()) {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[64 * 1024];
+            long count = 0;
+            for (int size; (size = input.read(buffer)) != -1;) {
+                count += size;
+                if (count > byteSize) throw uploadMismatch();
+                digest.update(buffer, 0, size);
+            }
+            if (count != byteSize || !java.util.HexFormat.of().formatHex(digest.digest())
+                    .equals(metadata.path("sha256").asText())) throw uploadMismatch();
+        } catch (IOException failure) {
+            throw new java.io.UncheckedIOException("Cannot read uploaded media", failure);
+        } catch (java.security.NoSuchAlgorithmException unavailable) {
+            throw new IllegalStateException("SHA-256 is required by the Java runtime", unavailable);
+        }
+        String hash = requestHash("upload_media", metadata);
+        UUID assetId = UUID.nameUUIDFromBytes(("agenvas:mcp-upload:v1:" + principal.userId() + ":" + hash)
+                .getBytes(StandardCharsets.UTF_8));
+        return assets.withPreparedUpload(principal.userId(), project, assetId, kind, source,
+                prepared -> writeCommand(principal, project, "upload_media", metadata, (locked, operation) -> {
+                    assets.registerLibraryImport(locked.userId(), prepared);
+                    var created = artifacts.createUploadedMediaFromExternalTool(locked.userId(), project,
+                            Artifact.Kind.valueOf(kind.name()), metadata.path("title").asText(), prepared.id());
+                    operations.linkVersion(operation, created.resourceDefaultVersion().id());
+                    ObjectNode output = mapper.createObjectNode();
+                    output.set("artifact", artifact(created, created.resourceDefaultVersion()));
+                    output.set("media", mediaMetadata(prepared).put("sha256", prepared.sha256()));
+                    if (metadata.has("placement")) {
+                        JsonNode p = metadata.path("placement"); UUID itemId = UUID.randomUUID();
+                        canvas.apply(locked.userId(), project, List.of(new CanvasService.PlaceArtifact(itemId,
+                                created.artifact().id(), p.path("x").decimalValue(), p.path("y").decimalValue(),
+                                p.path("width").decimalValue(), p.path("height").decimalValue(), p.path("zIndex").asInt(0),
+                                null, false, created.resourceDefaultVersion().id())));
+                        output.set("node", node(locked.userId(), project,
+                                canvasItems.requireArtifactItem(locked.userId(), project, itemId), created, true));
+                    }
+                    return output;
+                }));
+    }
+
+    private ObjectNode uploadInstructions(JsonNode metadata) {
+        Asset.MediaKind kind = Asset.MediaKind.valueOf(metadata.path("kind").asText());
+        validateUploadSize(metadata, kind);
+        ObjectNode output = mapper.createObjectNode().put("method", "POST")
+                .put("path", dev.agenvas.mcp.domain.McpHttpEndpoints.UPLOAD)
+                .put("contentType", "multipart/form-data").put("metadataPart", "metadata").put("filePart", "file")
+                .put("maximumFileBytes", assets.maximumUploadBytes(kind));
+        output.set("metadata", metadata.deepCopy());
+        return output;
+    }
+
+    private void validateUploadSize(JsonNode metadata, Asset.MediaKind kind) {
+        if (metadata.path("byteSize").longValue() > assets.maximumUploadBytes(kind)) throw McpToolPolicy.invalid();
+    }
+
+    private void requireWritable() {
+        if (recoveryMode) throw problem(HttpStatus.SERVICE_UNAVAILABLE, "RECOVERY_MODE_READ_ONLY",
+                ApiMessage.of("api.recovery-mode-write-guard.database-and-media-backups-are-being-reconciled-project-and-model"));
+    }
+
+    private ApiProblemException uploadMismatch() {
+        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "MCP_UPLOAD_CONTENT_MISMATCH",
+                ApiMessage.of("mcp.upload.content-mismatch"));
     }
 
     private McpToolResponse read(McpPrincipal principal, String name, JsonNode input) {

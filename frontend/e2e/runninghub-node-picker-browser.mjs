@@ -190,6 +190,9 @@ try {
     await waitFor(() => !document.querySelector('[role="menu"][aria-label="选择节点"]'));
     assert.equal(await page(() => Boolean(document.querySelector('[role="dialog"]'))),true,"Escape must close only the node menu");
     await waitFor(() => document.activeElement?.getAttribute("aria-label") === "选择节点");
+    const editSeed = "button[aria-label='编辑参数 · 随机种子']";
+    await scrollControlIntoView(editSeed);
+    await pointerClick(editSeed);
     const exposeSeed = "button[role='checkbox'][aria-label='暴露参数 · 随机种子']";
     await scrollControlIntoView(exposeSeed);
     await pointerClick(exposeSeed);

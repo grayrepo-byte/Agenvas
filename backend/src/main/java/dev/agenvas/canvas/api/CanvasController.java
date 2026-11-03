@@ -118,7 +118,7 @@ public class CanvasController {
                     require(request.height(), "height"),
                     require(request.zIndex(), "zIndex"),
                     request.groupId(),
-                    request.locked() != null && request.locked());
+                    request.locked() != null && request.locked(), request.versionId());
             case UPDATE_TITLE -> new CanvasService.UpdateTitle(
                     request.itemId(),
                     require(request.expectedVersion(), "expectedVersion"),
@@ -177,6 +177,7 @@ public class CanvasController {
      * @param zIndex 放置或更新后的显示层级
      * @param groupId 放置或更新后的分组
      * @param locked 初始或目标锁定状态
+     * @param versionId PLACE_ARTIFACT 可选的精确媒体结果
      */
     public record CanvasCommandRequest(
             @NotNull CommandType type,
@@ -190,7 +191,8 @@ public class CanvasController {
             BigDecimal height,
             Integer zIndex,
             UUID groupId,
-            Boolean locked) {}
+            Boolean locked,
+            UUID versionId) {}
 
     /** 首版允许的画布展示操作。 */
     public enum CommandType {

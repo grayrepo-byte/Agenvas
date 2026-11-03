@@ -121,6 +121,12 @@ class McpRecoveryModePostgresIT {
                     "projectId", project.id().toString(), "commandId", "recovery-denied-generation",
                     "canvasItemId", canvasItemId.toString(), "expectedDraftVersion", draft.version()));
             assertReadOnly(run);
+            var upload = client.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/mcp/uploads"))
+                    .header("Authorization", "Bearer " + credential.token())
+                    .header("Content-Type", "multipart/form-data; boundary=synthetic")
+                    .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+            assertThat(upload.statusCode()).isEqualTo(503);
+            assertThat(mapper.readTree(upload.body()).path("code").asText()).isEqualTo("RECOVERY_MODE_READ_ONLY");
             assertThat(businessCounts(project.id())).isEqualTo(before);
             assertThat(drafts.get(owner.userId(), project.id(), canvasItemId)).isEqualTo(draft);
         }

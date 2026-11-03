@@ -18,14 +18,21 @@ export function projectCanvasRelations(items: CanvasItem[], connections: CanvasC
 }
 
 /** A gesture uses the source node's exact selection and never its resource-library default. */
-export function mediaInputConnection(items: CanvasItem[], connection: Connection | Edge) {
-  if (connection.sourceHandle !== "artifact-output" || connection.targetHandle !== "artifact-input") return null;
-  const source = items.find((item) => item.id === connection.source);
-  const target = items.find((item) => item.id === connection.target);
+export function mediaInputSource(items: CanvasItem[], sourceId: string, sourceHandle: string | null) {
+  if (sourceHandle !== "artifact-output") return null;
+  const source = items.find((item) => item.id === sourceId);
   const sourceVersionId = source ? canvasItemVersionId(source) : null;
-  if (!source || !["IMAGE", "AUDIO", "VIDEO"].includes(source.artifact.kind) || !sourceVersionId
-      || !target || target.artifact.kind === "TEXT" || source.id === target.id) return null;
-  return { sourceCanvasItemId: source.id, targetCanvasItemId: target.id, sourceVersionId };
+  if (!source || !["IMAGE", "AUDIO", "VIDEO"].includes(source.artifact.kind) || !sourceVersionId) return null;
+  return { sourceCanvasItemId: source.id, sourceVersionId };
+}
+
+/** Targets may be empty media drafts; the source must already have a selected result. */
+export function mediaInputConnection(items: CanvasItem[], connection: Connection | Edge) {
+  if (connection.targetHandle !== "artifact-input") return null;
+  const source = mediaInputSource(items, connection.source, connection.sourceHandle ?? null);
+  const target = items.find((item) => item.id === connection.target);
+  if (!source || !target || target.artifact.kind === "TEXT" || source.sourceCanvasItemId === target.id) return null;
+  return { ...source, targetCanvasItemId: target.id };
 }
 
 /** Published input contracts decide media compatibility; a persisted relation never generates. */
