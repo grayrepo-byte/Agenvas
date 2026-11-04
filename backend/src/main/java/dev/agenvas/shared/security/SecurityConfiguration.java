@@ -63,6 +63,7 @@ public class SecurityConfiguration {
                                 "/api/v1/settings/director", "/api/v1/settings/prompts",
                                 "/api/v1/settings/prompts/**",
                                 "/api/v1/settings/system-logs", "/api/v1/settings/storage/**",
+                                "/api/v1/settings/local-services/discover",
                                 "/api/v1/call-logs/**", "/api/v1/settings/debug", "/api/v1/settings/call-log-retention", "/api/v1/settings/call-log-retention/**")
                         .hasRole("ADMIN")
                         .anyRequest()

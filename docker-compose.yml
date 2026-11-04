@@ -97,6 +97,8 @@ services:
   server:
     image: docker.io/grayrepo/agenvas-server:latest
     pull_policy: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       AGENVAS_DB_URL: jdbc:postgresql://postgres:5432/agenvas
       AGENVAS_DB_USER: agenvas
@@ -106,6 +108,8 @@ services:
       # Agent budgets are deployment settings; adjust to the selected model's actual context window.
       AGENVAS_LLM_ALLOW_LOOPBACK_HTTP: "false"
       AGENVAS_LLM_TRUSTED_HTTP_ORIGINS: ""
+      AGENVAS_LOCAL_SERVICE_RUNTIME: "CONTAINER"
+      AGENVAS_LOCAL_SERVICE_DISCOVERY_ENABLED: "true"
       AGENVAS_CREDENTIAL_MASTER_KEY_FILE: /run/agenvas/credentials/installation/credential-master-key
       AGENVAS_CREDENTIAL_KEY_VERSION: "1"
       AGENVAS_CREDENTIAL_PREVIOUS_KEYS: ""

@@ -30,6 +30,7 @@ import { Select } from "../../shared/ui/Select";
 import { AutoDlWorkflowFields } from "./AutoDlWorkflowFields";
 import { CapabilityConfigurationFields } from "./CapabilityConfigurationFields";
 import { GoogleImageConnectionHelp,googleImageApiLabel } from "./GoogleImageConnectionHelp";
+import { LocalServiceDiscovery } from "./LocalServiceDiscovery";
 import { MediaConnectionAddressField } from "./MediaConnectionAddressField";
 import { KlingModelFields } from "./KlingModelFields";
 import { NativeModelFields } from "./NativeModelFields";
@@ -249,19 +250,21 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
   </div>;
 }
 
-function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApiKeyChange, creating = false }: {
+function ConnectionCredentials({ platform, origin, apiKey, onOriginChange, onApiKeyChange, creating = false, disabled = false }: {
   platform: MediaConnection["platform"];
   origin: string;
   apiKey: string;
   onOriginChange: (value: string) => void;
   onApiKeyChange: (value: string) => void;
   creating?: boolean;
+  disabled?: boolean;
 }) {
   useLocale();
   const helpId = useId();
   return <>
     <MediaConnectionAddressField key={platform} platform={platform} origin={origin} onChange={onOriginChange}
       describedBy={platform === "GOOGLE" ? helpId : undefined} />
+    {platform === "COMFYUI" ? <LocalServiceDiscovery service="COMFYUI" disabled={disabled} onSelect={onOriginChange} /> : null}
     {platform === "GOOGLE" ? <GoogleImageConnectionHelp id={helpId} origin={origin} /> : null}
     {platform === "AUTODL" ? <p className="ui-muted">{t("settings.mediaSettings.comfyTokenHint")}</p> : null}
     {mediaConnectionAddresses[platform]?.requiresApiKey ? <Field><FieldLabel className="ui-field block">
@@ -624,7 +627,7 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
         {isStale ? <ConfigurationUpdatedNotice scope={t("settings.mediaSettings.connectionConfiguration")} disabled={busy} onReload={loadLatest} /> : null}
         <FieldSet className="media-settings-fieldset" disabled={busy}><FieldGroup className="ui-form-grid">
           <Field><FieldLabel className="ui-field block">{t("settings.shared.connectionName")}<Input value={name} onChange={(event) => setName(event.target.value)} required maxLength={NAME_LIMIT} /></FieldLabel></Field>
-          <ConnectionCredentials platform={connection.platform} origin={origin} apiKey={apiKey} onOriginChange={setOrigin} onApiKeyChange={setApiKey} />
+          <ConnectionCredentials platform={connection.platform} origin={origin} apiKey={apiKey} onOriginChange={setOrigin} onApiKeyChange={setApiKey} disabled={busy} />
         </FieldGroup></FieldSet>
         {error ? <Notice tone="danger">{error}</Notice> : null}
       </div>
@@ -783,7 +786,7 @@ export function MediaSettingsPage() {
                 </Select>
               </FieldLabel></Field>
               <ConnectionCredentials platform={platform} origin={origin} apiKey={apiKey}
-                onOriginChange={setOrigin} onApiKeyChange={setApiKey} creating />
+                onOriginChange={setOrigin} onApiKeyChange={setApiKey} creating disabled={create.isPending} />
             </FieldGroup></FieldSet>
             {error ? <Notice tone="danger">{error}</Notice> : null}
           </div>

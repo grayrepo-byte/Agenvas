@@ -6,8 +6,11 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import okhttp3.Dns;
 import okhttp3.MediaType;
@@ -76,6 +79,31 @@ class PinnedHttpClientsTest {
             assertThat(response.code()).isEqualTo(302);
         }
         assertThat(reached).hasValue(0);
+    }
+
+    @Test
+    void uncapturedTransportOmitsSystemMetadataEvenInsideActiveDebugCapture() throws IOException {
+        String metadata = "{\"system\":{\"argv\":[\"/private/service/path\",\"--token=private-token\"]}}";
+        server.createContext("/system_stats", exchange -> respond(exchange, 200, metadata));
+        OkHttpClient uncaptured = PinnedHttpClients.pinnedUncaptured(Dns.SYSTEM,
+                Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(2));
+        List<DebugHttpCapture.Exchange> captured = new ArrayList<>();
+        try (var capture = DebugHttpCapture.openLlm(exchanges -> {
+            captured.clear();
+            captured.addAll(exchanges);
+        })) {
+            assertThat(DebugHttpCapture.enabled()).isTrue();
+            Request request = new Request.Builder().url("http://127.0.0.1:"
+                    + server.getAddress().getPort() + "/system_stats").get().build();
+            try (Response response = uncaptured.newCall(request).execute()) {
+                assertThat(response.body().string()).isEqualTo(metadata);
+            }
+            assertThat(captured).isEmpty();
+        }
+        assertThat(uncaptured.proxy()).isEqualTo(Proxy.NO_PROXY);
+        assertThat(uncaptured.followRedirects()).isFalse();
+        assertThat(uncaptured.followSslRedirects()).isFalse();
+        assertThat(uncaptured.retryOnConnectionFailure()).isFalse();
     }
 
     private Request submit() {

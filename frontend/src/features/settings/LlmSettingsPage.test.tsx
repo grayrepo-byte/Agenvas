@@ -288,3 +288,31 @@ describe("LlmSettingsPage", () => {
   });
 
 });
+
+
+it("fills discovered Ollama only on selection and preserves its unsaved draft", async () => {
+  const writes: unknown[] = [];
+  server.use(
+    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+    http.get("/api/v1/settings/llm", () => HttpResponse.json({ configured: true, version: 4, endpoint: "https://api.example.com",
+      modelId: "saved-model", keyMask: "••••1234", toolCallingVerified: false, updatedAt: null })),
+    http.get("/api/v1/settings/diagnostics", () => HttpResponse.json({ llmMode: "MOCK", mediaMode: "MOCK", imageConfigured: false, videoConfigured: false, recentErrors: [] })),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+    http.post("/api/v1/settings/local-services/discover", () => HttpResponse.json({ service: "OLLAMA", runtime: "CONTAINER", status: "FOUND", endpoint: "http://host.docker.internal:11434/v1", policyAllowed: true })),
+    http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
+  );
+  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
+  const user = userEvent.setup(); const endpoint = await screen.findByRole("textbox", { name: "端点地址" });
+  const model = screen.getByRole("textbox", { name: "模型 ID" });
+  await user.clear(model); await user.type(model, "draft-model");
+  const key = screen.getByLabelText("API Key（每次修改均需重新输入）"); await user.type(key, "draft-secret");
+  const form = endpoint.closest("form")!;
+  expect(within(form).getByRole("button", { name: "保存配置" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "执行可能计费的诊断" })).toBeInTheDocument();
+  await user.click(within(form).getByRole("button", { name: "查找本机 Ollama" }));
+  const fill = await screen.findByRole("button", { name: "填入地址" });
+  expect(endpoint).toHaveValue("https://api.example.com"); await user.click(fill);
+  expect(endpoint).toHaveValue("http://host.docker.internal:11434/v1");
+  expect(model).toHaveValue("draft-model"); expect(key).toHaveValue("draft-secret");
+  expect(screen.getByText("正在编辑 · 基于 v4")).toBeInTheDocument(); expect(writes).toEqual([]);
+});

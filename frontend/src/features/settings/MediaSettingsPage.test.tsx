@@ -1938,3 +1938,34 @@ it("retains unparsed RunningHub JSON when closing and reopening a publishing ses
   await user.click(screen.getByText("导入 / 已保存的 JSON"));
   expect(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" })).toHaveValue("unfinished JSON draft");
 });
+
+
+it.each([false, true])("fills ComfyUI explicitly without saving or losing the draft (editing=%s)", async (editing) => {
+  const writes: unknown[] = [];
+  const fixture = settingsFixture({ platform: "COMFYUI", origin: "http://192.168.1.2:8188", capabilities: [] });
+  server.use(
+    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+    http.get("/api/v1/settings/media-connections", () => HttpResponse.json(editing ? fixture : { connections: [], defaults: mockDefault })),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+    http.post("/api/v1/settings/local-services/discover", async ({ request }) => {
+      expect(await request.json()).toEqual({ service: "COMFYUI" });
+      return HttpResponse.json({ service: "COMFYUI", runtime: "CONTAINER", status: "FOUND", endpoint: "http://192.168.65.254:8188", policyAllowed: true });
+    }),
+    http.post("/api/v1/settings/media-connections", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
+    http.put("/api/v1/settings/media-connections/openai-1", async ({ request }) => { writes.push(await request.json()); return new HttpResponse(null, { status: 500 }); }),
+  );
+  mount(); const user = userEvent.setup();
+  if (editing) {
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
+    await user.click(await screen.findByRole("button", { name: "编辑连接" }));
+  } else { await user.click(await screen.findByRole("button", { name: "添加连接" })); }
+  const dialog = screen.getByRole("dialog"); const name = within(dialog).getByRole("textbox", { name: "连接名称" });
+  await user.clear(name); await user.type(name, "Draft Comfy");
+  const origin = within(dialog).getByRole("textbox", { name: "ComfyUI 地址" });
+  await user.clear(origin); await user.type(origin, "http://192.168.1.3:8188");
+  await user.click(within(dialog).getByRole("button", { name: "查找本机 ComfyUI" }));
+  expect(within(dialog).getByRole("button", { name: editing ? "保存连接" : "添加连接" })).toBeInTheDocument();
+  const fill = await within(dialog).findByRole("button", { name: "填入地址" });
+  expect(origin).toHaveValue("http://192.168.1.3:8188"); await user.click(fill);
+  expect(origin).toHaveValue("http://192.168.65.254:8188"); expect(name).toHaveValue("Draft Comfy"); expect(writes).toEqual([]);
+});

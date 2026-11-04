@@ -1737,6 +1737,8 @@ Provider endpoint 只能由管理员配置，模型不能传入任意 endpoint�
 
 LLM 的 HTTP 默认不准入，部署者可按 [ADR 0067](adr/0067-explicit-local-llm-http-origins.md) 显式信任精确主机与端口，字面回环仍需独立开关，保存与运行时继续校验目标和全部 DNS 答案、阻断元数据与特殊用途地址；Docker 到宿主机 Ollama 的配置见[本地连接指南](ollama-local.md)。
 
+管理员可主动发现标准宿主机 Ollama / ComfyUI 服务，见 [ADR 0068](adr/0068-bounded-host-service-discovery.md)。接口只接受服务枚举，限定端口 11434/8188 和无凭据状态 GET，不扫描地址或端口；容器宿主别名仅接受全部 RFC1918 IPv4 答案并固定一个地址，原生运行使用本机字面回环，未知拓扑保留手动配置。DNS 与 HTTP 共用有界执行器和整体截止时间，正文限制解压后 32 KiB，探测管道不采集 debug 正文。发现不保存配置、不授予 HTTP 权限、不验证生成或工具能力；用户明确选择才填入表单草稿。
+
 ComfyUI 允许管理员配置本地精确 HTTP IP/端口或远程 HTTPS 地址及代理前缀，沿用自托管私网与代理 fake-ip 策略；拒绝云元数据、非路由地址和域名解析到回环。媒体结果下载仍只能回到固定服务前缀的受控接口。普通用户与模型不能配置任意 URL。
 
 P0 不提供任意 URL 导入。访问云元数据地址、环回/内网绕过、DNS rebinding、跨主机重定向均属于安全测试。

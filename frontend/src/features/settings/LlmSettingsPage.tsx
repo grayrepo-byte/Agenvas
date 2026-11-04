@@ -11,6 +11,7 @@ import { PageShell } from "../../shared/ui/PageShell";
 import { Button } from "../../shared/ui/primitives/button";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Input } from "../../shared/ui/primitives/input";
+import { LocalServiceDiscovery } from "./LocalServiceDiscovery";
 import "./SettingsPages.css";
 
 
@@ -125,6 +126,7 @@ export function LlmSettingsPage() {
                 <p>{t("settings.llm.conflictHint")}</p>
                 <Button variant="outline"  type="button" disabled={busy} onClick={() => { setDraft(null); setApiKey(""); setError(""); setAcknowledgedVersion(null); }}>{t("settings.shared.refreshConfig")}</Button>
               </Notice> : null}
+              <LocalServiceDiscovery service="OLLAMA" disabled={busy} onSelect={(value) => editDraft("endpoint", value)} />
               <FieldGroup className="llm-connection-fields">
               <Field><FieldLabel htmlFor="llm-endpoint">{t("settings.llm.endpoint")}</FieldLabel><Input id="llm-endpoint" autoComplete="off" required type="url" disabled={busy} value={endpoint} onChange={(event) => editDraft("endpoint", event.target.value)} placeholder="https://api.example.com" /></Field>
               <Field><FieldLabel htmlFor="llm-model">{t("settings.llm.modelId")}</FieldLabel><Input id="llm-model" autoComplete="off" required disabled={busy} value={modelId} onChange={(event) => editDraft("modelId", event.target.value)} placeholder="model-name" /></Field>

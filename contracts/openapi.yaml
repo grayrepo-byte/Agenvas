@@ -10,6 +10,59 @@ info:
 servers:
   - url: /
 paths:
+  /api/v1/settings/local-services/discover:
+    post:
+      operationId: discoverLocalService
+      summary: Actively check one standard host service without credentials or generation
+      description: >-
+        Administrator-only, CSRF-protected and uncached. Accepts only a service kind.
+        Checks one server-selected host address and fixed port/path, without redirects,
+        proxies, credentials, generation, or network scanning. Finding a service does not
+        grant provider endpoint access, save configuration, or verify model/tool support.
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LocalServiceDiscoveryRequest'
+      responses:
+        '200':
+          description: Bounded result; source bodies and system metadata are never returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LocalServiceDiscoveryResult'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /mcp/uploads:
     post:
       operationId: uploadMcpMedia
@@ -5164,6 +5217,36 @@ components:
       scheme: bearer
       description: 用户级 MCP 访问令牌，仅用于明确列出的 MCP 接口。
   schemas:
+    LocalServiceKind:
+      type: string
+      enum: [OLLAMA, COMFYUI]
+    LocalServiceDiscoveryRequest:
+      type: object
+      additionalProperties: false
+      required: [service]
+      properties:
+        service:
+          $ref: '#/components/schemas/LocalServiceKind'
+    LocalServiceDiscoveryResult:
+      type: object
+      additionalProperties: false
+      required: [service, runtime, status, endpoint, policyAllowed]
+      properties:
+        service:
+          $ref: '#/components/schemas/LocalServiceKind'
+        runtime:
+          type: string
+          enum: [CONTAINER, NATIVE, UNKNOWN]
+        status:
+          type: string
+          enum: [FOUND, NOT_FOUND, UNRESOLVED, BLOCKED_ADDRESS, TIMEOUT, UNEXPECTED_RESPONSE, AUTH_REQUIRED, UNSUPPORTED_RUNTIME]
+        endpoint:
+          type: [string, 'null']
+          maxLength: 500
+          description: Server-generated candidate; present only for FOUND, never credential-bearing
+        policyAllowed:
+          type: boolean
+          description: Existing endpoint policy permits the candidate; discovery never changes policy
     McpMediaUploadMetadata:
       type: object
       additionalProperties: false

@@ -3,6 +3,7 @@ import { Question } from "@/shared/ui/icons";
 import { useId,useState } from "react";
 import type { MediaConnection } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
+import { cn } from "../../shared/lib/utils";
 import { Button } from "../../shared/ui/primitives/button";
 import { Field,FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
@@ -22,7 +23,7 @@ export function MediaConnectionAddressField({ platform, origin, onChange, descri
   const config = mediaConnectionAddresses[platform];
   if (!config) return null;
   const hint = t(config.hint);
-  return <Field className="gap-2">
+  return <Field className={cn("gap-2", platform === "COMFYUI" && "col-span-full")}>
     <div className="flex items-center gap-1">
       <FieldLabel className="ui-field" htmlFor={id}>{t(config.label)}</FieldLabel>
       <TooltipProvider><Tooltip key={platform} open={open} onOpenChange={setOpen}>

@@ -5,6 +5,8 @@ export const HTTP_STATUS = {
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
   CONFLICT: 409,
+  TOO_MANY_REQUESTS: 429,
+  SERVICE_UNAVAILABLE: 503,
   INTERNAL_SERVER_ERROR: 500,
 } as const;
 
@@ -415,6 +417,16 @@ export async function getCurrentUser(): Promise<CurrentUser> {
 /** Reads only masked administrator LLM configuration metadata. */
 export async function getLlmSettings(): Promise<LlmSettings> {
   return readJson<LlmSettings>("/api/v1/settings/llm", t("api.errors.modelSettingsUnavailable"));
+}
+
+export type LocalServiceKind = components["schemas"]["LocalServiceKind"];
+export type LocalServiceDiscoveryResult = components["schemas"]["LocalServiceDiscoveryResult"];
+
+/** Checks only the server-selected local status endpoint; callers cannot supply a target address. */
+export function discoverLocalService(service: LocalServiceKind, signal?: AbortSignal): Promise<LocalServiceDiscoveryResult> {
+  return writeJson("/api/v1/settings/local-services/discover", {
+    method: "POST", body: JSON.stringify({ service }), signal,
+  });
 }
 
 /** Media settings expose only public connection and capability metadata. */

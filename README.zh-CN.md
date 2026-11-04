@@ -138,6 +138,8 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 
 使用 **Ollama 等本地 OpenAI 兼容服务**时，请按[本地模型连接指南](docs/ollama-local.md)配置。HTTP 需要部署者明确允许指定主机和端口；Docker 中的 `127.0.0.1` 指向容器自身。忽略 API Key 的服务可填写至少八个字符的占位值，如 `ollama-local`。模型服务实际分配的上下文与[导演设置中的预算](docs/agent-context-safety.md)须分别配置并匹配；工具诊断通过不代表完整 Agent 请求一定放得下。
 
+模型及 ComfyUI 设置提供本机服务发现入口：主动检查标准服务后，明确选择才填入允许的地址，手动配置保留。固定探测范围与平台限制见[本机服务发现](docs/local-service-discovery.md)。
+
 创建项目，通过画布右键菜单添加卡片或上传素材。选择模型、填写提示词和参考输入，检查预计费用后运行；完成后可预览、选用结果或重新生成。打开右下角导演聊天即可使用项目助手，按需读取并操作当前画布；选中节点可突出本次任务重点。Skill 的必需输入从画布内容中明确选择并固定精确版本，媒体提案在对话中统一批准或拒绝；无需添加 Agent 节点或绑定素材。
 
 媒体中继可按功能独立控制 OpenAI 兼容 LLM 图片输入与 OpenAI Images 参考图/蒙版；未启用时保持原传输。Seedance 和 MiniMax H3 本地视频参考需要可公网访问的中继。在存储设置中添加可从公网通过 HTTPS 访问的 OSS、COS 或 S3 连接，再将其选为媒体中继；永久媒体归档仍可使用本地存储。

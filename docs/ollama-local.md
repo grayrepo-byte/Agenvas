@@ -46,7 +46,7 @@ A container's `127.0.0.1` refers to that container, not the host. The old `AGENV
 
 The alias and `host-gateway` entry only resolve the host; they do not start a reverse proxy, forward ports, or change a service's listen address. Ollama and ComfyUI still use their own ports and must be reachable from the server container. On Windows/WSL, confirm whether the service runs in Windows, WSL, or another container.
 
-This LLM override does not change ComfyUI's separate endpoint policy. Its current plain-HTTP form requires an exact local/private IPv4 address and port, such as `http://<host-private-ip>:8188`; `http://host.docker.internal:8188` is not accepted by that policy. HTTPS endpoints remain a separate supported route. A shared “service on the host” form preset has not been implemented, and no host-service scanning is performed.
+This LLM override does not change ComfyUI's separate endpoint policy. Its current plain-HTTP form requires an exact local/private IPv4 address and port, such as `http://<host-private-ip>:8188`; `http://host.docker.internal:8188` is not accepted by that policy. HTTPS endpoints remain a separate supported route. The [host-service discovery control](local-service-discovery.md) can identify a standard Ollama or ComfyUI status interface and fill a permitted address. It does not scan networks or ports or grant additional endpoint access. ComfyUI discovery fills the specific private IPv4 address that answered, preserving its existing HTTP rule.
 
 ## Provider context capacity
 

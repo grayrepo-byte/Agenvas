@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/settings/local-services/discover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Actively check one standard host service without credentials or generation
+         * @description Administrator-only, CSRF-protected and uncached. Accepts only a service kind. Checks one server-selected host address and fixed port/path, without redirects, proxies, credentials, generation, or network scanning. Finding a service does not grant provider endpoint access, save configuration, or verify model/tool support.
+         */
+        post: operations["discoverLocalService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/mcp/uploads": {
         parameters: {
             query?: never;
@@ -4008,6 +4028,22 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        LocalServiceKind: "OLLAMA" | "COMFYUI";
+        LocalServiceDiscoveryRequest: {
+            service: components["schemas"]["LocalServiceKind"];
+        };
+        LocalServiceDiscoveryResult: {
+            service: components["schemas"]["LocalServiceKind"];
+            /** @enum {string} */
+            runtime: "CONTAINER" | "NATIVE" | "UNKNOWN";
+            /** @enum {string} */
+            status: "FOUND" | "NOT_FOUND" | "UNRESOLVED" | "BLOCKED_ADDRESS" | "TIMEOUT" | "UNEXPECTED_RESPONSE" | "AUTH_REQUIRED" | "UNSUPPORTED_RUNTIME";
+            /** @description Server-generated candidate; present only for FOUND, never credential-bearing */
+            endpoint: string | null;
+            /** @description Existing endpoint policy permits the candidate; discovery never changes policy */
+            policyAllowed: boolean;
+        };
         McpMediaUploadMetadata: {
             commandId: string;
             /** Format: uuid */
@@ -7567,6 +7603,75 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    discoverLocalService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalServiceDiscoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Bounded result; source bodies and system metadata are never returned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalServiceDiscoveryResult"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     uploadMcpMedia: {
         parameters: {
             query?: never;
