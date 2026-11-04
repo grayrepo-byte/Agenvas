@@ -795,7 +795,7 @@
   "logs.exchange.allRoles": "All roles",
   "logs.exchange.argumentsMissing": "Arguments not recorded",
   "logs.exchange.assistant": "Assistant",
-  "logs.exchange.bodyTooLarge": "Body too large to format; showing raw content.",
+  "logs.exchange.bodyTooLarge": "Body exceeds formatting limits; showing raw content.",
   "logs.exchange.cachedTokens": "Cached tokens",
   "logs.exchange.copied": "Copied",
   "logs.exchange.copyFailed": "Copy failed. Select the content manually.",

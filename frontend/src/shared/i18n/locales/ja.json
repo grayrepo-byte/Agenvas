@@ -795,7 +795,7 @@
   "logs.exchange.allRoles": "すべてのロール",
   "logs.exchange.argumentsMissing": "引数は未記録",
   "logs.exchange.assistant": "アシスタント",
-  "logs.exchange.bodyTooLarge": "内容が大きすぎるため、元の内容を表示します。",
+  "logs.exchange.bodyTooLarge": "本文が整形の上限を超えているため、元の内容を表示しています。",
   "logs.exchange.cachedTokens": "キャッシュ済みトークン",
   "logs.exchange.copied": "コピーしました",
   "logs.exchange.copyFailed": "コピーに失敗しました。内容を手動で選択してください。",

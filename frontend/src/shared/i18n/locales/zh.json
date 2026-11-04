@@ -795,7 +795,7 @@
   "logs.exchange.allRoles": "全部角色",
   "logs.exchange.argumentsMissing": "参数未记录",
   "logs.exchange.assistant": "助手",
-  "logs.exchange.bodyTooLarge": "正文过大，显示原始内容。",
+  "logs.exchange.bodyTooLarge": "正文超出格式化限制，已显示原始内容。",
   "logs.exchange.cachedTokens": "缓存 Token",
   "logs.exchange.copied": "已复制",
   "logs.exchange.copyFailed": "复制失败，请手动选择正文。",

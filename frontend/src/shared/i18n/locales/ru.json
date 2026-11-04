@@ -795,7 +795,7 @@
   "logs.exchange.allRoles": "Все роли",
   "logs.exchange.argumentsMissing": "Аргументы не записаны",
   "logs.exchange.assistant": "Ассистент",
-  "logs.exchange.bodyTooLarge": "Содержимое слишком большое для форматирования; показан исходный текст.",
+  "logs.exchange.bodyTooLarge": "Содержимое превышает ограничения форматирования; показан исходный текст.",
   "logs.exchange.cachedTokens": "Кэшированные токены",
   "logs.exchange.copied": "Скопировано",
   "logs.exchange.copyFailed": "Не удалось скопировать. Выделите содержимое вручную.",
