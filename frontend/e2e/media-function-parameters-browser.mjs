@@ -13,6 +13,8 @@ const chromePath = process.env.AGENVAS_E2E_CHROME
 const route = "/e2e/media-function-parameters.html";
 // Verify the same bundled CSS and real modal isolation as the shipped frontend.
 const production = !process.argv.includes("--dev");
+const cropOnly = process.argv.includes("--crop-only");
+const localEditOnly = process.argv.includes("--local-edit-only");
 const pollMs = 50;
 const timeoutMs = 15_000;
 const viewports = [
@@ -125,8 +127,61 @@ try {
   const baseUrl = server.resolvedUrls.local[0];
   for (const viewport of viewports) {
     await cdp("Emulation.setDeviceMetricsOverride", { ...viewport, deviceScaleFactor: 1, mobile: false });
-    for (const mode of ["image", "video", "preview"]) {
+    for (const mode of cropOnly ? ["crop"] : localEditOnly ? ["crop", "markup"] : ["image", "video", "preview", "crop", "markup"]) {
       await cdp("Page.navigate", { url: new URL(`${route}?mode=${mode}`, baseUrl).href });
+      if (mode === "crop") {
+        await waitFor(() => document.querySelector(".crop-image-shell img")?.naturalWidth === 1600);
+        await pointerClick('.crop-ratio-control [role="combobox"]');
+        await pointerClick('[role="option"][data-value="1:1"]');
+        const layout = await page(() => {
+          const bounds = selector => {
+            const { width, height, left, top, right, bottom } = document.querySelector(selector).getBoundingClientRect();
+            return { width, height, left, top, right, bottom };
+          };
+          return { image: bounds(".crop-image-shell img"), stage: bounds(".crop-image-shell"),
+            selection: bounds(".crop-selection"), submit: bounds(".crop-confirm") };
+        });
+        assert.ok(Math.abs(layout.stage.width - layout.image.width) < 1
+          && Math.abs(layout.stage.height - layout.image.height) < 1, "The crop stage must contain the complete image");
+        assert.ok(Math.abs(layout.selection.width - layout.selection.height) < 1, "A 1:1 crop must display as a square");
+        for (const bounds of [layout.stage, layout.submit]) {
+          assert.ok(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= viewport.width && bounds.bottom <= viewport.height,
+            "Crop preview and confirmation must remain inside the viewport");
+        }
+        await pointerClick(".crop-confirm");
+        assert.deepEqual(await page(() => JSON.parse(document.body.dataset.submitted)),
+          { x: 0.29, y: 0.08, width: 0.42, height: 0.84 });
+        console.log(JSON.stringify({ viewport, mode, completeImage: true, squareCrop: true }));
+        continue;
+      }
+      if (mode === "markup") {
+        await waitFor(() => document.querySelector(".markup-image-shell canvas")?.width === 1600
+          && document.querySelector(".markup-image-title small")?.textContent === "1600 × 800");
+        const pixel = () => [...document.querySelector(".markup-image-shell canvas")
+          .getContext("2d").getImageData(800, 400, 1, 1).data];
+        await pointerClick(".markup-image-shell canvas");
+        assert.deepEqual(await page(pixel), [255, 48, 56, 255], "A pen tap must persist after pointer release");
+        await pointerClick('button[aria-label="撤销"]');
+        assert.deepEqual(await page(pixel), [0, 0, 0, 0]);
+        await pointerClick('button[aria-label="重做"]');
+        assert.deepEqual(await page(pixel), [255, 48, 56, 255]);
+        await pointerClick('button[aria-label="橡皮"]');
+        await pointerClick(".markup-image-shell canvas");
+        assert.deepEqual(await page(pixel), [0, 0, 0, 0], "An eraser tap must remove annotations");
+        await pointerClick('button[aria-label="画笔"]');
+        const points = await page(() => {
+          const r = document.querySelector(".markup-image-shell canvas").getBoundingClientRect();
+          return { start: { x: r.left + r.width / 4, y: r.top + r.height / 4 },
+            end: { x: r.left + r.width / 2, y: r.top + r.height / 2 } };
+        });
+        await cdp("Input.dispatchMouseEvent", { type: "mousePressed", ...points.start, button: "left", buttons: 1, clickCount: 1 });
+        await cdp("Input.dispatchMouseEvent", { type: "mouseMoved", ...points.end, button: "left", buttons: 1 });
+        await cdp("Input.dispatchMouseEvent", { type: "mouseReleased", ...points.end, button: "left", buttons: 0, clickCount: 1 });
+        assert.deepEqual(await page(() => [...document.querySelector(".markup-image-shell canvas")
+          .getContext("2d").getImageData(600, 300, 1, 1).data]), [255, 48, 56, 255], "A moving stroke must remain continuous");
+        console.log(JSON.stringify({ viewport, mode, penTap: true, undoRedo: true, eraserTap: true, drag: true }));
+        continue;
+      }
       await waitFor(() => document.querySelectorAll('.runninghub-form [role="combobox"]').length >= 3);
       const layout = await page(() => {
         const form = document.querySelector(".runninghub-form");
@@ -159,7 +214,7 @@ try {
     }
   }
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-  for (const mode of ["image", "video"]) {
+  for (const mode of cropOnly || localEditOnly ? [] : ["image", "video"]) {
     await cdp("Page.navigate", { url: new URL(`${route}?mode=${mode}`, baseUrl).href });
     await waitFor(() => document.querySelectorAll('.runninghub-form [role="combobox"]').length >= 3);
     await pointerClick('.runninghub-form [role="combobox"]');
@@ -173,7 +228,8 @@ try {
     await waitFor(() => document.querySelectorAll('.runninghub-form [role="combobox"]').length >= 3);
     assert.equal(await page(() => [...document.querySelectorAll('.runninghub-form [role="combobox"], .media-operation-panel footer button')].every(control => control.disabled)), true);
   }
-  console.log("Media function parameter production layout passed (image / video / preview, four viewports, toolbar isolation, exact source/scale submission, busy controls; synthetic only)");
+  console.log(cropOnly || localEditOnly ? "Local image editing production regression passed (four viewports; synthetic only)"
+    : "Media function parameter production layout passed (image / video / preview / crop / markup, four viewports, toolbar isolation, exact source/scale submission, busy controls; synthetic only)");
 
 } finally {
   socket?.close();

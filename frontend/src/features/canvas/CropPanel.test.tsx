@@ -17,6 +17,37 @@ function showCrop(onSubmit = vi.fn()) {
 }
 
 describe("CropPanel", () => {
+  it("waits for real dimensions before allowing a crop", async () => {
+    const onSubmit = vi.fn();
+    render(<CropPanel sourceUrl="/source.png" busy={false} error={null}
+      onClose={vi.fn()} onSubmit={onSubmit} />);
+    expect(screen.getByRole("combobox", { name: "裁剪比例" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "移动裁剪框" })).toBeDisabled();
+    await clickControl(screen.getByRole("button", { name: "确定" }));
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    const image = screen.getByRole("img");
+    Object.defineProperties(image, { naturalWidth: { value: 1600 }, naturalHeight: { value: 800 } });
+    fireEvent.load(image);
+    await changeControl(screen.getByRole("combobox", { name: "裁剪比例" }), { target: { value: "1:1" } });
+    await clickControl(screen.getByRole("button", { name: "确定" }));
+    expect(onSubmit).toHaveBeenCalledWith({ x: 0.29, y: 0.08, width: 0.42, height: 0.84 });
+  });
+
+  it("uses metadata arriving after opening without resetting an adjusted crop", async () => {
+    const onSubmit = vi.fn();
+    const props = { sourceUrl: "/source.png", busy: false, error: null, onClose: vi.fn(), onSubmit };
+    const view = render(<CropPanel {...props} />);
+    view.rerender(<CropPanel {...props} sourceWidth={1600} sourceHeight={800} />);
+    await changeControl(screen.getByRole("combobox", { name: "裁剪比例" }), { target: { value: "1:1" } });
+    fireEvent.keyDown(screen.getByRole("button", { name: "移动裁剪框" }), { key: "ArrowRight" });
+    const image = screen.getByRole("img");
+    Object.defineProperties(image, { naturalWidth: { value: 1600 }, naturalHeight: { value: 800 } });
+    fireEvent.load(image);
+    await clickControl(screen.getByRole("button", { name: "确定" }));
+    expect(onSubmit).toHaveBeenCalledWith({ x: 0.3, y: 0.08, width: 0.42, height: 0.84 });
+  });
+
   it("moves the crop rectangle directly on the image and submits normalized coordinates", async () => {
     const onSubmit = showCrop();
     const selection = screen.getByRole("button", { name: "移动裁剪框" });

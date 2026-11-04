@@ -136,10 +136,11 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
   onSubmit: (parameters: CropParameters) => void;
 }) {
   useLocale();
-  const [imageSize, setImageSize] = useState({
-    width: sourceWidth ?? FALLBACK_IMAGE_WIDTH,
-    height: sourceHeight ?? FALLBACK_IMAGE_HEIGHT,
-  });
+  const [loadedSize, setLoadedSize] = useState<{ width: number; height: number } | null>(null);
+  // Asset metadata can arrive after this workspace opens. Never freeze the temporary ratio.
+  const imageSize = sourceWidth != null && sourceHeight != null
+    && Number.isFinite(sourceWidth) && Number.isFinite(sourceHeight) && sourceWidth > 0 && sourceHeight > 0
+    ? { width: sourceWidth, height: sourceHeight } : loadedSize;
   const [ratio, setRatio] = useState<CropRatio>("original");
   const [crop, setCrop] = useState<CropRect>({
     x: DEFAULT_INSET, y: DEFAULT_INSET,
@@ -150,7 +151,7 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
     stageWidth: number; stageHeight: number;
   } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const stageRatio = imageSize.width / imageSize.height;
+  const stageRatio = imageSize ? imageSize.width / imageSize.height : FALLBACK_IMAGE_WIDTH / FALLBACK_IMAGE_HEIGHT;
   const selectedOption = RATIO_OPTIONS.find((option) => option.value === ratio);
   const lockedRatio = ratio === "free" ? null : selectedOption?.ratio ?? stageRatio;
 
@@ -177,6 +178,7 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
   }, [drag, lockedRatio]);
 
   function startDrag(handle: CropHandle, event: ReactPointerEvent<HTMLElement>) {
+    if (!imageSize) return;
     const bounds = stageRef.current?.getBoundingClientRect();
     if (!bounds?.width || !bounds.height) return;
     event.preventDefault();
@@ -186,6 +188,7 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
   }
 
   function selectRatio(nextRatio: CropRatio) {
+    if (!imageSize) return;
     setRatio(nextRatio);
     if (nextRatio === "free") return;
     const option = RATIO_OPTIONS.find((candidate) => candidate.value === nextRatio);
@@ -193,6 +196,7 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
   }
 
   function adjustWithKeyboard(handle: CropHandle, event: KeyboardEvent<HTMLButtonElement>) {
+    if (!imageSize) return;
     const directions: Record<string, readonly [number, number]> = {
       ArrowLeft: [-KEYBOARD_STEP, 0], ArrowRight: [KEYBOARD_STEP, 0],
       ArrowUp: [0, -KEYBOARD_STEP], ArrowDown: [0, KEYBOARD_STEP],
@@ -208,7 +212,7 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
   }
 
   function submit() {
-    if (busy) return;
+    if (busy || !imageSize) return;
     onSubmit({ x: rounded(crop.x), y: rounded(crop.y),
       width: rounded(crop.width), height: rounded(crop.height) });
   }
@@ -225,18 +229,19 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
       <div className="crop-image-shell" ref={stageRef} aria-label={t("image.crop.workspace")}>
         <img src={sourceUrl} alt={t("image.crop.previewLabel")} draggable={false}
           onLoad={(event) => {
-            if (sourceWidth && sourceHeight) return;
             const image = event.currentTarget;
             if (image.naturalWidth && image.naturalHeight) {
-              setImageSize({ width: image.naturalWidth, height: image.naturalHeight });
+              setLoadedSize({ width: image.naturalWidth, height: image.naturalHeight });
             }
           }} />
         <div className={`crop-selection${drag ? " is-dragging" : ""}`} style={cropStyle}>
           <Button variant="ghost" type="button" className="crop-selection-surface"
+            disabled={!imageSize}
             aria-label={t("image.crop.moveFrame")} onPointerDown={(event) => startDrag("move", event)}
             onKeyDown={(event) => adjustWithKeyboard("move", event)} />
           {(Object.keys(HANDLE_LABELS) as Array<Exclude<CropHandle, "move">>).map((handle) =>
             <Button variant="ghost" type="button" key={handle} className={`crop-handle crop-handle-${handle}`}
+              disabled={!imageSize}
               aria-label={HANDLE_LABELS[handle]} onPointerDown={(event) => startDrag(handle, event)}
               onKeyDown={(event) => adjustWithKeyboard(handle, event)} />)}
         </div>
@@ -251,12 +256,13 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
         <span className="crop-toolbar-divider" aria-hidden="true" />
         <label className="crop-ratio-control"><Crop size={19} />
           <Select variant="ghost" density="compact" aria-label={t("image.crop.aspectRatio")} value={ratio}
+            disabled={!imageSize}
             onChange={(event) => selectRatio(event.target.value as CropRatio)}>
             {RATIO_OPTIONS.map((option) => <option key={option.value}
               value={option.value}>{option.label}</option>)}
           </Select>
         </label>
-        <Button variant="ghost" type="button" className="crop-confirm" disabled={busy} onClick={submit}>
+        <Button variant="ghost" type="button" className="crop-confirm" disabled={busy || !imageSize} onClick={submit}>
           <Check size={18} weight="bold" />{busy ? t("image.crop.processing") : t("image.crop.confirm")}</Button>
       </footer>
     </div>

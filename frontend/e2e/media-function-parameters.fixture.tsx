@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ImageFunctionConfiguration } from "../src/features/canvas/ImageFunctionConfiguration";
+import { CropPanel } from "../src/features/canvas/CropPanel";
+import { BrushMarkupEditor } from "../src/features/canvas/BrushMarkupEditor";
 import { VideoOperationPanel } from "../src/features/canvas/VideoOperationPanel";
 import { RunningHubForm, type RunningHubValue } from "../src/features/canvas/RunningHubForm";
 import { Select } from "../src/shared/ui/Select";
@@ -14,6 +16,7 @@ import "../src/features/canvas/ArtifactCardFrame.css";
 
 // Local synthetic contracts exercise the same controls under toolbar and preview layouts.
 const mode = new URLSearchParams(location.search).get("mode") ?? "image";
+const sourceUrl = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="800"><rect width="1600" height="800" fill="#406080"/></svg>')}`;
 const busy = new URLSearchParams(location.search).has("busy");
 const scalarFields: RunningHubField[] = [
   { key: "sound", label: "PrimitiveBoolean", description: "保留声音", type: "BOOLEAN", nodeId: "4", fieldName: "value", defaultValue: true, required: false, advanced: false },
@@ -35,7 +38,11 @@ function submitted(value: unknown) { document.body.dataset.submitted = JSON.stri
 function Fixture() {
   const [values, setValues] = useState<Record<string, RunningHubValue>>({});
   const [scale, setScale] = useState("2");
-  return mode === "preview" ? <main style={{ width: "min(400px, calc(100vw - 48px))", margin: 24 }}>
+  return mode === "markup" ? <BrushMarkupEditor projectId="synthetic-project" canvasItemId="synthetic-item"
+    sourceVersionId="synthetic-source" expectedVersion={0} sourceUrl={sourceUrl} sourceTitle="合成图像" onClose={() => {}} />
+    : mode === "crop" ? <CropPanel sourceUrl={sourceUrl}
+    sourceWidth={1600} sourceHeight={800} busy={false} error={null} onClose={() => {}} onSubmit={submitted} />
+    : mode === "preview" ? <main style={{ width: "min(400px, calc(100vw - 48px))", margin: 24 }}>
     <RunningHubForm definition={image.settings.runningHub!} values={values} prompt="" durationSeconds={null} choices={[]}
       disabled={busy} onChange={(key, value) => setValues(current => {
         const next = { ...current }; if (value === undefined) delete next[key]; else next[key] = value; return next;
