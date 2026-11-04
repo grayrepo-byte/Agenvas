@@ -174,6 +174,9 @@ class AgentMediaApprovalPostgresIT {
     @BeforeAll
     void setup() throws Exception {
         Files.setPosixFilePermissions(storage, PosixFilePermissions.fromString("rwx------"));
+        // These scripted media-approval turns do not model summaries. Leave room for the
+        // complete image/read/layout sequence; AgentLongTaskPostgresIT owns compaction.
+        jdbc.sql("update director_settings set context_window_tokens=65536").update();
         owner = identities.setup("synthetic-approval-admin",
                 "synthetic-approval-password-123");
         mvc = webAppContextSetup(context).apply(springSecurity()).build();

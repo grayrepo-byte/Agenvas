@@ -1091,7 +1091,7 @@ it("localizes only the untouched empty-session title while retaining authored se
     conversation({ id: "authored-session", title: "新会话", turnCount: 1 })];
   mountPanel();
   await screen.findByRole("button", { name: "New session" });
-  await userEvent.setup().click(screen.getByRole("button", { name: "Conversation list" }));
+  await userEvent.setup().click(screen.getByRole("button", { name: t("agent.chat.sessions") }));
   expect(await screen.findByText("新会话")).toBeInTheDocument();
   expect(screen.getAllByText("New session").length).toBeGreaterThan(0);
 });
