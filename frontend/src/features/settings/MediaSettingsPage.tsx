@@ -15,7 +15,7 @@ import { isKlingAdapter, isKlingNativeAdapter } from "../../shared/kling";
 import { isNativeMediaAdapter } from "../../shared/nativeMedia";
 import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
 import { MEDIA_FUNCTIONS_QUERY_KEY } from "../../shared/mediaFunctions";
-import { t,useLocale } from "../../shared/i18n";
+import { t,translate,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState,Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
@@ -470,6 +470,12 @@ function useMediaActions(connection: MediaConnection, settings: MediaSettings, a
   });
 }
 
+function localProcessorDisplayName(id: string, name: string): string {
+  const installedIds = ["00000000-0000-4000-8000-000000000201", "00000000-0000-4000-8000-000000000202"];
+  return installedIds.includes(id) && name === translate("zh", "settings.adapters.localImage")
+    ? t("settings.adapters.localImage") : name;
+}
+
 function ConnectionCapabilities({ connection, settings, apply, query, status, kind }: {
   connection: MediaConnection; settings: MediaSettings; apply: (value: MediaSettings) => void; query: string; status: CatalogStatus; kind: CatalogKind;
 }) {
@@ -479,8 +485,8 @@ function ConnectionCapabilities({ connection, settings, apply, query, status, ki
   const availableAdapters = platformAdapters[connection.platform];
   return <>
     {connection.capabilities.map((capability) => systemManaged ? <TableRow key={capability.id} hidden={!capabilityMatches(connection, capability, query, status, kind)}>
-      <TableCell><div className="media-table-name"><HardDrives size={19} aria-hidden /><strong title={capability.name}>{capability.name}</strong></div></TableCell>
-      <TableCell data-label={t("settings.mediaWorkspace.serviceColumn")}><span className="media-cell-text" title={connection.name}>{connection.name}</span></TableCell>
+      <TableCell><div className="media-table-name"><HardDrives size={19} aria-hidden /><strong title={localProcessorDisplayName(capability.id, capability.name)}>{localProcessorDisplayName(capability.id, capability.name)}</strong></div></TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.serviceColumn")}><span className="media-cell-text" title={systemManaged ? localProcessorDisplayName(connection.id, connection.name) : connection.name}>{systemManaged ? localProcessorDisplayName(connection.id, connection.name) : connection.name}</span></TableCell>
       <TableCell data-label={t("common.model")}><span className="media-cell-text" title={adapterLabel(capability.adapterId)}>{t("settings.mediaSettings.builtin")}</span></TableCell>
       <TableCell data-label={t("settings.mediaWorkspace.kindColumn")}>{capability.kind === "IMAGE_GENERATION" ? t("common.image") : t("common.video")}</TableCell>
       <TableCell data-label={t("settings.mediaSettings.inputRange")}><span className="media-cell-text">{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages }) : t("media.functions.videoTools")}</span></TableCell>
@@ -593,7 +599,7 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
 
   return <>
     <TableRow hidden={hidden} data-disabled={!connection.enabled}>
-      <TableCell><div className="media-table-name">{systemManaged ? <HardDrives size={18} aria-hidden /> : <PlugsConnected size={18} aria-hidden />}<strong title={connection.name}>{connection.name}</strong></div></TableCell>
+      <TableCell><div className="media-table-name">{systemManaged ? <HardDrives size={18} aria-hidden /> : <PlugsConnected size={18} aria-hidden />}<strong title={systemManaged ? localProcessorDisplayName(connection.id, connection.name) : connection.name}>{systemManaged ? localProcessorDisplayName(connection.id, connection.name) : connection.name}</strong></div></TableCell>
       <TableCell data-label={t("settings.mediaSettings.platform")}>{connection.platform}</TableCell>
       <TableCell data-label={t("settings.mediaWorkspace.capabilityCountColumn")}>{connection.capabilities.length}</TableCell>
       <TableCell data-label={t("settings.mediaWorkspace.addressColumn")}><span className="media-table-endpoint" title={`${endpoint}${connection.platform === "GOOGLE" ? ` · ${googleImageApiLabel(connection.origin)}` : ""}`}>{endpoint}</span></TableCell>

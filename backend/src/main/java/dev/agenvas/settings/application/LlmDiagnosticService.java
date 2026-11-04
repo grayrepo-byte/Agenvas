@@ -2,6 +2,10 @@ package dev.agenvas.settings.application;
 
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.audit.application.CallLogService;
+import dev.agenvas.audit.domain.CallLog;
+import java.util.function.Consumer;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.util.List;
 import java.util.Map;
@@ -32,17 +36,19 @@ public class LlmDiagnosticService {
     private final LlmDiagnosticGateway gatewayFactory;
     /** 验证模型返回的 nonce 参数是否为合法 JSON。 */
     private final ObjectMapper mapper;
+    private final CallLogService callLogs;
     /** 进程内单飞闸门，避免并发触发多组可能计费的诊断请求。 */
     private final AtomicBoolean inFlight = new AtomicBoolean();
 
     /** 注入配置读写与 Provider 网关工厂；诊断调用本身在方法内事务之外执行。 */
     public LlmDiagnosticService(LlmProviderConfigRepository repository,
             LlmProviderConfigService configs, LlmDiagnosticGateway gatewayFactory,
-            ObjectMapper mapper) {
+            ObjectMapper mapper, CallLogService callLogs) {
         this.repository = repository;
         this.configs = configs;
         this.gatewayFactory = gatewayFactory;
         this.mapper = mapper;
+        this.callLogs = callLogs;
     }
 
     /** 网络诊断不占用数据库事务；结束时按配置版本条件更新能力状态。 */
@@ -81,30 +87,42 @@ public class LlmDiagnosticService {
                             + "exactly once. After its result, reply with only the proof value "
                             + "from the tool result."),
                     new UserMessage("Call agenvas_connection_probe with nonce " + nonce));
-            var first = gateway.call(initial, List.of(tool), Map.of());
-            AssistantMessage assistant = first.response().getResult().getOutput();
-            if (assistant.getToolCalls().size() != 1) throw protocolFailure();
+            var first = recordRound(config, gateway, initial, tool, 1, exchange -> {
+                AssistantMessage assistant = output(exchange);
+                if (assistant.getToolCalls().size() != 1) {
+                    throw protocolFailure("PROVIDER_DIAGNOSTIC_NO_TOOL", "first-response-no-tool");
+                }
+                AssistantMessage.ToolCall call = assistant.getToolCalls().getFirst();
+                if (!"function".equals(call.type()) || !PROBE_TOOL.equals(call.name())
+                        || call.id() == null || call.id().isBlank()
+                        || call.id().length() > 200 || !matchesArguments(call.arguments(), nonce)) {
+                    throw protocolFailure("PROVIDER_DIAGNOSTIC_INVALID_TOOL", "first-response-invalid-tool");
+                }
+            });
+            AssistantMessage assistant = output(first);
             AssistantMessage.ToolCall call = assistant.getToolCalls().getFirst();
-            if (!PROBE_TOOL.equals(call.name()) || call.id() == null || call.id().isBlank()
-                    || call.id().length() > 200
-                    || !matchesArguments(call.arguments(), nonce)) {
-                throw protocolFailure();
-            }
             String resultProof = UUID.randomUUID().toString();
             ToolResponseMessage result = ToolResponseMessage.builder()
                     .responses(List.of(new ToolResponseMessage.ToolResponse(call.id(),
                             PROBE_TOOL, "{\"proof\":\"" + resultProof + "\"}")))
                     .build();
-            var second = gateway.call(List.of(initial.get(0), initial.get(1), assistant, result),
-                    List.of(tool), Map.of());
-            AssistantMessage finalMessage = second.response().getResult().getOutput();
-            if (!finalMessage.getToolCalls().isEmpty() || finalMessage.getText() == null
-                    || !finalMessage.getText().contains(resultProof)) throw protocolFailure();
-        } catch (DiagnosticProtocolFailure mismatch) {
-            throw new ApiProblemException(HttpStatus.UNPROCESSABLE_CONTENT,
-                    "PROVIDER_TOOL_PROTOCOL_UNVERIFIED", ApiMessage.of("api.llm-diagnostic-service.tool-agreement-failed"),
-                    ApiMessage.of("api.llm-diagnostic-service.the-model-does-not-complete-complete-diagnostics-of-tool-requests"), false);
+            recordRound(config, gateway, List.of(initial.get(0), initial.get(1), assistant, result), tool, 2,
+                    exchange -> {
+                        AssistantMessage finalMessage = output(exchange);
+                        if (!finalMessage.getToolCalls().isEmpty() || finalMessage.getText() == null
+                                || !resultProof.equals(finalMessage.getText().strip())) {
+                            throw protocolFailure("PROVIDER_DIAGNOSTIC_PROOF_MISMATCH", "second-response-invalid-proof");
+                        }
+                    });
         } catch (ApiProblemException known) {
+            // Preserve the public API category while each durable call retains its precise stage code.
+            if (known.code().equals("PROVIDER_DIAGNOSTIC_NO_TOOL")
+                    || known.code().equals("PROVIDER_DIAGNOSTIC_INVALID_TOOL")
+                    || known.code().equals("PROVIDER_DIAGNOSTIC_PROOF_MISMATCH")
+                    || known.code().equals("PROVIDER_DIAGNOSTIC_EMPTY_RESPONSE")) {
+                throw new ApiProblemException(known.status(), "PROVIDER_TOOL_PROTOCOL_UNVERIFIED",
+                        known.title(), known.detail(), known.retryable());
+            }
             throw known;
         } catch (RuntimeException failure) {
             throw new ApiProblemException(HttpStatus.BAD_GATEWAY,
@@ -113,16 +131,53 @@ public class LlmDiagnosticService {
         }
     }
 
-    /** 创建协议不匹配异常，以便和端点或网络故障分别映射错误码。 */
-    private DiagnosticProtocolFailure protocolFailure() {
-        return new DiagnosticProtocolFailure();
+    /** Log one actual request, including protocol failure, without giving it a fictitious project. */
+    private ChatGateway.Exchange recordRound(LlmProviderConfig config, ChatGateway gateway,
+            List<Message> messages, ToolCallback tool, int round, Consumer<ChatGateway.Exchange> validate) {
+        var descriptor = new CallLogService.CallDescriptor(null, null, null, null,
+                CallLog.Kind.LLM, CallLog.Operation.DIAGNOSTIC, "openai-compatible", config.modelId(), false);
+        return callLogs.record(descriptor, () -> {
+            ChatGateway.Exchange exchange;
+            try {
+                exchange = gateway.call(messages, List.of(tool), Map.of());
+            } catch (ApiProblemException known) {
+                throw known;
+            } catch (RuntimeException unavailable) {
+                throw new ApiProblemException(HttpStatus.BAD_GATEWAY, "PROVIDER_DIAGNOSTIC_UNAVAILABLE",
+                        ApiMessage.of("api.llm-diagnostic-service.model-diagnostic-call-failed"),
+                        ApiMessage.of("api.llm-diagnostic-service.call-failed-stage", round), true);
+            }
+            validate.accept(exchange);
+            return exchange;
+        }, exchange -> CallLogService.CallOutcome.succeeded(exchange.response().getMetadata().getId()));
+    }
+
+    private AssistantMessage output(ChatGateway.Exchange exchange) {
+        if (exchange == null || exchange.response() == null || exchange.response().getResult() == null
+                || exchange.response().getResult().getOutput() == null) {
+            throw protocolFailure("PROVIDER_DIAGNOSTIC_EMPTY_RESPONSE", "empty-response");
+        }
+        if ("length".equalsIgnoreCase(exchange.response().getResult().getMetadata().getFinishReason())) {
+            throw new ApiProblemException(HttpStatus.UNPROCESSABLE_CONTENT, LlmProtocolCodec.OUTPUT_TRUNCATED,
+                    ApiMessage.of("api.llm-diagnostic-service.tool-agreement-failed"),
+                    ApiMessage.of("api.llm-diagnostic-service.output-truncated"), false);
+        }
+        return exchange.response().getResult().getOutput();
+    }
+
+    private ApiProblemException protocolFailure(String code, String detail) {
+        return new ApiProblemException(HttpStatus.UNPROCESSABLE_CONTENT, code,
+                ApiMessage.of("api.llm-diagnostic-service.tool-agreement-failed"),
+                ApiMessage.of("api.llm-diagnostic-service." + detail), false);
     }
 
     /** 限制参数长度并检查模型工具参数中的 nonce 与本次随机值完全一致。 */
     private boolean matchesArguments(String arguments, String nonce) {
         if (arguments == null || arguments.length() > 4_096) return false;
         try {
-            return nonce.equals(mapper.readTree(arguments).path("nonce").asText());
+            var value = mapper.readTree(arguments);
+            return value != null && value.isObject() && value.size() == 1
+                    && value.path("nonce").isString() && nonce.equals(value.path("nonce").asText());
         } catch (RuntimeException malformed) {
             return false;
         }
@@ -154,6 +209,4 @@ public class LlmDiagnosticService {
         }
     }
 
-    /** 标记模型没有遵守工具往返协议，与传输或 Provider 错误区分。 */
-    private static final class DiagnosticProtocolFailure extends RuntimeException {}
 }

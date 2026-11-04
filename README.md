@@ -136,6 +136,8 @@ Open **<http://127.0.0.1:8088/setup>** locally, or `http://<server-ip>:8088/setu
 - **Images, video, and audio**: Create connections, publish capabilities, and choose default models in media settings. The default deployment requires real model configuration before generating media.
 - **External agents / MCP**: Create a user token under system settings → account security. Connect a Streamable HTTP client to your site’s `/mcp` endpoint (locally, `http://127.0.0.1:8088/mcp`) and configure `Authorization: Bearer <token>` in the client.
 
+For **Ollama and other local OpenAI-compatible servers**, follow the [local model connection guide](docs/ollama-local.md). HTTP needs an explicit deployment allowlist for the exact host and port; `127.0.0.1` inside Docker refers to the container. Use a placeholder of at least eight characters, such as `ollama-local`, for a server that ignores API keys. Set both the serving model's context and the [Director Settings budget](docs/agent-context-safety.md) to compatible values; passing the tool diagnostic does not prove that a full Agent request fits.
+
 Create a project and use the canvas context menu to add cards or upload media. Select a model, enter a prompt and references, check the estimated cost, and run. Preview, select, or regenerate results. Open director chat in the bottom-right corner to use a project assistant that reads and works with the current canvas on demand. Select nodes to highlight the focus of your request. Map required Skill inputs to exact versions of canvas content, then approve or reject media proposals as a batch in the conversation. No Agent canvas node or persistent material binding is needed.
 
 The media relay can be enabled separately for OpenAI-compatible LLM image inputs and OpenAI Images references/masks; when disabled, the original transfer method is retained. Local video references for Seedance and MiniMax H3 require a publicly accessible relay. In storage settings, add an OSS, COS, or S3 connection with a publicly reachable HTTPS endpoint, then select it for media relay. Permanent media archiving can remain local.
@@ -154,6 +156,8 @@ Run the following commands from the directory containing `docker-compose.yml` (c
 | View recent startup logs | `docker compose logs --tail=100 server postgres` |
 
 > Back up the database, media, configuration, and encryption secrets before updating. **Do not run `docker compose down -v`**: it deletes data and secrets.
+
+Third-party prompt synchronization is **off by default** for both new and upgraded installations. In third-party template source management, enable automatic synchronization and save to refresh enabled sources every 24 hours. Sources fetch public content from `raw.githubusercontent.com` and `imagepromptgallery.com`. Disabling stops new scheduled source claims; a download already accepted may finish. Existing source settings and cached prompts are retained, and explicit manual synchronization remains available. The operator can additionally disable scheduling with `AGENVAS_PROMPT_SYNC_ENABLED: "false"` in the server Compose environment. See [prompt sources and network access](docs/prompt-sources.md).
 
 <details>
 <summary><strong>Ports, image versions, and public deployment</strong></summary>

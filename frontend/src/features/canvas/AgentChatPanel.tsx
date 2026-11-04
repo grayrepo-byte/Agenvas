@@ -12,7 +12,7 @@ type AgentConversation,type AgentConversationList,
 type AgentRun,type AgentRunList,
 type CreateRunRequest
 } from "../../shared/api/client";
-import { getFormatLocale,t,useLocale } from "../../shared/i18n";
+import { getFormatLocale,t,translate,useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
@@ -79,6 +79,12 @@ function resolveConversationRuns(snapshotRun: AgentRun | null, listedRuns: reado
 }
 
 /** Conversations persist across messages; each submitted message retains its own Run. */
+function conversationTitle(conversation: Pick<AgentConversation, "title" | "turnCount">): string {
+  if (!conversation.title || (conversation.turnCount === 0 && conversation.title === translate("zh", "agent.chat.newSession")))
+    return t("agent.chat.newSession");
+  return conversation.title;
+}
+
 export function AgentChatPanel({ data, headerActions }: {
   data: AgentChatPanelData; headerActions?: ReactNode;
 }) {
@@ -361,9 +367,9 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
       </header>
       <nav className="agent-chat-toolbar" aria-label={t("agent.chat.conversation")}>
         <Button variant={view === "chat" ? "secondary" : "ghost"} size="sm" aria-label={t("agent.chat.chat")} aria-pressed={view === "chat"} className="agent-chat-tab nodrag"
-          onClick={() => setView("chat")} title={currentConversation?.title || t(conversationId ? "agent.chat.currentSession" : "agent.chat.newSession")} type="button">
+          onClick={() => setView("chat")} title={currentConversation ? conversationTitle(currentConversation) : t(conversationId ? "agent.chat.currentSession" : "agent.chat.newSession")} type="button">
           {view !== "chat" ? <ArrowLeft data-icon="inline-start" /> : <span className="agent-chat-session-dot" aria-hidden="true" />}
-          <span>{currentConversation?.title || t(conversationId ? "agent.chat.currentSession" : "agent.chat.newSession")}</span></Button>
+          <span>{currentConversation ? conversationTitle(currentConversation) : t(conversationId ? "agent.chat.currentSession" : "agent.chat.newSession")}</span></Button>
         <Button variant={view === "history" ? "secondary" : "ghost"} size="icon-sm" aria-label={t("agent.chat.sessions")} aria-pressed={view === "history"} className="agent-chat-icon nodrag"
           onClick={() => setView(view === "history" ? "chat" : "history")} title={t("agent.chat.sessions")} type="button"><ClockCounterClockwise data-icon="inline-start" /></Button>
         <Button variant={view === "settings" ? "secondary" : "ghost"} size="icon-sm" aria-label={t("agent.chat.settings")} aria-pressed={view === "settings"} className="agent-chat-icon nodrag"
@@ -391,6 +397,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
           <form onSubmit={submit}>
             <FieldGroup>
               <Field><FieldLabel htmlFor={`${fieldId}-name`}>{t("common.name")}</FieldLabel><Input id={`${fieldId}-name`} value={configuration?.name ?? agent.name} onChange={(event) => setConfiguration((current) => current ? { ...current, name: event.target.value } : current)} maxLength={MAX_AGENT_NAME} name="name" required /></Field>
+              <p className="text-sm text-muted-foreground">{t("prompts.languageHint")}</p>
               <Field><FieldLabel htmlFor={`${fieldId}-instruction`}>{t("agent.defaults.prompt")}</FieldLabel><Textarea id={`${fieldId}-instruction`} value={configuration?.instruction ?? agent.instruction} onChange={(event) => setConfiguration((current) => current ? { ...current, instruction: event.target.value } : current)} maxLength={MAX_INSTRUCTION} name="instruction" required rows={8} /></Field>
             </FieldGroup>
             <Button size="sm" disabled={data.updatingAgent} type="submit">{data.updatingAgent ? t("common.saving") : t("common.saveConfig")}</Button>
@@ -409,7 +416,7 @@ function AgentChatPanelContent({ data, headerActions }: { data: AgentChatPanelDa
           {sessions.map((session) => <Button variant="ghost" className="agent-chat-history-item" key={session.id}
             aria-current={session.id === conversationId ? "true" : undefined} disabled={sessionBusy || (preparing && !start.isPending)}
             onClick={() => selectConversation.mutate(session.id)} type="button">
-            <span className="agent-chat-history-title"><span>{session.title || t("agent.chat.newSession")}</span><ArrowUpRight data-icon="inline-end" /></span><small>{t("agent.chat.conversationSummary", { "0": session.turnCount, "1": new Date(session.updatedAt).toLocaleString(getFormatLocale()), "2": session.id === conversationId ? t("agent.chat.currentSessionSuffix") : "" })}</small>
+            <span className="agent-chat-history-title"><span>{conversationTitle(session)}</span><ArrowUpRight data-icon="inline-end" /></span><small>{t("agent.chat.conversationSummary", { "0": session.turnCount, "1": new Date(session.updatedAt).toLocaleString(getFormatLocale()), "2": session.id === conversationId ? t("agent.chat.currentSessionSuffix") : "" })}</small>
           </Button>)}
           {conversations.hasNextPage ? <Button variant="outline" size="sm" disabled={conversations.isFetchingNextPage}
             onClick={() => void conversations.fetchNextPage()} type="button">{conversations.isFetchingNextPage ? t("common.loading") : t("agent.chat.moreSessions")}</Button> : null}

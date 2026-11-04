@@ -24,7 +24,7 @@ const FIRST_PAGE = 0;
 const BAD_REQUEST_STATUS = 400;
 const KIND_LABELS: Record<CallLog["kind"], string> = { get LLM() { return t("models.text"); }, get IMAGE() { return t("common.image"); }, get VIDEO() { return t("common.video"); }, get AUDIO() { return t("common.audio"); } };
 const STATUS_LABELS: Record<CallLog["status"], string> = { get RUNNING() { return t("logs.calls.calling"); }, get SUCCEEDED() { return t("logs.calls.success"); }, get FAILED() { return t("common.failed"); }, get UNKNOWN() { return t("common.unknown"); } };
-const OPERATION_LABELS: Record<CallLog["operation"], string> = { get CHAT() { return t("logs.calls.modelConversation"); }, get SUBMIT() { return t("logs.calls.submitGeneration"); }, get POLL() { return t("logs.calls.results"); }, get LEGACY() { return t("logs.calls.historicalTask"); } };
+const OPERATION_LABELS: Record<CallLog["operation"], string> = { get CHAT() { return t("logs.calls.modelConversation"); }, get DIAGNOSTIC() { return t("logs.calls.toolDiagnostic"); }, get SUBMIT() { return t("logs.calls.submitGeneration"); }, get POLL() { return t("logs.calls.results"); }, get LEGACY() { return t("logs.calls.historicalTask"); } };
 const STATUS_TONES = { RUNNING: "neutral", SUCCEEDED: "success", FAILED: "danger", UNKNOWN: "warning" } as const;
 const KIND_ICONS: Record<CallLog["kind"], Icon> = { LLM: TextT, IMAGE: ImageSquare, VIDEO: Video, AUDIO: SpeakerHigh };
 const TASK_STATUS_LABELS: Record<Task["status"], string> = {
@@ -191,7 +191,7 @@ function CallLogRow({ log, onDetails }: { log: CallLog; onDetails: () => void })
       <TableCell className="call-log-type-cell" data-label={t("logs.calls.callType")}><span className="call-log-kind"><KindIcon aria-hidden /><strong>{KIND_LABELS[log.kind]} · {OPERATION_LABELS[log.operation]}</strong></span>
         <div className="call-log-badges">{log.mock ? <StatusBadge>{t("logs.calls.mock")}</StatusBadge> : null}
           {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}</div></TableCell>
-      <TableCell className="call-log-project-cell" data-label={t("common.project")}><Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}><span>{log.projectTitle}</span><ArrowSquareOut aria-hidden /></Link></TableCell>
+      <TableCell className="call-log-project-cell" data-label={t("common.project")}>{log.projectId ? <Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}><span>{log.projectTitle}</span><ArrowSquareOut aria-hidden /></Link> : <span>{t("logs.calls.systemDiagnostic")}</span>}</TableCell>
       <TableCell className="call-log-start-cell" data-label={t("logs.calls.time")}><LogTime compact value={log.startedAt} /></TableCell>
       <TableCell className="call-log-response-cell" data-label={t("logs.calls.responseTime")}><LogTime compact value={log.respondedAt} missing={log.status === "RUNNING" ? t("logs.calls.waitingForResponse") : t("common.notRecorded")} /></TableCell>
       <TableCell className="call-log-duration-cell" data-label={t("logs.calls.duration")}>{log.durationMs === null ? t("common.notRecorded") : `${log.durationMs.toLocaleString(getFormatLocale())} ms`}</TableCell>
@@ -210,7 +210,7 @@ function CallLogDetailDialog({ log, index, count, onAdjacent, onClose }: { log: 
         <Button variant="ghost" size="icon-sm" type="button" disabled={index + 1 >= count} aria-label={t("logs.calls.nextRecord")} onClick={() => onAdjacent(1)}><CaretRight data-icon="inline-start" aria-hidden /></Button>
         <Button variant="outline" type="button" onClick={onClose}>{t("common.close")}</Button></div></div>}>
     <div className="call-log-overview">
-      <Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}><span>{log.projectTitle}</span><ArrowSquareOut aria-hidden /></Link>
+      {log.projectId ? <Link className="call-log-project" to={`/projects/${encodeURIComponent(log.projectId)}`}><span>{log.projectTitle}</span><ArrowSquareOut aria-hidden /></Link> : <span>{t("logs.calls.systemDiagnostic")}</span>}
       <div className="call-log-badges"><StatusBadge tone={STATUS_TONES[log.status]}>{STATUS_LABELS[log.status]}</StatusBadge>
         {log.mock ? <StatusBadge>{t("logs.calls.mock")}</StatusBadge> : null}
         {log.historical ? <StatusBadge>{t("logs.calls.historicalRecord")}</StatusBadge> : null}</div>
@@ -236,7 +236,7 @@ function CallLogDetails({ log }: { log: CallLog }) {
       <Detail label="Task ID" value={log.taskId} /><Detail label={t("logs.calls.errorCode")} value={log.errorCode} />
     </dl>
     {!log.historical ? <CallDebugDetails id={log.id} kind={log.kind} generationId={log.kind === "LLM" ? log.providerRequestId : undefined} /> : null}
-    {log.taskId ? <CallLogTask projectId={log.projectId} taskId={log.taskId} /> : null}
+    {log.taskId && log.projectId ? <CallLogTask projectId={log.projectId} taskId={log.taskId} /> : null}
   </>;
 }
 

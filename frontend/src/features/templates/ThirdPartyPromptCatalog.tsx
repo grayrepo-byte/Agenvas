@@ -14,6 +14,7 @@ import { Input } from "../../shared/ui/primitives/input";
 import { workflowFieldLabel } from "../canvas/workflowFieldPresentation";
 import type { TemplatePickerContext } from "./MediaTemplatePicker";
 import { templateImageSlots } from "./templateApplication";
+import { ThirdPartyPromptSyncControls } from "./ThirdPartyPromptSyncControls";
 import { thirdPartyApplicationError, thirdPartyReferences, thirdPartyVideoMode } from "./thirdPartyApplication";
 
 export function ThirdPartyPromptCatalog({ kind, context, system = false }: {
@@ -135,6 +136,7 @@ function ThirdPartyPromptSources({ kind }: { kind: MediaTemplateKind }) {
     finally { setBusy(false); }
   }
   return <Panel title={t("thirdParty.manageSources")} description={t("thirdParty.dailyHint")}>
+    <ThirdPartyPromptSyncControls />
     {query.data?.items.filter((source) => source.targetKind === kind).map((source) => <div key={source.id} className="third-party-source">
       <div><strong>{source.name}</strong><p>{t("thirdParty.count", { "0": source.promptCount })} · {source.lastSyncedAt ? formatDate(source.lastSyncedAt) : t("thirdParty.neverSynced")}</p>
         {source.lastError ? <p>{t("thirdParty.syncFailed")}</p> : null}</div>

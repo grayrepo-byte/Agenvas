@@ -1,9 +1,21 @@
 package dev.agenvas.settings.application;
 
+import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
-/** LLM 出站地址策略配置；环回 HTTP 必须显式开启，不放开整个私网。
- * @param allowLoopbackHttp 是否允许本机环回地址上的开发 Provider
+/** Deployment-controlled HTTP exceptions; administrators cannot expand these from the UI.
+ * @param allowLoopbackHttp whether the exact IPv4 loopback may use HTTP
+ * @param trustedHttpOrigins exact HTTP origins (host and port), empty by default
  */
 @ConfigurationProperties(prefix = "agenvas.settings.llm")
-public record LlmEndpointProperties(boolean allowLoopbackHttp) {}
+public record LlmEndpointProperties(boolean allowLoopbackHttp, List<String> trustedHttpOrigins) {
+    @ConstructorBinding
+    public LlmEndpointProperties {
+        trustedHttpOrigins = trustedHttpOrigins == null ? List.of() : List.copyOf(trustedHttpOrigins);
+    }
+
+    public LlmEndpointProperties(boolean allowLoopbackHttp) {
+        this(allowLoopbackHttp, List.of());
+    }
+}

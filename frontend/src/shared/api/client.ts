@@ -1136,6 +1136,13 @@ export type WriteMediaTemplateRequest = components["schemas"]["CreateMediaTempla
 export type MediaTemplateImport = components["schemas"]["MediaTemplateImport"];
 export type MediaTemplateKind = MediaTemplate["targetKind"];
 export type MediaTemplateScope = MediaTemplate["scope"];
+export type ThirdPartyPromptSyncSettings = components["schemas"]["ThirdPartyPromptSyncSettings"];
+export function getThirdPartyPromptSyncSettings(): Promise<ThirdPartyPromptSyncSettings> {
+  return readJson("/api/v1/settings/media-template-sync", t("templates.loadFailed"));
+}
+export function updateThirdPartyPromptSyncSettings(input: components["schemas"]["UpdateThirdPartyPromptSyncSettings"]): Promise<ThirdPartyPromptSyncSettings> {
+  return writeJson("/api/v1/settings/media-template-sync", { method: "PUT", body: JSON.stringify(input) });
+}
 export type ThirdPartyPromptEntry = components["schemas"]["ThirdPartyPromptEntry"];
 export type ThirdPartyPromptSource = components["schemas"]["ThirdPartyPromptSource"];
 export type ThirdPartyPromptPage = components["schemas"]["ThirdPartyPromptPage"];

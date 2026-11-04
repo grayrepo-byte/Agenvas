@@ -37,6 +37,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import tools.jackson.databind.JsonNode;
@@ -106,6 +107,23 @@ class DirectTextGenerationWorkerTest {
         verify(execution, never()).call(any(), any());
         verify(tasks, never()).checkpointTextResponse(any(), anyString(), any());
         verify(execution).checkActive();
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void tokenLimitedResponseCannotCreateAFinishedTextArtifact(boolean replay) {
+        var truncated = new ChatResponse(List.of(new Generation(new AssistantMessage("Partial text"),
+                ChatGenerationMetadata.builder().finishReason("length").build())));
+        if (replay) claimedTask(checkpoint(truncated));
+        else when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned)))
+                .thenReturn(new ChatGateway.Exchange(3, truncated));
+
+        worker.runOnce(WORKER);
+
+        verify(tasks).fail(lease, WORKER, "LLM_OUTPUT_TRUNCATED");
+        verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
+        verify(tasks, never()).succeed(any(), anyString(), any());
+        if (replay) verifyNoInteractions(gateway, callLogs);
     }
 
     @Test

@@ -3,10 +3,24 @@ import { render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import { setLocale } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 
 describe("BlockedRunNotice", () => {
+  it("explains an explicitly truncated model response without claiming to detect silent input truncation", async () => {
+    setLocale("en");
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
+      { id: "length-response", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_OUTPUT_TRUNCATED" },
+    ])));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="length-run" status="FAILED" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/No tools from this turn were executed/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Existing results have been kept.");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("unknown status");
+  });
+
   it("explains a fixed context budget failure without publishing task inputs", async () => {
     server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
       { id: "context-budget", kind: "AGENT_TURN", status: "FAILED", errorCode: "AGENT_CONTEXT_BUDGET_EXCEEDED",

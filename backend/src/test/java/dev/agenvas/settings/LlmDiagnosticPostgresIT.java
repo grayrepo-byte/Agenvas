@@ -1,6 +1,14 @@
 package dev.agenvas.settings;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import dev.agenvas.audit.application.CallLogService;
+import dev.agenvas.audit.application.CallLogRetentionService;
+import dev.agenvas.audit.domain.CallLog;
+import dev.agenvas.shared.error.ApiProblemException;
+import java.util.UUID;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -78,13 +86,17 @@ class LlmDiagnosticPostgresIT {
     @Autowired private LlmProviderConfigService configs;
     @Autowired private ChatGateway gateway;
     @Autowired private WebApplicationContext context;
+    @Autowired private CallLogService callLogs;
+    @Autowired private CallLogRetentionService retention;
+    @Autowired private JdbcClient jdbc;
 
     @Test
     void requiresAdminCsrfCostConsentAndExactTwoRoundProtocol() throws Exception {
         String endpoint = "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1";
         configs.replace(0, endpoint, "diagnostic-model", "diagnostic-secret-1234");
         AdminPrincipal admin = identities.setup("diagnostic-admin", "diagnostic-password-123");
-        var auth = authentication(new UsernamePasswordAuthenticationToken(admin, null, List.of()));
+        var auth = authentication(new UsernamePasswordAuthenticationToken(admin, null, List.of(
+                new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
         MockMvc mvc = webAppContextSetup(context).apply(springSecurity()).build();
         String path = "/api/v1/settings/llm/diagnose";
         mvc.perform(post(path).with(csrf()).contentType("application/json")
@@ -103,6 +115,27 @@ class LlmDiagnosticPostgresIT {
                 .andExpect(jsonPath("$.version").value(1))
                 .andExpect(jsonPath("$.toolCallingVerified").value(true));
         assertThat(CALLS).hasValue(2);
+        var filter = new CallLogService.Filter(null, null, null, null, null, null, 0, 100);
+        var successfulCalls = callLogs.list(admin.userId(), filter).items();
+        assertThat(successfulCalls).hasSize(2).allSatisfy(call -> {
+            assertThat(call.projectId()).isNull();
+            assertThat(call.projectTitle()).isNull();
+            assertThat(call.operation()).isEqualTo(CallLog.Operation.DIAGNOSTIC);
+            assertThat(call.status()).isEqualTo(CallLog.Status.SUCCEEDED);
+            assertThat(callLogs.debug(admin.userId(), call.id()).captured()).isFalse();
+        });
+        UUID other = UUID.randomUUID();
+        assertThat(callLogs.list(other, filter).items()).isEmpty();
+        assertThat(callLogs.list(admin.userId(), new CallLogService.Filter(other, null, null, null,
+                null, null, 0, 100)).items()).isEmpty();
+        assertThatThrownBy(() -> callLogs.debug(other, successfulCalls.getFirst().id()))
+                .isInstanceOf(ApiProblemException.class);
+        mvc.perform(get("/api/v1/call-logs")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/call-logs").with(auth))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].projectId").isEmpty())
+                .andExpect(jsonPath("$.items[0].operation").value("DIAGNOSTIC"));
+        // Debug capture is opt-in; subsequent synthetic calls prove metadata and private body access.
+        callLogs.updateSettings(true, callLogs.settings().version());
         assertThat(AUTHORIZATION.get()).isEqualTo("Bearer diagnostic-secret-1234");
         assertThat(gateway.capabilities().toolCalling()).isTrue();
         mvc.perform(post(path).with(auth).with(csrf()).contentType("application/json")
@@ -127,6 +160,54 @@ class LlmDiagnosticPostgresIT {
                 .andExpect(status().isUnprocessableContent());
         assertThat(CALLS).hasValue(5);
         assertThat(configs.status().toolCallingVerified()).isFalse();
+        var allCalls = callLogs.list(admin.userId(), filter).items();
+        assertThat(allCalls).hasSize(5);
+        assertThat(allCalls).filteredOn(call -> call.status() == CallLog.Status.FAILED)
+                .extracting(CallLog::errorCode)
+                .containsExactlyInAnyOrder("PROVIDER_DIAGNOSTIC_NO_TOOL", "PROVIDER_DIAGNOSTIC_PROOF_MISMATCH");
+        var captured = allCalls.stream().filter(call -> !successfulCalls.contains(call)).toList();
+        assertThat(captured).allSatisfy(call -> {
+            var debug = callLogs.debug(admin.userId(), call.id());
+            assertThat(debug.captured()).isTrue();
+            assertThat(debug.exchanges()).hasSize(1);
+        });
+        assertThat(allCalls.toString()).doesNotContain("diagnostic-secret", endpoint);
+        jdbc.sql("update app_user set status='DISABLED' where id=:id").param("id", admin.userId()).update();
+        try {
+            assertThat(callLogs.list(admin.userId(), filter).items()).isEmpty();
+            assertThatThrownBy(() -> callLogs.debug(admin.userId(), allCalls.getFirst().id()))
+                    .isInstanceOf(ApiProblemException.class);
+        } finally {
+            jdbc.sql("update app_user set status='ACTIVE' where id=:id").param("id", admin.userId()).update();
+        }
+        // A lost process cannot leave ancient diagnostic rows projected as calling forever.
+        UUID recent = UUID.randomUUID();
+        UUID stale = UUID.randomUUID();
+        for (UUID id : List.of(recent, stale)) {
+            jdbc.sql("""
+                    insert into call_log(id,project_id,kind,operation,status,trace_id,started_at,mock)
+                    values(:id,null,'LLM','DIAGNOSTIC','RUNNING',:trace,now(),false)
+                    """).param("id", id).param("trace", id.toString().replace("-", "")).update();
+        }
+        jdbc.sql("update call_log set started_at=now()-interval '1 day' where id=:id").param("id", stale).update();
+        var projected = callLogs.list(admin.userId(), filter).items();
+        assertThat(projected.stream().filter(call -> call.id().equals(recent)).findFirst().orElseThrow().status())
+                .isEqualTo(CallLog.Status.RUNNING);
+        assertThat(projected.stream().filter(call -> call.id().equals(stale)).findFirst().orElseThrow().status())
+                .isEqualTo(CallLog.Status.UNKNOWN);
+        assertThat(callLogs.list(admin.userId(), new CallLogService.Filter(null, null,
+                CallLog.Status.UNKNOWN, null, null, null, 0, 100)).items())
+                .extracting(CallLog::id).contains(stale).doesNotContain(recent);
+        jdbc.sql("delete from call_log where id=:id").param("id", recent).update();
+        jdbc.sql("delete from call_log where id=:id").param("id", stale).update();
+        // Null project is reserved for diagnostics; the database still rejects unscoped business calls.
+        assertThatThrownBy(() -> jdbc.sql("update call_log set operation='CHAT' where id=:id")
+                .param("id", allCalls.getFirst().id()).update()).isInstanceOf(RuntimeException.class);
+        jdbc.sql("update call_log set started_at=now()-interval '60 days', responded_at=now()-interval '60 days'")
+                .update();
+        var policy = retention.update(30, retention.settings().version());
+        assertThat(retention.cleanExpired(policy.version()).cleanedExecutions()).isEqualTo(5);
+        assertThat(callLogs.list(admin.userId(), filter).items()).isEmpty();
     }
 
     private String request(int version, boolean acknowledge) {

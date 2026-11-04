@@ -9,7 +9,12 @@ import java.net.Inet6Address;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
+import java.util.Arrays;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -17,12 +22,25 @@ import org.springframework.stereotype.Component;
 @Component
 public class LlmEndpointPolicy {
 
-    /** 提供部署者显式开启本机回环 HTTP 的唯一例外开关。 */
+    /** Cloud metadata also uses ULA addresses; a general private-network exception must not admit them. */
+    private static final List<byte[]> CLOUD_METADATA_IPV6 = List.of(
+            HexFormat.of().parseHex("fd000ec2000000000000000000000254"),
+            HexFormat.of().parseHex("fd2000ce000000000000000000000254"));
+
+    /** Deployment settings remain separate from administrator-saved provider configuration. */
     private final LlmEndpointProperties properties;
+
+    /** Exact HTTP origins; no wildcard host, subnet or port grants. */
+    private final Set<HttpOrigin> trustedHttpOrigins;
 
     /** 注入部署级端点例外策略。 */
     public LlmEndpointPolicy(LlmEndpointProperties properties) {
         this.properties = properties;
+        if (properties.trustedHttpOrigins().size() > 32) {
+            throw new IllegalArgumentException("At most 32 trusted LLM HTTP origins are allowed");
+        }
+        this.trustedHttpOrigins = properties.trustedHttpOrigins().stream()
+                .map(HttpOrigin::parse).collect(Collectors.toUnmodifiableSet());
     }
 
     /** 解析并规范化基础 URL，同时校验解析所得全部地址；调用时仍需再次做 DNS 检查。
@@ -37,6 +55,26 @@ public class LlmEndpointPolicy {
         } catch (URISyntaxException invalid) {
             throw invalid();
         }
+        requireAllowedOrigin(uri);
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        try {
+            InetAddress[] addresses = InetAddress.getAllByName(host);
+            if (addresses.length == 0) throw invalid();
+            for (InetAddress address : addresses) requireAllowedAddress(host, address);
+        } catch (UnknownHostException unresolved) {
+            throw invalid();
+        }
+        String path = uri.getRawPath();
+        String normalizedPath = path == null || path.isEmpty() ? "" : path.replaceAll("/+$", "");
+        return scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT)
+                + (uri.getPort() < 0 ? "" : ":" + uri.getPort()) + normalizedPath;
+    }
+
+    /** Recheck scheme, origin and URL structure for saved configurations before using credentials.
+     * DNS remains separately pinned by the transport, including each runtime lookup.
+     */
+    public void requireAllowedOrigin(URI uri) {
         String scheme = uri.getScheme();
         String host = uri.getHost();
         if (scheme == null || host == null || uri.getUserInfo() != null
@@ -50,20 +88,10 @@ public class LlmEndpointPolicy {
         boolean loopback = "127.0.0.1".equals(host);
         if (loopback && !properties.allowLoopbackHttp()) throw invalid();
         if ("http".equalsIgnoreCase(scheme)
-                && !(properties.allowLoopbackHttp() && loopback)) {
+                && !(properties.allowLoopbackHttp() && loopback)
+                && !trustedHttpOrigins.contains(HttpOrigin.from(uri))) {
             throw invalid();
         }
-        try {
-            InetAddress[] addresses = InetAddress.getAllByName(host);
-            if (addresses.length == 0) throw invalid();
-            for (InetAddress address : addresses) requireAllowedAddress(host, address);
-        } catch (UnknownHostException unresolved) {
-            throw invalid();
-        }
-        String path = uri.getRawPath();
-        String normalizedPath = path == null || path.isEmpty() ? "" : path.replaceAll("/+$", "");
-        return scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT)
-                + (uri.getPort() < 0 ? "" : ":" + uri.getPort()) + normalizedPath;
     }
 
     /** 供运行时 DNS 解析器复用，防止保存后 DNS 重绑定绕过准入校验。
@@ -78,8 +106,11 @@ public class LlmEndpointPolicy {
                     && (bytes[2] & 0xff) == 0 && (bytes[3] & 0xff) == 1) return;
             throw invalid();
         }
+        for (byte[] metadata : CLOUD_METADATA_IPV6) {
+            if (Arrays.equals(metadata, address.getAddress())) throw invalid();
+        }
         // 私网与代理 fake-ip 段按部署者意图放行：自托管常把模型服务放在内网。
-        // 云元数据属于 link-local，不在放行之列，继续由下面的检查拦下。
+        // IPv4 云元数据属于 link-local；IPv6 ULA 元数据已在上方排除。
         if (EndpointAddressRules.allowsSelfHosted(address)) return;
         if (address.isAnyLocalAddress() || address.isLoopbackAddress()
                 || address.isLinkLocalAddress() || address.isMulticastAddress()) throw invalid();
@@ -109,6 +140,31 @@ public class LlmEndpointPolicy {
             return;
         }
         throw invalid();
+    }
+
+    /** Configuration entries are origins only; malformed operator input fails at startup. */
+    private record HttpOrigin(String host, int port) {
+        static HttpOrigin from(URI uri) {
+            return new HttpOrigin(uri.getHost().toLowerCase(Locale.ROOT),
+                    uri.getPort() < 0 ? 80 : uri.getPort());
+        }
+
+        static HttpOrigin parse(String value) {
+            try {
+                URI uri = new URI(value.trim());
+                if (!"http".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
+                        || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null
+                        || uri.getPort() < -1 || uri.getPort() == 0 || uri.getPort() > 65535
+                        || !(uri.getRawPath() == null || uri.getRawPath().isEmpty() || "/".equals(uri.getRawPath()))
+                        || uri.getRawAuthority().endsWith(":")) {
+                    throw new IllegalArgumentException();
+                }
+                return from(uri);
+            } catch (RuntimeException | URISyntaxException invalid) {
+                // Do not echo values: a misconfigured origin may contain credentials.
+                throw new IllegalArgumentException("Trusted LLM HTTP entries must be exact HTTP origins");
+            }
+        }
     }
 
     /** 构造不允许的 Provider 地址统一使用的 400 响应。 */

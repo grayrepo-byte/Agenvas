@@ -91,6 +91,7 @@ agenvas:
   settings:
     llm:
       allow-loopback-http: ${AGENVAS_LLM_ALLOW_LOOPBACK_HTTP:false}
+      trusted-http-origins: ${AGENVAS_LLM_TRUSTED_HTTP_ORIGINS:}
   llm:
     mode: ${AGENVAS_LLM_MODE:mock}
     config-version: ${AGENVAS_LLM_CONFIG_VERSION:1}

@@ -89,6 +89,7 @@ import dev.agenvas.db.tables.TaskProviderPollRetry;
 import dev.agenvas.db.tables.ThirdPartyPrompt;
 import dev.agenvas.db.tables.ThirdPartyPromptImport;
 import dev.agenvas.db.tables.ThirdPartyPromptSource;
+import dev.agenvas.db.tables.ThirdPartyPromptSyncSettings;
 import dev.agenvas.db.tables.ToolExecution;
 import dev.agenvas.db.tables.UsageLedger;
 
@@ -549,6 +550,11 @@ public class Public extends SchemaImpl {
     public final ThirdPartyPromptSource THIRD_PARTY_PROMPT_SOURCE = ThirdPartyPromptSource.THIRD_PARTY_PROMPT_SOURCE;
 
     /**
+     * Administrator opt-in for scheduled third-party prompt downloads
+     */
+    public final ThirdPartyPromptSyncSettings THIRD_PARTY_PROMPT_SYNC_SETTINGS = ThirdPartyPromptSyncSettings.THIRD_PARTY_PROMPT_SYNC_SETTINGS;
+
+    /**
      * 按 Run、回合及 tool_call_id 去重的工具执行账本
      */
     public final ToolExecution TOOL_EXECUTION = ToolExecution.TOOL_EXECUTION;
@@ -659,6 +665,7 @@ public class Public extends SchemaImpl {
             ThirdPartyPrompt.THIRD_PARTY_PROMPT,
             ThirdPartyPromptImport.THIRD_PARTY_PROMPT_IMPORT,
             ThirdPartyPromptSource.THIRD_PARTY_PROMPT_SOURCE,
+            ThirdPartyPromptSyncSettings.THIRD_PARTY_PROMPT_SYNC_SETTINGS,
             ToolExecution.TOOL_EXECUTION,
             UsageLedger.USAGE_LEDGER
         );

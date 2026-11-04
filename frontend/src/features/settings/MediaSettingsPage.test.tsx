@@ -5,6 +5,7 @@ import { http,HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { beforeEach,describe,expect,it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
+import { setLocale } from "../../shared/i18n";
 import type { KlingProfile,MediaCapability,MediaConnection,MediaSettings } from "../../shared/api/client";
 import { clickControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
@@ -53,6 +54,26 @@ function settingsFixture(connectionChanges: Partial<MediaConnection> = {}, capab
 }
 
 describe("MediaSettingsPage", () => {
+  it("localizes the exact installed local-processor name while retaining renamed services", async () => {
+    setLocale("en");
+    const fixture = settingsFixture({ id: "00000000-0000-4000-8000-000000000201", platform: "LOCAL", name: "本地图片处理" },
+      { id: "00000000-0000-4000-8000-000000000202", adapterId: "LOCAL_IMAGE_PROCESSOR", name: "本地图片处理" });
+    fixture.connections.push({ ...fixture.connections[0]!, id: "custom-local", name: "我命名的处理服务", capabilities: [] });
+    server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)));
+    mount();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "Media connections" }));
+    const connections = within(screen.getByRole("tabpanel", { name: "Media connections" }));
+    expect(connections.getByText("Local image processing")).toBeInTheDocument();
+    expect(connections.getByText("我命名的处理服务")).toBeInTheDocument();
+    expect(connections.queryByText("本地图片处理")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Published capabilities" }));
+    const capabilities = within(screen.getByRole("tabpanel", { name: "Published capabilities" }));
+    expect(capabilities.getAllByText("Local image processing")).toHaveLength(2);
+    expect(capabilities.queryByText("本地图片处理")).not.toBeInTheDocument();
+  });
+
   beforeEach(() => server.use(http.get("/api/v1/settings/kling/profiles", () => HttpResponse.json({ profiles: klingProfiles }))));
   it.each(["https://api-singapore.klingai.com", "https://api-beijing.klingai.com"])("creates a Kling connection at %s and keeps its draft after a failed save", async (origin) => {
     const writes: { body: unknown; key: string | null }[] = [];

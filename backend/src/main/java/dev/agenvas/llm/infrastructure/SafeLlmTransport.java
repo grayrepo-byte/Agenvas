@@ -7,6 +7,7 @@ import dev.agenvas.shared.http.PinnedHttpClients;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
@@ -55,7 +56,17 @@ final class SafeLlmTransport {
     /** Separate whole-call and silent-read deadlines; HTTP tests can shorten either limit. */
     SafeLlmTransport(String endpoint, LlmEndpointPolicy policy, Dns resolver,
             Duration readTimeout, Duration modelTimeout) {
+        // Revoke persisted HTTP exceptions when the operator removes them and restarts.
+        policy.requireAllowedOrigin(URI.create(endpoint));
         this.base = HttpUrl.get(endpoint);
+        // OkHttp bypasses custom Dns for IP literals, so validate them before credentials leave.
+        if (base.host().contains(":") || base.host().matches("[0-9.]+")) {
+            try {
+                policy.requireAllowedAddress(base.host(), InetAddress.getByName(base.host()));
+            } catch (UnknownHostException invalid) {
+                throw new IllegalArgumentException("LLM endpoint has an invalid IP address");
+            }
+        }
         String path = base.encodedPath().replaceAll("/+$", "");
         this.completionPath = path + "/chat/completions";
         this.client = PinnedHttpClients.pinned(host -> {

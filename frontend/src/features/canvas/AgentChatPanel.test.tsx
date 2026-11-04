@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Agent, AgentRun, AgentConversation, CreateRunRequest, RunPreflight } from "../../shared/api/client";
 import * as api from "../../shared/api/client";
-import { t } from "../../shared/i18n";
+import { t, setLocale } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { AgentChatPanel, type AgentChatPanelData, type AgentChatRunRequest } from "./AgentChatPanel";
 import { useCanvasStore } from "./canvasStore";
@@ -1027,4 +1027,16 @@ it("reports a failed active task read in the fixed feedback area", async () => {
   const message = await screen.findByText("运行状态读取失败，可重新读取。");
   expect(message.closest(".agent-chat-feedback")).not.toBeNull();
   expect(screen.getByRole("button", { name: "停止" })).toBeInTheDocument();
+});
+
+
+it("localizes only the untouched empty-session title while retaining authored session titles", async () => {
+  setLocale("en");
+  storedConversations = [conversation({ title: "新会话" }),
+    conversation({ id: "authored-session", title: "新会话", turnCount: 1 })];
+  mountPanel();
+  await screen.findByRole("button", { name: "New session" });
+  await userEvent.setup().click(screen.getByRole("button", { name: "Conversation list" }));
+  expect(await screen.findByText("新会话")).toBeInTheDocument();
+  expect(screen.getAllByText("New session").length).toBeGreaterThan(0);
 });

@@ -1,0 +1,8 @@
+# Optional override: explicitly trust only this local model origin.
+# Use together with docker-compose.yml; see docs/ollama-local.md.
+services:
+  server:
+    environment:
+      AGENVAS_LLM_TRUSTED_HTTP_ORIGINS: "http://host.docker.internal:11434"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -186,6 +186,99 @@ paths:
           minimum: 1
           maximum: 100
           default: 50
+  /api/v1/settings/media-template-sync:
+    get:
+      operationId: getThirdPartyPromptSyncSettings
+      summary: Read administrator consent for scheduled third-party prompt downloads
+      tags: [MediaTemplates]
+      responses:
+        '200':
+          description: Current settings; deploymentEnabled is an independent operator limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThirdPartyPromptSyncSettings'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+    put:
+      operationId: updateThirdPartyPromptSyncSettings
+      summary: Explicitly enable or disable scheduled third-party prompt downloads
+      description: >-
+        Administrator-only and CSRF-protected. New and upgraded installations start disabled.
+        Disabling prevents new scheduled sources from starting; an already running download may finish.
+        Cached prompts, per-source settings and explicit manual synchronization remain available.
+      tags: [MediaTemplates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateThirdPartyPromptSyncSettings'
+      responses:
+        '200':
+          description: Saved settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThirdPartyPromptSyncSettings'
+        '400':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: Request rejected
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
   /api/v1/settings/media-template-sources:
     post:
       operationId: createThirdPartyPromptSource
@@ -977,9 +1070,9 @@ paths:
       - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: listCallLogs
-      summary: 分页读取管理员本人项目的调用审计元数据
+      summary: 分页读取本人项目与系统诊断的调用审计元数据
       description: |
-        按 startedAt、id 倒序稳定排序。仅返回当前管理员自己的项目，不包含请求或响应正文、密钥和 endpoint。
+        按 startedAt、id 倒序稳定排序。返回当前管理员自己的项目调用，以及仅活动管理员可见的全局模型诊断；不包含请求或响应正文、密钥和 endpoint。
         UNKNOWN 筛选同时匹配调用结果未知及当前 Task 状态 UNKNOWN，便于核对历史请求。
         historical=true 是旧检查点投影，startedAt 为原检查点时间；traceId、respondedAt、durationMs 不可追溯时为 null，不据此推算响应时间。
       tags: [Audit]
@@ -1262,7 +1355,7 @@ paths:
       - {$ref: "#/components/parameters/AcceptLanguage"}
     get:
       operationId: getCallDebug
-      summary: 查看本人项目的 debug 调用详情
+      summary: 查看本人项目或活动管理员系统诊断的 debug 调用详情
       description: 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。仅提取固定白名单响应关联 ID，其他 header（含 Authorization、Cookie、Set-Cookie）均省略；LLM 正文不做凭据替换，保留实际请求与响应内容及推理字段，流式响应只保存一份于 llmStream.content.response，exchanges 只保留请求、HTTP 状态和响应关联 ID，媒体调用继续过滤凭据与私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（LLM JSON 仅将结构化 image_url 中的图片 data URI 整值替换为 [image bytes omitted] 占位符后序列化，工具 Schema、参数、数值和普通文本保留，同时隐藏本次服务端登记的中继 URL 查询签名及其正文回显；非 LLM JSON 沿用凭据过滤），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
       tags: [Audit]
       parameters:
@@ -1706,6 +1799,7 @@ paths:
     post:
       operationId: diagnoseLlmSettings
       summary: 管理员显式发起最多两次可能计费的工具协议诊断
+      description: 每次实际调用记录为无项目的 DIAGNOSTIC 日志，默认仅记录安全元数据；开启系统 debug 后按现有权限采集正文。第一轮必须返回唯一且 nonce 精确匹配的探针调用，第二轮必须仅返回工具结果的 proof（允许首尾空白）。失败详情说明具体阶段，显式 Token 截断不验证工具能力。不自动重试，已验证且未变更的配置不重复调用。
       tags: [Settings]
       requestBody:
         required: true
@@ -6349,12 +6443,12 @@ components:
       required: [id, projectId, projectTitle, taskId, runId, kind, operation, status, taskStatus, provider, model, traceId, providerRequestId, errorCode, startedAt, respondedAt, durationMs, historical, mock]
       properties:
         id: {type: string, format: uuid}
-        projectId: {type: string, format: uuid}
-        projectTitle: {type: string}
+        projectId: {type: [string, "null"], format: uuid, description: "Null only for global administrator model diagnostics."}
+        projectTitle: {type: [string, "null"]}
         taskId: {type: [string, "null"], format: uuid}
         runId: {type: [string, "null"], format: uuid}
         kind: {type: string, enum: [LLM, IMAGE, VIDEO, AUDIO]}
-        operation: {type: string, enum: [CHAT, SUBMIT, POLL, LEGACY]}
+        operation: {type: string, enum: [CHAT, SUBMIT, POLL, DIAGNOSTIC, LEGACY]}
         status:
           type: string
           enum: [RUNNING, SUCCEEDED, FAILED, UNKNOWN]
@@ -9636,6 +9730,30 @@ components:
         promptCount:
           type: integer
         syncing: *id012
+    ThirdPartyPromptSyncSettings:
+      type: object
+      required: [enabled, deploymentEnabled, version]
+      properties:
+        enabled:
+          type: boolean
+          description: Persistent administrator opt-in; false on first adoption, including upgrades
+        deploymentEnabled:
+          type: boolean
+          description: False when the operator disabled scheduling independently of administrator consent
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+    UpdateThirdPartyPromptSyncSettings:
+      type: object
+      required: [enabled, expectedVersion]
+      properties:
+        enabled:
+          type: boolean
+        expectedVersion:
+          type: integer
+          format: int64
+          minimum: 0
     ThirdPartyPromptSources:
       type: object
       required:

@@ -76,6 +76,24 @@ class SpringAiStreamLogTest {
         assertThat(saved.get().content().response()).contains("answer", "synthetic-tool", "private reasoning");
     }
 
+    @Test void retainsTheTerminalTokenLimitSignalThroughStreamingAndDurableEncoding() {
+        var call = new AssistantMessage.ToolCall("synthetic-tool", "function", "read", "{}");
+        var partial = new ChatResponse(List.of(new Generation(AssistantMessage.builder().content("Done")
+                .toolCalls(List.of(call)).build())));
+        var terminal = new ChatResponse(List.of(new Generation(new AssistantMessage(""),
+                ChatGenerationMetadata.builder().finishReason("length").build())));
+        var gateway = gateway(Flux.just(partial, terminal));
+
+        var result = gateway.callStreaming(List.of(new UserMessage("test")), List.of(), Map.of(),
+                gateway.configIdentity(), ignored -> {});
+
+        var codec = new dev.agenvas.llm.application.LlmProtocolCodec(new tools.jackson.databind.ObjectMapper());
+        var checkpoint = codec.response(result.response());
+        assertThat(checkpoint.at("/generations/0/metadata/finishReason").asText()).isEqualTo("length");
+        assertThatThrownBy(() -> codec.selectedAssistant(checkpoint))
+                .isInstanceOf(dev.agenvas.llm.application.LlmProtocolCodec.OutputTruncated.class);
+    }
+
     @Test void errorPreservesReceivedButUnpublishedPrefixAndWritesOneFailureSnapshot() {
         var gateway = gateway(Flux.concat(Flux.just(chunk("received")), Flux.error(new IllegalStateException("synthetic failure"))));
         var saved = new AtomicReference<LlmStreamLog>();

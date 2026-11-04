@@ -38,6 +38,7 @@ import org.mockito.ArgumentMatchers;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import tools.jackson.databind.JsonNode;
@@ -129,6 +130,52 @@ class AgentTurnWorkerTest {
         verifyNoInteractions(rounds, initialContext, conversation, repairContext);
         verifyAppliedResponse();
         verify(tasks).ownerForWorker(lease);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"true, false", "false, false", "true, true", "false, true"})
+    void tokenLimitedResponseCannotExecuteToolsOrCompleteEvenWhenReplayed(boolean hasTools, boolean replay)
+            throws Exception {
+        JsonNode truncated = codec.response(new ChatResponse(List.of(new Generation(
+                AssistantMessage.builder().content("Task complete")
+                        .toolCalls(hasTools ? calls : List.of()).build(),
+                ChatGenerationMetadata.builder().finishReason("length").build()))));
+        if (replay) {
+            when(run.nextStepIndex()).thenReturn(1);
+            when(turns.find(project, runId, 0)).thenReturn(Optional.of(new LlmTurn(project, runId, 0,
+                    LlmTurn.Status.RESPONDED, 1, codec.request(frozen, List.of()), truncated, NOW, null)));
+        } else {
+            when(rounds.callLeased(eq(owner), eq(project), eq(runId), eq(0), any(JsonNode.class), anyList(),
+                    anyMap(), eq(lease), eq(WORKER))).thenReturn(truncated);
+        }
+
+        worker.runOnce(WORKER);
+
+        verifyNoInteractions(tools);
+        verify(commits).finishFailure(lease, WORKER, "LLM_OUTPUT_TRUNCATED");
+        verify(commits, never()).complete(any(), anyString());
+        verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
+        verify(commits, never()).modelFailed(any(), anyString(), anyString());
+        if (replay) verifyNoInteractions(rounds);
+    }
+
+    @Test
+    void tokenLimitedCompactionCannotAdvanceOrScheduleAnAutomaticRepair() {
+        JsonNode truncated = codec.response(new ChatResponse(List.of(new Generation(
+                new AssistantMessage("{\"goal\":\"Incomplete handoff\"}"),
+                ChatGenerationMetadata.builder().finishReason("length").build()))));
+        var request = codec.request(frozen, List.of());
+        request.putObject("contextCompaction");
+        when(run.nextStepIndex()).thenReturn(1);
+        when(turns.find(project, runId, 0)).thenReturn(Optional.of(new LlmTurn(project, runId, 0,
+                LlmTurn.Status.RESPONDED, 1, request, truncated, NOW, null)));
+
+        worker.runOnce(WORKER);
+
+        verifyNoInteractions(tools, rounds);
+        verify(commits).finishFailure(lease, WORKER, "LLM_OUTPUT_TRUNCATED");
+        verify(commits, never()).complete(any(), anyString());
+        verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
     }
 
     @Test

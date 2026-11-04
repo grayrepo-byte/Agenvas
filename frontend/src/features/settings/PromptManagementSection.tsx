@@ -100,6 +100,7 @@ export function PromptManagementSection({ enabled }: { enabled: boolean }) {
           </FieldGroup>
           <Field className="prompt-management-content-field"><FieldLabel htmlFor={`${id}-content`}>{t("prompts.content")}</FieldLabel>
             <Textarea id={`${id}-content`} required rows={18} maxLength={MAX_CONTENT_LENGTH} disabled={disabled} value={value.content} onChange={(event) => change({ content: event.target.value })} />
+            <FieldDescription>{t("prompts.languageHint")}</FieldDescription>
             <FieldDescription className="prompt-management-length">{value.content.length.toLocaleString(getFormatLocale())} / {MAX_CONTENT_LENGTH.toLocaleString(getFormatLocale())}</FieldDescription>
             {value.kind === "FUNCTION" ? <FieldDescription>{t("prompts.functionHint")}</FieldDescription> : null}</Field>
         </FieldGroup> : null}

@@ -56,6 +56,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/media-template-sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read administrator consent for scheduled third-party prompt downloads */
+        get: operations["getThirdPartyPromptSyncSettings"];
+        /**
+         * Explicitly enable or disable scheduled third-party prompt downloads
+         * @description Administrator-only and CSRF-protected. New and upgraded installations start disabled. Disabling prevents new scheduled sources from starting; an already running download may finish. Cached prompts, per-source settings and explicit manual synchronization remain available.
+         */
+        put: operations["updateThirdPartyPromptSyncSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/media-template-sources": {
         parameters: {
             query?: never;
@@ -527,8 +548,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 分页读取管理员本人项目的调用审计元数据
-         * @description 按 startedAt、id 倒序稳定排序。仅返回当前管理员自己的项目，不包含请求或响应正文、密钥和 endpoint。
+         * 分页读取本人项目与系统诊断的调用审计元数据
+         * @description 按 startedAt、id 倒序稳定排序。返回当前管理员自己的项目调用，以及仅活动管理员可见的全局模型诊断；不包含请求或响应正文、密钥和 endpoint。
          *     UNKNOWN 筛选同时匹配调用结果未知及当前 Task 状态 UNKNOWN，便于核对历史请求。
          *     historical=true 是旧检查点投影，startedAt 为原检查点时间；traceId、respondedAt、durationMs 不可追溯时为 null，不据此推算响应时间。
          */
@@ -722,7 +743,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 查看本人项目的 debug 调用详情
+         * 查看本人项目或活动管理员系统诊断的 debug 调用详情
          * @description 单独按需读取正文；Cache-Control 为 no-store。captured=false 表示调用开始时 debug 未启用。captured=true 且 exchanges 为空表示没有已采集的 HTTP 交换（例如 Mock、尚未开始网络调用或采集写入失败）。不伪造 Mock 的 HTTP 请求。仅提取固定白名单响应关联 ID，其他 header（含 Authorization、Cookie、Set-Cookie）均省略；LLM 正文不做凭据替换，保留实际请求与响应内容及推理字段，流式响应只保存一份于 llmStream.content.response，exchanges 只保留请求、HTTP 状态和响应关联 ID，媒体调用继续过滤凭据与私有推理。每个正文至多 64 MiB，超限或未读完标记 truncated，无法解析的 JSON 正文或 SSE data 事件省略，旧内容不补录。UTF8 为正文文本（LLM JSON 仅将结构化 image_url 中的图片 data URI 整值替换为 [image bytes omitted] 占位符后序列化，工具 Schema、参数、数值和普通文本保留，同时隐藏本次服务端登记的中继 URL 查询签名及其正文回显；非 LLM JSON 沿用凭据过滤），BASE64 为二进制正文，MULTIPART_JSON 为字段与文件内容，OMITTED 表示无法安全采集。请求已发送但无响应时响应字段为 null。旧历史投影无此详情，不补录。
          */
         get: operations["getCallDebug"];
@@ -1161,7 +1182,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 管理员显式发起最多两次可能计费的工具协议诊断 */
+        /**
+         * 管理员显式发起最多两次可能计费的工具协议诊断
+         * @description 每次实际调用记录为无项目的 DIAGNOSTIC 日志，默认仅记录安全元数据；开启系统 debug 后按现有权限采集正文。第一轮必须返回唯一且 nonce 精确匹配的探针调用，第二轮必须仅返回工具结果的 proof（允许首尾空白）。失败详情说明具体阶段，显式 Token 截断不验证工具能力。不自动重试，已验证且未变更的配置不重复调用。
+         */
         post: operations["diagnoseLlmSettings"];
         delete?: never;
         options?: never;
@@ -4632,9 +4656,12 @@ export interface components {
         CallLog: {
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
-            projectId: string;
-            projectTitle: string;
+            /**
+             * Format: uuid
+             * @description Null only for global administrator model diagnostics.
+             */
+            projectId: string | null;
+            projectTitle: string | null;
             /** Format: uuid */
             taskId: string | null;
             /** Format: uuid */
@@ -4642,7 +4669,7 @@ export interface components {
             /** @enum {string} */
             kind: "LLM" | "IMAGE" | "VIDEO" | "AUDIO";
             /** @enum {string} */
-            operation: "CHAT" | "SUBMIT" | "POLL" | "LEGACY";
+            operation: "CHAT" | "SUBMIT" | "POLL" | "DIAGNOSTIC" | "LEGACY";
             /**
              * @description 单次调用结果；异步受理或轮询返回等待也表示本次调用成功，不表示任务已生成完成。
              * @enum {string}
@@ -7308,6 +7335,19 @@ export interface components {
             promptCount: number;
             syncing: boolean;
         };
+        ThirdPartyPromptSyncSettings: {
+            /** @description Persistent administrator opt-in; false on first adoption, including upgrades */
+            enabled: boolean;
+            /** @description False when the operator disabled scheduling independently of administrator consent */
+            deploymentEnabled: boolean;
+            /** Format: int64 */
+            version: number;
+        };
+        UpdateThirdPartyPromptSyncSettings: {
+            enabled: boolean;
+            /** Format: int64 */
+            expectedVersion: number;
+        };
         ThirdPartyPromptSources: {
             items: components["schemas"]["ThirdPartyPromptSource"][];
         };
@@ -7702,6 +7742,140 @@ export interface operations {
             };
             /** @description Request rejected */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getThirdPartyPromptSyncSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current settings; deploymentEnabled is an independent operator limit */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSyncSettings"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateThirdPartyPromptSyncSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateThirdPartyPromptSyncSettings"];
+            };
+        };
+        responses: {
+            /** @description Saved settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThirdPartyPromptSyncSettings"];
+                };
+            };
+            /** @description Request rejected */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Request rejected */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

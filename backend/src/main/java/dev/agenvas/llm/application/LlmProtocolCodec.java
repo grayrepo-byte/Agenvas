@@ -24,6 +24,8 @@ import tools.jackson.databind.node.ObjectNode;
 /** 将 Spring AI 消息转换为版本化的应用协议，恢复时只接受本应用明确支持的消息结构。 */
 @Component
 public class LlmProtocolCodec {
+    /** An explicit provider token-limit stop is not a completed assistant turn. */
+    public static final String OUTPUT_TRUNCATED = "LLM_OUTPUT_TRUNCATED";
     /** Per-request resource bound; Run turn counts are governed by their frozen policy. */
     public static final int MAX_MESSAGES = 4096;
 
@@ -181,11 +183,21 @@ public class LlmProtocolCodec {
         if (!generations.isArray() || generations.isEmpty()) {
             throw new IllegalArgumentException("Saved model response has no generation");
         }
+        // Inspect the durable generation metadata, including on restart/replay. A partial
+        // response can still contain parseable tool JSON or a misleading success sentence.
+        if ("length".equals(generations.get(0).path("metadata").path("finishReason").asText())) {
+            throw new OutputTruncated();
+        }
         Message message = decodeMessage(generations.get(0).path("assistant"));
         if (!(message instanceof AssistantMessage assistant)) {
             throw new IllegalArgumentException("Saved model generation is not an assistant message");
         }
         return assistant;
+    }
+
+    /** Carries no provider text, credentials or private model content into public errors. */
+    public static final class OutputTruncated extends RuntimeException {
+        OutputTruncated() { super("Model response stopped at a token limit"); }
     }
 
     /**

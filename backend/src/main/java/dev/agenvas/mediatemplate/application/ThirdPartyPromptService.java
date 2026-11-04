@@ -37,15 +37,18 @@ public class ThirdPartyPromptService {
     private final TransactionTemplate tx;
     private final boolean scheduled;
     private final boolean recovery;
+    private final ThirdPartyPromptSyncSettingsService syncSettings;
     // Isolate slow upstream GETs from the shared scheduler used by media task recovery.
     private final ThreadPoolExecutor worker = new ThreadPoolExecutor(1, 1, 0, TimeUnit.SECONDS,
             new SynchronousQueue<>(), Thread.ofPlatform().name("prompt-repository-sync").factory());
     private final AtomicBoolean scanning = new AtomicBoolean();
     public ThirdPartyPromptService(ThirdPartyPromptRepository repository, ThirdPartyPromptHttpClient http,
             List<ThirdPartyPromptAdapter> adapters, Clock clock, PlatformTransactionManager transactions,
+            ThirdPartyPromptSyncSettingsService syncSettings,
             @Value("${agenvas.media-templates.sync-enabled:true}") boolean scheduled,
             @Value("${agenvas.recovery-mode:false}") boolean recovery) {
         this.repository = repository; this.http = http; this.clock = clock; this.scheduled = scheduled; this.recovery = recovery;
+        this.syncSettings = syncSettings;
         this.adapters = adapters.stream().collect(Collectors.toUnmodifiableMap(ThirdPartyPromptAdapter::format, Function.identity()));
         tx = new TransactionTemplate(transactions);
     }
@@ -77,10 +80,17 @@ public class ThirdPartyPromptService {
         return repository.entry(id).orElseThrow(() -> problem(HttpStatus.NOT_FOUND, "THIRD_PARTY_PROMPT_NOT_FOUND", ApiMessage.of("api.third-party.notFound")));
     }
     /** The short lease transaction ends before fetching; publication is fenced by the lease token. */
-    public SyncResult sync(String id) {
+    public SyncResult sync(String id) { return sync(id, false); }
+    SyncResult syncScheduled(String id) { return sync(id, true); }
+    private SyncResult sync(String id, boolean scheduledRequest) {
         writable(); source(id);
         UUID token = UUID.randomUUID();
-        var claimed = tx.execute(ignored -> repository.claim(id, token, clock.instant()));
+        var claimed = tx.execute(ignored -> {
+            // Consent and lease acceptance are atomic with respect to the global switch.
+            // Manual synchronization is a separate explicit administrator action.
+            if (scheduledRequest && !syncSettings.allowScheduledClaim()) return java.util.Optional.<ThirdPartyPromptSource>empty();
+            return repository.claim(id, token, clock.instant());
+        });
         if (claimed.isEmpty()) return new SyncResult(id, source(id).enabled() ? SyncState.RUNNING : SyncState.DISABLED, 0, 0, 0);
         ThirdPartyPromptSource source = claimed.get();
         try {
@@ -100,10 +110,18 @@ public class ThirdPartyPromptService {
     }
     @Scheduled(fixedDelayString = "${agenvas.media-templates.scan-delay-ms:60000}", initialDelayString = "${agenvas.media-templates.scan-delay-ms:60000}")
     public void syncDue() {
-        if (!scheduled || recovery || worker.isShutdown() || !scanning.compareAndSet(false, true)) return;
+        if (!scheduled || recovery || worker.isShutdown() || !syncSettings.get().enabled()
+                || !scanning.compareAndSet(false, true)) return;
         try {
             worker.execute(() -> {
-                try { for (String id : repository.due(clock.instant())) sync(id); }
+                try {
+                    for (String id : repository.due(clock.instant())) {
+                        // An administrator may withdraw consent while a previous source downloads.
+                        // Do not interrupt its safe publication, but do not start the next source.
+                        if (!syncSettings.get().enabled()) break;
+                        syncScheduled(id);
+                    }
+                }
                 catch (RuntimeException failure) { LOG.warn("Third-party prompt scan failed ({})", failure.getClass().getSimpleName()); }
                 finally { scanning.set(false); }
             });

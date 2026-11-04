@@ -37,16 +37,18 @@ public class CallLogRecord extends UpdatableRecordImpl<CallLogRecord> {
     }
 
     /**
-     * Setter for <code>public.call_log.project_id</code>.
-     * 原所属项目的历史标识；不设外键，查询仍须校验项目权限
+     * Setter for <code>public.call_log.project_id</code>. Project ownership
+     * scope for business calls; null only for global administrator LLM
+     * diagnostics.
      */
     public void setProjectId(UUID value) {
         set(1, value);
     }
 
     /**
-     * Getter for <code>public.call_log.project_id</code>.
-     * 原所属项目的历史标识；不设外键，查询仍须校验项目权限
+     * Getter for <code>public.call_log.project_id</code>. Project ownership
+     * scope for business calls; null only for global administrator LLM
+     * diagnostics.
      */
     public UUID getProjectId() {
         return (UUID) get(1);

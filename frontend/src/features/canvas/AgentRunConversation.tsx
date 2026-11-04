@@ -12,6 +12,7 @@ import { BlockedRunNotice } from "./BlockedRunNotice";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
 import { taskErrorDetail } from "./taskErrorMessages";
 import { isVideoCompositionTask } from "./mediaTaskState";
+import { runActionSummary } from "./runActionSummary";
 
 export const RUN_STATUS_LABELS: Record<AgentRun["status"], string> = {
   get QUEUED() { return t("agent.run.pending"); }, get RUNNING() { return t("agent.run.processing"); },
@@ -130,7 +131,7 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
       {steps.map((step) => <div className="agent-execution-trace__round" key={step}>
         <p className="agent-execution-trace__round-label">{t("agent.trace.round", { "0": step + 1 })}</p>
         {(actions.data ?? []).filter((action) => action.stepIndex === step).map((action) =>
-          <AgentChatTaskRow key={action.id} label={action.summary} status="completed"
+          <AgentChatTaskRow key={action.id} label={runActionSummary(action)} status="completed"
             toolLabel={TOOL_LABELS[action.toolName] ?? action.toolName}
             detail={`${TOOL_LABELS[action.toolName] ?? action.toolName} · ${new Date(action.completedAt).toLocaleString(getFormatLocale())}`} />)}
         {traceTasks.filter((task) => stepIndex(task) === step).map((task) =>

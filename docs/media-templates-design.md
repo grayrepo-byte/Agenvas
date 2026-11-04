@@ -38,7 +38,7 @@
 
 ## 第三方提示词库
 
-图片与视频模板新增“第三方模板”目录，从 PostgreSQL 缓存分页读取，支持来源和文本筛选。管理员在同一设置页管理来源、手动同步，或添加公开 HTTPS 标准 JSON 数据地址。同步不修改个人模板或已经导入的项目内容。
+图片与视频模板新增“第三方模板”目录，从 PostgreSQL 缓存分页读取，支持来源和文本筛选。管理员在同一设置页管理来源、手动同步，或添加公开 HTTPS 标准 JSON 数据地址。同步不修改个人模板或已经导入的项目内容。 自动同步由管理员在来源管理中显式开启；新增 V46 全局持久设置，新装与升级均初始关闭。启用后沿用每来源 24 小时刷新、失败一小时后重试；关闭保留来源状态与缓存，已受理下载可完成。每次后台来源 lease 受理在同一短事务内共享锁定并检查全局设置，关闭写入与受理串行，网络不持有此事务。`AGENVAS_PROMPT_SYNC_ENABLED=false` 仍可独立禁止后台调度；它的 true 默认值不授予用户同意。手动同步为独立的显式管理员操作，不受自动同步开关影响。控制、联网披露与升级边界见 [提示词来源说明](prompt-sources.md)。
 
 图片原生格式使用 `id/sourceId/title/prompt/description/coverUrl/referenceImageUrls/tags/author/sourceUrl/createdAt/imageMode/imageModel`，与用户指定格式一致。`imageMode` 为 `generate` 或 `edit`。效果图只作封面，只有明确标注的输入素材进入 `referenceImageUrls`。需要图片但上游未公开输入图的编辑模板，在应用前要求草稿已有图片。
 

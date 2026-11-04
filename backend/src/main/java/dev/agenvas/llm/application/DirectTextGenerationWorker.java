@@ -160,6 +160,7 @@ public class DirectTextGenerationWorker {
     }
 
     private String errorCode(RuntimeException failure) {
+        if (failure instanceof LlmProtocolCodec.OutputTruncated) return LlmProtocolCodec.OUTPUT_TRUNCATED;
         return failure instanceof IllegalArgumentException
                 ? "MODEL_OUTPUT_INVALID" : "MODEL_CALL_FAILED";
     }

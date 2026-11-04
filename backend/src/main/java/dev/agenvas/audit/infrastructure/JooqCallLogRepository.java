@@ -8,6 +8,7 @@ import dev.agenvas.audit.domain.CallLogRetentionSettings;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.temporal.ChronoUnit;
 import static dev.agenvas.db.Tables.PROJECT;
+import static dev.agenvas.db.Tables.APP_USER;
 import dev.agenvas.audit.domain.DebugSettings;
 import dev.agenvas.audit.domain.CallDebug;
 import dev.agenvas.audit.domain.LlmStreamLog;
@@ -19,6 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 import dev.agenvas.audit.application.CallLogRepository;
 import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.audit.domain.CallLog;
+import dev.agenvas.llm.application.LlmCallTimeouts;
 import dev.agenvas.audit.domain.CallLogPage;
 import dev.agenvas.task.domain.Task;
 import java.time.Instant;
@@ -34,6 +36,10 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class JooqCallLogRepository implements CallLogRepository {
     private static final short SETTINGS_ID = 1;
+    // A diagnostic has no worker lease. Its one-call transport deadline plus connection grace
+    // bounds how long an incomplete row can honestly be projected as actively calling.
+    private static final long DIAGNOSTIC_STALE_SECONDS =
+            LlmCallTimeouts.REQUEST.plus(LlmCallTimeouts.CONNECT).toSeconds();
     private final DSLContext dsl;
     private final ObjectMapper mapper;
     private final dev.agenvas.llm.application.ExecutionLedgerRetention turns;
@@ -149,7 +155,17 @@ public class JooqCallLogRepository implements CallLogRepository {
         dsl.deleteFrom(CALL_LOG).where(CALL_LOG.TASK_ID.in(taskIds)).execute();
         turns.deleteFor(runIds);
         attempts.deleteFor(taskIds);
-        return runIds.size() + standalone.size();
+        // Diagnostic rounds are standalone audit units and share the administrator's explicit retention policy.
+        int remaining = batchSize - runIds.size() - standalone.size();
+        var diagnosticIds = dsl.select(CALL_LOG.ID).from(CALL_LOG)
+                .where(CALL_LOG.OPERATION.eq("DIAGNOSTIC")).and(CALL_LOG.PROJECT_ID.isNull())
+                .and(CALL_LOG.STARTED_AT.lt(utc(cutoff)))
+                .and(CALL_LOG.RESPONDED_AT.isNull().or(CALL_LOG.RESPONDED_AT.lt(utc(cutoff))))
+                .orderBy(CALL_LOG.STARTED_AT, CALL_LOG.ID).limit(remaining).forUpdate().skipLocked()
+                .fetch(CALL_LOG.ID);
+        int diagnosticCount = diagnosticIds.isEmpty() ? 0
+                : dsl.deleteFrom(CALL_LOG).where(CALL_LOG.ID.in(diagnosticIds)).execute();
+        return runIds.size() + standalone.size() + diagnosticCount;
     }
 
     @Override public boolean isDebugEnabled() { return settings().debugMode(); }
@@ -173,9 +189,13 @@ public class JooqCallLogRepository implements CallLogRepository {
     @Override public Optional<CallDebug> debug(UUID ownerId, UUID id) {
         return dsl.select(CALL_LOG.ID, CALL_LOG.LLM_STREAM_METRICS_JSON,
                         CALL_LOG_DEBUG.EXCHANGES_JSON, CALL_LOG_DEBUG.LLM_STREAM_CONTENT_JSON).from(CALL_LOG)
-                .join(PROJECT).on(PROJECT.ID.eq(CALL_LOG.PROJECT_ID))
+                .leftJoin(PROJECT).on(PROJECT.ID.eq(CALL_LOG.PROJECT_ID))
                 .leftJoin(CALL_LOG_DEBUG).on(CALL_LOG_DEBUG.CALL_ID.eq(CALL_LOG.ID))
-                .where(CALL_LOG.ID.eq(id)).and(PROJECT.OWNER_ID.eq(ownerId)).fetchOptional(row -> {
+                .where(CALL_LOG.ID.eq(id)).and(PROJECT.OWNER_ID.eq(ownerId).or(
+                        CALL_LOG.PROJECT_ID.isNull().and(CALL_LOG.OPERATION.eq("DIAGNOSTIC"))
+                                .andExists(dsl.selectOne().from(APP_USER).where(APP_USER.ID.eq(ownerId))
+                                        .and(APP_USER.STATUS.eq("ACTIVE")))))
+                .fetchOptional(row -> {
                     JSONB json = row.get(CALL_LOG_DEBUG.EXCHANGES_JSON);
                     List<Exchange> exchanges = json == null ? List.of() : List.of(
                             mapper.readValue(json.data(), Exchange[].class));
@@ -243,21 +263,27 @@ public class JooqCallLogRepository implements CallLogRepository {
     // 这段 CTE 由三路 UNION ALL、jsonb 取值、md5 摘要与 uuid 转换组成，DSL 表达会明显比原 SQL 更难核对；
     // 因此按 ADR 0012 保留 SQL 文本，仍通过 jOOQ 的位置绑定占位符执行（唯一的绑定值是首行的 ownerId）。
     private static final String SOURCE = """
-            WITH owned_projects AS (SELECT id, name FROM project WHERE owner_id = ?),
+            WITH viewer AS (SELECT ?::uuid AS id, ?::bigint AS diagnostic_stale_seconds),
+            owned_projects AS (SELECT id, name FROM project WHERE owner_id = (SELECT id FROM viewer)),
             calls AS (
               SELECT c.id, c.project_id, p.name AS project_title, c.task_id, c.run_id, c.kind,
                 c.operation,
-                CASE WHEN c.status = 'RUNNING' AND
-                  ((c.task_id IS NOT NULL AND (t.lease_until IS NULL OR t.lease_until <= now()
-                    OR t.status NOT IN ('RUNNING', 'SUBMITTING')))
-                   OR (c.task_id IS NULL AND NOT EXISTS (SELECT 1 FROM task active
-                    WHERE active.run_id = c.run_id AND active.kind = 'AGENT_TURN'
-                      AND active.status = 'RUNNING' AND active.lease_until > now())))
+                CASE WHEN c.status = 'RUNNING' AND (
+                  (c.operation = 'DIAGNOSTIC' AND c.started_at < now()
+                    - interval '1 second' * (SELECT diagnostic_stale_seconds FROM viewer))
+                  OR (c.operation <> 'DIAGNOSTIC' AND (
+                    (c.task_id IS NOT NULL AND (t.lease_until IS NULL OR t.lease_until <= now()
+                      OR t.status NOT IN ('RUNNING', 'SUBMITTING')))
+                    OR (c.task_id IS NULL AND NOT EXISTS (SELECT 1 FROM task active
+                      WHERE active.run_id = c.run_id AND active.kind = 'AGENT_TURN'
+                        AND active.status = 'RUNNING' AND active.lease_until > now())))))
                   THEN 'UNKNOWN' ELSE c.status END AS status,
                 t.status AS task_status, c.provider, c.model, c.trace_id, c.provider_request_id,
                 c.error_code, c.started_at, c.responded_at, c.duration_ms, false AS historical, c.mock
-              FROM call_log c JOIN owned_projects p ON p.id = c.project_id
+              FROM call_log c LEFT JOIN owned_projects p ON p.id = c.project_id
               LEFT JOIN task t ON t.id = c.task_id
+              WHERE p.id IS NOT NULL OR (c.project_id IS NULL AND c.operation = 'DIAGNOSTIC'
+                AND EXISTS (SELECT 1 FROM app_user a JOIN viewer v ON v.id=a.id WHERE a.status='ACTIVE'))
               UNION ALL
               SELECT t.id, t.project_id, p.name, t.id, t.run_id,
                 CASE t.kind WHEN 'IMAGE_GENERATION' THEN 'IMAGE' ELSE 'VIDEO' END,
@@ -289,9 +315,10 @@ public class JooqCallLogRepository implements CallLogRepository {
     @Override
     public CallLogPage list(UUID ownerId, CallLogService.Filter filter) {
         StringBuilder where = new StringBuilder(" WHERE true");
-        // 位置绑定值必须与 SQL 文本中的 ? 顺序一致：CTE 的 ownerId 在前，随后是 WHERE 子句。
+        // CTE bindings precede filter bindings: viewer identity, bounded diagnostic deadline, then WHERE.
         List<Object> bindings = new ArrayList<>();
         bindings.add(ownerId);
+        bindings.add(DIAGNOSTIC_STALE_SECONDS);
         add(where, bindings, "project_id", filter.projectId());
         add(where, bindings, "kind", filter.kind() == null ? null : filter.kind().name());
         if (filter.status() == CallLog.Status.UNKNOWN) {

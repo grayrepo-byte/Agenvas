@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Administrator audit view, scoped to projects belonging to the authenticated principal. */
+/** Administrator audit view: owned project calls and active-administrator system diagnostics. */
 @RestController
 public class CallLogController {
     private final CallLogService logs;
