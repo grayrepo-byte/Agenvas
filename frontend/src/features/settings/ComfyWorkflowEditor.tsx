@@ -58,16 +58,18 @@ export function ComfyWorkflowEditor({ connectionId, adapterId, values, onChange,
   const [parameterErrors, setParameterErrors] = useState<Record<string, boolean>>({});
   const [reading, setReading] = useState(false);
   const readEpoch = useRef(0);
+  const active = useRef(false);
   const problem = comfyWorkflowProblem(definition, video);
   const imported = useMutation({
     mutationFn: () => previewComfyWorkflow(connectionId, source),
-    onSuccess: (graph) => { onChange({ comfyWorkflow: initialDefinition(graph, video), pricing: values.pricing }); setSource(editableGraphJson(graph)); setSourceEdited(false); setSelectedNode(Object.keys(graph)[0] ?? ""); setNodeSearch(""); setStep("mapping"); setError(""); setParameterErrors({}); },
-    onError: (cause) => setError(cause instanceof ApiError ? cause.message : t("settings.comfy.importFailed")),
+    // A preview can outlive its output-type editor and still call the parent's setter.
+    onSuccess: (graph) => { if (!active.current) return; onChange({ comfyWorkflow: initialDefinition(graph, video), pricing: values.pricing }); setSource(editableGraphJson(graph)); setSourceEdited(false); setSelectedNode(Object.keys(graph)[0] ?? ""); setNodeSearch(""); setStep("mapping"); setError(""); setParameterErrors({}); },
+    onError: (cause) => { if (active.current) setError(cause instanceof ApiError ? cause.message : t("settings.comfy.importFailed")); },
   });
   const invalidParameter = Object.values(parameterErrors).some(Boolean);
   const ready = !!definition && !problem && !imported.isPending && !reading && !error && !invalidParameter;
   useEffect(() => { onReadyChange(ready); return () => onReadyChange(false); }, [ready, onReadyChange]);
-  useEffect(() => () => { readEpoch.current += 1; }, []);
+  useEffect(() => { active.current = true; return () => { active.current = false; readEpoch.current += 1; }; }, []);
   const node = definition?.graph[selectedNode];
   const nodes = Object.entries(definition?.graph ?? {});
   const visibleNodes = nodes.filter(([id, item]) => `${id} ${item._meta?.title ?? ""} ${item.class_type}`.toLocaleLowerCase().includes(nodeSearch.trim().toLocaleLowerCase()));

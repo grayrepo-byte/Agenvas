@@ -182,7 +182,7 @@ function CapabilityEditorFields({ connectionId, connectionOrigin, name, onNameCh
         {availableAdapters.map((id) => <option key={id} value={id}>{adapterLabel(id)}</option>)}
       </Select></Field>
     </FieldGroup>
-    <ComfyWorkflowEditor key={adapterId} connectionId={connectionId} adapterId={adapterId} values={values} onChange={onChange} onReadyChange={onWorkflowReady} />
+    <ComfyWorkflowEditor key={`${adapterId}:${resetKey}`} connectionId={connectionId} adapterId={adapterId} values={values} onChange={onChange} onReadyChange={onWorkflowReady} />
   </fieldset>;
   if (adapterId.startsWith("RUNNINGHUB_")) return <fieldset disabled={disabled} className="media-settings-fieldset runninghub-editor-fieldset">
     <RunningHubDefinitionEditor connectionId={connectionId} adapterId={adapterId} value={values.runningHub}

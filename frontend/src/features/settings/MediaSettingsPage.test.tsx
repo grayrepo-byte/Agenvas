@@ -2042,3 +2042,73 @@ it.each([false, true])("fills ComfyUI explicitly without saving or losing the dr
   expect(origin).toHaveValue("http://192.168.1.3:8188"); await user.click(fill);
   expect(origin).toHaveValue("http://192.168.65.254:8188"); expect(name).toHaveValue("Draft Comfy"); expect(writes).toEqual([]);
 });
+
+it("keeps the current ComfyUI graph when an old output type's preview finishes", async () => {
+  const fixture = settingsFixture({ id: "comfy-1", name: "ComfyUI", platform: "COMFYUI", origin: "http://127.0.0.1:8188" });
+  fixture.connections[0]!.capabilities = [];
+  let previews = 0, releaseFirst = () => {};
+  const first = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  server.use(
+    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+    http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    http.post("/api/v1/settings/media-connections/comfy-1/comfyui/preview", async () => {
+      if (++previews === 1) await first;
+      return HttpResponse.json(comfyGraph);
+    }),
+  );
+  const client = mount(), user = userEvent.setup();
+  await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
+  await user.click(await screen.findByRole("button", { name: "发布能力" }));
+  await selectValue(screen.getByRole("combobox", { name: "主输出类型" }), "COMFY_IMAGE_V1");
+  await user.upload(screen.getByLabelText("选择 API JSON 文件"), new File([JSON.stringify(comfyGraph)], "old.json", { type: "application/json" }));
+  await user.click(screen.getByRole("button", { name: "解析工作流" }));
+  await waitFor(() => expect(previews).toBe(1));
+  try {
+    await selectValue(screen.getByRole("combobox", { name: "主输出类型" }), "COMFY_VIDEO_V1");
+    await user.upload(screen.getByLabelText("选择 API JSON 文件"), new File([JSON.stringify(comfyGraph)], "current.json", { type: "application/json" }));
+    await user.click(screen.getByRole("button", { name: "解析工作流" }));
+    await user.click(await screen.findByRole("button", { name: /#14.*CustomGenerator/ }));
+    fireEvent.change(screen.getByLabelText("steps 的固定值"), { target: { value: "77" } });
+    expect(screen.getByLabelText("steps 的固定值")).toHaveValue(77);
+  } finally { await act(async () => releaseFirst()); }
+  await waitFor(() => expect(client.isMutating()).toBe(0));
+  expect(screen.getByRole("combobox", { name: "主输出类型" })).toHaveValue("COMFY_VIDEO_V1");
+  expect(screen.getByLabelText("steps 的固定值")).toHaveValue(77);
+  expect(previews).toBe(2);
+});
+
+it("keeps an explicitly reloaded ComfyUI baseline when its previous preview finishes", async () => {
+  const fixture = settingsFixture({ platform: "COMFYUI", name: "ComfyUI", origin: "http://127.0.0.1:8188" }, {
+    adapterId: "COMFY_VIDEO_V1", kind: "VIDEO_GENERATION", settings: { comfyWorkflow: comfyDefinition },
+  });
+  const latest = structuredClone(fixture), capability = latest.connections[0]!.capabilities[0]!;
+  capability.version = 5;
+  capability.settings.comfyWorkflow!.graph["14"]!.inputs.steps = 32;
+  let reads = 0, previews = 0, release = () => {};
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  server.use(
+    http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+    http.get("/api/v1/settings/media-connections", () => HttpResponse.json(++reads === 1 ? fixture : latest)),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    http.post("/api/v1/settings/media-connections/openai-1/comfyui/preview", async () => {
+      previews++; await pending; return HttpResponse.json(comfyGraph);
+    }),
+  );
+  const client = mount(), user = userEvent.setup();
+  await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
+  await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+  await user.click(screen.getByRole("button", { name: "1. 导入工作流" }));
+  await user.click(screen.getByRole("button", { name: "替换工作流并重新映射" }));
+  await waitFor(() => expect(previews).toBe(1));
+  try {
+    await act(async () => { await client.refetchQueries({ queryKey: ["settings", "media"], exact: true }); });
+    await user.click(await screen.findByRole("button", { name: "载入最新版本" }));
+  } finally { await act(async () => release()); }
+  await waitFor(() => expect(client.isMutating()).toBe(0));
+  await user.click(screen.getByRole("button", { name: "2. 节点与参数映射" }));
+  await user.click(screen.getByRole("button", { name: /#14.*CustomGenerator/ }));
+  expect(screen.getByLabelText("steps 的固定值")).toHaveValue(32);
+  await user.click(screen.getByRole("button", { name: "1. 导入工作流" }));
+  expect(JSON.parse((screen.getByLabelText("API JSON 内容") as HTMLTextAreaElement).value)["14"].inputs.steps).toBe(32);
+});

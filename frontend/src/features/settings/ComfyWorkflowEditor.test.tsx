@@ -2,7 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { ComfyUiWorkflowDefinition, MediaCapability, RunningHubField } from "../../shared/api/client";
@@ -36,6 +36,18 @@ function Harness({ initial, adapterId = "COMFY_VIDEO_V1" }: { initial?: ComfyUiW
 
 describe("ComfyWorkflowEditor", () => {
   beforeEach(() => server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" }))));
+  it("accepts the active editor's preview after StrictMode effect replay", async () => {
+    let previews = 0;
+    server.use(http.post("/api/v1/settings/media-connections/comfy/comfyui/preview", () => {
+      previews++; return HttpResponse.json(graph);
+    }));
+    render(<StrictMode><Harness /></StrictMode>); const user = userEvent.setup();
+    await user.upload(screen.getByLabelText("选择 API JSON 文件"), new File([JSON.stringify(graph)], "workflow.json", { type: "application/json" }));
+    await user.click(screen.getByRole("button", { name: "解析工作流" }));
+    await screen.findByRole("button", { name: /#11.*CustomTextEncoder/ });
+    expect(currentWorkflow().graph).toEqual(graph);
+    expect(previews).toBe(1);
+  });
   it("maps video and audio files independently and reviews each media count before publishing", async () => {
     const mixed = { ...definition, graph: { ...graph, "14": { ...graph["14"]!, inputs: {
       ...graph["14"]!.inputs, video_file: "reference.mp4", audio_file: "reference.wav",
