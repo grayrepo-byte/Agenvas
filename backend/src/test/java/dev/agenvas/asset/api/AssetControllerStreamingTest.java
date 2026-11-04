@@ -8,14 +8,18 @@ import dev.agenvas.asset.application.AssetService;
 import dev.agenvas.asset.domain.Asset;
 import dev.agenvas.identity.application.AdminPrincipal;
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpOutputMessage;
@@ -27,6 +31,36 @@ import org.springframework.http.converter.ResourceHttpMessageConverter;
 class AssetControllerStreamingTest {
 
     @TempDir Path directory;
+
+    @ParameterizedTest
+    @CsvSource(delimiter = ';', value = {
+            "bytes=2-999;23456789;bytes 2-9/10",
+            "bytes=2-999999999999999999999999999999;23456789;bytes 2-9/10",
+            "bytes=-999999999999999999999999999999;0123456789;bytes 0-9/10"
+    })
+    void satisfiableRangesEndAtTheActualFileBoundary(String range, String expectedBody, String expectedRange) throws Exception {
+        byte[] bytes = "0123456789".getBytes(StandardCharsets.US_ASCII);
+        UUID projectId = UUID.randomUUID(), assetId = UUID.randomUUID();
+        AdminPrincipal principal = new AdminPrincipal(UUID.randomUUID(), "range-test");
+        Asset asset = new Asset(assetId, projectId, Asset.MediaKind.VIDEO, "synthetic", "video/mp4", bytes.length,
+                "synthetic-hash", 1, 1, 1_000, null, null, null, Instant.now());
+        var descriptor = new AssetService.AssetContent(asset, asset.objectKey(), bytes.length, asset.contentType());
+        AssetService service = mock(AssetService.class);
+        when(service.content(principal.userId(), projectId, assetId, false)).thenReturn(descriptor);
+        when(service.open(org.mockito.ArgumentMatchers.eq(descriptor), org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong())).thenAnswer(call -> new ByteArrayInputStream(bytes,
+                        Math.toIntExact(call.getArgument(1, Long.class)), Math.toIntExact(call.getArgument(2, Long.class))));
+        AssetController controller = new AssetController(service,
+                new dev.agenvas.shared.i18n.ApiMessages(new dev.agenvas.shared.i18n.I18nConfiguration().messageSource(),
+                        new tools.jackson.databind.ObjectMapper()));
+        var response = controller.content(principal, projectId, assetId, range);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.PARTIAL_CONTENT);
+        assertThat(response.getHeaders().getContentLength()).isEqualTo(expectedBody.length());
+        assertThat(response.getHeaders().getFirst(HttpHeaders.CONTENT_RANGE)).isEqualTo(expectedRange);
+        try (var body = response.getBody().getInputStream()) {
+            assertThat(new String(body.readAllBytes(), StandardCharsets.US_ASCII)).isEqualTo(expectedBody);
+        }
+    }
 
     @Test
     void largeFileAndRangesNeverMaterializeTheWholeBody() throws Exception {

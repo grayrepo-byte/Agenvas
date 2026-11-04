@@ -141,6 +141,19 @@ class AssetPostgresIT {
                 .containsExactly(png[1], png[2], png[3], png[4]);
         assertThat(ranged.getResponse().getHeader(HttpHeaders.CONTENT_RANGE))
                 .isEqualTo("bytes 1-4/" + png.length);
+        for (String range : List.of("bytes=1-999999", "bytes=1-999999999999999999999999999999")) {
+            MvcResult bounded = mvc.perform(get(content).header(HttpHeaders.RANGE, range)
+                            .with(authentication(asUser(owner))))
+                    .andExpect(status().isPartialContent()).andReturn();
+            assertThat(bounded.getResponse().getContentAsByteArray())
+                    .containsExactly(java.util.Arrays.copyOfRange(png, 1, png.length));
+            assertThat(bounded.getResponse().getHeader(HttpHeaders.CONTENT_RANGE))
+                    .isEqualTo("bytes 1-" + (png.length - 1) + "/" + png.length);
+        }
+        for (String range : List.of("bytes=+1-4", "bytes=1-+4", "bytes=-+4", "bytes=-0", "bytes=4-1", "bytes=1-a")) {
+            mvc.perform(get(content).header(HttpHeaders.RANGE, range).with(authentication(asUser(owner))))
+                    .andExpect(status().isRequestedRangeNotSatisfiable());
+        }
         mvc.perform(request(HttpMethod.HEAD, content).with(authentication(asUser(owner))))
                 .andExpect(status().isOk());
         mvc.perform(get(content).header(HttpHeaders.RANGE, "bytes=999999-")
