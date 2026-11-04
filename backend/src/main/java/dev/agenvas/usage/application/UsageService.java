@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -22,6 +23,14 @@ import tools.jackson.databind.node.ObjectNode;
 /** 记录模型和媒体任务的预留与结算；缺少真实价格时保持 UNKNOWN，不伪造金额。 */
 @Service
 public class UsageService {
+    // Only failures known to occur before submission may release an external reservation.
+    private static final Set<String> UNSUBMITTED_MEDIA_BLOCKS = Set.of(
+            "TASK_INPUT_STALE", "TASK_PROJECT_ARCHIVED", "MEDIA_CAPABILITY_CHANGED",
+            "PROVIDER_UNSUPPORTED_CAPABILITY", "PROVIDER_UNSUPPORTED_INPUT", "MEDIA_CREDENTIAL_UNAVAILABLE",
+            "RUNNINGHUB_INPUT_UNAVAILABLE", "LOCAL_DEPTH_MODEL_UNAVAILABLE", "VIDEO_AUDIO_TRACK_MISSING",
+            "AUDIO_TRIM_INVALID", "AUDIO_TRIM_OUTPUT_TOO_LARGE", "SEEDANCE_VIDEO_REFERENCE_INVALID",
+            "MEDIA_RELAY_REQUIRED", ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED,
+            "MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED");
     private static final int MONEY_SCALE = 6;
     private static final int MIN_VIDEO_SECONDS = 1;
     private static final int MAX_STANDARD_VIDEO_SECONDS = 30;
@@ -180,8 +189,7 @@ public class UsageService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void reserveMediaTask(UUID ownerId, Task task, String costSource, int connectionVersion) {
         boolean directMedia = (task.runId() == null || task.approvedMedia())
-                && (task.kind() == Task.Kind.AUDIO_GENERATION || task.kind() == Task.Kind.IMAGE_GENERATION
-                        || task.kind() == Task.Kind.VIDEO_GENERATION);
+                && isMediaTask(task);
         if (!directMedia) {
             throw new IllegalArgumentException("Media reservation requires direct or approved media work");
         }
@@ -198,8 +206,7 @@ public class UsageService {
     /** Multiple Kling images and clipped motion durations settle from archived media, not requested counts. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleMediaTask(UUID ownerId, Task task, Integer archivedImageCount, BigDecimal archivedVideoSeconds) {
-        if (task.kind() != Task.Kind.AUDIO_GENERATION && task.kind() != Task.Kind.IMAGE_GENERATION
-                && task.kind() != Task.Kind.VIDEO_GENERATION) return;
+        if (!isMediaTask(task)) return;
         UsageEntry reservation = ledger.findByOperationKey(
                 "media:" + task.id() + ":reserve").orElseThrow(() ->
                 new IllegalStateException("Direct media Task has no media usage reservation"));
@@ -210,29 +217,7 @@ public class UsageService {
     /** 调用方确认生成未提交，或零费用本地处理已失败/取消后释放预留；不推断未知外部费用。 */
     @Transactional(propagation = Propagation.MANDATORY)
     public void releaseUnsubmittedMediaTask(UUID ownerId, Task task) {
-        if ((task.kind() != Task.Kind.AUDIO_GENERATION && task.kind() != Task.Kind.IMAGE_GENERATION
-                && task.kind() != Task.Kind.VIDEO_GENERATION)
-                || (task.status() != Task.Status.CANCELED
-                        && task.status() != Task.Status.FAILED
-                        && (task.status() != Task.Status.BLOCKED
-                                || (!"TASK_INPUT_STALE".equals(task.errorCode())
-                                        && !"TASK_PROJECT_ARCHIVED".equals(task.errorCode())
-                                        && !"MEDIA_CAPABILITY_CHANGED".equals(task.errorCode())
-                                        && !"PROVIDER_UNSUPPORTED_CAPABILITY".equals(
-                                                task.errorCode())
-                                        && !"PROVIDER_UNSUPPORTED_INPUT".equals(task.errorCode())
-                                        && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(
-                                                task.errorCode())
-                                        && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(task.errorCode())
-                                        && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(task.errorCode())
-                                        && !"VIDEO_AUDIO_TRACK_MISSING".equals(task.errorCode())
-                                        && !"AUDIO_TRIM_INVALID".equals(task.errorCode())
-                                        && !"AUDIO_TRIM_OUTPUT_TOO_LARGE".equals(task.errorCode())
-                                        && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(task.errorCode())
-                                        && !"MEDIA_RELAY_REQUIRED".equals(task.errorCode())
-                                        && !ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED.equals(task.errorCode())
-                                        && !"MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED".equals(task.errorCode()))))
-                || task.providerRequestId() != null) {
+        if (!isMediaTask(task) || task.providerRequestId() != null || !confirmedUnsubmittedOutcome(task)) {
             throw new IllegalArgumentException("Media release requires unsubmitted terminal work");
         }
         String prefix = "media:" + task.id();
@@ -244,6 +229,19 @@ public class UsageService {
         }
         persist(ownerId, entry(task, UsageEntry.EntryType.RELEASE,
                 reservation.costSource(), prefix + ":release", reservation.providerConfigVersion()));
+    }
+
+    private boolean isMediaTask(Task task) {
+        return task.kind() == Task.Kind.AUDIO_GENERATION || task.kind() == Task.Kind.IMAGE_GENERATION
+                || task.kind() == Task.Kind.VIDEO_GENERATION;
+    }
+
+    private boolean confirmedUnsubmittedOutcome(Task task) {
+        return switch (task.status()) {
+            case CANCELED, FAILED -> true;
+            case BLOCKED -> task.errorCode() != null && UNSUBMITTED_MEDIA_BLOCKS.contains(task.errorCode());
+            default -> false;
+        };
     }
 
     /** 查询用户有权访问的项目账本；金额为空表示未知，不序列化为零。 */

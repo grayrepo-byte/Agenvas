@@ -29,6 +29,7 @@ import dev.agenvas.usage.application.UsageService;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Set;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -47,6 +48,13 @@ import tools.jackson.databind.node.ObjectNode;
 public class TaskService {
 
     public static final String AGENT_STREAM_PROPERTY = "assistantStream";
+    private static final Set<String> PRE_SUBMISSION_BLOCKING_CODES = Set.of(
+            "TASK_INPUT_STALE", "TASK_PROJECT_ARCHIVED", "MEDIA_CAPABILITY_CHANGED",
+            "PROVIDER_UNSUPPORTED_CAPABILITY", "PROVIDER_UNSUPPORTED_INPUT", "MEDIA_CREDENTIAL_UNAVAILABLE",
+            "RUNNINGHUB_INPUT_UNAVAILABLE", "LOCAL_DEPTH_MODEL_UNAVAILABLE", "VIDEO_AUDIO_TRACK_MISSING",
+            "AUDIO_TRIM_INVALID", "AUDIO_TRIM_OUTPUT_TOO_LARGE", "SEEDANCE_VIDEO_REFERENCE_INVALID",
+            "MEDIA_RELAY_REQUIRED", ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED,
+            "MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED");
     /** 公开回答投影允许 8 MiB 文本，配合模型响应预算；JSON 协议封装另由 LLM 模块校验。 */
     private static final int MAX_AGENT_STREAM_BYTES = 8 * 1024 * 1024;
     private static final long FIRST_STREAM_CHUNK = 0;
@@ -983,21 +991,7 @@ public class TaskService {
     /** 在保存外部提交检查点前阻断配置或输入无效的任务，避免形成无法核对的半提交。 */
     @Transactional
     public void blockPreSubmission(Task lease, String workerId, String errorCode) {
-        if (!"TASK_INPUT_STALE".equals(errorCode)
-                && !"TASK_PROJECT_ARCHIVED".equals(errorCode)
-                && !"MEDIA_CAPABILITY_CHANGED".equals(errorCode)
-                && !"PROVIDER_UNSUPPORTED_CAPABILITY".equals(errorCode)
-                && !"PROVIDER_UNSUPPORTED_INPUT".equals(errorCode)
-                && !"MEDIA_CREDENTIAL_UNAVAILABLE".equals(errorCode)
-                && !"RUNNINGHUB_INPUT_UNAVAILABLE".equals(errorCode)
-                && !"LOCAL_DEPTH_MODEL_UNAVAILABLE".equals(errorCode)
-                && !"VIDEO_AUDIO_TRACK_MISSING".equals(errorCode)
-                && !"AUDIO_TRIM_INVALID".equals(errorCode)
-                && !"AUDIO_TRIM_OUTPUT_TOO_LARGE".equals(errorCode)
-                && !"SEEDANCE_VIDEO_REFERENCE_INVALID".equals(errorCode)
-                && !"MEDIA_RELAY_REQUIRED".equals(errorCode)
-                && !ProviderFailureCodes.MEDIA_RELAY_PREPARATION_FAILED.equals(errorCode)
-                && !"MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED".equals(errorCode)) {
+        if (errorCode == null || !PRE_SUBMISSION_BLOCKING_CODES.contains(errorCode)) {
             throw validation(ApiMessage.of("api.task-service.unsupported-pre-commit-blocking-reason"));
         }
         Instant now = clock.instant();

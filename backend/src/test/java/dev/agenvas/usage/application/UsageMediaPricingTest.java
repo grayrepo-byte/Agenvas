@@ -219,6 +219,67 @@ class UsageMediaPricingTest {
         assertThat(entries.getLast().actualCost()).isNull();
     }
 
+    @ParameterizedTest
+    @CsvSource({"BLOCKED,TASK_INPUT_STALE", "BLOCKED,TASK_PROJECT_ARCHIVED", "BLOCKED,MEDIA_CAPABILITY_CHANGED",
+            "BLOCKED,PROVIDER_UNSUPPORTED_CAPABILITY", "BLOCKED,PROVIDER_UNSUPPORTED_INPUT",
+            "BLOCKED,MEDIA_CREDENTIAL_UNAVAILABLE", "BLOCKED,RUNNINGHUB_INPUT_UNAVAILABLE",
+            "BLOCKED,LOCAL_DEPTH_MODEL_UNAVAILABLE", "BLOCKED,VIDEO_AUDIO_TRACK_MISSING",
+            "BLOCKED,AUDIO_TRIM_INVALID", "BLOCKED,AUDIO_TRIM_OUTPUT_TOO_LARGE",
+            "BLOCKED,SEEDANCE_VIDEO_REFERENCE_INVALID", "BLOCKED,MEDIA_RELAY_REQUIRED",
+            "BLOCKED,MEDIA_RELAY_PREPARATION_FAILED", "BLOCKED,MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED",
+            "CANCELED,", "FAILED,"})
+    void releasesOnlyConfirmedUnsubmittedOutcomes(Task.Status status, String code) {
+        UsageService service = service();
+        UUID owner = UUID.randomUUID();
+        Task original = task(Task.Kind.IMAGE_GENERATION, null);
+        service.reserveMediaTask(owner, original, "PROVIDER_UNPRICED", 7);
+        service.releaseUnsubmittedMediaTask(owner, outcome(original, original.kind(), status, code, null));
+        assertThat(entries).extracting(UsageEntry::entryType)
+                .containsExactly(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.RELEASE);
+        assertThat(entries.getLast().operationKey()).isEqualTo("media:" + original.id() + ":release");
+        assertThat(entries.getLast().costStatus()).isEqualTo(UsageEntry.CostStatus.UNKNOWN);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"IMAGE_GENERATION,READY,TASK_INPUT_STALE,", "IMAGE_GENERATION,RUNNING,TASK_INPUT_STALE,",
+            "IMAGE_GENERATION,SUBMITTING,TASK_INPUT_STALE,", "IMAGE_GENERATION,WAITING_PROVIDER,TASK_INPUT_STALE,",
+            "IMAGE_GENERATION,UNKNOWN,TASK_INPUT_STALE,", "IMAGE_GENERATION,SUCCEEDED,TASK_INPUT_STALE,",
+            "IMAGE_GENERATION,BLOCKED,,", "IMAGE_GENERATION,BLOCKED,UNLISTED_FAILURE,",
+            "TEXT_GENERATION,CANCELED,,", "AGENT_TURN,FAILED,,",
+            "IMAGE_GENERATION,BLOCKED,TASK_INPUT_STALE,accepted-request",
+            "VIDEO_GENERATION,CANCELED,,accepted-request", "AUDIO_GENERATION,FAILED,,accepted-request"})
+    void rejectsUncertainSubmittedOrIneligibleReleases(Task.Kind kind, Task.Status status, String code, String requestId) {
+        UsageService service = service();
+        UUID owner = UUID.randomUUID();
+        Task original = task(Task.Kind.IMAGE_GENERATION, null);
+        service.reserveMediaTask(owner, original, "PROVIDER_UNPRICED", 7);
+        assertThatThrownBy(() -> service.releaseUnsubmittedMediaTask(owner, outcome(original, kind, status, code, requestId)))
+                .isInstanceOf(IllegalArgumentException.class).hasMessage("Media release requires unsubmitted terminal work");
+        assertThat(entries).extracting(UsageEntry::entryType).containsExactly(UsageEntry.EntryType.RESERVATION);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"AUDIO_GENERATION", "VIDEO_GENERATION", "IMAGE_GENERATION"})
+    void aSettledMediaReservationCannotBeReleased(Task.Kind kind) {
+        UsageService service = service();
+        UUID owner = UUID.randomUUID();
+        Task original = task(kind, null);
+        service.reserveMediaTask(owner, original, "PROVIDER_UNPRICED", 7);
+        service.settleMediaTask(owner, original);
+        assertThatThrownBy(() -> service.releaseUnsubmittedMediaTask(owner,
+                outcome(original, kind, Task.Status.CANCELED, null, null)))
+                .isInstanceOf(IllegalStateException.class).hasMessage("A settled media Task cannot release its reservation");
+        assertThat(entries).extracting(UsageEntry::entryType)
+                .containsExactly(UsageEntry.EntryType.RESERVATION, UsageEntry.EntryType.SETTLEMENT);
+    }
+
+    private Task outcome(Task original, Task.Kind kind, Task.Status status, String code, String requestId) {
+        return new Task(original.id(), original.projectId(), original.runId(), original.stepKey(), kind, status,
+                original.cancelRequested(), original.input(), original.inputHash(), original.output(), requestId,
+                original.attemptNo(), original.nextActionAt(), original.leaseOwner(), original.leaseUntil(),
+                original.leaseEpoch(), original.version() + 1, code, original.createdAt(), NOW, original.completedAt());
+    }
+
     private UsageService service() {
         when(ledger.insertOnce(any())).thenAnswer(invocation -> {
             entries.add(invocation.getArgument(0)); return true;
