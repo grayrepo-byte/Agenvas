@@ -33,6 +33,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -110,10 +111,10 @@ class DirectTextGenerationWorkerTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void tokenLimitedResponseCannotCreateAFinishedTextArtifact(boolean replay) {
+    @CsvSource({"false,length", "true,length", "false,LENGTH", "true,LENGTH"})
+    void tokenLimitedResponseCannotCreateAFinishedTextArtifact(boolean replay, String reason) {
         var truncated = new ChatResponse(List.of(new Generation(new AssistantMessage("Partial text"),
-                ChatGenerationMetadata.builder().finishReason("length").build())));
+                ChatGenerationMetadata.builder().finishReason(reason).build())));
         if (replay) claimedTask(checkpoint(truncated));
         else when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned)))
                 .thenReturn(new ChatGateway.Exchange(3, truncated));

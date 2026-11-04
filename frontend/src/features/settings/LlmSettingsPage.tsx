@@ -1,7 +1,7 @@
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { ArrowUpRight,FloppyDisk,ShieldCheck } from "@/shared/ui/icons";
 import { useQuery,useQueryClient } from "@tanstack/react-query";
-import { useState,type FormEvent } from "react";
+import { useRef,useState,type FormEvent } from "react";
 import { Link,Navigate } from "react-router";
 import { HTTP_STATUS,ApiError,diagnoseLlmSettings,getCurrentUser,getLlmSettings,getSystemDiagnostics,replaceLlmSettings,type LlmSettings } from "../../shared/api/client";
 import { t,useLocale } from "../../shared/i18n";
@@ -16,6 +16,9 @@ import "./SettingsPages.css";
 
 
 type ConfigurationDraft = { base: LlmSettings; endpoint: string; modelId: string };
+// Match the server credential contract without trimming or replacing the supplied key.
+const API_KEY_PATTERN = "[!-~]{8,4096}";
+const INVALID_API_KEY_CHARACTER = /[^!-~]/;
 
 /** The edit base stays pinned while typing; background reads cannot replace a draft or its CAS version. */
 export function LlmSettingsPage() {
@@ -30,6 +33,8 @@ export function LlmSettingsPage() {
   });
   const [draft, setDraft] = useState<ConfigurationDraft | null>(null);
   const [apiKey, setApiKey] = useState("");
+  const [keyInvalid, setKeyInvalid] = useState(false);
+  const keyInput = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -57,6 +62,12 @@ export function LlmSettingsPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!base || busy) return;
+    if (apiKey.length < 8 || apiKey.length > 4096 || INVALID_API_KEY_CHARACTER.test(apiKey)) {
+      setKeyInvalid(true);
+      keyInput.current?.focus();
+      return;
+    }
+    setKeyInvalid(false);
     setSaving(true);
     setError("");
     setSaved(false);
@@ -124,18 +135,21 @@ export function LlmSettingsPage() {
               </div>
               {hasRemoteUpdate ? <Notice tone="warning" title={t("settings.llm.conflictTitle")}>
                 <p>{t("settings.llm.conflictHint")}</p>
-                <Button variant="outline"  type="button" disabled={busy} onClick={() => { setDraft(null); setApiKey(""); setError(""); setAcknowledgedVersion(null); }}>{t("settings.shared.refreshConfig")}</Button>
+                <Button variant="outline"  type="button" disabled={busy} onClick={() => { setDraft(null); setApiKey(""); setKeyInvalid(false); setError(""); setAcknowledgedVersion(null); }}>{t("settings.shared.refreshConfig")}</Button>
               </Notice> : null}
               <LocalServiceDiscovery service="OLLAMA" disabled={busy} onSelect={(value) => editDraft("endpoint", value)} />
               <FieldGroup className="llm-connection-fields">
               <Field><FieldLabel htmlFor="llm-endpoint">{t("settings.llm.endpoint")}</FieldLabel><Input id="llm-endpoint" autoComplete="off" required type="url" disabled={busy} value={endpoint} onChange={(event) => editDraft("endpoint", event.target.value)} placeholder="https://api.example.com" /></Field>
               <Field><FieldLabel htmlFor="llm-model">{t("settings.llm.modelId")}</FieldLabel><Input id="llm-model" autoComplete="off" required disabled={busy} value={modelId} onChange={(event) => editDraft("modelId", event.target.value)} placeholder="model-name" /></Field>
               </FieldGroup>
-              <Field className="llm-credential-field"><FieldLabel htmlFor="llm-api-key">{t("settings.llm.apiKey")}</FieldLabel><Input id="llm-api-key" autoComplete="new-password" required type="password" disabled={busy} value={apiKey} onChange={(event) => {
+              <Field className="llm-credential-field" data-invalid={keyInvalid || undefined}><FieldLabel htmlFor="llm-api-key">{t("settings.llm.apiKey")}</FieldLabel><Input ref={keyInput} id="llm-api-key" autoComplete="new-password" required type="password" disabled={busy} value={apiKey}
+                minLength={8} maxLength={4096} pattern={API_KEY_PATTERN} title={t("settings.llm.keyValidationError")}
+                aria-invalid={keyInvalid || undefined} onInvalid={() => setKeyInvalid(true)} onChange={(event) => {
                   if (base && !draft) setDraft({ base, endpoint, modelId });
-                  setApiKey(event.target.value); setSaved(false); setAcknowledgedVersion(null);
-                }} aria-describedby="llm-key-description" />
+                  setApiKey(event.target.value); setKeyInvalid(false); setError(""); setSaved(false); setAcknowledgedVersion(null);
+                }} aria-describedby={`llm-key-description${keyInvalid ? " llm-key-error" : ""}`} />
                 <FieldDescription id="llm-key-description">{t("settings.llm.keyEntryHint")}</FieldDescription>
+                {keyInvalid ? <FieldError id="llm-key-error">{t("settings.llm.keyValidationError")}</FieldError> : null}
               </Field>
               {error ? <Notice tone="danger"><p>{error}</p><p>{t("settings.llm.keyClearedHint")}</p></Notice> : null}
               {saved ? <Notice tone="success">{t("settings.llm.saved")}</Notice> : null}
@@ -143,7 +157,7 @@ export function LlmSettingsPage() {
                 {saving ? <LoadingState compact label={t("settings.llm.saving")} /> : <span className="ui-muted">{hasUnsavedChanges ? t("common.unsavedChanges") : t("settings.llm.toolValidationRequired")}</span>}
                 <div className="ui-form-actions">
                   {hasUnsavedChanges ? <Button variant="ghost"  type="button" disabled={busy} onClick={() => {
-                    setDraft(null); setApiKey(""); setError(""); setSaved(false); setAcknowledgedVersion(null);
+                    setDraft(null); setApiKey(""); setKeyInvalid(false); setError(""); setSaved(false); setAcknowledgedVersion(null);
                   }}>{t("settings.llm.revert")}</Button> : null}
                   <Button variant="default"  disabled={busy || !hasUnsavedChanges} type="submit"><FloppyDisk data-icon="inline-start" aria-hidden />{saving ? t("common.savingProgress") : t("common.saveConfig")}</Button>
                 </div>

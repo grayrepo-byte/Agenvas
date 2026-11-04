@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
-/** 在关联服务端密钥前校验管理员配置的 LLM 目标地址，阻止内网和特殊用途 IP。 */
+/** 在关联密钥前校验 LLM 目标，阻止特殊用途地址及未获部署准入的 HTTP。 */
 @Component
 public class LlmEndpointPolicy {
 

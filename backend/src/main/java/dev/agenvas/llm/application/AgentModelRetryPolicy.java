@@ -26,6 +26,8 @@ public final class AgentModelRetryPolicy {
 
     /** HTTP status takes precedence over nested I/O, so invalid/authenticated requests never retry. */
     static String retryableCode(Throwable failure) {
+        // Missing protocol termination is not a license to repeatedly resubmit a paid request.
+        if (LlmStreamIncompleteException.matches(failure)) return null;
         boolean modelBoundary = false;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof ModelCallFailure || cause instanceof TimeoutException) modelBoundary = true;

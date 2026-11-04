@@ -164,7 +164,7 @@ Third-party prompt synchronization is **off by default** for both new and upgrad
 <details>
 <summary><strong>Ports, image versions, and public deployment</strong></summary>
 
-- The default `docker-compose.yml` publishes only Web `8088` on `0.0.0.0`, allowing access through the server IP. API `8080` and PostgreSQL `5432` use the internal container network and are not published to the host. Source and Mock Compose files retain all three ports on loopback for development. If the Web port is in use, change the host port in `ports`.
+- The default `docker-compose.yml` publishes only Web `8088` on `0.0.0.0`, allowing access through the server IP. API `8080` and PostgreSQL `5432` use the internal container network and are not published to the host. `docker-compose.local.yml` publishes all three ports on all IPv4 interfaces and needs a controlled network. `deploy/compose.yaml` and `deploy/compose.dev.yaml` bind the three development ports to loopback. If the Web port is in use, change the host port in `ports`.
 - The default file pulls `docker.io/grayrepo/agenvas-server:latest`, `docker.io/grayrepo/agenvas-web:latest`, and the official `postgres:17.11-alpine` image. Application images support amd64 / arm64; no local compilation is required.
 - Application images are pulled on every `up`. To pin a version, replace `latest` with a published version, commit tag, or digest.
 - Each Compose file includes environment settings, ports, volumes, health checks, and resource limits; edit it directly without additional configuration files.

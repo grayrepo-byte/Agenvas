@@ -65,6 +65,8 @@ function switchOnFailure(code: string | null | undefined): string {
       return t("agent.blocked.validationFailed");
     case "LLM_OUTPUT_TRUNCATED":
       return t("agent.failure.outputTruncated");
+    case "LLM_STREAM_INCOMPLETE":
+      return t("agent.failure.streamIncomplete");
     case "AGENT_CONTEXT_BUDGET_EXCEEDED":
       return t("agent.blocked.contextBudget");
     case "AGENT_TURN_FAILED":

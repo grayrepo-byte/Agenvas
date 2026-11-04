@@ -298,12 +298,14 @@ public class AgentTurnWorker {
      * @return 明确的版本冲突/凭证/配置/超时错误码，或通用的 {@code AGENT_TURN_FAILED}
      */
     static String failureCode(Throwable failure) {
+        if (LlmStreamIncompleteException.matches(failure)) return LlmStreamIncompleteException.ERROR_CODE;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof AgentContextService.BudgetExceeded) return AgentContextService.BUDGET_EXCEEDED;
             if (cause instanceof LlmProtocolCodec.OutputTruncated) return LlmProtocolCodec.OUTPUT_TRUNCATED;
             if (cause instanceof ApiProblemException problem
                     && ("CREDENTIAL_KEY_VERSION_MISSING".equals(problem.code())
                             || "LLM_CONFIG_UNAVAILABLE".equals(problem.code())
+                            || LlmStreamIncompleteException.ERROR_CODE.equals(problem.code())
                             // Archived media may be unselected after a draft edit. Preserve
                             // the conflict without exposing exception text or overriding the card.
                             || "ARTIFACT_VERSION_CONFLICT".equals(problem.code())

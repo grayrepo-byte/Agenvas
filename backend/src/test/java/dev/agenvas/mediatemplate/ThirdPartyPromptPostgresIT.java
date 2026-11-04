@@ -104,7 +104,6 @@ class ThirdPartyPromptPostgresIT {
         String source = source(TargetKind.IMAGE);
         feed(source, image(source, "a", "Old", List.of()), image(source, "b", "Retained", List.of()));
         assertThat(prompts.sync(source).inserted()).isEqualTo(2);
-        var oldSuccess = prompts.source(source).lastSyncedAt();
         feed(source, image(source, "a", "Updated", List.of()), image(source, "c", "New", List.of()));
         var synced = prompts.sync(source); assertThat(synced.state()).isEqualTo(SyncState.SUCCESS);
         assertThat(synced.inserted()).isEqualTo(1); assertThat(synced.updated()).isEqualTo(1);
@@ -114,11 +113,12 @@ class ThirdPartyPromptPostgresIT {
         assertThat(prompts.sync(source).updated()).isZero();
         assertThat(prompts.get(source + ":a").version()).isEqualTo(1);
         assertThat(java.time.Duration.between(prompts.source(source).lastSyncedAt(), prompts.source(source).nextSyncAt()).toHours()).isEqualTo(24);
+        var lastSuccess = prompts.source(source).lastSyncedAt();
         when(http.feed(prompts.source(source).url())).thenReturn("[]");
         assertThat(prompts.sync(source).state()).isEqualTo(SyncState.FAILED);
-        assertThat(prompts.source(source).lastSyncedAt()).isAfterOrEqualTo(oldSuccess);
+        assertThat(prompts.source(source).lastSyncedAt()).isEqualTo(lastSuccess);
         assertThat(prompts.list(TargetKind.IMAGE, source, "", 0, 100).total()).isEqualTo(3);
-        assertThat(prompts.source(source).lastError()).isEqualTo("THIRD_PARTY_SYNC_FAILED");
+        assertThat(prompts.source(source).lastError()).isEqualTo("THIRD_PARTY_SOURCE_INVALID_DATA");
         var configured = prompts.source(source); prompts.enabled(source, false, configured.version());
         assertThat(prompts.sync(source).state()).isEqualTo(SyncState.DISABLED);
         assertThat(prompts.get(source + ":b").image().prompt()).isEqualTo("Retained");

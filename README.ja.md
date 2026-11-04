@@ -164,7 +164,7 @@ WorkBuddy など PC 上で操作できる AI Agent に、上記の Windows 用�
 <details>
 <summary><strong>ポート、イメージバージョン、インターネットへの公開</strong></summary>
 
-- 既定の `docker-compose.yml` は Web の `8088` だけを `0.0.0.0` に公開し、サーバー IP からアクセスできます。API の `8080` と PostgreSQL の `5432` はコンテナ内部ネットワーク専用で、ホストには公開しません。ソースビルドと Mock の Compose は、開発・調査用に 3 つのポートをループバックで公開します。Web ポートが使用中の場合は `ports` のホスト側ポートを変更してください。
+- 既定の `docker-compose.yml` は Web の `8088` だけを `0.0.0.0` に公開し、サーバー IP からアクセスできます。API の `8080` と PostgreSQL の `5432` はコンテナ内部ネットワーク専用で、ホストには公開しません。`docker-compose.local.yml` は 3 つのポートをすべての IPv4 インターフェースに公開するため、管理されたネットワークで使用してください。`deploy/compose.yaml` と `deploy/compose.dev.yaml` は開発用の 3 ポートをループバックにバインドします。Web ポートが使用中の場合は `ports` のホスト側ポートを変更してください。
 - 既定では `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest`、公式の `postgres:17.11-alpine` を取得します。アプリケーションイメージは amd64 / arm64 に対応し、ローカルでのコンパイルは不要です。
 - アプリケーションイメージは `up` のたびに取得します。バージョンを固定するには、`latest` を公開済みバージョン、コミットタグ、または digest に変更してください。
 - 各 Compose ファイルには環境変数、ポート、ボリューム、ヘルスチェック、リソース制限を記載しています。追加の設定ファイルなしで、選んだファイルを直接編集できます。

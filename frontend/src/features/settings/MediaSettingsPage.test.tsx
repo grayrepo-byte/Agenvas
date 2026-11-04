@@ -438,6 +438,8 @@ describe("MediaSettingsPage", () => {
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByRole("textbox", { name: "连接名称" }), "Remote Comfy");
     await selectValue(within(dialog).getByRole("combobox", { name: "平台" }), "COMFYUI");
+    expect(within(dialog).getByRole("textbox", { name: "ComfyUI 地址" })).toHaveAttribute("placeholder", "服务器可访问的 ComfyUI 地址");
+    expect(within(dialog).getByText("Docker 内的 127.0.0.1 指向容器自身。可使用下方本机发现，或填写服务器可访问的 ComfyUI 地址。")).toBeVisible();
     await user.type(within(dialog).getByRole("textbox", { name: "ComfyUI 地址" }), endpoint);
     expect(within(dialog).queryByLabelText("API Key")).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "添加连接" }));
@@ -1962,6 +1964,7 @@ it.each([false, true])("fills ComfyUI explicitly without saving or losing the dr
   const dialog = screen.getByRole("dialog"); const name = within(dialog).getByRole("textbox", { name: "连接名称" });
   await user.clear(name); await user.type(name, "Draft Comfy");
   const origin = within(dialog).getByRole("textbox", { name: "ComfyUI 地址" });
+  expect(origin).toHaveAccessibleDescription("Docker 内的 127.0.0.1 指向容器自身。可使用下方本机发现，或填写服务器可访问的 ComfyUI 地址。");
   await user.clear(origin); await user.type(origin, "http://192.168.1.3:8188");
   await user.click(within(dialog).getByRole("button", { name: "查找本机 ComfyUI" }));
   expect(within(dialog).getByRole("button", { name: editing ? "保存连接" : "添加连接" })).toBeInTheDocument();

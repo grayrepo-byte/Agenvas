@@ -79,6 +79,25 @@ its small probe, not the capacity or semantic correctness of a full Agent task.
 Likewise, a successful run means the orchestration completed; model-generated
 content still needs review against the user's requirements.
 
+## Incomplete transport streams
+
+For a successful HTTP response declared as `text/event-stream`, or actual SSE data
+fields received by a streaming request even with a missing or incorrect media type, Agenvas requires
+a dispatched standalone `[DONE]` event or a nonempty string `finish_reason` on
+choice index 0. A clean HTTP EOF alone cannot finish a tool call, even when its
+arguments already parse. Missing completion signals stop the request with
+`LLM_STREAM_INCOMPLETE`, before the response checkpoint or any tools from that
+turn are accepted. This failure is not automatically retried or sent through
+malformed-output repair; after checking the server or proxy, the user can
+explicitly start a new run. Earlier committed results are retained, and already
+streamed public text may remain alongside the failed state.
+
+The observer uses the same stream with the existing byte bound and does not wait
+for the whole body before forwarding it. It does not impose SSE completion rules
+on JSON responses or HTTP errors. This detects missing transport/protocol
+termination, not silent input truncation or semantic mistakes. A provider can
+still return a valid completion signal after discarding part of its input.
+
 ## Verification scope
 
 Regression tests use synthetic responses with explicit token-limit metadata,
@@ -86,3 +105,6 @@ including parseable tool calls and success prose, on both fresh and replayed tur
 They establish that those responses have no tool side effects and cannot complete
 successfully. They do not reproduce a particular model's silent input truncation,
 measure a model's usable context, or establish Windows/WSL/Ollama compatibility.
+Local HTTP fixtures additionally exercise the real SDK's uppercase `LENGTH`
+metadata, incomplete parseable tool streams, valid finish-only/DONE-only streams,
+and SDK framing boundaries. They do not establish compatibility with every proxy.

@@ -11,6 +11,7 @@ import dev.agenvas.audit.application.CallLogRepository;
 import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.audit.domain.CallLog;
 import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.llm.application.LlmStreamIncompleteException;
 import dev.agenvas.settings.application.*;
 import dev.agenvas.shared.error.ApiProblemException;
 import java.time.Clock;
@@ -18,6 +19,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.ToolResponseMessage;
@@ -43,6 +46,30 @@ class LlmDiagnosticServiceTest {
         when(configs.active()).thenReturn(java.util.Optional.of(value));
         when(configs.markToolCallingVerified(1)).thenReturn(true);
         when(factory.open(value)).thenReturn(gateway);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void incompleteDiagnosticStreamNamesTheRoundLogsFailureAndCannotVerify(int round) {
+        configure();
+        when(gateway.call(any(), any(), any())).thenAnswer(invocation -> {
+            List<org.springframework.ai.chat.messages.Message> messages = invocation.getArgument(0);
+            if (round == 1 || messages.size() > 2) throw LlmStreamIncompleteException.problem();
+            return toolResponse(messages);
+        });
+        assertThatThrownBy(() -> service.diagnose(1, true)).isInstanceOfSatisfying(ApiProblemException.class,
+                problem -> {
+                    assertThat(problem.code()).isEqualTo("LLM_STREAM_INCOMPLETE");
+                    assertThat(problem.detail().key()).isEqualTo("api.llm-diagnostic-service.incomplete-stream-stage");
+                    assertThat(problem.detail().arguments()).containsExactly(Integer.toString(round));
+                    assertThat(problem.retryable()).isFalse();
+                });
+        if (round == 1) assertLogOutcomes(CallLog.Status.FAILED);
+        else assertLogOutcomes(CallLog.Status.SUCCEEDED, CallLog.Status.FAILED);
+        var outcome = ArgumentCaptor.forClass(CallLogService.CallOutcome.class);
+        verify(logs, times(round)).finish(any(), outcome.capture(), any(), anyLong());
+        assertThat(outcome.getAllValues().getLast().errorCode()).isEqualTo("LLM_STREAM_INCOMPLETE");
+        verify(configs, never()).markToolCallingVerified(anyInt());
     }
 
     @Test void failedFirstProbeRecordsMetadataAndExplainsMissingToolWithoutSavingBodies() {

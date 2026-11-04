@@ -11,6 +11,7 @@ Protocol failures retain the API category `PROVIDER_TOOL_PROTOCOL_UNVERIFIED`; t
 - `PROVIDER_DIAGNOSTIC_PROOF_MISMATCH`: the second response did not return only the proof.
 - `PROVIDER_DIAGNOSTIC_EMPTY_RESPONSE`: there was no usable assistant response.
 - `LLM_OUTPUT_TRUNCATED`: the provider explicitly stopped because of a token limit.
+- `LLM_STREAM_INCOMPLETE`: a successful SSE response ended without an accepted completion signal; the failed round is identified, tool support remains unverified and the request is not automatically retried.
 - `PROVIDER_DIAGNOSTIC_UNAVAILABLE`: a transport/model call failed; the response identifies which call failed. Typed application failures may retain their existing safe code.
 
 A failed first call prevents the second. A successful first log with a failed second log is an unverified overall diagnostic. No model request is retried automatically, and already verified unchanged configuration does not issue another probe. A configuration changed during the probe cannot be marked verified by the stale result.

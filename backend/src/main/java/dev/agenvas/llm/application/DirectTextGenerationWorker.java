@@ -94,7 +94,7 @@ public class DirectTextGenerationWorker {
             throw stopped;
         } catch (ExecutionException | TimeoutException failure) {
             execution.checkActive();
-            tasks.fail(lease, workerId, "MODEL_CALL_FAILED");
+            tasks.fail(lease, workerId, errorCode(failure));
         } catch (RuntimeException failure) {
             execution.checkActive();
             tasks.fail(lease, workerId, errorCode(failure));
@@ -159,8 +159,13 @@ public class DirectTextGenerationWorker {
         return tasks.checkpointTextResponse(lease, workerId, checkpoint);
     }
 
-    private String errorCode(RuntimeException failure) {
-        if (failure instanceof LlmProtocolCodec.OutputTruncated) return LlmProtocolCodec.OUTPUT_TRUNCATED;
+    private String errorCode(Throwable failure) {
+        if (LlmStreamIncompleteException.matches(failure)) return LlmStreamIncompleteException.ERROR_CODE;
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof LlmProtocolCodec.OutputTruncated) return LlmProtocolCodec.OUTPUT_TRUNCATED;
+            if (cause instanceof dev.agenvas.shared.error.ApiProblemException problem
+                    && LlmStreamIncompleteException.ERROR_CODE.equals(problem.code())) return problem.code();
+        }
         return failure instanceof IllegalArgumentException
                 ? "MODEL_OUTPUT_INVALID" : "MODEL_CALL_FAILED";
     }

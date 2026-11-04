@@ -5,6 +5,7 @@ import dev.agenvas.llm.application.LlmStreamLogCollector;
 import dev.agenvas.audit.domain.LlmStreamLog;
 import dev.agenvas.llm.application.PublicAssistantResponse;
 import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.LlmStreamIncompleteException;
 import dev.agenvas.shared.http.DebugHttpCapture;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -105,12 +106,18 @@ public class SpringAiChatGateway implements ChatGateway {
         if (!tools.isEmpty() && !(model.getOptions() instanceof ToolCallingChatOptions)) {
             throw new IllegalStateException("Configured ChatModel does not support tool calling");
         }
-        ChatResponse response = prompt()
-                .messages(imageRelay == null ? List.copyOf(messages) : imageRelay.prepare(messages))
-                .tools(tools.toArray(ToolCallback[]::new))
-                .toolContext(Map.copyOf(toolContext))
-                .call()
-                .chatResponse();
+        ChatResponse response;
+        try {
+            response = prompt()
+                    .messages(imageRelay == null ? List.copyOf(messages) : imageRelay.prepare(messages))
+                    .tools(tools.toArray(ToolCallback[]::new))
+                    .toolContext(Map.copyOf(toolContext))
+                    .call()
+                    .chatResponse();
+        } catch (RuntimeException failure) {
+            if (LlmStreamIncompleteException.matches(failure)) throw LlmStreamIncompleteException.problem();
+            throw failure;
+        }
         if (response == null || response.getResult() == null) {
             throw new IllegalStateException("LLM returned no assistant response");
         }
@@ -187,6 +194,7 @@ public class SpringAiChatGateway implements ChatGateway {
             return new Exchange(configVersion, result.get());
         } catch (RuntimeException | Error error) {
             failure = error;
+            if (LlmStreamIncompleteException.matches(error)) throw LlmStreamIncompleteException.problem();
             throw error;
         } finally {
             // doFinally can run after blockLast wakes. The method boundary owns exactly one snapshot,
@@ -197,7 +205,9 @@ public class SpringAiChatGateway implements ChatGateway {
                         : isCancellation(failure) || terminal.get() == SignalType.CANCEL
                         ? LlmStreamLog.EndStatus.CANCELED : LlmStreamLog.EndStatus.FAILED;
                 try { streamLog.accept(log.snapshot(status, failure == null ? null :
-                        status == LlmStreamLog.EndStatus.CANCELED ? "CALL_STREAM_CANCELED" : "CALL_STREAM_FAILED")); }
+                        status == LlmStreamLog.EndStatus.CANCELED ? "CALL_STREAM_CANCELED"
+                                : LlmStreamIncompleteException.matches(failure) ? LlmStreamIncompleteException.ERROR_CODE
+                                : "CALL_STREAM_FAILED")); }
                 catch (RuntimeException logFailure) {
                     // Semantic logging must never replace the model result or its original failure.
                     org.slf4j.LoggerFactory.getLogger(SpringAiChatGateway.class)

@@ -9,7 +9,7 @@ export const mediaConnectionAddresses: Partial<Record<MediaConnection["platform"
   WAN: { label: "settings.mediaSettings.baseUrl", hint: "settings.mediaSettings.wanAddressHint", placeholder: "https://your-workspace.cn-beijing.maas.aliyuncs.com", required: true, requiresApiKey: true },
   KLING: { label: "settings.mediaSettings.fixedApiUrl", hint: "settings.mediaSettings.klingAddressHint", requiresApiKey: true },
   MINIMAX: { label: "settings.mediaSettings.minimaxAddressLabel", hint: "settings.mediaSettings.minimaxAddressHint", requiresApiKey: true },
-  COMFYUI: { label: "settings.mediaSettings.comfyUrl", hint: "settings.mediaSettings.comfyAddressHint", placeholder: "http://127.0.0.1:8188", required: true, requiresApiKey: false },
+  COMFYUI: { label: "settings.mediaSettings.comfyUrl", hint: "settings.mediaSettings.comfyAddressHint", required: true, requiresApiKey: false },
   RUNNINGHUB: { label: "settings.mediaSettings.runningHubApi", hint: "settings.mediaSettings.runningHubAddressHint", placeholder: "https://www.runninghub.ai", requiresApiKey: true },
   OPENAI: { label: "settings.mediaSettings.baseUrl", hint: "settings.mediaSettings.openAiAddressHint", placeholder: "https://api.openai.com/v1", requiresApiKey: true },
   GOOGLE: { label: "settings.mediaSettings.baseUrl", hint: "settings.mediaSettings.googleAddressHint", placeholder: "https://generativelanguage.googleapis.com", requiresApiKey: true },

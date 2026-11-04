@@ -8,6 +8,19 @@ import { server } from "../../test/server";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 
 describe("BlockedRunNotice", () => {
+  it("explains incomplete transport without treating it as detected input truncation", async () => {
+    setLocale("en");
+    server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([
+      { id: "incomplete-stream", kind: "AGENT_TURN", status: "FAILED", errorCode: "LLM_STREAM_INCOMPLETE" },
+    ])));
+    render(<QueryClientProvider client={createQueryClient()}>
+      <BlockedRunNotice projectId="project-1" runId="stream-run" status="FAILED" />
+    </QueryClientProvider>);
+    expect(await screen.findByText(/model stream ended without a completion signal/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("not retried automatically");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("input was truncated");
+  });
+
   it("explains an explicitly truncated model response without claiming to detect silent input truncation", async () => {
     setLocale("en");
     server.use(http.get("/api/v1/projects/:projectId/runs/:runId/tasks", () => HttpResponse.json([

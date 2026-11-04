@@ -133,13 +133,14 @@ class AgentTurnWorkerTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"true, false", "false, false", "true, true", "false, true"})
-    void tokenLimitedResponseCannotExecuteToolsOrCompleteEvenWhenReplayed(boolean hasTools, boolean replay)
+    @CsvSource({"true,false,length", "false,false,length", "true,true,length", "false,true,length",
+            "true,false,LENGTH", "false,false,LENGTH", "true,true,LENGTH", "false,true,LENGTH"})
+    void tokenLimitedResponseCannotExecuteToolsOrCompleteEvenWhenReplayed(boolean hasTools, boolean replay, String reason)
             throws Exception {
         JsonNode truncated = codec.response(new ChatResponse(List.of(new Generation(
                 AssistantMessage.builder().content("Task complete")
                         .toolCalls(hasTools ? calls : List.of()).build(),
-                ChatGenerationMetadata.builder().finishReason("length").build()))));
+                ChatGenerationMetadata.builder().finishReason(reason).build()))));
         if (replay) {
             when(run.nextStepIndex()).thenReturn(1);
             when(turns.find(project, runId, 0)).thenReturn(Optional.of(new LlmTurn(project, runId, 0,
@@ -163,7 +164,7 @@ class AgentTurnWorkerTest {
     void tokenLimitedCompactionCannotAdvanceOrScheduleAnAutomaticRepair() {
         JsonNode truncated = codec.response(new ChatResponse(List.of(new Generation(
                 new AssistantMessage("{\"goal\":\"Incomplete handoff\"}"),
-                ChatGenerationMetadata.builder().finishReason("length").build()))));
+                ChatGenerationMetadata.builder().finishReason("LENGTH").build()))));
         var request = codec.request(frozen, List.of());
         request.putObject("contextCompaction");
         when(run.nextStepIndex()).thenReturn(1);
@@ -176,6 +177,20 @@ class AgentTurnWorkerTest {
         verify(commits).finishFailure(lease, WORKER, "LLM_OUTPUT_TRUNCATED");
         verify(commits, never()).complete(any(), anyString());
         verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void incompleteStreamFailsWithoutToolsCompletionOrAutomaticRetry() throws Exception {
+        when(rounds.callLeased(eq(owner), eq(project), eq(runId), eq(0), any(JsonNode.class), anyList(),
+                anyMap(), eq(lease), eq(WORKER))).thenThrow(LlmStreamIncompleteException.problem());
+
+        worker.runOnce(WORKER);
+
+        verifyNoInteractions(tools);
+        verify(commits).finishFailure(lease, WORKER, "LLM_STREAM_INCOMPLETE");
+        verify(commits, never()).complete(any(), anyString());
+        verify(commits, never()).scheduleRepair(any(), anyString(), anyString(), anyString());
+        verify(commits, never()).modelFailed(any(), anyString(), anyString());
     }
 
     @Test

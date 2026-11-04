@@ -105,6 +105,11 @@ describe("taskErrorMessages", () => {
     expect(taskErrorMessage("SOME_UNREGISTERED_CODE")).toBeNull();
   });
 
+  it("maps incomplete model streams to a readable explicit retry explanation", () => {
+    expect(taskErrorMessage("LLM_STREAM_INCOMPLETE")).toContain("完成信号");
+    expect(taskErrorMessage("LLM_STREAM_INCOMPLETE")).toContain("不会自动重试");
+  });
+
   /** 连接超时也走这个码，那时请求可能根本没发出去，措辞不能断言「已提交」。 */
   it("keeps the timeout wording neutral", () => {
     expect(taskErrorMessage(PROVIDER_FAILURE_CODES.CALL_TIMEOUT)).not.toContain("已提交");

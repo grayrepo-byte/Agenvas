@@ -185,7 +185,7 @@ public class LlmProtocolCodec {
         }
         // Inspect the durable generation metadata, including on restart/replay. A partial
         // response can still contain parseable tool JSON or a misleading success sentence.
-        if ("length".equals(generations.get(0).path("metadata").path("finishReason").asText())) {
+        if ("length".equalsIgnoreCase(generations.get(0).path("metadata").path("finishReason").asText())) {
             throw new OutputTruncated();
         }
         Message message = decodeMessage(generations.get(0).path("assistant"));

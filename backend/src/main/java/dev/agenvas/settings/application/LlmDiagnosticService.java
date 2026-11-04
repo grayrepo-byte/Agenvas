@@ -3,6 +3,7 @@ package dev.agenvas.settings.application;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.LlmProtocolCodec;
+import dev.agenvas.llm.application.LlmStreamIncompleteException;
 import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.audit.domain.CallLog;
 import java.util.function.Consumer;
@@ -141,6 +142,10 @@ public class LlmDiagnosticService {
             try {
                 exchange = gateway.call(messages, List.of(tool), Map.of());
             } catch (ApiProblemException known) {
+                if (LlmStreamIncompleteException.ERROR_CODE.equals(known.code())) {
+                    throw new ApiProblemException(known.status(), known.code(), known.title(),
+                            ApiMessage.of("api.llm-diagnostic-service.incomplete-stream-stage", round), false);
+                }
                 throw known;
             } catch (RuntimeException unavailable) {
                 throw new ApiProblemException(HttpStatus.BAD_GATEWAY, "PROVIDER_DIAGNOSTIC_UNAVAILABLE",

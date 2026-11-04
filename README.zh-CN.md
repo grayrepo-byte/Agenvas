@@ -164,7 +164,7 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 <details>
 <summary><strong>端口、镜像版本与公网部署</strong></summary>
 
-- 默认 `docker-compose.yml` 仅将 Web `8088` 映射到 `0.0.0.0`，通过服务器 IP 访问；API `8080` 和 PostgreSQL `5432` 仅在容器内部网络使用，不映射到宿主机。源码和 Mock Compose 仍保留仅绑定本机的三个端口，方便开发排查。Web 端口被占用时，修改 `ports` 中的宿主机端口。
+- 默认 `docker-compose.yml` 仅将 Web `8088` 映射到 `0.0.0.0`，通过服务器 IP 访问；API `8080` 和 PostgreSQL `5432` 仅在容器内部网络使用，不映射到宿主机。源码构建用的 `docker-compose.local.yml` 将三个端口映射到所有 IPv4 接口，需要受控网络；`deploy/compose.yaml` 和 `deploy/compose.dev.yaml` 则将三个开发端口绑定到回环地址。Web 端口被占用时，修改 `ports` 中的宿主机端口。
 - 默认拉取 `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest` 和官方 `postgres:17.11-alpine`。应用镜像支持 amd64 / arm64，无需本机编译。
 - 应用镜像每次 `up` 都会拉取；需要固定版本时，把 `latest` 改为已发布版本、提交标签或 digest。
 - 每份 Compose 完整列出环境、端口、卷、健康检查和资源限制，直接修改所选文件即可，无需其他配置文件。

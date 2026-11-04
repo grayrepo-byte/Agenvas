@@ -6,6 +6,7 @@ import dev.agenvas.mediatemplate.domain.MediaTemplate.TargetKind;
 import dev.agenvas.mediatemplate.domain.ThirdPartyPrompt.Format;
 import dev.agenvas.mediatemplate.infrastructure.ThirdPartyPromptHttpClient;
 import dev.agenvas.mediatemplate.infrastructure.ThirdPartyPromptRepository;
+import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
 import java.time.Clock;
 import java.util.List;
@@ -26,6 +27,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.core.JacksonException;
 
 @Service
 public class ThirdPartyPromptService {
@@ -103,10 +105,18 @@ public class ThirdPartyPromptService {
             });
         } catch (RuntimeException failure) {
             // Store only a stable code: upstream content, URLs and exception messages are untrusted.
-            LOG.warn("Third-party prompt sync failed for {} ({})", id, failure.getClass().getSimpleName());
-            tx.executeWithoutResult(ignored -> repository.finish(id, token, clock.instant(), "THIRD_PARTY_SYNC_FAILED"));
+            String code = failureCode(failure);
+            LOG.warn("Third-party prompt sync failed for {} ({}, {})", id, code, failure.getClass().getSimpleName());
+            tx.executeWithoutResult(ignored -> repository.finish(id, token, clock.instant(), code));
             return new SyncResult(id, SyncState.FAILED, 0, 0, 0);
         }
+    }
+    private static String failureCode(RuntimeException failure) {
+        if (failure instanceof ThirdPartyPromptHttpClient.DownloadFailure download)
+            return "THIRD_PARTY_SOURCE_" + download.reason().name();
+        if (failure instanceof JacksonException || (failure instanceof ApiProblemException problem
+                && "THIRD_PARTY_PROMPT_INVALID".equals(problem.code()))) return "THIRD_PARTY_SOURCE_INVALID_DATA";
+        return "THIRD_PARTY_SYNC_FAILED";
     }
     @Scheduled(fixedDelayString = "${agenvas.media-templates.scan-delay-ms:60000}", initialDelayString = "${agenvas.media-templates.scan-delay-ms:60000}")
     public void syncDue() {

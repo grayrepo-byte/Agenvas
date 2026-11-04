@@ -126,8 +126,15 @@ final class SafeLlmTransport {
             response.close();
             throw new IOException("LLM stream response exceeds the transport size limit");
         }
+        MediaType type = original.contentType();
+        // Streaming SDK parsing does not depend on the response media type. Observe successful
+        // bounded bodies, but require markers only for declared/actual SSE; pure JSON and HTTP
+        // errors retain their original semantics even when the request's Accept asks for SSE.
+        boolean declaredSse = type != null
+                && type.type().equalsIgnoreCase("text") && type.subtype().equalsIgnoreCase("event-stream");
         BufferedSource source = Okio.buffer(new ForwardingSource(original.source()) {
             private long consumed;
+            private final LlmSseCompletion completion = response.isSuccessful() ? new LlmSseCompletion(declaredSse) : null;
 
             @Override
             public long read(okio.Buffer sink, long byteCount) throws IOException {
@@ -140,6 +147,12 @@ final class SafeLlmTransport {
                     try { super.close(); } catch (IOException closeFailure) { exceeded.addSuppressed(closeFailure); }
                     response.close();
                     throw exceeded;
+                }
+                if (completion != null && read == -1) completion.end();
+                else if (completion != null) {
+                    var observed = new okio.Buffer();
+                    sink.copyTo(observed, sink.size() - read, read);
+                    completion.accept(observed);
                 }
                 return read;
             }
