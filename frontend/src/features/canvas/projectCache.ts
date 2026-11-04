@@ -54,6 +54,13 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       if (event.type.startsWith("artifact.") || event.type.startsWith("canvas.") ||
           event.type === "agent.instance.changed") {
         invalidate("canvas");
+        if (event.type.startsWith("artifact.")) {
+          // Reference pickers have their own catalog/history caches outside the canvas projection.
+          invalidate("artifacts");
+          if (event.type === "artifact.created" || event.type === "artifact.version.created") {
+            void queryClient.invalidateQueries({ queryKey: ["artifact-versions", projectId, event.aggregateId] });
+          }
+        }
         if (event.type.startsWith("canvas.connection.") || event.type === "canvas.items.changed") {
           invalidate("canvas-connections", "media-draft");
         }
@@ -104,7 +111,7 @@ export function projectCacheCallbacks(queryClient: QueryClient, projectId: strin
       // A missed event may have changed any of them while the stream was unavailable.
       invalidate(...HISTORY_QUERY_PREFIXES, "run-tasks", "direct-media-tasks", "media-draft",
         "canvas-media-versions", "project-usage", "storyboard", "storyboard-revisions",
-        "storyboard-media-approvals", "project-characters", "canvas-editor", "project-resources");
+        "storyboard-media-approvals", "project-characters", "canvas-editor", "project-resources", "artifacts", "artifact-versions");
     },
   };
 }

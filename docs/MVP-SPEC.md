@@ -1506,6 +1506,8 @@ SSE 每条事件使用项目 seq 作为 id。自动重连使用 Last-Event-ID；
 
 单次 SSE 连接存活上限为 5 分钟，到期正常完成响应并回收订阅，客户端通过既有游标重连补发；心跳不延长该上限。正常连接到期不写入通用服务端错误，也不向已开始的事件流追加 ProblemDetail JSON。
 
+原生重连连续失败时，从第一次断线起约 5 秒后请求一致性快照；后续失败不能不断延后这一期限。重连成功或收到有效事件可取消恢复等待，快照读取失败后按 5 秒间隔重试，退出项目后不再发起恢复。
+
 2026-10-02 按用户确认扩展 Agent 卡片：公开回答使用真实模型文本增量，经过有界合批、短事务持久化后复用项目 SSE 显示。`agent.turn.stream.started / delta / completed / interrupted` 携带 Run、Task、步骤、租约 epoch 与分片序号；同 epoch 的重复分片不重复追加，更高 epoch 清空旧尝试的文本。快照的活动 Task 包含累计 `output.assistantStream`，游标缺口重新取快照，历史会话重读 Task；完整回合提交后的 `assistantText` 为终稿。失败或取消保留已收到的公开文本并显示中断。关闭页面或断开 SSE 不取消后台运行。
 
 当前项目聊天窗口使用可展开的执行步骤、紧凑工具摘要与内嵌整批媒体审批。界面中的“思考/执行进度”只表示可核实的模型请求状态、任务阶段和已提交工具动作；不显示或保存私有推理，不把未提交工具意图当作成功。完整模型响应和 tool_call_id 仍须持久化后才能执行工具。详见 [ADR 0029](agent-conversation-stream-design.md)；当前入口与范围以 [ADR 0047](adr/0047-project-agent-chat-and-canvas-scope.md) 为准。
@@ -1517,6 +1519,8 @@ SSE 每条事件使用项目 seq 作为 id。自动重连使用 Last-Event-ID；
 TanStack Query 缓存保存服务器实体；Zustand 保存视口、选择、交互草稿与待提交操作。React Flow Nodes/Edges 从业务实体与布局草稿投影生成。
 
 不能在 Query、Zustand、React Flow 三处各保存一份独立可变的完整 Artifact 数据。
+
+素材引用选择器的产物目录与精确版本历史属于独立 Query 缓存。产物变更刷新本项目目录，产物创建或新版本事件按产物身份刷新对应历史；缺口恢复后刷新本项目全部相关缓存。刷新只更新可选内容和元数据，不自动更换当前草稿的精确引用，也不覆盖未保存输入及其 CAS 基线。
 
 V26 迁移在项目行锁下连续递增 `event_seq`，每个助手写入 `agent.instance.changed`、每个受影响项目写入 `canvas.items.changed`。快速升级后沿原游标重连仍能补发刷新助手与画布拓扑，不能依赖 SSE 断开时长触发全量快照。
 

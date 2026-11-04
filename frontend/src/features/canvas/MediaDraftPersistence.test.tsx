@@ -106,6 +106,44 @@ async function closeAndSettle(client: QueryClient, release: () => void = () => {
 describe("media draft persistence boundaries", () => {
   beforeEach(() => useCanvasStore.setState({ mediaDraftRecoveries: {}, imageRatioDrafts: {} }));
 
+  it.each(["event", "snapshot"] as const)("refreshes exact reference choices after a remote %s without reopening the editor", async (mode) => {
+    const { client } = renderDraft();
+    let refreshed = false;
+    server.use(
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts`, () => HttpResponse.json({ items: [{ ...artifact,
+        id: REFERENCE_ID, title: refreshed ? "Updated reference" : "Synthetic reference",
+        resourceDefaultVersionId: refreshed ? "reference-v2" : REFERENCE_VERSION }] })),
+      http.get(`/api/v1/projects/${PROJECT_ID}/artifacts/${REFERENCE_ID}/versions`, () => HttpResponse.json({
+        items: (refreshed ? [2, 1] : [1]).map((versionNo) => ({
+          id: versionNo === 2 ? "reference-v2" : REFERENCE_VERSION, versionNo, schemaVersion: 1,
+          content: { sourceType: "UPLOAD", assetId: `synthetic-asset-${versionNo}` },
+          inputReferences: [], createdByKind: "USER", runId: null, createdAt: NOW,
+        })),
+      })),
+    );
+    try {
+      const user = userEvent.setup();
+      await screen.findByRole("textbox", { name: "图片提示词" });
+      await user.click(screen.getByRole("button", { name: "添加图片输入" }));
+      await user.click(screen.getByRole("menuitem", { name: "从资源库选择" }));
+      await screen.findByRole("checkbox", { name: /Synthetic reference · v1$/ });
+      refreshed = true;
+      const callbacks = projectCacheCallbacks(client, PROJECT_ID);
+      act(() => {
+        if (mode === "event") callbacks.onChange({
+          projectId: PROJECT_ID, type: "artifact.version.created", payload: { artifactId: REFERENCE_ID },
+          seq: 1, eventId: "reference-version-event", schemaVersion: 1, aggregateId: REFERENCE_ID,
+          aggregateVersion: 2, occurredAt: NOW,
+        });
+        else callbacks.onSnapshot({ project: { id: PROJECT_ID, name: "Synthetic project", aspectRatio: "SQUARE_1_1",
+          status: "ACTIVE", version: 0, createdAt: NOW, updatedAt: NOW }, canvas: { items: [] }, connections: [],
+          director: null, activeRun: null, activeTasks: [], unknownTasks: [], snapshotSeq: 2 });
+      });
+      expect(await screen.findByRole("checkbox", { name: /Updated reference · v2$/ })).toBeEnabled();
+      expect(screen.getByRole("checkbox", { name: /Updated reference · v1$/ })).toBeInTheDocument();
+    } finally { await closeAndSettle(client); }
+  });
+
   it("projects a native image ratio through the extracted session and clears its clean preview on close", async () => {
     const profile = klingProfiles.find((item) => item.adapterId === "KLING_IMAGE" && item.operation === "GENERATE")!;
     const capability = { ...settings.connections[0]!.capabilities[0]!, adapterId: profile.adapterId,
