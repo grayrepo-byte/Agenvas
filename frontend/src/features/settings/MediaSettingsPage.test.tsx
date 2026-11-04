@@ -152,6 +152,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     await selectValue(within(dialog).getByRole("combobox", { name: "固定适配器" }), profile.adapterId);
@@ -192,6 +193,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     await within(dialog).findByRole("combobox", { name: "生成操作" });
@@ -221,6 +223,7 @@ describe("MediaSettingsPage", () => {
         ? HttpResponse.json({ detail: "目录暂不可用" }, { status: 503 }) : HttpResponse.json({ profiles: klingProfiles })),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "保留的能力名称");
@@ -253,6 +256,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     await selectValue(within(dialog).getByRole("combobox", { name: "固定适配器" }), "KLING_VIDEO");
@@ -292,6 +296,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "编辑连接" }));
     const dialog = screen.getByRole("dialog");
     const address = within(dialog).getByRole("combobox", { name: "固定 API 地址" });
@@ -314,6 +319,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("textbox", { name: "固定模型" })).toHaveValue("MiniMax-H3");
@@ -430,6 +436,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "编辑连接" }));
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("textbox", { name: "ComfyUI 地址" })).toHaveValue(origin);
@@ -480,6 +487,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveClass("runninghub-capability-dialog");
@@ -650,6 +658,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     const name = within(dialog).getByRole("textbox", { name: "新能力名称" });
@@ -684,6 +693,7 @@ describe("MediaSettingsPage", () => {
     );
     try {
       mount(); const user = userEvent.setup();
+      await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
       await user.click(await screen.findByRole("button", { name: "发布能力" }));
       const dialog = screen.getByRole("dialog");
       await user.type(within(dialog).getByRole("textbox", { name: "真实目标 ID" }), "123");
@@ -725,6 +735,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "智能工作流");
@@ -1002,6 +1013,7 @@ describe("MediaSettingsPage", () => {
     );
     const queryClient = mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "编辑连接" }));
     let dialog = screen.getByRole("dialog");
     const connectionName = within(dialog).getByRole("textbox", { name: "连接名称" });
@@ -1113,13 +1125,16 @@ describe("MediaSettingsPage", () => {
     mount();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
-    const heading = await screen.findByText("Portrait");
+    const heading = await within(screen.getByRole("table", { name: "已发布能力" })).findByText("Portrait");
     const row = heading.closest("tr");
     if (!row) throw new Error("Missing capability row");
     expect(within(row).queryByText(/全局并发/)).not.toBeInTheDocument();
-    await user.click(within(row).getByRole("button", { name: "设为默认" }));
+    await user.click(within(row).getByRole("button", { name: "更多操作：Portrait" }));
+    await user.click(screen.getByRole("menuitem", { name: "设为默认" }));
     await waitFor(() => expect(defaultSelection).toEqual({ expectedVersion: 2, capabilityId: "portrait" }));
-    await waitFor(() => expect(within(row).getByRole("button", { name: "设为默认" })).toBeDisabled());
+    await user.click(within(row).getByRole("button", { name: "更多操作：Portrait" }));
+    expect(screen.getByRole("menuitem", { name: "设为默认" })).toHaveAttribute("aria-disabled", "true");
+    await user.keyboard("{Escape}");
     await user.click(within(row).getByText("编辑能力参数"));
     expect(within(screen.getByRole("dialog")).getByRole("combobox", { name: "GPT Image 2 质量" })).toHaveValue("high");
   });
@@ -1138,6 +1153,7 @@ describe("MediaSettingsPage", () => {
     mount();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "重新读取" }));
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     expect(await screen.findByText("尚无媒体连接")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -1163,8 +1179,9 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     expect(await screen.findByText("尚无媒体连接")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "添加连接" }));
+    await user.click(within(screen.getByRole("tabpanel", { name: "媒体连接" })).getByRole("button", { name: "添加连接" }));
     await user.type(screen.getByRole("textbox", { name: "连接名称" }), "OpenAI main");
     await selectValue(screen.getByRole("combobox", { name: "平台" }), "OPENAI");
     const key = screen.getByLabelText("API Key") as HTMLInputElement;
@@ -1176,7 +1193,7 @@ describe("MediaSettingsPage", () => {
     await user.keyboard("{Escape}");
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     release?.();
-    expect(await screen.findByText(/密钥 ••••7890 · 已配置/)).toBeInTheDocument();
+    expect(await screen.findByText("••••7890")).toBeInTheDocument();
     expect(screen.queryByText(/未实测/)).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("provider-secret-7890");
@@ -1205,6 +1222,7 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "编辑连接" }));
     await user.type(screen.getByRole("textbox", { name: "API Base URL（留空使用官方地址）" }),
       "https://gateway.example.com/v1");
@@ -1238,6 +1256,7 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "编辑连接" }));
     const name = screen.getByRole("textbox", { name: "连接名称" });
     if (!name) throw new Error("Missing saved connection editor");
@@ -1278,6 +1297,7 @@ describe("MediaSettingsPage", () => {
     server.use(http.post("/api/v1/settings/media-connections/comfy-1/comfyui/preview", () => HttpResponse.json(comfyGraph)));
     mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Wan video");
     await selectValue(screen.getByRole("combobox", { name: "主输出类型" }), "COMFY_VIDEO_V1");
@@ -1373,6 +1393,7 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Portrait image");
     expect(screen.getByRole("combobox", { name: "固定适配器" })).toHaveValue("OPENAI_GPT_IMAGE_2");
@@ -1399,6 +1420,7 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "编辑连接" }));
     const region = screen.getByRole("dialog");
     const origin = within(region).getByRole("textbox", { name: "API Base URL（留空使用官方地址）" });
@@ -1415,7 +1437,7 @@ describe("MediaSettingsPage", () => {
     await user.click(within(region).getByRole("button", { name: "保存连接" }));
     await waitFor(() => expect(submitted).toEqual({ expectedVersion: 1, name: "Google", enabled: true,
       origin: "https://new-gateway.example.com/proxy/v1beta/", apiKey: null }));
-    expect(await screen.findByText("Gemini v1beta（兼容）")).toBeInTheDocument();
+    expect(await screen.findByTitle("https://new-gateway.example.com/proxy/v1beta/ · Gemini v1beta（兼容）")).toBeInTheDocument();
     await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
     expect(within(screen.getByRole("dialog")).getByText(/与模型名分开配置/)).toBeInTheDocument();
@@ -1501,6 +1523,7 @@ describe("MediaSettingsPage", () => {
     );
     mount();
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Nano Banana 2");
     expect(screen.getByRole("combobox", { name: "固定适配器" }))
@@ -1523,11 +1546,16 @@ describe("MediaSettingsPage", () => {
     const connectionsTab = await screen.findByRole("tab", { name: "媒体连接" });
     const capabilitiesTab = screen.getByRole("tab", { name: "已发布能力" });
     expect(screen.getAllByRole("tab")).toHaveLength(2);
-    expect(connectionsTab).toHaveAttribute("aria-selected", "true");
+    expect(capabilitiesTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
+    expect(screen.getByRole("table", { name: "已发布能力" })).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "媒体连接" })).not.toBeInTheDocument();
+    capabilitiesTab.focus(); await user.keyboard("{ArrowRight}");
+    expect(connectionsTab).toHaveFocus();
+    expect(connectionsTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("table", { name: "媒体连接" })).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "已发布能力" })).not.toBeInTheDocument();
-    connectionsTab.focus(); await user.keyboard("{ArrowRight}");
+    await user.keyboard("{ArrowLeft}");
     expect(capabilitiesTab).toHaveFocus();
     expect(capabilitiesTab).toHaveAttribute("aria-selected", "true");
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
@@ -1577,6 +1605,7 @@ describe("MediaSettingsPage", () => {
       http.post("/api/v1/settings/media-connections/openai-1/capabilities", () => { writes += 1; return HttpResponse.json(settings); }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Incomplete model");
     expect(screen.getByRole("button", { name: "2. 节点与参数映射" })).toBeDisabled();
@@ -1635,6 +1664,7 @@ describe("MediaSettingsPage", () => {
     await user.type(screen.getByLabelText("API Key"), "fake-autodl-key");
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "添加连接" }));
     await waitFor(() => expect(connectionWrites).toEqual([{ name: "AutoDL", platform: "AUTODL", origin: null, apiKey: "fake-autodl-key" }]));
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "H3 mixed");
     expect(screen.getByRole("combobox", { name: "AutoDL 工作流" })).toHaveValue("minimax_h3_z0903");
@@ -1674,6 +1704,7 @@ describe("MediaSettingsPage", () => {
       }),
     );
     mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     await user.type(screen.getByRole("textbox", { name: "新能力名称" }), "Future video");
     await user.click(screen.getByRole("button", { name: "刷新官方工作流目录" }));
@@ -1715,13 +1746,15 @@ describe("capability deletion", () => {
     const client = mount();
     client.setQueryData(["media-functions"], []);
     await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
-    await user.click(await screen.findByRole("button", { name: "删除能力" }));
+    await user.click(await screen.findByRole("button", { name: "更多操作：Portrait" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除能力" }));
     expect(screen.getByRole("dialog")).toHaveTextContent("历史结果和已受理任务保留");
     expect(versions).toEqual([]);
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(versions).toEqual([]);
-    await user.click(screen.getByRole("button", { name: "删除能力" }));
+    await user.click(screen.getByRole("button", { name: "更多操作：Portrait" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除能力" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(screen.queryByText("Portrait")).not.toBeInTheDocument());
     expect(versions).toEqual(["4"]);
@@ -1742,7 +1775,8 @@ describe("capability deletion", () => {
     }));
     const user = userEvent.setup(); mount();
     await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
-    await user.click(await screen.findByRole("button", { name: "删除能力" }));
+    await user.click(await screen.findByRole("button", { name: "更多操作：Portrait" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除能力" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(attempts).toBe(1));
     expect(screen.getByRole("button", { name: "正在删除…" })).toBeDisabled();
@@ -1759,7 +1793,8 @@ describe("capability deletion", () => {
     serve(settingsFixture({ enabled: false }, { enabled: false }));
     mount(); const user = userEvent.setup();
     await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
-    expect(await screen.findByRole("button", { name: "删除能力" })).toBeEnabled();
+    await user.click(await screen.findByRole("button", { name: "更多操作：Portrait" }));
+    expect(screen.getByRole("menuitem", { name: "删除能力" })).not.toHaveAttribute("aria-disabled", "true");
   });
 
   it("retains the confirmation and capability when deletion fails, then allows retry", async () => {
@@ -1771,12 +1806,15 @@ describe("capability deletion", () => {
     }));
     const user = userEvent.setup(); mount();
     await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
-    await user.click(await screen.findByRole("button", { name: "删除能力" }));
+    await user.click(await screen.findByRole("button", { name: "更多操作：Portrait" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除能力" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
-    expect(await within(screen.getByRole("dialog")).findByText(/请重试/)).toBeInTheDocument();
-    expect(screen.getByText("Portrait")).toBeInTheDocument();
+    expect(await within(screen.getByRole("dialog", { name: "删除能力 · Portrait" })).findByText(/请重试/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(attempts).toBe(2));
+    await waitFor(() => expect(screen.getByRole("button", { name: "取消" })).toBeEnabled());
+    await user.click(screen.getByRole("button", { name: "取消" }));
+    expect(within(screen.getByRole("table", { name: "已发布能力" })).getByText("Portrait")).toBeVisible();
   });
 
   it("requires loading the new version after a concurrent edit", async () => {
@@ -1790,7 +1828,8 @@ describe("capability deletion", () => {
       }));
     const user = userEvent.setup(); mount();
     await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
-    await user.click(await screen.findByRole("button", { name: "删除能力" }));
+    await user.click(await screen.findByRole("button", { name: "更多操作：Portrait" }));
+    await user.click(screen.getByRole("menuitem", { name: "删除能力" }));
     await user.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "确认删除" })).toBeDisabled());
     await user.click(screen.getByRole("button", { name: /载入最新/ }));
@@ -1802,8 +1841,8 @@ describe("capability deletion", () => {
   it("does not offer deletion for built-in local capabilities", async () => {
     serve(settingsFixture({ platform: "LOCAL" }, { adapterId: "LOCAL_IMAGE_PROCESSOR" }));
     mount(); await clickControl(await screen.findByRole("tab", { name: "已发布能力" }));
-    await screen.findByText("Portrait");
-    expect(screen.queryByRole("button", { name: "删除能力" })).not.toBeInTheDocument();
+    await within(screen.getByRole("table", { name: "已发布能力" })).findByText("Portrait");
+    expect(screen.queryByRole("button", { name: "更多操作：Portrait" })).not.toBeInTheDocument();
   });
 });
 
@@ -1829,7 +1868,7 @@ describe("MediaSettingsPage catalog workflow", () => {
     expect(within(editor).getByRole("tab", { name: "模型配置" })).toHaveAttribute("aria-selected", "true");
   });
 
-  it("searches names and status without discarding a closed capability draft", async () => {
+  it("filters names, status and media type without discarding a closed capability draft", async () => {
     serveCatalog(); mount(); const user = userEvent.setup();
     await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
@@ -1846,6 +1885,16 @@ describe("MediaSettingsPage catalog workflow", () => {
     await selectValue(screen.getByRole("combobox", { name: "筛选配置状态" }), "disabled");
     expect(within(screen.getByRole("tabpanel", { name: "已发布能力" })).getByText("没有匹配的配置")).toBeInTheDocument();
     await selectValue(screen.getByRole("combobox", { name: "筛选配置状态" }), "all");
+    await selectValue(screen.getByRole("combobox", { name: "全部类型" }), "VIDEO_GENERATION");
+    const catalog = screen.getByRole("tabpanel", { name: "已发布能力" });
+    expect(within(catalog).getByText("没有匹配的配置")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "编辑能力参数" })).not.toBeInTheDocument();
+    await selectValue(screen.getByRole("combobox", { name: "全部类型" }), "IMAGE_GENERATION");
+    expect(screen.getByRole("button", { name: "编辑能力参数" })).toBeVisible();
+    await selectValue(screen.getByRole("combobox", { name: "全部类型" }), "local");
+    await user.click(within(catalog).getByRole("button", { name: "清除筛选" }));
+    expect(search).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "全部类型" })).toHaveValue("all");
     await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
     expect(within(screen.getByRole("dialog")).getByRole("textbox", { name: "能力名称" })).toHaveValue("Local unsaved draft");
   });
@@ -1859,6 +1908,7 @@ it("retains unparsed RunningHub JSON when closing and reopening a publishing ses
     http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
   );
   mount(); const user = userEvent.setup();
+  await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
   await user.click(await screen.findByRole("button", { name: "发布能力" }));
   await user.click(screen.getByText("导入 / 已保存的 JSON"));
   await user.type(screen.getByRole("textbox", { name: "nodeInfoList 或 ComfyUI API-format JSON" }), "unfinished JSON draft");

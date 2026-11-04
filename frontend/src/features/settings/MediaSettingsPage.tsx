@@ -1,5 +1,5 @@
 import { Field, FieldLabel, FieldGroup, FieldSet } from "../../shared/ui/primitives/field";
-import { ArrowLeft,ArrowRight,HardDrives,ImageSquare,MagnifyingGlass,MusicNotes,PlugsConnected,Plus,VideoCamera } from "@/shared/ui/icons";
+import { ArrowLeft,ArrowRight,CheckCircle,DotsThree,HardDrives,ImageSquare,MagnifyingGlass,MusicNotes,PlugsConnected,Plus,Sparkle,VideoCamera } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import { cn } from "cn";
 import { useEffect,useId,useRef,useState,type FormEvent } from "react";
@@ -18,10 +18,12 @@ import { MEDIA_FUNCTIONS_QUERY_KEY } from "../../shared/mediaFunctions";
 import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
-import { EmptyState,Notice,Panel,StatusBadge,SummaryStrip } from "../../shared/ui/PagePrimitives";
+import { EmptyState,Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
 import { PageShell } from "../../shared/ui/PageShell";
 import { Button } from "../../shared/ui/primitives/button";
 import { Input } from "../../shared/ui/primitives/input";
+import { Badge } from "../../shared/ui/primitives/badge";
+import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuSeparator,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
 import { Table,TableBody,TableCell,TableHead,TableHeader,TableRow } from "../../shared/ui/primitives/table";
 import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
 import { Select } from "../../shared/ui/Select";
@@ -38,6 +40,7 @@ import { isComfyAdapter } from "./comfyWorkflow";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 import { buildMediaCapabilitySettings, CapabilityDraftError, type MediaCapabilityDraft } from "./mediaCapabilityDraft";
 import { mediaConnectionAddresses, mediaConnectionOrigin } from "./mediaConnectionConfiguration";
+import { MediaDefaultsSection } from "./MediaDefaultsSection";
 
 type AdapterSettings = MediaCapabilityDraft;
 const MODEL_LIMIT = 120;
@@ -47,13 +50,16 @@ const MEDIA_SETTINGS_TABS = ["connections", "capabilities"] as const;
 const NAME_LIMIT = 160;
 const CATALOG_STATUS = ["all", "enabled", "disabled"] as const;
 type CatalogStatus = typeof CATALOG_STATUS[number];
+const CATALOG_KINDS = ["all", "IMAGE_GENERATION", "VIDEO_GENERATION", "AUDIO_GENERATION", "local"] as const;
+type CatalogKind = typeof CATALOG_KINDS[number];
 function matchesCatalog(text: string, enabled: boolean, query: string, status: CatalogStatus) {
   return text.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())
     && (status === "all" || enabled === (status === "enabled"));
 }
-function capabilityMatches(connection: MediaConnection, capability: MediaCapability, query: string, status: CatalogStatus) {
+function capabilityMatches(connection: MediaConnection, capability: MediaCapability, query: string, status: CatalogStatus, kind: CatalogKind = "all") {
   return matchesCatalog(`${connection.name} ${connection.platform} ${capability.name} ${adapterLabel(capability.adapterId)} ${capability.settings.model ?? ""}`,
-    connection.enabled && capability.enabled, query, status);
+    connection.enabled && capability.enabled, query, status)
+    && (kind === "all" || (kind === "local" ? connection.platform === "LOCAL" : capability.kind === kind && connection.platform !== "LOCAL"));
 }
 const cloudImageFields = [{ key: "model", get label() { return t("settings.mediaSettings.modelName"); } }] as const;
 
@@ -371,28 +377,31 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
   }
   const CapabilityIcon = capability.kind === "IMAGE_GENERATION" ? ImageSquare : capability.kind === "AUDIO_GENERATION" ? MusicNotes : VideoCamera;
   return <>
-    <TableRow hidden={hidden}>
-      <TableCell><div className="media-table-name"><CapabilityIcon size={19} /><div>
-        <strong>{capability.name}</strong><small>{connectionName}</small>
-      </div></div></TableCell>
-      <TableCell><strong>{adapterLabel(capability.adapterId)}</strong>
-        <small>{capability.settings.model || adapterModel(capability.adapterId) || capability.adapterId}</small></TableCell>
-      <TableCell><strong>{capability.kind === "VIDEO_GENERATION" ? t("settings.mediaSettings.durationRange", { "0": capability.minimumSeconds, "1": capability.maximumSeconds }) : capability.kind === "AUDIO_GENERATION" ? t("common.audio") : t("common.image")}</strong>
-        <small>{t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages })}</small></TableCell>
-      <TableCell>{capability.settings.pricing ? <>{capability.settings.pricing.amount} {capability.settings.pricing.currency}
-        <small>{t("settings.mediaSettings.unitPriceEstimate", { "0": capability.settings.pricing.unit === "SECOND" ? t("settings.mediaSettings.seconds") : capability.settings.pricing.unit === "VIDEO" ? t("settings.mediaSettings.videoUnit") : capability.settings.pricing.unit === "AUDIO" ? t("settings.editor.audioUnit") : t("settings.mediaSettings.imageUnit") })}</small></> : <span className="ui-muted">{t("common.unset")}</span>}</TableCell>
+    <TableRow hidden={hidden} data-disabled={!connectionEnabled || !capability.enabled}>
+      <TableCell><div className="media-table-name"><CapabilityIcon size={19} aria-hidden /><strong title={capability.name}>{capability.name}</strong></div></TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.serviceColumn")}><span className="media-cell-text" title={connectionName}>{connectionName}</span></TableCell>
+      <TableCell data-label={t("common.model")}><span className="media-cell-text" title={`${adapterLabel(capability.adapterId)} · ${capability.settings.model || adapterModel(capability.adapterId) || capability.adapterId}`}>
+        {capability.settings.model || adapterModel(capability.adapterId) || adapterLabel(capability.adapterId)}</span></TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.kindColumn")}>{capability.kind === "VIDEO_GENERATION" ? t("common.video") : capability.kind === "AUDIO_GENERATION" ? t("common.audio") : t("common.image")}</TableCell>
+      <TableCell data-label={t("settings.mediaSettings.inputRange")}><span className="media-cell-text" title={t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages })}>{capability.kind === "VIDEO_GENERATION"
+        ? t("settings.mediaWorkspace.compactVideoInput", { "0": capability.minimumSeconds, "1": capability.maximumSeconds, "2": capability.maxReferenceImages })
+        : t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages })}</span></TableCell>
+      <TableCell data-label={t("settings.mediaSettings.price")} title={t("settings.mediaWorkspace.estimateOnly")}>{capability.settings.pricing ? <>{capability.settings.pricing.amount} {capability.settings.pricing.currency}
+        <span className="media-price-unit"> / {capability.settings.pricing.unit === "SECOND" ? t("settings.mediaSettings.seconds") : capability.settings.pricing.unit === "VIDEO" ? t("settings.mediaSettings.videoUnit") : capability.settings.pricing.unit === "AUDIO" ? t("settings.editor.audioUnit") : t("settings.mediaSettings.imageUnit")}</span></> : <span className="ui-muted">{t("settings.mediaWorkspace.unknownPrice")}</span>}</TableCell>
       <TableCell><div className="media-table-badges">
         <StatusBadge tone={capability.enabled && connectionEnabled ? "success" : "warning"}>{capability.enabled && connectionEnabled ? t("settings.mediaSettings.enabled") : t("settings.mediaSettings.disabled")}</StatusBadge>
         {isDefault ? <StatusBadge>{t("settings.mediaSettings.default")}</StatusBadge> : null}
       </div></TableCell>
       <TableCell><div className="media-table-actions">
-        <Button variant="outline"  type="button" disabled={rowBusy} onClick={() => setEditing(true)}>{t("settings.mediaSettings.editCapability")}</Button>
-        <Button variant="ghost"  type="button" disabled={rowBusy || !connectionEnabled || !capability.enabled || isDefault}
-          onClick={() => act("default", capability)}>{t("settings.mediaSettings.setDefault")}</Button>
-        <Button variant="ghost"  type="button" disabled={rowBusy}
-          onClick={() => act("capability", capability)}>{capability.enabled ? t("settings.mediaSettings.disable") : t("settings.mediaSettings.enable")}</Button>
-        <Button variant="ghost" type="button" disabled={rowBusy}
-          onClick={() => { remove.reset(); setDeleting(capability); }}>{t("settings.mediaSettings.deleteCapability")}</Button>
+        <Button variant="outline" size="sm" type="button" disabled={rowBusy} onClick={() => setEditing(true)}>{t("settings.mediaSettings.editCapability")}</Button>
+        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" type="button" disabled={rowBusy} aria-label={t("settings.mediaWorkspace.moreActions", { "0": capability.name })}><DotsThree /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end"><DropdownMenuGroup>
+            <DropdownMenuItem disabled={!connectionEnabled || !capability.enabled || isDefault} onSelect={() => act("default", capability)}>{t("settings.mediaSettings.setDefault")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => act("capability", capability)}>{capability.enabled ? t("settings.mediaSettings.disable") : t("settings.mediaSettings.enable")}</DropdownMenuItem>
+          </DropdownMenuGroup><DropdownMenuSeparator /><DropdownMenuGroup>
+            <DropdownMenuItem variant="destructive" onSelect={() => { remove.reset(); setDeleting(capability); }}>{t("settings.mediaSettings.deleteCapability")}</DropdownMenuItem>
+          </DropdownMenuGroup></DropdownMenuContent>
+        </DropdownMenu>
       </div></TableCell>
     </TableRow>
     {deleting ? <Dialog compact title={t("settings.mediaSettings.deleteCapabilityNamed", { "0": deleting.name })}
@@ -461,24 +470,26 @@ function useMediaActions(connection: MediaConnection, settings: MediaSettings, a
   });
 }
 
-function ConnectionCapabilities({ connection, settings, apply, query, status }: {
-  connection: MediaConnection; settings: MediaSettings; apply: (value: MediaSettings) => void; query: string; status: CatalogStatus;
+function ConnectionCapabilities({ connection, settings, apply, query, status, kind }: {
+  connection: MediaConnection; settings: MediaSettings; apply: (value: MediaSettings) => void; query: string; status: CatalogStatus; kind: CatalogKind;
 }) {
   useLocale();
   const mutate = useMediaActions(connection, settings, apply);
   const systemManaged = connection.platform === "LOCAL";
   const availableAdapters = platformAdapters[connection.platform];
   return <>
-    {connection.capabilities.map((capability) => systemManaged ? <TableRow key={capability.id} hidden={!capabilityMatches(connection, capability, query, status)}>
-      <TableCell><strong>{capability.name}</strong><small>{connection.name}</small></TableCell>
-      <TableCell><strong>{adapterLabel(capability.adapterId)}</strong><small>{t("settings.mediaSettings.builtin")}</small></TableCell>
-      <TableCell>{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.imageProcessing") : t("media.functions.videoTools")}<small>{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages }) : t("common.video")}</small></TableCell>
-      <TableCell>{t("settings.mediaSettings.localExecution")}</TableCell><TableCell><StatusBadge tone="success">{t("settings.mediaSettings.enabled")}</StatusBadge></TableCell><TableCell className="ui-muted">{t("settings.mediaSettings.administration")}</TableCell>
+    {connection.capabilities.map((capability) => systemManaged ? <TableRow key={capability.id} hidden={!capabilityMatches(connection, capability, query, status, kind)}>
+      <TableCell><div className="media-table-name"><HardDrives size={19} aria-hidden /><strong title={capability.name}>{capability.name}</strong></div></TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.serviceColumn")}><span className="media-cell-text" title={connection.name}>{connection.name}</span></TableCell>
+      <TableCell data-label={t("common.model")}><span className="media-cell-text" title={adapterLabel(capability.adapterId)}>{t("settings.mediaSettings.builtin")}</span></TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.kindColumn")}>{capability.kind === "IMAGE_GENERATION" ? t("common.image") : t("common.video")}</TableCell>
+      <TableCell data-label={t("settings.mediaSettings.inputRange")}><span className="media-cell-text">{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages }) : t("media.functions.videoTools")}</span></TableCell>
+      <TableCell data-label={t("settings.mediaSettings.price")}>{t("settings.mediaSettings.localExecution")}</TableCell><TableCell><StatusBadge tone="success">{t("settings.mediaSettings.enabled")}</StatusBadge></TableCell><TableCell className="ui-muted">{t("settings.mediaSettings.administration")}</TableCell>
     </TableRow> : <CapabilityRow key={capability.id} connectionId={connection.id} connectionName={connection.name}
       capability={capability} isDefault={settings.defaults.some((item) => item.kind === capability.kind && item.capabilityId === capability.id)}
-      connectionEnabled={connection.enabled} availableAdapters={availableAdapters} busy={mutate.isPending} hidden={!capabilityMatches(connection, capability, query, status)} apply={apply}
+      connectionEnabled={connection.enabled} availableAdapters={availableAdapters} busy={mutate.isPending} hidden={!capabilityMatches(connection, capability, query, status, kind)} apply={apply}
       act={(type, selected) => mutate.mutate({ type, capability: selected })} />)}
-    {mutate.isError ? <TableRow><TableCell colSpan={6}><Notice tone="danger">{errorMessage(mutate.error)}</Notice></TableCell></TableRow> : null}
+    {mutate.isError ? <TableRow><TableCell colSpan={8}><Notice tone="danger">{errorMessage(mutate.error)}</Notice></TableCell></TableRow> : null}
   </>;
 
 }
@@ -560,6 +571,8 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
   const busy = save.isPending || addCapability.isPending || mutate.isPending || importBusy;
   const systemManaged = connection.platform === "LOCAL";
   const availableAdapters = systemManaged ? [] : platformAdapters[connection.platform];
+  const endpoint = connection.origin || (connection.platform === "ARK" ? "https://ark.cn-beijing.volces.com/api/v3"
+    : systemManaged ? t("settings.mediaSettings.builtin") : t("settings.mediaSettings.platformDefaultUrl"));
 
   function loadLatest() {
     acceptBaseline(connection);
@@ -579,21 +592,23 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
 
 
   return <>
-    <TableRow hidden={hidden}>
-      <TableCell><div className="media-table-name">{systemManaged ? <HardDrives size={18} aria-hidden /> : <PlugsConnected size={18} aria-hidden />}<div><strong>{connection.name}</strong><small>{t("settings.mediaSettings.capabilityCount", { "0": connection.platform, "1": connection.capabilities.length })}</small></div></div></TableCell>
-      <TableCell><span className="media-table-endpoint">{connection.origin || (connection.platform === "ARK" ? "https://ark.cn-beijing.volces.com/api/v3" : systemManaged ? t("settings.mediaSettings.builtin") : t("settings.mediaSettings.platformDefaultUrl"))}</span>
-        <small>{connection.keyMask ? t("settings.mediaSettings.credentialPrefix", { "0": connection.keyMask }) : ""}{systemManaged ? t("media.functions.localMedia") : t("common.configured")}</small>
-        {connection.platform === "GOOGLE" ? <small>{googleImageApiLabel(connection.origin)}</small> : null}</TableCell>
+    <TableRow hidden={hidden} data-disabled={!connection.enabled}>
+      <TableCell><div className="media-table-name">{systemManaged ? <HardDrives size={18} aria-hidden /> : <PlugsConnected size={18} aria-hidden />}<strong title={connection.name}>{connection.name}</strong></div></TableCell>
+      <TableCell data-label={t("settings.mediaSettings.platform")}>{connection.platform}</TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.capabilityCountColumn")}>{connection.capabilities.length}</TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.addressColumn")}><span className="media-table-endpoint" title={`${endpoint}${connection.platform === "GOOGLE" ? ` · ${googleImageApiLabel(connection.origin)}` : ""}`}>{endpoint}</span></TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.credentialsColumn")}><span className="media-cell-text">{connection.keyMask || (systemManaged ? t("media.functions.localMedia") : t("common.configured"))}</span></TableCell>
       <TableCell><StatusBadge tone={connection.enabled ? "success" : "warning"}>{connection.enabled ? t("settings.mediaSettings.enabled") : t("settings.mediaSettings.disabled")}</StatusBadge></TableCell>
       <TableCell>{systemManaged ? <span className="ui-muted">{t("settings.mediaSettings.administration")}</span> : <div className="media-table-actions">
-        <Button variant="outline"  type="button" disabled={busy} onClick={() => setDialog("connection")}>{t("settings.mediaSettings.editConnection")}</Button>
-        <Button variant="outline"  type="button" disabled={busy || !connection.enabled || !availableAdapters.length}
+        <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => setDialog("connection")}>{t("settings.mediaSettings.editConnection")}</Button>
+        <Button variant="ghost" size="sm" type="button" disabled={busy || !connection.enabled || !availableAdapters.length}
           onClick={onPublish}>{t("settings.mediaSettings.publishCapability")}</Button>
-        <Button variant="ghost"  type="button" disabled={busy}
-          onClick={() => mutate.mutate({ type: "connection" })}>{connection.enabled ? t("settings.mediaSettings.disableConnection") : t("settings.mediaSettings.enableConnection")}</Button>
+        <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" type="button" disabled={busy} aria-label={t("settings.mediaWorkspace.moreActions", { "0": connection.name })}><DotsThree /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent align="end"><DropdownMenuGroup><DropdownMenuItem onSelect={() => mutate.mutate({ type: "connection" })}>{connection.enabled ? t("settings.mediaSettings.disableConnection") : t("settings.mediaSettings.enableConnection")}</DropdownMenuItem></DropdownMenuGroup></DropdownMenuContent>
+        </DropdownMenu>
       </div>}</TableCell>
     </TableRow>
-    {mutate.isError || (error && !dialog && !publishOpen) || notice ? <TableRow><TableCell colSpan={4}>{mutate.isError || (error && !dialog && !publishOpen) ? <Notice tone="danger">{mutate.isError ? errorMessage(mutate.error) : error}</Notice> : <Notice tone="success">{notice}</Notice>}</TableCell></TableRow> : null}
+    {mutate.isError || (error && !dialog && !publishOpen) || notice ? <TableRow><TableCell colSpan={7}>{mutate.isError || (error && !dialog && !publishOpen) ? <Notice tone="danger">{mutate.isError ? errorMessage(mutate.error) : error}</Notice> : <Notice tone="success">{notice}</Notice>}</TableCell></TableRow> : null}
     {dialog === "connection" ? <Dialog title={t("settings.mediaSettings.editConnectionNamed", { "0": connection.name })} description={t("settings.mediaSettings.connectionTitle", { "0": connection.platform })}
       onClose={() => setDialog(null)} onSubmit={submitConnection} busy={busy} footer={<>
         <Button variant="outline"  type="button" disabled={busy} onClick={() => setDialog(null)}>{t("common.cancel")}</Button>
@@ -629,9 +644,10 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
 export function MediaSettingsPage() {
   useLocale();
   const queryClient = useQueryClient();
-  const [selectedTab, setSelectedTab] = useState<typeof MEDIA_SETTINGS_TABS[number]>("connections");
+  const [selectedTab, setSelectedTab] = useState<typeof MEDIA_SETTINGS_TABS[number]>("capabilities");
   const [catalogQuery, setCatalogQuery] = useState("");
   const [catalogStatus, setCatalogStatus] = useState<CatalogStatus>("all");
+  const [catalogKind, setCatalogKind] = useState<CatalogKind>("all");
   const [chooseConnection, setChooseConnection] = useState(false);
   const [publishingConnectionId, setPublishingConnectionId] = useState<string | null>(null);
   const currentUser = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
@@ -663,17 +679,19 @@ export function MediaSettingsPage() {
   if (settings.error instanceof ApiError && settings.error.status === HTTP_STATUS.UNAUTHORIZED) {
     return <Navigate to="/login" replace />;
   }
+  const capabilities = settings.data?.connections.flatMap((connection) => connection.capabilities) ?? [];
+  const availableCount = settings.data?.connections.filter((connection) => connection.enabled)
+    .flatMap((connection) => connection.capabilities).filter((capability) => capability.enabled).length ?? 0;
+  const visibleCount = settings.data?.connections.reduce((count, connection) => count + (selectedTab === "connections"
+    ? Number(matchesCatalog(`${connection.name} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus))
+    : connection.capabilities.filter((capability) => capabilityMatches(connection, capability, catalogQuery, catalogStatus, catalogKind)).length), 0) ?? 0;
+  const hasFilters = Boolean(catalogQuery || catalogStatus !== "all" || selectedTab === "capabilities" && catalogKind !== "all");
+  function resetFilters() { setCatalogQuery(""); setCatalogStatus("all"); setCatalogKind("all"); }
   return <PageShell title={t("settings.mediaSettings.title")}
-    description={t("settings.mediaSettings.managementHint")}
-    actions={<Button type="button" onClick={() => setCreating(true)}><Plus data-icon="inline-start" />{t("settings.mediaSettings.addConnection")}</Button>}>
+    description={t("settings.mediaWorkspace.intro")}
+    actions={<><Button variant="outline" type="button" onClick={() => setCreating(true)}><PlugsConnected data-icon="inline-start" />{t("settings.mediaSettings.addConnection")}</Button>
+      <Button type="button" disabled={!settings.data} onClick={() => setChooseConnection(true)}><Plus data-icon="inline-start" />{t("settings.mediaSettings.publishNewCapability")}</Button></>}>
     <div className="media-settings-page ui-stack">
-      {settings.data ? <SummaryStrip items={[
-        { label: t("settings.mediaSettings.connections"), value: t("settings.mediaSettings.itemCount", { "0": settings.data.connections.length }), detail: t("settings.mediaSettings.connectionTypes") },
-        { label: t("settings.mediaSettings.capabilities"), value: t("settings.mediaSettings.itemCount", { "0": settings.data.connections.filter((connection) => connection.enabled)
-          .flatMap((connection) => connection.capabilities).filter((capability) => capability.enabled).length }),
-          detail: t("settings.mediaSettings.enabledCapabilities") },
-        { label: t("settings.mediaSettings.defaultCapability"), value: t("settings.mediaSettings.fieldCount", { "0": settings.data.defaults.filter((item) => item.capabilityId).length }), detail: t("settings.mediaSettings.defaultsForNewRequests") },
-      ]} /> : null}
       {currentUser.isSuccess && settings.isPending ? <LoadingState label={t("settings.mediaSettings.loading")} /> : null}
       {settings.error instanceof ApiError && settings.error.status === HTTP_STATUS.FORBIDDEN
         ? <Notice tone="warning" title={t("settings.mediaSettings.adminRequired")}>{t("settings.mediaSettings.adminOnly")}</Notice> : null}
@@ -684,51 +702,61 @@ export function MediaSettingsPage() {
             disabled={settings.isFetching}>{settings.isFetching ? t("common.retrying") : t("common.refresh")}</Button>
         </Notice> : null}
       {settings.data ? <>
+        <MediaDefaultsSection settings={settings.data} onApply={(result) => queryClient.setQueryData(settingsKey, result)} onPublish={() => setChooseConnection(true)} />
         <Tabs className="min-w-0 media-catalog" value={selectedTab} onValueChange={(value) => {
           const tab = MEDIA_SETTINGS_TABS.find((entry) => entry === value);
           if (tab) setSelectedTab(tab);
         }}>
-        <div className="media-catalog-topline"><TabsList aria-label={t("settings.mediaSettings.title")}>
-        <TabsTrigger value="connections">{t("settings.mediaSettings.connections")}<span className="settings-tab-count" aria-hidden>{settings.data.connections.length}</span></TabsTrigger>
-        <TabsTrigger value="capabilities">{t("settings.mediaSettings.publishedCapabilities")}<span className="settings-tab-count" aria-hidden>{settings.data.connections.reduce((count, connection) => count + connection.capabilities.length, 0)}</span></TabsTrigger>
+        <div className="media-catalog-topline"><TabsList variant="line" aria-label={t("settings.mediaSettings.title")}>
+        <TabsTrigger value="capabilities" aria-label={t("settings.mediaSettings.publishedCapabilities")}><Sparkle aria-hidden />{t("settings.mediaWorkspace.capabilityCatalog")}<span className="settings-tab-count" aria-hidden>{capabilities.length}</span></TabsTrigger>
+        <TabsTrigger value="connections" aria-label={t("settings.mediaSettings.connections")}><PlugsConnected aria-hidden />{t("settings.mediaWorkspace.connectionCatalog")}<span className="settings-tab-count" aria-hidden>{settings.data.connections.length}</span></TabsTrigger>
         </TabsList>
-        <Button variant="outline" type="button" onClick={() => setChooseConnection(true)}><Plus data-icon="inline-start" />{t("settings.mediaSettings.publishNewCapability")}</Button></div>
+        <Badge variant="outline" className="media-catalog-availability"><CheckCircle aria-hidden />{t("settings.mediaWorkspace.availableCount", { "0": availableCount })}</Badge></div>
+        <div className="media-catalog-heading"><div><h2>{selectedTab === "capabilities" ? t("settings.mediaSettings.publishedCapabilities") : t("settings.mediaSettings.connections")}</h2>
+          <p>{selectedTab === "capabilities" ? t("settings.mediaWorkspace.catalogDescription") : t("settings.mediaWorkspace.connectionDescription")}</p></div>
+          <span className="media-catalog-result-count" role="status">{t("settings.mediaWorkspace.showing", { "0": visibleCount, "1": selectedTab === "capabilities" ? capabilities.length : settings.data.connections.length })}</span></div>
         <FieldGroup className="media-catalog-toolbar"><Field className="media-catalog-search"><FieldLabel className="sr-only" htmlFor="media-catalog-search">{t("settings.catalog.search")}</FieldLabel><MagnifyingGlass aria-hidden /><Input id="media-catalog-search" placeholder={t("settings.catalog.searchPlaceholder")} value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} /></Field>
+          {selectedTab === "capabilities" ? <Field><FieldLabel className="sr-only" htmlFor="media-catalog-kind">{t("settings.mediaWorkspace.allKinds")}</FieldLabel><Select id="media-catalog-kind" value={catalogKind} onChange={(event) => { const kind = CATALOG_KINDS.find((entry) => entry === event.target.value); if (kind) setCatalogKind(kind); }}>
+            <option value="all">{t("settings.mediaWorkspace.allKinds")}</option><option value="IMAGE_GENERATION">{t("settings.mediaWorkspace.imageKind")}</option><option value="VIDEO_GENERATION">{t("settings.mediaWorkspace.videoKind")}</option><option value="AUDIO_GENERATION">{t("settings.mediaWorkspace.audioKind")}</option><option value="local">{t("settings.mediaWorkspace.localKind")}</option>
+          </Select></Field> : null}
           <Field><FieldLabel className="sr-only" htmlFor="media-catalog-status">{t("settings.catalog.filterStatus")}</FieldLabel><Select id="media-catalog-status" value={catalogStatus} onChange={(event) => { const status = CATALOG_STATUS.find((entry) => entry === event.target.value); if (status) setCatalogStatus(status); }}><option value="all">{t("logs.calls.allStatuses")}</option><option value="enabled">{t("settings.mediaSettings.enabled")}</option><option value="disabled">{t("settings.mediaSettings.disabled")}</option></Select></Field>
+          {hasFilters ? <Button variant="ghost" type="button" onClick={resetFilters}>{t("settings.mediaWorkspace.resetFilters")}</Button> : null}
         </FieldGroup>
         {/* Keep row drafts and save feedback when switching between settings sections. */}
         <TabsContent value="connections" forceMount hidden={selectedTab !== "connections"} className="min-w-0">
-        <Panel className="media-services-panel" title={t("settings.mediaSettings.connections")} description={t("settings.mediaSettings.publishHint")}
-          >
+        <Panel className="media-services-panel">
           {settings.data.connections.length === 0 ? <EmptyState icon={<PlugsConnected size={30} />} title={t("settings.mediaSettings.connectionsEmpty")}
-            description={t("settings.mediaSettings.connectionsEmptyHint")} /> : <div className="media-table-scroll" tabIndex={0} role="region" aria-label={t("settings.mediaSettings.connectionsTable")}>
+            description={t("settings.mediaSettings.connectionsEmptyHint")} action={<Button type="button" onClick={() => setCreating(true)}>{t("settings.mediaSettings.addConnection")}</Button>} /> : <div className="media-table-scroll" tabIndex={0} role="region" aria-label={t("settings.mediaSettings.connectionsTable")}>
             <Table className="media-settings-table media-connections-table" aria-label={t("settings.mediaSettings.connections")}><TableHeader><TableRow>
-              <TableHead scope="col">{t("settings.mediaSettings.connectionPlatform")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.credentials")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.status")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.operations")}</TableHead>
+              <TableHead scope="col">{t("settings.shared.connectionName")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.platform")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.capabilityCountColumn")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.addressColumn")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.credentialsColumn")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.status")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.operations")}</TableHead>
             </TableRow></TableHeader><TableBody>{settings.data.connections.map((connection) => <ConnectionRow key={connection.id}
               connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)}
               hidden={!matchesCatalog(`${connection.name} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus)}
               publishOpen={publishingConnectionId === connection.id} onPublish={() => setPublishingConnectionId(connection.id)} onPublishClose={() => setPublishingConnectionId(null)} />)}
-              {!settings.data.connections.some((connection) => matchesCatalog(`${connection.name} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus)) ? <TableRow><TableCell colSpan={4}><EmptyState title={t("settings.catalog.noResults")} description={t("settings.catalog.tryAnotherSearch")} /></TableCell></TableRow> : null}
+              {visibleCount === 0 && selectedTab === "connections" ? <TableRow><TableCell colSpan={7}><EmptyState title={t("settings.catalog.noResults")} description={t("settings.catalog.tryAnotherSearch")} action={<Button variant="outline" type="button" onClick={resetFilters}>{t("settings.mediaWorkspace.resetFilters")}</Button>} /></TableCell></TableRow> : null}
               </TableBody></Table>
           </div>}
         </Panel>
         </TabsContent>
         <TabsContent value="capabilities" forceMount hidden={selectedTab !== "capabilities"} className="min-w-0">
-        <Panel className="media-services-panel" title={t("settings.mediaSettings.publishedCapabilities")} description={t("settings.mediaSettings.description")}>
-          {settings.data.connections.every((connection) => connection.capabilities.length === 0) ? <p className="ui-muted">{t("settings.mediaSettings.capabilitiesEmpty")}</p>
+        <Panel className="media-services-panel">
+          {capabilities.length === 0 ? <EmptyState icon={<Sparkle />} title={t("settings.mediaSettings.capabilitiesEmpty")} description={t("settings.mediaWorkspace.noCapabilitiesHint")} action={<Button type="button" onClick={() => setChooseConnection(true)}><Plus data-icon="inline-start" />{t("settings.mediaSettings.publishCapability")}</Button>} />
             : <div className="media-table-scroll" tabIndex={0} role="region" aria-label={t("settings.mediaSettings.capabilitiesTable")}>
               <Table className="media-settings-table media-capabilities-table" aria-label={t("settings.mediaSettings.publishedCapabilities")}><TableHeader><TableRow>
-                <TableHead scope="col">{t("settings.mediaSettings.capabilityConnection")}</TableHead><TableHead scope="col">{t("common.model")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.inputRange")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.price")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.status")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.operations")}</TableHead>
+                <TableHead scope="col">{t("settings.mediaWorkspace.capabilityColumn")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.serviceColumn")}</TableHead><TableHead scope="col">{t("common.model")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.kindColumn")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.inputRange")}</TableHead><TableHead scope="col" title={t("settings.mediaWorkspace.estimateOnly")}>{t("media.pricing.estimated")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.status")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.operations")}</TableHead>
               </TableRow></TableHeader><TableBody>{settings.data.connections.map((connection) => <ConnectionCapabilities key={connection.id}
-                connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)} query={catalogQuery} status={catalogStatus} />)}
-                {!settings.data.connections.some((connection) => connection.capabilities.some((capability) => capabilityMatches(connection, capability, catalogQuery, catalogStatus))) ? <TableRow><TableCell colSpan={6}><EmptyState title={t("settings.catalog.noResults")} description={t("settings.catalog.tryAnotherSearch")} /></TableCell></TableRow> : null}
+                connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)} query={catalogQuery} status={catalogStatus} kind={catalogKind} />)}
+                {visibleCount === 0 && selectedTab === "capabilities" ? <TableRow><TableCell colSpan={8}><EmptyState title={t("settings.catalog.noResults")} description={t("settings.catalog.tryAnotherSearch")} action={<Button variant="outline" type="button" onClick={resetFilters}>{t("settings.mediaWorkspace.resetFilters")}</Button>} /></TableCell></TableRow> : null}
                 </TableBody></Table>
             </div>}
         </Panel>
         </TabsContent>
         </Tabs>
-        <Notice title={t("settings.mediaSettings.configurationHint")}>
-          {t("settings.mediaSettings.defaultsHint")}</Notice>
+        <section className="media-setup-flow" aria-label={t("settings.mediaWorkspace.flowTitle")}>
+          <div><span className="media-flow-number">01</span><PlugsConnected aria-hidden /><span><strong>{t("settings.mediaWorkspace.connectStep")}</strong><small>{t("settings.mediaWorkspace.connectHint")}</small></span></div><ArrowRight aria-hidden />
+          <div><span className="media-flow-number">02</span><Sparkle aria-hidden /><span><strong>{t("settings.mediaWorkspace.publishStep")}</strong><small>{t("settings.mediaWorkspace.publishHint")}</small></span></div><ArrowRight aria-hidden />
+          <div><span className="media-flow-number">03</span><ImageSquare aria-hidden /><span><strong>{t("settings.mediaWorkspace.defaultStep")}</strong><small>{t("settings.mediaWorkspace.defaultHint")}</small></span></div>
+        </section>
         {chooseConnection ? <Dialog compact title={t("settings.catalog.chooseConnection")} description={t("settings.catalog.chooseConnectionHint")} onClose={() => setChooseConnection(false)} onSubmit={(event) => event.preventDefault()}>
           <div className="media-publish-choices">{settings.data.connections.filter((connection) => connection.enabled && connection.platform !== "LOCAL" && platformAdapters[connection.platform].length > 0).map((connection) => <Button className="media-publish-choice" variant="outline" type="button" key={connection.id} onClick={() => { setChooseConnection(false); setPublishingConnectionId(connection.id); }}><PlugsConnected aria-hidden /><span><strong>{connection.name}</strong><small>{connection.platform}</small></span><ArrowRight aria-hidden /></Button>)}</div>
           {!settings.data.connections.some((connection) => connection.enabled && connection.platform !== "LOCAL" && platformAdapters[connection.platform].length > 0) ? <EmptyState title={t("settings.catalog.noConnection")} action={<Button type="button" onClick={() => { setChooseConnection(false); setCreating(true); }}>{t("settings.mediaSettings.addConnection")}</Button>} /> : null}
