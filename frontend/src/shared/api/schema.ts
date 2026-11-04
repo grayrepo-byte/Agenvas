@@ -5675,14 +5675,18 @@ export interface components {
         };
         SetupRequest: {
             loginName: string;
+            /** @description UTF-8 编码不得超过 72 字节。 */
             password: string;
         };
         LoginRequest: {
             loginName: string;
+            /** @description BCrypt 账号的 UTF-8 编码超过 72 字节时按凭据错误拒绝，不截断后比对；已有其他受支持哈希仍完整校验。 */
             password: string;
         };
         ChangePasswordRequest: {
+            /** @description BCrypt 账号的 UTF-8 编码超过 72 字节时按当前密码错误拒绝，不截断后比对；已有其他受支持哈希仍完整校验。 */
             currentPassword: string;
+            /** @description UTF-8 编码不得超过 72 字节。 */
             newPassword: string;
         };
         /** @enum {string} */

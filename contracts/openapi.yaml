@@ -7761,21 +7761,21 @@ components:
           minLength: 3
           maxLength: 64
           pattern: "^[A-Za-z0-9._-]+$"
-        password: {type: string, minLength: 12, maxLength: 128}
+        password: {type: string, minLength: 12, maxLength: 128, description: UTF-8 编码不得超过 72 字节。}
     LoginRequest:
       type: object
       additionalProperties: false
       required: [loginName, password]
       properties:
         loginName: {type: string, minLength: 3, maxLength: 64}
-        password: {type: string, minLength: 1, maxLength: 128}
+        password: {type: string, minLength: 1, maxLength: 128, description: BCrypt 账号的 UTF-8 编码超过 72 字节时按凭据错误拒绝，不截断后比对；已有其他受支持哈希仍完整校验。}
     ChangePasswordRequest:
       type: object
       additionalProperties: false
       required: [currentPassword, newPassword]
       properties:
-        currentPassword: {type: string, minLength: 1, maxLength: 128}
-        newPassword: {type: string, minLength: 12, maxLength: 128}
+        currentPassword: {type: string, minLength: 1, maxLength: 128, description: BCrypt 账号的 UTF-8 编码超过 72 字节时按当前密码错误拒绝，不截断后比对；已有其他受支持哈希仍完整校验。}
+        newPassword: {type: string, minLength: 12, maxLength: 128, description: UTF-8 编码不得超过 72 字节。}
     McpTokenScope:
       type: string
       enum: [READ, CONTENT_WRITE, MEDIA_GENERATE]
