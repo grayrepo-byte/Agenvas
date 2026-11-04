@@ -54,6 +54,20 @@ function taskSummary(label: string, index = 0) {
 }
 
 describe("AgentRunConversation", () => {
+  it("shows the safe image moderation diagnosis in the persisted task trace", async () => {
+    mockConversation([task({ kind: "IMAGE_GENERATION", status: "FAILED", errorCode: "OPENAI_IMAGE_MODERATION_BLOCKED",
+      output: { providerFailure: { stage: "SUBMIT", category: "MODERATION", httpStatus: 400, upstreamCode: null, nodeId: null, fieldName: null,
+        moderation: { code: "moderation_blocked", stage: "output", categories: ["sexual"] } } } })]);
+    mountConversation("FAILED");
+    const detail = await screen.findByText(/moderation_blocked/);
+    expect(detail).toHaveTextContent("安全检查");
+    expect(detail).toHaveTextContent("生成结果安全检查");
+    expect(detail).toHaveTextContent("性内容（sexual）");
+    expect(detail).toHaveTextContent("sexual");
+    expect(detail).not.toHaveTextContent("RunningHub");
+    expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument();
+  });
+
   it("shows a local composition task and its committed summary without a media approval", async () => {
     mockConversation([
       task({ kind: "VIDEO_GENERATION", status: "FAILED", input: { videoComposition: { clips: [] } },

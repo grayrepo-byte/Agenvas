@@ -8413,6 +8413,11 @@ components:
         status: {$ref: "#/components/schemas/TaskStatus"}
         errorCode: {type: [string, "null"]}
         possibleExternalCost: {type: boolean}
+        providerFailure:
+          description: Bounded public diagnostic from the media task; older approval results may omit it.
+          oneOf:
+            - {$ref: "#/components/schemas/ProviderFailure"}
+            - {type: "null"}
         outputIndex: {type: integer, minimum: 0, maximum: 5, description: 对应冻结 outputs 的索引；旧结果可能未记录。}
         canvasItemId: {type: string, format: uuid, description: 该主结果的冻结目标；旧结果可能未记录。}
         storyboard:
@@ -8772,15 +8777,33 @@ components:
     ProviderFailure:
       type: object
       additionalProperties: false
-      description: Bounded provider diagnostic containing only a stage, safe classification, numeric status/code and validated node/field identifiers. Never includes upstream messages, bodies, credentials, media URLs or input values. Retryability of the underlying task remains controlled by its state; a diagnostic never authorizes a new generation.
+      description: Bounded provider diagnostic containing only a stage, safe classification, numeric status/code, validated node/field identifiers and optional public moderation labels. Never includes upstream messages, bodies, credentials, media URLs or input values. Retryability of the underlying task remains controlled by its state; a diagnostic never authorizes a new generation.
       required: [stage, category, httpStatus, upstreamCode, nodeId, fieldName]
       properties:
         stage: {type: string, enum: [DISCOVERY, UPLOAD, SUBMIT, POLL, DOWNLOAD]}
-        category: {type: string, enum: [AUTHENTICATION, BALANCE, PARAMETER, RATE_LIMIT, UPLOAD, GENERATION, DOWNLOAD_EXPIRED, UNAVAILABLE, PROTOCOL]}
+        category: {type: string, enum: [AUTHENTICATION, BALANCE, PARAMETER, RATE_LIMIT, UPLOAD, GENERATION, DOWNLOAD_EXPIRED, UNAVAILABLE, PROTOCOL, MODERATION]}
         httpStatus: {type: [integer, "null"], minimum: 100, maximum: 599}
         upstreamCode: {type: [integer, "null"], format: int64, minimum: 0, maximum: 999999999}
         nodeId: {type: [string, "null"], pattern: "^[0-9]{1,32}$"}
         fieldName: {type: [string, "null"], pattern: "^[A-Za-z_][A-Za-z0-9_.]{0,79}$"}
+        moderation:
+          description: Optional safe public moderation details. Historical tasks may omit this field.
+          oneOf:
+            - {$ref: "#/components/schemas/ProviderModeration"}
+            - {type: "null"}
+    ProviderModeration:
+      type: object
+      additionalProperties: false
+      description: Whitelisted public moderation labels for OpenAI image rejection; never contains free text, request IDs or internal classifier details. Unknown stages become unknown and unknown categories become other.
+      required: [code, stage, categories]
+      properties:
+        code: {type: string, enum: [moderation_blocked, content_policy_violation]}
+        stage: {type: string, enum: [input, output, unknown]}
+        categories:
+          type: array
+          maxItems: 5
+          uniqueItems: true
+          items: {type: string, enum: [harassment, self-harm, sexual, violence, other]}
     AgentModelRetry:
       type: object
       additionalProperties: false

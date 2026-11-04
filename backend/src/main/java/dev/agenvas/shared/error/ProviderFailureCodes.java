@@ -38,6 +38,10 @@ public final class ProviderFailureCodes {
     /** 图片中继上传或签名准备失败；付费生成请求尚未发送。 */
     public static final String MEDIA_RELAY_PREPARATION_FAILED = "MEDIA_RELAY_PREPARATION_FAILED";
 
+    /** Images API 明确拒绝输入或输出；仅保留白名单审核阶段与分类，不保留上游解释。 */
+    public static final String OPENAI_IMAGE_MODERATION_BLOCKED = "OPENAI_IMAGE_MODERATION_BLOCKED";
+    public static final String OPENAI_IMAGE_REJECTED = "OPENAI_IMAGE_REJECTED";
+
     public static final String MINIMAX_CREATE_REJECTED = "MINIMAX_CREATE_REJECTED";
     public static final String MINIMAX_CREATE_UNCERTAIN = "MINIMAX_CREATE_UNCERTAIN";
     public static final String MINIMAX_TASK_FAILED = "MINIMAX_TASK_FAILED";

@@ -1,8 +1,60 @@
 import { describe, expect, it } from "vitest";
-import { PROVIDER_FAILURE_CODES, providerFailureMessage, taskErrorDetail, taskErrorMessage } from "./taskErrorMessages";
+import { PROVIDER_FAILURE_CODES, providerFailureMessage, taskErrorDetail, taskErrorMessage, type ProviderFailureDiagnostic } from "./taskErrorMessages";
 import { getLocale, setLocale, SUPPORTED_LOCALES } from "../../shared/i18n";
 
 describe("taskErrorMessages", () => {
+  it("explains image safety blocks with the public code, category and moderation stage in every locale", () => {
+    const expected = {
+      en: { reason: "safety check", input: "Input safety check", output: "Generated output safety check", category: "sexual content" },
+      zh: { reason: "安全检查", input: "输入内容安全检查", output: "生成结果安全检查", category: "性内容" },
+      ru: { reason: "проверкой безопасности", input: "Проверка входных данных", output: "Проверка результата генерации", category: "сексуальное содержимое" },
+      ja: { reason: "安全性チェック", input: "入力の安全性チェック", output: "生成結果の安全性チェック", category: "性的な内容" },
+    };
+    const previous = getLocale();
+    try {
+      for (const locale of SUPPORTED_LOCALES) {
+        setLocale(locale);
+        for (const stage of ["input", "output"] as const) {
+          const diagnostic = { stage: "SUBMIT" as const, category: "MODERATION" as const, httpStatus: 400, upstreamCode: null, nodeId: null, fieldName: null,
+            moderation: { code: "moderation_blocked" as const, stage, categories: ["sexual" as const], message: "PRIVATE_UPSTREAM_MESSAGE" } };
+          const message = providerFailureMessage(diagnostic);
+          expect(message, `${locale}: ${stage}`).toContain(expected[locale].reason);
+          expect(message).toContain(expected[locale][stage]);
+          expect(message).toContain("moderation_blocked");
+          expect(message).toContain("sexual");
+          expect(message).toContain(expected[locale].category);
+          expect(message).not.toContain("PRIVATE_UPSTREAM_MESSAGE");
+          expect(message).not.toContain("RunningHub");
+          const detail = taskErrorDetail("OPENAI_IMAGE_MODERATION_BLOCKED", diagnostic);
+          expect(detail).toContain(expected[locale].reason);
+          expect(detail).toContain(expected[locale][stage]);
+          expect(detail).toContain("moderation_blocked");
+          expect(detail).toContain(expected[locale].category);
+          expect(detail).not.toContain("OPENAI_IMAGE_MODERATION_BLOCKED");
+        }
+      }
+    } finally { setLocale(previous); }
+  });
+
+  it("keeps legacy image rejections readable without inventing moderation details", () => {
+    expect(taskErrorDetail("OPENAI_IMAGE_REJECTED")).toBe(" · 上游拒绝了请求（参数或凭证）");
+    expect(taskErrorDetail("OPENAI_IMAGE_MODERATION_BLOCKED")).toContain("安全检查");
+    const diagnostic = { stage: "SUBMIT" as const, category: "MODERATION" as const, httpStatus: 400, upstreamCode: null, nodeId: null, fieldName: null,
+      moderation: { code: "content_policy_violation" as const, stage: "unknown" as const, categories: [] } };
+    expect(providerFailureMessage(diagnostic)).toContain("content_policy_violation");
+    expect(providerFailureMessage(diagnostic)).toContain("安全检查阶段未提供");
+    expect(providerFailureMessage(diagnostic)).not.toContain("安全类别");
+  });
+
+  it.each(["PRIVATE_UPSTREAM_STAGE", "toString"])("does not render unexpected moderation fields with stage %s", (stage) => {
+    const diagnostic = { stage: "SUBMIT", category: "MODERATION", httpStatus: 400, upstreamCode: null, nodeId: null, fieldName: null, moderation: {
+      code: "PRIVATE_UPSTREAM_CODE", stage, categories: ["PRIVATE_UPSTREAM_CATEGORY", "toString"],
+    } } as unknown as ProviderFailureDiagnostic;
+    const message = providerFailureMessage(diagnostic);
+    expect(message).toContain("安全检查");
+    expect(message).not.toContain("PRIVATE_UPSTREAM");
+  });
+
   it("explains RunningHub failures and safe node locations in every locale while retaining unknown submission semantics", () => {
     const previous = getLocale();
     try {

@@ -1160,6 +1160,23 @@ describe("MediaCanvasCard", () => {
     expect(await screen.findByText("SOME_UNREGISTERED_CODE")).toBeInTheDocument();
   });
 
+  it("shows the safe image moderation diagnosis on the failed media card", async () => {
+    server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
+      { id: "synthetic-moderated-task", status: "FAILED", errorCode: "OPENAI_IMAGE_MODERATION_BLOCKED", output: {
+        providerFailure: { stage: "SUBMIT", category: "MODERATION", httpStatus: 400, upstreamCode: null, nodeId: null, fieldName: null,
+          moderation: { code: "moderation_blocked", stage: "output", categories: ["sexual"], message: "PRIVATE_UPSTREAM_MESSAGE" } },
+      } },
+    ])));
+    showCard();
+    const detail = await screen.findByText(/moderation_blocked/);
+    expect(detail).toHaveTextContent("安全检查");
+    expect(detail).toHaveTextContent("生成结果安全检查");
+    expect(detail).toHaveTextContent("性内容（sexual）");
+    expect(detail).toHaveTextContent("sexual");
+    expect(detail).not.toHaveTextContent("RunningHub");
+    expect(document.body).not.toHaveTextContent("PRIVATE_UPSTREAM_MESSAGE");
+  });
+
   it("keeps the canceled task visible on the draft card", async () => {
     server.use(http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([
       { id: "task-1", status: "CANCELED", errorCode: null },

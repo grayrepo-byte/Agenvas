@@ -13,6 +13,7 @@ import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaCapabilityBinding;
 import dev.agenvas.provider.domain.ProviderFailure;
+import dev.agenvas.provider.domain.ProviderModeration;
 import dev.agenvas.provider.domain.ProviderResultManifest;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.run.application.AgentRunService;
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -78,12 +80,56 @@ class TaskProviderRecoveryTest {
         verify(events).append(eq(ownerId), eq(projectId), any());
     }
 
-    @Test void anOldEpochCannotOverwriteDiagnosticsAndDoesNotPreventUnknownRecovery() {
+    @ParameterizedTest
+    @ValueSource(strings = {MediaAdapterRegistry.RUNNINGHUB_IMAGE, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2})
+    void anOldEpochCannotOverwriteDiagnosticsAndDoesNotPreventUnknownRecovery(String adapterId) {
+        when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
+                UUID.randomUUID(), 1, UUID.randomUUID(), 1, adapterId, "synthetic-hash")));
         when(repository.findById(taskId)).thenReturn(Optional.of(task(9, null)));
-        assertThat(service.recordProviderFailure(task(8, null), WORKER, new ProviderFailure(
-                ProviderFailure.Stage.SUBMIT, ProviderFailure.Category.UNAVAILABLE, 503, null, null, null))).isFalse();
+        ProviderFailure failure = MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(adapterId) ? moderationFailure()
+                : new ProviderFailure(ProviderFailure.Stage.SUBMIT, ProviderFailure.Category.UNAVAILABLE,
+                        503, null, null, null);
+        assertThat(service.recordProviderFailure(task(8, null), WORKER, failure)).isFalse();
         verify(repository, never()).recordProviderFailure(any(), any(), any(), any());
         verify(events, never()).append(any(), any(), any());
+    }
+
+    @Test void openAiModerationIsPersistedAndPublishedWithoutChangingTaskState() {
+        when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
+                UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2, "synthetic-hash")));
+        Task current = task(8, null);
+        when(repository.findById(taskId)).thenReturn(Optional.of(current));
+        when(repository.recordProviderFailure(eq(current), eq(WORKER), any(), eq(NOW))).thenReturn(true);
+        ProviderFailure failure = moderationFailure();
+
+        assertThat(service.recordProviderFailure(current, WORKER, failure)).isTrue();
+
+        ArgumentCaptor<JsonNode> output = ArgumentCaptor.forClass(JsonNode.class);
+        verify(repository).recordProviderFailure(eq(current), eq(WORKER), output.capture(), eq(NOW));
+        assertThat(output.getValue().path("providerFailure")).isEqualTo(mapper.valueToTree(failure));
+        verify(events).append(eq(ownerId), eq(projectId), any());
+        verify(repository, never()).finish(any(), any(), anyLong(), any(), any(), any(), any());
+    }
+
+    @Test void anUnsupportedAdapterOrUnrecognizedOpenAiFailureCannotWriteDiagnostics() {
+        ProviderFailure ordinary = new ProviderFailure(ProviderFailure.Stage.SUBMIT,
+                ProviderFailure.Category.PARAMETER, 400, null, null, null);
+        ProviderFailure missingDetails = new ProviderFailure(ProviderFailure.Stage.SUBMIT,
+                ProviderFailure.Category.MODERATION, 400, null, null, null);
+        when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
+                UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.OPENAI_GPT_IMAGE_2, "synthetic-hash")));
+        assertThat(service.recordProviderFailure(task(8, null), WORKER, ordinary)).isFalse();
+        assertThat(service.recordProviderFailure(task(8, null), WORKER, missingDetails)).isFalse();
+        when(repository.mediaBinding(taskId)).thenReturn(Optional.of(new MediaCapabilityBinding(
+                UUID.randomUUID(), 1, UUID.randomUUID(), 1, MediaAdapterRegistry.GOOGLE_NANO_BANANA_2, "synthetic-hash")));
+        assertThat(service.recordProviderFailure(task(8, null), WORKER, moderationFailure())).isFalse();
+        verify(repository, never()).recordProviderFailure(any(), any(), any(), any());
+        verify(events, never()).append(any(), any(), any());
+    }
+
+    private ProviderFailure moderationFailure() {
+        return new ProviderFailure(ProviderFailure.Stage.SUBMIT, ProviderFailure.Category.MODERATION,
+                400, null, null, null, new ProviderModeration("moderation_blocked", "output", List.of("sexual")));
     }
 
     @Test void onlyMatchingResultUrlsMayBeRefreshed() {

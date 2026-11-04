@@ -3043,3 +3043,11 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 
 - [x] 发布 CI 两次复现预设列表完整 Tab 遍历在 5 秒上限内超时；同一提交的 main/PR 完整 CI 和本地定向复验曾通过。将正向与反向遍历拆为独立参数化用例，分别完整检查 112 个预设的可访问名称、焦点、挂载数量上限、列表出口与同一列表的重新进入，保留原超时与交互行为。
 - [x] `pnpm exec vitest run src/features/canvas/VideoPromptPresetList.test.tsx --maxWorkers=1` 连续三轮共 45 项通过，单方向最慢约 1.29 秒；定向 ESLint 和差异空白检查通过。只调整测试，保留全部方向与选项覆盖。
+
+## OpenAI 图片审核拒绝诊断（2026-11-03）
+
+- [x] 复现安全审核响应被统一改写为 `OPENAI_IMAGE_REJECTED`；生成、文件编辑和 URL 编辑现在识别公开审核码，并通过既有任务诊断保存审核阶段与分类。放行 OpenAI 有界审核诊断的保存入口，保持租约 fencing 与既有 RunningHub 行为；确定 4xx（429 除外）的正文解析失败仍为拒绝，429/5xx 和受理不明保持 UNKNOWN，不自动重新生成。
+- [x] OpenAPI、生成 TypeScript、四语言提示、草稿、媒体卡片、Agent 执行轨迹与审批结果统一展示诊断，例如 `moderation_blocked`、输出检查与性内容（`sexual`）。审批投影重新校验领域对象，只保留白名单字段；旧结果与畸形诊断保留通用原因。没有数据库迁移。
+- [x] 后端 146 项定向单测通过：`OpenAiImage2ClientTest`、`OpenAiImage2AdapterTest`、`ProviderModerationTest`、`ProviderFailureTest`、`RunningHubClientTest`、`RunningHubAdapterTest`、`MediaExecutionWorkerTest`、`TaskProviderRecoveryTest`、`AgentMediaResultProjectionTest`、`AgentMediaOutcomeServiceTest`。新增用例先复现客户端阶段解析、诊断保存入口及审批投影丢信息，再验证修复；包含恶意/畸形内容、历史诊断、无自动重提和旧租约隔离。
+- [x] `./mvnw -Pci-integration -Dit.test=OpenAiImage2PostgresIT verify`：1 项通过，使用真实 PostgreSQL 17.11 和本地假 HTTP；确认审核拒绝进入 FAILED，分类持久化后可经认证任务 API 读取，字段与枚举符合 OpenAPI，重新调度不再提交生成。前端 154 项定向 Vitest、6 项 i18n 脚本测试、typecheck、相关 ESLint、i18n 检查及差异空白检查通过。
+- [ ] 全量测试、真实 OpenAI 生成、浏览器端到端和部署：未运行；本次假 HTTP 与合成响应不证明真实 Provider 已重新接通，历史失败记录不会补回此前丢弃的上游详情。

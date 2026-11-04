@@ -213,7 +213,7 @@ public class MediaExecutionWorker {
     private String runningHubPermanentFailure(RuntimeException failure) {
         if (!(failure instanceof RunningHubClient.Failure runningHub)) return null;
         return switch (runningHub.diagnostic().category()) {
-            case AUTHENTICATION, BALANCE, PARAMETER, GENERATION, DOWNLOAD_EXPIRED, PROTOCOL -> runningHub.code();
+            case AUTHENTICATION, BALANCE, PARAMETER, GENERATION, DOWNLOAD_EXPIRED, PROTOCOL, MODERATION -> runningHub.code();
             case RATE_LIMIT, UPLOAD, UNAVAILABLE -> null;
         };
     }

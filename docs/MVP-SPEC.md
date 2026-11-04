@@ -1429,6 +1429,8 @@ Mock 与 Real 使用相同的应用服务、任务状态机和事件协议，不
 
 OpenAI 图片连接可由管理员配置自定义 HTTPS API Base URL，留空使用官方 `/v1`；地址属于连接版本，已批准任务固定历史版本。服务端拒绝私网 DNS 目标与重定向。自定义公开网关的真实生成尚未运行。
 
+OpenAI 图片生成、文件编辑与 URL 编辑返回确定的安全审核拒绝时，任务使用 `OPENAI_IMAGE_MODERATION_BLOCKED`，通过既有 `Task.output.providerFailure.moderation` 返回公开错误码、审核阶段与分类。仅接受 `moderation_blocked` / `content_policy_violation`；阶段为 `input` / `output` / `unknown`，分类为 `harassment` / `self-harm` / `sexual` / `violence` / `other`，去重且最多五项。缺失详情保留明确的审核拒绝，未知阶段与分类归入安全兜底值；原始错误正文、请求 ID、提示词和素材 URL 不进入该诊断。前端草稿、媒体卡片及 Agent 对话显示本地化原因并保留分类标识（如 `sexual`），旧任务继续显示原通用原因。已确认 4xx（429 除外）的诊断解析失败仍为确定拒绝；429、5xx 和受理不明继续沿用 UNKNOWN，任何诊断都不触发自动重新生成。协议依据：[OpenAI 图片生成故障诊断](https://developers.openai.com/api/docs/guides/image-generation)。
+
 添加与编辑媒体连接时，地址标签旁提供帮助图标，支持悬停、键盘聚焦与触屏点击查看填写说明。OpenAI 自定义地址须包含服务商所需的版本前缀，不自动补 `/v1`；Nano Banana 裸主机默认 `/v1`，`/v1beta` 须显式填写。ComfyUI 提示直接填写完整本地或远程地址，保留代理路径及路径凭据，无需额外 `/v1` 或 `/prompt`，RunningHub 提示只填根地址，方舟、火山语音与 AutoDL 提示固定地址无需追加后缀；MiniMax 使用中国站/国际站官方根地址选项。说明不改写用户输入，不自动探测或发起生成，既有 Nano Banana 详细协议说明继续保留。
 
 后续固定渠道增加 Google Nano Banana 2 图片生成与有序多参考生成，使用 Gemini `generateContent` 和默认模型 `gemini-3.1-flash-image`；当前产品上限为 14 张，并复用上述版本、任务与 UNKNOWN 边界。Google 真实调用状态单独记录，详见 [ADR 0004](adr/0004-google-nano-banana-2-fixed-adapter.md)。

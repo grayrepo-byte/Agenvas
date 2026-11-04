@@ -6341,6 +6341,8 @@ export interface components {
             status: components["schemas"]["TaskStatus"];
             errorCode?: string | null;
             possibleExternalCost?: boolean;
+            /** @description Bounded public diagnostic from the media task; older approval results may omit it. */
+            providerFailure?: components["schemas"]["ProviderFailure"] | null;
             /** @description 对应冻结 outputs 的索引；旧结果可能未记录。 */
             outputIndex?: number;
             /**
@@ -6667,17 +6669,27 @@ export interface components {
             /** Format: date-time */
             completedAt?: string | null;
         };
-        /** @description Bounded provider diagnostic containing only a stage, safe classification, numeric status/code and validated node/field identifiers. Never includes upstream messages, bodies, credentials, media URLs or input values. Retryability of the underlying task remains controlled by its state; a diagnostic never authorizes a new generation. */
+        /** @description Bounded provider diagnostic containing only a stage, safe classification, numeric status/code, validated node/field identifiers and optional public moderation labels. Never includes upstream messages, bodies, credentials, media URLs or input values. Retryability of the underlying task remains controlled by its state; a diagnostic never authorizes a new generation. */
         ProviderFailure: {
             /** @enum {string} */
             stage: "DISCOVERY" | "UPLOAD" | "SUBMIT" | "POLL" | "DOWNLOAD";
             /** @enum {string} */
-            category: "AUTHENTICATION" | "BALANCE" | "PARAMETER" | "RATE_LIMIT" | "UPLOAD" | "GENERATION" | "DOWNLOAD_EXPIRED" | "UNAVAILABLE" | "PROTOCOL";
+            category: "AUTHENTICATION" | "BALANCE" | "PARAMETER" | "RATE_LIMIT" | "UPLOAD" | "GENERATION" | "DOWNLOAD_EXPIRED" | "UNAVAILABLE" | "PROTOCOL" | "MODERATION";
             httpStatus: number | null;
             /** Format: int64 */
             upstreamCode: number | null;
             nodeId: string | null;
             fieldName: string | null;
+            /** @description Optional safe public moderation details. Historical tasks may omit this field. */
+            moderation?: components["schemas"]["ProviderModeration"] | null;
+        };
+        /** @description Whitelisted public moderation labels for OpenAI image rejection; never contains free text, request IDs or internal classifier details. Unknown stages become unknown and unknown categories become other. */
+        ProviderModeration: {
+            /** @enum {string} */
+            code: "moderation_blocked" | "content_policy_violation";
+            /** @enum {string} */
+            stage: "input" | "output" | "unknown";
+            categories: ("harassment" | "self-harm" | "sexual" | "violence" | "other")[];
         };
         /** @description 同一固定模型请求的持久退避信息；默认首次失败起 24 小时内最多重试 288 次，可由部署配置调整。首次失败固定次数与截止时间，重启不重置。成功保留历史投影，终态不会继续重试。 */
         AgentModelRetry: {

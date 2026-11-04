@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import dev.agenvas.provider.domain.MediaPayload;
+import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -17,6 +19,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import tools.jackson.databind.ObjectMapper;
 
 /** Local fake API checks; no OpenAI request or paid generation occurs. */
@@ -162,6 +166,182 @@ class OpenAiImage2ClientTest {
         assertThatThrownBy(() -> client.generate("key", OpenAiImage2Client.DEFAULT_MODEL, "ridge", "low", "1024x1024", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1"))
                 .isInstanceOf(OpenAiImage2Client.Uncertain.class);
         assertThat(requests).hasValue(2);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"generation", "multipart-edit", "url-edit"})
+    void moderationRejectionsKeepOnlySafeOutputClassificationOnEverySubmissionPath(String operation) {
+        AtomicInteger requests = new AtomicInteger();
+        String privateMessage = "synthetic-private-message synthetic-private-key synthetic-private-prompt "
+                + "https://example.invalid/private.png?token=synthetic-private-token";
+        server.createContext("/v1/images/", exchange -> {
+            requests.incrementAndGet();
+            respond(exchange, 400, """
+                    {"error":{"code":"moderation_blocked","message":"%s",
+                      "request_id":"synthetic-private-request-id",
+                      "moderation_details":{"moderation_stage":"output","categories":["sexual"],
+                        "reason":"synthetic-private-reason","input":"synthetic-private-input"}}}
+                    """.formatted(privateMessage));
+        });
+        var logger = (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(OpenAiImage2Client.class);
+        var captured = new ch.qos.logback.core.read.ListAppender<ch.qos.logback.classic.spi.ILoggingEvent>();
+        captured.start();
+        logger.addAppender(captured);
+        try {
+            assertThatThrownBy(() -> rejectedSubmission(operation))
+                    .isInstanceOfSatisfying(OpenAiImage2Client.Rejected.class, rejected -> {
+                        ProviderFailure failure = rejected.providerFailure();
+                        assertThat(failure).isNotNull();
+                        assertThat(failure.code()).isEqualTo("OPENAI_IMAGE_MODERATION_BLOCKED");
+                        assertThat(failure.stage()).isEqualTo(ProviderFailure.Stage.SUBMIT);
+                        assertThat(failure.category()).isEqualTo(ProviderFailure.Category.MODERATION);
+                        assertThat(failure.httpStatus()).isEqualTo(400);
+                        assertThat(failure.moderation().code()).isEqualTo("moderation_blocked");
+                        assertThat(failure.moderation().stage()).isEqualTo("output");
+                        assertThat(failure.moderation().categories()).containsExactly("sexual");
+                        assertThat(mapper.writeValueAsString(failure)).doesNotContain("synthetic-private", "https://",
+                                "request_id", "reason", "message", "input");
+                        assertThat(rejected.getMessage()).doesNotContain("synthetic-private", "https://");
+                        assertThat(rejected.getCause()).isNull();
+                    });
+            assertThat(captured.list).isNotEmpty().allSatisfy(event -> {
+                assertThat(event.getFormattedMessage()).doesNotContain("synthetic-private", "https://",
+                        "127.0.0.1", "sexual");
+                assertThat(event.getFormattedMessage()).contains("OPENAI_IMAGE_MODERATION_BLOCKED");
+                assertThat(event.getThrowableProxy()).isNull();
+            });
+        } finally {
+            logger.detachAppender(captured);
+            captured.stop();
+        }
+        assertThat(requests).hasValue(1);
+    }
+
+    @Test
+    void inputModerationRetainsMultipleWhitelistedCategoriesWithoutDuplicates() {
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 422, """
+                {"error":{"code":"moderation_blocked","moderation_details":{"moderation_stage":"input",
+                  "categories":["harassment","violence","sexual","self-harm","harassment","other","violence"]}}}
+                """));
+
+        assertThatThrownBy(() -> rejectedSubmission("generation"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Rejected.class, rejected -> {
+                    assertThat(rejected.providerFailure().httpStatus()).isEqualTo(422);
+                    assertThat(rejected.providerFailure().moderation().stage()).isEqualTo("input");
+                    assertThat(rejected.providerFailure().moderation().categories())
+                            .containsExactly("harassment", "violence", "sexual", "self-harm", "other");
+                });
+    }
+
+    @Test
+    void legacyContentPolicyCodeWithoutDetailsStillHasAStableModerationFailure() {
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 403,
+                "{\"error\":{\"code\":\"content_policy_violation\",\"message\":\"synthetic-private-message\"}}"));
+
+        assertThatThrownBy(() -> rejectedSubmission("generation"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Rejected.class, rejected -> {
+                    assertThat(rejected.providerFailure().code()).isEqualTo("OPENAI_IMAGE_MODERATION_BLOCKED");
+                    assertThat(rejected.providerFailure().httpStatus()).isEqualTo(403);
+                    assertThat(rejected.providerFailure().moderation().code()).isEqualTo("content_policy_violation");
+                    assertThat(rejected.providerFailure().moderation().stage()).isEqualTo("unknown");
+                    assertThat(rejected.providerFailure().moderation().categories()).isEmpty();
+                });
+    }
+
+    @Test
+    void untrustedModerationStageAndCategoriesAreMappedToSafeValues() {
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 400, """
+                {"error":{"code":"moderation_blocked","moderation_details":{
+                  "moderation_stage":"https://example.invalid/synthetic-private-stage?key=synthetic-private-key",
+                  "categories":["sexual","synthetic-private-category",null,42,{},["violence"],"sexual"]}}}
+                """));
+
+        assertThatThrownBy(() -> rejectedSubmission("generation"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Rejected.class, rejected -> {
+                    var moderation = rejected.providerFailure().moderation();
+                    assertThat(moderation.stage()).isEqualTo("unknown");
+                    assertThat(moderation.categories()).containsExactly("sexual", "other");
+                    assertThat(mapper.writeValueAsString(moderation))
+                            .doesNotContain("synthetic-private", "https://", "violence");
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "[]", "{\"moderation_stage\":true,\"categories\":\"synthetic-private-category\"}"})
+    void malformedModerationDetailsCannotHideAnExplicitModerationRejection(String details) {
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 400,
+                "{\"error\":{\"code\":\"moderation_blocked\",\"moderation_details\":" + details + "}}"));
+
+        assertThatThrownBy(() -> rejectedSubmission("generation"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Rejected.class, rejected -> {
+                    assertThat(rejected.providerFailure().moderation().stage()).isEqualTo("unknown");
+                    assertThat(rejected.providerFailure().moderation().categories()).isEmpty();
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"not-json synthetic-private-message", "[]", "null", "{}",
+            "{\"error\":\"moderation_blocked\"}", "{\"error\":{\"code\":42}}",
+            "{\"code\":\"moderation_blocked\"}",
+            "{\"error\":{\"code\":\"synthetic-private-code\",\"message\":\"moderation_blocked\"}}",
+            "{\"error\":{\"message\":\"content_policy_violation\"}}"})
+    void malformedAndUnknown4xxBodiesRemainOrdinaryRejectionsWithoutTrustingProse(String body) {
+        AtomicInteger requests = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> {
+            requests.incrementAndGet();
+            respond(exchange, 400, body);
+        });
+
+        assertThatThrownBy(() -> rejectedSubmission("generation"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Rejected.class, rejected -> {
+                    assertThat(rejected.providerFailure()).isNull();
+                    assertThat(rejected.getMessage()).isEqualTo("OpenAI image request rejected: HTTP 400");
+                    assertThat(rejected.getCause()).isNull();
+                });
+        assertThat(requests).hasValue(1);
+    }
+
+    @Test
+    void definitive4xxWithoutABodyRemainsAnOrdinaryRejection() {
+        server.createContext("/v1/images/generations", exchange -> {
+            exchange.sendResponseHeaders(408, -1);
+            exchange.close();
+        });
+
+        assertThatThrownBy(() -> rejectedSubmission("generation"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Rejected.class, rejected -> {
+                    assertThat(rejected.providerFailure()).isNull();
+                    assertThat(rejected.getMessage()).isEqualTo("OpenAI image request rejected: HTTP 408");
+                });
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {429, 500, 503})
+    void ambiguousHttpStatusesRemainUnknownEvenWhenTheBodyClaimsModerationAndAreNeverResubmitted(int status) {
+        AtomicInteger requests = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> {
+            requests.incrementAndGet();
+            respond(exchange, status, "{\"error\":{\"code\":\"moderation_blocked\"}}");
+        });
+
+        assertThatThrownBy(() -> rejectedSubmission("generation"))
+                .isInstanceOfSatisfying(OpenAiImage2Client.Uncertain.class,
+                        failure -> assertThat(failure.reasonCode()).isEqualTo("PROVIDER_SUBMISSION_UNKNOWN"));
+        assertThat(requests).hasValue(1);
+    }
+
+    private MediaPayload rejectedSubmission(String operation) {
+        String base = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        return switch (operation) {
+            case "generation" -> client.generate("synthetic-private-key", OpenAiImage2Client.DEFAULT_MODEL,
+                    "synthetic-private-prompt", "medium", "1024x1024", base);
+            case "multipart-edit" -> client.edit("synthetic-private-key", OpenAiImage2Client.DEFAULT_MODEL,
+                    "synthetic-private-prompt", "medium", "1024x1024", List.of(new byte[] {1}), base);
+            case "url-edit" -> client.editUrls("synthetic-private-key", OpenAiImage2Client.DEFAULT_MODEL,
+                    "synthetic-private-prompt", "medium", "1024x1024",
+                    List.of("https://example.invalid/synthetic-private-input.png"), null, false, base);
+            default -> throw new IllegalArgumentException("Unknown test operation");
+        };
     }
 
     @Test

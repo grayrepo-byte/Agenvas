@@ -611,8 +611,13 @@ public class TaskService {
     public boolean recordProviderFailure(Task lease, String workerId, ProviderFailure failure) {
         if (failure == null) return false;
         String worker = validateWorkerId(workerId);
+        // Only adapters with a bounded diagnostic protocol may publish details. OpenAI currently
+        // exposes recognized moderation failures; ordinary upstream error bodies remain private.
         if (tasks.mediaBinding(lease.id()).filter(binding ->
-                MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())).isEmpty()) return false;
+                MediaAdapterRegistry.RUNNINGHUB_ADAPTERS.contains(binding.adapterId())
+                || (MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
+                    && failure.category() == ProviderFailure.Category.MODERATION
+                    && failure.moderation() != null)).isEmpty()) return false;
         UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
         return events.recordChange(ownerId, lease.projectId(), () -> {
             Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
