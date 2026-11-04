@@ -106,14 +106,14 @@ class SequentialAgentImagesPostgresIT {
                     version.artifact().id(), BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"), new BigDecimal("240"), 2, null, false)));
         }
         var run = runs.create(owner.userId(), project.id(), agent.id(), "Observe each image before reading the next", "sequential-fixture").run();
-        for (int index = 0; index < 12; index++) assertThat(worker.runOnce("sequential-worker")).isEqualTo(1);
+        for (int index = 0; index < 13; index++) assertThat(worker.runOnce("sequential-worker")).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(gateway.calls).hasValue(12);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id").param("id", run.id())
-                .query(Long.class).single()).isEqualTo(9);
+                .query(Long.class).single()).isEqualTo(10);
         assertThat(jdbc.sql("select count(*) from artifact where project_id = :id").param("id", project.id())
                 .query(Long.class).single()).isEqualTo(9);
-        var saved = mapper.readTree(jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 11")
+        var saved = mapper.readTree(jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 12")
                 .param("id", run.id()).query(String.class).single());
         var restored = codec.requestMessages(saved);
         assertThat(restored.stream().filter(message -> message.getMetadata().containsKey(AgentImageInputService.METADATA_KEY)))
@@ -124,7 +124,7 @@ class SequentialAgentImagesPostgresIT {
         assertThat(dispatched.stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
                 .flatMap(message -> message.getMedia().stream()).toList()).singleElement()
                 .satisfies(media -> assertThat(media.getDataAsByteArray()).isEqualTo(gateway.previews.getLast()));
-        assertThat(codec.request(restored, new dev.agenvas.llm.application.ToolRegistry().modelDefinitions(run.policySnapshot())))
+        assertThat(codec.request(restored, codec.requestTools(saved, dev.agenvas.llm.application.RunToolPolicy.allowed(run.policySnapshot()))))
                 .isEqualTo(saved);
     }
 
@@ -139,6 +139,11 @@ class SequentialAgentImagesPostgresIT {
         @Override public int configVersion() { return 1; }
         @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
         @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
+            if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
+                var load = AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(
+                        "load-tools", "function", "load_toolset", "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}"))).build();
+                return new Exchange(1, new ChatResponse(List.of(new Generation(load))));
+            }
             int index = calls.getAndIncrement();
             var pixels = messages.stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
                     .flatMap(message -> message.getMedia().stream()).toList();

@@ -203,7 +203,14 @@ public class AgentTurnWorker {
         List<Message> messages = lease.input().has("repairFromStep") ? repairContext.assemble(ownerId, lease)
                 : stepIndex == 0 ? initialContext.assemble(ownerId, lease.projectId(), lease.runId())
                 : conversation.afterToolRound(ownerId, lease.projectId(), lease.runId(), stepIndex - 1);
-        var definitions = registry.modelDefinitions(run.policySnapshot());
+        boolean repairing = lease.input().has("repairFromStep");
+        // Repairs keep the rejected request's exact exposure; a rejected load batch cannot activate tools.
+        var definitions = repairing ? codec.requestTools(java.util.Objects.requireNonNull(previous).request(),
+                RunToolPolicy.allowed(run.policySnapshot()))
+                : previous == null ? registry.initialDefinitions(run.policySnapshot())
+                : registry.continuationDefinitions(run.policySnapshot(), previous.request(), messages, codec);
+        if (!repairing) messages = InitialModelContextService.forTools(run.policySnapshot(), messages,
+                previous == null ? List.of() : codec.requestTools(previous.request(), RunToolPolicy.allowed(run.policySnapshot())), definitions);
         var selected = new ChatGateway.ConfigIdentity(run.policySnapshot().path("modelConfigSource").asText(),
                 run.policySnapshot().path("modelConfigVersion").asInt());
         // A repair belongs to the rejected request, including its frozen output reserve.

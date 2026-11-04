@@ -3,6 +3,7 @@ import { t, translate, type MessageKey } from "../../shared/i18n";
 
 /** Only tool-specific, exact server-generated summaries are presentation; all other text stays literal. */
 const GENERATED_SUMMARIES: Readonly<Record<string, readonly MessageKey[]>> = {
+  load_toolset: ["agent.action.loadTools"],
   read_project_summary: ["agent.action.readProject"],
   read_skill: ["agent.action.readSkill"],
   read_skill_asset: ["agent.action.readSkillAsset"],

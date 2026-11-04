@@ -130,6 +130,7 @@ class StoryboardAgentToolsPostgresIT {
                 new SkillRunService.Selection(SkillRunService.SelectionMode.NONE, List.of())).run();
         assertThat(initial.assemble(owner.userId(), project.id(), run.id()).toString()).doesNotContain(SOURCE_TEXT);
         gateway.reset(source.version());
+        assertThat(worker.runOnce("synthetic-director-board-worker")).isEqualTo(1); // Explicit tool discovery.
         for (int turn = 0; turn < 4; turn++) assertThat(worker.runOnce("synthetic-director-board-worker")).isEqualTo(1);
         Storyboard appended = boards.get(owner.userId(), project.id());
         assertThat(appended.version()).isEqualTo(2);
@@ -189,12 +190,12 @@ class StoryboardAgentToolsPostgresIT {
         assertThat(boards.listRevisions(owner.userId(), project.id())).hasSize(4);
         long eventCount = boardEvents();
         var trusted = new TrustedToolContext(owner.userId(), project.id(), run.id());
-        var replay = executor.execute(trusted, 6, "board-call-7");
-        assertThat(executor.execute(trusted, 6, "board-call-7")).isEqualTo(replay);
+        var replay = executor.execute(trusted, 7, "board-call-7");
+        assertThat(executor.execute(trusted, 7, "board-call-7")).isEqualTo(replay);
         assertThat(replay.at("/data/shots/0/id").asText()).isEqualTo(revised.shots().get(2).id().toString());
         assertThat(boards.listRevisions(owner.userId(), project.id())).hasSize(4);
         assertThat(boardEvents()).isEqualTo(eventCount);
-        assertThat(toolCount(run.id())).isEqualTo(7);
+        assertThat(toolCount(run.id())).isEqualTo(8);
         assertNoMediaSubmission();
     }
 
@@ -403,6 +404,9 @@ class StoryboardAgentToolsPostgresIT {
         @Override public int configVersion() { return 1; }
         @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
         @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> toolContext) {
+            if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
+                return tool(0, "load_toolset", (ObjectNode) mapper.readTree("{\"toolsets\":[\"CANVAS\",\"STORYBOARD\",\"MEDIA\"]}"));
+            }
             assertThat(tools).extracting(tool -> tool.getToolDefinition().name())
                     .contains("read_canvas", "read_artifacts", "read_storyboard", "write_storyboard_shots", "propose_media_generation");
             int turn = calls.incrementAndGet();

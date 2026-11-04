@@ -306,13 +306,15 @@ describe("AgentRunConversation", () => {
     expect(screen.getByRole("region", { name: "任务对话" })).not.toHaveTextContent("PRIVATE_TOOL_RESULT");
   });
 
-  it("names storyboard tool actions without exposing their saved shot payloads", async () => {
+  it("names preparation and storyboard actions without exposing their saved payloads", async () => {
     mockConversation([], [
+      action({ id: "load-tools", toolName: "load_toolset", summary: "已准备所需能力" }),
       action({ id: "read-board", toolName: "read_storyboard", summary: "已读取镜头目录" }),
       action({ id: "write-board", stepIndex: 1, toolName: "write_storyboard_shots", summary: "已保存第 3 镜的台词" }),
     ]);
     mountConversation();
     expect(await screen.findByText("已保存第 3 镜的台词")).toBeInTheDocument();
+    expect(taskSummary("已准备所需能力").getByText("准备所需能力")).toBeInTheDocument();
     expect(taskSummary("已读取镜头目录").getByText("读取分镜制作台")).toBeInTheDocument();
     expect(taskSummary("已保存第 3 镜的台词").getByText("写入分镜镜头")).toBeInTheDocument();
     expect(taskSummary("已保存第 3 镜的台词").getByText("已完成")).toBeInTheDocument();

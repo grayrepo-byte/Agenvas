@@ -192,6 +192,13 @@ public class ToolExecutionService {
         if (!RunToolPolicy.allowed(run.policySnapshot()).contains(toolName)) {
             throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
         }
+        if (AgentToolset.onDemand(run.policySnapshot())
+                && (AgentContextService.isCompaction(turn.request())
+                || java.util.stream.StreamSupport.stream(turn.request().path("tools").spliterator(), false)
+                        .noneMatch(tool -> toolName.equals(tool.path("name").asText())))) {
+            // A load in this same atomic batch is insufficient; only the saved request grants exposure.
+            throw invalid(ApiMessage.of("api.tool-execution-service.tool-is-not-allowlisted-for-this-runtime"));
+        }
         UUID operationId = UUID.randomUUID();
         if (!ledger.insertExecuting(operationId, context.projectId(), context.runId(),
                 stepIndex, toolCallId, toolName, argumentHash, clock.instant())) {
@@ -200,6 +207,7 @@ public class ToolExecutionService {
         JsonNode result;
         try {
             result = switch (toolName) {
+            case AgentToolset.LOADER -> AgentToolset.load(run.policySnapshot(), operationId, arguments, mapper);
             case "read_canvas" -> canvasTools.readCanvas(context, run, operationId, arguments);
             case "read_storyboard" -> storyboards.readStoryboard(context, run, operationId, arguments);
             case "write_storyboard_shots" -> storyboards.writeShots(context, run, operationId, arguments);

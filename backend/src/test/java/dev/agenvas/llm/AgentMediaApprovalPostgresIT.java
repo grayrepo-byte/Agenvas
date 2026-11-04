@@ -32,6 +32,7 @@ import dev.agenvas.llm.application.AgentMediaApprovalService.ApprovalView;
 import dev.agenvas.llm.application.AgentMediaOutcomeService;
 import dev.agenvas.llm.application.AgentTurnWorker;
 import dev.agenvas.llm.application.ChatGateway;
+import dev.agenvas.llm.application.LlmProtocolCodec;
 import dev.agenvas.llm.domain.AgentMediaApproval;
 import dev.agenvas.project.application.ProjectService;
 import dev.agenvas.project.domain.Project;
@@ -57,6 +58,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -163,6 +165,7 @@ class AgentMediaApprovalPostgresIT {
     @Autowired private FakeGateway gateway;
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
+    @Autowired private LlmProtocolCodec codec;
     @Autowired private WebApplicationContext context;
     private AdminPrincipal owner;
     private MockMvc mvc;
@@ -332,6 +335,27 @@ class AgentMediaApprovalPostgresIT {
         finish(scenario, "SUCCEEDED");
         assertThat(gateway.plan(scenario.run().id()).reply.at("/mediaApproval/tasks"))
                 .allSatisfy(task -> assertThat(task.path("artifactVersionId").asText()).isNotBlank());
+    }
+
+    @Test
+    void onDemandLoadCommittedAlongsideApprovalSurvivesWaitingAndExtendsTheResumedRequest() throws Exception {
+        Scenario scenario = propose(outputs("IMAGE"), true);
+        assertThat(turnCount(scenario)).isEqualTo(2);
+        assertThat(mediaTasks(scenario)).isEmpty();
+        decide(scenario, "APPROVE", "synthetic-on-demand-approve");
+        assertThat(mediaWorker.submitOnce(MEDIA_WORKER)).isEqualTo(1);
+        replayOutcome(scenario, 3);
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        assertThat(currentRun(scenario).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertThat(turnCount(scenario)).isEqualTo(3);
+        JsonNode resumed = mapper.readTree(jdbc.sql("select request_json::text from llm_turn where run_id=:run and step_index=2")
+                .param("run", scenario.run().id()).query(String.class).single());
+        assertThat(resumed.path("tools")).extracting(tool -> tool.path("name").asText())
+                .contains("load_toolset", "propose_media_generation", "compose_video", "extract_audio");
+        assertThat(codec.requestMessages(resumed).getFirst().getText()).contains("bounded speech speedup");
+        assertThat(mediaTasks(scenario)).hasSize(1).allSatisfy(task -> assertThat(task.status()).isEqualTo(Task.Status.SUCCEEDED));
+        assertThat(gateway.plan(scenario.run().id()).reply.at("/mediaApproval/tasks/0/artifactVersionId").asText()).isNotBlank();
+        assertThat(modelWorker.runOnce(MODEL_WORKER)).isZero();
     }
 
     @Test
@@ -1009,8 +1033,8 @@ class AgentMediaApprovalPostgresIT {
         var before = canvas.list(owner.userId(), seeded.project().id()).getFirst().item();
         UUID previous = before.selectedVersionId();
         var draft = drafts.get(owner.userId(), seeded.project().id(), targetId);
-        AgentRun run = runs.create(owner.userId(), seeded.project().id(), seeded.run().agentInstanceId(),
-                "Regenerate using this result as the reference", "self-reference-" + UUID.randomUUID()).run();
+        AgentRun run = legacyRun(runs.create(owner.userId(), seeded.project().id(), seeded.run().agentInstanceId(),
+                "Regenerate using this result as the reference", "self-reference-" + UUID.randomUUID()).run());
         ObjectNode request = outputs("IMAGE");
         ObjectNode output = (ObjectNode) request.path("outputs").get(0);
         output.put("canvasItemId", targetId.toString()).put("expectedItemVersion", before.version())
@@ -1072,8 +1096,8 @@ class AgentMediaApprovalPostgresIT {
         var draft = drafts.get(owner.userId(), image.project().id(), targetId);
         assertThat(draft.mediaInputs()).hasSize(1);
 
-        AgentRun later = runs.create(owner.userId(), image.project().id(), image.run().agentInstanceId(),
-                "Use text only on the existing video node", "existing-text-video-" + UUID.randomUUID()).run();
+        AgentRun later = legacyRun(runs.create(owner.userId(), image.project().id(), image.run().agentInstanceId(),
+                "Use text only on the existing video node", "existing-text-video-" + UUID.randomUUID()).run());
         ObjectNode request = outputs("VIDEO");
         ((ObjectNode) request.path("outputs").get(0)).put("canvasItemId", targetId.toString())
                 .put("expectedItemVersion", item.version()).put("expectedDraftVersion", draft.version())
@@ -1255,7 +1279,7 @@ class AgentMediaApprovalPostgresIT {
         Project other = projects.create(owner.userId(), "Other linked project", Project.AspectRatio.LANDSCAPE_16_9);
         UUID foreignShot = seedLinkedBoard(other).shots().getFirst().id();
         var agent = configureDirector(agents, owner.userId(), project.id(), "Synthetic linked director", "Propose linked media");
-        AgentRun queued = runs.create(owner.userId(), project.id(), agent.id(), "Invalid links", "linked-invalid-" + UUID.randomUUID()).run();
+        AgentRun queued = legacyRun(runs.create(owner.userId(), project.id(), agent.id(), "Invalid links", "linked-invalid-" + UUID.randomUUID()).run());
         AgentRun run = runs.transition(owner.userId(), project.id(), queued.id(), queued.version(), AgentRun.Status.RUNNING);
         var trusted = new dev.agenvas.llm.application.TrustedToolContext(owner.userId(), project.id(), run.id());
         List<ObjectNode> invalid = new java.util.ArrayList<>();
@@ -1339,7 +1363,7 @@ class AgentMediaApprovalPostgresIT {
         Project project = projects.create(owner.userId(), "Synthetic linked storyboard", Project.AspectRatio.LANDSCAPE_16_9);
         Storyboard board = seedLinkedBoard(project);
         var agent = configureDirector(agents, owner.userId(), project.id(), "Synthetic linked director", "Create only approved media");
-        AgentRun run = runs.create(owner.userId(), project.id(), agent.id(), "Create linked media", "linked-" + UUID.randomUUID()).run();
+        AgentRun run = legacyRun(runs.create(owner.userId(), project.id(), agent.id(), "Create linked media", "linked-" + UUID.randomUUID()).run());
         ObjectNode request = outputs(kinds);
         for (int index = 0; index < kinds.length; index++) {
             ((ObjectNode) request.path("outputs").get(index)).put("shotId", board.shots().get(index).id().toString()).put("expectedShotRevision", 1);
@@ -1387,8 +1411,8 @@ class AgentMediaApprovalPostgresIT {
             assertThat(tasks.get(owner.userId(), project.id(), first.id()).status()).isEqualTo(Task.Status.SUCCEEDED);
         }
         var agent = configureDirector(agents, owner.userId(), project.id(), "Synthetic canvas director", "Work with the current canvas");
-        AgentRun run = runs.create(owner.userId(), project.id(), agent.id(), "Generate in the existing node",
-                "synthetic-run-" + UUID.randomUUID()).run();
+        AgentRun run = legacyRun(runs.create(owner.userId(), project.id(), agent.id(), "Generate in the existing node",
+                "synthetic-run-" + UUID.randomUUID()).run());
         // Recreate an empty destination after acceptance; Runs use the live project canvas.
         if (!seedResult) {
             var before = canvas.list(owner.userId(), project.id()).getFirst().item();
@@ -1509,12 +1533,27 @@ class AgentMediaApprovalPostgresIT {
         runs.cancel(owner.userId(), scenario.project().id(), scenario.run().id());
     }
 
-    private Scenario propose(ObjectNode outputs) {
+    /** Legacy scenarios retain their original protocol; the on-demand waiting case is tested separately. */
+    private AgentRun legacyRun(AgentRun created) {
+        jdbc.sql("update agent_run set policy_snapshot_json=jsonb_set(policy_snapshot_json, '{allowedTools}', "
+                + "(policy_snapshot_json->'allowedTools') - 'load_toolset') where id=:run")
+                .param("run", created.id()).update();
+        return runs.get(owner.userId(), created.projectId(), created.id());
+    }
+
+    private Scenario propose(ObjectNode outputs) { return propose(outputs, false); }
+
+    private Scenario propose(ObjectNode outputs, boolean onDemand) {
         Project project = projects.create(owner.userId(), "Synthetic approval project", Project.AspectRatio.LANDSCAPE_16_9);
         var agent = configureDirector(agents, owner.userId(), project.id(), "Synthetic Creator", "Create approved media");
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(), "Create the requested media",
                 "synthetic-run-" + UUID.randomUUID()).run();
+        if (!onDemand) run = legacyRun(run);
         gateway.prepare(run.id(), mapper.writeValueAsString(outputs));
+        if (onDemand) {
+            gateway.plan(run.id()).loadComposition = true;
+            assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
+        }
         assertThat(modelWorker.runOnce(MODEL_WORKER)).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.WAITING_TASKS);
         ApprovalView approval = approvals.list(owner.userId(), project.id(), run.id()).getFirst();
@@ -1572,14 +1611,15 @@ class AgentMediaApprovalPostgresIT {
         jdbc.sql("update agent_media_approval set created_at=now()-interval '2 days',expires_at=now()-interval '1 hour' where id=:id")
                 .param("id", scenario.approval().id()).update();
     }
-    private void replayOutcome(Scenario scenario) {
+    private void replayOutcome(Scenario scenario) { replayOutcome(scenario, 2); }
+    private void replayOutcome(Scenario scenario, int expectedTurns) {
         outcomes.reconcile(owner.userId(), scenario.project().id(), scenario.run().id(), scenario.approval().id());
         outcomes.reconcile(owner.userId(), scenario.project().id(), scenario.run().id(), scenario.approval().id());
         events.listAfter(owner.userId(), scenario.project().id(), 0, 200).stream()
                 .filter(event -> "task.status.changed".equals(event.type()))
                 .filter(event -> mediaTasks(scenario).stream().anyMatch(task -> task.id().equals(event.aggregateId())))
                 .forEach(event -> outcomes.onProjectEvent(new ProjectEventRecorded(owner.userId(), event)));
-        assertThat(turnCount(scenario)).isEqualTo(2);
+        assertThat(turnCount(scenario)).isEqualTo(expectedTurns);
     }
     private void finish(Scenario scenario, String approvalStatus) {
         assertThat(currentRun(scenario).status()).isEqualTo(AgentRun.Status.RUNNING);
@@ -1611,6 +1651,7 @@ class AgentMediaApprovalPostgresIT {
         private volatile boolean readGeneratedOutput;
         private volatile boolean failNextCall;
         private volatile boolean imageToVideo;
+        private volatile boolean loadComposition;
         private volatile JsonNode artifactReply;
         private volatile JsonNode videoReply;
         private volatile JsonNode directoryReply;
@@ -1630,6 +1671,9 @@ class AgentMediaApprovalPostgresIT {
         @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
             Plan plan = plans.get(UUID.fromString((String) context.get("runId")));
             assertThat(plan).isNotNull();
+            if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
+                return toolCall("initial-discovery", "load_toolset", (ObjectNode) mapper.readTree("{\"toolsets\":[\"MEDIA\"]}"), "");
+            }
             assertThat(tools).anySatisfy(tool -> assertThat(tool.getToolDefinition().name()).isEqualTo("propose_media_generation"));
             if (plan.failNextCall) {
                 plan.failNextCall = false;
@@ -1637,13 +1681,21 @@ class AgentMediaApprovalPostgresIT {
             }
             int callIndex = plan.calls.incrementAndGet();
             if (callIndex == 1) {
-                AssistantMessage proposal = AssistantMessage.builder().content("")
-                        .toolCalls(List.of(new AssistantMessage.ToolCall(plan.toolCallId, "function",
-                                "propose_media_generation", plan.arguments))).build();
+                var calls = new ArrayList<AssistantMessage.ToolCall>();
+                if (plan.loadComposition) calls.add(new AssistantMessage.ToolCall("load-composition", "function",
+                        "load_toolset", "{\"toolsets\":[\"COMPOSITION\"]}"));
+                calls.add(new AssistantMessage.ToolCall(plan.toolCallId, "function", "propose_media_generation", plan.arguments));
+                AssistantMessage proposal = AssistantMessage.builder().content("").toolCalls(calls).build();
                 return new Exchange(1, new ChatResponse(List.of(new Generation(proposal))));
             }
             ToolResponseMessage response = messages.stream().filter(ToolResponseMessage.class::isInstance)
                     .map(ToolResponseMessage.class::cast).toList().getLast();
+            if (plan.loadComposition) {
+                assertThat(tools).extracting(tool -> tool.getToolDefinition().name()).contains("compose_video", "extract_audio");
+                assertThat(messages.getFirst().getText()).contains("bounded speech speedup");
+                response = ToolResponseMessage.builder().responses(response.getResponses().stream()
+                        .filter(reply -> "propose_media_generation".equals(reply.name())).toList()).build();
+            }
             var previewMessages = messages.stream().filter(org.springframework.ai.chat.messages.UserMessage.class::isInstance)
                     .map(org.springframework.ai.chat.messages.UserMessage.class::cast)
                     .filter(message -> !message.getMedia().isEmpty()).toList();
