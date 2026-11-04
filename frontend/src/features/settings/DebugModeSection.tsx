@@ -48,7 +48,7 @@ export function DebugModeSection({ enabled }: { enabled: boolean }) {
           <FieldLabel htmlFor={switchId}>{t("settings.debug.enable")}</FieldLabel>
         </Field>
       </FieldGroup>
-      {save.isSuccess && draft === null ? <p role="status">{t("settings.debug.saved", { "0": settings.data?.debugMode ? t("common.enabled") : t("common.close") })}</p> : null}
+      {save.isSuccess && draft === null ? <p role="status">{t("settings.debug.saved", { "0": settings.data?.debugMode ? t("common.enabled") : t("common.disabled") })}</p> : null}
       <div className="ui-form-actions">
         <Link className="secondary-button" to="/settings/calls">{t("settings.debug.viewLogs")}</Link>
         <Button variant="default"  type="button" disabled={!settings.data || settings.isError || forbidden || conflict || save.isPending || checked === settings.data.debugMode}

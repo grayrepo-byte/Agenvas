@@ -1,5 +1,6 @@
 import type { MediaCapability, MediaSettings, MediaFunction, ImageOperation, VideoOperation } from "./api/client";
 import { t } from "./i18n";
+import { mediaDisplayName } from "./mediaDisplayNames";
 
 export const IMAGE_OPERATIONS: readonly ImageOperation[] = ["SMART_EDIT", "RELIGHT", "OUTPAINT", "THREE_VIEW", "LAYER_SPLIT", "EXPRESSION_EDIT", "REMOVE_BACKGROUND", "OBJECT_REMOVE", "VIEW_ANGLE", "DEPTH_MAP", "UPSCALE", "RESIZE", "CROP", "ROTATE", "FLIP_HORIZONTAL", "FLIP_VERTICAL"];
 export const LOCAL_IMAGE_OPERATIONS: readonly ImageOperation[] = ["DEPTH_MAP", "UPSCALE", "RESIZE", "CROP", "ROTATE", "FLIP_HORIZONTAL", "FLIP_VERTICAL"];
@@ -63,5 +64,5 @@ export function mediaFunctionChoices(settings: MediaSettings, operation: MediaFu
   return settings.connections.filter((connection) => connection.enabled)
     .flatMap((connection) => connection.capabilities.filter((capability) => image
       ? compatibleImageFunction(image, capability) : video ? compatibleVideoFunction(video, capability) : false)
-      .map((capability) => ({ capability, label: `${connection.platform === "LOCAL" ? t("media.functions.localMedia") : `${connection.platform} · ${connection.name}`} · ${capability.name}` })));
+      .map((capability) => ({ capability, label: `${connection.platform === "LOCAL" ? t("media.functions.localMedia") : `${connection.platform} · ${connection.name}`} · ${mediaDisplayName(capability)}` })));
 }

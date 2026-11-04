@@ -50,7 +50,7 @@ class CanvasOutputPlacementTest {
             events, mapper, Clock.fixed(NOW, java.time.ZoneOffset.UTC),
                     new org.springframework.beans.factory.support.StaticListableBeanFactory(java.util.Map.of("characters",
                             mock(dev.agenvas.character.application.CharacterService.class)))
-                            .getBeanProvider(dev.agenvas.character.application.CharacterService.class));
+                            .getBeanProvider(dev.agenvas.character.application.CharacterService.class), dev.agenvas.testing.CreationMessagesTestSupport.messages());
 
     @BeforeEach
     void setup() {

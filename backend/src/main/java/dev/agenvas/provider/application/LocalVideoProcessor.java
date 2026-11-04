@@ -177,7 +177,7 @@ public class LocalVideoProcessor {
             UUID archiveId = UUID.nameUUIDFromBytes(("agenvas:silent-video:v1:" + task.id())
                     .getBytes(java.nio.charset.StandardCharsets.UTF_8));
             var asset = assets.archiveTaskVideo(context.ownerId(), task.projectId(), archiveId, () -> open(output));
-            ObjectNode content = MediaResult.content(mapper, task, asset.id(), VideoOperation.SILENT_VIDEO_LABEL);
+            ObjectNode content = MediaResult.content(mapper, task, asset.id(), task.input().path(VideoOperation.SILENT_VIDEO_TARGET).path("prompt").asText("Silent video"));
             content.withObject("parameters").put("operation", VideoOperation.EXTRACT_AUDIO.name())
                     .put("videoOperationOutput", VideoOperation.SILENT_VIDEO_RESULT).put("local", true);
             return content;

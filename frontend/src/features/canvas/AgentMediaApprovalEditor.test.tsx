@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { AgentMediaApproval, AgentMediaApprovalRevision, MediaCapability, MediaDraft, MediaSettings } from "../../shared/api/client";
 import { server } from "../../test/server";
+import { setLocale, t } from "../../shared/i18n";
 import { AgentMediaApprovalEditor } from "./AgentMediaApprovalEditor";
 
 const capability: MediaCapability = {
@@ -29,11 +30,11 @@ const output: AgentMediaApproval["outputs"][number] = {
   preview: { capabilityId: "h3", parameters: draft.parameters, priceUnknown: true },
 };
 const url = "/api/v1/projects/project/runs/run/media-approvals/approval";
-function mount(options: { capabilities?: MediaCapability[]; draft?: MediaDraft } = {}) {
+function mount(options: { capabilities?: MediaCapability[]; draft?: MediaDraft; connection?: Partial<MediaSettings["connections"][number]> } = {}) {
   const currentDraft = options.draft ?? draft;
   const settings: MediaSettings = { connections: [{ id: "connection", name: "My provider", platform: "MINIMAX", enabled: true,
     version: 0, connectionVersion: 1, origin: null, keyMask: null, connectivityStatus: "NOT_CHECKED", realGenerationTested: false,
-    capabilities: options.capabilities ?? [capability] }], defaults: [{ kind: "VIDEO_GENERATION", capabilityId: "h3", version: 0 }] };
+    ...options.connection, capabilities: options.capabilities ?? [capability] }], defaults: [{ kind: "VIDEO_GENERATION", capabilityId: "h3", version: 0 }] };
   server.use(
     http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
     http.get("/api/v1/projects/project/canvas-items/item/media-draft", () => HttpResponse.json(currentDraft)),
@@ -52,6 +53,15 @@ async function choose(label: string, option: string) {
 }
 
 describe("pending video approval settings", () => {
+  it("localizes installed local capability labels in the approval editor", async () => {
+    setLocale("en");
+    const local = { ...capability, id: "00000000-0000-4000-8000-000000000205", name: "本地智能配音合成", adapterId: "LOCAL_VIDEO_COMPOSITOR" };
+    mount({ capabilities: [local], draft: { ...draft, capabilityId: local.id },
+      connection: { id: "00000000-0000-4000-8000-000000000201", name: "本地图片处理", platform: "LOCAL" } });
+    const control = await screen.findByRole("combobox", { name: t("agent.approval.capability") });
+    expect(control).not.toHaveTextContent(/\p{Script=Han}/u);
+    expect(control).toHaveTextContent("Local video composition");
+  });
   it("saves a supported resolution and duration for repricing, without making a generation decision", async () => {
     const requests: AgentMediaApprovalRevision[] = [];
     server.use(http.put(url, async ({ request }) => {

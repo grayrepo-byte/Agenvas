@@ -23,25 +23,20 @@ export function checkCatalogs(catalogs) {
       const value = catalog[key];
       if (typeof value !== "string" || !value.trim()) failures.push(`${locale}: missing ${key}`);
       else if (typeof source[key] === "string" && tokens(source[key]) !== tokens(value)) failures.push(`${locale}: interpolation tokens differ for ${key}`);
+      if (["en", "ru"].includes(locale) && typeof value === "string" && /\p{Script=Han}/u.test(value)) {
+        failures.push(`${locale}: untranslated Chinese for ${key}`);
+      }
     }
   }
   return failures;
 }
 
-/** Native language names and fixed provider prompts are data, not translatable UI templates. */
-const literalData = new Set(["LOCALE_NAMES", "AUDIO_AGENT_INSTRUCTION", "instruction"]);
+/** Type-only identifiers are not rendered. Runtime defaults still need localization. */
 function permittedLiteral(node) {
   for (let ancestor = node; ancestor; ancestor = ancestor.parent) {
     if (ts.isTypeNode(ancestor)) return true;
-    if (ts.isPropertyAssignment(ancestor)
-        && ["prompt", "instruction", "text", "value"].includes(ancestor.name.getText().replaceAll('"', ""))) return true;
-    if (ts.isJsxAttribute(ancestor) && ancestor.name.getText() === "value") return true;
-    if (ts.isVariableDeclaration(ancestor) && literalData.has(ancestor.name.getText())) return true;
   }
-  const text = node.text ?? node.getText();
-  return text.includes("只输出提示词") || text.startsWith("把下列音频生成提示词")
-    || text === "根据明确绑定的输入创作内容。"
-    || (text === "英文" && ts.isCallExpression(node.parent) && node.parent.expression.getText() === "useState");
+  return false;
 }
 
 export function checkSource(file, sourceText, catalog) {
@@ -66,7 +61,7 @@ export function checkSource(file, sourceText, catalog) {
         else if (!MESSAGE_KEY_PATTERN.test(argument.text)) failures.push(`${file}: invalid semantic message key ${argument.text}`);
       }
     }
-    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) || ts.isJsxText(node))
+    if ((ts.isStringLiteral(node) || ts.isTemplateLiteralToken(node) || ts.isJsxText(node))
         && /\p{Script=Han}/u.test(node.text) && !permittedLiteral(node)) {
       failures.push(`${file}:${ast.getLineAndCharacterOfPosition(node.getStart()).line + 1}: untranslated UI copy`);
     }

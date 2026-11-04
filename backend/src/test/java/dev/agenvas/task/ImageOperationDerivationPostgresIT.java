@@ -28,9 +28,12 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -107,13 +110,24 @@ class ImageOperationDerivationPostgresIT {
         crop.put("y", 0);
         crop.put("width", 0.5);
         crop.put("height", 1);
-        Task accepted = directMedia.runImageOperation(owner.userId(), project.id(),
-                image.artifact().id(), sourceCardId, sourceVersionId, 1,
-                ImageOperation.CROP, "", 0, 1, List.of(), null, crop, "crop-derived-node");
+        // Spring's test request has no language header. Model an English UI
+        // request explicitly while keeping the source title as authored.
+        var previousRequest = RequestContextHolder.getRequestAttributes();
+        var englishRequest = new MockHttpServletRequest();
+        englishRequest.addHeader("Accept-Language", "en-US");
+        Task accepted;
+        try {
+            RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(englishRequest));
+            accepted = directMedia.runImageOperation(owner.userId(), project.id(),
+                    image.artifact().id(), sourceCardId, sourceVersionId, 1,
+                    ImageOperation.CROP, "", 0, 1, List.of(), null, crop, "crop-derived-node");
+        } finally {
+            RequestContextHolder.setRequestAttributes(previousRequest);
+        }
         UUID targetCardId = UUID.fromString(accepted.input().path("canvasItemId").asText());
         assertThat(canvas.list(owner.userId(), project.id()).stream()
                 .filter(entry -> entry.item().id().equals(targetCardId))
-                .findFirst().orElseThrow().item().title()).isEqualTo("我的原图 · 裁剪");
+                .findFirst().orElseThrow().item().title()).isEqualTo("我的原图 · Crop");
         assertFreshDraft(owner, project, targetCardId, MediaDraft.DisplayMode.DRAFT);
         assertThat(drafts.get(owner.userId(), project.id(), sourceCardId)).isEqualTo(sourceDraft);
         assertThat(accepted.input().path("resultDraftVersion").asLong()).isZero();

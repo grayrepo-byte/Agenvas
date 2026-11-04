@@ -32,7 +32,7 @@ describe("SetupPage", () => {
     expect(await screen.findByRole("button", { name: "Create administrator" })).toBeInTheDocument();
     expect(screen.getByText("Complete setup on a controlled network")).toBeInTheDocument();
     expect(screen.getByText("The first person to complete this page becomes the administrator. Complete setup on a controlled network before allowing public internet access.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Administrator login name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Administrator username")).toBeInTheDocument();
     expect(screen.getByLabelText(/Administrator password/)).toBeInTheDocument();
     expect(document.querySelectorAll("form input")).toHaveLength(2);
   });

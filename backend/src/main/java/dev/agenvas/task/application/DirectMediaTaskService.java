@@ -2,6 +2,7 @@ package dev.agenvas.task.application;
 
 import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
+import dev.agenvas.shared.i18n.CreationMessages;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -87,6 +88,7 @@ public class DirectMediaTaskService {
     private final UsageService usage;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final CreationMessages creationMessages;
     private final ProjectService projects;
     private final AgentRunService runs;
     private final MediaStyleService styles;
@@ -102,7 +104,7 @@ public class DirectMediaTaskService {
             ProjectEventService events, UsageService usage,
             ObjectMapper mapper, Clock clock, ProjectService projects, AgentRunService runs, MediaStyleService styles, dev.agenvas.asset.storage.MediaRelayService relay,
             PromptService prompts, dev.agenvas.provider.application.MediaFunctionService functions,
-            ObjectProvider<CharacterService> characters) {
+            ObjectProvider<CharacterService> characters, CreationMessages creationMessages) {
         this.tasks = tasks;
         this.drafts = drafts;
         this.artifacts = artifacts;
@@ -114,6 +116,7 @@ public class DirectMediaTaskService {
         this.usage = usage;
         this.mapper = mapper;
         this.clock = clock;
+        this.creationMessages = creationMessages;
         this.projects = projects;
         this.runs = runs;
         this.styles = styles;
@@ -957,7 +960,7 @@ public class DirectMediaTaskService {
             MediaDraft sourceDraft = drafts.get(ownerId, projectId, canvasItemId);
             CanvasItem outputCard = canvas.forkMediaDerivationWithinChange(ownerId, projectId,
                     canvasItemId, UUID.randomUUID(), sourceDraft.version(), 0,
-                    operationSpec.resultLabel());
+                    creationMessages.text(operationSpec.resultLabel()));
             Instant now = clock.instant();
             ObjectNode input = mapper.createObjectNode();
             input.put("schemaVersion", IMAGE_OPERATION_INPUT_SCHEMA_VERSION);
@@ -1025,7 +1028,7 @@ public class DirectMediaTaskService {
             int referenceCount, boolean masked) {
         String prompt = spec.prompt(instruction, functionPrompt == null ? null : functionPrompt.content());
         if (definition != null && (operation == ImageOperation.UPSCALE || operation == ImageOperation.DEPTH_MAP)) {
-            prompt = operation.resultLabel() + (instruction.isBlank() ? "" : ": " + instruction);
+            prompt = creationMessages.text(operation.resultLabel()) + (instruction.isBlank() ? "" : ": " + instruction);
         }
         if (referenceCount > 0) {
             prompt += " Image 1 is the source to edit. Images 2 through " + (referenceCount + 1)

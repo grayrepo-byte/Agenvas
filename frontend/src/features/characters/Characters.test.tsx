@@ -11,6 +11,7 @@ import { useMediaDraftSession, useMediaDraftSessionLifecycle } from "../canvas/u
 import { useCanvasStore } from "../canvas/canvasStore";
 import { CharacterManagerDialog } from "./CharacterManagerDialog";
 import { CharacterBindingsDialog } from "./CharacterBindingsDialog";
+import { setLocale, t } from "../../shared/i18n";
 
 const PROJECT = "character-project";
 const ITEM = "shot-one";
@@ -48,6 +49,25 @@ function installPreview() {
 }
 
 describe("project characters", () => {
+  it("shows the localized official voice alias while retaining character text and its speaker ID", async () => {
+    setLocale("en");
+    try {
+      const custom = { ...profile, content: { ...profile.content, description: "用户的角色描述" } };
+      baseHandlers({ characters: [custom], bindings: [] });
+      render(<QueryClientProvider client={client()}><CharacterManagerDialog projectId={PROJECT} onClose={() => {}} /></QueryClientProvider>);
+      await userEvent.click(await screen.findByRole("button", { name: "Mira" }));
+      const voice = screen.getByText(/Xiaohe 2.0 · zh_female_xiaohe_uranus_bigtts/);
+      expect(voice).toBeVisible();
+      expect(voice.textContent).not.toMatch(/\p{Script=Han}/u);
+      expect(screen.getByLabelText(t("character.characterDescription"))).toHaveValue("用户的角色描述");
+      act(() => { setLocale("ru"); });
+      expect(screen.getByText(/Сяохэ 2.0 · zh_female_xiaohe_uranus_bigtts/)).toBeVisible();
+      expect(profile.content.voice?.speakerId).toBe("zh_female_xiaohe_uranus_bigtts");
+    } finally {
+      setLocale("zh");
+    }
+  });
+
   it("edits several stable looks and exact references, previews affected shots, and preserves a failed save", async () => {
     baseHandlers();
     const submitted: SaveCharacter[] = [];

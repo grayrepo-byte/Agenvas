@@ -55,6 +55,19 @@ function taskSummary(label: string, index = 0) {
 }
 
 describe("AgentRunConversation", () => {
+  it("localizes completed and failed local-tool outcomes while keeping custom summaries literal", async () => {
+    setLocale("en");
+    mockConversation([], [
+      action({ id: "done", toolName: "trim_audio", summary: "本地媒体处理已完成，结果已归档" }),
+      action({ id: "failed", toolName: "compose_video", summary: "本地媒体处理已结束，状态：FAILED" }),
+      action({ id: "authored", toolName: "compose_video", summary: "保留用户的中文说明" }),
+    ]);
+    mountConversation();
+    expect(await screen.findByText("Local media processing completed; results archived")).toBeInTheDocument();
+    expect(screen.getByText("Local media processing ended. Status: FAILED")).toBeInTheDocument();
+    expect(screen.getByText("保留用户的中文说明")).toBeInTheDocument();
+    expect(screen.queryByText("本地媒体处理已完成，结果已归档")).not.toBeInTheDocument();
+  });
   it("shows context compression and partial tool reads without changing the current instruction", async () => {
     setLocale("en");
     mockConversation([task({ output: { contextCompacted: true } })],

@@ -1,8 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { videoFunctionsFixture } from "../test/videoFunctionsFixture";
 import { videoFunctionChoices } from "./mediaFunctions";
+import { setLocale } from "./i18n";
 
 describe("video function choices", () => {
+  it("localizes an installed processor at display time and leaves its raw name and custom names intact", () => {
+    const settings = videoFunctionsFixture();
+    const capability = settings.connections[0]!.capabilities[0]!;
+    capability.id = "00000000-0000-4000-8000-000000000203";
+    capability.name = "本地视频深度提取";
+    setLocale("en");
+    expect(videoFunctionChoices(settings, "DEPTH_MAP")[0]!.label).not.toMatch(/\p{Script=Han}/u);
+    expect(capability.name).toBe("本地视频深度提取");
+    setLocale("zh");
+    expect(videoFunctionChoices(settings, "DEPTH_MAP")[0]!.label).toContain("本地视频深度提取");
+    setLocale("en");
+    capability.name = "我的深度处理";
+    expect(videoFunctionChoices(settings, "DEPTH_MAP")[0]!.label).toContain("我的深度处理");
+  });
   it.each([
     ["UPSCALE", ["upscale-cap"]],
     ["DEPTH_MAP", ["depth-cap", "upscale-cap"]],

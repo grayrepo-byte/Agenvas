@@ -38,6 +38,11 @@ import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import tools.jackson.databind.ObjectMapper;
 
 class AudioTrimServiceTest {
@@ -57,7 +62,7 @@ class AudioTrimServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final AudioTrimParameters parameters = new AudioTrimParameters(100, 1100, Format.WAV);
     private final AudioTrimService service = new AudioTrimService(repository, artifacts, assets, items, canvas, drafts,
-            projects, catalog, events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC));
+            projects, catalog, events, usage, mapper, Clock.fixed(NOW, ZoneOffset.UTC), dev.agenvas.testing.CreationMessagesTestSupport.messages());
 
     @BeforeEach void setup() {
         when(events.recordChange(eq(owner), eq(project), any())).thenAnswer(call -> {
@@ -86,7 +91,7 @@ class AudioTrimServiceTest {
         when(output.id()).thenReturn(outputId);
         when(output.subjectId()).thenReturn(artifactId);
         when(output.selectedVersionId()).thenReturn(sourceId);
-        when(canvas.forkMediaDerivationWithinChange(eq(owner), eq(project), eq(itemId), any(), eq(3L), eq(0), eq("音频裁剪")))
+        when(canvas.forkMediaDerivationWithinChange(eq(owner), eq(project), eq(itemId), any(), eq(3L), eq(0), any()))
                 .thenReturn(output);
         when(catalog.resolve(AudioTrimService.CAPABILITY_ID, Task.Kind.AUDIO_GENERATION, 0)).thenReturn(
                 new MediaCapabilityBinding(UUID.randomUUID(), 1, AudioTrimService.CAPABILITY_ID, 1,
@@ -102,8 +107,26 @@ class AudioTrimServiceTest {
         assertThat(task.input().path("parentVersionId").asText()).isEqualTo(sourceId.toString());
         assertThat(task.input().at("/mediaInput/audios/0/versionId").asText()).isEqualTo(sourceId.toString());
         assertThat(task.input().at("/audioTrim/parameters")).isEqualTo(parameters.toJson(mapper));
+        assertThat(task.input().path("prompt").asText()).isEqualTo("Audio trim");
         verify(repository).createArtifactTarget(new TaskRepository.ArtifactTarget(task.id(), project, artifactId, sourceId, 4, outputId));
         verify(usage).reserveMediaTask(owner, task, "LOCAL_NO_COST", 1);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"en-US, Audio trim", "zh-CN, 音频裁剪", "ru-RU, Обрезка аудио", "ja-JP, 音声トリミング"})
+    void freezesBuiltInLabelsInTheCurrentRequestLanguage(String language, String expected) {
+        var request = new MockHttpServletRequest();
+        request.addHeader("Accept-Language", language);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            var task = service.run(owner, project, artifactId, itemId, sourceId, 2, parameters, "trim");
+            assertThat(task.input().path("prompt").asText()).isEqualTo(expected);
+            assertThat(task.input().at("/mediaInput/prompt").asText()).isEqualTo(expected);
+            assertThat(task.input().at("/mediaInput/renderedPrompt").asText()).isEqualTo(expected);
+            verify(canvas).forkMediaDerivationWithinChange(eq(owner), eq(project), eq(itemId), any(), eq(3L), eq(0), eq(expected));
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     @Test void exactReplayChecksActiveProjectAndDoesNotRepeatWrites() {

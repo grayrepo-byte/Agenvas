@@ -22,6 +22,7 @@ import { ToggleGroup,ToggleGroupItem } from "../../shared/ui/primitives/toggle-g
 import { LibraryBrowser } from "../library/LibraryBrowser";
 import { SkillCategoryFilter } from "./SkillCategoryFilter";
 import { skillCatalogueGroups } from "./skillCategories";
+import { getSkillLabels } from "./builtinSkillLabels";
 import "./Skills.css";
 
 const AUTOSAVE_DELAY_MS = 650;
@@ -39,7 +40,7 @@ function editable(draft: SkillDraft): Omit<SaveSkillDraftRequest,"expectedVersio
   return { skillMd: draft.skillMd, outputKinds: draft.outputKinds, inputSlots: draft.inputSlots, resources: draft.resources, assets: draft.assets };
 }
 export function SkillsPage() {
-  useLocale();
+  const locale=useLocale();
   const client = useQueryClient();
   const [query,setQuery] = useState("");
   const [trash,setTrash] = useState(false);
@@ -48,7 +49,7 @@ export function SkillsPage() {
   const [opened,setOpened] = useState<CreativeSkill[]>([]);
   function openSkill(skill:CreativeSkill) {setSelected(skill);setOpened((current)=>current.some((entry)=>entry.id===skill.id) ? current.map((entry)=>entry.id===skill.id ? skill:entry) : [...current,skill]);}
   const [newTitle,setNewTitle] = useState("");
-  const list = useInfiniteQuery({ queryKey: ["skills",query,trash,category], initialPageParam: undefined as string | undefined,
+  const list = useInfiniteQuery({ queryKey: ["skills",query,trash,category,locale], initialPageParam: undefined as string | undefined,
     queryFn: ({pageParam}) => listSkills(query,pageParam,trash,trash ? undefined:category), getNextPageParam: (page) => page.nextCursor ?? undefined });
   const create = useMutation({ mutationFn: () => createSkill(newTitle.trim()), onSuccess: (skill) => {
     openSkill(skill); setNewTitle(""); void client.invalidateQueries({queryKey:["skills"]});
@@ -67,9 +68,9 @@ export function SkillsPage() {
       {list.error ? <SkillError error={list.error} onRefresh={()=>void list.refetch()} /> : null}
       <div className="skills-list">{catalogueGroups.filter((group)=>group.items.length>0).map((group)=><section className="skills-catalogue-group" key={group.label} aria-label={group.label}>
         <header className="skills-catalogue-group-heading"><h3>{group.label}</h3><span>{group.items.length}</span></header>
-        {group.items.map((skill)=><Button variant="ghost" className="skills-list-item" key={skill.id} aria-label={skill.title} title={skill.title} aria-pressed={selected?.id===skill.id} onClick={()=>openSkill(skill)}>
+        {group.items.map((skill)=><Button variant="ghost" className="skills-list-item" key={skill.id} aria-label={getSkillLabels(skill).title} title={getSkillLabels(skill).title} aria-pressed={selected?.id===skill.id} onClick={()=>openSkill(skill)}>
           <span className="skills-list-item-icon" aria-hidden>{skill.builtin ? <Sparkle /> : <FileText />}</span>
-          <span className="skills-list-item-copy"><span className="skills-list-item-title">{skill.title}</span><span className="skills-list-item-description">{skill.description || (skill.currentVersionId ? t("skills.versions") : t("skills.noVersion"))}</span></span>
+          <span className="skills-list-item-copy"><span className="skills-list-item-title">{getSkillLabels(skill).title}</span><span className="skills-list-item-description">{getSkillLabels(skill).description || (skill.currentVersionId ? t("skills.versions") : t("skills.noVersion"))}</span></span>
           <CaretRight className="skills-list-item-chevron" aria-hidden />
         </Button>)}
       </section>)}</div>
@@ -88,9 +89,11 @@ function SkillEditor({skill,onSkillChanged}:{skill:CreativeSkill;onSkillChanged:
   return skill.builtin ? <BuiltinSkillViewer skill={skill} /> : <PersonalSkillEditor skill={skill} onSkillChanged={onSkillChanged} />;
 }
 function BuiltinSkillViewer({skill}:{skill:CreativeSkill}) {
+  useLocale();
+  const labels=getSkillLabels(skill);
   const version=useQuery({queryKey:["skill-version",skill.id,skill.currentVersionId],queryFn:()=>getSkillVersion(skill.id,skill.currentVersionId!),enabled:Boolean(skill.currentVersionId)});
   const [tryOpen,setTryOpen]=useState(false);
-  return <Panel title={skill.title} description={skill.description} className="skills-detail-panel skills-builtin-viewer" actions={<StatusBadge>{t("skills.builtin")}</StatusBadge>}>
+  return <Panel title={labels.title} description={labels.description} className="skills-detail-panel skills-builtin-viewer" actions={<StatusBadge>{t("skills.builtin")}</StatusBadge>}>
     <Notice><p>{t("skills.builtinHint")}</p>{skill.builtinSource ? <>
       <p><a href={skill.builtinSource.repository} target="_blank" rel="noreferrer">{skill.builtinSource.name}</a>{" · "}
       <a href={skill.builtinSource.licenseUrl} target="_blank" rel="noreferrer">{skill.builtinSource.license}</a></p>

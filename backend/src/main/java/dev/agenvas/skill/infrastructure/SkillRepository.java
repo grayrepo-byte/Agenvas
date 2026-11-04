@@ -48,22 +48,34 @@ public class SkillRepository {
                         .and(CREATIVE_SKILL.ID.eq(id)).and(CREATIVE_SKILL.VERSION.eq(expected))).execute() == 1;
     }
     public record Cursor(Instant updatedAt, UUID id) {}
+    /** Exact packaged identity; a non-null description also guards a translated-description match. */
+    public record BuiltinSearchMatch(String key, String title, String description) {}
     private Condition available(List<String> builtinKeys) {
         return CREATIVE_SKILL.BUILTIN_KEY.isNull().or(CREATIVE_SKILL.BUILTIN_KEY.in(builtinKeys));
     }
-    private Condition scope(UUID owner, String query, boolean trash, List<String> builtinKeys, boolean includePersonal) {
+    private Condition scope(UUID owner, String query, boolean trash, List<String> builtinKeys, boolean includePersonal,
+            List<BuiltinSearchMatch> localizedMatches) {
         Condition condition = CREATIVE_SKILL.OWNER_ID.eq(owner)
                 .and(includePersonal ? available(builtinKeys) : CREATIVE_SKILL.BUILTIN_KEY.in(builtinKeys))
                 .and(trash ? CREATIVE_SKILL.TRASHED_AT.isNotNull() : CREATIVE_SKILL.TRASHED_AT.isNull());
-        if (query != null && !query.isBlank()) condition = condition.and(CREATIVE_SKILL.TITLE.containsIgnoreCase(query)
-                .or(CREATIVE_SKILL.DESCRIPTION.containsIgnoreCase(query)));
+        if (query != null && !query.isBlank()) {
+            Condition search = CREATIVE_SKILL.TITLE.containsIgnoreCase(query).or(CREATIVE_SKILL.DESCRIPTION.containsIgnoreCase(query));
+            for (var match : localizedMatches) {
+                Condition builtin = CREATIVE_SKILL.BUILTIN_KEY.eq(match.key()).and(CREATIVE_SKILL.TITLE.eq(match.title()));
+                if (match.description() != null) builtin = builtin.and(CREATIVE_SKILL.DESCRIPTION.eq(match.description()));
+                search = search.or(builtin);
+            }
+            condition = condition.and(search);
+        }
         return condition;
     }
-    public int count(UUID owner, String query, boolean trash, List<String> builtinKeys, boolean includePersonal) {
-        return db.fetchCount(db.selectFrom(CREATIVE_SKILL).where(scope(owner, query, trash, builtinKeys, includePersonal)));
+    public int count(UUID owner, String query, boolean trash, List<String> builtinKeys, boolean includePersonal,
+            List<BuiltinSearchMatch> localizedMatches) {
+        return db.fetchCount(db.selectFrom(CREATIVE_SKILL).where(scope(owner, query, trash, builtinKeys, includePersonal, localizedMatches)));
     }
-    public List<SkillContent.Catalogue> list(UUID owner, String query, boolean trash, Cursor cursor, int limit, List<String> builtinKeys, boolean includePersonal) {
-        Condition condition = scope(owner, query, trash, builtinKeys, includePersonal);
+    public List<SkillContent.Catalogue> list(UUID owner, String query, boolean trash, Cursor cursor, int limit, List<String> builtinKeys,
+            boolean includePersonal, List<BuiltinSearchMatch> localizedMatches) {
+        Condition condition = scope(owner, query, trash, builtinKeys, includePersonal, localizedMatches);
         if (cursor != null) condition = condition.and(CREATIVE_SKILL.UPDATED_AT.lt(time(cursor.updatedAt()))
                 .or(CREATIVE_SKILL.UPDATED_AT.eq(time(cursor.updatedAt())).and(CREATIVE_SKILL.ID.lt(cursor.id()))));
         return db.selectFrom(CREATIVE_SKILL).where(condition).orderBy(CREATIVE_SKILL.UPDATED_AT.desc(), CREATIVE_SKILL.ID.desc())

@@ -1,4 +1,4 @@
-import type { MessageKey } from "../../shared/i18n";
+import { t, type MessageKey } from "../../shared/i18n";
 
 // Public preset files from the official voice library. Audition never uses a user's Key.
 const OFFICIAL_SAMPLE_BASE_URL = "https://lf3-static.bytednsdoc.com/obj/eden-cn/lm_hz_ihsph/ljhwZthlaukjlkulzlp/portal/bigtts/";
@@ -30,6 +30,31 @@ export const VOICES = [
   { name: "Dacey", id: "en_female_dacey_uranus_bigtts", language: "en", scene: "general", previewUrl: sampleUrl("en_female_dacey_uranus_bigtts.mp3") },
   { name: "Stokie", id: "en_female_stokie_uranus_bigtts", language: "en", scene: "general", previewUrl: sampleUrl("en_female_stokie_uranus_bigtts.mp3") },
 ] as const;
+
+const VOICE_DISPLAY_NAME_KEYS: Readonly<Partial<Record<string, MessageKey>>> = {
+  zh_female_xiaohe_uranus_bigtts: "audio.voiceNames.xiaohe",
+  zh_male_m191_uranus_bigtts: "audio.voiceNames.yunzhou",
+  zh_male_taocheng_uranus_bigtts: "audio.voiceNames.xiaotian",
+  zh_female_sophie_uranus_bigtts: "audio.voiceNames.sophie",
+  zh_female_qingxinnvsheng_uranus_bigtts: "audio.voiceNames.clearFemale",
+  zh_female_cancan_uranus_bigtts: "audio.voiceNames.cancan",
+  zh_female_sajiaoxuemei_uranus_bigtts: "audio.voiceNames.playfulStudent",
+  zh_female_wenrouxiaoya_uranus_bigtts: "audio.voiceNames.xiaoya",
+  zh_male_guanggaojieshuo_uranus_bigtts: "audio.voiceNames.advertisingNarrator",
+  zh_male_ruyayichen_uranus_bigtts: "audio.voiceNames.yichen",
+  zh_female_shaoergushi_uranus_bigtts: "audio.voiceNames.childrenStories",
+  zh_male_xuanyijieshuo_uranus_bigtts: "audio.voiceNames.mysteryNarrator",
+  zh_female_xiaoxue_uranus_bigtts: "audio.voiceNames.pictureBooks",
+  zh_female_yingyujiaoxue_uranus_bigtts: "audio.voiceNames.teacherTina",
+  zh_female_kefunvsheng_uranus_bigtts: "audio.voiceNames.warmFemale",
+};
+
+/** Display aliases apply only to unchanged curated entries; provider IDs and official names remain intact. */
+export function getVoiceDisplayName(voice: { id: string; name: string }) {
+  const original = VOICES.find((entry) => entry.id === voice.id && entry.name === voice.name);
+  const key = original && VOICE_DISPLAY_NAME_KEYS[original.id];
+  return key ? t(key) : voice.name;
+}
 
 /** Filter values are stable identities; only their UI labels are localized. */
 export const VOICE_LANGUAGE_LABEL_KEYS = {

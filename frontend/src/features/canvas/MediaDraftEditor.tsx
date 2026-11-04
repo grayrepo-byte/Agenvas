@@ -61,14 +61,14 @@ import { readContentText } from "./artifactContent";
 import { fieldsFromMediaDraft, useMediaDraftSession, useMediaDraftSessionLifecycle } from "./useMediaDraftSession";
 import { MEDIA_TASK_REFRESH_INTERVAL_MS,latestMediaTask,occupiesMediaCard,isMediaTaskRunning,isVideoCompositionTask,isAudioTrimTask } from "./mediaTaskState";
 import { taskErrorDetail } from "./taskErrorMessages";
-import { VOICES } from "./voiceCatalog";
+import { getVoiceDisplayName, VOICES } from "./voiceCatalog";
 import { ASPECT_RATIO_OPTIONS, VIDEO_ASPECT_RATIO_OPTIONS, RESOLUTION_OPTIONS, QUALITY_OPTIONS,
   GENERATION_COUNT_OPTIONS, normalizedImageParameters, normalizedVideoParameters,
   preferredImageVideoMode, preferredVideoMode, inputsForVideoMode, planMediaCapabilityChange,
   type MediaDraftFields as DraftFields } from "./mediaDraftCapability";
 import { PromptMentionEditor, type PromptReference } from "./PromptMentionEditor";
 import { promptForMediaInputs, removePromptReferences } from "./mediaPrompt";
-import { mediaStylesQueryOptions } from "../../shared/mediaStyles";
+import { getMediaStyleLabels, mediaStylesQueryOptions } from "../../shared/mediaStyles";
 import { MediaStylePicker } from "./MediaStylePicker";
 import { CharacterBindingsDialog } from "../characters/CharacterBindingsDialog";
 import { encodeOptimizationPrompt, decodeOptimizationPrompt } from "./videoPromptOptimization";
@@ -604,6 +604,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const startFrame = fields.mediaInputs.find((input) => input.role === "START_FRAME");
   const endFrame = fields.mediaInputs.find((input) => input.role === "END_FRAME");
   const audioSpeaker = fields.parameters.speaker ?? chosenCapability?.settings.defaultParameters?.speaker ?? "";
+  const selectedVoice = VOICES.find((voice) => voice.id === audioSpeaker);
   const audioMixValid = imageCount === 0 || audioCount === 0 && !audioSpeaker;
   const withinCapacity = fields.mediaInputs.length <= MAX_MEDIA_INPUTS && imageCount <= imageCapacity && audioCount <= audioCapacity && videoCount <= videoCapacity;
   const semanticInputsValid = isAudio ? withinCapacity && audioMixValid
@@ -1344,7 +1345,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {supportsStyle || fields.styleId ? <Button variant="ghost" className="media-draft-toolbar-button" type="button" aria-label={t("styles.choose")}
         disabled={!supportsStyle}
         aria-haspopup="dialog" onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setStylePickerOpen(true); }}>
-        <PaintBrush data-icon="inline-start" /><span>{fields.styleId ? selectedStyle?.name ?? t("styles.unavailable") : t("styles.title")}</span>
+        <PaintBrush data-icon="inline-start" /><span>{fields.styleId ? selectedStyle ? getMediaStyleLabels(selectedStyle).name : t("styles.unavailable") : t("styles.title")}</span>
       </Button> : null}
       {fields.styleId ? <Button variant="ghost" className="media-draft-toolbar-button" size="icon-sm" type="button"
         aria-label={t("styles.clear")} onClick={() => edit({ styleId: null })}><X /></Button> : null}
@@ -1440,7 +1441,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       : null}
       {!fullyDeclaredInputs && isAudio ? <div className="media-draft-popover-anchor">
         <Button variant="ghost" type="button" className="media-draft-toolbar-button" aria-label={t("media.editor.chooseVoice")} aria-expanded={popover === "voices"}
-          onClick={(event) => togglePopover("voices", event.currentTarget)}><MusicNotes size={17} />{VOICES.find((voice) => voice.id === audioSpeaker)?.name ?? t("media.editor.voiceLibrary")}<CaretDown size={12} /></Button>
+          onClick={(event) => togglePopover("voices", event.currentTarget)}><MusicNotes size={17} />{selectedVoice ? getVoiceDisplayName(selectedVoice) : t("media.editor.voiceLibrary")}<CaretDown size={12} /></Button>
         {popover === "voices" ? <VoiceLibrary containerRef={popoverRef} selected={audioSpeaker} onSelect={(speaker) => {
           edit({ parameters: { ...fields.parameters, speaker } }); setPopover(null); triggerRef.current?.focus();
         }} onClose={() => setPopover(null)} /> : null}

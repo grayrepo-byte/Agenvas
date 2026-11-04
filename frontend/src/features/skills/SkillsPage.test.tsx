@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
+import { act,cleanup,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http,HttpResponse } from "msw";
 import { MemoryRouter,Route,Routes,useLocation } from "react-router";
@@ -8,6 +8,8 @@ import { createQueryClient } from "../../app/queryClient";
 import type { CreativeSkill,LibraryEntry,SkillDraft,SkillVersion,SaveSkillDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { selectValue } from "../../test/controls";
+import { packagedSkills,packagedSkillVersions } from "../../test/builtinSkills";
+import { setLocale,t } from "../../shared/i18n";
 import { SkillsPage } from "./SkillsPage";
 
 const SKILL_ID="skill-1",VERSION_ID="skill-version-1",NOW="2026-10-02T00:00:00Z";
@@ -26,6 +28,42 @@ beforeEach(()=>{server.use(
   http.get(`/api/v1/skills/${SKILL_ID}/versions/${VERSION_ID}`,()=>HttpResponse.json(VERSION)),
 );});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
+it("localizes installed Skill metadata while preserving personal labels and packaged source",async()=>{
+  setLocale("en");
+  const personal={...packagedSkills[0]!,id:"personal-copy",builtin:false,builtinSource:null,currentVersionId:null};
+  const builtin=packagedSkills[0]!,version=packagedSkillVersions[0]!;
+  server.use(http.get("/api/v1/skills",()=>HttpResponse.json({items:[...packagedSkills,personal],nextCursor:null,total:18})),
+    http.get(`/api/v1/skills/${builtin.id}/versions/${version.id}`,()=>HttpResponse.json(version)));
+  mount();
+  await screen.findByRole("button",{name:"Visual asset design · short-drama-assets"});
+  const list=document.querySelector(".skills-list")!;
+  expect(list.querySelectorAll(".skills-list-item")).toHaveLength(18);
+  const builtinButtons=Array.from(list.querySelectorAll(".skills-list-item")).slice(0,17);
+  for(const button of builtinButtons)expect(button.textContent).not.toMatch(/\p{Script=Han}/u);
+  expect(within(list as HTMLElement).getByRole("button",{name:personal.title})).toBeVisible();
+  await userEvent.click(screen.getByRole("button",{name:"Visual asset design · short-drama-assets"}));
+  expect(await screen.findByText(/# 原始 Skill 正文/)).toHaveTextContent("保持原文与 runtime_name。");
+  expect(screen.getByText(version.resources[0]!.path)).toBeInTheDocument();
+  act(()=>{setLocale("ru");});
+  expect(await screen.findByRole("button",{name:"Визуальные материалы · short-drama-assets"})).toBeVisible();
+  expect(screen.getByText(/# 原始 Skill 正文/)).toBeInTheDocument();
+});
+it("refetches catalogue search in the new language while retaining the search draft",async()=>{
+  setLocale("en");
+  const requests:{language:string|null;query:string|null}[]=[];
+  server.use(http.get("/api/v1/skills",({request})=>{
+    requests.push({language:request.headers.get("Accept-Language"),query:new URL(request.url).searchParams.get("query")});
+    return HttpResponse.json({items:packagedSkills,nextCursor:null,total:17});
+  }));
+  mount();
+  const search=await screen.findByRole("textbox",{name:t("skills.search")});
+  fireEvent.change(search,{target:{value:"design"}});
+  await waitFor(()=>expect(requests).toContainEqual({language:"en",query:"design"}));
+  act(()=>{setLocale("ja");});
+  await waitFor(()=>expect(requests).toContainEqual({language:"ja",query:"design"}));
+  expect(screen.getByRole("textbox",{name:t("skills.search")})).toBe(search);
+  expect(search).toHaveValue("design");
+});
 it("shows builtin content read-only with attribution and permits trying its fixed version",async()=>{
   const builtin:CreativeSkill={...SKILL,title:"分集剧本 · short-drama-write",builtin:true,category:"STORY",builtinSource:{name:"Drama Skills",repository:"https://github.com/zenstory-ai/drama-skills",revision:"synthetic-revision",license:"MIT",licenseUrl:"https://github.com/zenstory-ai/drama-skills/blob/synthetic-revision/LICENSE"}};let draftReads=0;
   server.use(http.get("/api/v1/skills",()=>HttpResponse.json({items:[builtin],nextCursor:null,total:1})),

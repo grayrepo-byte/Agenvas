@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setLocale, SUPPORTED_LOCALES, t } from "../../shared/i18n";
 import { selectValue } from "../../test/controls";
 import { VoiceLibrary } from "./VoiceLibrary";
+import { getVoiceDisplayName, VOICES } from "./voiceCatalog";
 
 function mount() {
   const onSelect = vi.fn();
@@ -79,7 +80,88 @@ describe("official voice samples", () => {
 });
 
 describe("localized voice metadata", () => {
-  beforeEach(() => localStorage.removeItem("agenvas.voice-preferences.v1"));
+  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    setLocale("zh");
+    localStorage.removeItem("agenvas.voice-preferences.v1");
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  });
+
+  it("shows English catalog and selected voice labels without changing official names or selected IDs", async () => {
+    setLocale("en");
+    const onSelect = vi.fn();
+    const original = VOICES.map((voice) => ({ ...voice }));
+    const selected = "zh_female_xiaohe_uranus_bigtts";
+    const { container } = render(<VoiceLibrary selected={selected} containerRef={createRef()} onClose={vi.fn()} onSelect={onSelect} />);
+    expect(container.textContent).not.toMatch(/\p{Script=Han}/u);
+    for (const element of container.querySelectorAll("[aria-label]")) expect(element.getAttribute("aria-label")).not.toMatch(/\p{Script=Han}/u);
+    const current = screen.getByText("Xiaohe 2.0", { selector: "strong" }).closest("button")!;
+    expect(current).toHaveAttribute("aria-pressed", "true");
+    await userEvent.setup().click(current);
+    expect(onSelect).toHaveBeenLastCalledWith(selected);
+    expect(VOICES).toEqual(original);
+    expect(VOICES.find((voice) => voice.id === selected)?.name).toBe("小何 2.0");
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+  });
+
+  it("searches display aliases and official names while locale changes preserve selection and filters", async () => {
+    setLocale("en");
+    const selected = "zh_female_qingxinnvsheng_uranus_bigtts";
+    const voice = VOICES.find((value) => value.id === selected)!;
+    const onSelect = vi.fn();
+    render(<VoiceLibrary selected={selected} containerRef={createRef()} onClose={vi.fn()} onSelect={onSelect} />);
+    const user = userEvent.setup();
+    const search = screen.getByRole("searchbox");
+    await user.type(search, "Bright female");
+    let choice = screen.getByText(getVoiceDisplayName(voice), { selector: "strong" }).closest("button")!;
+    expect(choice).toHaveAttribute("aria-pressed", "true");
+    await user.click(choice);
+    expect(onSelect).toHaveBeenLastCalledWith(selected);
+    act(() => { setLocale("ru"); });
+    expect(search).toHaveValue("Bright female");
+    expect(screen.getByText(t("audio.voiceLibrary.empty"))).toBeInTheDocument();
+    await user.clear(search);
+    choice = screen.getByText(getVoiceDisplayName(voice), { selector: "strong" }).closest("button")!;
+    expect(choice).toHaveAttribute("aria-pressed", "true");
+    act(() => { setLocale("en"); });
+    await user.type(search, voice.name);
+    expect(screen.getByText("Bright female voice 2.0", { selector: "strong" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: t("audio.voiceLibrary.favoriteNamed", { "0": getVoiceDisplayName(voice) }) }));
+    expect(JSON.parse(localStorage.getItem("agenvas.voice-preferences.v1")!)).toEqual({ favorites: [selected], recent: [selected] });
+    expect(voice.name).toBe("清新女声 2.0");
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+  });
+
+  it("relocalizes pending, playing and failed previews without requesting any external sample in tests", async () => {
+    const voice = VOICES.find((value) => value.id === "zh_female_xiaohe_uranus_bigtts")!;
+    let resolvePlay!: () => void;
+    vi.mocked(HTMLMediaElement.prototype.play).mockImplementationOnce(() => new Promise<void>((resolve) => { resolvePlay = resolve; }));
+    const request = vi.spyOn(globalThis, "fetch");
+    mount();
+    await userEvent.setup().click(screen.getByRole("button", { name: t("audio.voiceLibrary.previewNamed", { "0": getVoiceDisplayName(voice) }) }));
+    act(() => { setLocale("en"); });
+    expect(screen.getByRole("status")).toHaveTextContent(t("audio.voiceLibrary.previewLoading", { "0": "Xiaohe 2.0" }));
+    await act(async () => { resolvePlay(); });
+    expect(screen.getByRole("status")).toHaveTextContent(t("audio.voiceLibrary.previewPlaying", { "0": "Xiaohe 2.0" }));
+    act(() => { setLocale("ru"); });
+    expect(screen.getByRole("status")).toHaveTextContent(t("audio.voiceLibrary.previewPlaying", { "0": getVoiceDisplayName(voice) }));
+    const audio = document.querySelector<HTMLAudioElement>(`audio[data-voice-id='${voice.id}']`)!;
+    fireEvent.error(audio);
+    act(() => { setLocale("en"); });
+    expect(screen.getByRole("alert")).toHaveTextContent(t("audio.voiceLibrary.previewFailed", { "0": "Xiaohe 2.0" }));
+    expect(screen.getByRole("alert").textContent).not.toMatch(/\p{Script=Han}/u);
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("leaves unregistered provider voices and customized names unchanged", () => {
+    setLocale("en");
+    expect(getVoiceDisplayName({ id: "custom-provider-voice", name: "用户的声音" })).toBe("用户的声音");
+    expect(getVoiceDisplayName({ id: "zh_female_xiaohe_uranus_bigtts", name: "我的自定义名称" })).toBe("我的自定义名称");
+    for (const name of ["Tim", "Dacey", "Stokie", "Vivi 2.0"]) {
+      expect(getVoiceDisplayName(VOICES.find((voice) => voice.name === name)!)).toBe(name);
+    }
+  });
 
   it("uses keyboard tabs to browse recent and favorite voices without losing the search", async () => {
     const onSelect = mount();
@@ -114,7 +196,7 @@ describe("localized voice metadata", () => {
     expect(onSelect).toHaveBeenCalledWith("zh_female_cancan_uranus_bigtts");
   });
 
-  it("updates metadata labels in all languages without resetting filters or translating voice names", async () => {
+  it("updates display aliases and metadata labels in all languages without resetting filters", async () => {
     mount();
     await selectValue(screen.getByRole("combobox", { name: t("audio.voiceLibrary.scene") }), "roleplay");
     const filter = screen.getByRole("combobox", { name: t("audio.voiceLibrary.scene") });
@@ -122,7 +204,7 @@ describe("localized voice metadata", () => {
       act(() => { setLocale(locale); });
       expect(screen.getByRole("combobox", { name: t("audio.voiceLibrary.scene") })).toBe(filter);
       expect(filter).toHaveAttribute("value", "roleplay");
-      const voice = screen.getByText("知性灿灿 2.0", { selector: "strong" }).closest("button");
+      const voice = screen.getByText(getVoiceDisplayName(VOICES.find((value) => value.id === "zh_female_cancan_uranus_bigtts")!), { selector: "strong" }).closest("button");
       expect(voice).toHaveTextContent(`${t("common.chinese")} · ${t("audio.voices.roleplay")}`);
       expect(screen.queryByText("Tim", { selector: "strong" })).not.toBeInTheDocument();
     }

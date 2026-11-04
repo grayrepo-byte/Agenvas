@@ -6,6 +6,8 @@ import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import type { Artifact,KlingProfile,MediaCapability,MediaDraft,MediaSettings,SaveMediaDraftRequest,Task } from "../../shared/api/client";
 import { changeControl,clickControl } from "../../test/controls";
 import { server } from "../../test/server";
+import { setLocale, t } from "../../shared/i18n";
+import { seededStyles } from "../../test/seededCatalogs";
 import { klingField, klingProfiles } from "../../test/klingProfiles";
 import { nativeCapability, nativePlatform, nativeProfiles } from "../../test/nativeProfiles";
 import { MediaDraftEditor } from "./MediaDraftEditor";
@@ -1005,6 +1007,18 @@ describe("MediaDraftEditor", () => {
     await user.click(add);
     await user.click(add);
     await waitFor(() => expect(screen.queryByRole("menu", { name: "图片来源" })).not.toBeInTheDocument());
+  });
+
+  it("localizes an installed style selected on the editor toolbar without saving a renamed style", async () => {
+    setLocale("en");
+    const style = seededStyles[0]!;
+    const { saves } = setup({ draft: { ...initialDraft, styleId: style.id }, handlers: [
+      http.get("/api/v1/media-styles", () => HttpResponse.json([style])),
+    ] });
+    await waitFor(() => expect(screen.getByRole("button", { name: t("styles.choose") })).toHaveTextContent("Photorealistic photography"));
+    expect(screen.getByRole("button", { name: t("styles.choose") })).not.toHaveTextContent(/\p{Script=Han}/u);
+    expect(saves).toEqual([]);
+    expect(style.name).toBe("写实摄影");
   });
 
   it.each(["IMAGE", "VIDEO"] as const)("persists an illustrated style for %s without changing the prompt", async (kind) => {

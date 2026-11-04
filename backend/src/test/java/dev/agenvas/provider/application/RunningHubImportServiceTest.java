@@ -21,12 +21,36 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 class RunningHubImportServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
-    private final RunningHubImportService imports = new RunningHubImportService(null, null, null, mapper);
+    private final RunningHubImportService imports = new RunningHubImportService(null, null, null, mapper, dev.agenvas.testing.CreationMessagesTestSupport.messages());
+
+    @ParameterizedTest
+    @CsvSource({"en, Node 1", "zh, 节点 1", "ru, Узел 1", "ja, ノード 1"})
+    void localizesOnlyMissingNodeNamesAndKeepsImportedNames(String language, String expected) {
+        var request = new MockHttpServletRequest();
+        request.addHeader("Accept-Language", language);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            var source = mapper.readTree("""
+                    {"1":{"inputs":{"steps":20}},"2":{"_meta":{"title":"用户节点"},"inputs":{"steps":20}}}
+                    """);
+            var preview = imports.candidates(RunningHubDefinition.TargetType.WORKFLOW, "123", Task.Kind.IMAGE_GENERATION, source);
+            assertThat(preview.definition().nodeOptions().getFirst().label()).isEqualTo(expected);
+            assertThat(preview.definition().fields().getFirst().label()).isEqualTo(expected + " · steps");
+            assertThat(preview.definition().nodeOptions().getLast().label()).isEqualTo("用户节点");
+            assertThat(preview.definition().fields().getLast().label()).isEqualTo("用户节点 · steps");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
     @ParameterizedTest
     @EnumSource(RunningHubDefinition.TargetType.class)
     void discoveryAcceptsMoreThan64FieldsThrough1024AndPreservesThemWhenPublished(RunningHubDefinition.TargetType type) {
@@ -98,7 +122,7 @@ class RunningHubImportServiceTest {
             when(repository.connectionVersion(connectionId, 1)).thenReturn(Optional.of(new JooqMediaCapabilityRepository.ConnectionVersion(
                     connectionId, 1, "http://127.0.0.1:" + server.getAddress().getPort(), "synthetic", new byte[0], new byte[0], 1, "test")));
             when(cipher.decryptMedia(eq(connectionId), eq(1), any(CredentialCipher.Encrypted.class))).thenReturn("synthetic-key");
-            var preview = new RunningHubImportService(repository, cipher, new RunningHubClient(mapper), mapper)
+            var preview = new RunningHubImportService(repository, cipher, new RunningHubClient(mapper), mapper, dev.agenvas.testing.CreationMessagesTestSupport.messages())
                     .preview(connectionId, RunningHubDefinition.TargetType.AI_APP, "2084320751339032577", Task.Kind.VIDEO_GENERATION, null);
             assertThat(preview.definition().fields()).hasSize(21);
             assertThat(preview.targetName()).isEqualTo("Synthetic video app");

@@ -43,6 +43,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -67,7 +70,7 @@ class VideoOperationServiceTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final VideoOperationService service = new VideoOperationService(tasks, artifacts, assets,
             items, canvas, drafts, functions, catalog, events, mock(UsageService.class), mapper,
-            Clock.fixed(NOW, ZoneOffset.UTC));
+            Clock.fixed(NOW, ZoneOffset.UTC), dev.agenvas.testing.CreationMessagesTestSupport.messages());
 
     @BeforeEach
     void setup() {
@@ -192,6 +195,42 @@ class VideoOperationServiceTest {
 
         assertThat(task.input().at("/mediaInput/parameters/format").asText()).isEqualTo("WAV");
         assertThat(task.input().at("/mediaInput/parameters/trackIndex").asInt(-1)).isZero();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"en-US, Audio extraction, Silent video", "zh-CN, 音频分离, 无声视频",
+            "ru-RU, Извлечение аудио, Видео без звука", "ja-JP, 音声抽出, 音声なし動画"})
+    void freezesBothOutputLabelsInTheRequestLanguageBeforeBackgroundProcessing(
+            String language, String audioLabel, String silentLabel) {
+        localAudio(1000);
+        var request = new MockHttpServletRequest();
+        request.addHeader("Accept-Language", language);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            var task = runAudio(mapper.createObjectNode());
+            assertThat(task.input().path("prompt").asText()).isEqualTo(audioLabel);
+            assertThat(task.input().at("/silentVideoTarget/prompt").asText()).isEqualTo(silentLabel);
+            verify(canvas).forkAudioDerivationWithinChange(owner, project, itemId, audioLabel);
+            verify(canvas).forkMediaDerivationWithinChange(eq(owner), eq(project), eq(itemId),
+                    any(), eq(7L), eq(1), eq(silentLabel));
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void preservesTheUsersInstructionVerbatimInAnEnglishRequest() {
+        runningHub();
+        var request = new MockHttpServletRequest();
+        request.addHeader("Accept-Language", "en");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            var task = service.run(owner, project, artifactId, itemId, sourceVersionId, 0,
+                    VideoOperation.UPSCALE, 0, 1, "保留我的原话", mapper.createObjectNode(), "command");
+            assertThat(task.input().path("prompt").asText()).isEqualTo("保留我的原话");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     @Test

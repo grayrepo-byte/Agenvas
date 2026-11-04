@@ -10,6 +10,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
+import { getPromptLabels } from "./builtInPrompts";
 
 const SETTINGS_KEY = ["settings", "prompts"] as const;
 const NEW_PROMPT = "new";
@@ -32,6 +33,7 @@ export function PromptManagementSection({ enabled }: { enabled: boolean }) {
   const record = settings.data?.items.find((value) => value.id === selection);
   const draft = selection ? drafts[selection] : undefined;
   const value = draft ?? record;
+  const labels = value && record ? getPromptLabels({ ...record, ...value }) : value;
   const isNew = selection === NEW_PROMPT;
   const save = useMutation({ mutationFn: ({ selection, draft }: { selection: string; draft: Draft }) => {
     const { key, name, description, content, version } = draft;
@@ -61,8 +63,10 @@ export function PromptManagementSection({ enabled }: { enabled: boolean }) {
     if (remove.isError) remove.reset();
     if (value && selection) setDrafts((old) => ({ ...old, [selection]: { ...value, ...fields } }));
   }
-  const rows = (settings.data?.items ?? []).filter((row) => (!kind || row.kind === kind)
-    && `${row.name} ${row.key} ${row.description}`.toLowerCase().includes(filter.toLowerCase()));
+  const rows = (settings.data?.items ?? []).filter((row) => {
+    const labels = getPromptLabels(row);
+    return (!kind || row.kind === kind) && `${labels.name} ${row.key} ${labels.description}`.toLowerCase().includes(filter.toLowerCase());
+  });
   return <div className="prompt-management-layout">
     <Panel className="prompt-management-catalog" title={t("prompts.title")} description={t("prompts.hint")} actions={settings.data ? <StatusBadge>{rows.length}</StatusBadge> : null}>
       <div className="ui-stack">
@@ -75,12 +79,12 @@ export function PromptManagementSection({ enabled }: { enabled: boolean }) {
         {settings.isSuccess && !rows.length ? <EmptyState title={t("prompts.empty")} /> : null}
         {rows.map((row) => <Button type="button" variant={selection === row.id ? "secondary" : "outline"} className="prompt-management-record h-auto justify-start whitespace-normal py-3 text-left"
           disabled={pending} key={row.id} onClick={() => select(row.id)} aria-pressed={selection === row.id}>
-          <span className="min-w-0"><span className="block">{row.name}{drafts[row.id] ? ` · ${t("prompts.unsaved")}` : ""}</span><span className="block break-all text-xs text-muted-foreground">{row.key}</span></span>
+          <span className="min-w-0"><span className="block">{getPromptLabels(row).name}{drafts[row.id] ? ` · ${t("prompts.unsaved")}` : ""}</span><span className="block break-all text-xs text-muted-foreground">{row.key}</span></span>
           <StatusBadge>{row.kind === "AGENT" ? t("prompts.agent") : t("prompts.function")}</StatusBadge>
         </Button>)}
       </div>
     </Panel>
-    <Panel className="prompt-management-editor" title={isNew ? t("prompts.create") : record?.name ?? t("prompts.editor")} description={t("prompts.copyHint")}
+    <Panel className="prompt-management-editor" title={isNew ? t("prompts.create") : record ? getPromptLabels(record).name : t("prompts.editor")} description={t("prompts.copyHint")}
       actions={draft ? <StatusBadge tone="warning">{t("prompts.unsaved")}</StatusBadge> : value ? <StatusBadge>{`v${value.version}`}</StatusBadge> : null}>
       <form className="ui-stack prompt-management-form" onSubmit={(event) => { event.preventDefault(); if (selection && draft && !disabled && !conflict) save.mutate({ selection, draft }); }}>
         {error ? <Notice tone="danger" title={forbidden ? t("prompts.forbidden") : conflict ? t("prompts.conflict") : t("prompts.operationFailed")}>
@@ -94,9 +98,9 @@ export function PromptManagementSection({ enabled }: { enabled: boolean }) {
           <Field><FieldLabel htmlFor={`${id}-kind`}>{t("prompts.kind")}</FieldLabel>
             <Input id={`${id}-kind`} readOnly value={value.kind === "AGENT" ? t("prompts.agent") : t("prompts.function")} /></Field>
           <Field><FieldLabel htmlFor={`${id}-name`}>{t("prompts.name")}</FieldLabel>
-            <Input id={`${id}-name`} required maxLength={MAX_NAME_LENGTH} disabled={disabled} value={value.name} onChange={(event) => change({ name: event.target.value })} /></Field>
+            <Input id={`${id}-name`} required maxLength={MAX_NAME_LENGTH} disabled={disabled} value={labels?.name ?? value.name} onChange={(event) => change({ name: event.target.value })} /></Field>
           <Field className="prompt-management-field-wide"><FieldLabel htmlFor={`${id}-description`}>{t("prompts.description")}</FieldLabel>
-            <Input id={`${id}-description`} maxLength={MAX_DESCRIPTION_LENGTH} disabled={disabled} value={value.description} onChange={(event) => change({ description: event.target.value })} /></Field>
+            <Input id={`${id}-description`} maxLength={MAX_DESCRIPTION_LENGTH} disabled={disabled} value={labels?.description ?? value.description} onChange={(event) => change({ description: event.target.value })} /></Field>
           </FieldGroup>
           <Field className="prompt-management-content-field"><FieldLabel htmlFor={`${id}-content`}>{t("prompts.content")}</FieldLabel>
             <Textarea id={`${id}-content`} required rows={18} maxLength={MAX_CONTENT_LENGTH} disabled={disabled} value={value.content} onChange={(event) => change({ content: event.target.value })} />

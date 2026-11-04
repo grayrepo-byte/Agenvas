@@ -31,7 +31,8 @@
     "test:mcp-settings": "node e2e/mcp-settings-browser.mjs",
     "test:local-service-discovery": "node e2e/local-service-discovery-browser.mjs",
     "test:director-settings": "node e2e/director-settings-browser.mjs",
-    "test:i18n": "node --test scripts/check-i18n.test.mjs && vitest run src/shared/i18n/i18n.test.tsx src/features/canvas/VoiceLibrary.test.tsx src/features/settings/AutoDlWorkflowFields.test.tsx",
+    "test:i18n": "node --test scripts/check-i18n.test.mjs && vitest run src/shared/i18n/i18n.test.tsx src/shared/mediaFunctions.test.ts src/shared/mediaStyles.test.ts src/features/settings/builtInPrompts.test.ts src/features/skills/builtinSkillLabels.test.ts src/features/canvas/VoiceLibrary.test.tsx src/features/settings/AutoDlWorkflowFields.test.tsx",
+    "test:interface-locales": "node e2e/interface-locales-browser.mjs",
     "build": "tsc --noEmit && vite build",
     "build:ci": "vite build",
     "preview": "vite preview"

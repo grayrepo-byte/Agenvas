@@ -16,6 +16,7 @@ import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
+import dev.agenvas.shared.i18n.CreationMessages;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.task.domain.VideoOperation;
 import dev.agenvas.task.domain.AudioExtractionParameters;
@@ -49,14 +50,16 @@ public class VideoOperationService {
     private final UsageService usage;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final CreationMessages creationMessages;
 
     public VideoOperationService(TaskRepository tasks, ArtifactService artifacts, AssetService assets,
             CanvasItemQueryService items, CanvasService canvas, MediaDraftService drafts,
             MediaFunctionService functions, MediaCapabilityService catalog, ProjectEventService events,
-            UsageService usage, ObjectMapper mapper, Clock clock) {
+            UsageService usage, ObjectMapper mapper, Clock clock, CreationMessages creationMessages) {
         this.tasks = tasks; this.artifacts = artifacts; this.assets = assets; this.items = items;
         this.canvas = canvas; this.drafts = drafts; this.functions = functions; this.catalog = catalog;
         this.events = events; this.usage = usage; this.mapper = mapper; this.clock = clock;
+        this.creationMessages = creationMessages;
     }
 
     public Task run(UUID ownerId, UUID projectId, UUID artifactId, UUID itemId, UUID sourceVersionId,
@@ -125,17 +128,18 @@ public class VideoOperationService {
             PreparedOperation prepared = prepareOperation(binding, asset, sourceVersionId,
                     instruction, parameters, operation);
             var sourceDraft = drafts.get(ownerId, projectId, itemId);
+            String resultLabel = creationMessages.text(operation.resultLabel());
             var output = operation == VideoOperation.EXTRACT_AUDIO
-                    ? canvas.forkAudioDerivationWithinChange(ownerId, projectId, itemId, operation.resultLabel())
+                    ? canvas.forkAudioDerivationWithinChange(ownerId, projectId, itemId, resultLabel)
                     : canvas.forkMediaDerivationWithinChange(ownerId, projectId, itemId, UUID.randomUUID(),
-                            sourceDraft.version(), 0, operation.resultLabel());
+                            sourceDraft.version(), 0, resultLabel);
             Artifact target = artifacts.get(ownerId, projectId, output.subjectId()).artifact();
             ObjectNode input = mapper.createObjectNode().put("schemaVersion", INPUT_SCHEMA_VERSION)
                     .put("artifactId", target.id().toString()).put("sourceCanvasItemId", itemId.toString())
                     .put("canvasItemId", output.id().toString()).put("canvasItemVersion", output.version())
                     .put("resultSelectionEpoch", canvas.mediaSelectionEpoch(ownerId, projectId, output.id()))
                     .put("resultDraftVersion", drafts.get(ownerId, projectId, output.id()).version())
-                    .put("prompt", instruction.isBlank() ? operation.resultLabel() : instruction)
+                    .put("prompt", instruction.isBlank() ? resultLabel : instruction)
                     .put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
             if (output.selectedVersionId() == null) input.putNull("parentVersionId");
             else input.put("parentVersionId", output.selectedVersionId().toString());
@@ -146,9 +150,10 @@ public class VideoOperationService {
             if (operation == VideoOperation.EXTRACT_AUDIO) {
                 // Both outputs are fixed at acceptance; deleting either node must not recreate it on completion.
                 var silent = canvas.forkMediaDerivationWithinChange(ownerId, projectId, itemId,
-                        UUID.randomUUID(), sourceDraft.version(), 1, VideoOperation.SILENT_VIDEO_LABEL);
+                        UUID.randomUUID(), sourceDraft.version(), 1, creationMessages.text(VideoOperation.SILENT_VIDEO_LABEL));
                 var silentTarget = input.putObject(VideoOperation.SILENT_VIDEO_TARGET);
-                silentTarget.put("artifactId", silent.subjectId().toString())
+                silentTarget.put("prompt", creationMessages.text(VideoOperation.SILENT_VIDEO_LABEL))
+                        .put("artifactId", silent.subjectId().toString())
                         .put("canvasItemId", silent.id().toString())
                         .put("parentVersionId", silent.selectedVersionId().toString())
                         .put("artifactVersion", sourceArtifact.version())

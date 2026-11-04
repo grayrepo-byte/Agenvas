@@ -11,7 +11,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet 
 import { Input } from "../../shared/ui/primitives/input";
 import { Textarea } from "../../shared/ui/primitives/textarea";
 import { VoiceLibrary } from "../canvas/VoiceLibrary";
-import { VOICES } from "../canvas/voiceCatalog";
+import { getVoiceDisplayName, VOICES } from "../canvas/voiceCatalog";
 import { CharacterReferencePicker, CharacterReferencePreview } from "./CharacterReferencePicker";
 import { characterBindingStale, characterQueryOptions } from "./characterQueries";
 
@@ -34,6 +34,7 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
   const busyRef = useRef(false);
   const [error, setError] = useState<Error | null>(null);
   const [saved, setSaved] = useState(false);
+  const selectedVoice = VOICES.find((voice) => voice.id === editor?.content.voice?.speakerId);
   function updateContent(change: (content: CharacterContent) => CharacterContent) {
     setEditor((current) => current ? { ...current, content: change(current.content) } : null);
     setConfirmation(null); setSaved(false);
@@ -125,7 +126,7 @@ export function CharacterManagerDialog({ projectId, onClose }: { projectId: stri
           <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setPicker({ kind: "AUDIO" })}>{t("character.chooseAudio")}</Button>
             <Button type="button" variant="outline" onClick={() => setVoicesOpen(true)}>{t("character.chooseSpeaker")}</Button>
             {content.voice ? <Button type="button" variant="ghost" onClick={() => updateContent((value) => ({ ...value, voice: null }))}>{t("character.clearVoice")}</Button> : null}</div>
-          {content.voice?.speakerId ? <p className="text-sm">{VOICES.find((voice) => voice.id === content.voice?.speakerId)?.name ?? content.voice.speakerId} · {content.voice.speakerId}</p> : null}
+          {content.voice?.speakerId ? <p className="text-sm">{selectedVoice ? getVoiceDisplayName(selectedVoice) : content.voice.speakerId} · {content.voice.speakerId}</p> : null}
           <Field><FieldLabel htmlFor={`${id}-voice-description`}>{t("character.voiceDescription")}</FieldLabel><Textarea id={`${id}-voice-description`} disabled={!content.voice?.versionId && !content.voice?.speakerId} maxLength={2000} value={content.voice?.description ?? ""} onChange={(event) => updateContent((value) => ({ ...value, voice: { versionId: value.voice?.versionId ?? null, speakerId: value.voice?.speakerId ?? null, description: event.target.value } }))} /></Field>
         </FieldSet>
       </FieldGroup> : null}

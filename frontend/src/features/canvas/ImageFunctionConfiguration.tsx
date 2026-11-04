@@ -1,3 +1,4 @@
+import { mediaDisplayName } from "../../shared/mediaDisplayNames";
 import { X } from "@/shared/ui/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
@@ -61,7 +62,7 @@ function ConfiguredImageFunction({ configured, version, sourceVersionId, busy, o
     {errors.length ? <p role="status">{errors[0]}</p> : null}
   </div> : null;
   const controls = <div className="image-function-controls ui-stack">
-    <p className="image-function-method" title={configured.label}>{configured.capability.name}</p>
+    <p className="image-function-method" title={configured.label}>{mediaDisplayName(configured.capability)}</p>
     {parameterControls}
     <p className="image-function-cost">{configured.capability.adapterId === "LOCAL_IMAGE_PROCESSOR"
       ? t("media.video.localCost") : estimatedMediaCost(configured.capability, 1, null)}</p>

@@ -111,7 +111,7 @@ class SkillSelectionQueryTest {
             when(builtins.keys()).thenReturn(List.of("current-edition/synthetic-skill"));
             ObjectProvider<LibraryService> library = libraryProvider();
             SkillAssetArchiveService archive = mock(SkillAssetArchiveService.class);
-            SkillService skills = new SkillService(repository, new SkillFormat(), builtins, library, archive,
+            SkillService skills = new SkillService(repository, new SkillFormat(), builtins, mock(BuiltinSkillSearch.class), library, archive,
                     mapper, clock, transactions);
             JooqSkillInstallRepository operations = mock(JooqSkillInstallRepository.class);
             when(operations.bindingCommand(owner, project, "synthetic-binding")).thenReturn(Optional.empty());

@@ -1,6 +1,7 @@
 package dev.agenvas.canvas.application;
 
 import dev.agenvas.shared.i18n.ApiMessage;
+import dev.agenvas.shared.i18n.CreationMessages;
 import dev.agenvas.artifact.application.ArtifactService;
 import dev.agenvas.artifact.application.MediaDraftService;
 import dev.agenvas.artifact.domain.Artifact;
@@ -82,6 +83,7 @@ public class CanvasService {
     private final ObjectMapper objectMapper;
     /** 为新布局项提供统一时间。 */
     private final Clock clock;
+    private final CreationMessages creationMessages;
     private final ObjectProvider<CharacterService> characters;
 
     /** 组装空间投影、布局并发校验和项目事件写入能力。
@@ -100,7 +102,7 @@ public class CanvasService {
             CanvasConnectionService connections,
             ProjectEventService events,
             ObjectMapper objectMapper,
-            Clock clock, ObjectProvider<CharacterService> characters) {
+            Clock clock, ObjectProvider<CharacterService> characters, CreationMessages creationMessages) {
         this.projects = projects;
         this.artifacts = artifacts;
         this.mediaDrafts = mediaDrafts;
@@ -109,6 +111,7 @@ public class CanvasService {
         this.events = events;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.creationMessages = creationMessages;
         this.characters = characters;
     }
 
@@ -654,7 +657,7 @@ public class CanvasService {
             } else {
                 var sourceDraft = mediaDrafts.get(ownerId, projectId, itemId);
                 target = forkMediaDerivationWithinChange(ownerId, projectId, itemId,
-                        targetItemId, sourceDraft.version(), 0, uploadPurpose.resultLabel());
+                        targetItemId, sourceDraft.version(), 0, creationMessages.text(uploadPurpose.resultLabel()));
             }
             ArtifactVersion revision = artifacts.appendUserMediaVersionWithinChange(ownerId,
                     projectId, current.subjectId(), content, sourceVersionId, frozenInput);

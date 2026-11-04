@@ -12,6 +12,7 @@ import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.i18n.ApiMessage;
+import dev.agenvas.shared.i18n.CreationMessages;
 import dev.agenvas.task.domain.AudioTrimParameters;
 import dev.agenvas.task.domain.Task;
 import dev.agenvas.usage.application.UsageService;
@@ -38,14 +39,16 @@ public class AudioTrimService {
     private final UsageService usage;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final CreationMessages creationMessages;
 
     public AudioTrimService(TaskRepository tasks, ArtifactService artifacts, AssetService assets,
             CanvasItemQueryService items, CanvasService canvas, MediaDraftService drafts,
             ProjectService projects, MediaCapabilityService catalog, ProjectEventService events,
-            UsageService usage, ObjectMapper mapper, Clock clock) {
+            UsageService usage, ObjectMapper mapper, Clock clock, CreationMessages creationMessages) {
         this.tasks = tasks; this.artifacts = artifacts; this.assets = assets; this.items = items;
         this.canvas = canvas; this.drafts = drafts; this.projects = projects; this.catalog = catalog;
         this.events = events; this.usage = usage; this.mapper = mapper; this.clock = clock;
+        this.creationMessages = creationMessages;
     }
 
     public Task run(UUID ownerId, UUID projectId, UUID artifactId, UUID canvasItemId, UUID sourceVersionId,
@@ -99,8 +102,9 @@ public class AudioTrimService {
             if (runId != null && !dev.agenvas.provider.domain.MediaAdapterRegistry.LOCAL_AUDIO_TRIMMER.equals(binding.adapterId()))
                 throw AudioTrimParameters.invalid();
             var sourceDraft = drafts.get(ownerId, projectId, canvasItemId);
+            String resultLabel = creationMessages.text(ApiMessage.of("creation.audio.trim"));
             var output = canvas.forkMediaDerivationWithinChange(ownerId, projectId, canvasItemId, UUID.randomUUID(),
-                    sourceDraft.version(), 0, "音频裁剪");
+                    sourceDraft.version(), 0, resultLabel);
             var target = artifacts.get(ownerId, projectId, output.subjectId()).artifact();
             ObjectNode input = mapper.createObjectNode().put("schemaVersion", 7)
                     .put("artifactId", target.id().toString()).put("sourceCanvasItemId", canvasItemId.toString())
@@ -108,14 +112,14 @@ public class AudioTrimService {
                     .put("parentVersionId", sourceVersionId.toString())
                     .put("resultSelectionEpoch", canvas.mediaSelectionEpoch(ownerId, projectId, output.id()))
                     .put("resultDraftVersion", drafts.get(ownerId, projectId, output.id()).version())
-                    .put("prompt", "音频裁剪").put("sourceDurationMs", asset.durationMs())
+                    .put("prompt", resultLabel).put("sourceDurationMs", asset.durationMs())
                     .put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
             input.set("audioTrimRequest", request);
             if (runId != null) input.set("agentLocalOrigin", request.path("agentLocalOrigin"));
             input.putObject("audioTrim").put("sourceVersionId", sourceVersionId.toString())
                     .set("parameters", parameters.toJson(mapper));
             var frozen = input.putObject("mediaInput");
-            frozen.put("mode", "GENERAL_REFERENCE").put("prompt", "音频裁剪").put("renderedPrompt", "音频裁剪")
+            frozen.put("mode", "GENERAL_REFERENCE").put("prompt", resultLabel).put("renderedPrompt", resultLabel)
                     .put("capabilityId", binding.capabilityId().toString()).put("capabilityVersion", binding.capabilityVersion());
             frozen.set("parameters", parameters.toJson(mapper));
             frozen.putArray("images"); frozen.putArray("videos"); frozen.putArray("mentions");

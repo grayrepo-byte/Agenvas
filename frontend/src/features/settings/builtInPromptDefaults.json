@@ -1,0 +1,34 @@
+{
+  "agent.director": {
+    "name": "导演 Agent",
+    "description": "需求分析、剧情、图片素材及图生视频的导演创作流程"
+  },
+  "text.generate": {
+    "name": "文字卡片生成",
+    "description": "文字卡片直接生成时使用的创作提示词"
+  },
+  "image.three-view.character": {
+    "name": "角色三视图",
+    "description": "基于来源图片生成同一角色的正面半身大头照与全身站立三视图（正面、侧面、背面），采用 16:9 白底柔光角色设定集风格；主体说明追加到正文末尾，新任务冻结当前配置。"
+  },
+  "image.three-view.face": {
+    "name": "脸部三视图",
+    "description": "基于来源图片生成同一头肩的正面、四分之三角度和侧面；主体说明追加到正文末尾，新任务冻结当前配置。"
+  },
+  "image.three-view.prop": {
+    "name": "道具三视图",
+    "description": "基于来源图片生成同一道具的正面、侧面和背面正交视图；主体说明追加到正文末尾，新任务冻结当前配置。"
+  },
+  "image.three-view.scene-grid": {
+    "name": "场景宫格图",
+    "description": "基于来源图片生成同一场景的远景、反向、中景和关键细节 2×2 宫格；主体说明追加到正文末尾，新任务冻结当前配置。"
+  },
+  "image.reverse-prompt": {
+    "name": "图片提示词反推",
+    "description": "根据当前选用的图片版本推导可用于图片生成的提示词；每次执行固定当前正文，不覆盖媒体草稿。"
+  },
+  "video.optimize-prompt": {
+    "name": "视频提示词优化",
+    "description": "优化视频草稿提示词，可选择固定版本的 Skill 文字方法；结果由用户确认回填。"
+  }
+}

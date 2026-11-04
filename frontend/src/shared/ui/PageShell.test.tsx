@@ -7,7 +7,7 @@ import { beforeEach,describe,expect,it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import { changeControl,clickControl } from "../../test/controls";
 import { server } from "../../test/server";
-import { getLocale,LOCALE_NAMES,SUPPORTED_LOCALES } from "../i18n";
+import { getLocale,localeName,SUPPORTED_LOCALES } from "../i18n";
 import { PageShell } from "./PageShell";
 import { useNavigationStore } from "./navigationStore";
 
@@ -56,9 +56,9 @@ describe("PageShell", () => {
     await user.click(trigger);
     const dialog = within(screen.getByRole("dialog", { name: "界面语言" }));
     for (const locale of SUPPORTED_LOCALES) {
-      expect(dialog.getByRole("button", { name: LOCALE_NAMES[locale] })).toHaveAttribute("aria-pressed", String(locale === "zh"));
+      expect(dialog.getByRole("button", { name: localeName(locale) })).toHaveAttribute("aria-pressed", String(locale === "zh"));
     }
-    await user.click(dialog.getByRole("button", { name: "Русский" }));
+    await user.click(dialog.getByRole("button", { name: localeName("ru") }));
     expect(getLocale()).toBe("ru");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await waitFor(() => expect(trigger).toHaveFocus());

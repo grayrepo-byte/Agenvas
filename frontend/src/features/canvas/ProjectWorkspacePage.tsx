@@ -499,7 +499,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const progress = mvProgress.current.get(source.id) ?? { createKey: crypto.randomUUID(), itemId: crypto.randomUUID() };
     mvProgress.current.set(source.id, progress);
     const prepared = await prepareMediaNode(projectId, source.id, "VIDEO", `${source.title} · MV`, {
-      prompt: "根据参考音频的节奏和情绪制作视频。", parameters: { aspectRatio: "AUTO" },
+      prompt: t("canvas.workspace.musicVideoPrompt"), parameters: { aspectRatio: "AUTO" },
       durationSeconds: 5, capabilityId: null, videoInputMode: "GENERAL_REFERENCE",
       mediaInputs: [{ versionId: source.selectedVersionId, role: "AUDIO_REFERENCE", color: "#67C7F3" }], mentions: [],
     }, progress);

@@ -7,7 +7,7 @@ import { Empty,EmptyDescription,EmptyHeader } from "../../shared/ui/primitives/e
 import { Input } from "../../shared/ui/primitives/input";
 import { Tabs,TabsContent,TabsList,TabsTrigger } from "../../shared/ui/primitives/tabs";
 import { Select } from "../../shared/ui/Select";
-import { VOICES,VOICE_LANGUAGE_LABEL_KEYS,VOICE_SCENE_LABEL_KEYS } from "./voiceCatalog";
+import { getVoiceDisplayName,VOICES,VOICE_LANGUAGE_LABEL_KEYS,VOICE_SCENE_LABEL_KEYS } from "./voiceCatalog";
 import "./VoiceLibrary.css";
 const PREFERENCE_KEY = "agenvas.voice-preferences.v1";
 const RECENT_LIMIT = 8;
@@ -50,7 +50,7 @@ export function VoiceLibrary({ selected, onSelect, onClose, containerRef }: {
   const samples = useRef(new Map<string, HTMLAudioElement>());
   const activeSample = useRef<HTMLAudioElement | null>(null);
   const playAttempt = useRef(0);
-  const [preview, setPreview] = useState<{ voiceId: string; name: string; status: "loading" | "playing" | "error" } | null>(null);
+  const [preview, setPreview] = useState<{ voiceId: string; status: "loading" | "playing" | "error" } | null>(null);
   useEffect(() => () => {
     playAttempt.current += 1;
     activeSample.current?.pause();
@@ -76,23 +76,25 @@ export function VoiceLibrary({ selected, onSelect, onClose, containerRef }: {
     stopPreview();
     activeSample.current = audio;
     const attempt = ++playAttempt.current;
-    setPreview({ voiceId: voice.id, name: voice.name, status: "loading" });
+    setPreview({ voiceId: voice.id, status: "loading" });
     // Start in the click handler to preserve the browser's user activation. Older
     // promises cannot overwrite a newer voice, a stopped preview, or a closed library.
     void audio.play().then(() => {
       if (playAttempt.current === attempt && activeSample.current === audio)
-        setPreview({ voiceId: voice.id, name: voice.name, status: "playing" });
+        setPreview({ voiceId: voice.id, status: "playing" });
     }).catch(() => {
       if (playAttempt.current === attempt && activeSample.current === audio) {
         activeSample.current = null;
         audio.pause();
-        setPreview({ voiceId: voice.id, name: voice.name, status: "error" });
+        setPreview({ voiceId: voice.id, status: "error" });
       }
     });
   }
   const choices = VOICES.filter((voice) => (!language || voice.language === language)
-    && (!scene || voice.scene === scene) && (!search || `${voice.name} ${voice.id}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
+    && (!scene || voice.scene === scene) && (!search || `${getVoiceDisplayName(voice)} ${voice.name} ${voice.id}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
     && (tab === "all" || (tab === "recent" ? preferences.recent : preferences.favorites).includes(voice.id)));
+  const previewEntry = preview && VOICES.find((voice) => voice.id === preview.voiceId);
+  const previewName = previewEntry ? getVoiceDisplayName(previewEntry) : "";
   return <div ref={(element) => {
     rootRef.current = element;
     if (typeof containerRef === "function") return containerRef(element);
@@ -131,23 +133,24 @@ export function VoiceLibrary({ selected, onSelect, onClose, containerRef }: {
         <div className="voice-library-list">{choices.map((voice) => {
           const isSelected = selected === voice.id;
           const isFavorite = preferences.favorites.includes(voice.id);
+          const name = getVoiceDisplayName(voice);
           return <div className="flex min-w-0 items-center gap-1" key={voice.id}>
             <Button variant={isSelected ? "outline" : "ghost"} type="button" className="h-auto min-w-0 flex-1 justify-start py-2" aria-pressed={isSelected} onClick={() => {
               remember({ ...preferences, recent: [voice.id, ...preferences.recent.filter((id) => id !== voice.id)].slice(0, RECENT_LIMIT) }); onSelect(voice.id);
             }}>
-              <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full border bg-muted text-xs text-muted-foreground">{voice.name.slice(0, 1)}</span>
+              <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full border bg-muted text-xs text-muted-foreground">{name.slice(0, 1)}</span>
               <span className="min-w-0 flex-1 text-left">
-                <strong className="block truncate text-sm font-medium">{voice.name}</strong>
+                <strong className="block truncate text-sm font-medium">{name}</strong>
                 <small className="block truncate text-xs text-muted-foreground">{t(VOICE_LANGUAGE_LABEL_KEYS[voice.language])} · {t(VOICE_SCENE_LABEL_KEYS[voice.scene])}</small>
               </span>
               {isSelected ? <Check data-icon="inline-end" /> : null}
             </Button>
-            <Button variant={isFavorite ? "secondary" : "ghost"} size="icon-sm" type="button" aria-label={t("audio.voiceLibrary.favoriteNamed", { "0": voice.name })} aria-pressed={isFavorite} onClick={() => remember({ ...preferences,
+            <Button variant={isFavorite ? "secondary" : "ghost"} size="icon-sm" type="button" aria-label={t("audio.voiceLibrary.favoriteNamed", { "0": name })} aria-pressed={isFavorite} onClick={() => remember({ ...preferences,
               favorites: isFavorite ? preferences.favorites.filter((id) => id !== voice.id) : [...preferences.favorites, voice.id] })}>
               <Star weight={isFavorite ? "fill" : "regular"} />
             </Button>
             <Button variant={preview?.voiceId === voice.id && preview.status !== "error" ? "secondary" : "ghost"} size="icon-sm" type="button"
-              aria-label={t(preview?.voiceId === voice.id && preview.status !== "error" ? "audio.voiceLibrary.stopPreviewNamed" : "audio.voiceLibrary.previewNamed", { "0": voice.name })}
+              aria-label={t(preview?.voiceId === voice.id && preview.status !== "error" ? "audio.voiceLibrary.stopPreviewNamed" : "audio.voiceLibrary.previewNamed", { "0": name })}
               aria-busy={preview?.voiceId === voice.id && preview.status === "loading"}
               disabled={!voice.previewUrl} title={t(voice.previewUrl ? "audio.voiceLibrary.previewHint" : "audio.voiceLibrary.previewUnavailable")}
               onClick={() => previewVoice(voice)}>{preview?.voiceId === voice.id && preview.status !== "error" ? <Stop /> : <Play />}</Button>
@@ -158,20 +161,20 @@ export function VoiceLibrary({ selected, onSelect, onClose, containerRef }: {
       </TabsContent>
     </Tabs>
     <p className="shrink-0 text-xs leading-relaxed text-muted-foreground">{t("audio.voiceLibrary.previewUsageHint")}</p>
-    {preview?.status === "error" ? <Alert variant="destructive" className="shrink-0"><AlertDescription>{t("audio.voiceLibrary.previewFailed", { "0": preview.name })}</AlertDescription></Alert>
-      : preview ? <p className="shrink-0 text-sm text-muted-foreground" role="status">{t(preview.status === "loading" ? "audio.voiceLibrary.previewLoading" : "audio.voiceLibrary.previewPlaying", { "0": preview.name })}</p> : null}
+    {preview?.status === "error" ? <Alert variant="destructive" className="shrink-0"><AlertDescription>{t("audio.voiceLibrary.previewFailed", { "0": previewName })}</AlertDescription></Alert>
+      : preview ? <p className="shrink-0 text-sm text-muted-foreground" role="status">{t(preview.status === "loading" ? "audio.voiceLibrary.previewLoading" : "audio.voiceLibrary.previewPlaying", { "0": previewName })}</p> : null}
     {VOICES.map((voice) => voice.previewUrl ? <audio hidden key={voice.id} data-voice-id={voice.id} src={voice.previewUrl} preload="none" ref={(audio) => {
       if (audio) samples.current.set(voice.id, audio); else samples.current.delete(voice.id);
     }} onWaiting={(event) => {
-      if (activeSample.current === event.currentTarget) setPreview({ voiceId: voice.id, name: voice.name, status: "loading" });
+      if (activeSample.current === event.currentTarget) setPreview({ voiceId: voice.id, status: "loading" });
     }} onPlaying={(event) => {
-      if (activeSample.current === event.currentTarget) setPreview({ voiceId: voice.id, name: voice.name, status: "playing" });
+      if (activeSample.current === event.currentTarget) setPreview({ voiceId: voice.id, status: "playing" });
     }} onEnded={(event) => {
       if (activeSample.current === event.currentTarget) stopPreview();
     }} onError={(event) => {
       if (activeSample.current === event.currentTarget) {
         stopPreview();
-        setPreview({ voiceId: voice.id, name: voice.name, status: "error" });
+        setPreview({ voiceId: voice.id, status: "error" });
       }
     }} /> : null)}
   </div>;

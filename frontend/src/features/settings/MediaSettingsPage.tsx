@@ -1,3 +1,4 @@
+import { mediaDisplayName } from "../../shared/mediaDisplayNames";
 import { Field, FieldLabel, FieldGroup, FieldSet } from "../../shared/ui/primitives/field";
 import { ArrowLeft,ArrowRight,CheckCircle,DotsThree,HardDrives,ImageSquare,MagnifyingGlass,MusicNotes,PlugsConnected,Plus,Sparkle,VideoCamera } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
@@ -15,7 +16,7 @@ import { isKlingAdapter, isKlingNativeAdapter } from "../../shared/kling";
 import { isNativeMediaAdapter } from "../../shared/nativeMedia";
 import { AUTODL_ADAPTER } from "../../shared/autodlWorkflows";
 import { MEDIA_FUNCTIONS_QUERY_KEY } from "../../shared/mediaFunctions";
-import { t,translate,useLocale } from "../../shared/i18n";
+import { t,useLocale } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { LoadingState } from "../../shared/ui/LoadingState";
 import { EmptyState,Notice,Panel,StatusBadge } from "../../shared/ui/PagePrimitives";
@@ -59,7 +60,7 @@ function matchesCatalog(text: string, enabled: boolean, query: string, status: C
     && (status === "all" || enabled === (status === "enabled"));
 }
 function capabilityMatches(connection: MediaConnection, capability: MediaCapability, query: string, status: CatalogStatus, kind: CatalogKind = "all") {
-  return matchesCatalog(`${connection.name} ${connection.platform} ${capability.name} ${adapterLabel(capability.adapterId)} ${capability.settings.model ?? ""}`,
+  return matchesCatalog(`${mediaDisplayName(connection)} ${connection.platform} ${mediaDisplayName(capability)} ${adapterLabel(capability.adapterId)} ${capability.settings.model ?? ""}`,
     connection.enabled && capability.enabled, query, status)
     && (kind === "all" || (kind === "local" ? connection.platform === "LOCAL" : capability.kind === kind && connection.platform !== "LOCAL"));
 }
@@ -483,12 +484,6 @@ function useMediaActions(connection: MediaConnection, settings: MediaSettings, a
   });
 }
 
-function localProcessorDisplayName(id: string, name: string): string {
-  const installedIds = ["00000000-0000-4000-8000-000000000201", "00000000-0000-4000-8000-000000000202"];
-  return installedIds.includes(id) && name === translate("zh", "settings.adapters.localImage")
-    ? t("settings.adapters.localImage") : name;
-}
-
 function ConnectionCapabilities({ connection, settings, apply, query, status, kind }: {
   connection: MediaConnection; settings: MediaSettings; apply: (value: MediaSettings) => void; query: string; status: CatalogStatus; kind: CatalogKind;
 }) {
@@ -498,10 +493,10 @@ function ConnectionCapabilities({ connection, settings, apply, query, status, ki
   const availableAdapters = platformAdapters[connection.platform];
   return <>
     {connection.capabilities.map((capability) => systemManaged ? <TableRow key={capability.id} hidden={!capabilityMatches(connection, capability, query, status, kind)}>
-      <TableCell><div className="media-table-name"><HardDrives size={19} aria-hidden /><strong title={localProcessorDisplayName(capability.id, capability.name)}>{localProcessorDisplayName(capability.id, capability.name)}</strong></div></TableCell>
-      <TableCell data-label={t("settings.mediaWorkspace.serviceColumn")}><span className="media-cell-text" title={systemManaged ? localProcessorDisplayName(connection.id, connection.name) : connection.name}>{systemManaged ? localProcessorDisplayName(connection.id, connection.name) : connection.name}</span></TableCell>
+      <TableCell><div className="media-table-name"><HardDrives size={19} aria-hidden /><strong title={mediaDisplayName(capability)}>{mediaDisplayName(capability)}</strong></div></TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.serviceColumn")}><span className="media-cell-text" title={systemManaged ? mediaDisplayName(connection) : connection.name}>{systemManaged ? mediaDisplayName(connection) : connection.name}</span></TableCell>
       <TableCell data-label={t("common.model")}><span className="media-cell-text" title={adapterLabel(capability.adapterId)}>{t("settings.mediaSettings.builtin")}</span></TableCell>
-      <TableCell data-label={t("settings.mediaWorkspace.kindColumn")}>{capability.kind === "IMAGE_GENERATION" ? t("common.image") : t("common.video")}</TableCell>
+      <TableCell data-label={t("settings.mediaWorkspace.kindColumn")}>{capability.kind === "IMAGE_GENERATION" ? t("common.image") : capability.kind === "AUDIO_GENERATION" ? t("common.audio") : t("common.video")}</TableCell>
       <TableCell data-label={t("settings.mediaSettings.inputRange")}><span className="media-cell-text">{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages }) : t("media.functions.videoTools")}</span></TableCell>
       <TableCell data-label={t("settings.mediaSettings.price")}>{t("settings.mediaSettings.localExecution")}</TableCell><TableCell><StatusBadge tone="success">{t("settings.mediaSettings.enabled")}</StatusBadge></TableCell><TableCell className="ui-muted">{t("settings.mediaSettings.administration")}</TableCell>
     </TableRow> : <CapabilityRow key={capability.id} connectionId={connection.id} connectionName={connection.name} connectionOrigin={connection.origin}
@@ -612,7 +607,7 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
 
   return <>
     <TableRow hidden={hidden} data-disabled={!connection.enabled}>
-      <TableCell><div className="media-table-name">{systemManaged ? <HardDrives size={18} aria-hidden /> : <PlugsConnected size={18} aria-hidden />}<strong title={systemManaged ? localProcessorDisplayName(connection.id, connection.name) : connection.name}>{systemManaged ? localProcessorDisplayName(connection.id, connection.name) : connection.name}</strong></div></TableCell>
+      <TableCell><div className="media-table-name">{systemManaged ? <HardDrives size={18} aria-hidden /> : <PlugsConnected size={18} aria-hidden />}<strong title={systemManaged ? mediaDisplayName(connection) : connection.name}>{systemManaged ? mediaDisplayName(connection) : connection.name}</strong></div></TableCell>
       <TableCell data-label={t("settings.mediaSettings.platform")}>{connection.platform}</TableCell>
       <TableCell data-label={t("settings.mediaWorkspace.capabilityCountColumn")}>{connection.capabilities.length}</TableCell>
       <TableCell data-label={t("settings.mediaWorkspace.addressColumn")}><span className="media-table-endpoint" title={`${endpoint}${connection.platform === "GOOGLE" ? ` · ${googleImageApiLabel(connection.origin)}` : ""}`}>{endpoint}</span></TableCell>
@@ -702,7 +697,7 @@ export function MediaSettingsPage() {
   const availableCount = settings.data?.connections.filter((connection) => connection.enabled)
     .flatMap((connection) => connection.capabilities).filter((capability) => capability.enabled).length ?? 0;
   const visibleCount = settings.data?.connections.reduce((count, connection) => count + (selectedTab === "connections"
-    ? Number(matchesCatalog(`${connection.name} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus))
+    ? Number(matchesCatalog(`${mediaDisplayName(connection)} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus))
     : connection.capabilities.filter((capability) => capabilityMatches(connection, capability, catalogQuery, catalogStatus, catalogKind)).length), 0) ?? 0;
   const hasFilters = Boolean(catalogQuery || catalogStatus !== "all" || selectedTab === "capabilities" && catalogKind !== "all");
   function resetFilters() { setCatalogQuery(""); setCatalogStatus("all"); setCatalogKind("all"); }
@@ -750,7 +745,7 @@ export function MediaSettingsPage() {
               <TableHead scope="col">{t("settings.shared.connectionName")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.platform")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.capabilityCountColumn")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.addressColumn")}</TableHead><TableHead scope="col">{t("settings.mediaWorkspace.credentialsColumn")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.status")}</TableHead><TableHead scope="col">{t("settings.mediaSettings.operations")}</TableHead>
             </TableRow></TableHeader><TableBody>{settings.data.connections.map((connection) => <ConnectionRow key={connection.id}
               connection={connection} settings={settings.data} apply={(result) => queryClient.setQueryData(settingsKey, result)}
-              hidden={!matchesCatalog(`${connection.name} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus)}
+              hidden={!matchesCatalog(`${mediaDisplayName(connection)} ${connection.platform} ${connection.origin ?? ""}`, connection.enabled, catalogQuery, catalogStatus)}
               publishOpen={publishingConnectionId === connection.id} onPublish={() => setPublishingConnectionId(connection.id)} onPublishClose={() => setPublishingConnectionId(null)} />)}
               {visibleCount === 0 && selectedTab === "connections" ? <TableRow><TableCell colSpan={7}><EmptyState title={t("settings.catalog.noResults")} description={t("settings.catalog.tryAnotherSearch")} action={<Button variant="outline" type="button" onClick={resetFilters}>{t("settings.mediaWorkspace.resetFilters")}</Button>} /></TableCell></TableRow> : null}
               </TableBody></Table>

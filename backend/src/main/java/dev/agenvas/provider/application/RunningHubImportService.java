@@ -2,6 +2,7 @@ package dev.agenvas.provider.application;
 
 import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
+import dev.agenvas.shared.i18n.CreationMessages;
 import dev.agenvas.provider.domain.MediaPlatform;
 import dev.agenvas.provider.domain.RunningHubDefinition;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository;
@@ -28,8 +29,10 @@ public final class RunningHubImportService {
     private final CredentialCipher cipher;
     private final RunningHubClient client;
     private final ObjectMapper mapper;
-    public RunningHubImportService(JooqMediaCapabilityRepository repository, CredentialCipher cipher, RunningHubClient client, ObjectMapper mapper) {
+    private final CreationMessages creationMessages;
+    public RunningHubImportService(JooqMediaCapabilityRepository repository, CredentialCipher cipher, RunningHubClient client, ObjectMapper mapper, CreationMessages creationMessages) {
         this.repository = repository; this.cipher = cipher; this.client = client; this.mapper = mapper;
+        this.creationMessages = creationMessages;
     }
     public enum Confidence { DECLARED, INFERRED, UNCERTAIN }
     public enum InsightReason {
@@ -98,7 +101,7 @@ public final class RunningHubImportService {
                 // Preserve names only, never the graph or connected inputs, for the output picker.
                 String title = node.getValue().path("_meta").path("title").asText("").strip();
                 if (title.isBlank()) title = node.getValue().path("class_type").asText("").strip();
-                if (title.isBlank()) title = "节点 " + node.getKey();
+                if (title.isBlank()) title = creationMessages.text(ApiMessage.of("creation.runninghub.node", node.getKey()));
                 nodeOptions.add(new RunningHubDefinition.NodeOption(node.getKey(), boundedLabel(title)));
                 for (var input : node.getValue().path("inputs").properties()) {
                     JsonNode value = input.getValue();
@@ -108,7 +111,7 @@ public final class RunningHubImportService {
                         warnings.add(ApiMessage.of("api.running-hub-import-service.node-field-uses-an-unsupported-mapping-format-and-was-skipped", node.getKey(), input.getKey()));
                         continue;
                     }
-                    String label = node.getValue().path("_meta").path("title").asText(node.getValue().path("class_type").asText("节点 " + node.getKey())) + " · " + input.getKey();
+                    String label = node.getValue().path("_meta").path("title").asText(node.getValue().path("class_type").asText(creationMessages.text(ApiMessage.of("creation.runninghub.node", node.getKey())))) + " · " + input.getKey();
                     String nodeType = node.getValue().path("class_type").asText("");
                     var declaredType = RunningHubInputDiscovery.workflowType(value, input.getKey(), nodeType);
                     boolean declared = value.isNumber() && RunningHubInputDiscovery.declaredWorkflowType(input.getKey(), nodeType);

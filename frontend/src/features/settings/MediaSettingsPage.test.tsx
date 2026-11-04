@@ -58,6 +58,8 @@ describe("MediaSettingsPage", () => {
     setLocale("en");
     const fixture = settingsFixture({ id: "00000000-0000-4000-8000-000000000201", platform: "LOCAL", name: "本地图片处理" },
       { id: "00000000-0000-4000-8000-000000000202", adapterId: "LOCAL_IMAGE_PROCESSOR", name: "本地图片处理" });
+    fixture.connections[0]!.capabilities.push({ ...fixture.connections[0]!.capabilities[0]!,
+      id: "00000000-0000-4000-8000-000000000206", adapterId: "LOCAL_AUDIO_TRIMMER", name: "本地音频裁剪", kind: "AUDIO_GENERATION" });
     fixture.connections.push({ ...fixture.connections[0]!, id: "custom-local", name: "我命名的处理服务", capabilities: [] });
     server.use(http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
       http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)));
@@ -70,8 +72,10 @@ describe("MediaSettingsPage", () => {
     expect(connections.queryByText("本地图片处理")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Published capabilities" }));
     const capabilities = within(screen.getByRole("tabpanel", { name: "Published capabilities" }));
-    expect(capabilities.getAllByText("Local image processing")).toHaveLength(2);
+    expect(capabilities.getAllByText("Local image processing")).toHaveLength(3);
     expect(capabilities.queryByText("本地图片处理")).not.toBeInTheDocument();
+    expect(capabilities.getByText("Local audio trimming")).toBeInTheDocument();
+    expect(capabilities.queryByText("本地音频裁剪")).not.toBeInTheDocument();
   });
 
   beforeEach(() => server.use(http.get("/api/v1/settings/kling/profiles", () => HttpResponse.json({ profiles: klingProfiles }))));

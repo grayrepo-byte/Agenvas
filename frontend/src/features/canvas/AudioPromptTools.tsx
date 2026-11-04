@@ -43,7 +43,7 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
   useLocale();
   const [text, setText] = useState(prompt);
   const basis = useRef(prompt).current;
-  const [language, setLanguage] = useState("英文");
+  const [language, setLanguage] = useState("en");
   const generated = mode === "assist" || mode === "translate";
   const progress = useRef<{ key: string; itemId: string; artifact?: Artifact; placed?: boolean } | null>(null);
   const [target, setTarget] = useState<Artifact | null>(null);
@@ -65,9 +65,9 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
     }
     if (!pending.artifact.resourceDefaultVersionId) throw new Error(t("audio.promptTools.initialVersionMissing"));
     const instruction = mode === "translate"
-      ? `把下列音频生成提示词翻译为${language}，保留对白、声音、情绪与音效细节。`
-      : "将下列意图改写为清晰的 Seed Audio 声音生成提示词，保留原意，补充声音、对白、情绪、节奏与环境音描述。";
-    await runDirectTextGeneration(projectId, pending.artifact.id, { prompt: `${instruction}只输出提示词，最多 3000 字符。你只处理文字，不分析或声称听过音频。\n\n${text}`,
+      ? t("audio.promptTools.translateInstruction", { language: t(language === "en" ? "locale.language.en" : "locale.language.zh") })
+      : t("audio.promptTools.assistInstruction");
+    await runDirectTextGeneration(projectId, pending.artifact.id, { prompt: `${instruction} ${t("audio.promptTools.outputInstruction")}\n\n${text}`,
       expectedArtifactVersion: pending.artifact.version, expectedCurrentVersionId: pending.artifact.resourceDefaultVersionId }, pending.key);
     setTarget(pending.artifact);
     await client.invalidateQueries({ queryKey: ["canvas", projectId] });
@@ -89,7 +89,7 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
       {generated ? <Button variant="outline" type="button"  disabled={!text.trim() || !available || Boolean(target) || run.isPending || hasMentions}
         onClick={() => run.mutate()}>{run.isPending ? t("audio.promptTools.submitting") : run.error ? t("audio.promptTools.retry") : t("audio.promptTools.generate")}</Button> : null}
       <Button variant="default" type="submit"  disabled={hasMentions || prompt !== basis || !applyText?.trim() || applyText.length > MAX_AUDIO_PROMPT_LENGTH}>{t("audio.promptTools.apply")}</Button></>}>
-    {mode === "translate" ? <label>{t("audio.promptTools.targetLanguage")}<Select variant="ghost" value={language} onChange={(event) => setLanguage(event.target.value)} disabled={Boolean(target) || run.isPending}><option value="英文">{t("audio.promptTools.english")}</option><option value="中文">{t("common.chinese")}</option></Select></label> : null}
+    {mode === "translate" ? <label>{t("audio.promptTools.targetLanguage")}<Select variant="ghost" value={language} onChange={(event) => setLanguage(event.target.value)} disabled={Boolean(target) || run.isPending}><option value="en">{t("audio.promptTools.english")}</option><option value="zh">{t("common.chinese")}</option></Select></label> : null}
     <label>{t("audio.promptTools.prompt")}<Textarea className="audio-prompt-expanded" aria-label={t("audio.promptTools.fullPrompt")} maxLength={MAX_AUDIO_PROMPT_LENGTH}
       value={text} disabled={Boolean(target) || run.isPending || hasMentions} onChange={(event) => { if (!run.isPending) { progress.current = null; run.reset(); setText(event.target.value); } }} /></label>
     {prompt !== basis ? <p role="alert">{t("audio.promptTools.conflict")}</p> : null}
