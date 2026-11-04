@@ -175,6 +175,15 @@ class ImagePromptPostgresIT {
         assertThat(TaskController.TaskResponse.from(tasks.get(owner.userId(), source.project(), next.id())).output()).isNull();
         Task queued = run(source, "cancel-queued");
         assertThat(prompts.cancel(owner.userId(), source.project(), source.artifact(), queued.id()).status()).isEqualTo(Task.Status.CANCELED);
+        // Replaying an older command or cancellation does not promote it in current history.
+        Task replay = run(source, "recover");
+        assertThat(replay.id()).isEqualTo(accepted.id());
+        assertThat(replay.status()).isEqualTo(Task.Status.SUCCEEDED);
+        assertThat(replay.version()).isGreaterThan(accepted.version());
+        assertThat(prompts.cancel(owner.userId(), source.project(), source.artifact(), next.id()).id()).isEqualTo(next.id());
+        assertThat(prompts.list(owner.userId(), source.project(), source.artifact(), source.item().id()))
+                .extracting(Task::id).containsExactly(queued.id(), next.id(), accepted.id());
+        assertThat(gateway.calls).isZero();
     }
 
     @Test void enforcesHttpAuthorizationCsrfSourceCasAndSafeTaskProjection() throws Exception {
