@@ -47,7 +47,7 @@ import { isMediaTaskRunning,latestMediaTask,MEDIA_TASK_REFRESH_INTERVAL_MS } fro
 import { MediaVersionPicker } from "./MediaVersionPicker";
 import { RelightPanel } from "./RelightPanel";
 import { SmartEditDialog } from "./SmartEditDialog";
-import { taskErrorMessage } from "./taskErrorMessages";
+import { taskErrorDetail } from "./taskErrorMessages";
 import { VideoOperationPanel } from "./VideoOperationPanel";
 import { VideoPreview } from "./VideoPreview";
 import { ImageFunctionConfiguration } from "./ImageFunctionConfiguration";
@@ -380,7 +380,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
               : isAudio ? <MusicNotes className="media-empty-icon" size={44} /> : <VideoCamera className="media-empty-icon" size={44} />}
             {status ? <div className="media-card-state" role="status">{status}
               {latest?.status === "SUCCEEDED" ? <small>{t("media.card.savedResultHint")}</small> : null}
-              {latest?.errorCode ? <small>{taskErrorMessage(latest.errorCode) || latest.errorCode}</small> : null}
+              {latest?.errorCode || latest?.output?.providerFailure ? <small>{taskErrorDetail(latest?.errorCode, latest?.output?.providerFailure).replace(/^ · /, "")}</small> : null}
               {latest?.status === "UNKNOWN" && !latest.runId ? <small>{t("media.card.retryEditorHint")}</small> : null}
             </div> : null}
             {uploadFile ? <MediaCardUpload key={`${uploadFile.name}:${uploadFile.size}:${uploadFile.lastModified}`}

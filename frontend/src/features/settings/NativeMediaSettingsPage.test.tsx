@@ -33,6 +33,7 @@ describe("native media settings", () => {
       writes.push(await request.json()); return HttpResponse.json(fixture);
     }));
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     await selectValue(within(dialog).getByRole("combobox", { name: "固定适配器" }), profile.adapterId);
@@ -70,6 +71,7 @@ describe("native media settings", () => {
       return writes.length === 1 ? HttpResponse.json({ detail: "发布失败" }, { status: 503 }) : HttpResponse.json(fixture);
     }));
     const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     await selectValue(within(dialog).getByRole("combobox", { name: "固定适配器" }), "ARK_SEEDREAM_IMAGE");
@@ -125,6 +127,7 @@ describe("native media settings", () => {
   it("blocks publication until catalog retry succeeds and keeps the entered name", async () => {
     server.use(http.get("/api/v1/settings/media-profiles", () => HttpResponse.json({ detail: "目录不可用" }, { status: 503 })));
     mount("WAN"); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
     await user.click(await screen.findByRole("button", { name: "发布能力" }));
     const dialog = screen.getByRole("dialog");
     await user.type(within(dialog).getByRole("textbox", { name: "新能力名称" }), "保留目录草稿");

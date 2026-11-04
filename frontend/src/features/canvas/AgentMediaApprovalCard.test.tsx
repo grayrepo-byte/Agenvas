@@ -188,6 +188,32 @@ describe("AgentMediaApprovalCard", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
+  it("shows safe image moderation details in the settled approval result without retrying generation", () => {
+    mountCard(approval({ status: "FAILED", version: 2, taskIds: ["synthetic-moderated-task"], result: {
+      schemaVersion: 1, status: "FAILED", tasks: [{ taskId: "synthetic-moderated-task", kind: "IMAGE_GENERATION", status: "FAILED",
+        errorCode: "OPENAI_IMAGE_MODERATION_BLOCKED", providerFailure: {
+          stage: "SUBMIT", category: "MODERATION", httpStatus: 400, upstreamCode: null, nodeId: null, fieldName: null,
+          moderation: { code: "moderation_blocked", stage: "output", categories: ["sexual"] },
+        } }],
+    } }));
+    const detail = screen.getByText(/moderation_blocked/);
+    expect(detail).toHaveTextContent("安全检查");
+    expect(detail).toHaveTextContent("生成结果安全检查");
+    expect(detail).toHaveTextContent("性内容（sexual）");
+    expect(detail).not.toHaveTextContent("RunningHub");
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("keeps legacy failed approval results readable when no provider diagnosis was saved", () => {
+    mountCard(approval({ status: "FAILED", version: 2, taskIds: ["synthetic-legacy-task"], result: {
+      schemaVersion: 1, status: "FAILED", tasks: [{ taskId: "synthetic-legacy-task", kind: "IMAGE_GENERATION", status: "FAILED",
+        errorCode: "OPENAI_IMAGE_REJECTED" }],
+    } }));
+    expect(screen.getByText(/上游拒绝了请求（参数或凭证）/)).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("安全代码");
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
   it("disables approval actions for a stopped or historical run", () => {
     mountCard(approval(), true);
     expect(screen.getByRole("button", { name: "批准并生成" })).toBeDisabled();

@@ -10,7 +10,7 @@ import { AgentMarkdown } from "./AgentMarkdown";
 import { useRunAssistantStream } from "./agentRunStream";
 import { BlockedRunNotice } from "./BlockedRunNotice";
 import { UnknownTaskRetryPanel } from "./UnknownTaskRetryPanel";
-import { taskErrorMessage } from "./taskErrorMessages";
+import { taskErrorDetail } from "./taskErrorMessages";
 import { isVideoCompositionTask } from "./mediaTaskState";
 
 export const RUN_STATUS_LABELS: Record<AgentRun["status"], string> = {
@@ -49,7 +49,7 @@ const ATTENTION_TASK_STATUSES: ReadonlySet<Task["status"]> = new Set(["FAILED", 
 function taskDetail(task: Task): string {
   return [
     task.attemptNo > FIRST_ATTEMPT_NO ? t("agent.run.attempt", { "0": task.attemptNo }) : "",
-    taskErrorMessage(task.errorCode) ?? task.errorCode,
+    taskErrorDetail(task.errorCode, task.output?.providerFailure).replace(/^ · /, ""),
     task.cancelRequested ? t("agent.run.stopRequested") : "",
   ].filter(Boolean).join(" · ");
 }
@@ -151,7 +151,7 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
       </AgentChatMessage>)}
     {showFailureNotice && (run.status === "BLOCKED" || run.status === "FAILED") ? <BlockedRunNotice projectId={projectId} runId={run.id} status={run.status} /> : null}
     {unknownTasks.map((task) => <UnknownTaskRetryPanel key={task.id} projectId={projectId} taskId={task.id}
-      taskVersion={task.version} errorCode={task.errorCode} />)}
+      taskVersion={task.version} errorCode={task.errorCode} providerFailure={task.output?.providerFailure} />)}
     <div className="agent-chat-run-status" role="status">
       {active && waitingApproval && run.status === "WAITING_TASKS" ? t("agent.trace.waitingApproval")
         : active && RUNNING_STATUSES.has(run.status) ? <CanvasLoadingState compact label={RUN_STATUS_LABELS[run.status]} /> : RUN_STATUS_LABELS[run.status]}

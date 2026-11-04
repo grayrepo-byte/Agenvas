@@ -12,9 +12,10 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
+  <a href="#supported-integrations">Integrations</a> ·
   <a href="#deployment-and-maintenance">Deployment</a> ·
   <a href="#local-development">Development</a> ·
-  <a href="#documentation-and-contributing">Docs &amp; contributing</a> ·
+  <a href="#feedback-and-contributing">Feedback &amp; contributing</a> ·
   <a href="LICENSE">MIT</a>
 </p>
 
@@ -40,7 +41,39 @@
 | Image tools | Annotate, crop, rotate, mirror, resize, extract depth, and use configured AI editing capabilities |
 | Self-hosting | Model settings, local and OSS/COS/S3 storage, task and call records, and project manifest exports |
 
-The interface supports Chinese, English, Russian, and Japanese. Media adapters include GPT Image, Google Nano Banana, Volcano Ark Seedance, the official MiniMax H3 API, the full Kling image/video generation protocol, Wan images/videos, Seedream 5.0 images, Google Veo/Omni videos, Seed Audio, ComfyUI API workflows imported, mapped, and published as capabilities, and RunningHub V2 workflows / AI apps. Available operations depend on administrator-published capabilities. See [ADR 0042](docs/adr/0042-minimax-h3-official-api.md) for official MiniMax H3 endpoints, input limits, and upgrade notes. See the [Kling integration guide](docs/kling-api-integration.md) for the API Key, regional endpoints, models, and operations. See the [native generation guide](docs/native-media-api-integration.md) for Wan, Seedream, and Google video configuration and parameters.
+The interface supports Chinese, English, Russian, and Japanese.
+
+## Supported integrations
+
+These integrations are implemented in Agenvas. Available models, parameters, and input limits depend on administrator-published capabilities and your provider account.
+
+### Models and workflows
+
+| Provider / platform | Models / integration | Available functions |
+| --- | --- | --- |
+| OpenAI-compatible endpoints | Chat Completions API | Text generation, director chat, and tool calling |
+| OpenAI | GPT Image 2 / Images API | Image generation, reference-image editing, masks, and transparent backgrounds |
+| Google | Nano Banana 2 / Gemini Flash Image | Image generation and reference-image editing |
+| Google | Veo 3.1 / Gemini Omni | Video generation; video editing and extension on supported profiles |
+| Volcano Ark | Seedance 2.0 | Text-to-video, first/last frames, and mixed image/video/audio references |
+| Volcano Ark | Seedream 5.0 Pro / Flash / Lite | Image generation; interactive editing and layer decomposition on supported profiles |
+| MiniMax | Official H3 API | Text-to-video, first/last frames, and mixed references |
+| Kling | Image, video, and Omni model profiles | Image/video generation, image expansion, Omni editing, and motion control by model |
+| Alibaba Model Studio / Wan | Wan 2.7 images / Wan 3.0 videos | Image/video generation and multiple reference inputs |
+| Volcano Engine | Seed Audio 1.0 | Audio generation and reference-audio inputs |
+| ComfyUI | Self-hosted API workflows | Import, map, and publish image/video workflows and their parameters |
+| RunningHub | V2 workflows / AI apps | Publish image/video/audio capabilities with mapped inputs, parameters, and outputs |
+| AutoDL | Hosted ComfyUI video workflows | Discover or import supported video workflows and publish their input and resolution options |
+
+### Storage and external clients
+
+| Service / protocol | Use in Agenvas |
+| --- | --- |
+| Alibaba Cloud OSS | Media archiving and media relay |
+| Tencent Cloud COS | Media archiving and media relay |
+| Amazon S3 / S3-compatible object storage | Media archiving and media relay through configurable S3 endpoints |
+| SMB2/3 / HTTPS WebDAV | Remote media archiving; media relay uses an object store |
+| MCP-compatible clients | External agents connect to Agenvas through Streamable HTTP and user tokens to use canvas, text, and media tools |
 
 ## Quick start
 
@@ -87,9 +120,7 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 
 **Windows: install with an AI Agent**
 
-Send the [installation prompt (Chinese)](docs/operations/windows-ai-install-prompt.md) to WorkBuddy or another AI Agent that can run tasks on your computer. It will check the environment, install Agenvas, and start it. Open the address it provides to create your account.
-
-For manual installation, see the [Windows guide (Chinese)](docs/operations/windows-install.md).
+You can also ask WorkBuddy or another AI Agent with local computer access to follow the Windows commands above. After installation, open **<http://127.0.0.1:8088/setup>** to create your administrator account.
 
 These steps prepare an `agenvas` directory and Compose file, pull the images, and wait for all three services to become healthy. Keep this directory for future management. If you already have the Compose file, run `docker compose up -d --wait` in its directory.
 
@@ -103,10 +134,11 @@ Open **<http://127.0.0.1:8088/setup>** locally, or `http://<server-ip>:8088/setu
 
 - **Text and Agent**: Add an OpenAI-compatible endpoint, model ID, and API key under settings → model settings. An administrator must run the tool-calling diagnostic before using an Agent.
 - **Images, video, and audio**: Create connections, publish capabilities, and choose default models in media settings. The default deployment requires real model configuration before generating media.
+- **External agents / MCP**: Create a user token under system settings → account security. Connect a Streamable HTTP client to your site’s `/mcp` endpoint (locally, `http://127.0.0.1:8088/mcp`) and configure `Authorization: Bearer <token>` in the client.
 
 Create a project and use the canvas context menu to add cards or upload media. Select a model, enter a prompt and references, check the estimated cost, and run. Preview, select, or regenerate results. Open director chat in the bottom-right corner to use a project assistant that reads and works with the current canvas on demand. Select nodes to highlight the focus of your request. Map required Skill inputs to exact versions of canvas content, then approve or reject media proposals as a batch in the conversation. No Agent canvas node or persistent material binding is needed.
 
-The media relay can be enabled separately for OpenAI-compatible LLM image inputs and OpenAI Images references/masks; when disabled, the original transfer method is retained. Local video references for Seedance and MiniMax H3 require a publicly accessible relay. See the [relay guide](docs/media-relay-design.md).
+The media relay can be enabled separately for OpenAI-compatible LLM image inputs and OpenAI Images references/masks; when disabled, the original transfer method is retained. Local video references for Seedance and MiniMax H3 require a publicly accessible relay. In storage settings, add an OSS, COS, or S3 connection with a publicly reachable HTTPS endpoint, then select it for media relay. Permanent media archiving can remain local.
 
 > UNKNOWN results require an explicit retry, which may incur duplicate costs. Cancellation does not guarantee that an external service stops or refunds charges. Project manifests contain data and media metadata; they do not replace database and media file backups.
 
@@ -121,16 +153,16 @@ Run the following commands from the directory containing `docker-compose.yml` (c
 | View service status | `docker compose ps --format "table {{.Service}}\t{{.Status}}\t{{.Ports}}"` |
 | View recent startup logs | `docker compose logs --tail=100 server postgres` |
 
-> Back up the database, media, configuration, and encryption secrets before updating. **Do not run `docker compose down -v`**: it deletes data and secrets. See [backup and recovery](docs/operations/backup-restore.md).
+> Back up the database, media, configuration, and encryption secrets before updating. **Do not run `docker compose down -v`**: it deletes data and secrets.
 
 <details>
 <summary><strong>Ports, image versions, and public deployment</strong></summary>
 
 - The default `docker-compose.yml` publishes only Web `8088` on `0.0.0.0`, allowing access through the server IP. API `8080` and PostgreSQL `5432` use the internal container network and are not published to the host. Source and Mock Compose files retain all three ports on loopback for development. If the Web port is in use, change the host port in `ports`.
-- The default file pulls `docker.io/grayrepo/agenvas-server:latest`, `docker.io/grayrepo/agenvas-web:latest`, and the official `postgres:17.11-alpine` image. The publishing workflow targets amd64 / arm64 application images; no local compilation is required.
+- The default file pulls `docker.io/grayrepo/agenvas-server:latest`, `docker.io/grayrepo/agenvas-web:latest`, and the official `postgres:17.11-alpine` image. Application images support amd64 / arm64; no local compilation is required.
 - Application images are pulled on every `up`. To pin a version, replace `latest` with a published version, commit tag, or digest.
 - Each Compose file includes environment settings, ports, volumes, health checks, and resource limits; edit it directly without additional configuration files.
-- Public deployment requires HTTPS, a reverse proxy, and `AGENVAS_SECURE_COOKIES: "true"` in Compose. For old V1–V77 database migration limits, see [backup and recovery](docs/operations/backup-restore.md).
+- Public deployment requires HTTPS, a reverse proxy, and `AGENVAS_SECURE_COOKIES: "true"` in Compose.
 - For source builds, update the checkout and run `./deploy/update-local.sh`; stop with `docker compose -f docker-compose.local.yml down`.
 
 </details>
@@ -161,7 +193,7 @@ docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/c
 
 If you see `no configuration file provided: not found`, switch to the directory containing the Compose file or use `-f` to specify its correct path.
 
-Values are never written into Compose, Git, or startup logs. Encrypt and escrow `credentials-data` separately when backing up. Avoid `down -v`, which deletes data and secrets. Existing databases must restore this volume or import the original database password and encryption key through a private Compose configuration outside the repository. Startup stops if they are missing, to avoid making existing credentials unreadable. See [backup and restore](docs/operations/backup-restore.md).
+Values are never written into Compose, Git, or startup logs. Encrypt and escrow `credentials-data` separately when backing up. Avoid `down -v`, which deletes data and secrets. Existing databases must restore this volume or import the original database password and encryption key through a private Compose configuration outside the repository. Startup stops if they are missing, to avoid making existing credentials unreadable.
 
 </details>
 
@@ -187,7 +219,7 @@ Values are never written into Compose, Git, or startup logs. Encrypt and escrow 
 | Backend | Java 21 · Spring Boot · Spring AI · jOOQ |
 | Data and deployment | PostgreSQL · Flyway · Docker Compose · REST / SSE |
 
-Toolchain: JDK 21, Node 24 LTS (24.12+), and pnpm 12.5.1. Exact versions are in the [dependency baseline](docs/dependency-baseline.md).
+Toolchain: JDK 21, Node 24 LTS (24.12+), and pnpm 12.5.1.
 
 ### Container source builds
 
@@ -232,76 +264,17 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-For a standalone JVM, provide `AGENVAS_DB_URL`, `AGENVAS_DB_USER`, and `AGENVAS_DB_PASSWORD`; `.env.example` lists these variables but is not automatically loaded. Automatic installation secrets apply to container entrypoints. Source execution defaults to Mock. Media processing requires FFmpeg / FFprobe; see [local image processing](docs/local-image-processing.md) for depth extraction.
+For a standalone JVM, provide `AGENVAS_DB_URL`, `AGENVAS_DB_USER`, and `AGENVAS_DB_PASSWORD`; `.env.example` lists these variables but is not automatically loaded. Automatic installation secrets apply to container entrypoints. Source execution defaults to Mock. Media processing requires FFmpeg / FFprobe.
 
-The director supports token-budgeted context compaction and durable long tasks, with a default 24-hour transient model recovery window. Set context, handoff, and retry budgets in the administrator’s Director settings screen; changes need no restart. See [Agent runtime configuration (Chinese)](docs/agent-runtime.md).
+The director supports token-budgeted context compaction and durable long tasks, with a default 24-hour transient model recovery window. Set context, handoff, and retry budgets in the administrator’s Director settings screen; changes need no restart.
 
 Vite runs on port `5173` and proxies `/api` to `localhost:8080`.
 
 </details>
 
-## Automatic Docker Hub publication
+## Feedback and contributing
 
-<details>
-<summary><strong>Image publication configuration (maintainers)</strong></summary>
-
-Configure these under **Settings → Secrets and variables → Actions** in the GitHub repository:
-
-| Type | Name | Value |
-| --- | --- | --- |
-| Secret | `DOCKERHUB_USERNAME` | A Docker Hub user authorized to push the images |
-| Secret | `DOCKERHUB_TOKEN` | A Docker Hub access token with read/write permissions for the target repositories |
-
-Prepare two public Docker Hub repositories, `grayrepo/agenvas-server` and `grayrepo/agenvas-web`, allowing anonymous deployment pulls. CI publishes directly under `grayrepo`; to change the publisher, edit the workflow and Compose addresses. PostgreSQL is pulled from its official repository; CI retains its SBOM and license inventory.
-
-`.github/workflows/ci.yml` runs on PRs, pushes to `main`, `v*.*.*` version tags, and manual dispatches. Tests and image builds run in parallel:
-
-| Trigger | Validation | Images and inventories |
-| --- | --- | --- |
-| Code PR | Frontend, backend unit tests, all four PostgreSQL IT shards, jOOQ, Compose, secret scan | server/web amd64 builds |
-| Documentation-only PR | Planning checks, secret scan, CI Gate | Heavy jobs skipped |
-| main / manual | Full validation | server/web amd64 + arm64 builds |
-| Version tag push | Full validation | Application builds and official PostgreSQL inventories on both architectures; publication after CI Gate |
-
-`CI Gate` always appears and rejects failed, cancelled, or unexpectedly skipped checks. Select it when configuring a required branch check. Buildx caches are scoped by service and architecture; PRs only read them. Server packaging skips the full test suite, while CI retains one depth-model/JNI smoke test per native architecture.
-
-Only version-tag pushes upload to Docker Hub. Release images are inventoried once, then the JSON is converted to CycloneDX. The same images are loaded from short-lived artifacts and pushed after all checks pass. Failure reports are retained for 7 days, publication images for 1 day, and SBOM/license evidence for 90 days.
-
-- Every publication: `sha-<full 40-character commit SHA>`.
-- `v0.1.0` version tag: also publishes `0.1.0` with the leading `v` removed.
-- Stable version tag (no prerelease suffix, e.g. `v0.1.0`): also points `latest` at that version for the default Compose file; a prerelease (e.g. `v0.1.0-rc.1`) retains its suffix and never updates `latest`.
-
-PRs, `main` pushes, and manual runs never access Docker Hub credentials or push images. Release service/architecture jobs retain SBOM and license artifacts; published tags appear in the Actions summary. `ci-<run ID>-<attempt>-<architecture>` tags are intermediate images; deploy `latest` or choose a final version, commit tag, or digest directly in Compose.
-
-After both server/web multi-platform images are published, the workflow creates a GitHub Release for the version tag. Notes include versioned image addresses, the source commit, commits since the previous version, and GitHub-generated PR, contributor, and changelog links. Stable versions compare against the previous stable tag; prereleases may compare against an earlier prerelease. Prereleases and backfills older than an existing stable release never become Latest. Retries preserve existing notes and only fill empty notes; existing drafts are preserved and require manual publication. Only this tag-only job has `contents: write`; it waits for CI Gate and successful Docker Hub publication and does not rebuild images.
-
-Existing tags are not backfilled automatically. Once their CI and images on both architectures have been verified, preview the notes before explicitly publishing the Release:
-
-```sh
-python3 .github/scripts/release.py notes v0.0.2 --repo grayrepo-byte/Agenvas --output release-notes.md
-python3 .github/scripts/release.py publish v0.0.2 --repo grayrepo-byte/Agenvas
-```
-
-Local commands use your authenticated GitHub CLI without placing tokens in command arguments. `notes` only generates a preview; `publish` writes to GitHub. The script checks the remote tag and source commit without creating or moving tags. Generated content uses the [GitHub Release Notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release).
-
-The workflow follows [Docker's multi-platform build documentation](https://docs.docker.com/build/ci/github-actions/multi-platform/) and [Docker image tagging rules](https://github.com/docker/metadata-action).
-
-</details>
-
-## Documentation and contributing
-
-The detailed documents below are primarily in Chinese.
-
-| Document | Contents |
-| --- | --- |
-| [Product specification](docs/MVP-SPEC.md) | Feature scope and behavior |
-| [MCP client setup (Chinese)](docs/mcp-client-guide.md) | User tokens, permissions, client configuration, and tool usage |
-| [Development checklist](docs/DEVELOPMENT-CHECKLIST.md) | Implementation and verification status |
-| [Development guidelines](AGENTS.md) | Architecture, coding, and testing requirements |
-| [Backup and recovery](docs/operations/backup-restore.md) | Upgrades, backups, and recovery |
-| [Security policy](SECURITY.md) | Security reporting and support scope |
-
-Issues and pull requests are welcome. Read the specification and development guidelines before contributing, and run the relevant tests for feature changes.
+Report bugs and suggest improvements through [Issues](https://github.com/grayrepo-byte/Agenvas/issues), including your version and steps to reproduce. Contributions through [pull requests](https://github.com/grayrepo-byte/Agenvas/pulls) are welcome; read [AGENTS.md](AGENTS.md) before changing code and run the relevant checks. For security issues, follow the [security policy](SECURITY.md).
 
 ```text
 frontend/       Pages and canvas interaction

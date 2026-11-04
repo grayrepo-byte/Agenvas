@@ -4,6 +4,7 @@ import { MemoryRouter, Navigate, Route, Routes } from "react-router";
 import { createQueryClient } from "../src/app/queryClient";
 import { CallLogsPage } from "../src/features/settings/CallLogsPage";
 import { LlmSettingsPage } from "../src/features/settings/LlmSettingsPage";
+import { DirectorSettingsPage } from "../src/features/settings/DirectorSettingsPage";
 import { MediaFunctionSettingsPage } from "../src/features/settings/MediaFunctionSettingsPage";
 import { MediaSettingsPage } from "../src/features/settings/MediaSettingsPage";
 import { StorageSettingsPage } from "../src/features/settings/StorageSettingsPage";
@@ -13,7 +14,7 @@ import { LibraryPage } from "../src/features/library/LibraryPage";
 import { SkillsPage } from "../src/features/skills/SkillsPage";
 import { workspaceDesignResponse } from "./workspace-design-data";
 import type {
-  CallDebug, CallLog, CallLogRetentionSettings, DebugSettings, LlmSettings, MediaCapability, MediaConnection,
+  CallDebug, CallLog, CallLogRetentionSettings, DebugSettings, DirectorSettings, LlmSettings, MediaCapability, MediaConnection,
   MediaFunctionSetting, MediaSettings, MediaStyle, MediaTemplate, PromptDefinition, StorageProfile, StorageProvider, StorageSettings,
   SystemLogSnapshot,
 } from "../src/shared/api/client";
@@ -39,7 +40,7 @@ import "../src/styles.css";
 const now = "2026-10-20T08:30:00Z";
 setLocale("zh");
 const requestedRoute = new URLSearchParams(window.location.search).get("route");
-const routes = new Set(["providers", "llm", "media", "functions", "storage", "calls", "logs", "general"].map((route) => `/settings/${route}`));
+const routes = new Set(["providers", "llm", "director", "media", "functions", "storage", "calls", "logs", "general"].map((route) => `/settings/${route}`));
 routes.add("/library"); routes.add("/skills");
 const initialRoute = requestedRoute && routes.has(requestedRoute.split("?")[0] ?? "") ? requestedRoute : "/settings/providers";
 
@@ -49,6 +50,11 @@ let llm: LlmSettings = {
 };
 let retention: CallLogRetentionSettings = { retentionDays: 90, version: 2 };
 let debug: DebugSettings = { debugMode: false, version: 1 };
+let director: DirectorSettings = { contextWindowTokens: 1_000_000, compactionThresholdPercent: 50,
+  responseReserveTokens: 8192, summaryTokens: 2048, recentToolRounds: 4, recoveryWindowMinutes: 1440,
+  maxModelRetries: 288, retryMaxDelaySeconds: 300, maxRepairAttempts: 4, version: 1 };
+const directorFields = ["contextWindowTokens", "compactionThresholdPercent", "responseReserveTokens", "summaryTokens",
+  "recentToolRounds", "recoveryWindowMinutes", "maxModelRetries", "retryMaxDelaySeconds", "maxRepairAttempts"] as const;
 const imageSettings = imageFunctionsFixture();
 const videoSettings = videoFunctionsFixture();
 const cloudImage = imageSettings.connections[1]!;
@@ -282,6 +288,19 @@ window.fetch = async (input, init) => {
   if (path === "/api/v1/auth/me") return Response.json({ id: "synthetic-admin", loginName: "演示管理员", role: "ADMIN" });
   if (path === "/api/v1/auth/csrf") return Response.json({ headerName: "X-CSRF-TOKEN", token: "synthetic-preview" });
   if (path === "/api/v1/auth/logout" || path === "/api/v1/auth/change-password") return new Response(null, { status: 204 });
+  if (path === "/api/v1/settings/director") {
+    if (method === "GET") return Response.json(director);
+    if (method !== "PUT") return error("Unsupported synthetic director settings method.", 405);
+    if (body.expectedVersion !== director.version) return error("Synthetic director settings changed.", 409, "VERSION_CONFLICT");
+    const updated = { ...director };
+    for (const field of directorFields) {
+      const value = body[field];
+      if (typeof value !== "number" || !Number.isInteger(value)) return error("Synthetic director settings require integer values.", 400);
+      updated[field] = value;
+    }
+    director = { ...updated, version: director.version + 1 };
+    return Response.json(director);
+  }
   if (path === "/api/v1/settings/llm") {
     if (method === "PUT") llm = { ...llm, endpoint: stringField(body, "endpoint"), modelId: stringField(body, "modelId"), configured: true, toolCallingVerified: false, version: llm.version + 1, updatedAt: now };
     return Response.json(llm);
@@ -425,6 +444,7 @@ if (!root) throw new Error("Settings design fixture root is missing");
 createRoot(root).render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={[initialRoute]}><Routes>
   <Route path="/settings/providers" element={<LlmSettingsPage />} />
   <Route path="/settings/llm" element={<LlmSettingsPage />} />
+  <Route path="/settings/director" element={<DirectorSettingsPage />} />
   <Route path="/settings/media" element={<MediaSettingsPage />} />
   <Route path="/settings/functions" element={<MediaFunctionSettingsPage />} />
   <Route path="/settings/storage" element={<StorageSettingsPage />} />

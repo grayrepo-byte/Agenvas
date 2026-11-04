@@ -125,7 +125,7 @@ public class OpenAiImage2Adapter implements MediaAdapter {
             return new Submission.Completed(client.editUrls(key, model, prompt, quality, size(context),
                     urls, maskUrl, parameters.transparentBackground(), origin));
         } catch (OpenAiImage2Client.Rejected rejected) {
-            return new Submission.Rejected("OPENAI_IMAGE_REJECTED");
+            return new Submission.Rejected(rejected.code(), rejected.providerFailure());
         } catch (OpenAiImage2Client.Uncertain uncertain) {
             // 原样透传客户端区分出的原因码（超时/断线/协议不符/结果下载失败），
             // 不再统一改写成笼统的提交未知，否则用户无法判断该看哪一处。

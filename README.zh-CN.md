@@ -12,9 +12,10 @@
 
 <p align="center">
   <a href="#快速开始">快速开始</a> ·
+  <a href="#支持的第三方集成">第三方集成</a> ·
   <a href="#部署与维护">部署与维护</a> ·
   <a href="#本地开发">本地开发</a> ·
-  <a href="#文档与贡献">文档与贡献</a> ·
+  <a href="#反馈与贡献">反馈与贡献</a> ·
   <a href="LICENSE">MIT</a>
 </p>
 
@@ -40,7 +41,39 @@
 | 图片处理 | 标注、裁剪、旋转、镜像、放大、深度提取，以及配置能力支持的 AI 编辑 |
 | 自托管管理 | 模型配置、本地及 OSS/COS/S3 存储、任务与调用记录、项目清单导出 |
 
-界面支持中文、英文、俄文和日文。媒体适配器包括 GPT Image、Google Nano Banana、火山方舟 Seedance、MiniMax 官方 H3、可灵图片/视频完整生成协议、通义万相图片/视频、Seedream 5.0 图片、Google Veo/Omni 视频、Seed Audio、ComfyUI 导入并映射发布的 API 工作流和 RunningHub V2 工作流 / AI 应用；可用操作取决于管理员发布的能力。MiniMax H3 的官方地址、输入限制与升级说明见 [ADR 0042](docs/adr/0042-minimax-h3-official-api.md)。可灵的 API Key、地区地址与模型/操作目录见[接入说明](docs/kling-api-integration.md)。万相、Seedream 与 Google 视频的配置和参数范围见[原生生成接入说明](docs/native-media-api-integration.md)。
+界面支持中文、英文、俄文和日文。
+
+## 支持的第三方集成
+
+以下为 Agenvas 当前已实现的接入。具体模型、参数和输入限制以管理员发布的能力及供应商账号权限为准。
+
+### 模型与工作流
+
+| 服务商 / 平台 | 模型 / 接入范围 | 可用功能 |
+| --- | --- | --- |
+| OpenAI 兼容端点 | Chat Completions API | 文字生成、导演对话与工具调用 |
+| OpenAI | GPT Image 2 / Images API | 图片生成、参考图编辑、蒙版与透明背景 |
+| Google | Nano Banana 2 / Gemini Flash Image | 图片生成与参考图编辑 |
+| Google | Veo 3.1 / Gemini Omni | 视频生成；支持的模型可编辑、延长视频 |
+| 火山方舟 | Seedance 2.0 | 文生视频、首尾帧、图片 / 视频 / 音频全能参考 |
+| 火山方舟 | Seedream 5.0 Pro / Flash / Lite | 图片生成；支持的模型可交互编辑、图层分离 |
+| MiniMax | 官方 H3 API | 文生视频、首尾帧与多模态参考 |
+| 可灵 Kling | 图片、视频与 Omni 模型目录 | 图片 / 视频生成、扩图、Omni 编辑及对应模型的动作控制 |
+| 阿里云百炼 / 通义万相 | 万相 2.7 图片 / 万相 3.0 视频 | 图片 / 视频生成与多素材参考 |
+| 火山引擎 | Seed Audio 1.0 | 音频生成与参考音频输入 |
+| ComfyUI | 自托管 API 工作流 | 导入、映射并发布图片 / 视频工作流及其参数 |
+| RunningHub | V2 工作流 / AI 应用 | 映射输入、参数和输出，发布图片 / 视频 / 音频能力 |
+| AutoDL | 托管 ComfyUI 视频工作流 | 发现或导入支持的视频工作流，发布输入与分辨率选项 |
+
+### 存储与外部客户端
+
+| 服务 / 协议 | 在 Agenvas 中的用途 |
+| --- | --- |
+| 阿里云 OSS | 媒体归档与媒体中继 |
+| 腾讯云 COS | 媒体归档与媒体中继 |
+| Amazon S3 / S3 兼容对象存储 | 通过可配置的 S3 端点进行媒体归档与中继 |
+| SMB2/3 / HTTPS WebDAV | 远程媒体归档；媒体中继使用对象存储 |
+| MCP 兼容客户端 | 外部 Agent 通过 Streamable HTTP 和用户令牌连接 Agenvas，调用画布、文字与媒体工具 |
 
 ## 快速开始
 
@@ -85,11 +118,9 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 
 </details>
 
-**Windows：让 AI 协助 安装**
+**Windows：让 AI 协助安装**
 
-把 [安装提示词](docs/operations/windows-ai-install-prompt.md)发给 WorkBuddy 等能执行本机操作的 AI Agent，让它检查环境、安装并启动 Agenvas。完成后，打开它给出的地址创建账号。
-
-自行安装见 [Windows 安装指南](docs/operations/windows-install.md)。
+也可让 WorkBuddy 等具备本机操作能力的 AI Agent 按上面的 Windows 命令完成安装。安装后打开 **<http://127.0.0.1:8088/setup>** 创建管理员账号。
 
 以上步骤会准备 `agenvas` 目录和 Compose 文件、拉取镜像，并等待三个服务健康。保留该目录，后续管理在其中执行。已有 Compose 文件时，直接在文件所在目录运行 `docker compose up -d --wait`。
 
@@ -103,10 +134,11 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 
 - **文字与 Agent**：在“设置 → 模型配置”中添加 OpenAI 兼容端点、模型 ID 和 API Key。使用 Agent 前，管理员须运行工具调用诊断。
 - **图片、视频与音频**：在“媒体配置”中创建连接、发布能力并设置默认模型。默认部署需完成真实模型配置后才能生成媒体。
+- **外部 Agent / MCP**：在“系统设置 → 账户安全”创建用户令牌。客户端使用 Streamable HTTP 连接站点的 `/mcp`（本机为 `http://127.0.0.1:8088/mcp`），并配置 `Authorization: Bearer <token>` 请求头。
 
 创建项目，通过画布右键菜单添加卡片或上传素材。选择模型、填写提示词和参考输入，检查预计费用后运行；完成后可预览、选用结果或重新生成。打开右下角导演聊天即可使用项目助手，按需读取并操作当前画布；选中节点可突出本次任务重点。Skill 的必需输入从画布内容中明确选择并固定精确版本，媒体提案在对话中统一批准或拒绝；无需添加 Agent 节点或绑定素材。
 
-媒体中继可按功能独立控制 OpenAI 兼容 LLM 图片输入与 OpenAI Images 参考图/蒙版；未启用时保持原传输。Seedance 和 MiniMax H3 本地视频参考需要可公网访问的中继，配置见[媒体中继说明](docs/media-relay-design.md)。
+媒体中继可按功能独立控制 OpenAI 兼容 LLM 图片输入与 OpenAI Images 参考图/蒙版；未启用时保持原传输。Seedance 和 MiniMax H3 本地视频参考需要可公网访问的中继。在存储设置中添加可从公网通过 HTTPS 访问的 OSS、COS 或 S3 连接，再将其选为媒体中继；永久媒体归档仍可使用本地存储。
 
 > 结果未知（UNKNOWN）时需显式重试，可能产生重复费用；取消不保证外部服务停止或退款。项目清单包含数据与素材元数据，不能替代数据库和媒体文件备份。
 
@@ -121,16 +153,16 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 | 查看服务状态 | `docker compose ps --format "table {{.Service}}\t{{.Status}}\t{{.Ports}}"` |
 | 查看最近的启动日志 | `docker compose logs --tail=100 server postgres` |
 
-> 更新前备份数据库、媒体、配置与加密密钥。**不要执行 `docker compose down -v`**，它会删除数据和密钥。详见[备份与恢复](docs/operations/backup-restore.md)。
+> 更新前备份数据库、媒体、配置与加密密钥。**不要执行 `docker compose down -v`**，它会删除数据和密钥。
 
 <details>
 <summary><strong>端口、镜像版本与公网部署</strong></summary>
 
 - 默认 `docker-compose.yml` 仅将 Web `8088` 映射到 `0.0.0.0`，通过服务器 IP 访问；API `8080` 和 PostgreSQL `5432` 仅在容器内部网络使用，不映射到宿主机。源码和 Mock Compose 仍保留仅绑定本机的三个端口，方便开发排查。Web 端口被占用时，修改 `ports` 中的宿主机端口。
-- 默认拉取 `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest` 和官方 `postgres:17.11-alpine`。应用镜像发布配置覆盖 amd64 / arm64，无需本机编译。
+- 默认拉取 `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest` 和官方 `postgres:17.11-alpine`。应用镜像支持 amd64 / arm64，无需本机编译。
 - 应用镜像每次 `up` 都会拉取；需要固定版本时，把 `latest` 改为已发布版本、提交标签或 digest。
 - 每份 Compose 完整列出环境、端口、卷、健康检查和资源限制，直接修改所选文件即可，无需其他配置文件。
-- 对外部署需配置 HTTPS、反向代理，并将 `AGENVAS_SECURE_COOKIES` 改为 `"true"`。旧 V1–V77 开发库的迁移限制见[备份与恢复](docs/operations/backup-restore.md)。
+- 对外部署需配置 HTTPS、反向代理，并将 `AGENVAS_SECURE_COOKIES` 改为 `"true"`。
 - 源码构建环境更新代码后运行 `./deploy/update-local.sh`；停止时使用 `docker compose -f docker-compose.local.yml down`。
 
 </details>
@@ -161,7 +193,7 @@ docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/c
 
 若提示 `no configuration file provided: not found`，请切换到 Compose 文件所在目录，或用 `-f` 指定正确的文件路径。
 
-密钥不会写入 Compose、Git 或启动日志。备份时须另外加密保管 `credentials-data`；不要执行 `down -v`，它会删除数据和密钥。已有数据库升级到此入口时，须先恢复密钥卷或通过仓库外私有 Compose 配置导入原数据库密码和主密钥；缺失时启动会停止，避免旧凭证无法解密。详见[备份与恢复](docs/operations/backup-restore.md)。
+密钥不会写入 Compose、Git 或启动日志。备份时须另外加密保管 `credentials-data`；不要执行 `down -v`，它会删除数据和密钥。已有数据库升级到此入口时，须先恢复密钥卷或通过仓库外私有 Compose 配置导入原数据库密码和主密钥；缺失时启动会停止，避免旧凭证无法解密。
 
 </details>
 
@@ -187,7 +219,7 @@ docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/c
 | 后端 | Java 21 · Spring Boot · Spring AI · jOOQ |
 | 数据与部署 | PostgreSQL · Flyway · Docker Compose · REST / SSE |
 
-工具链：JDK 21、Node 24 LTS（24.12+）、pnpm 12.5.1。完整版本见[依赖基线](docs/dependency-baseline.md)。
+工具链：JDK 21、Node 24 LTS（24.12+）、pnpm 12.5.1。
 
 ### 容器源码构建
 
@@ -232,74 +264,17 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-独立 JVM 需自行提供 `AGENVAS_DB_URL`、`AGENVAS_DB_USER`、`AGENVAS_DB_PASSWORD`；变量参考 `.env.example`，JVM 不会自动加载此文件。Docker 自动密钥流程仅用于容器入口。源码运行默认使用 Mock，媒体处理需安装 FFmpeg / FFprobe；深度提取见[本地图片处理配置](docs/local-image-processing.md)。
+独立 JVM 需自行提供 `AGENVAS_DB_URL`、`AGENVAS_DB_USER`、`AGENVAS_DB_PASSWORD`；变量参考 `.env.example`，JVM 不会自动加载此文件。Docker 自动密钥流程仅用于容器入口。源码运行默认使用 Mock，媒体处理需安装 FFmpeg / FFprobe。
 
-导演支持按 Token 预算自动整理上下文和持久长任务续接，临时模型故障默认可恢复 24 小时。模型窗口、摘要与重试预算在后台“导演设置”中保存，无需重启；说明见[导演运行配置](docs/agent-runtime.md)。
+导演支持按 Token 预算自动整理上下文和持久长任务续接，临时模型故障默认可恢复 24 小时。模型窗口、摘要与重试预算在后台“导演设置”中保存，无需重启。
 
 Vite 默认运行于 `5173`，将 `/api` 代理到 `localhost:8080`。
 
 </details>
 
-## Docker Hub 自动发布
+## 反馈与贡献
 
-<details>
-<summary><strong>镜像发布配置（维护者）</strong></summary>
-
-在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中配置：
-
-| 类型 | 名称 | 内容 |
-| --- | --- | --- |
-| Secret | `DOCKERHUB_USERNAME` | 有权推送镜像的 Docker Hub 用户名 |
-| Secret | `DOCKERHUB_TOKEN` | Docker Hub Access Token，具备目标仓库的读写权限 |
-
-在 Docker Hub 准备 `grayrepo/agenvas-server`、`grayrepo/agenvas-web` 两个公开仓库，便于部署者匿名拉取。CI 发布地址直接使用 `grayrepo`；需要更换发布方时修改工作流和 Compose 中的地址。PostgreSQL 从官方仓库拉取，CI 保留其 SBOM 与许可证清单。
-
-`.github/workflows/ci.yml` 在 PR、main 推送、`v*.*.*` 版本标签推送和手动运行时执行，测试与镜像构建并行：
-
-| 触发 | 验证 | 镜像与清单 |
-| --- | --- | --- |
-| 代码 PR | 前端、后端单测、全部四个 PostgreSQL IT 分片、jOOQ、Compose、密钥扫描 | server/web amd64 构建 |
-| 纯文档 PR | 规划检查、密钥扫描、CI Gate | 跳过重任务 |
-| main / 手动运行 | 完整验证 | server/web amd64 + arm64 构建 |
-| 版本标签推送 | 完整验证 | 双架构应用构建与官方 PostgreSQL 清单，CI Gate 通过后发布 |
-
-`CI Gate` 始终生成，失败、取消或非预期跳过都会阻断；配置分支必需检查时可选择它。Buildx 缓存按服务和架构隔离，PR 只读。server 打包跳过整套测试，CI 每个原生架构仍保留一项深度模型/JNI 冒烟。
-
-只有版本标签推送上传 Docker Hub。发布镜像扫描一次，再将 JSON 转换为 CycloneDX；所有检查通过后从短期工件加载并推送同一镜像。失败报告保留 7 天、待发布镜像保留 1 天、SBOM/许可证证据保留 90 天。
-
-- 每次发布：`sha-<完整 40 位提交 SHA>`。
-- `v0.1.0` 版本标签：额外发布去除前导 v 后的 `0.1.0`。
-- 稳定版本标签（无预发布后缀，如 `v0.1.0`）：额外把 `latest` 指向该版本，供默认 Compose 使用；预发布版本（如 `v0.1.0-rc.1`）保留后缀，不更新 `latest`。
-
-PR、main 推送和手动运行不访问 Docker Hub 凭据、不推送镜像。发布时每个服务和架构保留 SBOM 与许可证清单，成功发布的标签显示在 Actions 摘要中。`ci-<运行 ID>-<尝试次数>-<架构>` 为中间标签，部署使用 `latest` 或自行指定最终版本、提交标签或 digest。
-
-server/web 双架构镜像全部发布成功后，流水线自动创建对应标签的 GitHub Release。发布说明包含版本镜像地址、源码提交、上个版本到当前标签的实际提交列表，以及 GitHub 自动生成的 PR/贡献者/完整变更链接；稳定版本从上个稳定标签比较，预发布版本可以从上个预发布标签比较。预发布标记为 prerelease，不成为 Latest；补发旧稳定版本也不替换较新的 Latest。重复运行保留已有说明，只补齐空白说明；已有草稿保留并要求手动发布。Release job 单独授予 `contents: write`，只在版本标签推送、CI Gate 和 Docker Hub 发布成功后执行，不重新构建镜像。
-
-历史标签不会因为这次修改而自动补发。确认该标签的 CI 和两种架构镜像已发布后，可先预览说明，再明确补建 Release：
-
-```sh
-python3 .github/scripts/release.py notes v0.0.2 --repo grayrepo-byte/Agenvas --output release-notes.md
-python3 .github/scripts/release.py publish v0.0.2 --repo grayrepo-byte/Agenvas
-```
-
-本地命令复用已登录的 GitHub CLI，不把 Token 写入命令行；`notes` 只生成说明，`publish` 才写入 GitHub。脚本核对远端标签和源码提交，不新建或移动标签。自动生成能力使用 [GitHub Release Notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release)。
-
-发布实现参考 [Docker 多架构构建说明](https://docs.docker.com/build/ci/github-actions/multi-platform/)与 [Docker 镜像标签规则](https://github.com/docker/metadata-action)。
-
-</details>
-
-## 文档与贡献
-
-| 文档 | 内容 |
-| --- | --- |
-| [产品规格](docs/MVP-SPEC.md) | 功能范围与行为约定 |
-| [MCP 客户端接入](docs/mcp-client-guide.md) | 用户令牌、权限、客户端配置及工具调用 |
-| [开发清单](docs/DEVELOPMENT-CHECKLIST.md) | 实施进度与验收状态 |
-| [开发约束](AGENTS.md) | 架构、编码与测试要求 |
-| [备份与恢复](docs/operations/backup-restore.md) | 升级、数据备份与灾备恢复 |
-| [安全政策](SECURITY.md) | 安全报告与支持范围 |
-
-欢迎提交 Issue 和 Pull Request。贡献前请阅读产品规格与开发约束，功能变更需运行对应测试。
+欢迎通过 [Issues](https://github.com/grayrepo-byte/Agenvas/issues) 反馈问题和建议，并提供版本及复现步骤；也欢迎通过 [Pull Requests](https://github.com/grayrepo-byte/Agenvas/pulls) 贡献改进。修改代码前请阅读 [AGENTS.md](AGENTS.md)，并运行相关检查。安全问题请按[安全政策](SECURITY.md)报告。
 
 ```text
 frontend/       前端页面与画布交互

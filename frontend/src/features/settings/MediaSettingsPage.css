@@ -112,17 +112,148 @@ body:has(.app-shell--settings) .media-capability-dialog .ui-dialog-body { paddin
 }
 body:has(.app-shell--settings) .comfy-capability-dialog .ui-dialog-body { padding: 24px; }
 @media (max-width: 560px) { body:has(.app-shell--settings) .comfy-capability-dialog .ui-dialog-body { padding: 16px; } }
-/* The catalog starts with useful rows, keeping its overview intentionally compact. */
-.app-shell--settings .media-settings-page > .ui-summary-strip > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 16px; padding: 12px 18px; }
-.app-shell--settings .media-settings-page > .ui-summary-strip dd:not(.ui-summary-detail) { margin: 0; font-size: 15px; }
-.app-shell--settings .media-settings-page > .ui-summary-strip .ui-summary-detail { grid-column: 1 / -1; margin-top: 4px; }
-.app-shell--settings .media-services-panel { padding: 16px 0 0; border: 0; background: transparent; }
-.app-shell--settings .media-services-panel .ui-panel-header { margin-bottom: 14px; }
-.app-shell--settings .media-services-panel .ui-panel-header h2 { font-size: 13px; }
-.app-shell--settings .media-catalog-toolbar { margin-bottom: 0; }
-@media (max-width: 560px) {
-  .app-shell--settings .media-settings-page > .ui-summary-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .app-shell--settings .media-settings-page > .ui-summary-strip > div { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px 12px; }
-  .app-shell--settings .media-settings-page > .ui-summary-strip > div + div { border-top: 0; border-left: 1px solid var(--ui-border); }
-  .app-shell--settings .media-settings-page > .ui-summary-strip .ui-summary-detail { display: none; }
+/* Default choices are visible before the catalog, matching the creator's mental model. */
+.app-shell--settings .media-settings-page { gap: 18px; }
+.app-shell--settings:has(.media-settings-page) .app-page-header { padding: 18px 0; margin-bottom: 0; }
+.app-shell--settings:has(.media-settings-page) .app-page-eyebrow { display: none; }
+.app-shell--settings .media-defaults-section { padding: 0; border: 0; background: transparent; box-shadow: none; }
+.app-shell--settings .media-defaults-section > .ui-panel-header { margin-bottom: 10px; }
+.media-defaults-section > .ui-panel-header > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+.app-shell--settings .media-defaults-section > .ui-panel-header p { margin: 0; }
+.media-defaults-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.media-default-card { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 10px 48px 10px 14px; border: 1px solid var(--ui-border); border-radius: 12px; background: linear-gradient(140deg, color-mix(in srgb, var(--ui-accent) 4%, var(--ui-surface)), var(--ui-surface)); }
+.media-default-card[data-state="empty"] { border-style: dashed; background: color-mix(in srgb, var(--ui-surface) 65%, transparent); }
+.media-default-card-heading { display: flex; align-items: center; gap: 8px; min-height: 22px; color: var(--ui-text-secondary); font-size: 12px; }
+.media-default-card-heading > .ui-badge { margin-left: auto; }
+.media-default-icon { display: grid; place-items: center; color: var(--ui-accent-text); }
+.media-default-icon > svg { width: 16px; height: 16px; }
+.media-default-card-name { display: block; margin-top: 4px; font-size: 14px; line-height: 1.5; font-weight: 550; letter-spacing: -.02em; overflow-wrap: anywhere; }
+.media-default-card[data-state="empty"] .media-default-card-name { color: var(--ui-text-muted); font-size: 14px; font-weight: 400; }
+.media-default-card-source { display: none; flex: 1; margin-top: 3px; color: var(--ui-text-muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+.media-default-card-footer { position: absolute; right: 12px; top: calc(50% - 16px); margin: 0; padding: 0; border: 0; }
+.media-default-card-footer > span, .media-default-action > span { display: none; }
+.media-default-card-footer > [data-slot="button"] { width: 32px; height: 32px; padding: 0; margin: 0; }
+.media-default-card[data-state="unavailable"] { border-color: var(--ui-warning-border); }
+.media-defaults-section > .ui-notice { margin-top: 14px; }
+
+/* The catalog is one contained workspace; filters never unmount draft editors. */
+.app-shell--settings .media-catalog { gap: 0; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); overflow: clip; }
+.media-catalog-topline { align-items: center; padding: 0 22px; border-bottom: 1px solid var(--ui-border); }
+.app-shell--settings .media-catalog .media-catalog-topline [data-slot="tabs-list"] { align-self: stretch; gap: 24px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.app-shell--settings .media-catalog .media-catalog-topline [data-slot="tabs-list"] > [data-slot="tabs-trigger"] { position: relative; flex: none; gap: 8px; min-height: 42px; padding: 8px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ui-text-muted); font-size: 13px; }
+.app-shell--settings .media-catalog .media-catalog-topline [data-slot="tabs-list"] > [data-state="active"] { color: var(--ui-text); }
+.media-catalog-topline [data-state="active"]::after { content: ""; position: absolute; bottom: -1px; left: 0; right: 0; height: 2px; background: var(--ui-accent); }
+.media-catalog-topline [data-slot="tabs-trigger"] > svg { width: 17px; height: 17px; }
+.media-catalog-availability { display: inline-flex; align-items: center; flex: none; gap: 6px; color: var(--ui-text-muted); font-size: 11px; font-weight: 400; border: 0; padding: 0; }
+.media-catalog-availability > svg { width: 14px; height: 14px; color: var(--ui-success); }
+.media-catalog-heading { position: relative; display: flex; align-items: center; justify-content: flex-end; min-height: 0; padding: 0; }
+.media-catalog-heading h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; margin: 0; font-size: 15px; font-weight: 550; letter-spacing: -.02em; }
+.media-catalog-heading p { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; margin: 0; font-size: 12px; line-height: 1.8; color: var(--ui-text-muted); }
+.media-catalog-result-count { position: absolute; top: 18px; right: 18px; flex: none; font-size: 11px; color: var(--ui-text-subtle); font-variant-numeric: tabular-nums; }
+.app-shell--settings .media-catalog-toolbar[data-slot="field-group"] { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0; padding: 8px 18px; }
+.media-catalog-toolbar > [data-slot="field"] { flex: 0 0 136px; min-width: 0; }
+.media-catalog-toolbar > .media-catalog-search { flex: 1 1 220px; max-width: 360px; }
+.media-catalog-toolbar [data-slot="field-label"] { margin: 0; }
+.app-shell--settings .media-services-panel { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.app-shell--settings .media-catalog .media-table-scroll { border: 0; border-top: 1px solid var(--ui-border); border-radius: 0; }
+.app-shell--settings .media-settings-table th { padding: 7px 12px; font-size: 11px; background: color-mix(in srgb, var(--ui-field) 45%, transparent); }
+.app-shell--settings .media-settings-table td { padding: 8px 12px; font-size: 12px; }
+.app-shell--settings .media-settings-table strong { font-size: 12px; line-height: 1.6; font-weight: 500; }
+.app-shell--settings .media-settings-table small { line-height: 1.7; font-size: 11px; }
+.app-shell--settings .media-settings-table td:first-child, .app-shell--settings .media-settings-table th:first-child { padding-left: 18px; }
+.app-shell--settings .media-settings-table td:last-child, .app-shell--settings .media-settings-table th:last-child { padding-right: 18px; }
+.app-shell--settings .media-table-name { min-width: 0; gap: 8px; }
+.app-shell--settings .media-table-name > div { min-width: 0; overflow-wrap: anywhere; }
+.app-shell--settings .media-table-name > svg { padding: 5px; width: 16px; height: 16px; border-radius: 10px; color: var(--ui-accent-text); background: var(--ui-accent-subtle); border-color: transparent; }
+.app-shell--settings .media-table-badges { flex-direction: row; align-items: center; gap: 4px; flex-wrap: nowrap; }
+.app-shell--settings .media-table-badges > small { max-width: 100px; }
+.app-shell--settings .media-table-actions { flex-wrap: nowrap; justify-content: flex-end; }
+.app-shell--settings .media-table-actions [data-slot="button"][data-size="icon-sm"] { width: 30px; padding: 0; }
+.app-shell--settings .media-settings-table tr[data-disabled="true"] .media-table-name > svg { color: var(--ui-text-subtle); background: var(--ui-field); }
+.app-shell--settings .media-settings-table tr[data-disabled="true"] .media-table-name strong { color: var(--ui-text-muted); }
+.app-shell--settings .media-capabilities-table td:nth-child(6) { white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+.app-shell--settings .media-services-panel > .ui-empty-state { margin: 0 22px 22px; }
+.media-setup-flow { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 12px 8px; }
+.media-setup-flow > div { display: flex; align-items: center; gap: 10px; }
+.media-setup-flow > div > svg { width: 20px; height: 20px; color: var(--ui-text-subtle); }
+.media-flow-number { color: var(--ui-text-subtle); font-size: 10px; font-variant-numeric: tabular-nums; }
+.media-setup-flow strong, .media-setup-flow small { display: block; font-size: 11px; font-weight: 400; line-height: 1.8; }
+.media-setup-flow strong { color: var(--ui-text-secondary); }
+.media-setup-flow small { color: var(--ui-text-subtle); }
+.media-setup-flow > svg { width: 16px; height: 16px; flex: none; color: var(--ui-border-strong); }
+@media (min-width: 761px) {
+  .media-capabilities-table th:nth-child(1) { width: 18%; }
+  .media-capabilities-table th:nth-child(2) { width: 13%; }
+  .media-capabilities-table th:nth-child(3) { width: 10%; }
+  .media-capabilities-table th:nth-child(4) { width: 5%; }
+  .media-capabilities-table th:nth-child(5) { width: 11%; }
+  .media-capabilities-table th:nth-child(6) { width: 13%; }
+  .media-capabilities-table th:nth-child(7) { width: 14%; }
+  .media-capabilities-table th:nth-child(8) { width: 16%; }
+  .media-settings-table .media-cell-text, .media-settings-table .media-table-name > strong, .media-settings-table .media-table-endpoint { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+.media-cell-text { display: block; min-width: 0; color: var(--ui-text-secondary); }
+.media-price-unit { color: var(--ui-text-muted); font-size: 11px; }
+@media (min-width: 761px) {
+  .media-capabilities-table { min-width: 970px; table-layout: fixed; }
+  .media-connections-table { min-width: 970px; table-layout: fixed; }
+  .media-connections-table th:nth-child(1) { width: 20%; }
+  .media-connections-table th:nth-child(2) { width: 9%; }
+  .media-connections-table th:nth-child(3) { width: 7%; }
+  .media-connections-table th:nth-child(4) { width: 18%; }
+  .media-connections-table th:nth-child(5) { width: 14%; }
+  .media-connections-table th:nth-child(6) { width: 9%; }
+  .media-connections-table th:nth-child(7) { width: 23%; }
+}
+@media (max-width: 1200px) and (min-width: 761px) {
+  .media-catalog-result-count { display: none; }
+}
+@media (max-width: 1060px) and (min-width: 761px) {
+  .media-defaults-grid { gap: 10px; }
+  .media-default-card { padding: 10px 44px 10px 12px; }
+  .media-default-card-name { font-size: 14px; }
+  .media-default-card-heading { flex-wrap: wrap; }
+  .media-default-card-heading > .ui-badge { margin-left: 0; }
+  .media-setup-flow { gap: 10px; padding-inline: 0; }
+  .media-flow-number { display: none; }
+}
+@media (max-width: 760px) {
+  .app-shell--settings .media-settings-page { gap: 24px; }
+  .media-defaults-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .media-default-card { position: relative; padding: 10px 48px 10px 14px; }
+  .media-default-card-name { margin-top: 4px; font-size: 14px; }
+  .media-default-card-footer { position: absolute; right: 12px; top: calc(50% - 16px); margin: 0; padding: 0; border: 0; }
+  .media-default-card-footer > span, .media-default-action > span, .media-default-card-heading > .ui-badge { display: none; }
+  .media-default-card-footer > [data-slot="button"] { width: 32px; height: 32px; padding: 0; margin: 0; }
+  .media-default-card-heading { min-height: 22px; font-size: 11px; }
+  .media-default-icon > svg { width: 16px; height: 16px; }
+  .media-default-card[data-state="empty"] .media-default-card-name { font-size: 14px; }
+  .media-catalog-topline { gap: 12px; padding-inline: 16px; }
+  .app-shell--settings .media-catalog .media-catalog-topline [data-slot="tabs-list"] { gap: 18px; }
+  .app-shell--settings .media-catalog .media-catalog-topline [data-slot="tabs-list"] > [data-slot="tabs-trigger"] { min-height: 52px; padding-block: 12px; font-size: 12px; }
+  .media-catalog-availability { display: none; }
+  .media-catalog-heading { align-items: flex-start; flex-direction: column; gap: 8px; padding: 0; }
+  .media-catalog-result-count { position: static; padding: 12px 16px 8px; }
+  .app-shell--settings .media-catalog-toolbar[data-slot="field-group"] { gap: 8px; padding: 0 16px 16px; }
+  .media-catalog-toolbar > .media-catalog-search { flex-basis: 100%; max-width: none; }
+  .media-catalog-toolbar > [data-slot="field"]:not(.media-catalog-search) { flex: 1 1 110px; }
+  .app-shell--settings .media-settings-table { min-width: 0; }
+  .app-shell--settings .media-settings-table thead { display: none; }
+  .app-shell--settings .media-settings-table tbody { display: block; }
+  .app-shell--settings .media-settings-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; padding: 12px 16px; border-bottom: 1px solid var(--ui-border); }
+  .app-shell--settings .media-settings-table tbody tr[hidden] { display: none; }
+  .app-shell--settings .media-settings-table tbody tr:last-child { border-bottom: 0; }
+  .app-shell--settings .media-settings-table td, .app-shell--settings .media-settings-table td:first-child, .app-shell--settings .media-settings-table td:last-child { display: block; min-width: 0; padding: 0; border: 0; }
+  .app-shell--settings .media-settings-table td:first-child, .app-shell--settings .media-settings-table td:last-child, .app-shell--settings .media-connections-table td:nth-child(4) { grid-column: 1 / -1; }
+  .app-shell--settings .media-capabilities-table td:nth-child(4) { display: none; }
+  .app-shell--settings .media-capabilities-table td:nth-child(7), .app-shell--settings .media-capabilities-table td:last-child { grid-column: auto; align-self: center; }
+  .app-shell--settings .media-capabilities-table td:last-child .media-table-actions { justify-content: flex-end; }
+  .app-shell--settings .media-table-badges { flex-direction: row; }
+  .app-shell--settings .media-table-actions { justify-content: flex-start; flex-wrap: wrap; padding: 0; }
+  .app-shell--settings .media-table-endpoint { max-width: none; }
+  .app-shell--settings .media-settings-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 5px; color: var(--ui-text-subtle); font-size: 10px; }
+  .app-shell--settings .media-settings-table td[colspan] { grid-column: 1 / -1; }
+  .media-catalog-topline { margin-bottom: 0; flex-wrap: nowrap; }
+  .media-setup-flow { align-items: flex-start; flex-direction: column; gap: 14px; padding: 0 4px 8px; }
+  .media-setup-flow > svg { display: none; }
 }

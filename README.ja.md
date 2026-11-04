@@ -12,9 +12,10 @@
 
 <p align="center">
   <a href="#クイックスタート">クイックスタート</a> ·
+  <a href="#対応する連携先">連携先</a> ·
   <a href="#デプロイとメンテナンス">デプロイ</a> ·
   <a href="#ローカル開発">ローカル開発</a> ·
-  <a href="#ドキュメントと貢献">ドキュメントと貢献</a> ·
+  <a href="#フィードバックと貢献">フィードバックと貢献</a> ·
   <a href="LICENSE">MIT</a>
 </p>
 
@@ -40,7 +41,39 @@
 | 画像処理 | 注釈、切り抜き、回転、反転、拡大、深度抽出、および設定済みの機能による AI 編集 |
 | セルフホスト管理 | モデル設定、ローカルおよび OSS/COS/S3 ストレージ、タスクと呼び出し記録、プロジェクトマニフェストのエクスポート |
 
-UI は中国語、英語、ロシア語、日本語に対応しています。メディアアダプターには GPT Image、Google Nano Banana、Volcano Ark Seedance、MiniMax H3 公式 API、Kling の画像・動画生成プロトコル全体、Wan の画像・動画、Seedream 5.0 の画像、Google Veo/Omni の動画、Seed Audio、インポート・マッピング・公開した ComfyUI API ワークフロー、RunningHub V2 ワークフロー / AI アプリがあります。利用できる操作は、管理者が公開した機能によって異なります。MiniMax H3 の公式エンドポイント、入力制限、アップグレードについては [ADR 0042](docs/adr/0042-minimax-h3-official-api.md) を参照してください。Kling の API Key、地域別エンドポイント、モデルと操作は[接続ガイド](docs/kling-api-integration.md)、Wan・Seedream・Google 動画の設定とパラメーター範囲は[ネイティブ生成接続ガイド](docs/native-media-api-integration.md)に記載しています。リンク先の詳細資料は主に中国語です。
+UI は中国語、英語、ロシア語、日本語に対応しています。
+
+## 対応する連携先
+
+以下は Agenvas に実装されている連携先です。利用可能なモデル、パラメーター、入力制限は、管理者が公開した機能と利用するプロバイダーのアカウントによって異なります。
+
+### モデルとワークフロー
+
+| プロバイダー / プラットフォーム | モデル / 連携方式 | 利用可能な機能 |
+| --- | --- | --- |
+| OpenAI 互換エンドポイント | Chat Completions API | テキスト生成、ディレクターチャット、ツール呼び出し |
+| OpenAI | GPT Image 2 / Images API | 画像生成、参照画像を使った編集、マスク、透明背景 |
+| Google | Nano Banana 2 / Gemini Flash Image | 画像生成と参照画像を使った編集 |
+| Google | Veo 3.1 / Gemini Omni | 動画生成。対応するプロファイルでは動画の編集と延長も可能 |
+| Volcano Ark | Seedance 2.0 | テキストからの動画生成、開始・終了フレーム、画像・動画・音声を組み合わせた参照入力 |
+| Volcano Ark | Seedream 5.0 Pro / Flash / Lite | 画像生成。対応するプロファイルでは対話型編集とレイヤー分解も可能 |
+| MiniMax | H3 公式 API | テキストからの動画生成、開始・終了フレーム、複数形式を組み合わせた参照入力 |
+| Kling | 画像・動画・Omni のモデルプロファイル | モデルに応じた画像・動画生成、画像拡張、Omni 編集、モーション制御 |
+| Alibaba Model Studio / Wan | Wan 2.7 画像 / Wan 3.0 動画 | 画像・動画生成と複数の参照入力 |
+| Volcano Engine | Seed Audio 1.0 | 音声生成と参照音声の入力 |
+| ComfyUI | セルフホスト型 API ワークフロー | 画像・動画ワークフローとそのパラメーターのインポート、マッピング、公開 |
+| RunningHub | V2 ワークフロー / AI アプリ | 入力、パラメーター、出力をマッピングした画像・動画・音声機能の公開 |
+| AutoDL | ホスト型 ComfyUI 動画ワークフロー | 対応する動画ワークフローの検出・インポートと、入力・解像度オプションの公開 |
+
+### ストレージと外部クライアント
+
+| サービス / プロトコル | Agenvas での用途 |
+| --- | --- |
+| Alibaba Cloud OSS | メディアのアーカイブと中継 |
+| Tencent Cloud COS | メディアのアーカイブと中継 |
+| Amazon S3 / S3 互換オブジェクトストレージ | 設定可能な S3 エンドポイントを使ったメディアのアーカイブと中継 |
+| SMB2/3 / HTTPS WebDAV | メディアのリモートアーカイブ。メディアの中継にはオブジェクトストレージを使用 |
+| MCP 対応クライアント | 外部 Agent が Streamable HTTP とユーザートークンで Agenvas に接続し、キャンバス、テキスト、メディアのツールを使用 |
 
 ## クイックスタート
 
@@ -87,9 +120,7 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 
 **Windows：AI Agent にインストールを依頼**
 
-[インストール用プロンプト（中国語）](docs/operations/windows-ai-install-prompt.md)を、WorkBuddy など PC 上で操作できる AI Agent に渡してください。環境の確認、インストール、起動を依頼できます。完了後、Agent が示したアドレスを開いてアカウントを作成します。
-
-手動でのインストールは [Windows インストールガイド（中国語）](docs/operations/windows-install.md)を参照してください。
+WorkBuddy など PC 上で操作できる AI Agent に、上記の Windows 用コマンドでインストールするよう依頼することもできます。インストール後、**<http://127.0.0.1:8088/setup>** を開いて管理者アカウントを作成してください。
 
 上記の操作で `agenvas` ディレクトリと Compose ファイルを用意し、イメージを取得して、3 つのサービスが正常になるまで待機します。以後の管理もこのディレクトリで行うため、削除せず保管してください。Compose ファイルが既にある場合は、そのディレクトリで `docker compose up -d --wait` を実行します。
 
@@ -103,10 +134,11 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 
 - **テキストと Agent**：「設定 → モデル設定」で OpenAI 互換エンドポイント、モデル ID、API Key を追加します。Agent の利用前に、管理者がツール呼び出し診断を実行する必要があります。
 - **画像・動画・音声**：「メディア設定」で接続を作成し、機能を公開して、既定のモデルを設定します。通常のデプロイでは、実モデルの設定を完了してからメディアを生成できます。
+- **外部 Agent / MCP**：「システム設定 → アカウントセキュリティ」でユーザートークンを作成します。Streamable HTTP 対応クライアントからサイトの `/mcp` エンドポイント（ローカルでは `http://127.0.0.1:8088/mcp`）に接続し、クライアントに `Authorization: Bearer <token>` を設定してください。
 
 プロジェクトを作成し、キャンバスの右クリックメニューからカードを追加するか、素材をアップロードします。モデル、プロンプト、参照入力を設定し、見積もり費用を確認して実行してください。完了後はプレビュー、結果の採用、再生成ができます。右下のディレクターチャットを開くと、必要に応じて現在のキャンバスを読み取り、操作するプロジェクトアシスタントを使えます。ノードを選択して、今回の作業対象を明確にできます。Skill の必須入力にはキャンバス上の内容を明示的に選択し、正確なバージョンを固定します。メディア生成の提案は会話内でまとめて承認・拒否できます。Agent ノードの追加や素材の紐付けは不要です。
 
-メディアリレーは、OpenAI 互換 LLM の画像入力と OpenAI Images の参照画像・マスクに対して個別に有効化できます。無効の場合は従来の転送方法を使います。Seedance と MiniMax H3 のローカル動画参照には、インターネットからアクセス可能なリレーが必要です。設定は[メディアリレーガイド](docs/media-relay-design.md)を参照してください。
+メディアリレーは、OpenAI 互換 LLM の画像入力と OpenAI Images の参照画像・マスクに対して個別に有効化できます。無効の場合は従来の転送方法を使います。Seedance と MiniMax H3 のローカル動画参照には、インターネットからアクセス可能なリレーが必要です。「ストレージ設定」で公開 HTTPS エンドポイントを持つ OSS、COS、または S3 接続を追加し、メディアリレー用に選択してください。メディアの永続アーカイブには引き続きローカルストレージを使えます。
 
 > 結果が不明（UNKNOWN）の場合、明示的な再試行が必要で、料金が重複して発生する可能性があります。キャンセルしても外部サービスの停止や返金は保証されません。プロジェクトマニフェストにはデータと素材のメタデータが含まれますが、データベースやメディアファイルのバックアップの代わりにはなりません。
 
@@ -121,16 +153,16 @@ mkdir agenvas && cd agenvas && curl.exe -fL https://raw.githubusercontent.com/gr
 | サービスの状態を確認 | `docker compose ps --format "table {{.Service}}\t{{.Status}}\t{{.Ports}}"` |
 | 最近の起動ログを確認 | `docker compose logs --tail=100 server postgres` |
 
-> 更新前にデータベース、メディア、設定、暗号化キーをバックアップしてください。**`docker compose down -v` は実行しないでください。** データとキーが削除されます。詳細は[バックアップと復元](docs/operations/backup-restore.md)を参照してください。
+> 更新前にデータベース、メディア、設定、暗号化キーをバックアップしてください。**`docker compose down -v` は実行しないでください。** データとキーが削除されます。
 
 <details>
 <summary><strong>ポート、イメージバージョン、インターネットへの公開</strong></summary>
 
 - 既定の `docker-compose.yml` は Web の `8088` だけを `0.0.0.0` に公開し、サーバー IP からアクセスできます。API の `8080` と PostgreSQL の `5432` はコンテナ内部ネットワーク専用で、ホストには公開しません。ソースビルドと Mock の Compose は、開発・調査用に 3 つのポートをループバックで公開します。Web ポートが使用中の場合は `ports` のホスト側ポートを変更してください。
-- 既定では `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest`、公式の `postgres:17.11-alpine` を取得します。アプリケーションイメージは amd64 / arm64 向けに公開する構成で、ローカルでのコンパイルは不要です。
+- 既定では `docker.io/grayrepo/agenvas-server:latest`、`docker.io/grayrepo/agenvas-web:latest`、公式の `postgres:17.11-alpine` を取得します。アプリケーションイメージは amd64 / arm64 に対応し、ローカルでのコンパイルは不要です。
 - アプリケーションイメージは `up` のたびに取得します。バージョンを固定するには、`latest` を公開済みバージョン、コミットタグ、または digest に変更してください。
 - 各 Compose ファイルには環境変数、ポート、ボリューム、ヘルスチェック、リソース制限を記載しています。追加の設定ファイルなしで、選んだファイルを直接編集できます。
-- 公開時には HTTPS とリバースプロキシを設定し、Compose の `AGENVAS_SECURE_COOKIES` を `"true"` にしてください。旧 V1–V77 開発用データベースの移行制限は[バックアップと復元](docs/operations/backup-restore.md)を参照してください。
+- 公開時には HTTPS とリバースプロキシを設定し、Compose の `AGENVAS_SECURE_COOKIES` を `"true"` にしてください。
 - ソースビルドではコード更新後に `./deploy/update-local.sh` を実行します。停止には `docker compose -f docker-compose.local.yml down` を使います。
 
 </details>
@@ -161,7 +193,7 @@ docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/c
 
 `no configuration file provided: not found` と表示された場合は、Compose ファイルのあるディレクトリに移動するか、`-f` で正しいパスを指定してください。
 
-キーは Compose、Git、起動ログには書き込まれません。バックアップ時は `credentials-data` を別途暗号化して保管してください。`down -v` はデータとキーを削除します。既存データベースをこの起動方式に移行する場合は、キー用ボリュームを復元するか、リポジトリ外の非公開 Compose 設定で元のデータベースパスワードとマスターキーを渡してください。これらがない場合、既存の認証情報を復号できなくなるのを防ぐため、起動を停止します。詳細は[バックアップと復元](docs/operations/backup-restore.md)を参照してください。
+キーは Compose、Git、起動ログには書き込まれません。バックアップ時は `credentials-data` を別途暗号化して保管してください。`down -v` はデータとキーを削除します。既存データベースをこの起動方式に移行する場合は、キー用ボリュームを復元するか、リポジトリ外の非公開 Compose 設定で元のデータベースパスワードとマスターキーを渡してください。これらがない場合、既存の認証情報を復号できなくなるのを防ぐため、起動を停止します。
 
 </details>
 
@@ -187,7 +219,7 @@ docker compose -f docker-compose.local.yml exec -u 0 postgres cat /run/agenvas/c
 | バックエンド | Java 21 · Spring Boot · Spring AI · jOOQ |
 | データとデプロイ | PostgreSQL · Flyway · Docker Compose · REST / SSE |
 
-ツールチェーン：JDK 21、Node 24 LTS（24.12+）、pnpm 12.5.1。詳細なバージョンは[依存関係の基準](docs/dependency-baseline.md)を参照してください。
+ツールチェーン：JDK 21、Node 24 LTS（24.12+）、pnpm 12.5.1。
 
 ### コンテナでソースをビルド
 
@@ -232,76 +264,17 @@ cd backend
 ./mvnw spring-boot:run
 ```
 
-単独の JVM で実行する場合は、`AGENVAS_DB_URL`、`AGENVAS_DB_USER`、`AGENVAS_DB_PASSWORD` を自分で指定してください。変数は `.env.example` を参照できますが、JVM はこのファイルを自動で読み込みません。キーの自動生成はコンテナのエントリーポイント専用です。ソースからの実行は既定で Mock を使います。メディア処理には FFmpeg / FFprobe が必要です。深度抽出については[ローカル画像処理の設定](docs/local-image-processing.md)を参照してください。
+単独の JVM で実行する場合は、`AGENVAS_DB_URL`、`AGENVAS_DB_USER`、`AGENVAS_DB_PASSWORD` を自分で指定してください。変数は `.env.example` を参照できますが、JVM はこのファイルを自動で読み込みません。キーの自動生成はコンテナのエントリーポイント専用です。ソースからの実行は既定で Mock を使います。メディア処理には FFmpeg / FFprobe が必要です。
 
-ディレクターはトークン予算に応じたコンテキストの自動整理と、永続化された長時間タスクの再開に対応しています。一時的なモデル障害の復旧期間は既定で 24 時間です。モデルのコンテキストウィンドウ、要約、再試行予算は管理画面の「ディレクター設定」で保存し、再起動は不要です。詳細は[ディレクター実行設定](docs/agent-runtime.md)を参照してください。
+ディレクターはトークン予算に応じたコンテキストの自動整理と、永続化された長時間タスクの再開に対応しています。一時的なモデル障害の復旧期間は既定で 24 時間です。モデルのコンテキストウィンドウ、要約、再試行予算は管理画面の「ディレクター設定」で保存し、再起動は不要です。
 
 Vite は既定で `5173` を使い、`/api` を `localhost:8080` にプロキシします。
 
 </details>
 
-## Docker Hub への自動公開
+## フィードバックと貢献
 
-<details>
-<summary><strong>イメージ公開設定（メンテナー向け）</strong></summary>
-
-GitHub リポジトリの **Settings → Secrets and variables → Actions** で次を設定します。
-
-| 種類 | 名前 | 内容 |
-| --- | --- | --- |
-| Secret | `DOCKERHUB_USERNAME` | イメージを push できる Docker Hub ユーザー名 |
-| Secret | `DOCKERHUB_TOKEN` | 対象リポジトリへの読み書き権限を持つ Docker Hub Access Token |
-
-匿名でイメージを取得できるよう、Docker Hub に `grayrepo/agenvas-server` と `grayrepo/agenvas-web` の公開リポジトリを用意します。CI の公開先は `grayrepo` に固定しているため、変更時はワークフローと Compose のアドレスを編集してください。PostgreSQL は公式リポジトリから取得し、CI で SBOM とライセンス一覧を保存します。
-
-`.github/workflows/ci.yml` は PR、`main` への push、`v*.*.*` バージョンタグへの push、手動実行時に動作し、テストとイメージビルドを並列で実行します。
-
-| トリガー | 検証 | イメージと一覧 |
-| --- | --- | --- |
-| コードの PR | フロントエンド、バックエンド単体テスト、PostgreSQL IT の全 4 分割、jOOQ、Compose、シークレットスキャン | server/web の amd64 ビルド |
-| ドキュメントのみの PR | 実行計画の検証、シークレットスキャン、CI Gate | 重いジョブを省略 |
-| main / 手動実行 | すべての検証 | server/web の amd64 + arm64 ビルド |
-| バージョンタグへの push | すべての検証 | 両アーキテクチャのアプリケーションビルドと公式 PostgreSQL の一覧。CI Gate 通過後に公開 |
-
-`CI Gate` は常に生成され、失敗・キャンセル・想定外のスキップを検出すると通過しません。ブランチの必須チェックに指定できます。Buildx キャッシュはサービスとアーキテクチャごとに分離し、PR では読み取りのみです。server のパッケージ化ではテスト全体を省略しますが、CI ではネイティブアーキテクチャごとに深度モデル/JNI のスモークテストを 1 件実行します。
-
-Docker Hub にアップロードするのはバージョンタグへの push だけです。公開イメージを一度スキャンして JSON を CycloneDX に変換し、全チェックの通過後、短期保存アーティファクトから同じイメージを読み込んで push します。失敗レポートは 7 日、公開待ちイメージは 1 日、SBOM とライセンスの証跡は 90 日保存します。
-
-- 公開ごと：`sha-<40 文字の完全なコミット SHA>`。
-- バージョンタグ `v0.1.0`：先頭の `v` を除いた `0.1.0` も公開します。
-- 安定版タグ（`v0.1.0` のようにプレリリース接尾辞がないもの）：通常の Compose で使う `latest` もそのバージョンに更新します。`v0.1.0-rc.1` のようなプレリリースは接尾辞を保持し、`latest` は更新しません。
-
-PR、`main` への push、手動実行では Docker Hub の認証情報にアクセスせず、イメージも push しません。公開時はサービス・アーキテクチャごとに SBOM とライセンス一覧を保存し、成功したタグを Actions の概要に表示します。`ci-<実行 ID>-<試行回数>-<アーキテクチャ>` は中間タグです。デプロイには `latest`、または最終バージョン・コミットタグ・digest を指定してください。
-
-server/web の両マルチアーキテクチャイメージの公開完了後、ワークフローは対応するタグの GitHub Release を作成します。リリースノートにはバージョン付きイメージのアドレス、ソースコミット、前バージョン以降の実際のコミット一覧、GitHub が生成する PR・貢献者・変更履歴リンクを含めます。安定版は直前の安定版タグと比較し、プレリリースは前のプレリリースタグと比較することもあります。プレリリースと、既存の安定版より古いリリースの補完は Latest になりません。再実行時は既存の説明を維持し、空欄だけを補います。既存の下書きは維持し、手動公開が必要です。このジョブだけに `contents: write` を付与し、バージョンタグの push、CI Gate 通過、Docker Hub 公開成功後に実行します。イメージは再ビルドしません。
-
-既存タグの Release は自動で補完されません。対象タグの CI と両アーキテクチャのイメージ公開を確認してから、説明をプレビューし、明示的に公開します。
-
-```sh
-python3 .github/scripts/release.py notes v0.0.2 --repo grayrepo-byte/Agenvas --output release-notes.md
-python3 .github/scripts/release.py publish v0.0.2 --repo grayrepo-byte/Agenvas
-```
-
-ローカルコマンドはログイン済みの GitHub CLI を使い、Token をコマンド引数に書き込みません。`notes` は説明の生成のみ、`publish` は GitHub への書き込みを行います。スクリプトはリモートタグとソースコミットを照合し、タグの作成・移動はしません。自動生成には [GitHub Release Notes API](https://docs.github.com/en/rest/releases/releases#generate-release-notes-content-for-a-release) を使います。
-
-公開処理の詳細は [Docker のマルチプラットフォームビルド](https://docs.docker.com/build/ci/github-actions/multi-platform/)と [Docker イメージのタグ付け](https://github.com/docker/metadata-action)を参照してください。
-
-</details>
-
-## ドキュメントと貢献
-
-以下の詳細資料は主に中国語です。
-
-| ドキュメント | 内容 |
-| --- | --- |
-| [製品仕様](docs/MVP-SPEC.md) | 機能の範囲と動作の取り決め |
-| [MCP クライアント接続](docs/mcp-client-guide.md) | ユーザートークン、権限、クライアント設定、ツール呼び出し |
-| [開発チェックリスト](docs/DEVELOPMENT-CHECKLIST.md) | 実装の進捗と検証状況 |
-| [開発ガイドライン](AGENTS.md) | アーキテクチャ、コーディング、テストの要件 |
-| [バックアップと復元](docs/operations/backup-restore.md) | アップグレード、データのバックアップ、障害復旧 |
-| [セキュリティポリシー](SECURITY.md) | 脆弱性の報告とサポート範囲 |
-
-Issue と Pull Request を歓迎します。貢献の前に製品仕様と開発ガイドラインを読み、機能変更時は対応するテストを実行してください。
+不具合や改善案は、バージョンと再現手順を添えて [Issues](https://github.com/grayrepo-byte/Agenvas/issues) で報告してください。[Pull Request](https://github.com/grayrepo-byte/Agenvas/pulls) での貢献も歓迎します。コード変更前に [AGENTS.md](AGENTS.md) を読み、関連するチェックを実行してください。セキュリティの問題は[セキュリティポリシー](SECURITY.md)に従って報告してください。
 
 ```text
 frontend/       フロントエンドの画面とキャンバス操作

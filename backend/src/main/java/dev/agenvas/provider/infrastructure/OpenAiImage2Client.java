@@ -2,6 +2,8 @@ package dev.agenvas.provider.infrastructure;
 
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaPayload;
+import dev.agenvas.provider.domain.ProviderFailure;
+import dev.agenvas.provider.domain.ProviderModeration;
 import dev.agenvas.shared.error.ProviderFailureCodes;
 import dev.agenvas.shared.http.OutboundTimeouts;
 import dev.agenvas.shared.http.PinnedHttpClients;
@@ -11,6 +13,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import okhttp3.Dns;
@@ -33,7 +36,7 @@ import tools.jackson.databind.node.ObjectNode;
 public class OpenAiImage2Client {
     /**
      * 每次失败都写明可核实的稳定原因码，使卡片与调用日志不必依赖服务端日志定位。
-     * 响应体只截断预览，凭证与完整响应体不在此路径中。
+     * 普通日志只写固定原因码，不保留上游正文、URL、凭证或输入。
      */
     private static final Logger LOGGER = LoggerFactory.getLogger(OpenAiImage2Client.class);
     /** 能力未配置模型名时使用；中转站可通过能力参数覆盖该默认值。 */
@@ -204,6 +207,10 @@ public class OpenAiImage2Client {
                 .header("Accept", "application/json")
                 .post(body).build();
         try (Response response = http.newCall(request).execute()) {
+            int status = response.code();
+            if (status >= 400 && status < 500 && status != 429) {
+                throw rejection(response);
+            }
             if (response.body() == null) {
                 throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
                         "OpenAI response has no body");
@@ -213,10 +220,6 @@ public class OpenAiImage2Client {
                 if (bytes.length > MAX_RESPONSE_BYTES) {
                     throw new Uncertain(ProviderFailureCodes.RESPONSE_TOO_LARGE,
                             "OpenAI response exceeds bound");
-                }
-                int status = response.code();
-                if (status >= 400 && status < 500 && status != 429) {
-                    throw new Rejected(status);
                 }
                 if (status != 200) {
                     throw new Uncertain(ProviderFailureCodes.SUBMISSION_UNKNOWN,
@@ -260,13 +263,42 @@ public class OpenAiImage2Client {
             if (failure instanceof Rejected || failure instanceof Uncertain) {
                 LOGGER.warn("OpenAI image call did not complete code={}",
                         failure instanceof Uncertain uncertain
-                                ? uncertain.reasonCode() : ProviderFailureCodes.PROTOCOL_INVALID);
+                                ? uncertain.reasonCode() : ((Rejected) failure).code());
                 throw failure;
             }
             LOGGER.warn("OpenAI image response could not be decoded code={}",
                     ProviderFailureCodes.PROTOCOL_INVALID);
             throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
                     "OpenAI image response could not be decoded");
+        }
+    }
+
+    /** A definitive 4xx stays rejected even when its optional diagnostic body cannot be read. */
+    private Rejected rejection(Response response) {
+        int status = response.code();
+        if (response.body() == null) return new Rejected(status);
+        try (InputStream input = response.body().byteStream()) {
+            byte[] bytes = input.readNBytes(MAX_RESPONSE_BYTES + 1);
+            if (bytes.length > MAX_RESPONSE_BYTES) return new Rejected(status);
+            JsonNode error = mapper.readTree(bytes).path("error");
+            if (!error.isObject() || !error.path("code").isTextual()) return new Rejected(status);
+            String code = error.path("code").asText();
+            if (!ProviderModeration.supportsCode(code)) return new Rejected(status);
+            JsonNode details = error.path("moderation_details");
+            String stage = details.path("moderation_stage").isTextual()
+                    ? details.path("moderation_stage").asText() : null;
+            List<String> categories = new ArrayList<>();
+            if (details.path("categories").isArray()) {
+                for (JsonNode category : details.path("categories")) {
+                    categories.add(category.isTextual() ? category.asText() : null);
+                }
+            }
+            return new Rejected(status, new ProviderFailure(ProviderFailure.Stage.SUBMIT,
+                    ProviderFailure.Category.MODERATION, status, null, null, null,
+                    new ProviderModeration(code, stage, categories)));
+        } catch (IOException | RuntimeException invalidBody) {
+            // Body parsing is optional: never retain its exception, message or untrusted content.
+            return new Rejected(status);
         }
     }
 
@@ -372,7 +404,20 @@ public class OpenAiImage2Client {
     }
 
     public static final class Rejected extends RuntimeException {
-        public Rejected(int status) { super("OpenAI image request rejected: HTTP " + status); }
+        private final ProviderFailure providerFailure;
+
+        public Rejected(int status) { this(status, null); }
+
+        public Rejected(int status, ProviderFailure providerFailure) {
+            super("OpenAI image request rejected: HTTP " + status);
+            this.providerFailure = providerFailure;
+        }
+
+        public ProviderFailure providerFailure() { return providerFailure; }
+
+        public String code() {
+            return providerFailure == null ? ProviderFailureCodes.OPENAI_IMAGE_REJECTED : providerFailure.code();
+        }
     }
 
     /**

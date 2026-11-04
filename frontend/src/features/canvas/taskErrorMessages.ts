@@ -10,9 +10,12 @@ import { t } from "../../shared/i18n";
  */
 import type { Task } from "../../shared/api/client";
 export type ProviderFailureDiagnostic = NonNullable<NonNullable<Task["output"]>["providerFailure"]>;
+type ProviderModerationDiagnostic = NonNullable<ProviderFailureDiagnostic["moderation"]>;
 
 /** 与后端 `dev.agenvas.shared.error.ProviderFailureCodes` 一一对应，改一处必须同步另一处。 */
 export const PROVIDER_FAILURE_CODES = {
+  OPENAI_IMAGE_MODERATION_BLOCKED: "OPENAI_IMAGE_MODERATION_BLOCKED",
+  OPENAI_IMAGE_REJECTED: "OPENAI_IMAGE_REJECTED",
   KLING_CREATE_REJECTED: "KLING_CREATE_REJECTED",
   KLING_CREATE_UNCERTAIN: "KLING_CREATE_UNCERTAIN",
   KLING_TASK_FAILED: "KLING_TASK_FAILED",
@@ -115,6 +118,7 @@ const TASK_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   get KLING_RESULT_EXPIRED() { return t("tasks.errors.klingExpired"); },
   get ARK_CREATE_UNCERTAIN() { return t("tasks.errors.submissionUnknown"); },
   get OPENAI_IMAGE_REJECTED() { return t("tasks.errors.imageRequestRejected"); },
+  get OPENAI_IMAGE_MODERATION_BLOCKED() { return t("tasks.errors.moderationBlocked"); },
   get GOOGLE_IMAGE_REJECTED() { return t("tasks.errors.imageRequestRejected"); },
   get WAN_CREATE_REJECTED() { return t("tasks.errors.nativeRejected"); },
   get WAN_CREATE_UNCERTAIN() { return t("tasks.errors.submissionUnknown"); },
@@ -172,16 +176,32 @@ const RUNNINGHUB_CATEGORY_KEYS = {
   PARAMETER: "tasks.errors.runningHubParameter", RATE_LIMIT: "tasks.errors.runningHubRateLimit",
   UPLOAD: "tasks.errors.runningHubUpload", GENERATION: "tasks.errors.runningHubGeneration",
   DOWNLOAD_EXPIRED: "tasks.errors.runningHubResultExpired", UNAVAILABLE: "tasks.errors.runningHubUnavailable",
-  PROTOCOL: "tasks.errors.runningHubProtocol",
+  PROTOCOL: "tasks.errors.runningHubProtocol", MODERATION: "tasks.errors.moderationBlocked",
 } as const satisfies Record<ProviderFailureDiagnostic["category"], Parameters<typeof t>[0]>;
 const PROVIDER_STAGE_KEYS = { DISCOVERY: "tasks.providerStage.discovery", UPLOAD: "tasks.providerStage.upload",
   SUBMIT: "tasks.providerStage.submit", POLL: "tasks.providerStage.poll", DOWNLOAD: "tasks.providerStage.download" } as const;
+const MODERATION_CODES: ReadonlySet<string> = new Set(["moderation_blocked", "content_policy_violation"]);
+const MODERATION_STAGE_KEYS = { input: "tasks.providerModeration.stage.input", output: "tasks.providerModeration.stage.output",
+  unknown: "tasks.providerModeration.stage.unknown" } as const satisfies Record<ProviderModerationDiagnostic["stage"], Parameters<typeof t>[0]>;
+const MODERATION_CATEGORY_KEYS = { harassment: "tasks.providerModeration.category.harassment", "self-harm": "tasks.providerModeration.category.selfHarm",
+  sexual: "tasks.providerModeration.category.sexual", violence: "tasks.providerModeration.category.violence",
+  other: "tasks.providerModeration.category.other" } as const satisfies Record<ProviderModerationDiagnostic["categories"][number], Parameters<typeof t>[0]>;
 
 /** Uses only the server's bounded diagnostic; upstream messages, bodies and URLs never enter this text. */
 export function providerFailureMessage(diagnostic?: ProviderFailureDiagnostic | null, includeAdvice = true): string {
   if (!diagnostic) return "";
   const parts = [t(PROVIDER_STAGE_KEYS[diagnostic.stage])];
   if (includeAdvice) parts.push(t(RUNNINGHUB_CATEGORY_KEYS[diagnostic.category]));
+  const moderation = diagnostic.moderation;
+  if (moderation) {
+    // Keep the public diagnostic bounded even if an older or incompatible server sends extra text.
+    if (MODERATION_CODES.has(moderation.code)) parts.push(t("tasks.providerModeration.code", { "0": moderation.code }));
+    const stageKey = Object.hasOwn(MODERATION_STAGE_KEYS, moderation.stage) ? MODERATION_STAGE_KEYS[moderation.stage] : MODERATION_STAGE_KEYS.unknown;
+    parts.push(t(stageKey));
+    const categories = moderation.categories.filter((category) => Object.hasOwn(MODERATION_CATEGORY_KEYS, category))
+      .slice(0, 5).map((category) => t(MODERATION_CATEGORY_KEYS[category]));
+    if (categories.length) parts.push(t("tasks.providerModeration.categories", { "0": categories.join(", ") }));
+  }
   if (diagnostic.nodeId) parts.push(t("tasks.providerLocation.node", { "0": diagnostic.nodeId }));
   if (diagnostic.fieldName) parts.push(t("tasks.providerLocation.field", { "0": diagnostic.fieldName }));
   return parts.join(" · ");

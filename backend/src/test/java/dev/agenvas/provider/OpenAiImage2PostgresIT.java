@@ -1,6 +1,11 @@
 package dev.agenvas.provider;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -60,6 +65,7 @@ class OpenAiImage2PostgresIT {
     private static final AtomicInteger EDITS = new AtomicInteger();
     private static final AtomicInteger DOWNLOADS = new AtomicInteger();
     private static final AtomicBoolean DROP_NEXT_GENERATION = new AtomicBoolean();
+    private static final AtomicBoolean REJECT_NEXT_GENERATION = new AtomicBoolean();
     /** 中转站只回结果 URL 的形态；官方 API 不走这条分支。 */
     private static final AtomicBoolean URL_RESULT = new AtomicBoolean();
 
@@ -90,9 +96,10 @@ class OpenAiImage2PostgresIT {
     @Autowired private TaskService tasks;
     @Autowired private JdbcClient jdbc;
     @Autowired private ObjectMapper mapper;
+    @Autowired private org.springframework.web.context.WebApplicationContext webContext;
 
     @Test
-    void approvedReferenceUsesEditsAndLostGenerationResponseRemainsUnknown() {
+    void approvedReferenceUsesEditsAndLostGenerationResponseRemainsUnknown() throws Exception {
         var connection = catalog.createConnection("openai-it-connection", "OpenAI fake",
                 "OPENAI", "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1", "fake-secret");
         var ability = catalog.publishCapability(connection.id(), "GPT Image 2",
@@ -236,6 +243,34 @@ class OpenAiImage2PostgresIT {
         assertThat(failedResult.errorCode()).isEqualTo("MEDIA_RELAY_PREPARATION_FAILED");
         assertThat(EDITS).hasValue(editsBeforeFailure);
 
+        // A confirmed safety rejection must survive persistence as public, bounded diagnostics.
+        Fixture moderated = fixture(owner.userId(), "Synthetic moderation rejection", 0);
+        Task moderatedTask = approve(owner.userId(), moderated);
+        int generationsBeforeModeration = GENERATIONS.get();
+        REJECT_NEXT_GENERATION.set(true);
+        assertThat(worker.submitOnce("openai-moderation-worker")).isEqualTo(1);
+        Task rejected = tasks.get(owner.userId(), moderated.project().id(), moderatedTask.id());
+        assertThat(rejected.status()).isEqualTo(Task.Status.FAILED);
+        assertThat(rejected.errorCode()).isEqualTo("OPENAI_IMAGE_MODERATION_BLOCKED");
+        var diagnostic = rejected.output().path("providerFailure");
+        assertThat(diagnostic.path("category").asText()).isEqualTo("MODERATION");
+        assertThat(diagnostic.path("httpStatus").asInt()).isEqualTo(400);
+        assertThat(diagnostic.at("/moderation/code").asText()).isEqualTo("moderation_blocked");
+        assertThat(diagnostic.at("/moderation/stage").asText()).isEqualTo("output");
+        assertThat(diagnostic.at("/moderation/categories").get(0).asText()).isEqualTo("sexual");
+        assertThat(rejected.output().toString()).doesNotContain(
+                "synthetic-private-prompt", "req_synthetic", "https://private.example", "synthetic-key");
+        var auth = authentication(new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                owner, null, List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
+        String response = webAppContextSetup(webContext).apply(springSecurity()).build()
+                .perform(get("/api/v1/projects/" + moderated.project().id() + "/tasks/" + rejected.id()).with(auth))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        var publicDiagnostic = mapper.readTree(response).at("/output/providerFailure");
+        assertThat(publicDiagnostic).isEqualTo(diagnostic);
+        assertModerationContract(publicDiagnostic);
+        assertThat(worker.submitOnce("openai-moderation-no-retry-worker")).isZero();
+        assertThat(GENERATIONS).hasValue(generationsBeforeModeration + 1);
+
         // Relay preflight precedes beginSubmission: release the lease without a paid request.
         org.mockito.Mockito.doThrow(new IllegalStateException("synthetic non-public relay DNS"))
                 .when(objectStorage).requirePublic(org.mockito.ArgumentMatchers.any());
@@ -312,12 +347,54 @@ class OpenAiImage2PostgresIT {
         return fixture.task();
     }
 
+    /** Check the public HTTP diagnostic against the authoritative OpenAPI field and enum definitions. */
+    private void assertModerationContract(tools.jackson.databind.JsonNode diagnostic) {
+        java.nio.file.Path directory = java.nio.file.Path.of("").toAbsolutePath();
+        while (directory != null && !java.nio.file.Files.isRegularFile(directory.resolve("contracts/openapi.yaml"))) {
+            directory = directory.getParent();
+        }
+        assertThat(directory).as("Repository OpenAPI contract").isNotNull();
+        var yaml = new org.springframework.beans.factory.config.YamlMapFactoryBean();
+        yaml.setResources(new org.springframework.core.io.FileSystemResource(directory.resolve("contracts/openapi.yaml")));
+        var schemas = mapper.valueToTree(yaml.getObject()).at("/components/schemas");
+        var failureSchema = schemas.path("ProviderFailure");
+        assertThat(failureSchema.path("properties").propertyNames()).containsAll(diagnostic.propertyNames());
+        assertThat(diagnostic.propertyNames()).containsAll(
+                failureSchema.path("required").valueStream().map(tools.jackson.databind.JsonNode::asText).toList());
+        assertThat(failureSchema.at("/properties/category/enum")).contains(diagnostic.path("category"));
+        var moderation = diagnostic.path("moderation");
+        var moderationSchema = schemas.path("ProviderModeration");
+        assertThat(moderation.propertyNames()).containsExactlyInAnyOrderElementsOf(
+                moderationSchema.path("required").valueStream().map(tools.jackson.databind.JsonNode::asText).toList());
+        for (String field : List.of("code", "stage")) {
+            assertThat(moderationSchema.path("properties").path(field).path("enum")).contains(moderation.path(field));
+        }
+        var categoriesSchema = moderationSchema.at("/properties/categories");
+        assertThat(moderation.path("categories").size()).isLessThanOrEqualTo(categoriesSchema.path("maxItems").asInt());
+        for (var category : moderation.path("categories")) {
+            assertThat(categoriesSchema.at("/items/enum")).contains(category);
+        }
+    }
+
     private static HttpServer startServer() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/v1/images/generations", exchange -> {
                 GENERATIONS.incrementAndGet();
                 if (DROP_NEXT_GENERATION.getAndSet(false)) {
+                    exchange.close();
+                    return;
+                }
+                if (REJECT_NEXT_GENERATION.getAndSet(false)) {
+                    byte[] response = ("{\"error\":{\"message\":\"synthetic-private-prompt req_synthetic "
+                            + "https://private.example synthetic-key\",\"type\":\"image_generation_user_error\","
+                            + "\"code\":\"moderation_blocked\",\"moderation_details\":{"
+                            + "\"moderation_stage\":\"output\",\"categories\":[\"sexual\"]}}}")
+                            .getBytes(StandardCharsets.UTF_8);
+                    exchange.getRequestBody().readAllBytes();
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(400, response.length);
+                    exchange.getResponseBody().write(response);
                     exchange.close();
                     return;
                 }

@@ -1,8 +1,11 @@
 package dev.agenvas.llm.application;
 
 import dev.agenvas.llm.domain.AgentMediaApproval;
+import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.task.domain.Task;
 import java.util.List;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -27,6 +30,17 @@ final class AgentMediaResultProjection {
                 .put("taskId", task.id().toString()).put("kind", task.kind().name()).put("status", task.status().name());
         if (target.path("storyboard").isObject()) item.set("storyboard", target.path("storyboard").deepCopy());
         if (task.errorCode() != null) item.put("errorCode", task.errorCode());
+        if (task.output() != null && task.output().path("providerFailure").isObject()) {
+            try {
+                // Revalidate the public domain type; never copy arbitrary historical receipt fields.
+                ProviderFailure failure = mapper.readerFor(ProviderFailure.class)
+                        .without(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                        .readValue(task.output().path("providerFailure"));
+                item.set("providerFailure", mapper.valueToTree(failure));
+            } catch (JacksonException malformedDiagnostic) {
+                // Older malformed diagnostics are optional; task status and its stable code remain visible.
+            }
+        }
         // Provider receipts, credentials, URLs and billing payloads are never exposed here.
         if (archivedOutput != null) {
             for (String field : OUTPUT_FIELDS) if (archivedOutput.has(field)) item.set(field, archivedOutput.get(field).deepCopy());

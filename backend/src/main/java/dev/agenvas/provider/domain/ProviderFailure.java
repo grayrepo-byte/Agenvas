@@ -4,10 +4,16 @@ import dev.agenvas.shared.error.ProviderFailureCodes;
 
 /** Public, bounded provider diagnostics. Remote prose, bodies, URLs and credentials are never retained. */
 public record ProviderFailure(Stage stage, Category category, Integer httpStatus, Long upstreamCode,
-        String nodeId, String fieldName) {
+        String nodeId, String fieldName, ProviderModeration moderation) {
     public enum Stage { DISCOVERY, UPLOAD, SUBMIT, POLL, DOWNLOAD }
     public enum Category { AUTHENTICATION, BALANCE, PARAMETER, RATE_LIMIT, UPLOAD, GENERATION,
-        DOWNLOAD_EXPIRED, UNAVAILABLE, PROTOCOL }
+        DOWNLOAD_EXPIRED, UNAVAILABLE, PROTOCOL, MODERATION }
+
+    /** Existing provider diagnostics have no moderation detail, including persisted older records. */
+    public ProviderFailure(Stage stage, Category category, Integer httpStatus, Long upstreamCode,
+            String nodeId, String fieldName) {
+        this(stage, category, httpStatus, upstreamCode, nodeId, fieldName, null);
+    }
 
     public ProviderFailure {
         if (stage == null || category == null
@@ -30,6 +36,7 @@ public record ProviderFailure(Stage stage, Category category, Integer httpStatus
             case DOWNLOAD_EXPIRED -> ProviderFailureCodes.RUNNINGHUB_RESULT_EXPIRED;
             case UNAVAILABLE -> ProviderFailureCodes.RUNNINGHUB_UNAVAILABLE;
             case PROTOCOL -> ProviderFailureCodes.RUNNINGHUB_PROTOCOL_INVALID;
+            case MODERATION -> ProviderFailureCodes.OPENAI_IMAGE_MODERATION_BLOCKED;
         };
     }
 }

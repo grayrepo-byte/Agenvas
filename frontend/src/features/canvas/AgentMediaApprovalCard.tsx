@@ -90,7 +90,7 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
     pending.current = true;
     decision.mutate({ body: { expectedVersion: approval.version, decision: choice }, key });
   };
-  const taskResults = Array.isArray(approval.result?.tasks) ? approval.result.tasks.map(record) : [];
+  const taskResults = approval.result?.tasks ?? [];
   const unknown = taskResults.some((task) => task.status === "UNKNOWN");
   const reviewing = approval.status === "PENDING";
   const Icon = reviewing || approval.status === "APPROVED" ? Clock
@@ -148,8 +148,8 @@ export function AgentMediaApprovalCard({ projectId, runId, approval, disabled = 
     {unknown ? <p className="agent-media-approval__warning">{t("agent.approval.unknownHint")}</p> : null}
     {approval.status === "EXPIRED" || approval.status === "CANCELED" ? <p className="agent-media-approval__cost-hint">{t("agent.run.cancelHint")}</p> : null}
     {taskResults.length ? <ul className="agent-media-approval__results">{taskResults.map((task, index) =>
-      <li key={text(task.taskId) || index}><span>{KIND_LABELS[text(task.kind)]?.() ?? text(task.kind)}</span>
-        <span>{RESULT_LABELS[text(task.status)]?.() ?? text(task.status)}{taskErrorDetail(text(task.errorCode))}</span></li>)}</ul> : null}
+      <li key={task.taskId || index}><span>{KIND_LABELS[task.kind]?.() ?? task.kind}</span>
+        <span>{RESULT_LABELS[task.status]?.() ?? task.status}{taskErrorDetail(task.errorCode, task.providerFailure)}</span></li>)}</ul> : null}
     {decision.error ? <p className="agent-media-approval__error" role="alert">{decision.error instanceof ApiError && decision.error.status === 409
       ? t("agent.approval.conflict") : decision.error.message || t("agent.approval.decisionFailed")}</p> : null}
     {editing && reviewing ? <AgentMediaApprovalEditor projectId={projectId} runId={runId} approvalId={approval.id}
