@@ -1325,16 +1325,33 @@ class AgentMediaApprovalPostgresIT {
         finish(scenario, "REJECTED");
     }
 
-    @Test
-    void lateArchivedResultReturnsToTheWorkbenchWithoutChangingTheFinalApprovalReply() throws Exception {
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void lateArchivedResultReturnsToTheWorkbenchWithoutChangingTheFinalApprovalReply(boolean recoverExpiredPoll) throws Exception {
         Scenario scenario = proposeLinked("IMAGE");
         decide(scenario, "APPROVE", "linked-late-approve");
         Task lease = tasks.claimBoundMedia(MEDIA_WORKER, 1).getFirst();
         tasks.beginSubmission(lease, MEDIA_WORKER);
+        if (recoverExpiredPoll) {
+            tasks.waitForProvider(lease, MEDIA_WORKER, "synthetic-canceled-request", Instant.now().plusSeconds(60));
+            jdbc.sql("update task set next_action_at=now()-interval '1 second' where id=:id")
+                    .param("id", lease.id()).update();
+            lease = tasks.claimBoundMediaPolls(MEDIA_WORKER, 1).getFirst();
+        }
         runs.cancel(owner.userId(), scenario.project().id(), scenario.run().id());
         JsonNode frozenResult = currentApproval(scenario).result().deepCopy();
         assertThat(currentApproval(scenario).status()).isEqualTo(AgentMediaApproval.Status.CANCELED);
         assertThat(currentApproval(scenario).archivedResults()).isEmpty();
+        if (recoverExpiredPoll) {
+            jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id")
+                    .param("id", lease.id()).update();
+            assertThat(tasks.recoverExpiredCancellations(16)).isZero();
+            Task previousLease = lease;
+            lease = tasks.claimBoundMediaPolls(MEDIA_WORKER, 1).getFirst();
+            assertThat(lease.providerRequestId()).isEqualTo("synthetic-canceled-request");
+            assertThat(lease.leaseEpoch()).isGreaterThan(previousLease.leaseEpoch());
+            assertThat(tasks.listProviderAttempts(owner.userId(), scenario.project().id(), lease.id())).hasSize(1);
+        }
         tasks.succeedWithArtifacts(lease, MEDIA_WORKER, List.of(new TaskService.ArchivedProviderResult(0,
                 Artifact.Kind.IMAGE, true, linkedImageContent(scenario, lease, "late"))), null);
         ApprovalView late = currentApproval(scenario);

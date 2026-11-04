@@ -231,6 +231,36 @@ class TaskRecoveryPostgresIT {
         assertThat(tasks.claimDue("third-worker", 16)).isEmpty();
         assertThat(snapshots.snapshot(owner.userId(), project.id()).unknownTasks())
                 .extracting(Task::id).contains(submission.id());
+
+        Project canceledProject = projects.create(owner.userId(), "Canceled polling project", Project.AspectRatio.LANDSCAPE_16_9);
+        var canceledAgent = configureDirector(agents, owner.userId(), canceledProject.id(), "Director", "Create");
+        AgentRun canceledRun = runs.create(owner.userId(), canceledProject.id(), canceledAgent.id(),
+                "Create one image", "canceled-poll-run").run();
+        runs.transition(owner.userId(), canceledProject.id(), canceledRun.id(), canceledRun.version(), AgentRun.Status.RUNNING);
+        Task acceptedCanceled = create(owner.userId(), canceledProject.id(), canceledRun.id(), "canceled-poll");
+        Task submitting = tasks.claimDue("canceled-submitter", 1).getFirst();
+        tasks.beginSubmission(submitting, "canceled-submitter");
+        tasks.waitForProvider(submitting, "canceled-submitter", "synthetic-canceled-request", Instant.now().plusSeconds(60));
+        jdbc.sql("update task set next_action_at=now()-interval '1 second' where id=:id")
+                .param("id", acceptedCanceled.id()).update();
+        Task canceledPoll = tasks.claimProviderPolls("canceled-poller", 1).getFirst();
+        runs.cancel(owner.userId(), canceledProject.id(), canceledRun.id());
+        jdbc.sql("update task set lease_until=now()-interval '1 second' where id=:id")
+                .param("id", acceptedCanceled.id()).update();
+        assertThat(tasks.recoverExpiredCancellations(16)).isZero();
+        Task reclaimed = tasks.claimProviderPolls("reclaimed-canceled-poller", 1).getFirst();
+        assertThat(reclaimed.id()).isEqualTo(acceptedCanceled.id());
+        assertThat(reclaimed.providerRequestId()).isEqualTo("synthetic-canceled-request");
+        assertThat(reclaimed.cancelRequested()).isTrue();
+        assertThat(reclaimed.leaseEpoch()).isGreaterThan(canceledPoll.leaseEpoch());
+        assertThatThrownBy(() -> tasks.deferProviderPoll(canceledPoll, "canceled-poller", Instant.now().plusSeconds(60)))
+                .isInstanceOf(ApiProblemException.class);
+        tasks.succeed(reclaimed, "reclaimed-canceled-poller", mapper.readTree("{\"lateAfterPollRecovery\":true}"));
+        assertThat(tasks.get(owner.userId(), canceledProject.id(), acceptedCanceled.id()).status()).isEqualTo(Task.Status.CANCELED);
+        assertThat(tasks.listProviderAttempts(owner.userId(), canceledProject.id(), acceptedCanceled.id())).hasSize(1);
+        assertThat(jdbc.sql("select count(*) from task_late_result where task_id=:id")
+                .param("id", acceptedCanceled.id()).query(Integer.class).single()).isEqualTo(1);
+        assertThat(tasks.claimDue("never-resubmit-canceled", 16)).isEmpty();
     }
 
     private Task create(UUID ownerId, UUID projectId, UUID runId, String stepKey) {

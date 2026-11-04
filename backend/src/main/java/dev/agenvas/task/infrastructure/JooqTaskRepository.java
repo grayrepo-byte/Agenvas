@@ -1166,7 +1166,9 @@ public class JooqTaskRepository implements TaskRepository, RunTaskCancellation, 
 
     private Condition expiredCanceledWork(Instant now) {
         Condition localProcessing = cancelableLocalProcessingCondition().and(TASK.RUN_ID.isNull()).and(TASK.PROVIDER_REQUEST_ID.isNull());
-        return TASK.STATUS.eq(Task.Status.RUNNING.name()).and(TASK.LEASE_UNTIL.le(utc(now)))
+        // Confirmed external requests keep their poll/archive path even after cancellation.
+        return TASK.STATUS.eq(Task.Status.RUNNING.name()).and(TASK.PROVIDER_REQUEST_ID.isNull())
+                .and(TASK.LEASE_UNTIL.le(utc(now)))
                 .or(localProcessing.and(TASK.STATUS.eq(Task.Status.SUBMITTING.name())).and(TASK.LEASE_UNTIL.le(utc(now))))
                 // The submission recovery scan may win first and clear the expired local lease.
                 .or(localProcessing.and(TASK.STATUS.eq(Task.Status.UNKNOWN.name())).and(TASK.LEASE_UNTIL.isNull()));
