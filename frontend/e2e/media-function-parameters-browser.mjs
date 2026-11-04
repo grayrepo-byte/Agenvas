@@ -185,7 +185,7 @@ try {
       await waitFor(() => document.querySelectorAll('.runninghub-form [role="combobox"]').length >= 3);
       const layout = await page(() => {
         const form = document.querySelector(".runninghub-form");
-        const panel = document.querySelector(".media-operation-panel") ?? document.querySelector("main");
+        const panel = form.closest('[role="dialog"]') ?? form.closest("main");
         return { text: panel.innerText, panelWidth: panel.clientWidth, scrollWidth: panel.scrollWidth,
           controls: [...form.querySelectorAll('[role="combobox"]')].map(control => {
             const style = getComputedStyle(control);
@@ -209,24 +209,33 @@ try {
         assert.notEqual(control.background, "rgba(0, 0, 0, 0)");
       }
       if (mode === "image") assert.ok(Math.abs(layout.regularSelect - layout.regularLabel) < 1, "Ordinary operation select fills its label");
-      for (const action of layout.actions) { assert.equal(action.height, 32); assert.equal(action.radius, "999px"); }
+      assert.equal(layout.actions.length, mode === "preview" ? 0 : 3, "Exercise direct, media-version and text-version toolbar actions");
+      // The lightweight canvas uses compact --ui-radius-sm corners; nested fields retain 8px corners.
+      for (const action of layout.actions) { assert.equal(action.height, 32); assert.equal(action.radius, "6px"); }
       console.log(JSON.stringify({ viewport, mode, controls: layout.controls.length, toolbarActions: layout.actions.length }));
     }
   }
   await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
   for (const mode of cropOnly || localEditOnly ? [] : ["image", "video"]) {
+    const submitSelector = mode === "image" ? ".media-operation-panel footer button"
+      : '[role="dialog"] button[type="submit"]';
     await cdp("Page.navigate", { url: new URL(`${route}?mode=${mode}`, baseUrl).href });
     await waitFor(() => document.querySelectorAll('.runninghub-form [role="combobox"]').length >= 3);
     await pointerClick('.runninghub-form [role="combobox"]');
     await waitFor(() => Boolean(document.querySelector('[role="listbox"]')));
     await pointerClick('[role="option"][data-value="1"]');
-    await pointerClick('.media-operation-panel footer button');
+    await pointerClick(submitSelector);
     const input = await page(() => JSON.parse(document.body.dataset.submitted));
     assert.equal(input.parameters.dynamicValues.scale, 4);
     assert.equal(input.parameters.dynamicValues[mode], `synthetic-${mode}`);
     await cdp("Page.navigate", { url: new URL(`${route}?mode=${mode}&busy`, baseUrl).href });
     await waitFor(() => document.querySelectorAll('.runninghub-form [role="combobox"]').length >= 3);
-    assert.equal(await page(() => [...document.querySelectorAll('.runninghub-form [role="combobox"], .media-operation-panel footer button')].every(control => control.disabled)), true);
+    const disabled = await page(selector => {
+      const fields = [...document.querySelectorAll('.runninghub-form [role="combobox"]')];
+      const submit = document.querySelector(selector);
+      return { count: fields.length, submitPresent: Boolean(submit), disabled: fields.every(control => control.disabled) && submit?.disabled };
+    }, submitSelector);
+    assert.deepEqual(disabled, { count: 3, submitPresent: true, disabled: true });
   }
   console.log(cropOnly || localEditOnly ? "Local image editing production regression passed (four viewports; synthetic only)"
     : "Media function parameter production layout passed (image / video / preview / crop / markup, four viewports, toolbar isolation, exact source/scale submission, busy controls; synthetic only)");
