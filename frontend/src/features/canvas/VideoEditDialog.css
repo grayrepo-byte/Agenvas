@@ -20,6 +20,7 @@
 .video-edit-brand [data-slot="dialog-title"] { font-size: var(--ui-text-lg); line-height: 1.3; letter-spacing: .02em; }
 .video-edit-brand p { margin: var(--ui-space-1) 0 0; font-size: var(--ui-text-xs); color: var(--ui-text-muted); }
 .video-edit-header-actions { flex: none; }
+.video-edit-body { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow: hidden; }
 .video-edit-workspace { display: grid; grid-template-columns: 232px minmax(0, 1fr) 314px; min-height: 0; flex: 1; overflow: hidden; }
 .video-edit-panel-heading { display: flex; min-height: 50px; flex: none; align-items: center; justify-content: space-between; gap: var(--ui-space-2); }
 .video-edit-panel-heading h3, .video-edit-section-heading h3, .video-edit-timeline-toolbar h3 { display: flex; align-items: center; gap: var(--ui-space-2); margin: 0; color: var(--ui-text-secondary); font-size: var(--ui-text-sm); font-weight: 600; white-space: nowrap; }
@@ -136,6 +137,9 @@
   .video-edit-footer-actions > button { flex: 1; }
 }
 @media (max-height: 620px) and (min-width: 581px) {
+  /* Scroll the complete studio body so the timeline cannot collapse the inspector. */
+  .video-edit-body { overflow-y: auto; }
+  .video-edit-workspace { flex: none; min-height: 300px; }
   .video-edit-header { min-height: 58px; padding-block: var(--ui-space-2); }
   .video-edit-timeline-toolbar { min-height: 34px; }
   .video-edit-footer { min-height: 60px; padding-block: var(--ui-space-2); }
