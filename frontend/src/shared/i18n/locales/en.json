@@ -3593,9 +3593,7 @@
   "settings.capabilities.tokenCachedTextInput": "Cached text input / million tokens (optional)",
   "settings.capabilities.tokenCachedImageInput": "Cached image input / million tokens (optional)",
   "settings.capabilities.tokenPricingHint": "Estimates use reported usage and rates frozen for this task; the provider invoice determines actual charges. Missing usage keeps cost unknown. Missing cache details use undiscounted input rates without treating cache counts as zero.",
-  "settings.capabilities.officialTokenPreset": "Official reference: {0}, USD per million tokens, Standard processing; verified {1}. Rates remain editable. Presets include ordinary input and image output only; no cache or Batch discounts are inferred.",
+  "settings.capabilities.officialTokenPreset": "Official reference: {0}, USD per million tokens, Standard processing; verified {1}. Rates remain editable. Cached input discounts do not apply to OpenAI Images API requests.",
   "settings.capabilities.officialTokenSource": "OpenAI official pricing source",
-  "settings.capabilities.noOfficialTokenPreset": "No verified official preset for this model or endpoint. Enter your provider rates; existing prices are never automatically overwritten.",
-  "settings.capabilities.officialTokenPresetExpiry": "This deprecated model is scheduled to shut down on {0}; its automatic price preset ends on that date.",
-  "settings.capabilities.officialModelDeprecation": "Official deprecation notice"
+  "settings.capabilities.noOfficialTokenPreset": "No verified official preset for this model or endpoint. Enter your provider rates; existing prices are never automatically overwritten."
 }

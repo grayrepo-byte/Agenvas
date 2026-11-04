@@ -28,11 +28,9 @@ Images API 的 `input_tokens`、`input_tokens_details.text_tokens/image_tokens`�
 
 有可计算金额时仍为 `ESTIMATED/ADMIN_CONFIGURED`，`actualCost` 保持 null，实际扣费以供应商账单为准。配置、任务、晚到结果和用量使用既有 JSONB，无 SQL 迁移或 jOOQ 变化；不改写历史能力、任务或账目，不自动切换既有按张配置。设置页、画布运行提示和审批卡说明生成后按用量估算；未返回 usage 的兼容网关仍能生成，但费用未知。未扩展 Responses API 的主模型或 image_gen 工具计费。
 
-预设只适用于默认官方连接或精确 `https://api.openai.com/v1[/]`。现行型号精确匹配 `gpt-image-2` / `gpt-image-2-2026-04-21`、`gpt-image-2.5-sunburst` / `gpt-image-2.5-sunburst-2026-09-08`、`gpt-image-2.5-flare` / `gpt-image-2.5-flare-2026-09-08`。2026-11-04 核验的标准处理美元/百万 Token 费率分别为文本输入 5、图片输入 8、图片输出 30；不是 Batch 价格。来源与核验日期显示在编辑器。官方说明 GPT Image 2/2.5 的缓存折扣只适用 Responses 图片工具，不适用直接 Images API，因此预设不填缓存折扣。缓存自定义字段只为明确返回明细的兼容网关保留；未知模型、代理和其他路径不猜价、不使用官方预设。GPT Image 1 已于 2026-10-23 停用，不提供预设。补核官方停用公告后，1.5（含 `gpt-image-1.5-2025-12-16`）和 1-mini 在 2026-12-01 停用前分别提供 5/8/32 与 2/2.5/8 USD/百万 Token 的文本输入/图片输入/图片输出预设，各自链接官方模型页；不用 1.5 的文本输出价格代替图片输出价格。旧型号展示明确停用日期，UTC 停用日起停止提供新的预设，保留管理员已经保存的费率。预设的编辑来源标记仅保留在前端草稿，不写入 API。
+预设仅匹配默认官方连接或精确 `https://api.openai.com/v1[/]`，以及 `gpt-image-2` / `gpt-image-2-2026-04-21`、`gpt-image-2.5-sunburst` / `gpt-image-2.5-sunburst-2026-09-08`、`gpt-image-2.5-flare` / `gpt-image-2.5-flare-2026-09-08`。2026-11-04 核验的标准处理美元/百万 Token 费率分别为文本输入 5、图片输入 8、图片输出 30；不是 Batch 价格。来源与核验日期显示在编辑器。官方说明 GPT Image 2/2.5 的缓存折扣只适用 Responses 图片工具，不适用直接 Images API，因此预设不填缓存折扣。缓存自定义字段只为明确返回明细的兼容网关保留；未知模型、代理和其他路径不猜价、不使用官方预设。按用户决定不提供 GPT Image 1.5 和 1-mini 的专项支持；删除它们的官方价格预设、停用日期逻辑、提示文案及专用正向测试。原有目录仍只列 GPT Image 2 适配器，不增加这两个官方型号选项。通用自定义模型名称入口保持原行为：历史配置、已冻结任务继续携带原模型名和管理员费率调用兼容 Images API，由上游决定能否执行；不自动换模型、不按相似名称套价、不增加针对名字的黑名单。保存配置、任务恢复及账本不做迁移或清理，历史账目不重算。预设的编辑来源标记仅保留在前端草稿，不写入 API。
 
-本次仅扩展兼容 Images API 型号的价格表，不扩大当前 GPT Image 2 适配器的尺寸目录。1K 方图对应的 1024×1024 是当前映射与旧型号原生尺寸的交集；旧型号完整画幅/分辨率适配与真实调用没有因此得到验证。
-
-依据：[旧型号停用公告](https://developers.openai.com/api/docs/deprecations#2026-06-02-gpt-image-model-deprecations)、[GPT Image 1.5 价格](https://developers.openai.com/api/docs/models/gpt-image-1.5)、[GPT Image 1-mini 价格](https://developers.openai.com/api/docs/models/gpt-image-1-mini)、[OpenAI Images API](https://developers.openai.com/api/reference/resources/images/methods/generate)、[图片生成指南](https://developers.openai.com/api/docs/guides/image-generation)、[定价](https://developers.openai.com/api/docs/pricing)。本轮以本机合成 HTTP、真实 PostgreSQL 和前端定向回归验证；没有真实服务商付费调用。
+依据：[OpenAI Images API](https://developers.openai.com/api/reference/resources/images/methods/generate)、[图片生成指南](https://developers.openai.com/api/docs/guides/image-generation)、[定价](https://developers.openai.com/api/docs/pricing)。本轮以本机合成 HTTP、真实 PostgreSQL 和前端定向回归验证；没有真实服务商付费调用。
 
 ## 验证
 

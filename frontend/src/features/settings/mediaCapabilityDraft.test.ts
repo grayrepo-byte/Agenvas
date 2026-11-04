@@ -10,6 +10,15 @@ import {
 type Settings = MediaCapability["settings"];
 const price = (amount: string): NonNullable<Settings["pricing"]> => ({ amount, currency: "CNY", unit: "SECOND" });
 
+it("keeps saved custom model IDs and administrator rates without applying an official preset", () => {
+  const tokenPricing = { currency: "CNY" as const, textInputPerMillion: "0", imageInputPerMillion: "0.75", imageOutputPerMillion: "1.25" };
+  for (const model of ["custom-compatible-image", "gpt-image-1.5", "gpt-image-1-mini"]) {
+    const saved = buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", { model, tokenPricing });
+    expect(saved.model).toBe(model);
+    expect(saved.tokenPricing).toEqual(tokenPricing);
+  }
+});
+
 it("publishes OpenAI token rates without a competing per-image price and preserves explicit zero", () => {
   const tokenPricing = { currency: "USD" as const, textInputPerMillion: "0", imageInputPerMillion: "8",
     imageOutputPerMillion: "30", cachedTextInputPerMillion: "", cachedImageInputPerMillion: "2" };
