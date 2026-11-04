@@ -7,6 +7,7 @@ import { afterEach,beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { CreativeSkill,LibraryEntry,SkillDraft,SkillVersion,SaveSkillDraftRequest } from "../../shared/api/client";
 import { server } from "../../test/server";
+import { selectValue } from "../../test/controls";
 import { SkillsPage } from "./SkillsPage";
 
 const SKILL_ID="skill-1",VERSION_ID="skill-version-1",NOW="2026-10-02T00:00:00Z";
@@ -190,7 +191,7 @@ describe("Skill editing and publishing",()=>{
   it("opens the project director with a fixed Skill version without selecting an Agent or submitting a Run",async()=>{
     const run=vi.fn();server.use(http.post("/api/v1/projects/:id/runs",()=>{run();return HttpResponse.json({});}),
       http.get("/api/v1/projects",()=>HttpResponse.json({items:[{id:"project-1",name:"Mock canvas",status:"ACTIVE"}],nextCursor:null})));
-    await openEditor();const native=screen.getByRole("option",{name:"版本 1",hidden:true}).closest("select");expect(native).not.toBeNull();fireEvent.change(native!,{target:{value:VERSION_ID}});
+    await openEditor();await selectValue(screen.getByRole("combobox",{name:"发布版本"}),VERSION_ID);
     await userEvent.click(await screen.findByRole("button",{name:"在导演中试用"}));
     const project=screen.getByRole("combobox",{name:"项目"});await userEvent.click(project);await userEvent.click(await screen.findByRole("option",{name:"Mock canvas"}));
     expect(within(screen.getByRole("dialog",{name:"在导演中试用"})).getAllByRole("combobox")).toHaveLength(1);
