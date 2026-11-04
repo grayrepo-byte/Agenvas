@@ -194,8 +194,9 @@ public class AgentTurnWorker {
     /** Retry and restart replay the saved request instead of assembling changed user content. */
     private JsonNode frozenRequest(Task lease, UUID ownerId, int stepIndex, LlmTurn saved, AgentRun run) {
         if (saved != null) return saved.request();
+        LlmTurn previous = null;
         if (stepIndex > 0) {
-            LlmTurn previous = turns.find(lease.projectId(), lease.runId(), stepIndex - 1).orElseThrow();
+            previous = turns.find(lease.projectId(), lease.runId(), stepIndex - 1).orElseThrow();
             if (AgentContextService.isCompaction(previous.request())) {
                 return lease.input().has("repairFromStep") ? context.repair(previous.request())
                         : context.afterCompaction(previous.request(), previous.response());
@@ -204,7 +205,14 @@ public class AgentTurnWorker {
         List<Message> messages = lease.input().has("repairFromStep") ? repairContext.assemble(ownerId, lease)
                 : stepIndex == 0 ? initialContext.assemble(ownerId, lease.projectId(), lease.runId())
                 : conversation.afterToolRound(ownerId, lease.projectId(), lease.runId(), stepIndex - 1);
-        return context.prepare(messages, registry.modelDefinitions(run.policySnapshot()));
+        var definitions = registry.modelDefinitions(run.policySnapshot());
+        var selected = new ChatGateway.ConfigIdentity(run.policySnapshot().path("modelConfigSource").asText(),
+                run.policySnapshot().path("modelConfigVersion").asInt());
+        // A repair belongs to the rejected request, including its frozen output reserve.
+        // Old envelopes with no budget keep that legacy shape instead of adopting live settings.
+        LlmRequestBudget budget = lease.input().has("repairFromStep")
+                ? codec.requestBudget(java.util.Objects.requireNonNull(previous).request()) : gateway.requestBudgetFor(selected);
+        return budget == null ? context.prepare(messages, definitions) : context.prepare(messages, definitions, budget);
     }
 
     private JsonNode awaitModelResponse(Task lease, String workerId, UUID ownerId, int stepIndex,
@@ -301,6 +309,7 @@ public class AgentTurnWorker {
         if (LlmStreamIncompleteException.matches(failure)) return LlmStreamIncompleteException.ERROR_CODE;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
             if (cause instanceof AgentContextService.BudgetExceeded) return AgentContextService.BUDGET_EXCEEDED;
+            if (cause instanceof LlmRequestBudget.Failure budget) return budget.getMessage();
             if (cause instanceof LlmProtocolCodec.OutputTruncated) return LlmProtocolCodec.OUTPUT_TRUNCATED;
             if (cause instanceof ApiProblemException problem
                     && ("CREDENTIAL_KEY_VERSION_MISSING".equals(problem.code())

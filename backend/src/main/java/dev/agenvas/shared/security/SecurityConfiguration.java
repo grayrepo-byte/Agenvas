@@ -51,7 +51,7 @@ public class SecurityConfiguration {
                                 "/actuator/health/liveness",
                                 "/actuator/health/readiness")
                         .permitAll()
-                        .requestMatchers("/api/v1/settings/media-connections/**",
+                        .requestMatchers("/api/v1/settings/llm/models", "/api/v1/settings/media-connections/**",
                                 "/api/v1/settings/media-connections",
                                 "/api/v1/settings/media-templates", "/api/v1/settings/media-templates/**",
                                 "/api/v1/settings/media-template-sources", "/api/v1/settings/media-template-sources/**",

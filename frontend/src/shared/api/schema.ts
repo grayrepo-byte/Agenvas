@@ -1187,6 +1187,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/llm/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 管理员读取模型列表和容量元数据，不运行推理或保存配置 */
+        post: operations["previewLlmModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/llm/diagnose": {
         parameters: {
             query?: never;
@@ -4568,13 +4585,13 @@ export interface components {
             version: number;
         };
         DirectorSettings: {
-            /** @default 1000000 */
+            /** @default 32768 */
             contextWindowTokens: number;
             /** @default 50 */
             compactionThresholdPercent: number;
-            /** @default 8192 */
+            /** @default 4096 */
             responseReserveTokens: number;
-            /** @default 2048 */
+            /** @default 1024 */
             summaryTokens: number;
             /** @default 4 */
             recentToolRounds: number;
@@ -4590,13 +4607,13 @@ export interface components {
             version: number;
         };
         UpdateDirectorSettingsRequest: {
-            /** @default 1000000 */
+            /** @default 32768 */
             contextWindowTokens: number;
             /** @default 50 */
             compactionThresholdPercent: number;
-            /** @default 8192 */
+            /** @default 4096 */
             responseReserveTokens: number;
-            /** @default 2048 */
+            /** @default 1024 */
             summaryTokens: number;
             /** @default 4 */
             recentToolRounds: number;
@@ -5293,6 +5310,7 @@ export interface components {
             toolCallingVerified: boolean;
             /** Format: date-time */
             updatedAt: string | null;
+            modelPolicy?: components["schemas"]["LlmModelPolicy"] | null;
         };
         ReplaceLlmSettingsRequest: {
             expectedVersion: number;
@@ -5300,6 +5318,63 @@ export interface components {
             endpoint: string;
             modelId: string;
             apiKey: string;
+            modelSelection?: components["schemas"]["LlmModelSelection"];
+        };
+        /** @enum {string} */
+        LlmModelProvider: "COMPATIBLE" | "OPENAI" | "OPENROUTER" | "GEMINI" | "ANTHROPIC" | "OLLAMA";
+        /** @enum {string} */
+        LlmOutputParameter: "MAX_TOKENS" | "MAX_COMPLETION_TOKENS";
+        LlmModelSelection: {
+            provider: components["schemas"]["LlmModelProvider"];
+            /** @enum {string} */
+            mode: "AUTO" | "MANUAL";
+            /** Format: uuid */
+            previewId?: string | null;
+            contextWindowTokens?: number | null;
+            inputLimitTokens?: number | null;
+            maxOutputTokens: number;
+            outputParameter: components["schemas"]["LlmOutputParameter"];
+        };
+        LlmModelPolicy: {
+            provider: components["schemas"]["LlmModelProvider"];
+            /** @enum {string} */
+            source: "MANUAL" | "PROVIDER_REPORTED" | "OLLAMA_RUNTIME";
+            contextWindowTokens: number | null;
+            inputLimitTokens: number | null;
+            maxOutputTokens: number;
+            outputParameter: components["schemas"]["LlmOutputParameter"];
+            theoreticalContextTokens: number | null;
+            reportedOutputTokens: number | null;
+            runtimeContextTokens: number | null;
+            modelDigest: string | null;
+            /** Format: date-time */
+            checkedAt: string | null;
+        };
+        LlmModelMetadata: {
+            id: string;
+            contextWindowTokens: number | null;
+            inputLimitTokens: number | null;
+            outputLimitTokens: number | null;
+            runtimeContextTokens: number | null;
+            deploymentContextTokens: number | null;
+            digest: string | null;
+        };
+        LlmModelPreviewRequest: {
+            provider: components["schemas"]["LlmModelProvider"];
+            /** @enum {string} */
+            credentialMode: "DRAFT" | "SAVED";
+            expectedVersion: number;
+            endpoint?: string | null;
+            apiKey?: string | null;
+            modelId?: string | null;
+        };
+        LlmModelPreview: {
+            /** Format: uuid */
+            id: string;
+            models: components["schemas"]["LlmModelMetadata"][];
+            partial: boolean;
+            /** Format: date-time */
+            checkedAt: string;
         };
         DiagnoseLlmRequest: {
             expectedVersion: number;
@@ -10104,6 +10179,60 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthenticated"];
+        };
+    };
+    previewLlmModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmModelPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description 有界模型列表；未知容量为 null，预览十分钟有效且绑定原连接和凭据 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmModelPreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            /** @description 元数据读取正在进行 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 元数据不可用，保留手动配置 */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description 元数据读取超时，保留草稿 */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     diagnoseLlmSettings: {

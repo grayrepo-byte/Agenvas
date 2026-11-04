@@ -195,6 +195,10 @@ class ReadToolServiceTest {
     void textPagingDefaultsAllowReconstructingLongSourceWhileOrdinaryReadsKeepTheirShape() {
         String text = "😀甲".repeat(3600) + "SOURCE_END";
         var fixture = textFixture(text);
+        JsonNode receipt = reader.artifacts(context, fixture.run(), UUID.randomUUID(),
+                "{\"versionIds\":[\"" + fixture.versionId() + "\"]}");
+        assertThat(receipt.path("userVisibleSummary").asText()).isEqualTo("已读取产物的部分内容；原始版本保留，可继续分页读取");
+        assertThat(receipt.at("/data/0/versionId").asText()).isEqualTo(fixture.versionId().toString());
         JsonNode ordinary = textPage(fixture, "");
         assertThat(ordinary.path("contentTruncated").asBoolean()).isTrue();
         assertThat(ordinary.has("content")).isFalse();

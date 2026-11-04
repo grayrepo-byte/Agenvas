@@ -6,6 +6,7 @@ import dev.agenvas.audit.domain.LlmStreamLog;
 import dev.agenvas.llm.application.PublicAssistantResponse;
 import dev.agenvas.llm.application.LlmProtocolCodec;
 import dev.agenvas.llm.application.LlmStreamIncompleteException;
+import dev.agenvas.llm.application.LlmRequestBudget;
 import dev.agenvas.shared.http.DebugHttpCapture;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -53,6 +54,7 @@ public class SpringAiChatGateway implements ChatGateway {
     /** Enabled only when the model's transport removes the internal capture header. */
     private final boolean captureHttp;
     private final LlmImageRelay imageRelay;
+    private final LlmRequestBudget requestBudget;
 
     /** 创建禁用自动工具循环的客户端，并拒绝无效配置版本。 */
     public SpringAiChatGateway(ChatModel model, int configVersion) {
@@ -67,12 +69,18 @@ public class SpringAiChatGateway implements ChatGateway {
     static SpringAiChatGateway withDebugCapture(OpenAiChatModel model, int configVersion, LlmImageRelay relay) {
         return new SpringAiChatGateway(model, configVersion, true, relay);
     }
+    static SpringAiChatGateway withDebugCapture(OpenAiChatModel model, int configVersion, LlmImageRelay relay, LlmRequestBudget budget) {
+        return new SpringAiChatGateway(model, configVersion, true, relay, budget);
+    }
 
     SpringAiChatGateway(ChatModel model, int configVersion, LlmImageRelay relay) {
         this(model, configVersion, false, relay);
     }
 
     private SpringAiChatGateway(ChatModel model, int configVersion, boolean captureHttp, LlmImageRelay relay) {
+        this(model, configVersion, captureHttp, relay, null);
+    }
+    private SpringAiChatGateway(ChatModel model, int configVersion, boolean captureHttp, LlmImageRelay relay, LlmRequestBudget budget) {
         if (configVersion < 1) {
             throw new IllegalArgumentException("LLM configVersion must be positive");
         }
@@ -84,6 +92,7 @@ public class SpringAiChatGateway implements ChatGateway {
         this.configVersion = configVersion;
         this.captureHttp = captureHttp;
         this.imageRelay = model instanceof OpenAiChatModel ? relay : null;
+        this.requestBudget = budget;
     }
 
     private ChatClient.ChatClientRequestSpec prompt() {
@@ -99,6 +108,7 @@ public class SpringAiChatGateway implements ChatGateway {
     @Override
     public Exchange call(List<Message> messages, List<ToolCallback> tools,
             Map<String, Object> toolContext) {
+        if (requestBudget != null) requestBudget.requireInput(messages, tools);
         if (messages == null || messages.isEmpty() || messages.size() > LlmProtocolCodec.MAX_MESSAGES
                 || tools == null || toolContext == null) {
             throw new IllegalArgumentException("Invalid bounded ChatGateway round");
@@ -135,6 +145,7 @@ public class SpringAiChatGateway implements ChatGateway {
     public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools,
             Map<String, Object> toolContext, ConfigIdentity expected, Consumer<String> publicDelta,
             boolean captureContent, Consumer<LlmStreamLog> streamLog) {
+        if (requestBudget != null) requestBudget.requireInput(messages, tools);
         if (!configIdentity().equals(expected)) {
             throw new IllegalStateException("ChatGateway configuration changed before model stream");
         }

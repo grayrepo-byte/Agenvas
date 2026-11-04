@@ -2,6 +2,11 @@
 
 Model settings diagnostics are an administrator action with explicit cost acknowledgement. They send at most two calls to the selected, versioned OpenAI-compatible configuration. The probe accesses no project data and cannot execute application tools.
 
+Reading the model list is separate metadata traffic and does not run this probe. New
+connections should confirm effective capacity and the output-token parameter before
+diagnostics; the diagnostic uses those same limits. A legacy connection without a
+policy must confirm and save capacity before new diagnostics or Agent work.
+
 The first response must request exactly one `agenvas_connection_probe` call with a `function` type, nonempty bounded call ID and an object containing only the exact random `nonce`. The server supplies a separately generated `proof` through the tool result. The second response must contain that exact proof, allowing only surrounding whitespace, with no further tool call. A plain chat response, wrong tool/nonce, ignored tool result or extra explanatory text does not verify tool support. This tests a small tool round trip; it does not certify the serving context capacity or guarantee correctness on Agent tasks.
 
 Protocol failures retain the API category `PROVIDER_TOOL_PROTOCOL_UNVERIFIED`; their translated detail identifies the failed stage. Each actual call appears in Call logs as **text model · Tool diagnostic**, under **System diagnostic**, without a project link. Safe metadata includes the model, local Trace ID, time, duration, status and a bounded error code:

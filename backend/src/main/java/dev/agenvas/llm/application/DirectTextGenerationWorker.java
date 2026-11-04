@@ -137,6 +137,8 @@ public class DirectTextGenerationWorker {
         ChatGateway.ConfigIdentity pinned = new ChatGateway.ConfigIdentity(
                 lease.input().path("modelConfigSource").asText(""),
                 lease.input().path("modelConfigVersion").asInt(-1));
+        LlmRequestBudget budget = codec.requestBudget(lease.input());
+        if (budget != null) budget.requireInput(messages, List.of());
         ChatGateway.ModelDetails model = gateway.modelDetailsFor(pinned);
         if (!model.available()) throw new IllegalStateException("Pinned text model unavailable");
         ChatGateway.Exchange exchange = execution.call(() -> callLogs.record(
@@ -144,8 +146,9 @@ public class DirectTextGenerationWorker {
                         CallLog.Kind.LLM, CallLog.Operation.CHAT,
                         "mock".equals(pinned.source()) ? "mock" : model.providerAdapter(),
                         model.modelId(), "mock".equals(pinned.source())),
-                () -> gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
-                        List.of(), Map.of(), pinned),
+                () -> budget == null ? gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
+                        List.of(), Map.of(), pinned) : gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
+                        List.of(), Map.of(), pinned, budget),
                 ignored -> CallLogService.CallOutcome.succeeded(null)), MODEL_TIMEOUT);
         execution.checkActive();
         if (exchange.configVersion() != pinned.version()) {
@@ -153,7 +156,7 @@ public class DirectTextGenerationWorker {
         }
         ObjectNode checkpoint = mapper.createObjectNode();
         checkpoint.put("schemaVersion", 1);
-        checkpoint.set("request", codec.request(messages, List.of()));
+        checkpoint.set("request", codec.withBudget(codec.request(messages, List.of()), budget));
         checkpoint.set("response", codec.response(exchange.response()));
         execution.checkActive();
         return tasks.checkpointTextResponse(lease, workerId, checkpoint);
@@ -162,6 +165,8 @@ public class DirectTextGenerationWorker {
     private String errorCode(Throwable failure) {
         if (LlmStreamIncompleteException.matches(failure)) return LlmStreamIncompleteException.ERROR_CODE;
         for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.io.UncheckedIOException) return "LLM_CONNECTION_FAILED";
+            if (cause instanceof LlmRequestBudget.Failure budget) return budget.getMessage();
             if (cause instanceof LlmProtocolCodec.OutputTruncated) return LlmProtocolCodec.OUTPUT_TRUNCATED;
             if (cause instanceof dev.agenvas.shared.error.ApiProblemException problem
                     && LlmStreamIncompleteException.ERROR_CODE.equals(problem.code())) return problem.code();

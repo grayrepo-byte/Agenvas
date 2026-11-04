@@ -23,6 +23,18 @@ public interface ChatGateway {
      * @return 原始响应及实际使用的配置身份
      */
     Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> toolContext);
+    /** Mock has no external capacity. Real configured adapters must resolve a confirmed policy. */
+    default LlmRequestBudget requestBudgetFor(ConfigIdentity expected) { return null; }
+    default Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
+            ConfigIdentity expected, LlmRequestBudget budget) {
+        budget.requireInput(messages, tools);
+        return call(messages, tools, context, expected);
+    }
+    default Exchange callStreaming(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
+            ConfigIdentity expected, LlmRequestBudget budget, Consumer<String> delta, boolean captureContent, Consumer<LlmStreamLog> log) {
+        budget.requireInput(messages, tools);
+        return callStreaming(messages, tools, context, expected, delta, captureContent, log);
+    }
 
     /** 可切换配置的实现须确认仍是预留时固定的来源和版本，不可静默切换模型。 */
     default Exchange call(List<Message> messages, List<ToolCallback> tools,

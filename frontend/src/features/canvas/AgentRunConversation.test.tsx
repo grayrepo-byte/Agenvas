@@ -55,6 +55,15 @@ function taskSummary(label: string, index = 0) {
 }
 
 describe("AgentRunConversation", () => {
+  it("shows context compression and partial tool reads without changing the current instruction", async () => {
+    setLocale("en");
+    mockConversation([task({ output: { contextCompacted: true } })],
+      [action({ toolName: "read_artifacts", summary: "已读取产物的部分内容；原始版本保留，可继续分页读取" })]);
+    mountConversation();
+    expect(await screen.findByText("Read partial artifact content; original versions remain available for paging")).toBeInTheDocument();
+    expect(screen.getByText(/Earlier steps were summarized/)).toBeInTheDocument();
+    expect(screen.getByText(USER_INSTRUCTION)).toBeInTheDocument();
+  });
   it("localizes recognized server action summaries and step labels while retaining authored content", async () => {
     setLocale("en");
     mockConversation([], [action({ summary: "已创建文本产物" }),

@@ -90,6 +90,8 @@ public class ImagePromptTaskService {
                     .put("purpose", Task.IMAGE_PROMPT_PURPOSE).put("language", language)
                     .put("systemPrompt", prompt.content()).put("promptKey", prompt.key()).put("promptVersion", prompt.version())
                     .put("modelConfigSource", config.source()).put("modelConfigVersion", config.version());
+            var budget = gateway.requestBudgetFor(config);
+            if (budget != null) input.set("requestBudget", mapper.valueToTree(budget));
             input.set("request", request);
             if (model.providerAdapter() != null) input.put("providerAdapter", model.providerAdapter());
             if (model.modelId() != null) input.put("modelId", model.modelId());

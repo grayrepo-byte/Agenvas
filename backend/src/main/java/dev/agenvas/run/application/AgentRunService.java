@@ -652,6 +652,7 @@ public class AgentRunService {
         policy.set("allowedTools", objectMapper.valueToTree(RunToolPolicy.CURRENT));
         policy.put("systemPromptVersion", dev.agenvas.llm.application.InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         ChatGateway.ConfigIdentity model = chatGateway.configIdentity();
+        chatGateway.requestBudgetFor(model); // Reject unknown capacity before creating a new paid Run.
         policy.put("modelConfigVersion", model.version());
         policy.put("modelConfigSource", model.source());
         policy.putNull("maxModelTurns");

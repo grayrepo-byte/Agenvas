@@ -86,6 +86,8 @@ public class VideoPromptTaskService {
                     .put("commandHash", commandHash).put("language", language)
                     .put("systemPrompt", definition.content()).put("promptKey", definition.key()).put("promptVersion", definition.version())
                     .put("modelConfigSource", config.source()).put("modelConfigVersion", config.version());
+            var budget = gateway.requestBudgetFor(config);
+            if (budget != null) input.set("requestBudget", mapper.valueToTree(budget));
             if (model.providerAdapter() != null) input.put("providerAdapter", model.providerAdapter());
             if (model.modelId() != null) input.put("modelId", model.modelId());
             if (request.skill() != null) {

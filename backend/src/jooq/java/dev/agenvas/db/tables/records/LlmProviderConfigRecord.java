@@ -9,6 +9,7 @@ import dev.agenvas.db.tables.LlmProviderConfig;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import org.jooq.JSONB;
 import org.jooq.Record1;
 import org.jooq.impl.UpdatableRecordImpl;
 
@@ -183,6 +184,24 @@ public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConf
         return (OffsetDateTime) get(10);
     }
 
+    /**
+     * Setter for <code>public.llm_provider_config.model_policy</code>.
+     * Immutable administrator-confirmed model capacity, output parameter and
+     * metadata provenance; NULL means unknown legacy capacity
+     */
+    public void setModelPolicy(JSONB value) {
+        set(11, value);
+    }
+
+    /**
+     * Getter for <code>public.llm_provider_config.model_policy</code>.
+     * Immutable administrator-confirmed model capacity, output parameter and
+     * metadata provenance; NULL means unknown legacy capacity
+     */
+    public JSONB getModelPolicy() {
+        return (JSONB) get(11);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -206,7 +225,7 @@ public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConf
     /**
      * Create a detached, initialised LlmProviderConfigRecord
      */
-    public LlmProviderConfigRecord(UUID id, Integer version, String endpoint, String modelId, byte[] credentialCiphertext, byte[] credentialNonce, Integer keyVersion, String keyMask, Boolean toolCallingVerified, Boolean active, OffsetDateTime createdAt) {
+    public LlmProviderConfigRecord(UUID id, Integer version, String endpoint, String modelId, byte[] credentialCiphertext, byte[] credentialNonce, Integer keyVersion, String keyMask, Boolean toolCallingVerified, Boolean active, OffsetDateTime createdAt, JSONB modelPolicy) {
         super(LlmProviderConfig.LLM_PROVIDER_CONFIG);
 
         setId(id);
@@ -220,6 +239,7 @@ public class LlmProviderConfigRecord extends UpdatableRecordImpl<LlmProviderConf
         setToolCallingVerified(toolCallingVerified);
         setActive(active);
         setCreatedAt(createdAt);
+        setModelPolicy(modelPolicy);
         resetChangedOnNotNull();
     }
 }

@@ -3077,3 +3077,14 @@ ComfyUI 工作流导入合并 main 复验：保留 main 的 RunningHub 多节点
 - [x] 后端 146 项定向单测通过：`OpenAiImage2ClientTest`、`OpenAiImage2AdapterTest`、`ProviderModerationTest`、`ProviderFailureTest`、`RunningHubClientTest`、`RunningHubAdapterTest`、`MediaExecutionWorkerTest`、`TaskProviderRecoveryTest`、`AgentMediaResultProjectionTest`、`AgentMediaOutcomeServiceTest`。新增用例先复现客户端阶段解析、诊断保存入口及审批投影丢信息，再验证修复；包含恶意/畸形内容、历史诊断、无自动重提和旧租约隔离。
 - [x] `./mvnw -Pci-integration -Dit.test=OpenAiImage2PostgresIT verify`：1 项通过，使用真实 PostgreSQL 17.11 和本地假 HTTP；确认审核拒绝进入 FAILED，分类持久化后可经认证任务 API 读取，字段与枚举符合 OpenAPI，重新调度不再提交生成。前端 154 项定向 Vitest、6 项 i18n 脚本测试、typecheck、相关 ESLint、i18n 检查及差异空白检查通过。
 - [ ] 全量测试、真实 OpenAI 生成、浏览器端到端和部署：未运行；本次假 HTTP 与合成响应不证明真实 Provider 已重新接通，历史失败记录不会补回此前丢弃的上游详情。
+
+
+### 模型发现与容量确认
+
+- [x] 原 LLM 连接设置内增加显式模型列表读取、筛选、手填 ID、自动容量与手动覆盖；读取不保存、不诊断、不下载权重，编辑作用域／取消后的旧结果不应用。来源、未知值、独立输入／输出、路由声明与 Ollama 当前加载容量分别说明，四语文案同步。
+- [x] 服务端适配 OpenAI 兼容／OpenAI／OpenRouter／Gemini／Anthropic／Ollama 元数据；固定路径、DNS 固定、无重定向和凭据跨主机转发、有限响应／分页／超时／并发；管理员、CSRF、no-store 和服务端预览绑定及过期校验。
+- [x] V47 保存不可变连接容量策略；旧版本保持未知，只有未改动的初始百万 Token 默认预算迁移为 32768／4096／1024，自定义设置保留；按迁移重新生成 jOOQ 和 OpenAPI TypeScript。
+- [x] 新 Agent、直接文本、图片反推及视频提示词任务冻结请求预算；摘要、普通修复和重试沿用冻结值，实际发送一种输出参数。完整当前输入超预算时明确失败，附件按引用和实际媒体计量，工具分页及历史摘要显示范围提示并保留原始版本。
+- [x] Ollama 自动配置只使用加载上下文，派发前检查卸载、变小与版本变化；不设置 num_ctx、不加载权重。临时元数据忙碌／超时／429／5xx 通过既有有界 Agent 连接恢复，直接任务明确报告连接失败。
+- [x] 本次定向验证：17 类后端单元／合成 HTTP 测试共 169 项，8 类真实 PostgreSQL 专项共 16 项，5 类前端组件测试共 58 项，i18n 检查器测试 6 项；桌面 1440 与手机 390 的生产 CSS 浏览器回归、类型检查、定向 ESLint、四语／主题检查、前后端打包和生成代码检查通过。独立审查的重要问题已修复并补回归。
+- [ ] 真实服务商生成、真实 Ollama／Windows／WSL 联通和容量观测未运行。当前生成仍走 Spring AI OpenAI 兼容协议；未知元数据需手动确认，Ollama 预检无法阻止派发间隙重载；不宣称能够检测所有上游静默截断，不提供通用上下文 400 自动恢复。

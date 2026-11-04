@@ -95,6 +95,37 @@ class DirectTextGenerationWorkerTest {
     }
 
     @Test
+    void oversizedFrozenInputFailsBeforeCallingTheModelOrWritingAnArtifact() {
+        var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(),
+                dev.agenvas.settings.application.LlmModelPolicy.manual(
+                        dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE, 4096, null, 512,
+                        dev.agenvas.settings.application.LlmModelPolicy.OutputParameter.MAX_TOKENS));
+        input.set("requestBudget", mapper.valueToTree(budget));
+        input.put("prompt", "Current user input must be preserved. ".repeat(3000));
+        worker.runOnce(WORKER);
+        verify(tasks).fail(lease, WORKER, "AGENT_CONTEXT_BUDGET_EXCEEDED");
+        verify(gateway, never()).call(anyList(), anyList(), anyMap(), any(), any());
+        verify(tasks, never()).succeedWithTextArtifact(any(), anyString(), any());
+        verify(tasks, never()).checkpointTextResponse(any(), anyString(), any());
+        assertThat(input.path("prompt").asText()).hasSize("Current user input must be preserved. ".length() * 3000);
+    }
+
+    @Test
+    void dispatchAndCheckpointRetainTheFrozenBudget() {
+        var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(),
+                dev.agenvas.settings.application.LlmModelPolicy.manual(
+                        dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE, 8192, null, 1024,
+                        dev.agenvas.settings.application.LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS));
+        input.set("requestBudget", mapper.valueToTree(budget));
+        when(gateway.call(anyList(), anyList(), anyMap(), eq(pinned), eq(budget))).thenReturn(exchange);
+        worker.runOnce(WORKER);
+        verify(gateway).call(anyList(), anyList(), anyMap(), eq(pinned), eq(budget));
+        ArgumentCaptor<JsonNode> checkpoint = ArgumentCaptor.forClass(JsonNode.class);
+        verify(tasks).checkpointTextResponse(eq(lease), eq(WORKER), checkpoint.capture());
+        assertThat(codec.requestBudget(checkpoint.getValue().path("request"))).isEqualTo(budget);
+    }
+
+    @Test
     void replaysThePersistedResponseWithoutConsultingOrCallingTheModel() throws Exception {
         claimedTask(checkpoint(exchange.response()));
 

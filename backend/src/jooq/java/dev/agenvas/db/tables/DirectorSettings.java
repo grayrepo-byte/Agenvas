@@ -62,7 +62,7 @@ public class DirectorSettings extends TableImpl<DirectorSettingsRecord> {
      * The column <code>public.director_settings.context_window_tokens</code>.
      * 模型上下文窗口的估算 Token 预算
      */
-    public final TableField<DirectorSettingsRecord, Integer> CONTEXT_WINDOW_TOKENS = createField(DSL.name("context_window_tokens"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("1000000"), SQLDataType.INTEGER)), this, "模型上下文窗口的估算 Token 预算");
+    public final TableField<DirectorSettingsRecord, Integer> CONTEXT_WINDOW_TOKENS = createField(DSL.name("context_window_tokens"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("32768"), SQLDataType.INTEGER)), this, "模型上下文窗口的估算 Token 预算");
 
     /**
      * The column
@@ -75,13 +75,13 @@ public class DirectorSettings extends TableImpl<DirectorSettingsRecord> {
      * The column <code>public.director_settings.response_reserve_tokens</code>.
      * 响应预留 Token，不是供应商输出参数
      */
-    public final TableField<DirectorSettingsRecord, Integer> RESPONSE_RESERVE_TOKENS = createField(DSL.name("response_reserve_tokens"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("8192"), SQLDataType.INTEGER)), this, "响应预留 Token，不是供应商输出参数");
+    public final TableField<DirectorSettingsRecord, Integer> RESPONSE_RESERVE_TOKENS = createField(DSL.name("response_reserve_tokens"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("4096"), SQLDataType.INTEGER)), this, "响应预留 Token，不是供应商输出参数");
 
     /**
      * The column <code>public.director_settings.summary_tokens</code>. 交接摘要的
      * Token 上限
      */
-    public final TableField<DirectorSettingsRecord, Integer> SUMMARY_TOKENS = createField(DSL.name("summary_tokens"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("2048"), SQLDataType.INTEGER)), this, "交接摘要的 Token 上限");
+    public final TableField<DirectorSettingsRecord, Integer> SUMMARY_TOKENS = createField(DSL.name("summary_tokens"), SQLDataType.INTEGER.nullable(false).defaultValue(DSL.field(DSL.raw("1024"), SQLDataType.INTEGER)), this, "交接摘要的 Token 上限");
 
     /**
      * The column <code>public.director_settings.recent_tool_rounds</code>.

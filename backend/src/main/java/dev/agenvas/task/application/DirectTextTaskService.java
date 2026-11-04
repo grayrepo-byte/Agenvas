@@ -107,6 +107,8 @@ public class DirectTextTaskService {
                     ? "MARKDOWN" : "PLAIN_TEXT");
             input.put("modelConfigSource", config.source());
             input.put("modelConfigVersion", config.version());
+            var requestBudget = gateway.requestBudgetFor(config);
+            if (requestBudget != null) input.set("requestBudget", mapper.valueToTree(requestBudget));
             if (model.providerAdapter() != null) input.put("providerAdapter", model.providerAdapter());
             if (model.modelId() != null) input.put("modelId", model.modelId());
             Instant now = clock.instant();

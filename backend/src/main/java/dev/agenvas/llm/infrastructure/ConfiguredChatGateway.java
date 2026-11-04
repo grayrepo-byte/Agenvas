@@ -3,6 +3,7 @@ package dev.agenvas.llm.infrastructure;
 import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.audit.domain.LlmStreamLog;
 import dev.agenvas.llm.application.LlmProperties;
+import dev.agenvas.llm.application.LlmRequestBudget;
 import dev.agenvas.settings.application.LlmProviderConfig;
 import dev.agenvas.settings.application.LlmProviderConfigRepository;
 import java.util.List;
@@ -26,6 +27,26 @@ public class ConfiguredChatGateway implements ChatGateway {
     private final StoredChatModelFactory factory;
     /** 当前版本缓存；配置轮换时丢弃旧的凭证客户端引用。 */
     private volatile RuntimeClient activeClient;
+    @Override public LlmRequestBudget requestBudgetFor(ConfigIdentity expected) {
+        var config = pinnedConfig(expected);
+        if (config == null || factory == null) throw LlmRequestBudget.unknown();
+        return factory.requestBudget(config);
+    }
+    @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
+            ConfigIdentity expected, LlmRequestBudget budget) {
+        budget.requireInput(messages, tools);
+        var config = pinnedConfig(expected);
+        if (config == null) throw LlmRequestBudget.unknown();
+        return factory.create(config, budget).call(messages, tools, context);
+    }
+    @Override public Exchange callStreaming(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context,
+            ConfigIdentity expected, LlmRequestBudget budget, Consumer<String> delta, boolean captureContent, Consumer<LlmStreamLog> log) {
+        budget.requireInput(messages, tools);
+        var config = pinnedConfig(expected);
+        if (config == null) throw LlmRequestBudget.unknown();
+        var pinned = factory.create(config, budget);
+        return pinned.callStreaming(messages, tools, context, pinned.configIdentity(), delta, captureContent, log);
+    }
 
     /** 创建仅使用环境配置的兼容入口；不启用数据库凭证配置。 */
     public ConfiguredChatGateway(ObjectProvider<ChatModel> models, LlmProperties properties) {

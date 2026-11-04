@@ -42,7 +42,8 @@ describe("BlockedRunNotice", () => {
     render(<QueryClientProvider client={createQueryClient()}>
       <BlockedRunNotice projectId="project-1" runId="context-run" status="FAILED" />
     </QueryClientProvider>);
-    expect(await screen.findByText(/固定创作指令或已激活 Skill 超出配置的模型上下文预算/)).toBeInTheDocument();
+    expect(await screen.findByText(/固定指令、当前输入或附件无法放入已确认的上下文预算/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("减少附件、切换实际上下文更大的模型，或调整响应预留");
     expect(screen.getByRole("alert")).not.toHaveTextContent("private-context-input");
   });
   it("explains an unselected archived video conflict instead of a model outage", async () => {

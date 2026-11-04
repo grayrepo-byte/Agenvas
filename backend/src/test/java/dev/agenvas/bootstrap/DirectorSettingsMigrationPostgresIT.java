@@ -34,10 +34,10 @@ class DirectorSettingsMigrationPostgresIT {
                 var statement = connection.createStatement()) {
             try (var rows = statement.executeQuery("select * from director_settings")) {
                 assertThat(rows.next()).isTrue();
-                assertThat(rows.getInt("context_window_tokens")).isEqualTo(1_000_000);
+                assertThat(rows.getInt("context_window_tokens")).isEqualTo(32768);
                 assertThat(rows.getInt("compaction_threshold_percent")).isEqualTo(50);
                 assertThat(rows.getInt("recovery_window_minutes")).isEqualTo(1440);
-                assertThat(rows.getLong("version")).isEqualTo(1);
+                assertThat(rows.getLong("version")).isEqualTo(2);
                 assertThat(rows.next()).isFalse();
             }
             if (upgrade) try (var rows = statement.executeQuery("select content,version from prompt_definition where key='agent.director'")) {

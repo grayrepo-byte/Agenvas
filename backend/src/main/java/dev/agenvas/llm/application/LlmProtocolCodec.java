@@ -67,6 +67,15 @@ public class LlmProtocolCodec {
         requireBounded(envelope, MAX_REQUEST_BYTES);
         return envelope;
     }
+    public LlmRequestBudget requestBudget(JsonNode request) {
+        if (!request.has("requestBudget")) return null;
+        return mapper.treeToValue(request.path("requestBudget"), LlmRequestBudget.class);
+    }
+    public ObjectNode withBudget(ObjectNode request, LlmRequestBudget budget) {
+        if (budget != null) request.set("requestBudget", mapper.valueToTree(budget));
+        requireBounded(request, MAX_REQUEST_BYTES);
+        return request;
+    }
 
     /**
      * 保存完整响应、全部 generation、工具调用 ID 与恢复协议所需元数据；未提供的用量保留为空。

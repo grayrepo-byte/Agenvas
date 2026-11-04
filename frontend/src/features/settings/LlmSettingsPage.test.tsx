@@ -9,6 +9,12 @@ import { createQueryClient } from "../../app/queryClient";
 import { setLocale } from "../../shared/i18n";
 import { server } from "../../test/server";
 import { LlmSettingsPage } from "./LlmSettingsPage";
+const manualSelection = { provider: "COMPATIBLE", mode: "MANUAL", contextWindowTokens: 16384,
+  inputLimitTokens: null, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS" } as const;
+function confirmCapacity() {
+  fireEvent.change(screen.getByLabelText("确认的上下文窗口"), { target: { value: "16384" } });
+  fireEvent.change(screen.getByLabelText("请求最大输出"), { target: { value: "2048" } });
+}
 
 function unconfiguredLlmSettings() {
   server.use(
@@ -22,6 +28,46 @@ function unconfiguredLlmSettings() {
 }
 
 describe("LlmSettingsPage", () => {
+  it("saves the selected discovered model and its server-bound automatic policy together", async () => {
+    setLocale("en"); unconfiguredLlmSettings();
+    const writes: unknown[] = [];
+    const previewId = "00000000-0000-4000-8000-000000000001";
+    server.use(http.post("/api/v1/settings/llm/models", () => HttpResponse.json({ id: previewId,
+      partial: false, checkedAt: "2026-11-04T00:00:00Z", models: [{ id: "model-b", contextWindowTokens: 32768,
+        deploymentContextTokens: 16384, inputLimitTokens: null, outputLimitTokens: 2048, runtimeContextTokens: null, digest: null }] })),
+    http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json());
+      return HttpResponse.json({ configured: true, version: 1, endpoint: "https://router.example/v1", modelId: "model-b",
+        keyMask: "masked", toolCallingVerified: false, updatedAt: null }); }));
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "endpoint address" }), "https://router.example/v1");
+    fireEvent.change(screen.getByLabelText("API Key (need to be re-entered each time it is modified)"), { target: { value: "synthetic-key" } });
+    await user.click(screen.getByRole("combobox", { name: "Metadata provider" }));
+    await user.click(screen.getByRole("option", { name: "OpenRouter" }));
+    await user.click(screen.getByRole("button", { name: "Read model list" }));
+    await user.click(await screen.findByRole("combobox", { name: "Fetched models" }));
+    await user.click(screen.getByRole("option", { name: "model-b" }));
+    await waitFor(() => expect(screen.getByLabelText("Confirmed context window")).toHaveValue(16384));
+    expect(writes).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Save configuration" }));
+    await waitFor(() => expect(writes).toEqual([{ expectedVersion: 0, endpoint: "https://router.example/v1",
+      modelId: "model-b", apiKey: "synthetic-key", modelSelection: { provider: "OPENROUTER", mode: "AUTO",
+        previewId, maxOutputTokens: 2048, outputParameter: "MAX_TOKENS" } }]));
+  });
+
+  it("requires confirmed capacity before saving instead of silently assuming a million tokens", async () => {
+    unconfiguredLlmSettings(); const writes: unknown[] = [];
+    server.use(http.put("/api/v1/settings/llm", async ({ request }) => { writes.push(await request.json()); return HttpResponse.json({}); }));
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "端点地址" }), "https://api.example.com/v1");
+    await user.type(screen.getByRole("textbox", { name: "模型 ID" }), "model-a");
+    fireEvent.change(screen.getByLabelText("API Key（每次修改均需重新输入）"), { target: { value: "synthetic-key" } });
+    await user.click(screen.getByRole("button", { name: "保存配置" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("请重新读取信息以使用自动值，或手动确认有效的容量和输出上限。");
+    expect(writes).toEqual([]);
+    expect(screen.getByLabelText("API Key（每次修改均需重新输入）")).toHaveValue("synthetic-key");
+  });
   it.each([
     ["the usual six-character Ollama placeholder", "ollama", false],
     ["spaces", "local key", false],
@@ -77,11 +123,12 @@ describe("LlmSettingsPage", () => {
     await user.click(screen.getByRole("button", { name: "保存配置" }));
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     fireEvent.change(key, { target: { value: validKey } });
+    confirmCapacity();
     expect(key).not.toHaveAttribute("aria-invalid", "true");
     await user.click(screen.getByRole("button", { name: "保存配置" }));
     expect(await screen.findByText("配置已加密保存，密钥输入已清空。")).toBeInTheDocument();
     expect(key).toHaveValue("");
-    expect(submitted).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com", modelId: "model-a", apiKey: validKey }]);
+    expect(submitted).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com", modelId: "model-a", apiKey: validKey, modelSelection: manualSelection }]);
   });
 
   it.each(["http://127.0.0.1:11434/v1", "https://api.example.com"])("explains provider-dependent diagnostic charges for %s and requires consent", async (endpoint) => {
@@ -166,13 +213,14 @@ describe("LlmSettingsPage", () => {
     await user.type(screen.getByRole("textbox", { name: "模型 ID" }), "model-a");
     const keyInput = screen.getByLabelText("API Key（每次修改均需重新输入）") as HTMLInputElement;
     await user.type(keyInput, "secret-7890");
+    confirmCapacity();
     await user.click(screen.getByRole("button", { name: "保存配置" }));
 
     expect(await within(screen.getByRole("region", { name: "LLM 配置" })).findByRole("status")).toHaveTextContent("配置已加密保存");
     expect(keyInput).toHaveValue("");
     expect(screen.getByText(/密钥 ••••7890/)).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("secret-7890");
-    expect(submitted).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com", modelId: "model-a", apiKey: "secret-7890" }]);
+    expect(submitted).toEqual([{ expectedVersion: 0, endpoint: "https://api.example.com", modelId: "model-a", apiKey: "secret-7890", modelSelection: manualSelection }]);
     expect(screen.queryByText("保存配置后可验证")).not.toBeInTheDocument();
     expect(screen.getByText(/已配置模型模式 · 图片已配置 · 视频未配置/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "查看系统诊断" })).toHaveAttribute("href", "/settings/general?tab=diagnostics");
@@ -245,6 +293,7 @@ describe("LlmSettingsPage", () => {
     await user.type(modelInput, "local-draft");
     const keyInput = screen.getByLabelText("API Key（每次修改均需重新输入）");
     await user.type(keyInput, "local-secret");
+    confirmCapacity();
     current = latest;
     act(() => { queryClient.setQueryData(["settings", "llm"], latest); });
     expect(await screen.findByText("已有更新的配置")).toBeInTheDocument();
@@ -252,7 +301,7 @@ describe("LlmSettingsPage", () => {
     expect(screen.getByRole("button", { name: "执行可能计费的诊断" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "保存配置" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("配置已更新，请核对。");
-    expect(submitted).toEqual([{ expectedVersion: 4, endpoint: original.endpoint, modelId: "local-draft", apiKey: "local-secret" }]);
+    expect(submitted).toEqual([{ expectedVersion: 4, endpoint: original.endpoint, modelId: "local-draft", apiKey: "local-secret", modelSelection: manualSelection }]);
     expect(keyInput).toHaveValue("");
     expect(modelInput).toHaveValue("local-draft");
     await user.click(screen.getByRole("button", { name: "载入最新配置" }));

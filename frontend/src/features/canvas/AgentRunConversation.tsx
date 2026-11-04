@@ -3,6 +3,7 @@ import { listRunActions, listRunMediaApprovals, listRunTasks,
   type AgentMediaApproval, type AgentRun, type Task } from "../../shared/api/client";
 import { getFormatLocale, t, useLocale } from "../../shared/i18n";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
+import { Notice } from "../../shared/ui/PagePrimitives";
 import { Button } from "../../shared/ui/primitives/button";
 import { AgentChatMessage, AgentChatTaskRow, AgentExecutionTrace } from "./AgentChatPrimitives";
 import { AgentMediaApprovalCard } from "./AgentMediaApprovalCard";
@@ -124,6 +125,8 @@ export function AgentRunConversation({ projectId, run, active, showFailureNotice
   return <section aria-label={t("agent.run.title")} className="agent-run-conversation">
     <p className="agent-chat-run-date"><time dateTime={run.createdAt}>{new Date(run.createdAt).toLocaleString(getFormatLocale())}</time>{run.conversationTurn ? t("agent.run.roundSuffix", { "0": run.conversationTurn }) : ""}</p>
     <AgentChatMessage role="user">{run.instruction}</AgentChatMessage>
+    {run.contextSnapshot?.conversationMemory?.truncated ? <Notice tone="info">{t("agent.context.historyLimited")}</Notice> : null}
+    {turns.some(task => task.output?.contextCompacted === true) ? <Notice tone="info">{t("agent.context.compacted")}</Notice> : null}
     {tasks.isPending || actions.isPending ? <CanvasLoadingState compact label={t("agent.run.messagesLoading")} /> : null}
     {tasks.error ? <div className="agent-chat-error" role="alert">{t("agent.run.messagesFailed")}<Button variant="ghost" className="node-action" onClick={() => void tasks.refetch()} type="button">{t("agent.chat.retryMessages")}</Button></div> : null}
     {actions.error ? <div className="agent-chat-error" role="alert">{t("agent.run.actionsFailed")}<Button variant="ghost" className="node-action" onClick={() => void actions.refetch()} type="button">{t("agent.run.retryActions")}</Button></div> : null}

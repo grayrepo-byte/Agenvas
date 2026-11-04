@@ -12,9 +12,9 @@ import "../src/styles.css";
 // This fixture is not a product route and never contacts a backend or model.
 setLocale("en");
 const fixture: {
-  mode: "FOUND" | "BLOCKED" | "DELAYED"; requests: LocalServiceKind[]; writes: number;
+  mode: "FOUND" | "BLOCKED" | "DELAYED"; requests: LocalServiceKind[]; writes: number; metadataReads: number;
   finishPending: () => void;
-} = { mode: "FOUND", requests: [], writes: 0, finishPending: () => {} };
+} = { mode: "FOUND", requests: [], writes: 0, metadataReads: 0, finishPending: () => {} };
 Object.assign(window, { localServiceDiscoveryFixture: fixture });
 function response(service: LocalServiceKind, policyAllowed: boolean) {
   const result: LocalServiceDiscoveryResult = { service, runtime: "CONTAINER", status: "FOUND", policyAllowed,
@@ -33,6 +33,12 @@ window.fetch = async (input, init) => {
     database: "AVAILABLE", storage: "AVAILABLE", llmMode: "MOCK", llmConfigured: true, llmToolCallingVerified: false,
     mediaMode: "MOCK", imageConfigured: false, videoConfigured: false, recentErrors: [] });
   if (url.pathname === "/api/v1/settings/media-connections" && method === "GET") return json({ connections: [], defaults: [] });
+  if (url.pathname === "/api/v1/settings/llm/models" && method === "POST") {
+    fixture.metadataReads++;
+    return json({ id: "dcf3d1c0-6e87-48d5-bb76-27efeaf8ff93", partial: false, checkedAt: "2026-11-04T00:00:00Z",
+      models: [{ id: "synthetic-model", contextWindowTokens: 32768, inputLimitTokens: null, outputLimitTokens: 2048,
+        runtimeContextTokens: null, deploymentContextTokens: 16384, digest: null }] });
+  }
   if (url.pathname !== "/api/v1/settings/local-services/discover" || method !== "POST") {
     if (method !== "GET") fixture.writes++;
     throw new Error("Unexpected fixture request");

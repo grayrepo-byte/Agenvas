@@ -40,7 +40,11 @@ A container's `127.0.0.1` refers to that container, not the host. The old `AGENV
    | API key | `ollama-local` for native local Ollama |
 
    Agenvas requires 8–4096 printable ASCII characters for this field, so the common six-character placeholder `ollama` is rejected. `ollama-local` satisfies the existing contract. Native local Ollama ignores this placeholder; an authenticated proxy requires its real server-side credential. The saved value remains encrypted and masked.
-4. Run the explicit tool diagnostic before enabling Agent work. Successful HTTP connectivity does not prove tool support or adequate context capacity. No model call occurs merely by saving these settings.
+4. Select the **Ollama** provider profile and **Read model list** in this same form.
+   Automatic capacity requires the exact model to be loaded with its intended context;
+   an unloaded model remains unknown. The advertised `/api/show` maximum does not
+   allocate memory. Confirm manually when native metadata is unavailable.
+5. Run the explicit tool diagnostic before enabling Agent work. Successful HTTP connectivity does not prove tool support or adequate context capacity. No model call occurs merely by saving these settings.
 
 ### Other services on the same host
 
@@ -57,7 +61,7 @@ FROM qwen2.5:14b
 PARAMETER num_ctx 16384
 ```
 
-Save as `Modelfile`, then run `ollama create agenvas-qwen -f Modelfile` on the Ollama host and select `agenvas-qwen` in Agenvas. Verify the loaded context with `ollama ps`, and set Agenvas's Director budget to fit the provider's actual capacity. More context consumes more memory. The external review reported success for one small scenario at 16K; that is not an established minimum or a guarantee for longer tasks. An upstream service can silently truncate without reporting it, so inspect provider logs when behavior suggests lost instructions and review the actual canvas results.
+Save as `Modelfile`, then run `ollama create agenvas-qwen -f Modelfile` on the Ollama host and select `agenvas-qwen` in Agenvas. Verify the loaded context with `ollama ps`, then reread model metadata in Agenvas's connection form. Automatic mode uses the loaded capacity and checks it again before generation; it never sets `num_ctx` or loads weights. The Director budget is an additional application ceiling. This preflight cannot prevent a later Ollama reload, so provider logs still matter. More context consumes more memory. The external review reported success for one small scenario at 16K; that is not an established minimum or a guarantee for longer tasks. An upstream service can silently truncate without reporting it, so inspect provider logs when behavior suggests lost instructions and review the actual canvas results.
 
 ## Scope of the exception
 

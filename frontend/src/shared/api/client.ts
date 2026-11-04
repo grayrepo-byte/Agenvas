@@ -418,6 +418,15 @@ export async function getCurrentUser(): Promise<CurrentUser> {
 export async function getLlmSettings(): Promise<LlmSettings> {
   return readJson<LlmSettings>("/api/v1/settings/llm", t("api.errors.modelSettingsUnavailable"));
 }
+export type LlmModelProvider = components["schemas"]["LlmModelProvider"];
+export type LlmModelPolicy = components["schemas"]["LlmModelPolicy"];
+export type LlmModelSelection = components["schemas"]["LlmModelSelection"];
+export type LlmModelPreview = components["schemas"]["LlmModelPreview"];
+export type LlmModelMetadata = components["schemas"]["LlmModelMetadata"];
+export type LlmModelPreviewRequest = components["schemas"]["LlmModelPreviewRequest"];
+export function previewLlmModels(input: LlmModelPreviewRequest, signal?: AbortSignal): Promise<LlmModelPreview> {
+  return writeJson<LlmModelPreview>("/api/v1/settings/llm/models", { method: "POST", body: JSON.stringify(input), signal });
+}
 
 export type LocalServiceKind = components["schemas"]["LocalServiceKind"];
 export type LocalServiceDiscoveryResult = components["schemas"]["LocalServiceDiscoveryResult"];

@@ -136,6 +136,25 @@ try {
     const llm = await inspectAndCapture(viewport, "llm");
     assert.deepEqual(llm.requests, ["OLLAMA", "OLLAMA", "OLLAMA"]);
 
+    await page(() => {
+      const provider = [...document.querySelectorAll("select")].find(select => [...select.options].some(option => option.value === "OPENROUTER"));
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(provider, "OPENROUTER");
+      provider.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await fillInput("#llm-endpoint", "https://router.example.invalid/api/v1");
+    await fillInput("#llm-model", "synthetic-model");
+    await clickText("Read model list");
+    await waitFor(() => document.getElementById("llm-context").value === "16384");
+    assert.equal(await page(() => document.getElementById("llm-output-limit").value), "2048");
+    assert.equal(await page(() => document.getElementById("llm-api-key").value), "synthetic-placeholder");
+    await inspectAndCapture(viewport, "models");
+    await clickText("Use manual values");
+    await fillInput("#llm-context", "8192");
+    await clickText("Read model list");
+    await waitFor(() => window.localServiceDiscoveryFixture.metadataReads === 2);
+    assert.equal(await page(() => document.getElementById("llm-context").value), "8192", "Reading metadata preserves manual overrides");
+    assert.equal(await page(() => window.localServiceDiscoveryFixture.writes), 0, "Model reads never save or diagnose");
+
     await cdp("Page.navigate", { url: new URL(route + "?surface=comfy", baseUrl).href });
     await waitFor(() => [...document.querySelectorAll("button")].some((button) => button.textContent.trim() === "Add connection"));
     await clickText("Add connection");
@@ -154,7 +173,7 @@ try {
     assert.deepEqual(comfy.requests, ["COMFYUI"]);
   }
   assert.deepEqual(runtimeErrors, []);
-  console.log("Local service discovery browser passed in existing LLM settings and ComfyUI connection dialog: production CSS, 1440/390 layout, click help, explicit check/cancel/fill, late-response suppression, blocked policy, original Save/Diagnose and no autosave; synthetic API only");
+  console.log("Local/model discovery browser passed in existing LLM settings and ComfyUI connection dialog: production CSS, 1440/390 layout, explicit model read, route capacity, output limit, manual override, preserved key, no autosave, help/check/cancel/fill, late-response suppression and blocked policy; synthetic API only");
 } catch (error) {
   console.error(error);
   throw error;

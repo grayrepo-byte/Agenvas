@@ -77,6 +77,13 @@ class LlmDiagnosticPostgresIT {
                 () -> Base64.getEncoder().encodeToString(new byte[32]));
     }
 
+    private static dev.agenvas.settings.application.LlmModelDiscoveryService.Selection capacity() {
+        return new dev.agenvas.settings.application.LlmModelDiscoveryService.Selection(
+                dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE,
+                dev.agenvas.settings.application.LlmModelDiscoveryService.Mode.MANUAL, null, 16384, null, 2048,
+                dev.agenvas.settings.application.LlmModelPolicy.OutputParameter.MAX_TOKENS);
+    }
+
     @AfterAll
     static void stopServer() {
         SERVER.stop(0);
@@ -93,7 +100,7 @@ class LlmDiagnosticPostgresIT {
     @Test
     void requiresAdminCsrfCostConsentAndExactTwoRoundProtocol() throws Exception {
         String endpoint = "http://127.0.0.1:" + SERVER.getAddress().getPort() + "/v1";
-        configs.replace(0, endpoint, "diagnostic-model", "diagnostic-secret-1234");
+        configs.replace(0, endpoint, "diagnostic-model", "diagnostic-secret-1234", capacity());
         AdminPrincipal admin = identities.setup("diagnostic-admin", "diagnostic-password-123");
         var auth = authentication(new UsernamePasswordAuthenticationToken(admin, null, List.of(
                 new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
@@ -142,7 +149,7 @@ class LlmDiagnosticPostgresIT {
                         .content(request(1, true))).andExpect(status().isOk());
         assertThat(CALLS).hasValue(2);
 
-        configs.replace(1, endpoint, "diagnostic-model", "diagnostic-secret-5678");
+        configs.replace(1, endpoint, "diagnostic-model", "diagnostic-secret-5678", capacity());
         RETURN_TOOL.set(false);
         mvc.perform(post(path).with(auth).with(csrf()).contentType("application/json")
                         .content(request(2, true)))
@@ -152,7 +159,7 @@ class LlmDiagnosticPostgresIT {
         assertThat(configs.status().toolCallingVerified()).isFalse();
         assertThat(gateway.capabilities().toolCalling()).isFalse();
 
-        configs.replace(2, endpoint, "diagnostic-model", "diagnostic-secret-9012");
+        configs.replace(2, endpoint, "diagnostic-model", "diagnostic-secret-9012", capacity());
         RETURN_TOOL.set(true);
         IGNORE_TOOL_RESULT.set(true);
         mvc.perform(post(path).with(auth).with(csrf()).contentType("application/json")

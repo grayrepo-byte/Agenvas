@@ -60,6 +60,17 @@ public class ApiExceptionHandler {
                 dev.agenvas.shared.i18n.ApiMessage.of("api.native-media.invalid-title"),
                 dev.agenvas.shared.i18n.ApiMessage.of("api.native-media.invalid"), false, request, null);
     }
+    @ExceptionHandler(dev.agenvas.llm.application.LlmRequestBudget.Failure.class)
+    ResponseEntity<ProblemDetail> handleModelBudget(dev.agenvas.llm.application.LlmRequestBudget.Failure exception, HttpServletRequest request) {
+        String key = switch (exception.getMessage()) {
+            case "MODEL_CAPACITY_UNKNOWN" -> "api.model-budget.unknown";
+            case "MODEL_RUNTIME_CONTEXT_CHANGED" -> "api.model-budget.changed";
+            case "AGENT_CONTEXT_BUDGET_EXCEEDED" -> "api.model-budget.too-large";
+            default -> "api.model-budget.invalid";
+        };
+        return build(HttpStatus.UNPROCESSABLE_ENTITY, exception.getMessage(), ApiMessage.of("api.model-budget.title"),
+                ApiMessage.of(key), false, request, null);
+    }
 
     /** 映射请求体校验错误，不回显被拒绝的字段值。 */
     @ExceptionHandler(MethodArgumentNotValidException.class)

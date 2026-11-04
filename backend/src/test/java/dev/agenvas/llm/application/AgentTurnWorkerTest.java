@@ -117,6 +117,27 @@ class AgentTurnWorkerTest {
         }
     }
 
+    @Test void toolRepairReusesRejectedRequestBudgetInsteadOfLiveDirectorSettings() throws Exception {
+        var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(),
+                dev.agenvas.settings.application.LlmModelPolicy.manual(
+                        dev.agenvas.settings.application.ModelCatalog.Provider.COMPATIBLE, 8192, null, 1024,
+                        dev.agenvas.settings.application.LlmModelPolicy.OutputParameter.MAX_COMPLETION_TOKENS));
+        var prior = codec.withBudget(codec.request(frozen, List.of()), budget);
+        when(lease.input()).thenReturn(mapper.createObjectNode().put("stepIndex", 1).put("repairFromStep", 0));
+        when(turns.find(project, runId, 0)).thenReturn(Optional.of(new LlmTurn(project, runId, 0,
+                LlmTurn.Status.RESPONDED, 1, prior, response, NOW, null)));
+        when(turns.find(project, runId, 1)).thenReturn(Optional.empty());
+        when(repairContext.assemble(owner, lease)).thenReturn(frozen);
+        when(rounds.callLeased(eq(owner), eq(project), eq(runId), eq(1), any(JsonNode.class), anyList(),
+                anyMap(), eq(lease), eq(WORKER))).thenReturn(response);
+        worker.runOnce(WORKER);
+        var request = org.mockito.ArgumentCaptor.forClass(JsonNode.class);
+        verify(rounds).callLeased(eq(owner), eq(project), eq(runId), eq(1), request.capture(), anyList(),
+                anyMap(), eq(lease), eq(WORKER));
+        assertThat(codec.requestBudget(request.getValue())).isEqualTo(budget);
+        verify(gateway, never()).requestBudgetFor(any());
+    }
+
     @ParameterizedTest
     @CsvSource({"WAITING_TASKS, 0", "RUNNING, 1"})
     void resumedTurnsReadTheDurableResponseWithoutSubmittingAModelCall(AgentRun.Status status, int nextStep) throws Exception {

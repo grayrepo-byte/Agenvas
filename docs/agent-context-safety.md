@@ -2,23 +2,49 @@
 
 ## Match the configured budget to the serving model
 
-Director Settings controls Agenvas's estimated context budget. It does not change the
-context size of the remote model. The global default window is 1,000,000 tokens, with
-8,192 reserved for a response. This is an application budget, not a detected model
-capability. There is currently no separate context-capacity field per LLM endpoint.
+The existing model connection form can read a model list explicitly and fill limits
+when the selected provider reports reliable metadata. Select the provider profile,
+enter its compatible chat base URL and key, then choose **Read model list**. This is
+metadata traffic only: it does not save settings, download weights, generate content
+or verify tools. The model ID remains editable. Missing limits stay unknown; confirm
+them with the serving operator and use **Use manual values** when necessary.
 
-Before using a local model, configure its actual serving context, then set the Director
-Settings window no higher than that capacity. Also adjust the response reserve and
-summary budget to fit that window: the reserve must be below half the window, and
-the summary must fit within one quarter of the remaining input budget. Leaving the
-default 8,192 response reserve while selecting a 16,384 window is invalid.
+The form distinguishes theoretical context, provider input/output limits and observed
+Ollama loaded context. Automatic values are bound to the endpoint, credential, model
+and configuration version in a ten-minute preview. Editing their scope requires a
+fresh read; manual overrides remain manual. Model metadata is provider-reported,
+not a measured guarantee. OpenAI and generic compatible lists normally provide IDs
+without capacity: these profiles require manual confirmation. Gemini/Anthropic
+metadata may provide separate input and output limits. Their generation still uses
+the existing documented OpenAI compatibility endpoint, with its compatibility limits.
 
-For Ollama's OpenAI-compatible API, context size is configured on the Ollama side.
-Its [official compatibility guide](https://github.com/ollama/ollama/blob/main/docs/api/openai-compatibility.mdx#setting-the-local-context-size)
-documents creating a model with `PARAMETER num_ctx` in its Modelfile, then selecting
-that model name in the client. The Director Settings window must still be set
-separately. Review the serving process's effective configuration and logs; a model's
-advertised maximum context is not proof of the capacity currently allocated to it.
+Director Settings supplies an application ceiling, not the remote model's context.
+The default is now 32,768 tokens, response reserve 4,096 and summary 1,024. Each new
+request uses the smaller connection/application limits, with independent input
+limits and a 25% estimation margin. When only an input limit is known, it is checked independently; the combined
+ceiling remains the application setting, with no provider context claim invented.
+The selected output limit and reserve determine the actual `max_tokens` or
+`max_completion_tokens` sent to the API. Choose the parameter supported by the
+specific compatible deployment; reading a model ID does not establish that support.
+
+Migration changes only the untouched initial million-token default settings. Saved
+custom settings and old immutable connection versions are preserved. Legacy versions
+with no confirmed capacity cannot start new model requests: edit and save the model
+connection with confirmed limits first. Existing complete frozen requests/responses
+retain their original envelope; they are not rewritten to pretend capacity was known.
+
+Ollama `/api/show` advertises model capability; `/api/ps` describes loaded context.
+Automatic capacity needs the exact loaded model (and matching digest when present).
+Agenvas never sets `num_ctx` from the architectural maximum, pulls or warms a model,
+or changes host networking. Configure/load the intended alias on the Ollama side,
+then reread metadata. Before generation, an automatic Ollama policy is checked again;
+an unloaded, smaller or replaced runtime stops with
+`MODEL_RUNTIME_CONTEXT_CHANGED`. Temporary metadata contention, timeout or HTTP
+429/5xx follows the existing bounded Agent connection recovery path before any
+generation call; direct tasks report a connection failure for explicit retry.
+This is a preflight, not an atomic reservation:
+Ollama may still unload or change a model between this check and generation.
+Manual mode remains available when a deployment cannot expose native metadata.
 
 For a focused retest of the reported `qwen2.5:14b` scenario, the following is an
 illustrative 16K configuration. Save this as `Modelfile.agenvas` on the Ollama host:
@@ -44,15 +70,16 @@ This leaves an estimated 14,336-token hard input budget; fixed instructions can
 exceed the soft compaction threshold when there is no history to compress. These
 values are a retest starting point, not a measured minimum or a guarantee that a
 larger task fits. Confirm the alias's effective serving context and inspect the
-server's truncation warnings while repeating the same task. The application reserve
-does not itself set the server's output-token limit.
+server's truncation warnings while repeating the same task. The application reserve and selected connection output limit now bound the
+API output-token parameter; neither changes the server's allocated input context.
 
 Agenvas estimates messages, tool definitions, arguments and results with a shared
 tokenizer and a safety margin. The estimate is not the model's exact tokenizer.
 Fixed system instructions and tool definitions must fit even before useful history
 can be compacted. If those fixed inputs do not fit, the run stops with
 `AGENT_CONTEXT_BUDGET_EXCEEDED`; use a model/context large enough for that request,
-or reduce optional instructions and Skill inputs. A 16K context passing one small
+or reduce attachments, optional instructions and Skill inputs, or lower the output
+reserve where appropriate. The current user input is not silently clipped to fit. A 16K context passing one small
 scenario does not establish a supported minimum for every Agent workflow.
 
 New requests use the current Director Settings. Retries of an already frozen request
@@ -102,6 +129,8 @@ still return a valid completion signal after discarding part of its input.
 
 Regression tests use synthetic responses with explicit token-limit metadata,
 including parseable tool calls and success prose, on both fresh and replayed turns.
+Metadata, pagination, request budgets, output fields and runtime changes are tested
+with bounded synthetic HTTP/SDK fixtures; permissions and migration use PostgreSQL.
 They establish that those responses have no tool side effects and cannot complete
 successfully. They do not reproduce a particular model's silent input truncation,
 measure a model's usable context, or establish Windows/WSL/Ollama compatibility.

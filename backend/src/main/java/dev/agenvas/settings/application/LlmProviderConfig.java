@@ -18,4 +18,12 @@ import java.util.UUID;
  */
 public record LlmProviderConfig(UUID id, int version, String endpoint, String modelId,
         byte[] credentialCiphertext, byte[] credentialNonce, int keyVersion,
-        String keyMask, boolean toolCallingVerified, boolean active, Instant createdAt) {}
+        String keyMask, boolean toolCallingVerified, boolean active, Instant createdAt, LlmModelPolicy modelPolicy) {
+    /** Old immutable versions remain readable with explicitly unknown capacity. */
+    public LlmProviderConfig(UUID id, int version, String endpoint, String modelId,
+            byte[] credentialCiphertext, byte[] credentialNonce, int keyVersion,
+            String keyMask, boolean toolCallingVerified, boolean active, Instant createdAt) {
+        this(id, version, endpoint, modelId, credentialCiphertext, credentialNonce, keyVersion,
+                keyMask, toolCallingVerified, active, createdAt, null);
+    }
+}

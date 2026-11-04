@@ -1846,6 +1846,40 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/SystemDiagnostics"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+  /api/v1/settings/llm/models:
+    post:
+      operationId: previewLlmModels
+      summary: 管理员读取模型列表和容量元数据，不运行推理或保存配置
+      tags: [Settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LlmModelPreviewRequest'}
+      responses:
+        '200':
+          description: 有界模型列表；未知容量为 null，预览十分钟有效且绑定原连接和凭据
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LlmModelPreview'}
+        '400': {$ref: '#/components/responses/ValidationError'}
+        '401': {$ref: '#/components/responses/Unauthenticated'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429':
+          description: 元数据读取正在进行
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
+        '502':
+          description: 元数据不可用，保留手动配置
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
+        '504':
+          description: 元数据读取超时，保留草稿
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
   /api/v1/settings/llm/diagnose:
     parameters:
       - {$ref: "#/components/parameters/AcceptLanguage"}
@@ -6399,10 +6433,10 @@ components:
       additionalProperties: false
       required: [contextWindowTokens, compactionThresholdPercent, responseReserveTokens, summaryTokens, recentToolRounds, recoveryWindowMinutes, maxModelRetries, retryMaxDelaySeconds, maxRepairAttempts, version]
       properties:
-        contextWindowTokens: {type: integer, minimum: 8192, maximum: 2000000, default: 1000000}
+        contextWindowTokens: {type: integer, minimum: 8192, maximum: 2000000, default: 32768}
         compactionThresholdPercent: {type: integer, minimum: 1, maximum: 100, default: 50}
-        responseReserveTokens: {type: integer, minimum: 1024, default: 8192}
-        summaryTokens: {type: integer, minimum: 256, default: 2048}
+        responseReserveTokens: {type: integer, minimum: 1024, default: 4096}
+        summaryTokens: {type: integer, minimum: 256, default: 1024}
         recentToolRounds: {type: integer, minimum: 0, maximum: 16, default: 4}
         recoveryWindowMinutes: {type: integer, minimum: 1, maximum: 10080, default: 1440}
         maxModelRetries: {type: integer, minimum: 1, maximum: 10000, default: 288}
@@ -6414,10 +6448,10 @@ components:
       additionalProperties: false
       required: [contextWindowTokens, compactionThresholdPercent, responseReserveTokens, summaryTokens, recentToolRounds, recoveryWindowMinutes, maxModelRetries, retryMaxDelaySeconds, maxRepairAttempts, expectedVersion]
       properties:
-        contextWindowTokens: {type: integer, minimum: 8192, maximum: 2000000, default: 1000000}
+        contextWindowTokens: {type: integer, minimum: 8192, maximum: 2000000, default: 32768}
         compactionThresholdPercent: {type: integer, minimum: 1, maximum: 100, default: 50}
-        responseReserveTokens: {type: integer, minimum: 1024, default: 8192}
-        summaryTokens: {type: integer, minimum: 256, default: 2048}
+        responseReserveTokens: {type: integer, minimum: 1024, default: 4096}
+        summaryTokens: {type: integer, minimum: 256, default: 1024}
         recentToolRounds: {type: integer, minimum: 0, maximum: 16, default: 4}
         recoveryWindowMinutes: {type: integer, minimum: 1, maximum: 10080, default: 1440}
         maxModelRetries: {type: integer, minimum: 1, maximum: 10000, default: 288}
@@ -7276,6 +7310,10 @@ components:
         keyMask: {type: [string, "null"], maxLength: 16}
         toolCallingVerified: {type: boolean}
         updatedAt: {type: [string, "null"], format: date-time}
+        modelPolicy:
+          anyOf:
+            - {$ref: '#/components/schemas/LlmModelPolicy'}
+            - {type: 'null'}
     ReplaceLlmSettingsRequest:
       type: object
       additionalProperties: false
@@ -7285,6 +7323,77 @@ components:
         endpoint: {type: string, minLength: 1, maxLength: 500, format: uri}
         modelId: {type: string, minLength: 1, maxLength: 160}
         apiKey: {type: string, minLength: 8, maxLength: 4096, writeOnly: true}
+        modelSelection: {$ref: '#/components/schemas/LlmModelSelection'}
+    LlmModelProvider:
+      type: string
+      enum: [COMPATIBLE, OPENAI, OPENROUTER, GEMINI, ANTHROPIC, OLLAMA]
+    LlmOutputParameter:
+      type: string
+      enum: [MAX_TOKENS, MAX_COMPLETION_TOKENS]
+    LlmModelSelection:
+      type: object
+      additionalProperties: false
+      required: [provider, mode, maxOutputTokens, outputParameter]
+      properties:
+        provider: {$ref: '#/components/schemas/LlmModelProvider'}
+        mode: {type: string, enum: [AUTO, MANUAL]}
+        previewId: {type: [string, 'null'], format: uuid}
+        contextWindowTokens: {type: [integer, 'null'], minimum: 1, maximum: 16000000}
+        inputLimitTokens: {type: [integer, 'null'], minimum: 1, maximum: 16000000}
+        maxOutputTokens: {type: integer, minimum: 1, maximum: 2000000}
+        outputParameter: {$ref: '#/components/schemas/LlmOutputParameter'}
+    LlmModelPolicy:
+      type: object
+      additionalProperties: false
+      required: [provider, source, contextWindowTokens, inputLimitTokens, maxOutputTokens, outputParameter,
+        theoreticalContextTokens, reportedOutputTokens, runtimeContextTokens, modelDigest, checkedAt]
+      properties:
+        provider: {$ref: '#/components/schemas/LlmModelProvider'}
+        source: {type: string, enum: [MANUAL, PROVIDER_REPORTED, OLLAMA_RUNTIME]}
+        contextWindowTokens: {type: [integer, 'null'], minimum: 1, maximum: 16000000}
+        inputLimitTokens: {type: [integer, 'null'], minimum: 1, maximum: 16000000}
+        maxOutputTokens: {type: integer, minimum: 1, maximum: 2000000}
+        outputParameter: {$ref: '#/components/schemas/LlmOutputParameter'}
+        theoreticalContextTokens: {type: [integer, 'null'], minimum: 1}
+        reportedOutputTokens: {type: [integer, 'null'], minimum: 1}
+        runtimeContextTokens: {type: [integer, 'null'], minimum: 1}
+        modelDigest: {type: [string, 'null'], maxLength: 160}
+        checkedAt: {type: [string, 'null'], format: date-time}
+    LlmModelMetadata:
+      type: object
+      additionalProperties: false
+      required: [id, contextWindowTokens, inputLimitTokens, outputLimitTokens, runtimeContextTokens, digest, deploymentContextTokens]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 160}
+        contextWindowTokens: {type: [integer, 'null'], minimum: 1}
+        inputLimitTokens: {type: [integer, 'null'], minimum: 1}
+        outputLimitTokens: {type: [integer, 'null'], minimum: 1}
+        runtimeContextTokens: {type: [integer, 'null'], minimum: 1}
+        deploymentContextTokens: {type: [integer, 'null'], minimum: 1}
+        digest: {type: [string, 'null'], maxLength: 160}
+    LlmModelPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [provider, credentialMode, expectedVersion]
+      properties:
+        provider: {$ref: '#/components/schemas/LlmModelProvider'}
+        credentialMode: {type: string, enum: [DRAFT, SAVED]}
+        expectedVersion: {type: integer, minimum: 0}
+        endpoint: {type: [string, 'null'], maxLength: 500}
+        apiKey: {type: [string, 'null'], minLength: 8, maxLength: 4096, writeOnly: true}
+        modelId: {type: [string, 'null'], maxLength: 160}
+    LlmModelPreview:
+      type: object
+      additionalProperties: false
+      required: [id, models, partial, checkedAt]
+      properties:
+        id: {type: string, format: uuid}
+        models:
+          type: array
+          maxItems: 2000
+          items: {$ref: '#/components/schemas/LlmModelMetadata'}
+        partial: {type: boolean}
+        checkedAt: {type: string, format: date-time}
     DiagnoseLlmRequest:
       type: object
       additionalProperties: false

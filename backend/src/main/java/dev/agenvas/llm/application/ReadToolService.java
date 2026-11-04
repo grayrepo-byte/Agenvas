@@ -183,6 +183,7 @@ public class ReadToolService {
                 data.put("total", total);
                 data.put("endOffset", end);
                 if (end < total) data.put("nextOffset", end); else data.putNull("nextOffset");
+                if (offset > 0 || end < total) output.put("userVisibleSummary", "已读取 Skill 资源的部分内容；固定原文保留，可继续分页读取");
                 return output;
             }
         }
@@ -289,6 +290,7 @@ public class ReadToolService {
             }
             if (textPageRequested) {
                 appendTextPage(item, version.content(), textOffset, textLimit);
+                if (item.path("contentTruncated").asBoolean()) output.put("userVisibleSummary", "已读取产物的部分内容；原始版本保留，可继续分页读取");
                 continue;
             }
             String content = version.content().toString();
@@ -303,6 +305,7 @@ public class ReadToolService {
                 item.put("contentPreview", content.substring(0,
                         content.offsetByCodePoints(0, previewCodePoints)));
                 item.put("contentTruncated", true);
+                output.put("userVisibleSummary", "已读取产物的部分内容；原始版本保留，可继续分页读取");
             }
         }
         return output;

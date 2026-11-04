@@ -11,6 +11,9 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import org.jooq.DSLContext;
 import org.springframework.stereotype.Repository;
+import org.jooq.JSONB;
+import tools.jackson.databind.ObjectMapper;
+import dev.agenvas.settings.application.LlmModelPolicy;
 
 /** PostgreSQL LLM 配置仓储；保留每个密文版本，并在同一事务中切换活动配置指针。 */
 @Repository
@@ -21,6 +24,7 @@ public class JooqLlmProviderConfigRepository implements LlmProviderConfigReposit
 
     /** 执行配置版本锁定、密文读取和活动配置发布 SQL。 */
     private final DSLContext dsl;
+    private final ObjectMapper json = new ObjectMapper();
 
     /** 注入 LLM 配置仓储使用的 jOOQ 上下文。 */
     public JooqLlmProviderConfigRepository(DSLContext dsl) {
@@ -65,6 +69,7 @@ public class JooqLlmProviderConfigRepository implements LlmProviderConfigReposit
                 .set(LLM_PROVIDER_CONFIG.VERSION, config.version())
                 .set(LLM_PROVIDER_CONFIG.ENDPOINT, config.endpoint())
                 .set(LLM_PROVIDER_CONFIG.MODEL_ID, config.modelId())
+                .set(LLM_PROVIDER_CONFIG.MODEL_POLICY, config.modelPolicy() == null ? null : JSONB.valueOf(json.writeValueAsString(config.modelPolicy())))
                 .set(LLM_PROVIDER_CONFIG.CREDENTIAL_CIPHERTEXT, config.credentialCiphertext())
                 .set(LLM_PROVIDER_CONFIG.CREDENTIAL_NONCE, config.credentialNonce())
                 .set(LLM_PROVIDER_CONFIG.KEY_VERSION, config.keyVersion())
@@ -102,6 +107,6 @@ public class JooqLlmProviderConfigRepository implements LlmProviderConfigReposit
                 row.getCredentialCiphertext(), row.getCredentialNonce(),
                 row.getKeyVersion(), row.getKeyMask(),
                 row.getToolCallingVerified(), row.getActive(),
-                row.getCreatedAt().toInstant());
+                row.getCreatedAt().toInstant(), row.getModelPolicy() == null ? null : json.readValue(row.getModelPolicy().data(), LlmModelPolicy.class));
     }
 }

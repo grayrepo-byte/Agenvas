@@ -13,6 +13,8 @@ import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Input } from "../../shared/ui/primitives/input";
 import { LocalServiceDiscovery } from "./LocalServiceDiscovery";
 import "./SettingsPages.css";
+import { LlmModelOptions } from "./LlmModelOptions";
+import { modelOptionsFromPolicy, modelSelection, type ModelOptionsDraft } from "./llmModelConfiguration";
 
 
 type ConfigurationDraft = { base: LlmSettings; endpoint: string; modelId: string };
@@ -32,6 +34,8 @@ export function LlmSettingsPage() {
     queryKey: ["settings", "diagnostics"], queryFn: getSystemDiagnostics, enabled: currentUser.isSuccess, retry: false,
   });
   const [draft, setDraft] = useState<ConfigurationDraft | null>(null);
+  const [modelOptions, setModelOptions] = useState<ModelOptionsDraft | null>(null);
+  const [capacityError, setCapacityError] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [keyInvalid, setKeyInvalid] = useState(false);
   const keyInput = useRef<HTMLInputElement>(null);
@@ -49,7 +53,8 @@ export function LlmSettingsPage() {
   const endpoint = draft?.endpoint ?? snapshot?.endpoint ?? "";
   const modelId = draft?.modelId ?? snapshot?.modelId ?? "";
   const hasRemoteUpdate = !!draft && !!snapshot && draft.base.version !== snapshot.version;
-  const hasUnsavedChanges = endpoint !== (snapshot?.endpoint ?? "") || modelId !== (snapshot?.modelId ?? "") || apiKey !== "";
+  const options = modelOptions ?? modelOptionsFromPolicy(base?.modelPolicy);
+  const hasUnsavedChanges = endpoint !== (snapshot?.endpoint ?? "") || modelId !== (snapshot?.modelId ?? "") || apiKey !== "" || modelOptions !== null;
   const busy = saving || diagnosing;
 
   function editDraft(field: "endpoint" | "modelId", value: string) {
@@ -68,13 +73,17 @@ export function LlmSettingsPage() {
       return;
     }
     setKeyInvalid(false);
+    const selection = modelSelection(options, modelId.trim());
+    if (!selection) { setCapacityError(t("modelConnection.capacityInvalid")); return; }
+    setCapacityError("");
     setSaving(true);
     setError("");
     setSaved(false);
     try {
-      const result = await replaceLlmSettings({ expectedVersion: base.version, endpoint: endpoint.trim(), modelId: modelId.trim(), apiKey });
+      const result = await replaceLlmSettings({ expectedVersion: base.version, endpoint: endpoint.trim(), modelId: modelId.trim(), apiKey, modelSelection: selection });
       queryClient.setQueryData(["settings", "llm"], result);
       setDraft(null);
+      setModelOptions(null);
       setSaved(true);
       setDiagnosedVersion(null);
       setAcknowledgedVersion(null);
@@ -135,7 +144,7 @@ export function LlmSettingsPage() {
               </div>
               {hasRemoteUpdate ? <Notice tone="warning" title={t("settings.llm.conflictTitle")}>
                 <p>{t("settings.llm.conflictHint")}</p>
-                <Button variant="outline"  type="button" disabled={busy} onClick={() => { setDraft(null); setApiKey(""); setKeyInvalid(false); setError(""); setAcknowledgedVersion(null); }}>{t("settings.shared.refreshConfig")}</Button>
+                <Button variant="outline"  type="button" disabled={busy} onClick={() => { setDraft(null); setModelOptions(null); setCapacityError(""); setApiKey(""); setKeyInvalid(false); setError(""); setAcknowledgedVersion(null); }}>{t("settings.shared.refreshConfig")}</Button>
               </Notice> : null}
               <LocalServiceDiscovery service="OLLAMA" disabled={busy} onSelect={(value) => editDraft("endpoint", value)} />
               <FieldGroup className="llm-connection-fields">
@@ -151,13 +160,19 @@ export function LlmSettingsPage() {
                 <FieldDescription id="llm-key-description">{t("settings.llm.keyEntryHint")}</FieldDescription>
                 {keyInvalid ? <FieldError id="llm-key-error">{t("settings.llm.keyValidationError")}</FieldError> : null}
               </Field>
+              <LlmModelOptions value={options} endpoint={endpoint} modelId={modelId} apiKey={apiKey} base={base}
+                disabled={busy} onSelectModel={value => editDraft("modelId", value)} onChange={value => {
+                  if (base) setDraft(existing => existing ?? { base, endpoint, modelId });
+                  setModelOptions(value); setCapacityError(""); setSaved(false); setAcknowledgedVersion(null);
+                }} />
+              {capacityError ? <Notice tone="danger">{capacityError}</Notice> : null}
               {error ? <Notice tone="danger"><p>{error}</p><p>{t("settings.llm.keyClearedHint")}</p></Notice> : null}
               {saved ? <Notice tone="success">{t("settings.llm.saved")}</Notice> : null}
               <div className="ui-form-actions settings-save-bar">
                 {saving ? <LoadingState compact label={t("settings.llm.saving")} /> : <span className="ui-muted">{hasUnsavedChanges ? t("common.unsavedChanges") : t("settings.llm.toolValidationRequired")}</span>}
                 <div className="ui-form-actions">
                   {hasUnsavedChanges ? <Button variant="ghost"  type="button" disabled={busy} onClick={() => {
-                    setDraft(null); setApiKey(""); setKeyInvalid(false); setError(""); setSaved(false); setAcknowledgedVersion(null);
+                    setDraft(null); setModelOptions(null); setCapacityError(""); setApiKey(""); setKeyInvalid(false); setError(""); setSaved(false); setAcknowledgedVersion(null);
                   }}>{t("settings.llm.revert")}</Button> : null}
                   <Button variant="default"  disabled={busy || !hasUnsavedChanges} type="submit"><FloppyDisk data-icon="inline-start" aria-hidden />{saving ? t("common.savingProgress") : t("common.saveConfig")}</Button>
                 </div>
