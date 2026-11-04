@@ -45,15 +45,22 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
   const basis = useRef(prompt).current;
   const [language, setLanguage] = useState("en");
   const generated = mode === "assist" || mode === "translate";
-  const progress = useRef<{ key: string; itemId: string; artifact?: Artifact; placed?: boolean } | null>(null);
+  const progress = useRef<{ key: string; itemId: string; title: string; prompt: string; artifact?: Artifact; placed?: boolean } | null>(null);
   const [target, setTarget] = useState<Artifact | null>(null);
   const client = useQueryClient();
   const settings = useQuery({ queryKey: ["settings", "llm"], queryFn: getLlmSettings, enabled: generated });
   const diagnostics = useQuery({ queryKey: ["settings", "diagnostics"], queryFn: getSystemDiagnostics, enabled: generated });
   const run = useMutation({ mutationFn: async () => {
-    progress.current ??= { key: crypto.randomUUID(), itemId: crypto.randomUUID() };
+    if (!progress.current) {
+      const instruction = mode === "translate"
+        ? t("audio.promptTools.translateInstruction", { language: t(language === "en" ? "locale.language.en" : "locale.language.zh") })
+        : t("audio.promptTools.assistInstruction");
+      // Retrying an unacknowledged request keeps its original content as well as its key.
+      progress.current = { key: crypto.randomUUID(), itemId: crypto.randomUUID(), title: LABELS[mode],
+        prompt: `${instruction} ${t("audio.promptTools.outputInstruction")}\n\n${text}` };
+    }
     const pending = progress.current;
-    pending.artifact ??= await createArtifact(projectId, { kind: "TEXT", title: LABELS[mode],
+    pending.artifact ??= await createArtifact(projectId, { kind: "TEXT", title: pending.title,
       content: { format: "PLAIN_TEXT", text: "" } }, pending.key);
     if (!pending.placed) {
       const canvas = await listCanvasItems(projectId);
@@ -64,10 +71,7 @@ function PromptToolDialog({ mode, projectId, canvasItemId, prompt, hasMentions, 
       pending.placed = true;
     }
     if (!pending.artifact.resourceDefaultVersionId) throw new Error(t("audio.promptTools.initialVersionMissing"));
-    const instruction = mode === "translate"
-      ? t("audio.promptTools.translateInstruction", { language: t(language === "en" ? "locale.language.en" : "locale.language.zh") })
-      : t("audio.promptTools.assistInstruction");
-    await runDirectTextGeneration(projectId, pending.artifact.id, { prompt: `${instruction} ${t("audio.promptTools.outputInstruction")}\n\n${text}`,
+    await runDirectTextGeneration(projectId, pending.artifact.id, { prompt: pending.prompt,
       expectedArtifactVersion: pending.artifact.version, expectedCurrentVersionId: pending.artifact.resourceDefaultVersionId }, pending.key);
     setTarget(pending.artifact);
     await client.invalidateQueries({ queryKey: ["canvas", projectId] });

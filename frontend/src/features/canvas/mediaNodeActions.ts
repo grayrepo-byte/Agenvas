@@ -7,12 +7,20 @@ export const AUDIO_CARD_HEIGHT = 300;
 export const VISUAL_MEDIA_CARD_WIDTH = 640;
 export const VISUAL_MEDIA_CARD_HEIGHT = 360;
 const NODE_GAP = 64;
-export type PreparedMediaNode = { createKey: string; itemId: string; artifactId?: string; draftVersion?: number; placed?: boolean };
+type MediaNodeRequest = { sourceItemId: string; kind: Artifact["kind"]; title: string;
+  fields: Omit<SaveMediaDraftRequest, "expectedVersion"> };
+export type PreparedMediaNode = { createKey: string; itemId: string; artifactId?: string; draftVersion?: number; placed?: boolean;
+  request?: MediaNodeRequest };
 
 /** Carries stable identities across retries of the explicit create-and-fill UI action. */
-export async function prepareMediaNode(projectId: string, sourceItemId: string,
-  kind: Artifact["kind"], title: string, fields: Omit<SaveMediaDraftRequest, "expectedVersion">,
+export async function prepareMediaNode(projectId: string, requestedSourceItemId: string,
+  requestedKind: Artifact["kind"], requestedTitle: string, requestedFields: Omit<SaveMediaDraftRequest, "expectedVersion">,
   progress: PreparedMediaNode) {
+  // The original request is also the recovery comparison after an acknowledgement is lost.
+  // UI language and source changes cannot silently turn this attempt into another action.
+  const { sourceItemId, kind, title, fields } = progress.request ??= structuredClone({
+    sourceItemId: requestedSourceItemId, kind: requestedKind, title: requestedTitle, fields: requestedFields,
+  });
   if (!progress.artifactId) progress.artifactId = (await createArtifact(projectId, { kind, title, content: null }, progress.createKey)).id;
   if (!progress.placed) {
     const canvas = await listCanvasItems(projectId);
