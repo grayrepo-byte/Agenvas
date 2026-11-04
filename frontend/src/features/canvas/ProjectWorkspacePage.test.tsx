@@ -7,6 +7,7 @@ import { MemoryRouter,Route,Routes } from "react-router";
 import { beforeEach,describe,expect,it,vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
 import type { Agent,CanvasCommand,CanvasEditRequest,CanvasItem,CreateRunRequest,ProjectSnapshot } from "../../shared/api/client";
+import { setLocale, t } from "../../shared/i18n";
 import { changeControl } from "../../test/controls";
 import { imageFunctionSettings } from "../../test/imageFunctionsFixture";
 import { server } from "../../test/server";
@@ -1448,6 +1449,7 @@ describe("ProjectWorkspacePage", () => {
   it.each(["artifact", "placement"])("reuses the text creation intent after an uncertain %s response", async (stage) => {
     const artifactId = crypto.randomUUID();
     const keys: string[] = [];
+    const requests: unknown[] = [];
     const placements: unknown[] = [];
     let placedItemId: string | undefined;
     server.use(
@@ -1458,8 +1460,9 @@ describe("ProjectWorkspacePage", () => {
       http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
       http.get("/api/v1/auth/csrf", () =>
         HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test-token" })),
-      http.post("/api/v1/projects/:projectId/artifacts", ({ request }) => {
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
         keys.push(request.headers.get("Idempotency-Key") ?? "");
+        requests.push(await request.json());
         if (stage === "artifact" && keys.length === 1) return HttpResponse.error();
         return HttpResponse.json({ id: artifactId }, { status: 201 });
       }),
@@ -1484,13 +1487,45 @@ describe("ProjectWorkspacePage", () => {
     await user.click(screen.getByRole("option", { name: "文字" }));
     await screen.findByRole("alert");
     expect(screen.queryByRole("complementary", { name: "创作工具" })).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "重试创建文字节点" }));
+    act(() => { setLocale("en"); });
+    await user.click(screen.getByRole("button", { name: t("canvas.workspace.retryCreateText") }));
     await waitFor(() => expect(placedItemId).toBeTruthy());
     expect(keys).toHaveLength(stage === "artifact" ? 2 : 1);
     expect(keys[0]).toBeTruthy();
-    if (stage === "artifact") expect(keys[1]).toBe(keys[0]);
+    if (stage === "artifact") {
+      expect(keys[1]).toBe(keys[0]);
+      expect(requests[1]).toEqual(requests[0]);
+    }
     if (stage === "placement") expect(placements[1]).toEqual(placements[0]);
     expect(placedItemId).toBeTruthy();
+  });
+
+  it.each(["图片", "视频", "音频"])("retries blank %s creation with its original title after changing language", async (label) => {
+    const requests: { key: string | null; body: unknown }[] = [];
+    let placements = 0;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", loginName: "admin", role: "ADMIN" })),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+      http.get("/api/v1/projects/:projectId", () => HttpResponse.json({ id: "project-1", name: "Creation project", status: "ACTIVE" })),
+      http.get("/api/v1/projects/:projectId/canvas/items", () => HttpResponse.json({ items: [] })),
+      http.post("/api/v1/projects/:projectId/artifacts", async ({ request }) => {
+        requests.push({ key: request.headers.get("Idempotency-Key"), body: await request.json() });
+        return requests.length === 1 ? HttpResponse.error() : HttpResponse.json({ id: "created-artifact" }, { status: 201 });
+      }),
+      http.post("/api/v1/projects/:projectId/canvas/commands", () => { placements++; return HttpResponse.json({ items: [] }); }),
+    );
+    const user = userEvent.setup();
+    render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/projects/project-1"]}>
+      <Routes><Route path="/projects/:projectId" element={<ProjectWorkspacePage />} /></Routes>
+    </MemoryRouter></QueryClientProvider>);
+    const types = await screen.findByRole("group", { name: "添加卡片" });
+    await user.click(within(types).getByRole("button", { name: label }));
+    await screen.findByRole("alert");
+    act(() => { setLocale("ja"); });
+    await user.click(screen.getByRole("button", { name: t("common.retry") }));
+    await waitFor(() => expect(placements).toBe(1));
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
   });
 
   it("keeps the card while Delete edits a focused text input", async () => {

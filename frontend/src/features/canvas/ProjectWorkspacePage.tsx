@@ -201,7 +201,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const uploadPoint = useRef<CreationPoint | null>(null);
   const uploadProgress = useRef<UploadIntent | null>(null);
   const textProgress = useRef<{ fingerprint: string; createKey: string;
-    itemId: string; zIndex: number; artifactId?: string } | null>(null);
+    itemId: string; zIndex: number; title: string; artifactId?: string } | null>(null);
   const [eventStatus, setEventStatus] = useState<EventSyncStatus>("connecting");
   const flow = useRef<ReactFlowInstance<WorkspaceNode> | null>(null);
   const groupDragOrigins = useRef(new Map<string, { x: number; y: number;
@@ -275,7 +275,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
   const [videoEditIds, setVideoEditIds] = useState<string[] | null>(null);
   const [agentRunRequest, setAgentRunRequest] = useState<AgentChatRunRequest | null>(null);
   const mediaProgress = useRef<{ fingerprint: string; createKey: string;
-    itemId: string; artifactId?: string } | null>(null);
+    itemId: string; title: string; artifactId?: string } | null>(null);
   const drafts = useCanvasStore((state) => state.drafts);
   const [draggingIds, setDraggingIds] = useState<string[]>([]);
   const [groupDropTargetId, setGroupDropTargetId] = useState<string | null>(null);
@@ -380,12 +380,12 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const fingerprint = JSON.stringify({ projectId, point });
       if (textProgress.current?.fingerprint !== fingerprint) {
         textProgress.current = { fingerprint, createKey: crypto.randomUUID(),
-          itemId: crypto.randomUUID(), zIndex: canvas.data?.items.length ?? 0 };
+          itemId: crypto.randomUUID(), zIndex: canvas.data?.items.length ?? 0, title: t(DEFAULT_TEXT_CARD_TITLE) };
       }
       const pending = textProgress.current;
       if (!pending.artifactId) {
         const artifact = await createArtifact(projectId, {
-          kind: "TEXT", title: t(DEFAULT_TEXT_CARD_TITLE),
+          kind: "TEXT", title: pending.title,
           content: { format: "PLAIN_TEXT", text: "" },
         }, pending.createKey);
         pending.artifactId = artifact.id;
@@ -451,7 +451,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       const fingerprint = JSON.stringify({ projectId, kind, point, director, connectionSource });
       if (mediaProgress.current?.fingerprint !== fingerprint) {
         mediaProgress.current = { fingerprint, createKey: crypto.randomUUID(),
-          itemId: crypto.randomUUID() };
+          itemId: crypto.randomUUID(),
+          title: director ? t("director.title") : t("canvas.workspace.newMediaTitle", { "0": ARTIFACT_LABELS[kind] }) };
       }
       const pending = mediaProgress.current;
       let initialModel: ConnectedMediaModel | undefined;
@@ -464,8 +465,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         initialModel = model;
       }
       if (!pending.artifactId) {
-        const artifact = await createArtifact(projectId, { kind,
-          title: director ? t("director.title") : t("canvas.workspace.newMediaTitle", { "0": ARTIFACT_LABELS[kind] }), content: null }, pending.createKey);
+        const artifact = await createArtifact(projectId, { kind, title: pending.title, content: null }, pending.createKey);
         pending.artifactId = artifact.id;
       }
       const index = canvas.data?.items.length ?? 0;
