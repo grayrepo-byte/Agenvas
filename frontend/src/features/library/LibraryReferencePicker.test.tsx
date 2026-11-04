@@ -65,3 +65,44 @@ it("preserves local input when another client changes the draft after reference 
   expect(await screen.findByRole("alert")).toHaveTextContent("草稿已被其他操作修改");
   expect(applied).not.toHaveBeenCalled();
 });
+
+it.each([6, 7])("retries the completed reference's draft read without resubmitting when version becomes %s", async (version) => {
+  let reads = 0;
+  let submissions = 0;
+  const applied = vi.fn();
+  const busy = vi.fn();
+  const draft: ReferenceLibraryRequest["draft"] = { expectedVersion: 5, prompt: "本地输入", parameters: {},
+    videoInputMode: null, mediaInputs: [], mentions: [] };
+  const saved = { version, prompt: "已保存的草稿", mediaInputs: [{ versionId: "reference" }] };
+  server.use(
+    http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [{ id: "entry", name: "旅馆", category: "SCENE", kind: "IMAGE", version: 2, source: {}, favorite: false, createdAt: "2026-10-01T00:00:00Z", hasThumbnail: false }], total: 1, categoryCounts: { SCENE: 1 } })),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    http.post("/api/v1/projects/p/canvas-items/i/library-references", () => {
+      submissions++;
+      return HttpResponse.json({ id: "cmd", status: "ACCEPTED" }, { status: 202 });
+    }),
+    http.get("/api/v1/library/commands/cmd", () => HttpResponse.json({ id: "cmd", status: "SUCCEEDED", result: { draftVersion: 6 } })),
+    http.get("/api/v1/projects/p/canvas-items/i/media-draft", () => ++reads === 1
+      ? HttpResponse.json({ code: "TEMPORARY_FAILURE", detail: "读取暂时失败", retryable: true },
+        { status: 503, headers: { "Content-Type": "application/problem+json" } })
+      : HttpResponse.json(saved)),
+  );
+  render(<QueryClientProvider client={createQueryClient()}><LibraryReferencePicker projectId="p" itemId="i" kinds={["IMAGE"]}
+    draft={draft} plan={() => ({ role: "REFERENCE", color: "#67C7F3", videoInputMode: null })}
+    onApplied={applied} onBusy={busy} /></QueryClientProvider>);
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "用作参考：旅馆" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("读取暂时失败");
+  expect(applied).not.toHaveBeenCalled();
+  expect(busy).toHaveBeenLastCalledWith(false);
+  await user.click(screen.getByRole("button", { name: "核对转存结果" }));
+  await waitFor(() => expect(reads).toBe(2));
+  if (version === 6) {
+    await waitFor(() => expect(applied).toHaveBeenCalledExactlyOnceWith(saved, draft, undefined));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  } else {
+    expect(await screen.findByRole("alert")).toHaveTextContent("草稿已被其他操作修改");
+    expect(applied).not.toHaveBeenCalled();
+  }
+  expect(submissions).toBe(1);
+});
