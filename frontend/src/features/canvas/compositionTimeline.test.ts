@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { clipEndMs, compositionClipAt, compositionFade, compositionOutput, compositionSourceTime, createCompositionTimeline, frameTimeMs, trimCompositionClip, visibleCompositionCaptions, type CompositionSourceClip } from './compositionTimeline';
 const clip = (id: string, overrides: Partial<CompositionSourceClip> = {}): CompositionSourceClip => ({ id, title: id, src: `/${id}.mp4`, sourceDurationMs: 10000, sourceStartMs: 1000, sourceEndMs: 2000, speed: 1, fadeMs: 0, ...overrides });
 describe('composition timeline', () => {
+  it.each([[0, 1033, 1, 30], [100, 1050, 1, 31], [125, 1049, .5, 62], [300, 1033, 2, 15], [150, 1300, 1.15, 33]])(
+    'places fractional source interval %sms + %sms at speed %s on frame %s', (start, duration, speed, frames) => {
+      const interval = { sourceStartMs: start, sourceEndMs: start + duration, speed };
+      const timeline = createCompositionTimeline([clip('red', interval), clip('blue', interval)]);
+      expect(timeline.clips.map((item) => [item.startFrame, item.frames])).toEqual([[0, frames], [frames, frames]]);
+      expect(compositionClipAt(timeline, frameTimeMs(frames) - .01)?.id).toBe('red');
+      expect(compositionClipAt(timeline, frameTimeMs(frames))?.id).toBe('blue');
+    });
   it('retains integer frame offsets across fractional clip lengths and maps each boundary to the next clip', () => {
     const timeline = createCompositionTimeline([clip('one', { sourceEndMs: 2133, speed: 2 }), clip('two', { speed: .5 })]);
     expect(timeline.clips.map((item) => [item.startFrame, item.frames])).toEqual([[0, 16], [16, 60]]);
