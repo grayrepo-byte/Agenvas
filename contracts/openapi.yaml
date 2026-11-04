@@ -7,6 +7,7 @@ info:
     部署者设置 AGENVAS_RECOVERY_MODE=true 后，/api/v1/projects、/api/v1/settings 与 /api/v1/media-templates 下的非 GET/HEAD/OPTIONS 请求统一返回 HTTP 503 ProblemDetail，code=RECOVERY_MODE_READ_ONLY；身份登录与只读核对仍可用。恢复模式同时关闭后台调度，不能把 503 当作业务版本冲突重试。
     服务端为每次 HTTP 请求生成 X-Request-Id 响应头；ProblemDetail.traceId 与它相同。客户端同名请求头不会被信任或回显。
     所有 API 接受 Accept-Language 语言协商（en、zh、ru、ja，地区变体按基础语言匹配；不支持、缺失或无效时回退 zh，q=0 不选用）。响应携带 Content-Language 与 Vary: Accept-Language，包括认证和 CSRF 错误。Problem 的 title、detail、fieldErrors.message 使用协商语言；code、状态、字段路径、ID 和用户内容不随语言变化。语言偏好仅由浏览器保存，无账号配置 API 或数据库迁移。
+    请求 Content-Type 不受支持时返回 HTTP 415（UNSUPPORTED_MEDIA_TYPE），Accept 无法匹配接口的响应格式时返回 HTTP 406（NOT_ACCEPTABLE）；两者使用 application/problem+json、retryable=false，并保留支持的格式响应头，不能作为临时服务端故障重试。
 servers:
   - url: /
 paths:

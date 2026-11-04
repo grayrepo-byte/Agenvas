@@ -1532,6 +1532,8 @@ Agent 当前产物查询使用独立 Query 缓存 `agent-outputs / projectId / a
 
 成功使用正常 HTTP 状态与资源 DTO；错误使用 `application/problem+json`，附稳定 code、traceId、可选 fieldErrors 和 retryable。不采用“任何失败都 HTTP 200”的接口风格。
 
+不支持的请求内容类型返回 415 / `UNSUPPORTED_MEDIA_TYPE`，无法满足的响应格式协商返回 406 / `NOT_ACCEPTABLE`；两者不可重试、保留支持格式的响应头，错误仍使用 Problem JSON 和请求语言，不回显请求正文。
+
 权限错误不得泄露其他用户项目存在与否。前端显示中文说明，程序判断只依赖稳定 code。
 
 ### 15.2 接口目录
