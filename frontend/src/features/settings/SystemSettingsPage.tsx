@@ -72,14 +72,13 @@ export function SystemSettingsPage() {
       <TabsList className="system-settings-tabs" variant="line" aria-label={t("settings.general.categories")}>
         {TABS.map((tab) => {
           const CategoryIcon = TAB_ICONS[tab];
-          return <TabsTrigger className="system-settings-tab" key={tab} value={tab} aria-label={tabLabel(tab)}>
-            <CategoryIcon data-icon="inline-start" aria-hidden /><span>{tabLabel(tab)}<small aria-hidden>{tabDescription(tab)}</small></span>
+          return <TabsTrigger className="system-settings-tab" key={tab} value={tab} aria-label={tabLabel(tab)} title={tabDescription(tab)}>
+            <CategoryIcon data-icon="inline-start" aria-hidden /><span>{tabLabel(tab)}</span>
           </TabsTrigger>;
         })}
       </TabsList>
     </div>
     <div className="system-settings-content">
-    <header className="system-settings-category-heading"><h2>{tabLabel(selected)}</h2><p>{tabDescription(selected)}</p></header>
     {TABS.map((tab) => <TabsContent key={tab} value={tab} forceMount className="system-settings-panel ui-stack" data-category={tab} hidden={selected !== tab}>
       {tab === "general" ? <Panel className="system-settings-language-panel">
         <div className="system-settings-language-intro">

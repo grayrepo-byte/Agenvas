@@ -770,11 +770,6 @@ export function MediaSettingsPage() {
         </Panel>
         </TabsContent>
         </Tabs>
-        <section className="media-setup-flow" aria-label={t("settings.mediaWorkspace.flowTitle")}>
-          <div><span className="media-flow-number">01</span><PlugsConnected aria-hidden /><span><strong>{t("settings.mediaWorkspace.connectStep")}</strong><small>{t("settings.mediaWorkspace.connectHint")}</small></span></div><ArrowRight aria-hidden />
-          <div><span className="media-flow-number">02</span><Sparkle aria-hidden /><span><strong>{t("settings.mediaWorkspace.publishStep")}</strong><small>{t("settings.mediaWorkspace.publishHint")}</small></span></div><ArrowRight aria-hidden />
-          <div><span className="media-flow-number">03</span><ImageSquare aria-hidden /><span><strong>{t("settings.mediaWorkspace.defaultStep")}</strong><small>{t("settings.mediaWorkspace.defaultHint")}</small></span></div>
-        </section>
         {chooseConnection ? <Dialog compact title={t("settings.catalog.chooseConnection")} description={t("settings.catalog.chooseConnectionHint")} onClose={() => setChooseConnection(false)} onSubmit={(event) => event.preventDefault()}>
           <div className="media-publish-choices">{settings.data.connections.filter((connection) => connection.enabled && connection.platform !== "LOCAL" && platformAdapters[connection.platform].length > 0).map((connection) => <Button className="media-publish-choice" variant="outline" type="button" key={connection.id} onClick={() => { setChooseConnection(false); setPublishingConnectionId(connection.id); }}><PlugsConnected aria-hidden /><span><strong>{connection.name}</strong><small>{connection.platform}</small></span><ArrowRight aria-hidden /></Button>)}</div>
           {!settings.data.connections.some((connection) => connection.enabled && connection.platform !== "LOCAL" && platformAdapters[connection.platform].length > 0) ? <EmptyState title={t("settings.catalog.noConnection")} action={<Button type="button" onClick={() => { setChooseConnection(false); setCreating(true); }}>{t("settings.mediaSettings.addConnection")}</Button>} /> : null}

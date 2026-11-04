@@ -96,16 +96,6 @@ body:has(.app-shell--studio) { min-width: 0; }
 .app-shell--studio .media-table-actions { flex-wrap: wrap; row-gap: 6px; }
 .app-shell--studio .media-table-actions [data-slot="button"] { font-size: 11px; height: 30px; padding-inline: 10px; }
 .app-shell--studio .media-table-endpoint { max-width: 260px; font-size: 11px; color: var(--ui-text-muted); }
-.app-shell--studio .media-function-list { padding: 2px 18px; }
-.app-shell--studio .media-function-row { padding: 14px 0; border-color: var(--settings-rule); grid-template-columns: minmax(160px, .7fr) minmax(0, 1fr); }
-.app-shell--studio .media-function-summary { display: flex; align-items: center; gap: 13px; }
-.app-shell--studio .media-function-icon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border: 1px solid var(--settings-rule); border-radius: 9px; background: var(--ui-field); color: var(--ui-text-muted); }
-.app-shell--studio .media-function-icon > svg { width: 18px; height: 18px; }
-.app-shell--studio .media-function-summary h3 { font-size: 13px; font-weight: 500; }
-.app-shell--studio .media-function-summary p { margin-top: 7px; font-size: 11px; }
-.app-shell--studio .media-function-catalog-hint { margin: 0 0 12px; line-height: 1.8; }
-.app-shell--studio .media-function-panel > .media-function-catalog-hint { margin-bottom: 16px; }
-.app-shell--studio .media-function-panel + .ui-muted { margin-top: 16px; }
 .app-shell--studio .storage-destinations { gap: 0; }
 .app-shell--studio .storage-destination { padding-block: 20px; border-color: var(--settings-rule); }
 .app-shell--studio .storage-destination:first-child { padding-top: 0; }
@@ -167,7 +157,6 @@ body:has(.app-shell--studio) .ui-dialog-footer { padding: 14px 20px; background:
   .app-shell--studio .settings-page-layout > aside { display: flex; }
 }
 @media (max-width: 720px) {
-  .app-shell--studio .media-function-row { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .app-shell--studio .media-settings-table { min-width: 760px; }
 }
 @media (max-width: 640px) {
@@ -213,10 +202,42 @@ body:has(.app-shell--studio) .ui-dialog-footer { padding: 14px 20px; background:
   .app-shell--studio .ui-summary-strip dt { grid-row: 1 / 3; }
   .app-shell--studio .ui-summary-strip dd:not(.ui-summary-detail), .app-shell--studio .ui-summary-strip .ui-summary-detail { margin: 0; }
   .app-shell--studio .ui-summary-strip > div + div { border-left: 0; border-top: 1px solid var(--settings-rule); }
-  .app-shell--studio .media-function-controls { grid-template-columns: minmax(0, 1fr); gap: 10px; }
-  .app-shell--studio .media-function-controls > button { justify-self: end; }
 }
 @media (prefers-reduced-motion: reduce) {
   .app-shell--studio *, .app-shell--studio *::before, .app-shell--studio *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   .app-shell--studio .app-nav-item:hover > svg:first-child, .app-shell--studio .settings-nav-link:hover > svg { transform: none; }
+}
+
+/* Administration shares the media catalog's density; creator workspaces keep their own spacing. */
+.app-shell--settings .app-page-header { padding: 18px 0; margin-bottom: 0; gap: 14px; }
+.app-shell--settings .app-page-eyebrow { display: none; }
+.app-shell--settings .app-page-header h1 { font-size: 24px; }
+.app-shell--settings .app-page-description { margin-top: 5px; font-size: 12px; line-height: 1.7; }
+.app-shell--settings .ui-panel { padding: 14px; border-radius: 12px; box-shadow: none; }
+.app-shell--settings .ui-panel-header { margin-bottom: 10px; gap: 10px; }
+.app-shell--settings .ui-panel-header h2 { font-size: 14px; }
+.app-shell--settings .ui-panel-header p { margin-top: 3px; }
+.app-shell--settings :is(.ui-stack, .ui-form) { gap: 12px; }
+.app-shell--settings .ui-form-grid { gap: 10px 14px; }
+.app-shell--settings [data-slot="field"][data-orientation="vertical"] { gap: 6px; }
+.app-shell--settings [data-slot="field-label"] { font-size: 12px; }
+.app-shell--settings :is([data-slot="input"], [data-slot="select-trigger"]) { height: 32px; min-height: 32px; font-size: 12px; }
+.app-shell--settings .ui-field > :is([data-slot="input"], .ui-select) { margin-top: 6px; }
+.app-shell--settings [data-slot="button"][data-size="default"] { min-height: 32px; height: auto; }
+.app-shell--settings .settings-save-bar { padding-top: 12px; gap: 10px; }
+.app-shell--settings .ui-summary-strip { margin-bottom: 12px; border-radius: 12px; }
+.app-shell--settings .ui-summary-strip > div { padding: 10px 14px; }
+.app-shell--settings .ui-summary-strip dd:not(.ui-summary-detail) { margin-top: 4px; font-size: 14px; }
+.app-shell--settings .ui-summary-strip .ui-summary-detail { margin-top: 4px; }
+.app-shell--settings .ui-empty-state { padding: 28px 18px; }
+.app-shell--settings .media-settings-table th { height: 36px; padding: 7px 12px; font-size: 11px; }
+.app-shell--settings .media-settings-table td { padding: 8px 12px; font-size: 12px; }
+@media (min-width: 761px) {
+  .app-shell--settings .media-settings-table th:last-child,
+  .app-shell--settings .media-settings-table td:last-child:not([colspan]) { text-align: right; }
+}
+@media (max-width: 640px) {
+  .app-shell--settings .app-page-header { gap: 12px; }
+  .app-shell--settings .ui-panel { padding: 12px; }
+  .app-shell--settings .ui-panel-header { margin-bottom: 10px; }
 }

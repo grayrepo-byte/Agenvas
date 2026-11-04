@@ -82,7 +82,7 @@ export function DirectorSettingsPage() {
     if (result.isSuccess) { setDraft(null); save.reset(); }
   };
   const fields = (definitions: typeof CONTEXT_FIELDS | typeof RECOVERY_FIELDS) => <FieldGroup className="director-settings-fields">
-    {definitions.map((field) => <Field key={field.name} data-invalid={!!errors[field.name]} data-disabled={disabled}>
+    {definitions.map((field) => <Field className="director-settings-row" key={field.name} data-invalid={!!errors[field.name]} data-disabled={disabled}>
       <FieldLabel htmlFor={`director-${field.name}`}>{t(field.label)}</FieldLabel>
       <Input id={`director-${field.name}`} type="number" inputMode="numeric" min={field.min} max={field.max} step={1}
         required value={values?.[field.name] ?? ""} disabled={disabled} aria-invalid={!!errors[field.name]}
@@ -110,8 +110,8 @@ export function DirectorSettingsPage() {
         { label: t("settings.director.trigger"), value: trigger === null ? "—" : t("settings.director.tokens", { "0": trigger.toLocaleString(getFormatLocale()) }), detail: t("settings.director.estimateHint") },
         { label: t("settings.director.scope"), value: t("settings.director.scopeValue"), detail: t("settings.director.scopeHint") },
       ]} />
-      <Panel title={t("settings.director.contextTitle")} description={t("settings.director.contextHint")}>{fields(CONTEXT_FIELDS)}</Panel>
-      <Panel title={t("settings.director.recoveryTitle")} description={t("settings.director.recoveryHint")}>{fields(RECOVERY_FIELDS)}</Panel>
+      <Panel className="director-settings-panel" title={t("settings.director.contextTitle")} description={t("settings.director.contextHint")}>{fields(CONTEXT_FIELDS)}</Panel>
+      <Panel className="director-settings-panel" title={t("settings.director.recoveryTitle")} description={t("settings.director.recoveryHint")}>{fields(RECOVERY_FIELDS)}</Panel>
       <div className="director-settings-save">
         <p className="ui-muted" role="status">{save.isSuccess && draft === null ? t("settings.director.saved") : t("settings.director.effectHint")}</p>
         <Button type="submit" disabled={disabled || conflict || !dirty || !valid}>{save.isPending ? t("common.savingProgress") : t("settings.director.save")}</Button>

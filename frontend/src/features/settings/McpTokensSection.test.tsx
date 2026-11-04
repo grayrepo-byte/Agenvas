@@ -54,7 +54,7 @@ describe("McpTokensSection", () => {
     await act(async () => { finishRead(); await returned; await refresh; });
     const expected = operation === "create" ? SAFE_TOKEN : revoked;
     expect(client.getQueryData(["account", "synthetic-owner", "mcp-tokens"])).toEqual([expected]);
-    const list = screen.getByRole("list", { name: "MCP 访问令牌列表" });
+    const list = screen.getByRole("table", { name: "MCP 访问令牌列表" });
     expect(within(list).getByText(SAFE_TOKEN.name)).toBeVisible();
     if (operation === "revoke") expect(screen.getByRole("button", { name: "撤销令牌 Synthetic client" })).toBeDisabled();
     expect(JSON.stringify(client.getQueryCache().getAll().map((query) => query.state))).not.toContain(SECRET);
@@ -126,7 +126,7 @@ describe("McpTokensSection", () => {
       { ...SAFE_TOKEN, id: "revoked", name: "Revoked client", revokedAt: "2026-10-01T00:00:00Z" },
     ])));
     renderSection();
-    const list = await screen.findByRole("list", { name: "MCP 访问令牌列表" });
+    const list = await screen.findByRole("table", { name: "MCP 访问令牌列表" });
     expect(within(list).getByText("有效")).toBeInTheDocument();
     expect(within(list).getByText("已过期")).toBeInTheDocument();
     expect(within(list).getByText("已撤销")).toBeInTheDocument();
