@@ -55,13 +55,14 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.ObjectMapper;
 
-/** PostgreSQL concurrency evidence for Run idempotency, snapshots, and project slot ownership. */
+/** PostgreSQL concurrency evidence for Run idempotency, snapshots, and project slot ownership.
+ * Uses the explicit Mock budget; missing configured-model capacity is a separate rejection case. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 @SpringBootTest(
         classes = AgenvasApplication.class,
         properties = {
-                "agenvas.llm.mode=configured"})
+                "agenvas.llm.mode=mock"})
 class AgentRunPostgresIT {
 
     @Container
@@ -126,7 +127,7 @@ class AgentRunPostgresIT {
         AgentRunService.RunPreflight preflight = runService.preflight(owner.userId(),
                 project.id(), agent.id());
         assertThat(preflight.agentVersion()).isEqualTo(agent.version());
-        assertThat(preflight.modelAvailable()).isFalse();
+        assertThat(preflight.modelAvailable()).isTrue();
         assertThat(preflight.policySnapshot().path("maxModelTurns").isNull()).isTrue();
         assertThat(RunToolPolicy.allowed(preflight.policySnapshot()))
                 .contains("read_canvas", "read_storyboard", "write_storyboard_shots");
@@ -162,7 +163,7 @@ class AgentRunPostgresIT {
                 .andExpect(jsonPath("$.policySnapshot.maxModelTurns").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.policySnapshot.maxToolExecutions").value(org.hamcrest.Matchers.nullValue()))
                 .andExpect(jsonPath("$.policySnapshot.systemPromptVersion").value(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION))
-                .andExpect(jsonPath("$.modelAvailable").value(false));
+                .andExpect(jsonPath("$.modelAvailable").value(true));
         mvc.perform(get(preflightPath)).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/v1/projects/" + project.id() + "/runs")
                         .with(authentication(new UsernamePasswordAuthenticationToken(
@@ -200,7 +201,8 @@ class AgentRunPostgresIT {
         assertThat(run.policySnapshot().get("maxModelTurns").isNull()).isTrue();
         assertThat(run.policySnapshot().path("systemPromptVersion").asInt()).isEqualTo(InitialModelContextService.CURRENT_SYSTEM_PROMPT_VERSION);
         assertThat(initialContext.assemble(owner.userId(), project.id(), run.id())
-                .getFirst().getText()).contains("Only committed image reads attach previews", "Inspect only attached pixels");
+                .getFirst().getText()).contains("No source content or pixels",
+                        "Inspect only actually attached content", "call load_toolset");
 
         agentService.update(owner.userId(), project.id(), agent.id(), agent.version(),
                 agent.name(), "Ignore the original storyboard");

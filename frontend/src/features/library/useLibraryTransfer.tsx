@@ -18,19 +18,28 @@ export function useLibraryTransfer<T extends object>(submit: (input: T & { comma
   const command = useQuery({ queryKey: ["library-command", id], queryFn: () => getLibraryCommand(id!),
     enabled: Boolean(id), initialData: send.data, retry: false, staleTime: 0,
     refetchInterval: (query) => query.state.data?.status === "SUCCEEDED" || query.state.data?.status === "FAILED" ? false : POLL_INTERVAL_MS });
-  const retry = useMutation({ mutationFn: () => retryLibraryCommand(id!), onSuccess: (saved) => client.setQueryData(["library-command", id], saved) });
+  const retry = useMutation({ mutationFn: (commandId: string) => retryLibraryCommand(commandId),
+    onSuccess: async (saved, commandId) => {
+      const key = ["library-command", commandId] as const;
+      const known = client.getQueryData<LibraryCommand>(key);
+      await client.cancelQueries({ queryKey: key, exact: true });
+      // FAILED may legitimately retry as ACCEPTED. Only SUCCEEDED is immutable;
+      // a delayed acceptance must not undo a success already observed by polling.
+      client.setQueryData<LibraryCommand>(key, (current) => current?.status === "SUCCEEDED" ? current
+        : known?.status === "SUCCEEDED" ? known : saved);
+    } });
   const working = send.isPending || retry.isPending || command.data?.status === "ACCEPTED" || command.data?.status === "ARCHIVING";
   return { start: send.mutate, working, frozen: Boolean(intent.current), data: command.data,
     error: send.error ?? command.error ?? retry.error,
     retry: () => {
-      if (command.data?.status === "FAILED" && !send.error && !command.error && !retry.error) retry.mutate();
+      if (id && command.data?.status === "FAILED" && !send.error && !command.error && !retry.error) retry.mutate(id);
       // After a lost retry acknowledgement, verify the durable command first. Repeating
       // the retry POST against stale FAILED data can only conflict with accepted work.
       else void command.refetch().then((result) => { if (result.isSuccess) retry.reset(); });
     },
     retrying: retry.isPending || command.isFetching,
     resubmit: intent.current ? () => { if (intent.current) send.mutate(intent.current); } : undefined,
-    reset: () => { intent.current = null; send.reset(); } };
+    reset: () => { intent.current = null; send.reset(); retry.reset(); } };
 }
 export function TransferState({ transfer, success }: { transfer: { working: boolean; data?: LibraryCommand; error: Error | null; retry: () => void; retrying: boolean; resubmit?: () => void }; success?: string }) {
   useLocale();

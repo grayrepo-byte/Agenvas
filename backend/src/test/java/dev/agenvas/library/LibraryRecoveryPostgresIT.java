@@ -386,7 +386,22 @@ class LibraryRecoveryPostgresIT {
         library.processNext();
         assertThat(command(id).path("status").asText()).isEqualTo("FAILED");
         Files.delete(blocked);
-        postJson("/api/v1/library/commands/" + id + "/retry", Map.of(), 202);
+        // Independent tabs can retry the same failed command together. Exactly one
+        // transition is accepted; the other tab must reconcile by reading the command.
+        var ready = new java.util.concurrent.CyclicBarrier(2);
+        java.util.concurrent.Callable<Integer> retryFromTab = () -> {
+            ready.await(10, java.util.concurrent.TimeUnit.SECONDS);
+            return mvc.perform(post("/api/v1/library/commands/" + id + "/retry").with(auth).with(csrf())
+                    .contentType("application/json").content("{}"))
+                    .andReturn().getResponse().getStatus();
+        };
+        try (var tabs = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var first = tabs.submit(retryFromTab);
+            var second = tabs.submit(retryFromTab);
+            assertThat(List.of(first.get(10, java.util.concurrent.TimeUnit.SECONDS), second.get(10, java.util.concurrent.TimeUnit.SECONDS)))
+                    .containsExactlyInAnyOrder(202, 409);
+        }
+        assertThat(command(id).path("status").asText()).isEqualTo("ACCEPTED");
         library.processNext();
         assertThat(command(id).path("status").asText()).isEqualTo("SUCCEEDED");
         assertThat(command(id).path("result").path("entryId").asText()).isEqualTo(id);
