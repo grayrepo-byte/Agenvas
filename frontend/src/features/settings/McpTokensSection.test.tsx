@@ -1,11 +1,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import { type McpTokenSummary } from "../../shared/api/client";
+import { listMcpTokens, type McpTokenSummary } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { McpTokensSection } from "./McpTokensSection";
 import { SystemSettingsPage } from "./SystemSettingsPage";
@@ -14,8 +14,9 @@ const SAFE_TOKEN: McpTokenSummary = { id: "credential-1", name: "Synthetic clien
   createdAt: "2026-10-01T00:00:00Z", expiresAt: "2099-11-01T00:00:00Z", revokedAt: null, lastUsedAt: null };
 const SECRET = "agv_mcp_synthetic_secret_only_for_this_component_test";
 
-function renderSection() {
+function renderSection(initial?: McpTokenSummary[]) {
   const client = createQueryClient();
+  if (initial) client.setQueryData(["account", "synthetic-owner", "mcp-tokens"], initial);
   const view = render(<QueryClientProvider client={client}><MemoryRouter><Routes>
     <Route path="/" element={<McpTokensSection enabled userId="synthetic-owner" />} />
     <Route path="/login" element={<p>Login destination</p>} />
@@ -24,6 +25,100 @@ function renderSection() {
 }
 
 describe("McpTokensSection", () => {
+  beforeEach(() => server.use(http.get("/api/v1/auth/csrf", () => HttpResponse.json({ token: "synthetic-csrf", headerName: "X-CSRF-TOKEN" }))));
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(["create", "revoke"])("preserves confirmed %s metadata when an older list response arrives late", async (operation) => {
+    const previous = operation === "create" ? [] : [SAFE_TOKEN];
+    const revoked = { ...SAFE_TOKEN, version: 1, revokedAt: "2026-11-04T00:00:00Z" };
+    let finishRead!: () => void, readReturned!: () => void;
+    const gate = new Promise<void>((resolve) => { finishRead = resolve; });
+    const returned = new Promise<void>((resolve) => { readReturned = resolve; });
+    let reads = 0;
+    server.use(http.get("/api/v1/account/mcp-tokens", async () => { reads++; await gate; return HttpResponse.json(previous); }),
+      http.post("/api/v1/account/mcp-tokens", () => HttpResponse.json({ credential: SAFE_TOKEN, token: SECRET }, { status: 201 })),
+      http.post("/api/v1/account/mcp-tokens/:id/revoke", () => HttpResponse.json(revoked)));
+    const user = userEvent.setup(); const { client } = renderSection(previous);
+    let refresh!: Promise<unknown>;
+    act(() => { refresh = client.fetchQuery({ queryKey: ["account", "synthetic-owner", "mcp-tokens"], staleTime: 0,
+      queryFn: async () => { const result = await listMcpTokens(); readReturned(); return result; } }).catch(() => {}); });
+    await waitFor(() => expect(reads).toBe(1));
+    if (operation === "create") {
+      await user.type(screen.getByLabelText("令牌名称"), SAFE_TOKEN.name);
+      await user.click(screen.getByRole("button", { name: "创建访问令牌" }));
+      await screen.findByLabelText("新访问令牌");
+    } else {
+      await user.click(screen.getByRole("button", { name: "撤销令牌 Synthetic client" }));
+      await screen.findByText("已撤销");
+    }
+    await act(async () => { finishRead(); await returned; await refresh; });
+    const expected = operation === "create" ? SAFE_TOKEN : revoked;
+    expect(client.getQueryData(["account", "synthetic-owner", "mcp-tokens"])).toEqual([expected]);
+    const list = screen.getByRole("list", { name: "MCP 访问令牌列表" });
+    expect(within(list).getByText(SAFE_TOKEN.name)).toBeVisible();
+    if (operation === "revoke") expect(screen.getByRole("button", { name: "撤销令牌 Synthetic client" })).toBeDisabled();
+    expect(JSON.stringify(client.getQueryCache().getAll().map((query) => query.state))).not.toContain(SECRET);
+  });
+
+  it.each(["dismiss", "revoke"])("ignores an old clipboard completion after %s and creation of another secret", async (action) => {
+    let createdCount = 0, completeCopy!: () => void, failCopy!: (error: Error) => void;
+    const copying = new Promise<void>((resolve, reject) => { completeCopy = resolve; failCopy = reject; });
+    server.use(http.get("/api/v1/account/mcp-tokens", () => HttpResponse.json([])),
+      http.post("/api/v1/account/mcp-tokens", () => HttpResponse.json({ credential: { ...SAFE_TOKEN, id: `credential-${++createdCount}` }, token: `${SECRET}-${createdCount}` }, { status: 201 })),
+      http.post("/api/v1/account/mcp-tokens/:id/revoke", () => HttpResponse.json({ ...SAFE_TOKEN, version: 1, revokedAt: "2026-11-04T00:00:00Z" })));
+    const user = userEvent.setup(); renderSection(); await screen.findByText("还没有 MCP 访问令牌");
+    vi.spyOn(navigator.clipboard, "writeText").mockImplementationOnce(() => copying);
+    await user.type(screen.getByLabelText("令牌名称"), "First client");
+    await user.click(screen.getByRole("button", { name: "创建访问令牌" }));
+    await screen.findByLabelText("新访问令牌");
+    await user.click(screen.getByRole("button", { name: "复制令牌" }));
+    await user.click(screen.getByRole("button", { name: action === "dismiss" ? "我已保存，隐藏令牌" : "撤销令牌 Synthetic client" }));
+    await waitFor(() => expect(screen.queryByLabelText("新访问令牌")).not.toBeInTheDocument());
+    await user.type(screen.getByLabelText("令牌名称"), "Second client");
+    await user.click(screen.getByRole("button", { name: "创建访问令牌" }));
+    expect(await screen.findByLabelText("新访问令牌")).toHaveValue(`${SECRET}-2`);
+    expect(screen.getByRole("button", { name: "复制令牌" })).toBeDisabled();
+    await act(async () => { if (action === "dismiss") completeCopy(); else failCopy(new Error("Synthetic clipboard denial")); });
+    expect(screen.queryByText("令牌已复制")).not.toBeInTheDocument();
+    expect(screen.queryByText("复制失败，请手动选择并复制令牌。")).not.toBeInTheDocument();
+  });
+
+  it("keeps a known newer revocation when the original creation response arrives late", async () => {
+    let finishCreate!: () => void;
+    const gate = new Promise<void>((resolve) => { finishCreate = resolve; });
+    server.use(http.post("/api/v1/account/mcp-tokens", async () => { await gate; return HttpResponse.json({ credential: SAFE_TOKEN, token: SECRET }, { status: 201 }); }));
+    const user = userEvent.setup(); const { client } = renderSection([]);
+    await user.type(screen.getByLabelText("令牌名称"), SAFE_TOKEN.name);
+    await user.click(screen.getByRole("button", { name: "创建访问令牌" }));
+    const revoked = { ...SAFE_TOKEN, version: 1, revokedAt: "2026-11-04T00:00:00Z" };
+    // A completed list read has already observed revocation from another client.
+    act(() => { client.setQueryData(["account", "synthetic-owner", "mcp-tokens"], [revoked]); });
+    await act(async () => { finishCreate(); });
+    await waitFor(() => expect(screen.getByLabelText("令牌名称")).toHaveValue(""));
+    expect(client.getQueryData(["account", "synthetic-owner", "mcp-tokens"])).toEqual([revoked]);
+    expect(screen.getByText("已撤销")).toBeVisible();
+    expect(screen.queryByLabelText("新访问令牌")).not.toBeInTheDocument();
+    expect(JSON.stringify(client.getQueryCache().getAll().map((query) => query.state))).not.toContain(SECRET);
+  });
+
+  it("waits for one clipboard attempt before allowing another, and clears its old feedback", async () => {
+    let finishFirst!: () => void;
+    const first = new Promise<void>((resolve) => { finishFirst = resolve; });
+    server.use(http.get("/api/v1/account/mcp-tokens", () => HttpResponse.json([])),
+      http.post("/api/v1/account/mcp-tokens", () => HttpResponse.json({ credential: SAFE_TOKEN, token: SECRET }, { status: 201 })));
+    const user = userEvent.setup(); renderSection(); await screen.findByText("还没有 MCP 访问令牌");
+    const write = vi.spyOn(navigator.clipboard, "writeText").mockImplementationOnce(() => first).mockRejectedValueOnce(new Error("Synthetic clipboard denial"));
+    await user.type(screen.getByLabelText("令牌名称"), SAFE_TOKEN.name);await user.click(screen.getByRole("button", { name: "创建访问令牌" }));
+    await screen.findByLabelText("新访问令牌");
+    const copy = screen.getByRole("button", { name: "复制令牌" });
+    await user.click(copy);expect(copy).toBeDisabled();await user.click(copy);expect(write).toHaveBeenCalledOnce();
+    await act(async () => { finishFirst(); });
+    expect(copy).toBeEnabled();expect(screen.getByText("令牌已复制")).toBeInTheDocument();
+    await user.click(copy);
+    await screen.findByText("复制失败，请手动选择并复制令牌。");
+    expect(screen.getByText("复制失败，请手动选择并复制令牌。")).toBeInTheDocument();
+    expect(screen.queryByText("令牌已复制")).not.toBeInTheDocument();
+  });
   it("shows safe metadata and explicit active, expired and revoked states", async () => {
     server.use(http.get("/api/v1/account/mcp-tokens", () => HttpResponse.json([
       SAFE_TOKEN,
