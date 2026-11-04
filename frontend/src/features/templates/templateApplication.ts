@@ -14,9 +14,21 @@ const MAX_TEMPLATE_PROMPT = 20000;
 
 /** Save readable positional labels, never the original project's structured version identities. */
 export function templateSeedPrompt(fields: MediaDraftFields): string {
-  const labels = new Map(fields.mediaInputs.map((input, index) => [input.versionId,
-    input.role === "START_FRAME" ? "Start Frame" : input.role === "END_FRAME" ? "End Frame"
-      : `${input.role === "AUDIO_REFERENCE" ? "Audio" : input.role === "VIDEO_REFERENCE" ? "Video" : "Image"} ${fields.mediaInputs.slice(0, index + 1).filter((reference) => reference.role === input.role).length}`]));
+  const labels = new Map<string, string>();
+  const counts = new Map<MediaDraftFields["mediaInputs"][number]["role"], number>();
+  for (const input of fields.mediaInputs) {
+    const count = (counts.get(input.role) ?? 0) + 1;
+    counts.set(input.role, count);
+    let label: string;
+    switch (input.role) {
+      case "START_FRAME": label = "Start Frame"; break;
+      case "END_FRAME": label = "End Frame"; break;
+      case "AUDIO_REFERENCE": label = `Audio ${count}`; break;
+      case "VIDEO_REFERENCE": label = `Video ${count}`; break;
+      case "REFERENCE": label = `Image ${count}`; break;
+    }
+    labels.set(input.versionId, label);
+  }
   let mentionIndex = 0;
   return Array.from(fields.prompt, (character) => {
     if (character !== MENTION_MARKER) return character;

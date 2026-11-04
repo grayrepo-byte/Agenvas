@@ -33,9 +33,22 @@ describe("template application", () => {
     const seeded = templateSeedPrompt({ ...fields, prompt: "Make \uFFFC red and keep \uFFFC sharp", mentions: [
       { versionId: "old-image", role: "REFERENCE" }, { versionId: "old-image", role: "REFERENCE" }] });
     expect(seeded).toBe("Make @Image 1 red and keep @Image 1 sharp");
-    expect(seeded).not.toContain("old-image"); expect(seeded).not.toContain("\uFFFC");
     expect(templateSeedPrompt({ ...fields, prompt: "Plain prompt", mentions: [] })).toBe("Plain prompt");
     expect(templateSeedPrompt({ ...fields, mediaInputs: [{ versionId: "old-image", role: "START_FRAME", color: "#ffffff" }] })).toBe("old@Start Frame");
+  });
+  it("numbers each reference role independently and keeps missing mentions readable", () => {
+    const mediaInputs: MediaDraftFields["mediaInputs"] = [
+      { versionId: "audio-1", role: "AUDIO_REFERENCE", color: "#ffffff" },
+      { versionId: "image-1", role: "REFERENCE", color: "#ffffff" },
+      { versionId: "audio-2", role: "AUDIO_REFERENCE", color: "#ffffff" },
+      { versionId: "video-1", role: "VIDEO_REFERENCE", color: "#ffffff" },
+      { versionId: "image-2", role: "REFERENCE", color: "#ffffff" },
+      { versionId: "last", role: "END_FRAME", color: "#ffffff" },
+    ];
+    const mentions = [...mediaInputs.map(({ versionId, role }) => ({ versionId, role })),
+      { versionId: "missing", role: "REFERENCE" as const }];
+    expect(templateSeedPrompt({ ...fields, mediaInputs, mentions, prompt: "🙂\uFFFC / \uFFFC / \uFFFC / \uFFFC / \uFFFC / \uFFFC / \uFFFC / \uFFFC" }))
+      .toBe("🙂@Audio 1 / @Image 1 / @Audio 2 / @Video 1 / @Image 2 / @End Frame / @Reference / ");
   });
   it("replaces plain prompt and clears old mentions without changing prompt-only references or model settings", () => {
     const changes = templateDraftChanges("IMAGE", fields, undefined, imported(0), { videoInputMode: null, imageSlots: [] }, ["#ffffff"]);
