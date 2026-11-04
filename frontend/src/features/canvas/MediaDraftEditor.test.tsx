@@ -1092,6 +1092,27 @@ describe("MediaDraftEditor", () => {
     expect(recovery?.saving).toBe(false);
     expect(recovery?.error?.message).toContain("参考转存");
   });
+  it("keeps the library reference picker locked while a failed transfer retry awaits acknowledgement", async () => {
+    let retryWrites = 0, release = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let status = "FAILED";
+    const { saves } = setup({ handlers: [
+      http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [{ id: "library-image", name: "旅馆", category: "SCENE", kind: "IMAGE", version: 0, source: {}, favorite: false, createdAt: NOW, hasThumbnail: false }], total: 1, categoryCounts: { SCENE: 1 } })),
+      http.post(`/api/v1/projects/${PROJECT_ID}/canvas-items/${CANVAS_ITEM_ID}/library-references`, () => HttpResponse.json({ id: "library-command", status: "ACCEPTED" }, { status: 202 })),
+      http.get("/api/v1/library/commands/library-command", () => HttpResponse.json({ id: "library-command", status, errorCode: "STORAGE_ERROR", errorDetail: "Synthetic copy failed" })),
+      http.post("/api/v1/library/commands/library-command/retry", async () => { retryWrites++; await gate; status = "ARCHIVING"; return HttpResponse.json({ id: "library-command", status }, { status: 202 }); }),
+    ] });
+    const user = userEvent.setup(); await screen.findByRole("textbox", { name: "图片提示词" });
+    await user.click(screen.getByRole("button", { name: "添加图片输入" })); await user.click(screen.getByRole("menuitem", { name: /从我的资产选择/ }));
+    await user.click(await screen.findByRole("button", { name: "用作参考：旅馆" }));
+    await user.click(await screen.findByRole("button", { name: "重试本地转存" })); await waitFor(() => expect(retryWrites).toBe(1));
+    try {
+      expect(screen.getByRole("button", { name: "关闭资产选择" })).toBeDisabled();
+      await user.keyboard("{Escape}"); expect(screen.getByRole("dialog", { name: "我的资产参考" })).toBeVisible();
+      expect(screen.getByRole("button", { name: "运行" })).toBeDisabled(); expect(saves).toHaveLength(0);
+    } finally { await act(async () => release()); }
+  });
+
   it("keeps the library reference picker open when choosing a media type", async () => {
     setup({ kind: "AUDIO", settings: audioSettings, handlers: [
       http.get("/api/v1/library/entries", ({ request }) => {

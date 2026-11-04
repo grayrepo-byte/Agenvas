@@ -390,6 +390,11 @@ class LibraryRecoveryPostgresIT {
         library.processNext();
         assertThat(command(id).path("status").asText()).isEqualTo("SUCCEEDED");
         assertThat(command(id).path("result").path("entryId").asText()).isEqualTo(id);
+        // A lost retry acknowledgement is reconciled with GET: another retry POST is
+        // a conflict after success, while the original accepted command still replays.
+        postJson("/api/v1/library/commands/" + id + "/retry", Map.of(), 409);
+        assertThat(command(id).path("status").asText()).isEqualTo("SUCCEEDED");
+        assertThat(postJson(source(card), saveRequest(card, "storage-failure"), 202).path("id").asText()).isEqualTo(id);
     }
 
     @Test void usesStableCursorPagesAndServerSearchRatherThanLoadedPageCounts() throws Exception {

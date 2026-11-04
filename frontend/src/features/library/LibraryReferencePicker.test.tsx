@@ -106,3 +106,37 @@ it.each([6, 7])("retries the completed reference's draft read without resubmitti
   }
   expect(submissions).toBe(1);
 });
+
+it.each(["SUCCEEDED", "FAILED", "READ_FAILURE"])("verifies an uncertain retry with a read when the result is %s", async (outcome) => {
+  let retryWrites = 0, recoveryReads = 0; const applied = vi.fn();
+  let current = { id: "cmd", status: "FAILED", result: null as null | { draftVersion: number }, errorCode: "STORAGE_ERROR", errorDetail: "Synthetic copy failed" };
+  server.use(http.get("/api/v1/library/entries", () => HttpResponse.json({ items: [{ id: "entry", name: "旅馆", category: "SCENE", kind: "IMAGE", version: 2, source: {}, favorite: false, createdAt: "2026-10-01T00:00:00Z", hasThumbnail: false }], total: 1, categoryCounts: { SCENE: 1 } })),
+    http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" })),
+    http.post("/api/v1/projects/p/canvas-items/i/library-references", () => HttpResponse.json({ id: "cmd", status: "ACCEPTED" }, { status: 202 })),
+    http.get("/api/v1/library/commands/cmd", () => {
+      if (retryWrites && ++recoveryReads === 1 && outcome === "READ_FAILURE") return HttpResponse.json({ code: "HTTP_ERROR", detail: "Synthetic command read failed" }, { status: 503, headers: { "Content-Type": "application/problem+json" } });
+      return HttpResponse.json(current);
+    }),
+    http.post("/api/v1/library/commands/cmd/retry", () => {
+      retryWrites++; if (outcome !== "FAILED") current = { ...current, status: "SUCCEEDED", result: { draftVersion: 6 }, errorDetail: "", errorCode: "" };
+      return HttpResponse.json({ code: "SYNTHETIC_LOST_RETRY", detail: "Synthetic retry acknowledgement lost" }, { status: retryWrites === 1 ? 503 : 409, headers: { "Content-Type": "application/problem+json" } });
+    }), http.get("/api/v1/projects/p/canvas-items/i/media-draft", () => HttpResponse.json({ version: 6, mediaInputs: [] })));
+  render(<QueryClientProvider client={createQueryClient()}><LibraryReferencePicker projectId="p" itemId="i" kinds={["IMAGE"]}
+    draft={{ expectedVersion: 5, prompt: "Synthetic local prompt", parameters: {}, videoInputMode: null, mediaInputs: [], mentions: [] }}
+    plan={() => ({ role: "REFERENCE", color: "#67C7F3", videoInputMode: null })} onApplied={applied} /></QueryClientProvider>);
+  await userEvent.click(await screen.findByRole("button", { name: "用作参考：旅馆" }));
+  await userEvent.click(await screen.findByRole("button", { name: "重试本地转存" }));
+  await screen.findByText(/Synthetic retry acknowledgement lost/);
+  await userEvent.click(screen.getByRole("button", { name: "核对转存结果" }));
+  if (outcome === "READ_FAILURE") {
+    await screen.findByText(/Synthetic command read failed/);
+    await userEvent.click(screen.getByRole("button", { name: "核对转存结果" }));
+  }
+  if (outcome === "FAILED") {
+    expect(await screen.findByRole("button", { name: "重试本地转存" })).toBeEnabled();
+    expect(applied).not.toHaveBeenCalled(); expect(retryWrites).toBe(1);
+    return;
+  }
+  await waitFor(() => expect(applied).toHaveBeenCalledOnce());
+  expect(retryWrites).toBe(1); expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
