@@ -133,6 +133,13 @@ class ManualUnknownRetryPostgresIT {
         assertThat(retries.create(owner.userId(), project.id(), unknown.id(), unknown.version(),
                 "retry-1").id())
                 .isEqualTo(replacement.id());
+        // A delayed status event can advance the original after acceptance. The frozen
+        // command still replays, while changing its expected version is a different request.
+        jdbc.sql("update task set version=version+1 where id=:id").param("id", unknown.id()).update();
+        assertThat(retries.create(owner.userId(), project.id(), unknown.id(), unknown.version(), "retry-1").id())
+                .isEqualTo(replacement.id());
+        assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), unknown.id(), unknown.version() + 1, "retry-1"))
+                .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("UNKNOWN_RETRY_CONFLICT"));
         assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), unknown.id(),
                 unknown.version(), "retry-2"))
                 .isInstanceOf(ApiProblemException.class);
@@ -213,5 +220,36 @@ class ManualUnknownRetryPostgresIT {
         assertThat(taskRepository.claimDueBoundMedia("replacement-submitter", 1,
                 Instant.now(), Instant.now().plusSeconds(30))).singleElement()
                 .extracting(Task::id).isEqualTo(replacement.id());
+        repeatedUnknownOnOneCardRequiresANewCommand(owner);
+    }
+
+    private void repeatedUnknownOnOneCardRequiresANewCommand(AdminPrincipal owner) {
+        var project = projects.create(owner.userId(), "Synthetic chained retry", Project.AspectRatio.SQUARE_1_1);
+        var card = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic retry card", null);
+        UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), card.artifact().id());
+        dev.agenvas.support.CanvasMediaFixture.save(drafts, owner.userId(), project.id(), item, 0,
+                "Synthetic chained task", null, null, null);
+        Task original = directMedia.run(owner.userId(), project.id(), card.artifact().id(), item, 1, "synthetic-chain-run");
+        jdbc.sql("update task set status='UNKNOWN',version=version+1 where id=:id").param("id", original.id()).update();
+        original = tasks.get(owner.userId(), project.id(), original.id());
+        Task first = retries.create(owner.userId(), project.id(), original.id(), original.version(), "synthetic-original-command");
+        jdbc.sql("update task set status='UNKNOWN',version=version+1 where id=:id").param("id", first.id()).update();
+        Task firstUnknown = tasks.get(owner.userId(), project.id(), first.id());
+        assertThatThrownBy(() -> retries.create(owner.userId(), project.id(), firstUnknown.id(), firstUnknown.version(), "synthetic-original-command"))
+                .isInstanceOfSatisfying(ApiProblemException.class, problem -> assertThat(problem.code()).isEqualTo("UNKNOWN_RETRY_CONFLICT"));
+        Task next = retries.create(owner.userId(), project.id(), firstUnknown.id(), firstUnknown.version(), "synthetic-replacement-command");
+        assertThat(next.attemptNo()).isEqualTo(3);
+        assertThat(next.status()).isEqualTo(Task.Status.READY);
+        assertThat(retries.create(owner.userId(), project.id(), firstUnknown.id(), firstUnknown.version(), "synthetic-replacement-command").id())
+                .isEqualTo(next.id());
+        assertThat(taskRepository.listMediaForCanvasItem(owner.userId(), project.id(), item)).extracting(Task::id).containsExactly(next.id());
+        assertThat(tasks.get(owner.userId(), project.id(), original.id()).status()).isEqualTo(Task.Status.UNKNOWN);
+        assertThat(tasks.get(owner.userId(), project.id(), firstUnknown.id()).status()).isEqualTo(Task.Status.UNKNOWN);
+        assertThat(jdbc.sql("select count(*) from task_artifact_target where artifact_id=:id").param("id", card.artifact().id()).query(Long.class).single())
+                .isEqualTo(3);
+        assertThat(jdbc.sql("select count(*) from task_manual_replacement where project_id=:project").param("project", project.id()).query(Long.class).single())
+                .isEqualTo(2);
+        assertThat(jdbc.sql("select count(*) from usage_ledger where project_id=:project").param("project", project.id()).query(Long.class).single())
+                .isEqualTo(3);
     }
 }

@@ -2370,6 +2370,27 @@ describe("MediaDraftEditor", () => {
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
   });
 
+  it("uses a fresh retry command when the replacement is already UNKNOWN on the same card", async () => {
+    const writes: Array<{ task: string; key: string | null }> = [];
+    const next = { ...task("UNKNOWN"), id: "replacement-already-unknown" };
+    const state: ReturnType<typeof setup> = setup({ tasks: [task("UNKNOWN")], handlers: [
+      http.post(`/api/v1/projects/${PROJECT_ID}/tasks/:taskId/new-attempt`, ({ request, params }) => {
+        const current = { task: String(params.taskId), key: request.headers.get("Idempotency-Key") }; writes.push(current);
+        if (writes.some((entry) => entry.key === current.key && entry.task !== current.task)) return HttpResponse.json({ code: "UNKNOWN_RETRY_CONFLICT" }, { status: 409 });
+        state.setTasks(current.task === "task-direct" ? [next] : [{ ...task("READY"), id: "second-replacement" }]);
+        return HttpResponse.json({ ...task("READY"), id: current.task === "task-direct" ? next.id : "second-replacement" });
+      }),
+    ] });
+    const prompt = await screen.findByRole("textbox", { name: "图片提示词" }); const before = prompt.textContent;
+    await userEvent.click(await screen.findByRole("button", { name: "重试" }));
+    await waitFor(() => expect(state.client.getQueryData<Task[]>(["direct-media-tasks", PROJECT_ID, CANVAS_ITEM_ID])?.[0]?.id).toBe(next.id));
+    await waitFor(() => expect(screen.getByRole("button", { name: "重试" })).toBeEnabled());
+    await userEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "重试" })).not.toBeInTheDocument());
+    expect(writes).toHaveLength(2); expect(writes[1]?.key).not.toBe(writes[0]?.key);
+    expect(prompt.textContent).toBe(before); expect(state.saves).toHaveLength(0);
+  });
+
   it("creates a new task for an accepted blocked request while retaining its draft", async () => {
     const blocked = { ...task("BLOCKED"), providerRequestId: "synthetic-accepted", version: 7,
       errorCode: "PROVIDER_POLL_RETRY_EXHAUSTED" };
