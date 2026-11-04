@@ -64,7 +64,11 @@ export function selectedCandidateRevision(shot: ShotInput, production: Productio
 }
 export function currentShotRevision(shot: ShotInput, base?: StoryboardShot): number {
   if (!base) return 1;
-  const creative = (value: ShotInput | StoryboardShot) => JSON.stringify([value.description, value.dialogue,
-    value.durationSeconds, value.sourceVersionId, value.referenceVersionIds]);
-  return base.revision + Number(creative(shot) !== creative(base));
+  return base.revision + Number(shotCreativeSignature(shot) !== shotCreativeSignature(base));
+}
+
+/** Creative inputs advance shot revisions; display labels and review confirmations do not. */
+export function shotCreativeSignature(shot: ShotInput | StoryboardShot): string {
+  return JSON.stringify([shot.description, shot.dialogue,
+    shot.durationSeconds, shot.sourceVersionId, shot.referenceVersionIds]);
 }

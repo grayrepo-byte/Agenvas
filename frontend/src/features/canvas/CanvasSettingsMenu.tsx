@@ -1,5 +1,5 @@
 import { Check,GearSix } from "@/shared/ui/icons";
-import { useRef,useState } from "react";
+import { useState } from "react";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
 import { DropdownMenu,DropdownMenuContent,DropdownMenuGroup,DropdownMenuItem,DropdownMenuTrigger } from "../../shared/ui/primitives/dropdown-menu";
@@ -14,10 +14,8 @@ export function CanvasSettingsMenu({ preferences, onPreferenceChange, persistenc
 }) {
   useLocale();
   const [open, setOpen] = useState(false);
-  const container = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  return <DropdownMenu open={open} onOpenChange={setOpen} modal={false}><div className="workspace-settings" ref={container}>
-    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" ref={trigger} type="button" className="workspace-settings-trigger" aria-label={t("canvas.settings.title")}
+  return <DropdownMenu open={open} onOpenChange={setOpen} modal={false}><div className="workspace-settings">
+    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" type="button" className="workspace-settings-trigger" aria-label={t("canvas.settings.title")}
       title={t("canvas.settings.title")} aria-haspopup="menu" aria-expanded={open} disabled={disabled}><GearSix size={20} /></Button></DropdownMenuTrigger>
     {open ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="workspace-settings-menu" aria-label={t("canvas.settings.title")}><DropdownMenuGroup>
       <p>{t("canvas.settings.connections")}</p>

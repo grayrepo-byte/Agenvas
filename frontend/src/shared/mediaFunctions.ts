@@ -27,9 +27,7 @@ export function compatibleVideoFunction(operation: VideoOperation, capability: M
 }
 
 export function videoFunctionChoices(settings: MediaSettings, operation: VideoOperation) {
-  return settings.connections.filter((connection) => connection.enabled)
-    .flatMap((connection) => connection.capabilities.filter((capability) => compatibleVideoFunction(operation, capability))
-      .map((capability) => ({ capability, label: `${connection.platform === "LOCAL" ? t("media.functions.localMedia") : `${connection.platform} · ${connection.name}`} · ${capability.name}` })));
+  return mediaFunctionChoices(settings, videoFunction(operation));
 }
 
 const IMAGE_LABELS: Record<ImageOperation, Parameters<typeof t>[0]> = {

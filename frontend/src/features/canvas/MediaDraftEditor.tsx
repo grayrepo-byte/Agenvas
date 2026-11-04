@@ -996,9 +996,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
 
   function removeReference(versionId: string) {
     if (session.isReadOnly()) return;
-    const persisted = draft.data?.mediaInputs.find((input) => input.versionId === versionId);
-    if (persisted?.sources.some((source) => source.type === "CONNECTION"
-        && source.connectionId)) {
+    if (hasConnectionSource(versionId)) {
       removeConnectedInput.mutate({ versionId });
       return;
     }

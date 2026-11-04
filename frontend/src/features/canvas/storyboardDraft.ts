@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Storyboard, SaveStoryboardRequest, StoryboardShot, Task, AgentMediaApproval } from "../../shared/api/client";
-import { approvalMatchesShot, currentShotRevision, selectedCandidateRevision, shotMediaCandidates, shotMediaTaskStatuses } from "./storyboardMedia";
+import { approvalMatchesShot, currentShotRevision,shotCreativeSignature, selectedCandidateRevision, shotMediaCandidates, shotMediaTaskStatuses } from "./storyboardMedia";
 
 export const STORYBOARD_ROLES = ["KEYFRAME", "VIDEO", "AUDIO"] as const;
 export const STORYBOARD_MAX_SHOTS = 200;
@@ -24,10 +24,6 @@ export function newStoryboardShot(index: number): ShotInput {
   return { id: crypto.randomUUID(), code: `SHOT-${String(index + 1).padStart(2, "0")}`, scene: "", title: "",
     description: "", dialogue: "", durationSeconds: 5, sourceVersionId: null, referenceVersionIds: [], productions: [] };
 }
-function creative(shot: ShotInput | StoryboardShot): string {
-  return JSON.stringify([shot.description, shot.dialogue,
-    shot.durationSeconds, shot.sourceVersionId, shot.referenceVersionIds]);
-}
 /** Editing one shot keeps every paid result and only invalidates that shot's reviews. */
 export function productionNeedsReview(shot: ShotInput, production: ProductionInput, base?: StoryboardShot, approvals: readonly AgentMediaApproval[] = []): boolean {
   if (production.confirmReviewed) return false;
@@ -37,11 +33,11 @@ export function productionNeedsReview(shot: ShotInput, production: ProductionInp
   const alreadyReviewed = previous?.selectedVersionId === production.selectedVersionId && !previous.needsReview && previous.reviewedRevision >= currentRevision;
   if (basisRevision !== undefined && basisRevision < currentRevision && !alreadyReviewed) return true;
   if (!production.selectedVersionId || production.selectedVersionId !== previous?.selectedVersionId) return false;
-  return previous.needsReview || !base || creative(shot) !== creative(base);
+  return previous.needsReview || !base || shotCreativeSignature(shot) !== shotCreativeSignature(base);
 }
 /** Ordering and frozen production choices affect the composition; display labels and review clicks do not. */
 export function storyboardContentSignature(shots: readonly ShotInput[]): string {
-  return JSON.stringify(shots.map((shot) => [shot.id, creative(shot),
+  return JSON.stringify(shots.map((shot) => [shot.id, shotCreativeSignature(shot),
     shot.productions.map((production) => [production.role, production.canvasItemId, production.selectedVersionId]).sort()]));
 }
 export function compositionNeedsReview(draft: StoryboardDraft): boolean {

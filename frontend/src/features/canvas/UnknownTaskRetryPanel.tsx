@@ -42,7 +42,7 @@ export function UnknownTaskRetryPanel({ projectId, taskId, taskVersion, errorCod
         onClick={() => retry.mutate()} type="button">
         {retry.isPending ? t("common.retrying") : t("common.retry")}
       </Button>
-    }>{reason ?? errorCode}</EditorFeedbackRow>
+    }>{reason}</EditorFeedbackRow>
     {retry.data ? <EditorFeedbackRow tone="success">{t("tasks.retry.newTask", { "0": retry.data.id })}</EditorFeedbackRow> : null}
     {retry.error ? <EditorFeedbackRow tone="danger">{t("tasks.retry.retryFailed")}</EditorFeedbackRow> : null}
   </>;
