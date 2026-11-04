@@ -40,6 +40,7 @@ import { ComfyWorkflowEditor } from "./ComfyWorkflowEditor";
 import { isComfyAdapter } from "./comfyWorkflow";
 import { RunningHubDefinitionEditor } from "./RunningHubDefinitionEditor";
 import { buildMediaCapabilitySettings, CapabilityDraftError, type MediaCapabilityDraft } from "./mediaCapabilityDraft";
+import { applyOpenAiImageTokenPreset, openAiImagePricePreset, updateOpenAiImagePricingDraft } from "./openAiImagePricingPresets";
 import { mediaConnectionAddresses, mediaConnectionOrigin } from "./mediaConnectionConfiguration";
 import { MediaDefaultsSection } from "./MediaDefaultsSection";
 
@@ -106,9 +107,10 @@ const EDITOR_TABS = [
 ] as const;
 type EditorTab = typeof EDITOR_TABS[number]["id"];
 
-function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, onAdapterChange, availableAdapters,
-  values, onChange, onWorkflowReady, onBusyChange, discoveryBusy = false, resetKey = 0, creating = false, disabled }: {
+function CapabilityEditorFields({ connectionId, connectionOrigin, name, onNameChange, adapterId, onAdapterChange, availableAdapters,
+  values, onChange: onSettingsChange, onWorkflowReady, onBusyChange, discoveryBusy = false, resetKey = 0, creating = false, disabled }: {
   connectionId: string; name: string; onNameChange: (value: string) => void;
+  connectionOrigin?: string | null;
   adapterId: string; onAdapterChange: (value: string) => void; availableAdapters: string[];
   values: AdapterSettings; onChange: (value: AdapterSettings) => void;
   creating?: boolean; disabled: boolean; onWorkflowReady: (ready: boolean) => void;
@@ -117,6 +119,21 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
   const locale = useLocale();
   const fieldId = useId();
   const [tab, setTab] = useState<EditorTab>("model");
+  const initializedPreset = useRef<string | null>(null);
+  function onChange(next: AdapterSettings) {
+    onSettingsChange(adapterId === "OPENAI_GPT_IMAGE_2" ? updateOpenAiImagePricingDraft(values, next, connectionOrigin) : next);
+  }
+  useEffect(() => {
+    if (adapterId === "OPENAI_GPT_IMAGE_2" && values.openAiPricePresetModel && values.openAiPricePresetOrigin !== connectionOrigin) {
+      onSettingsChange(updateOpenAiImagePricingDraft(values, values, connectionOrigin));
+      return;
+    }
+    if (!creating || initializedPreset.current === adapterId) return;
+    initializedPreset.current = adapterId;
+    if (adapterId === "OPENAI_GPT_IMAGE_2" && !values.pricing && !values.tokenPricing
+        && openAiImagePricePreset(values.model, connectionOrigin))
+      onSettingsChange(applyOpenAiImageTokenPreset(values, connectionOrigin));
+  }, [creating, adapterId, values, connectionOrigin, onSettingsChange]);
   const nativeKling = isKlingNativeAdapter(adapterId);
   const nativeMedia = isNativeMediaAdapter(adapterId);
   const nativeCatalog = useQuery({ queryKey: ["settings", "media", "profiles", locale], queryFn: getNativeMediaProfiles,
@@ -230,7 +247,7 @@ function CapabilityEditorFields({ connectionId, name, onNameChange, adapterId, o
               {klingCatalog.error ? <Button type="button" variant="outline" onClick={() => void klingCatalog.refetch()}>{t("common.retry")}</Button> : null}
             </div>
             : <FixedModelFields adapterId={adapterId} values={values} onChange={onChange} />}
-        </> : <CapabilityConfigurationFields section={item.id} adapterId={adapterId} values={values} onChange={onChange}
+        </> : <CapabilityConfigurationFields section={item.id} adapterId={adapterId} values={values} onChange={onChange} connectionOrigin={connectionOrigin}
           nativeInputLimits={nativeProfile?.inputLimits ?? klingProfile?.inputLimits} />}
       </FieldGroup></FieldSet>
       <div className="capability-editor-paging">
@@ -293,10 +310,11 @@ function ConfigurationUpdatedNotice({ scope, disabled, onReload }: {
   </Notice>;
 }
 
-function CapabilityRow({ connectionId, connectionName, capability, isDefault, connectionEnabled,
+function CapabilityRow({ connectionId, connectionName, connectionOrigin, capability, isDefault, connectionEnabled,
   availableAdapters, busy, hidden = false, apply, act }: {
   connectionId: string;
   connectionName: string;
+  connectionOrigin: string | null;
   capability: MediaCapability;
   isDefault: boolean;
   connectionEnabled: boolean;
@@ -381,7 +399,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       <TableCell data-label={t("settings.mediaSettings.inputRange")}><span className="media-cell-text" title={t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages })}>{capability.kind === "VIDEO_GENERATION"
         ? t("settings.mediaWorkspace.compactVideoInput", { "0": capability.minimumSeconds, "1": capability.maximumSeconds, "2": capability.maxReferenceImages })
         : t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages })}</span></TableCell>
-      <TableCell data-label={t("settings.mediaSettings.price")} title={t("settings.mediaWorkspace.estimateOnly")}>{capability.settings.pricing ? <>{capability.settings.pricing.amount} {capability.settings.pricing.currency}
+      <TableCell data-label={t("settings.mediaSettings.price")} title={t("settings.mediaWorkspace.estimateOnly")}>{capability.settings.tokenPricing ? <>{t("media.pricing.perMillionTokens")} · {capability.settings.tokenPricing.currency}</> : capability.settings.pricing ? <>{capability.settings.pricing.amount} {capability.settings.pricing.currency}
         <span className="media-price-unit"> / {capability.settings.pricing.unit === "SECOND" ? t("settings.mediaSettings.seconds") : capability.settings.pricing.unit === "VIDEO" ? t("settings.mediaSettings.videoUnit") : capability.settings.pricing.unit === "AUDIO" ? t("settings.editor.audioUnit") : t("settings.mediaSettings.imageUnit")}</span></> : <span className="ui-muted">{t("settings.mediaWorkspace.unknownPrice")}</span>}</TableCell>
       <TableCell><div className="media-table-badges">
         <StatusBadge tone={capability.enabled && connectionEnabled ? "success" : "warning"}>{capability.enabled && connectionEnabled ? t("settings.mediaSettings.enabled") : t("settings.mediaSettings.disabled")}</StatusBadge>
@@ -422,7 +440,7 @@ function CapabilityRow({ connectionId, connectionName, capability, isDefault, co
       </>}>
       <div className="ui-stack">
         {isStale ? <ConfigurationUpdatedNotice scope={t("settings.mediaSettings.capabilityParameters")} disabled={rowBusy} onReload={loadLatest} /> : null}
-        <CapabilityEditorFields connectionId={connectionId} name={name} onNameChange={setName} adapterId={adapterId}
+        <CapabilityEditorFields connectionId={connectionId} connectionOrigin={connectionOrigin} name={name} onNameChange={setName} adapterId={adapterId}
           onAdapterChange={(value) => { setAdapterId(value); setModelNames({}); }} availableAdapters={sameKindAdapters}
           values={modelNames} onChange={setModelNames} onWorkflowReady={setWorkflowReady} onBusyChange={setImportBusy} discoveryBusy={importBusy} resetKey={editorResetKey} disabled={busy || save.isPending || remove.isPending} />
         {error ? <Notice tone="danger">{error}</Notice> : null}
@@ -486,7 +504,7 @@ function ConnectionCapabilities({ connection, settings, apply, query, status, ki
       <TableCell data-label={t("settings.mediaWorkspace.kindColumn")}>{capability.kind === "IMAGE_GENERATION" ? t("common.image") : t("common.video")}</TableCell>
       <TableCell data-label={t("settings.mediaSettings.inputRange")}><span className="media-cell-text">{capability.kind === "IMAGE_GENERATION" ? t("settings.mediaSettings.referenceImageLimit", { "0": capability.maxReferenceImages }) : t("media.functions.videoTools")}</span></TableCell>
       <TableCell data-label={t("settings.mediaSettings.price")}>{t("settings.mediaSettings.localExecution")}</TableCell><TableCell><StatusBadge tone="success">{t("settings.mediaSettings.enabled")}</StatusBadge></TableCell><TableCell className="ui-muted">{t("settings.mediaSettings.administration")}</TableCell>
-    </TableRow> : <CapabilityRow key={capability.id} connectionId={connection.id} connectionName={connection.name}
+    </TableRow> : <CapabilityRow key={capability.id} connectionId={connection.id} connectionName={connection.name} connectionOrigin={connection.origin}
       capability={capability} isDefault={settings.defaults.some((item) => item.kind === capability.kind && item.capabilityId === capability.id)}
       connectionEnabled={connection.enabled} availableAdapters={availableAdapters} busy={mutate.isPending} hidden={!capabilityMatches(connection, capability, query, status, kind)} apply={apply}
       act={(type, selected) => mutate.mutate({ type, capability: selected })} />)}
@@ -632,7 +650,7 @@ function ConnectionRow({ connection, settings, apply, hidden, publishOpen, onPub
         <Button variant="default"  type="submit" disabled={busy || !connection.enabled || (isComfyAdapter(adapterId) || isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId)) && !workflowReady}>{addCapability.isPending ? t("settings.mediaSettings.publishing") : t("settings.mediaSettings.publishCapability")}</Button>
       </>}>
       <div className="ui-stack">
-        <CapabilityEditorFields connectionId={connection.id} name={capabilityName} onNameChange={setCapabilityName} adapterId={adapterId}
+        <CapabilityEditorFields connectionId={connection.id} connectionOrigin={connection.origin} name={capabilityName} onNameChange={setCapabilityName} adapterId={adapterId}
           onAdapterChange={(value) => { setAdapterId(value); setNewModelNames({}); }} availableAdapters={availableAdapters}
           values={newModelNames} onChange={setNewModelNames} onWorkflowReady={setWorkflowReady} onBusyChange={setImportBusy} discoveryBusy={importBusy} creating disabled={save.isPending || addCapability.isPending || mutate.isPending || !connection.enabled} />
         {!connection.enabled ? <Notice tone="warning">{t("settings.mediaSettings.enableBeforePublish")}</Notice> : null}

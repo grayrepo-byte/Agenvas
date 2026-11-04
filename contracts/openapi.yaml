@@ -6731,12 +6731,25 @@ components:
         maxReferenceAudios: {type: integer, minimum: 0, maximum: 14}
         maxReferenceVideos: {type: integer, minimum: 0, maximum: 14}
         pricing: {$ref: "#/components/schemas/MediaCapabilityPricing"}
+        tokenPricing: {$ref: "#/components/schemas/ImageTokenPricing"}
         pricingByResolution:
           type: object
           maxProperties: 16
           propertyNames: {pattern: '^[1-9][0-9]{2,3}p$'}
           additionalProperties: {$ref: '#/components/schemas/MediaCapabilityPricing'}
           description: AutoDL published tiers, MINIMAX_H3 768p/1440p, or the declared KLING video model 720p/1080p/2160p tiers (2160p maps to native 4k). Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost.
+    ImageTokenPricing:
+      type: object
+      additionalProperties: false
+      description: OpenAI Images API only. Administrator rates in currency per million tokens, mutually exclusive with pricing/pricingByResolution. Frozen on task acceptance. Missing usage keeps cost unknown. Missing cache counts stay unknown; the estimate uses undiscounted input rates. Positive cache usage needs both modality counts and applicable rates. Never an actual provider invoice.
+      required: [currency, textInputPerMillion, imageInputPerMillion, imageOutputPerMillion]
+      properties:
+        currency: {type: string, enum: [CNY, USD]}
+        textInputPerMillion: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,6})?$'}
+        imageInputPerMillion: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,6})?$'}
+        imageOutputPerMillion: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,6})?$'}
+        cachedTextInputPerMillion: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,6})?$'}
+        cachedImageInputPerMillion: {type: string, pattern: '^[0-9]{1,10}(\.[0-9]{1,6})?$'}
     ComfyUiGraph:
       type: object
       minProperties: 1
@@ -7425,6 +7438,14 @@ components:
             llmRequestCount: {type: integer, minimum: 0}
             inputTokens: {type: [integer, "null"], minimum: 0}
             outputTokens: {type: [integer, "null"], minimum: 0}
+            totalTokens: {type: [integer, "null"], minimum: 0}
+            textInputTokens: {type: [integer, "null"], minimum: 0}
+            imageInputTokens: {type: [integer, "null"], minimum: 0}
+            imageOutputTokens: {type: [integer, "null"], minimum: 0}
+            textOutputTokens: {type: [integer, "null"], minimum: 0}
+            cachedInputTokens: {type: [integer, "null"], minimum: 0}
+            cachedTextInputTokens: {type: [integer, "null"], minimum: 0}
+            cachedImageInputTokens: {type: [integer, "null"], minimum: 0}
         estimatedCost: {type: [string, "null"], pattern: "^[0-9]+(\\.[0-9]+)?$"}
         actualCost: {type: [string, "null"], pattern: "^[0-9]+(\\.[0-9]+)?$"}
         currency: {type: [string, "null"], pattern: "^[A-Z]{3}$"}

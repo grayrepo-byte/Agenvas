@@ -4847,10 +4847,21 @@ export interface components {
             maxReferenceAudios?: number;
             maxReferenceVideos?: number;
             pricing?: components["schemas"]["MediaCapabilityPricing"];
+            tokenPricing?: components["schemas"]["ImageTokenPricing"];
             /** @description AutoDL published tiers, MINIMAX_H3 768p/1440p, or the declared KLING video model 720p/1080p/2160p tiers (2160p maps to native 4k). Matching tier overrides pricing; otherwise pricing is the fallback. Missing both means unknown cost. */
             pricingByResolution?: {
                 [key: string]: components["schemas"]["MediaCapabilityPricing"];
             };
+        };
+        /** @description OpenAI Images API only. Administrator rates in currency per million tokens, mutually exclusive with pricing/pricingByResolution. Frozen on task acceptance. Missing usage keeps cost unknown. Missing cache counts stay unknown; the estimate uses undiscounted input rates. Positive cache usage needs both modality counts and applicable rates. Never an actual provider invoice. */
+        ImageTokenPricing: {
+            /** @enum {string} */
+            currency: "CNY" | "USD";
+            textInputPerMillion: string;
+            imageInputPerMillion: string;
+            imageOutputPerMillion: string;
+            cachedTextInputPerMillion?: string;
+            cachedImageInputPerMillion?: string;
         };
         /** @description Administrator-imported ComfyUI API-format DAG, at most 256 KiB. Node links and fixed literals are retained; no UI graph, installation commands, transport endpoints or headers are accepted. */
         ComfyUiGraph: {
@@ -5399,6 +5410,14 @@ export interface components {
                 llmRequestCount: number;
                 inputTokens: number | null;
                 outputTokens: number | null;
+                totalTokens?: number | null;
+                textInputTokens?: number | null;
+                imageInputTokens?: number | null;
+                imageOutputTokens?: number | null;
+                textOutputTokens?: number | null;
+                cachedInputTokens?: number | null;
+                cachedTextInputTokens?: number | null;
+                cachedImageInputTokens?: number | null;
             };
             estimatedCost: string | null;
             actualCost: string | null;

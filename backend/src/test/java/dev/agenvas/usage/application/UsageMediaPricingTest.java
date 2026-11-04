@@ -31,6 +31,73 @@ class UsageMediaPricingTest {
     private final List<UsageEntry> entries = new ArrayList<>();
 
     @Test
+    void imageTokensSettleSeparateRatesFromReportedUsageAndNeverInventActualCharges() {
+        UsageService service = service();
+        Task original = tokenTask();
+        service.reserveMediaTask(UUID.randomUUID(), original, "PROVIDER_UNPRICED", 7);
+        assertThat(entries.getFirst().estimatedCost()).isNull();
+        Task completed = withUsage(original, """
+                {"inputTokens":300,"textInputTokens":100,"imageInputTokens":200,
+                 "outputTokens":400,"totalTokens":700,"valid":true}
+                """);
+        service.settleMediaTask(UUID.randomUUID(), completed);
+        UsageEntry entry = entries.getLast();
+        assertThat(entry.estimatedCost()).isEqualByComparingTo("0.014100");
+        assertThat(entry.actualCost()).isNull();
+        assertThat(entry.quantity().path("inputTokens").asInt()).isEqualTo(300);
+        assertThat(entry.quantity().path("textInputTokens").asInt()).isEqualTo(100);
+        assertThat(entry.quantity().path("imageInputTokens").asInt()).isEqualTo(200);
+        assertThat(entry.quantity().path("cachedInputTokens").isNull()).isTrue();
+        assertThat(entry.costStatus()).isEqualTo(UsageEntry.CostStatus.ESTIMATED);
+    }
+
+    @Test
+    void cachedModalityTokensAreSubtractedBeforeDiscounting() {
+        UsageService service = service();
+        Task task = tokenTask();
+        service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED", 7);
+        service.settleMediaTask(UUID.randomUUID(), withUsage(task, """
+                {"inputTokens":300,"textInputTokens":100,"imageInputTokens":200,"outputTokens":400,
+                 "totalTokens":700,"cachedInputTokens":120,"cachedTextInputTokens":40,
+                 "cachedImageInputTokens":80,"valid":true}
+                """));
+        assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("0.013470");
+    }
+
+    @Test
+    void missingMalformedInconsistentOrUnallocatableUsageCannotBecomeZeroOrAnImageCharge() {
+        UsageService service = service();
+        for (String usage : List.of("{}", "{\"valid\":false}",
+                "{\"inputTokens\":300,\"textInputTokens\":100,\"imageInputTokens\":201,\"outputTokens\":400,\"valid\":true}",
+                "{\"inputTokens\":300,\"textInputTokens\":100,\"imageInputTokens\":200,\"outputTokens\":400,\"cachedInputTokens\":120,\"valid\":true}",
+                "{\"inputTokens\":300,\"textInputTokens\":100,\"imageInputTokens\":200,\"outputTokens\":400,\"textOutputTokens\":1,\"valid\":true}")) {
+            Task task = tokenTask();
+            service.reserveMediaTask(UUID.randomUUID(), task, "PROVIDER_UNPRICED", 7);
+            service.settleMediaTask(UUID.randomUUID(), withUsage(task, usage));
+            assertThat(entries.getLast().estimatedCost()).isNull();
+            assertThat(entries.getLast().actualCost()).isNull();
+            assertThat(entries.getLast().costStatus()).isEqualTo(UsageEntry.CostStatus.UNKNOWN);
+        }
+    }
+
+    private Task tokenTask() {
+        Task task = task(Task.Kind.IMAGE_GENERATION, null);
+        ((tools.jackson.databind.node.ObjectNode) task.input()).set("mediaTokenPricing", mapper.readTree("""
+                {"currency":"USD","textInputPerMillion":"5","imageInputPerMillion":"8",
+                 "imageOutputPerMillion":"30","cachedTextInputPerMillion":"1.25","cachedImageInputPerMillion":"2"}
+                """));
+        return task;
+    }
+
+    private Task withUsage(Task task, String usage) {
+        var output = mapper.createObjectNode().set("providerUsage", mapper.readTree(usage));
+        return new Task(task.id(), task.projectId(), task.runId(), task.stepKey(), task.kind(), task.status(),
+                task.cancelRequested(), task.input(), task.inputHash(), output, task.providerRequestId(), task.attemptNo(),
+                task.nextActionAt(), task.leaseOwner(), task.leaseUntil(), task.leaseEpoch(), task.version(), task.errorCode(),
+                task.createdAt(), task.updatedAt(), task.completedAt());
+    }
+
+    @Test
     void settlementRetainsPinnedSecondEstimateAndNeverInventsAnActualCharge() {
         UsageService service = service();
         Task task = task(Task.Kind.VIDEO_GENERATION, """

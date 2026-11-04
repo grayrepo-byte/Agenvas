@@ -16,7 +16,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** Versioned administrator defaults, prices and narrower limits within a compiled protocol. */
 public final class MediaCapabilityConfiguration {
     public static final Set<String> FIELDS = Set.of("defaultParameters", "defaultDurationSeconds",
-            "minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "maxReferenceVideos", "pricing", "pricingByResolution");
+            "minimumSeconds", "maximumSeconds", "maxReferenceImages", "maxReferenceAudios", "maxReferenceVideos", "pricing", "pricingByResolution", "tokenPricing");
     private static final Set<String> PRICE_FIELDS = Set.of("amount", "currency", "unit");
     private static final Set<String> CURRENCIES = Set.of("CNY", "USD");
     private static final String PRICE_PATTERN = "[0-9]{1,10}(\\.[0-9]{1,6})?";
@@ -62,6 +62,12 @@ public final class MediaCapabilityConfiguration {
                     throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
                 target.set("defaultParameters", parsed.toJson(mapper));
             }
+        }
+        if (source.has("tokenPricing")) {
+            if (adapter.platform() != MediaPlatform.OPENAI || adapter.kind() != Task.Kind.IMAGE_GENERATION
+                    || source.has("pricing") || source.has("pricingByResolution"))
+                throw invalid(ApiMessage.of("api.media-capability-configuration.invalid-token-pricing"));
+            target.set("tokenPricing", ImageTokenPricing.normalize(mapper, source.get("tokenPricing")));
         }
         if (source.has("pricing")) target.set("pricing", normalizePrice(mapper, adapter, source.get("pricing")));
         if (source.has("pricingByResolution")) {

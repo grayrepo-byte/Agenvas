@@ -3583,5 +3583,17 @@
   "agent.context.historyLimited": "Earlier conversation history was supplied as a limited projection. Full conversation records remain available; the current request is kept complete.",
   "agent.context.compacted": "Earlier steps were summarized to continue within the context budget. Current instructions and original records are retained; summaries may omit details, which can be reread.",
   "agent.failure.capacityUnknown": "The model capacity is unknown. Read metadata or confirm the actual service capacity and output limit in connection settings. Existing content has been kept.",
-  "agent.failure.runtimeContextChanged": "The local model was unloaded, changed revision or has less context than this request needs. Refresh model metadata and start a new run; this request is not retried automatically."
+  "agent.failure.runtimeContextChanged": "The local model was unloaded, changed revision or has less context than this request needs. Refresh model metadata and start a new run; this request is not retried automatically.",
+  "media.pricing.tokenSettlement": "Estimated from reported tokens after generation",
+  "media.pricing.perMillionTokens": "Per million tokens",
+  "settings.capabilities.billingMode": "Billing mode",
+  "settings.capabilities.tokenTextInput": "Text input / million tokens",
+  "settings.capabilities.tokenImageInput": "Image input / million tokens",
+  "settings.capabilities.tokenImageOutput": "Image output / million tokens",
+  "settings.capabilities.tokenCachedTextInput": "Cached text input / million tokens (optional)",
+  "settings.capabilities.tokenCachedImageInput": "Cached image input / million tokens (optional)",
+  "settings.capabilities.tokenPricingHint": "Estimates use reported usage and rates frozen for this task; the provider invoice determines actual charges. Missing usage keeps cost unknown. Missing cache details use undiscounted input rates without treating cache counts as zero.",
+  "settings.capabilities.officialTokenPreset": "Official reference: {0}, USD per million tokens, Standard processing; verified {1}. Rates remain editable. Cached input discounts do not apply to OpenAI Images API requests.",
+  "settings.capabilities.officialTokenSource": "OpenAI official pricing source",
+  "settings.capabilities.noOfficialTokenPreset": "No verified official preset for this model or endpoint. Enter your provider rates; existing prices are never automatically overwritten."
 }

@@ -9,6 +9,20 @@ import {
 
 type Settings = MediaCapability["settings"];
 const price = (amount: string): NonNullable<Settings["pricing"]> => ({ amount, currency: "CNY", unit: "SECOND" });
+
+it("publishes OpenAI token rates without a competing per-image price and preserves explicit zero", () => {
+  const tokenPricing = { currency: "USD" as const, textInputPerMillion: "0", imageInputPerMillion: "8",
+    imageOutputPerMillion: "30", cachedTextInputPerMillion: "", cachedImageInputPerMillion: "2" };
+  const saved = buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", {
+    tokenPricing, pricing: { amount: "1", currency: "USD", unit: "IMAGE" },
+  });
+  expect(saved.tokenPricing).toEqual({ currency: "USD", textInputPerMillion: "0", imageInputPerMillion: "8",
+    imageOutputPerMillion: "30", cachedImageInputPerMillion: "2" });
+  expect(saved.pricing).toBeUndefined();
+  expect(buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", { tokenPricing, openAiPricePresetModel: "gpt-image-2" }))
+    .not.toHaveProperty("openAiPricePresetModel");
+  expect(buildMediaCapabilitySettings("GOOGLE_NANO_BANANA_2", { tokenPricing }).tokenPricing).toBeUndefined();
+});
 const definition: NonNullable<Settings["workflowDefinition"]> = {
   schemaVersion: 1, id: "synthetic_video_v1", label: "Synthetic video", minimumSeconds: 1, maximumSeconds: 20,
   promptLimit: 10000, mode: "TEXT", imageFields: [], audioFields: [], minimumImages: 0, minimumAudios: 0,

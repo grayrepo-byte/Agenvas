@@ -1,5 +1,4 @@
 import { Field, FieldLabel } from "../../shared/ui/primitives/field";
-import type { MediaCapability } from "../../shared/api/client";
 import { isNativeMediaAdapter, nativePricingTiers, type NativeInputLimits } from "../../shared/nativeMedia";
 import { t,useLocale } from "../../shared/i18n";
 import { Input } from "../../shared/ui/primitives/input";
@@ -12,7 +11,10 @@ import { WorkflowParameterFields } from "../canvas/WorkflowDraftControls";
 import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, minimaxResolutionLabel } from "../../shared/minimaxH3";
 import { AUTODL_ADAPTER, resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { VideoResolutionPricingFields } from "./VideoResolutionPricingFields";
-type Settings = MediaCapability["settings"];
+import { ImageTokenPricingFields } from "./ImageTokenPricingFields";
+import { applyOpenAiImageTokenPreset } from "./openAiImagePricingPresets";
+import type { MediaCapabilityDraft } from "./mediaCapabilityDraft";
+type Settings = MediaCapabilityDraft;
 type Parameters = NonNullable<Settings["defaultParameters"]>;
 const IMAGE_RATIOS = ["AUTO", "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"] as const;
 const VIDEO_RATIOS = ["AUTO", "16:9", "9:16", "1:1"] as const;
@@ -22,10 +24,11 @@ const SEEDANCE_MAX_REFERENCE_VIDEOS = 3;
 const PRICE_STEP = "0.000001";
 
 /** Shared by publishing and editing; no settings are silently discarded on save. */
-export function CapabilityConfigurationFields({ adapterId, values, onChange, section, nativeInputLimits }: {
+export function CapabilityConfigurationFields({ adapterId, values, onChange, section, nativeInputLimits, connectionOrigin }: {
   adapterId: string; values: Settings; onChange: (value: Settings) => void;
   section: "defaults" | "limits" | "pricing";
   nativeInputLimits?: NativeInputLimits;
+  connectionOrigin?: string | null;
 }) {
   useLocale();
   const metadata = adapterMetadata(adapterId);
@@ -135,6 +138,11 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
     </div> : null}
     {section === "pricing" ? <div className="media-config-section ui-form-grid">
       <h3>{t("media.pricing.estimated")}</h3>
+      {adapterId === "OPENAI_GPT_IMAGE_2" ? <Field><FieldLabel className="ui-field block">{t("settings.capabilities.billingMode")}<Select
+        value={values.tokenPricing ? "TOKEN" : "IMAGE"} onChange={(event) => onChange(event.target.value === "TOKEN"
+          ? applyOpenAiImageTokenPreset(values, connectionOrigin) : { ...values, tokenPricing: undefined, openAiPricePresetModel: undefined, openAiPricePresetOrigin: undefined })}
+        ><option value="IMAGE">{t("settings.capabilities.perImage")}</option><option value="TOKEN">{t("media.pricing.perMillionTokens")}</option></Select></FieldLabel></Field> : null}
+      {adapterId === "OPENAI_GPT_IMAGE_2" && values.tokenPricing ? <ImageTokenPricingFields values={values} onChange={onChange} connectionOrigin={connectionOrigin} /> : <>
       <Field><FieldLabel className="ui-field block">{t("settings.capabilities.unitPrice")}<Input type="number" min={0} max="9999999999.999999" step={PRICE_STEP}
           value={values.pricing?.amount ?? ""} placeholder={t("settings.capabilities.unknownPricePlaceholder")}
           onChange={(event) => onChange({ ...values, pricing: event.target.value ? {
@@ -156,6 +164,7 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
       </FieldLabel></Field>
       <p className="ui-muted">{t("settings.capabilities.pricingHint")}</p>
       {workflow || fixedVideoResolutions?.length ? <VideoResolutionPricingFields values={values} onChange={onChange} tiers={fixedVideoResolutions} tierLabel={fixedVideoResolutionLabel} kind={image ? "IMAGE" : "VIDEO"} /> : null}
+      </>}
     </div> : null}
   </>;
 }

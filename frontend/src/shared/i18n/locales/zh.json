@@ -3583,5 +3583,17 @@
   "agent.context.historyLimited": "较早会话历史以受限投影提供给模型。完整会话记录仍保留，当前请求保持完整。",
   "agent.context.compacted": "较早步骤已生成交接摘要以继续运行。当前指令和原始记录保留；摘要可能遗漏细节，必要时可重新读取。",
   "agent.failure.capacityUnknown": "模型容量未知。请在连接设置读取信息，或确认服务的实际容量和输出上限。已有内容已保留。",
-  "agent.failure.runtimeContextChanged": "本地模型已卸载、版本变化，或当前容量小于此请求所需。请刷新模型信息后发起新运行；此请求不会自动重试。"
+  "agent.failure.runtimeContextChanged": "本地模型已卸载、版本变化，或当前容量小于此请求所需。请刷新模型信息后发起新运行；此请求不会自动重试。",
+  "media.pricing.tokenSettlement": "按实际 Token 用量估算，生成后结算",
+  "media.pricing.perMillionTokens": "每百万 Token",
+  "settings.capabilities.billingMode": "计费方式",
+  "settings.capabilities.tokenTextInput": "文本输入 / 百万 Token",
+  "settings.capabilities.tokenImageInput": "图片输入 / 百万 Token",
+  "settings.capabilities.tokenImageOutput": "图片输出 / 百万 Token",
+  "settings.capabilities.tokenCachedTextInput": "缓存文本输入 / 百万 Token（可选）",
+  "settings.capabilities.tokenCachedImageInput": "缓存图片输入 / 百万 Token（可选）",
+  "settings.capabilities.tokenPricingHint": "按接口返回的实际用量及本次任务冻结的单价估算，实际扣费以平台账单为准。未返回用量时费用未知；未返回缓存明细时按普通输入费率估算，不假定缓存为零。",
+  "settings.capabilities.officialTokenPreset": "官方参考：{0}，USD / 百万 Token，标准处理；核验日期 {1}。单价可手动修改。OpenAI Images API 不适用缓存输入折扣。",
+  "settings.capabilities.officialTokenSource": "OpenAI 官方价格来源",
+  "settings.capabilities.noOfficialTokenPreset": "此模型或端点没有已核验的官方预设，请填写服务商单价。已有价格不会自动覆盖。"
 }

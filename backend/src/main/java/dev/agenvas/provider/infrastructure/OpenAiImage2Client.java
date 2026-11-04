@@ -225,7 +225,9 @@ public class OpenAiImage2Client {
                     throw new Uncertain(ProviderFailureCodes.SUBMISSION_UNKNOWN,
                             "OpenAI submission status uncertain");
                 }
-                JsonNode data = mapper.readTree(bytes).path("data");
+                JsonNode responseBody = mapper.readTree(bytes);
+                JsonNode metadata = dev.agenvas.provider.domain.OpenAiImageUsage.metadata(mapper, responseBody);
+                JsonNode data = responseBody.path("data");
                 if (!data.isArray() || data.size() != 1) {
                     LOGGER.warn("OpenAI image result shape is invalid status={} code={}", status,
                             ProviderFailureCodes.PROTOCOL_INVALID);
@@ -236,10 +238,11 @@ public class OpenAiImage2Client {
                 if (item.path("b64_json").isTextual()) {
                     byte[] image = decodeInline(item.path("b64_json").asText());
                     requirePng(image);
-                    return new MediaPayload(new ByteArrayInputStream(image), "image/png");
+                    return new MediaPayload(new ByteArrayInputStream(image), "image/png", metadata);
                 }
                 if (item.path("url").isTextual()) {
-                    return download(item.path("url").asText());
+                    MediaPayload downloaded = download(item.path("url").asText());
+                    return new MediaPayload(downloaded.stream(), downloaded.declaredContentType(), metadata);
                 }
                 LOGGER.warn("OpenAI image result payload missing status={} code={}", status,
                         ProviderFailureCodes.PROTOCOL_INVALID);

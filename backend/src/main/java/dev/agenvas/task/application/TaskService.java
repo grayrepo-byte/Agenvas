@@ -764,6 +764,7 @@ public class TaskService {
                 }
             }
             tasks.clearProviderPollFailures(lease.id());
+            Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
             // Approved Agent media shares the same reservation ledger as direct generation.
             if (lease.runId() == null || lease.approvedMedia()) {
                 if (dev.agenvas.provider.domain.KlingModels.PROTOCOL_ID.equals(lease.input().path("providerProtocol").asText())
@@ -774,9 +775,8 @@ public class TaskService {
                     if (seconds != null && seconds.signum() <= 0) throw new IllegalStateException("Archived Kling video lacks probed duration");
                     if (seconds != null) seconds = seconds.add(lease.input().path("nativeBillableInputSeconds").isNumber() ? lease.input().path("nativeBillableInputSeconds").decimalValue() : java.math.BigDecimal.ZERO);
                     usage.settleMediaTask(ownerId, lease, images, seconds);
-                } else usage.settleMediaTask(ownerId, lease);
+                } else usage.settleMediaTask(ownerId, lease, null, null, providerUsage);
             }
-            Task updated = tasks.findById(lease.id()).orElseThrow(this::notFound);
             appendMediaOutcomeEvent(ownerId, lease, updated, artifactId, result);
             return ProjectEventService.Change.unchanged(result);
         }).value();

@@ -276,6 +276,7 @@ public class DirectMediaTaskService {
                 input.put("prompt", renderedPrompt);
                 JsonNode selectedPrice = dev.agenvas.provider.domain.MediaCapabilityConfiguration.price(configuredSettings, resolutionTier);
                 if (selectedPrice != null) input.set("mediaPricing", selectedPrice);
+                if (configuredSettings.has("tokenPricing")) input.set("mediaTokenPricing", configuredSettings.get("tokenPricing").deepCopy());
                 input.put("workflowVersion", binding.adapterId() + ":" + binding.mappingSha256());
                 if (kind == Task.Kind.VIDEO_GENERATION && duration != null) input.put("durationSeconds", seconds);
                 ObjectNode frozen = input.putObject("mediaInput");
@@ -779,6 +780,7 @@ public class DirectMediaTaskService {
         if (prepared.duration() != null) snapshot.put("durationSeconds", prepared.duration());
         if (prepared.autodlResolution() != null) snapshot.put("providerResolution", prepared.autodlResolution());
         if (pricing != null) snapshot.set("mediaPricing", pricing);
+        if (prepared.configuredSettings().has("tokenPricing")) snapshot.set("mediaTokenPricing", prepared.configuredSettings().get("tokenPricing").deepCopy());
         ObjectNode summary = mapper.createObjectNode();
         summary.put("kind", prepared.kind().name());
         summary.put("prompt", renderPrompt(prepared.draft()));
@@ -805,6 +807,7 @@ public class DirectMediaTaskService {
         if (prepared.kling() != null && klingCount == null || prepared.nativeProfile() != null && nativeCount == null) summary.put("outputCountUnknown", true);
         if (prepared.nativeProfile() != null && (nativeCount == null || prepared.duration() == null && pricing != null && "SECOND".equals(pricing.path("unit").asText()))) summary.put("priceUnknown", true);
         if (pricing != null) summary.set("mediaPricing", pricing.deepCopy());
+        if (prepared.configuredSettings().has("tokenPricing")) summary.set("mediaTokenPricing", prepared.configuredSettings().get("tokenPricing").deepCopy());
         return new MediaPreflight(prepared.kind(), prepared.binding(), Sha256.hex(snapshot.toString()),
                 outputCount, summary);
     }

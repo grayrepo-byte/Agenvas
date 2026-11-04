@@ -1397,7 +1397,7 @@ describe("MediaSettingsPage", () => {
     }]);
   });
 
-  it("publishes only the fixed GPT Image 2 mapping with an allowed quality", async () => {
+  it("publishes GPT Image 2 with editable official Standard token defaults and an allowed quality", async () => {
     let submitted: unknown;
     server.use(
       http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
@@ -1423,7 +1423,9 @@ describe("MediaSettingsPage", () => {
     await selectValue(screen.getByRole("combobox", { name: "GPT Image 2 质量" }), "high");
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "发布能力" }));
     await waitFor(() => expect(submitted).toEqual({ name: "Portrait image",
-      adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "", quality: "high" } }));
+      adapterId: "OPENAI_GPT_IMAGE_2", settings: { model: "", quality: "high", tokenPricing: {
+        currency: "USD", textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "30",
+      } } }));
   });
 
   it("saves a Google API address without clearing the existing credential", async () => {
@@ -1464,6 +1466,68 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
     await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
     expect(within(screen.getByRole("dialog")).getByText(/与模型名分开配置/)).toBeInTheDocument();
+  });
+
+  it("clears untouched official defaults after canceling publication and changing the connection to a proxy", async () => {
+    let settings = settingsFixture();
+    settings.connections[0]!.capabilities = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1", () => {
+        settings = { ...settings, connections: [{ ...settings.connections[0]!, version: 2, connectionVersion: 2, origin: "https://proxy.example.com/v1" }] };
+        return HttpResponse.json(settings);
+      }),
+    );
+    mount();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    expect(within(screen.getByRole("dialog")).getByRole("spinbutton", { name: "图片输出 / 百万 Token" })).toHaveValue(30);
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "取消" }));
+    await user.click(screen.getByRole("button", { name: "编辑连接" }));
+    const connectionDialog = within(screen.getByRole("dialog"));
+    await user.type(connectionDialog.getByRole("textbox", { name: "API Base URL（留空使用官方地址）" }), "https://proxy.example.com/v1");
+    await user.click(connectionDialog.getByRole("button", { name: "保存连接" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "发布能力" }));
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    expect(within(screen.getByRole("dialog")).getByRole("spinbutton", { name: "图片输出 / 百万 Token" })).toHaveValue(null);
+    expect(within(screen.getByRole("dialog")).queryByRole("link", { name: "OpenAI 官方价格来源" })).not.toBeInTheDocument();
+  });
+
+  it("switches OpenAI pricing to separate token rates and persists the selected mode", async () => {
+    const settings = settingsFixture({}, { settings: { model: "gpt-image-2", pricing: { amount: "1", currency: "USD", unit: "IMAGE" } } });
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(settings);
+      }),
+    );
+    mount();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "已发布能力" }));
+    await user.click(await screen.findByText("编辑能力参数"));
+    await user.click(screen.getByRole("tab", { name: "估算价格" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await selectValue(dialog.getByRole("combobox", { name: "计费方式" }), "TOKEN");
+    expect(dialog.queryByRole("spinbutton", { name: "单位价格" })).not.toBeInTheDocument();
+    expect(dialog.getByRole("spinbutton", { name: "文本输入 / 百万 Token" })).toHaveValue(5);
+    expect(dialog.getByRole("spinbutton", { name: "图片输入 / 百万 Token" })).toHaveValue(8);
+    expect(dialog.getByRole("spinbutton", { name: "图片输出 / 百万 Token" })).toHaveValue(30);
+    expect(dialog.getByRole("link", { name: "OpenAI 官方价格来源" })).toHaveAttribute("href", expect.stringContaining("developers.openai.com"));
+    await user.clear(dialog.getByRole("spinbutton", { name: "图片输出 / 百万 Token" }));
+    await user.type(dialog.getByRole("spinbutton", { name: "图片输出 / 百万 Token" }), "31");
+    await user.click(dialog.getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(submitted).toMatchObject({ settings: { model: "gpt-image-2", tokenPricing: {
+      currency: "USD", textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "31",
+    } } }));
+    expect((submitted as { settings: MediaCapability["settings"] }).settings.pricing).toBeUndefined();
   });
 
   it("persists defaults, price and reference limits while preserving the configured model", async () => {

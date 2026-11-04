@@ -64,6 +64,65 @@ class OpenAiImage2ClientTest {
     }
 
     @Test
+    void capturesOnlyReportedImageUsageForGenerationAndBothEditTransports() throws IOException {
+        String png = Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10});
+        String response = "{\"data\":[{\"b64_json\":\"" + png + "\"}],\"usage\":{\"input_tokens\":30,"
+                + "\"input_tokens_details\":{\"text_tokens\":10,\"image_tokens\":20},\"output_tokens\":40,"
+                + "\"total_tokens\":70,\"secret\":\"never retain\"}}";
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200, response));
+        server.createContext("/v1/images/edits", exchange -> respond(exchange, 200, response));
+        String origin = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        try (var generated = client.generate("synthetic-key", "gpt-image-2", "test", "medium", "1024x1024", origin);
+                var edited = client.edit("synthetic-key", "gpt-image-2", "test", "medium", "1024x1024", List.of(new byte[]{1}), origin);
+                var urlEdit = client.editUrls("synthetic-key", "gpt-image-2", "test", "medium", "1024x1024",
+                        List.of("https://example.com/image.png"), null, false, origin)) {
+            for (var result : List.of(generated, edited, urlEdit)) {
+                assertThat(result.providerMetadata()).isNotNull();
+                var usage = result.providerMetadata().path("imageTokenUsage");
+                assertThat(usage.path("textInputTokens").asInt()).isEqualTo(10);
+                assertThat(usage.path("imageInputTokens").asInt()).isEqualTo(20);
+                assertThat(usage.path("outputTokens").asInt()).isEqualTo(40);
+                assertThat(usage.path("cachedInputTokens").isNull()).isTrue();
+                assertThat(usage.has("secret")).isFalse();
+            }
+        }
+    }
+
+    @Test
+    void malformedOptionalUsageContainersCannotMasqueradeAsUnreportedDetails() throws IOException {
+        var responseBody = new java.util.concurrent.atomic.AtomicReference<String>();
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200, responseBody.get()));
+        String png = Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10});
+        for (String details : List.of("\"invalid\"", "[]", "true", "1")) {
+            for (String optional : List.of(
+                    "\"input_tokens_details\":{\"text_tokens\":10,\"image_tokens\":20},\"output_tokens_details\":" + details,
+                    "\"input_tokens_details\":{\"text_tokens\":10,\"image_tokens\":20,\"cached_tokens_details\":" + details + "}")) {
+                responseBody.set("{\"data\":[{\"b64_json\":\"" + png + "\"}],\"usage\":{\"input_tokens\":30,\"output_tokens\":40," + optional + "}}");
+                try (var result = client.generate("synthetic-key", "gpt-image-2", "test", "medium", "1024x1024",
+                        "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+                    assertThat(result.providerMetadata().at("/imageTokenUsage/valid").asBoolean()).isFalse();
+                }
+            }
+        }
+    }
+
+    @Test
+    void invalidReportedCountsRemainUnknownWithoutLosingTheImage() throws IOException {
+        var responseBody = new java.util.concurrent.atomic.AtomicReference<String>();
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200, responseBody.get()));
+        String png = Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10});
+        for (String count : List.of("-1", "2147483648", "1.5", "\"30\"", "true")) {
+            responseBody.set("{\"data\":[{\"b64_json\":\"" + png + "\"}],\"usage\":{\"input_tokens\":" + count + ",\"output_tokens\":40}}");
+            try (var result = client.generate("synthetic-key", "gpt-image-2", "test", "medium", "1024x1024",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+                assertThat(result.providerMetadata().at("/imageTokenUsage/inputTokens").isNull()).isTrue();
+                assertThat(result.providerMetadata().at("/imageTokenUsage/valid").asBoolean()).isFalse();
+                assertThat(result.stream().readAllBytes()).isNotEmpty();
+            }
+        }
+    }
+
+    @Test
     void generationAndReferenceEditUseSeparateFixedPathsAndPngResponses() throws IOException {
         byte[] png = new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
         String result = "{\"data\":[{\"b64_json\":\""

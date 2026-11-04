@@ -42,6 +42,7 @@ function publicValue(value: unknown): string {
     .map(([key, item]) => `${key}: ${publicValue(item)}`).join(" · ");
 }
 function priceLabel(preview: Readonly<Record<string, unknown>>): string {
+  if (preview.mediaTokenPricing) return t("media.pricing.tokenSettlement");
   const price = record(preview.mediaPricing);
   const amount = text(price.amount);
   const currency = text(price.currency);

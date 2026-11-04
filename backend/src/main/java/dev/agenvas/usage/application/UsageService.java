@@ -206,12 +206,20 @@ public class UsageService {
     /** Multiple Kling images and clipped motion durations settle from archived media, not requested counts. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void settleMediaTask(UUID ownerId, Task task, Integer archivedImageCount, BigDecimal archivedVideoSeconds) {
+        settleMediaTask(ownerId, task, archivedImageCount, archivedVideoSeconds,
+                task.output() == null ? null : task.output().get("providerUsage"));
+    }
+
+    /** Explicit usage also covers canceled late results, which are retained outside task.output. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void settleMediaTask(UUID ownerId, Task task, Integer archivedImageCount,
+            BigDecimal archivedVideoSeconds, JsonNode providerUsage) {
         if (!isMediaTask(task)) return;
         UsageEntry reservation = ledger.findByOperationKey(
                 "media:" + task.id() + ":reserve").orElseThrow(() ->
                 new IllegalStateException("Direct media Task has no media usage reservation"));
         persist(ownerId, entry(task, UsageEntry.EntryType.SETTLEMENT,
-                reservation.costSource(), "media:" + task.id() + ":settle", reservation.providerConfigVersion(), archivedImageCount, archivedVideoSeconds));
+                reservation.costSource(), "media:" + task.id() + ":settle", reservation.providerConfigVersion(), archivedImageCount, archivedVideoSeconds, providerUsage));
     }
 
     /** 调用方确认生成未提交，或零费用本地处理已失败/取消后释放预留；不推断未知外部费用。 */
@@ -254,11 +262,11 @@ public class UsageService {
     /** 从已批准任务的固定输入生成数量账目，并核验 Provider 与工作流快照。 */
     private UsageEntry entry(Task task, UsageEntry.EntryType type, String source,
             String operationKey, int connectionVersion) {
-        return entry(task, type, source, operationKey, connectionVersion, null, null);
+        return entry(task, type, source, operationKey, connectionVersion, null, null, null);
     }
 
     private UsageEntry entry(Task task, UsageEntry.EntryType type, String source,
-            String operationKey, int connectionVersion, Integer archivedImageCount, BigDecimal archivedVideoSeconds) {
+            String operationKey, int connectionVersion, Integer archivedImageCount, BigDecimal archivedVideoSeconds, JsonNode providerUsage) {
         ObjectNode quantity = mapper.createObjectNode();
         boolean runningHub = "RUNNINGHUB_V2".equals(task.input().path("providerProtocol").asText());
         boolean kling = dev.agenvas.provider.domain.KlingModels.PROTOCOL_ID.equals(task.input().path("providerProtocol").asText())
@@ -307,6 +315,15 @@ public class UsageService {
         quantity.put("llmRequestCount", 0);
         quantity.putNull("inputTokens");
         quantity.putNull("outputTokens");
+        JsonNode imageUsage = task.kind() == Task.Kind.IMAGE_GENERATION && type == UsageEntry.EntryType.SETTLEMENT
+                && (task.input().has("mediaTokenPricing") || task.input().path("workflowVersion").asText()
+                    .startsWith(dev.agenvas.provider.domain.MediaAdapterRegistry.OPENAI_GPT_IMAGE_2 + ":"))
+                && providerUsage != null ? providerUsage : mapper.nullNode();
+        if (imageUsage.isObject()) {
+            for (String field : dev.agenvas.provider.domain.OpenAiImageUsage.COUNTS) {
+                putNullableToken(quantity, field, tokenCount(imageUsage, field));
+            }
+        }
         String workflowVersion = task.input().path("workflowVersion").asText("");
         if (connectionVersion < 1 || workflowVersion.isBlank()
                 || !("MOCK_UNPRICED".equals(source) || "PROVIDER_UNPRICED".equals(source)
@@ -316,9 +333,13 @@ public class UsageService {
         boolean localNoCost = "LOCAL_NO_COST".equals(source);
         BigDecimal knownZero = localNoCost ? BigDecimal.ZERO : null;
         JsonNode pricing = task.input().path("mediaPricing");
+        JsonNode tokenPricing = task.input().path("mediaTokenPricing");
         BigDecimal estimate = knownZero;
         String currency = null;
-        if (!localNoCost && pricing.isObject()) {
+        if (!localNoCost && tokenPricing.isObject()) {
+            estimate = dev.agenvas.provider.domain.ImageTokenPricing.estimate(tokenPricing, imageUsage);
+            currency = tokenPricing.path("currency").asText();
+        } else if (!localNoCost && pricing.isObject()) {
             estimate = new BigDecimal(pricing.path("amount").asText());
             if ("SECOND".equals(pricing.path("unit").asText())) {
                 JsonNode duration = quantity.path(task.kind() == Task.Kind.AUDIO_GENERATION ? "audioSeconds" : "videoSeconds");
@@ -334,7 +355,7 @@ public class UsageService {
                 localNoCost ? UsageEntry.CostStatus.KNOWN
                         : estimate != null ? UsageEntry.CostStatus.ESTIMATED : UsageEntry.CostStatus.UNKNOWN,
                 estimate != null && !localNoCost ? "ADMIN_CONFIGURED" : source, connectionVersion,
-                workflowVersion, null, clock.instant());
+                workflowVersion, imageUsage.path("model").asText(null), clock.instant());
     }
 
     /** 幂等插入账目；重放时逐字段比较载荷，冲突则拒绝并在首次插入时追加事件。 */

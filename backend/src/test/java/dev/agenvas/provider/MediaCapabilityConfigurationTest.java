@@ -17,6 +17,29 @@ class MediaCapabilityConfigurationTest {
     private final MediaAdapterRegistry registry = new MediaAdapterRegistry(List.of());
 
     @Test
+    void openAiAcceptsSeparateTokenRatesAndRejectsAmbiguousOrUnsupportedPricing() {
+        String rates = """
+                {"currency":"USD","textInputPerMillion":"5","imageInputPerMillion":"8",
+                 "imageOutputPerMillion":"30","cachedTextInputPerMillion":"1.25",
+                 "cachedImageInputPerMillion":"2"}
+                """;
+        assertThat(normalize("OPENAI_GPT_IMAGE_2", "{\"tokenPricing\":" + rates + "}")
+                .path("tokenPricing")).isEqualTo(mapper.readTree(rates));
+        for (String adapter : List.of("GOOGLE_NANO_BANANA_2", "MOCK_IMAGE", "ARK_SEEDANCE_2_I2V"))
+            assertThatThrownBy(() -> normalize(adapter, "{\"tokenPricing\":" + rates + "}"))
+                    .isInstanceOf(ApiProblemException.class);
+        for (String invalid : List.of(rates.replace("\"5\"", "\"-5\""),
+                rates.replace("\"5\"", "5"), rates.replace("\"5\"", "\"0.1234567\""),
+                rates.replace("\"currency\":\"USD\"", "\"currency\":\"EUR\""),
+                "{\"currency\":\"USD\",\"imageOutputPerMillion\":\"30\"}"))
+            assertThatThrownBy(() -> normalize("OPENAI_GPT_IMAGE_2", "{\"tokenPricing\":" + invalid + "}"))
+                    .isInstanceOf(ApiProblemException.class);
+        assertThatThrownBy(() -> normalize("OPENAI_GPT_IMAGE_2", "{\"tokenPricing\":" + rates
+                + ",\"pricing\":{\"amount\":\"1\",\"currency\":\"USD\",\"unit\":\"IMAGE\"}}"))
+                .isInstanceOf(ApiProblemException.class);
+    }
+
+    @Test
     void acceptsImageDefaultsNarrowerReferencesAndDecimalPrice() {
         ObjectNode settings = normalize("GOOGLE_NANO_BANANA_2", """
                 {"maxReferenceImages":3,"defaultParameters":{"aspectRatio":"16:9",
