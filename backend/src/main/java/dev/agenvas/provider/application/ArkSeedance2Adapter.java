@@ -321,10 +321,11 @@ public class ArkSeedance2Adapter implements MediaAdapter {
             BufferedImage source = ImageIO.read(file.path().toFile());
             if (source == null) throw new IllegalArgumentException(
                     "Pinned video input cannot be decoded");
-            int width = aspect(context) == Project.AspectRatio.PORTRAIT_9_16 ? 720
-                    : aspect(context) == Project.AspectRatio.SQUARE_1_1 ? 1024 : 1280;
-            int height = aspect(context) == Project.AspectRatio.PORTRAIT_9_16 ? 1280
-                    : aspect(context) == Project.AspectRatio.SQUARE_1_1 ? 1024 : 720;
+            Project.AspectRatio projectAspect = aspect(context);
+            int width = projectAspect == Project.AspectRatio.PORTRAIT_9_16 ? 720
+                    : projectAspect == Project.AspectRatio.SQUARE_1_1 ? 1024 : 1280;
+            int height = projectAspect == Project.AspectRatio.PORTRAIT_9_16 ? 1280
+                    : projectAspect == Project.AspectRatio.SQUARE_1_1 ? 1024 : 720;
             BufferedImage output = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
             Graphics2D graphics = output.createGraphics();
             try {

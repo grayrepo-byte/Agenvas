@@ -10,6 +10,19 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
+import dev.agenvas.artifact.application.ArtifactService;
+import dev.agenvas.artifact.domain.ArtifactVersion;
+import dev.agenvas.asset.application.AssetService;
+import dev.agenvas.asset.domain.Asset;
+import dev.agenvas.project.application.ProjectService;
+import dev.agenvas.project.domain.Project;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.nio.file.Path;
+import javax.imageio.ImageIO;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 
 import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.provider.domain.AttemptContext;
@@ -67,6 +80,63 @@ class ArkSeedance2AdapterTest {
                 .thenReturn(Optional.of(new JooqMediaCapabilityRepository.Snapshot(null, null, version,
                         binding.adapterId(), binding.mappingSha256(), null)));
         when(cipher.decryptMedia(eq(binding.connectionId()), eq(1), any())).thenReturn(KEY);
+    }
+
+    @TempDir Path images;
+    private final ProjectService projects = mock(ProjectService.class);
+
+    @ParameterizedTest
+    @CsvSource({"PORTRAIT_9_16,720,1280", "SQUARE_1_1,1024,1024", "LANDSCAPE_16_9,1280,720"})
+    void normalizesPinnedFramesUsingOneProjectReadPerImage(Project.AspectRatio ratio, int width, int height) throws Exception {
+        var imageAdapter = imageAdapter(ratio);
+        when(client.create(eq(KEY), any(), org.mockito.ArgumentMatchers.<List<ArkSeedanceClient.Reference>>any(), eq(5), eq("16:9")))
+                .thenReturn(REQUEST_ID);
+
+        assertThat(imageAdapter.submit(context)).isEqualTo(new Submission.Accepted(REQUEST_ID));
+
+        ArgumentCaptor<List<ArkSeedanceClient.Reference>> references = ArgumentCaptor.captor();
+        verify(client).create(eq(KEY), eq("A synthetic landscape"), references.capture(), eq(5), eq("16:9"));
+        assertThat(references.getValue()).hasSize(1);
+        var frame = references.getValue().getFirst();
+        assertThat(frame.role()).isEqualTo("first_frame");
+        assertThat(frame.contentType()).isEqualTo("image/png");
+        var decoded = ImageIO.read(new ByteArrayInputStream(frame.bytes()));
+        assertThat(decoded.getWidth()).isEqualTo(width);
+        assertThat(decoded.getHeight()).isEqualTo(height);
+        verify(projects).get(context.ownerId(), task.projectId());
+    }
+
+    @Test
+    void imagePreflightDoesNotCreateAPaidRequest() throws Exception {
+        assertThat(imageAdapter(Project.AspectRatio.LANDSCAPE_16_9).preflightFailure(context)).isNull();
+        verify(projects).get(context.ownerId(), task.projectId());
+        verifyNoMoreInteractions(client);
+    }
+
+    private ArkSeedance2Adapter imageAdapter(Project.AspectRatio ratio) throws Exception {
+        UUID projectId = UUID.randomUUID(), artifactId = UUID.randomUUID(), versionId = UUID.randomUUID(), assetId = UUID.randomUUID();
+        when(task.projectId()).thenReturn(projectId);
+        var input = (tools.jackson.databind.node.ObjectNode) task.input().path("mediaInput");
+        input.put("mode", "START_END");
+        ((tools.jackson.databind.node.ArrayNode) input.path("images")).addObject()
+                .put("artifactId", artifactId.toString()).put("versionId", versionId.toString()).put("role", "START_FRAME").put("order", 0);
+        var project = mock(Project.class);
+        when(project.aspectRatio()).thenReturn(ratio);
+        when(projects.get(context.ownerId(), projectId)).thenReturn(project);
+        var artifacts = mock(ArtifactService.class);
+        var version = mock(ArtifactVersion.class);
+        when(version.content()).thenReturn(mapper.createObjectNode().put("assetId", assetId.toString()));
+        when(artifacts.requireVersion(context.ownerId(), projectId, artifactId, versionId)).thenReturn(version);
+        Path image = images.resolve("synthetic.png");
+        ImageIO.write(new BufferedImage(4, 4, BufferedImage.TYPE_INT_RGB), "png", image.toFile());
+        var assets = mock(AssetService.class);
+        var asset = mock(Asset.class);
+        when(asset.mediaKind()).thenReturn(Asset.MediaKind.IMAGE);
+        when(assets.get(context.ownerId(), projectId, assetId)).thenReturn(new AssetService.AssetFile(asset, image));
+        when(audioReferences.load(context.ownerId(), task, false)).thenReturn(List.of());
+        when(videoReferences.load(context)).thenReturn(List.of());
+        return new ArkSeedance2Adapter(catalog, cipher, artifacts, assets, projects,
+                client, downloads, mediaTools, mapper, audioReferences, videoReferences);
     }
 
     @Test
