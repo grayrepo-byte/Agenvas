@@ -78,12 +78,14 @@ public final class MediaCapabilityConfiguration {
                 throw invalid(ApiMessage.of("api.auto-dl-workflows.this-workflow-does-not-support-this-resolution"));
             ObjectNode normalized = target.putObject("pricingByResolution");
             for (String tier : prices.propertyNames()) {
+                String priceTier = tier;
                 if (target.has("nativeInputs")) {
+                    priceTier = nativeResolutionTier(tier);
                     boolean supported = false;
                     for (JsonNode field : target.path("nativeInputs")) if ("resolution".equals(field.path("key").asText()))
-                        for (JsonNode option : field.path("options")) if (tier.equals(option.path("value").asText())
-                                || "2160p".equals(tier) && "4k".equalsIgnoreCase(option.path("value").asText())) supported = true;
-                    if (!supported) throw NativeMediaProfiles.invalid();
+                        for (JsonNode option : field.path("options"))
+                            if (priceTier.equals(nativeResolutionTier(option.path("value").asText()))) supported = true;
+                    if (!supported || normalized.has(priceTier)) throw NativeMediaProfiles.invalid();
                 } else if (adapter.platform() == MediaPlatform.MINIMAX) MiniMaxH3Protocol.resolution(tier);
                 else if (adapter.platform() == MediaPlatform.KLING) {
                     KlingProtocol.resolution(tier);
@@ -96,15 +98,38 @@ public final class MediaCapabilityConfiguration {
                     }
                 }
                 else AutoDlWorkflows.selectedResolution(target, tier);
-                normalized.set(tier, normalizePrice(mapper, adapter, prices.get(tier)));
+                normalized.set(priceTier, normalizePrice(mapper, adapter, prices.get(tier)));
             }
         }
     }
 
     /** A resolution override wins; an absent override uses the optional uniform estimate. */
     public static JsonNode price(JsonNode settings, String resolution) {
-        JsonNode tier = resolution == null ? null : settings.path("pricingByResolution").get(resolution);
+        JsonNode prices = settings.path("pricingByResolution");
+        JsonNode tier = resolution == null ? null : prices.get(resolution);
+        if (tier == null && resolution != null && prices.isObject()
+                && settings.path("nativeInputs").valueStream().anyMatch(field -> "resolution".equals(field.path("key").asText())))
+            tier = canonicalNativeResolutionPrices((ObjectNode) prices).get(nativeResolutionTier(resolution));
         return tier == null ? settings.get("pricing") : tier;
+    }
+
+    private static String nativeResolutionTier(String tier) {
+        return "4k".equalsIgnoreCase(tier) ? "2160p" : tier.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** Old published native video settings used protocol spelling (e.g. 720P/4k).
+     * Project only a copy; exact canonical entries win and frozen tasks stay unchanged.
+     */
+    public static ObjectNode canonicalNativeResolutionPrices(ObjectNode prices) {
+        ObjectNode result = prices.deepCopy();
+        for (String key : prices.propertyNames()) {
+            String canonical = nativeResolutionTier(key);
+            if (!canonical.equals(key)) {
+                if (!prices.has(canonical)) result.set(canonical, prices.get(key).deepCopy());
+                result.remove(key);
+            }
+        }
+        return result;
     }
 
     private static ObjectNode normalizePrice(ObjectMapper mapper, MediaAdapterRegistry.Declaration adapter, JsonNode price) {

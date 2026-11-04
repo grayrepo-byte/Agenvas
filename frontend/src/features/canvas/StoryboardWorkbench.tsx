@@ -11,6 +11,7 @@ import {
 } from "../../shared/api/client";
 import { t, useLocale, type MessageKey } from "../../shared/i18n";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
+import { mediaDraftPricingInputs } from "./mediaDraftPricing";
 import { Button } from "../../shared/ui/primitives/button";
 import { Badge } from "../../shared/ui/primitives/badge";
 import { Checkbox } from "../../shared/ui/primitives/checkbox";
@@ -220,8 +221,12 @@ export function StoryboardWorkbench({ projectId, items, onClose, onOpenNode }: {
       const capability = settings.connections.filter((connection) => connection.enabled).flatMap((connection) => connection.capabilities)
         .find((candidate) => candidate.id === currentDraft.capabilityId && candidate.enabled);
       if (!capability || !currentDraft.prompt.trim()) throw new Error(`${entry.code}: ${t("storyboard.prepareNode")}`);
+      const pricing = mediaDraftPricingInputs(capability, currentDraft, {
+        imageCount: currentDraft.parameters.generationCount ?? 1, durationSeconds: currentDraft.durationSeconds,
+        videoResolution: currentDraft.parameters.videoResolution,
+      });
       return { item, draft: currentDraft, name: `${entry.code} · ${entry.title} · ${t(ROLE_KEYS[production.role])}`,
-        cost: estimatedMediaCost(capability, currentDraft.parameters.generationCount ?? 1, currentDraft.durationSeconds, currentDraft.parameters.videoResolution) };
+        cost: estimatedMediaCost(capability, pricing.imageCount, pricing.durationSeconds, pricing.videoResolution) };
     }));
   }, onSuccess: (entries) => { setBatchResults([]); setBatch(entries); }, retry: false });
   const submit = useMutation({ mutationFn: async (entries: BatchEntry[]) => {

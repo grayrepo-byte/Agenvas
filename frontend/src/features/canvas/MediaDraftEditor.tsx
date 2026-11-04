@@ -30,11 +30,12 @@ type SaveMediaDraftRequest
 } from "../../shared/api/client";
 import type { MediaTemplateImport } from "../../shared/api/client";
 import { MINIMAX_H3_ADAPTER, MINIMAX_H3_RESOLUTIONS, minimaxResolutionLabel } from "../../shared/minimaxH3";
-import { KLING_VIDEO_ADAPTER, KLING_VIDEO_RESOLUTIONS, klingVideoResolutionLabel, klingOutputCount, klingResolutionTier } from "../../shared/kling";
-import { nativeInputErrors, nativeOutputCount, nativeResolutionTier, nativeValue, nativeVersionAssignable } from "../../shared/nativeMedia";
+import { KLING_VIDEO_ADAPTER, KLING_VIDEO_RESOLUTIONS, klingVideoResolutionLabel } from "../../shared/kling";
+import { nativeInputErrors, nativeVersionAssignable } from "../../shared/nativeMedia";
 import { AUTODL_ADAPTER,publishedAutoDlResolutions,autoDlRatioSupported,resolveAutoDlWorkflow } from "../../shared/autodlWorkflows";
 import { t,useLocale } from "../../shared/i18n";
 import { estimatedMediaCost } from "../../shared/mediaPricing";
+import { mediaDraftPricingInputs } from "./mediaDraftPricing";
 import { isAudioFile, isVideoFile, MEDIA_FILE_ACCEPT } from "../../shared/mediaFiles";
 import { LoadingState as CanvasLoadingState } from "../../shared/ui/LoadingState";
 import { OptionContent } from "../../shared/ui/OptionContent";
@@ -647,16 +648,11 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
   const videoModeSupported = artifact.kind !== "VIDEO" || effectiveMode !== null
     && (chosenCapability?.supportedVideoInputModes.includes(effectiveMode) ?? false);
   const workflowValues = workflowDraftValues(chosenCapability, fields);
-  const estimateDuration = chosenCapability?.settings.operation === "MOTION_CONTROL"
-    ? motionMetadata.data?.durationMs ? Math.ceil(motionMetadata.data.durationMs / 1000) : null
-    : nativeInputs && chosenCapability && (chosenCapability.settings.operation === "EXTEND" || nativeValue(chosenCapability, workflowValues, "smart_duration") === true
-      || chosenCapability.adapterId === "WAN_VIDEO" && videoCount > 0) ? null : duration;
-  const estimateResolution = nativeInputs && chosenCapability ? nativeResolutionTier(chosenCapability, workflowValues)
-    : klingInputs && chosenCapability ? klingResolutionTier(chosenCapability, workflowValues) : autodlTier;
-  const estimatedCost = estimatedMediaCost(chosenCapability,
-    nativeInputs && chosenCapability ? nativeOutputCount(chosenCapability, workflowValues)
-      : klingInputs && chosenCapability ? klingOutputCount(chosenCapability, workflowValues) : fullyDeclaredInputs ? 1 : imageParameters.generationCount,
-    isAudio && !fullyDeclaredInputs ? 120 : estimateDuration, estimateResolution);
+  const pricing = mediaDraftPricingInputs(chosenCapability, fields, { imageCount: fullyDeclaredInputs ? 1 : imageParameters.generationCount,
+    durationSeconds: isAudio && !fullyDeclaredInputs ? 120 : duration, videoResolution: autodlTier }, motionMetadata.data?.durationMs);
+  const estimateDuration = pricing.durationSeconds;
+  const estimateResolution = pricing.videoResolution;
+  const estimatedCost = estimatedMediaCost(chosenCapability, pricing.imageCount, estimateDuration, estimateResolution);
   const estimatePrice = Object.entries(chosenCapability?.settings.pricingByResolution ?? {})
     .find(([tier]) => tier === estimateResolution)?.[1] ?? chosenCapability?.settings.pricing;
   // Motion may trim its reference clip, so archived input duration only gives an upper estimate.

@@ -129,8 +129,7 @@ class TaskMediaCompletionTest {
         var order = inOrder(repository, usage, events);
         order.verify(repository).finishSubmitting(eq(lease), eq(WORKER), any(), eq(NOW));
         order.verify(repository).clearProviderPollFailures(TASK);
-        order.verify(usage).settleMediaTask(OWNER, lease);
-        order.verify(repository).findById(TASK);
+        order.verify(usage).settleMediaTask(OWNER, lease, null, null, null);
         order.verify(events).append(eq(OWNER), eq(PROJECT), outcome.capture());
         assertThat(outcome.getValue().type()).isEqualTo("task.status.changed");
         assertThat(outcome.getValue().aggregateVersion()).isEqualTo(completed.version());

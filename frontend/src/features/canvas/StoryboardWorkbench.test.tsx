@@ -5,6 +5,7 @@ import { createQueryClient } from "../../app/queryClient";
 import { ApiError, type AgentMediaApproval, type CanvasItem, type MediaDraft, type SaveStoryboardRequest, type Storyboard, type Task } from "../../shared/api/client";
 import { clickControl } from "../../test/controls";
 import { videoFunctionCapability, videoFunctionsFixture } from "../../test/videoFunctionsFixture";
+import { nativeCapability, nativeProfiles } from "../../test/nativeProfiles";
 import { StoryboardWorkbench } from "./StoryboardWorkbench";
 import { newStoryboardShot, useStoryboardDraftStore } from "./storyboardDraft";
 
@@ -226,6 +227,36 @@ describe("storyboard workbench interaction", () => {
     fireEvent.change(screen.getByLabelText("台词 / 旁白"), { target: { value: "A later edit" } });
     expect(useStoryboardDraftStore.getState().projects["test-project"]?.input.shots[2]?.productions[0]?.confirmReviewed).toBe(false);
   });
+  it.each(["reference", "resolution"] as const)("uses the saved native %s pricing context before batch confirmation", async (mode) => {
+    const profile = nativeProfiles.find((profile) => profile.adapterId === "WAN_VIDEO")!;
+    const capability = nativeCapability(profile);
+    capability.settings.pricing = { amount: "0.1", currency: "CNY", unit: "SECOND" };
+    if (mode === "resolution") capability.settings.pricingByResolution = {
+      "720p": { amount: "0.2", currency: "CNY", unit: "SECOND" },
+    };
+    const settings = videoFunctionsFixture();
+    settings.connections[0]!.platform = "WAN";
+    settings.connections[0]!.capabilities = [capability];
+    api.getMediaSettings.mockResolvedValue(settings);
+    api.getMediaDraft.mockResolvedValue({ ...mediaDraft, capabilityId: capability.id, durationSeconds: 8,
+      videoInputMode: "GENERAL_REFERENCE", parameters: { dynamicValues: mode === "reference"
+        ? { video_1: "reference-video-v1" } : { resolution: "720P" } },
+      mediaInputs: mode === "reference" ? [{ versionId: "reference-video-v1", artifactId: "reference-video",
+        role: "VIDEO_REFERENCE", order: 0, color: "#123456", sources: [] }] : [] });
+    show(); await chooseThird();
+    await clickControl(screen.getByRole("checkbox", { name: "选择镜头 SHOT-03" }));
+    await clickControl(screen.getByRole("button", { name: "预检选中镜头（1）" }));
+    const dialog = await screen.findByRole("dialog", { name: "确认本次媒体生成" });
+    expect(within(dialog).queryByText("预计 CNY 0.8")).not.toBeInTheDocument();
+    expect(within(dialog).getByText(mode === "reference" ? "费用未知" : "预计 CNY 1.6")).toBeVisible();
+    expect(api.runMediaDraft).not.toHaveBeenCalled();
+    await clickControl(within(dialog).getByRole("button", { name: "确认费用并开始生成" }));
+    await screen.findByText("本次逐项提交结果");
+    expect(api.runMediaDraft).toHaveBeenCalledTimes(1);
+    expect(api.runMediaDraft).toHaveBeenCalledWith("test-project", "video-artifact",
+      { canvasItemId: "video-node", expectedDraftVersion: 4 }, expect.any(String));
+  });
+
   it("requires final cost confirmation and generates only the selected video stage", async () => {
     show(); await chooseThird();
     await clickControl(screen.getByRole("checkbox", { name: "选择镜头 SHOT-03" }));

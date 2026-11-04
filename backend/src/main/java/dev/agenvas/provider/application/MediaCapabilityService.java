@@ -753,6 +753,8 @@ public class MediaCapabilityService {
             var selected = dev.agenvas.provider.domain.NativeMediaProfiles.resolve(snapshot.adapterId(), settings);
             settings.set("nativeInputs", mapper.valueToTree(selected.inputs()));
             settings.set("nativeReusableSlots", mapper.valueToTree(selected.protocol().reusableSlots(selected.profile()).stream().sorted().toList()));
+            if (selected.profile().kind() == Task.Kind.VIDEO_GENERATION && settings.get("pricingByResolution") instanceof ObjectNode prices)
+                settings.set("pricingByResolution", MediaCapabilityConfiguration.canonicalNativeResolutionPrices(prices));
         }
         if (dev.agenvas.provider.domain.KlingModels.adapter(snapshot.adapterId())) {
             var profile = dev.agenvas.provider.domain.KlingModels.resolve(settings, registry.declaration(snapshot.adapterId()).kind());
