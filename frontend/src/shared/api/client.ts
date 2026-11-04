@@ -42,6 +42,7 @@ export type CharacterBindingPreview = components["schemas"]["CharacterBindingPre
 export type CharacterChangePreview = components["schemas"]["CharacterChangePreview"];
 export type SaveCharacter = components["schemas"]["SaveCharacter"];
 export type PreviewCharacterBindings = components["schemas"]["PreviewCharacterBindings"];
+export type ApplyCharacterBindings = components["schemas"]["ApplyCharacterBindings"];
 export const CHARACTER_CLEAR_MODES = { KEEP_INPUTS: "KEEP_INPUTS", REMOVE_OWNED: "REMOVE_OWNED" } as const;
 
 export function listCharacters(projectId: string): Promise<CharacterIndex> {
@@ -59,7 +60,7 @@ export function archiveCharacter(projectId: string, characterId: string, request
 export function previewCharacterBindings(projectId: string, itemId: string, request: PreviewCharacterBindings): Promise<CharacterBindingPreview> {
   return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/preview`, { method: "POST", body: JSON.stringify(request) }, t("character.previewFailed"));
 }
-export function applyCharacterBindings(projectId: string, itemId: string, request: components["schemas"]["ApplyCharacterBindings"]): Promise<components["schemas"]["CharacterBindingApplied"]> {
+export function applyCharacterBindings(projectId: string, itemId: string, request: ApplyCharacterBindings): Promise<components["schemas"]["CharacterBindingApplied"]> {
   return writeJson(`/api/v1/projects/${projectId}/canvas-items/${itemId}/character-bindings/apply`, { method: "POST", body: JSON.stringify(request) }, t("character.applyFailed"));
 }
 export function reviewCharacterBindings(projectId: string, itemId: string, request: components["schemas"]["ReviewCharacterBindings"]): Promise<CharacterBinding> {

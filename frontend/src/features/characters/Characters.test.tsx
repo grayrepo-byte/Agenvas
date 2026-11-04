@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
 import { useState } from "react";
-import type { CharacterBinding, CharacterIndex, CharacterProfile, MediaDraft, PreviewCharacterBindings, SaveCharacter } from "../../shared/api/client";
+import type { ApplyCharacterBindings, CharacterBinding, CharacterIndex, CharacterProfile, MediaDraft, PreviewCharacterBindings, SaveCharacter } from "../../shared/api/client";
 import { server } from "../../test/server";
 import { changeControl } from "../../test/controls";
 import { useMediaDraftSession, useMediaDraftSessionLifecycle } from "../canvas/useMediaDraftSession";
@@ -246,6 +246,118 @@ describe("project characters", () => {
     expect(screen.getByRole("checkbox", { name: "关联此角色" })).toBeChecked();
     expect(screen.getByRole("button", { name: "明确应用到草稿" })).toBeDisabled();
     expect(screen.getByTestId("current-prompt")).toHaveTextContent("A shot");
+  });
+
+  it.each([503, 408, "network"] as const)("reconciles a committed draft application after %s without saving its old fields", async (failure) => {
+    const index: CharacterIndex = { characters: [profile], bindings: [] };
+    mountBindings(index); const previews = installPreview();
+    let current = draft, commits = 0;
+    const writes: ApplyCharacterBindings[] = [];
+    server.use(http.get(`${BASE}/canvas-items/${ITEM}/media-draft`, () => HttpResponse.json(current)),
+      http.put(`${BASE}/canvas-items/${ITEM}/media-draft`, () => { throw new Error("Recovery must not save the pre-application draft"); }),
+      http.post(`${BASE}/canvas-items/${ITEM}/character-bindings/apply`, async ({ request }) => {
+        const input = await request.json() as ApplyCharacterBindings; writes.push(input);
+        if (writes.length === 1) {
+          commits++; index.bindings = [binding()]; current = { ...draft, version: 2, prompt: "A shot\nMira in blue coat" };
+          return failure === "network" ? HttpResponse.error() : HttpResponse.json({ code: "HTTP_ERROR", detail: "Synthetic receipt lost", retryable: true }, { status: failure, headers: { "Content-Type": "application/problem+json" } });
+        }
+        expect(input).toEqual(writes[0]);
+        return HttpResponse.json({ binding: binding(), draft: current });
+      }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: t("character.include") }));
+    await userEvent.click(screen.getByRole("button", { name: t("character.previewApply") })); await screen.findByLabelText(t("character.promptAfter"));
+    await userEvent.click(screen.getByRole("button", { name: t("character.applyDraft") }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: t("character.applyDraft") })).toBeEnabled());
+    expect(screen.getByRole("button", { name: t("character.previewApply") })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: t("character.refreshKeepDraft") })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: t("character.applyDraft") }));
+    expect(await screen.findByText(t("character.appliedDraftOnly"))).toBeVisible();
+    expect(screen.getByTestId("current-prompt")).toHaveTextContent("Mira in blue coat");
+    expect(writes).toHaveLength(2); expect(commits).toBe(1); expect(previews).toHaveLength(1);
+  });
+
+  it.each([3, 5])("reconciles an old receipt with clean cached draft v%s, an in-flight read and a newer binding", async (cachedVersion) => {
+    const index: CharacterIndex = { characters: [profile], bindings: [] };
+    const queryClient = mountBindings(index); installPreview(); let writes = 0;
+    const applied = { ...draft, version: 2, prompt: "A shot\nMira in blue coat" };
+    const newer = { ...applied, version: 4, prompt: "Later explicit server edit" };
+    const intermediate = { ...applied, version: cachedVersion, prompt: "Intermediate clean projection" };
+    const newerBinding = { ...binding(), version: 2, draftVersion: 3, snapshots: [], contribution: { versionIds: [], promptBlock: "", speakerId: null } };
+    server.use(http.get(`${BASE}/canvas-items/${ITEM}/media-draft`, () => HttpResponse.json(writes ? newer : draft)),
+      http.post(`${BASE}/canvas-items/${ITEM}/character-bindings/apply`, () => {
+        if (++writes === 1) return HttpResponse.error();
+        return HttpResponse.json({ binding: binding(), draft: applied });
+      }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: t("character.include") }));
+    await userEvent.click(screen.getByRole("button", { name: t("character.previewApply") })); await screen.findByLabelText(t("character.promptAfter"));
+    await userEvent.click(screen.getByRole("button", { name: t("character.applyDraft") }));
+    await waitFor(() => expect(writes).toBe(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: t("character.applyDraft") })).toBeEnabled());
+    // Simulate an event-driven projection arriving after the lost acknowledgement.
+    let release = () => {};
+    const lateRead = queryClient.fetchQuery({ queryKey: ["media-draft", PROJECT, ITEM], staleTime: 0,
+      queryFn: () => new Promise<MediaDraft>((resolve) => { release = () => resolve(draft); }) }).catch(() => {});
+    await waitFor(() => expect(queryClient.isFetching({ queryKey: ["media-draft", PROJECT, ITEM] })).toBe(1));
+    index.bindings = [newerBinding];
+    act(() => {
+      queryClient.setQueryData(["project-characters", PROJECT], { ...index });
+      queryClient.setQueryData(["media-draft", PROJECT, ITEM], intermediate);
+    });
+    await waitFor(() => expect(screen.getByTestId("current-prompt")).toHaveTextContent("Intermediate clean projection"));
+    await userEvent.click(screen.getByRole("button", { name: t("character.applyDraft") }));
+    await screen.findByText(t("character.appliedDraftOnly"));
+    expect(screen.getByTestId("current-prompt")).toHaveTextContent(cachedVersion > newer.version ? "Intermediate clean projection" : "Later explicit server edit");
+    expect(queryClient.getQueryData<MediaDraft>(["media-draft", PROJECT, ITEM])?.version).toBe(Math.max(cachedVersion, newer.version));
+    expect(queryClient.getQueryData<CharacterIndex>(["project-characters", PROJECT])?.bindings[0]?.version).toBe(2);
+    release(); await lateRead;
+  });
+
+  it("retries a failed reconciliation read with the original command and preserves intervening local edits", async () => {
+    mountBindings(); installPreview(); let writes = 0, reads = 0;
+    const commands: ApplyCharacterBindings[] = [];
+    const applied = { ...draft, version: 2, prompt: "A shot\nMira in blue coat" };
+    server.use(http.get(`${BASE}/canvas-items/${ITEM}/media-draft`, () => {
+      if (!writes) return HttpResponse.json(draft);
+      if (++reads === 1) return HttpResponse.error();
+      return HttpResponse.json(applied);
+    }), http.post(`${BASE}/canvas-items/${ITEM}/character-bindings/apply`, async ({ request }) => {
+      commands.push(await request.json() as ApplyCharacterBindings); writes++;
+      return HttpResponse.json({ binding: binding(), draft: applied });
+    }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: t("character.include") }));
+    await userEvent.click(screen.getByRole("button", { name: t("character.previewApply") })); await screen.findByLabelText(t("character.promptAfter"));
+    await userEvent.click(screen.getByRole("button", { name: t("character.applyDraft") }));
+    await screen.findByText(t("character.retryApplyHint", { "0": t("character.applyDraft") }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit draft test", hidden: true }));
+    await userEvent.click(screen.getByRole("button", { name: t("character.applyDraft") }));
+    await screen.findByText(t("character.appliedDraftOnly"));
+    expect(commands).toHaveLength(2); expect(commands[1]).toEqual(commands[0]);
+    expect(screen.getByTestId("current-prompt")).toHaveTextContent("Edited during preview");
+    expect(reads).toBe(2);
+  });
+
+  it("allows the same command to commit on retry when the first request never arrived and blocks duplicate retries", async () => {
+    mountBindings(); installPreview(); let calls = 0, commits = 0;
+    let finish = () => {}; const gate = new Promise<void>((resolve) => { finish = resolve; });
+    const commands: ApplyCharacterBindings[] = [];
+    server.use(http.post(`${BASE}/canvas-items/${ITEM}/character-bindings/apply`, async ({ request }) => {
+      commands.push(await request.json() as ApplyCharacterBindings);
+      if (++calls === 1) return HttpResponse.error();
+      await gate; commits++;
+      return HttpResponse.json({ binding: binding(), draft: { ...draft, version: 2, prompt: "A shot\nMira in blue coat" } });
+    }));
+    await userEvent.click(await screen.findByRole("checkbox", { name: t("character.include") }));
+    await userEvent.click(screen.getByRole("button", { name: t("character.previewApply") })); await screen.findByLabelText(t("character.promptAfter"));
+    await userEvent.click(screen.getByRole("button", { name: t("character.applyDraft") }));
+    await screen.findByText(t("character.retryApplyHint", { "0": t("character.applyDraft") }));
+    const retry = screen.getByRole("button", { name: t("character.applyDraft") });
+    fireEvent.click(retry); fireEvent.click(retry);
+    await waitFor(() => expect(calls).toBe(2));
+    expect(retry).toBeDisabled(); expect(screen.getByRole("button", { name: t("ui.dialog.close") })).toBeDisabled();
+    await act(async () => finish());
+    await screen.findByText(t("character.appliedDraftOnly"));
+    expect(commands[1]).toEqual(commands[0]); expect(commits).toBe(1);
   });
 
   it("refreshes CAS versions without losing selections or local fields before another preview", async () => {

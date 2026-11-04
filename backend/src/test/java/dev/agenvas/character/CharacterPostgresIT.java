@@ -192,6 +192,53 @@ class CharacterPostgresIT {
         archiveRaceRejectsEveryNewMutation(ownerId);
         releaseOwnedSourceThenDisconnect(ownerId);
         confirmationCommandsReplayWithoutDuplicateRevisions(ownerId);
+        applicationCommandsReplayWithoutOverwritingNewerDrafts(ownerId);
+    }
+
+    private void applicationCommandsReplayWithoutOverwritingNewerDrafts(UUID owner) throws Exception {
+        var project = projects.create(owner, "Synthetic application replay", Project.AspectRatio.SQUARE_1_1);
+        var portrait = image(owner, project.id(), "Synthetic portrait");
+        var shot = image(owner, project.id(), "Synthetic result");
+        UUID item = UUID.randomUUID(), character = UUID.randomUUID(), look = UUID.randomUUID();
+        canvas.apply(owner, project.id(), List.of(new CanvasService.PlaceArtifact(item, shot.artifact().id(),
+                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("320"), new BigDecimal("240"), 0, null, false)));
+        var content = new CharacterContent("Replay character", "Synthetic identity", List.of(new CharacterLook(look,
+                "Main", "Blue coat", "Calm", "", List.of(new CharacterView(portrait.resourceDefaultVersion().id(), "Front", "")))), null);
+        characters.save(owner, project.id(), character, new SaveCharacter(UUID.randomUUID(), 0, content));
+        var before = drafts.save(owner, project.id(), item, 0, "Synthetic base", mapper.createObjectNode(), null,
+                null, null, List.of(), List.of(), null);
+        var selections = List.of(new CharacterBindingSelection(character, 1, look, true, false));
+        var preview = characters.preview(owner, project.id(), item,
+                new PreviewCharacterBindings(0, before.version(), selections, ClearMode.REMOVE_OWNED));
+        var command = new ApplyCharacterBindings(UUID.randomUUID(), 0, before.version(), selections,
+                ClearMode.REMOVE_OWNED, preview.previewHash());
+        long cursor = events.replayWindow(owner, project.id()).latestSequence();
+        var receipts = concurrentReplays(() -> characters.apply(owner, project.id(), item, command));
+        var applied = receipts.getFirst();
+        assertThat(applied).isEqualTo(receipts.getLast());
+        assertThat(applied.draft().version()).isEqualTo(before.version() + 1);
+        assertThat(applied.binding().version()).isEqualTo(1);
+        assertThat(events.listAfter(owner, project.id(), cursor, 10)).extracting(event -> event.type())
+                .containsExactly("media.draft.changed", "character.bindings.changed");
+        var clearPreview = characters.preview(owner, project.id(), item, new PreviewCharacterBindings(
+                applied.binding().version(), applied.draft().version(), List.of(), ClearMode.KEEP_INPUTS));
+        var cleared = characters.apply(owner, project.id(), item, new ApplyCharacterBindings(UUID.randomUUID(),
+                applied.binding().version(), applied.draft().version(), List.of(), ClearMode.KEEP_INPUTS, clearPreview.previewHash()));
+        var newer = drafts.save(owner, project.id(), item, cleared.draft().version(), "Later explicit draft edit",
+                mapper.createObjectNode(), null, null, null, commands(cleared.draft()), List.of(), null);
+        long after = events.replayWindow(owner, project.id()).latestSequence();
+        var mvc = webAppContextSetup(context).apply(springSecurity()).build();
+        var auth = authentication(new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "synthetic-replay"), null, List.of()));
+        String path = "/api/v1/projects/" + project.id() + "/canvas-items/" + item + "/character-bindings/apply";
+        var response = mvc.perform(post(path).with(auth).with(csrf()).contentType("application/json")
+                .content(mapper.writeValueAsString(command))).andExpect(status().isOk()).andReturn();
+        assertThat(mapper.readValue(response.getResponse().getContentAsString(), CharacterBindingApplied.class)).isEqualTo(applied);
+        assertThat(drafts.get(owner, project.id(), item)).isEqualTo(newer);
+        assertThat(characters.list(owner, project.id()).bindings().getFirst().version()).isEqualTo(cleared.binding().version());
+        mvc.perform(post(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(
+                new ApplyCharacterBindings(command.commandId(), 0, before.version(), List.of(), ClearMode.KEEP_INPUTS, preview.previewHash()))))
+                .andExpect(status().isConflict());
+        assertThat(events.listAfter(owner, project.id(), after, 10)).isEmpty();
     }
 
     private void confirmationCommandsReplayWithoutDuplicateRevisions(UUID owner) throws Exception {

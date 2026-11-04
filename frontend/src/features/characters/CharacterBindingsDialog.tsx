@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
-import { applyCharacterBindings, CHARACTER_CLEAR_MODES, listCanvasItems, previewCharacterBindings, reviewCharacterBindings, type CharacterBindingPreview, type CharacterBindingSelection, type MediaDraft, type PreviewCharacterBindings } from "../../shared/api/client";
+import { ApiError, applyCharacterBindings, CHARACTER_CLEAR_MODES, getMediaDraft, listCanvasItems, previewCharacterBindings, reviewCharacterBindings, type CharacterBindingPreview, type CharacterBindingSelection, type MediaDraft, type PreviewCharacterBindings } from "../../shared/api/client";
 import { t, useLocale, type MessageKey } from "../../shared/i18n";
 import { Dialog } from "../../shared/ui/Dialog";
 import { Select } from "../../shared/ui/Select";
@@ -11,13 +11,14 @@ import { Checkbox } from "../../shared/ui/primitives/checkbox";
 import { Empty, EmptyDescription, EmptyHeader } from "../../shared/ui/primitives/empty";
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "../../shared/ui/primitives/field";
 import { Textarea } from "../../shared/ui/primitives/textarea";
-import { useMediaDraftSession } from "../canvas/useMediaDraftSession";
+import { fieldsFromMediaDraft, useMediaDraftSession } from "../canvas/useMediaDraftSession";
 import { CharacterReferencePreview } from "./CharacterReferencePicker";
 import { CharacterManagerDialog } from "./CharacterManagerDialog";
 import { characterBindingStale, characterQueryOptions } from "./characterQueries";
 
 type Session = ReturnType<typeof useMediaDraftSession>;
-type Prepared = { request: PreviewCharacterBindings; result: CharacterBindingPreview; before: MediaDraft; stateHash: string };
+type Prepared = { request: PreviewCharacterBindings; result: CharacterBindingPreview; before: MediaDraft; stateHash: string; commandId: string };
+const REQUEST_TIMEOUT_STATUS = 408;
 const CHANGE_LABELS: Readonly<Record<string, MessageKey>> = {
   REFERENCES_ADDED: "character.referencesAdded", REFERENCES_REMOVED: "character.referencesRemoved", PROMPT_UPDATED: "character.promptUpdated",
   INPUT_MODE_CHANGED: "character.modeChanged", SPEAKER_CHANGED: "character.speakerChanged", KEEP_INPUTS: "character.inputsKept",
@@ -43,12 +44,12 @@ export function CharacterBindingsDialog({ projectId, itemId, session, readOnly, 
   const initialized = useRef(false);
   const [clearMode, setClearMode] = useState<PreviewCharacterBindings["clearMode"]>(CHARACTER_CLEAR_MODES.KEEP_INPUTS);
   const [prepared, setPrepared] = useState<Prepared | null>(null);
+  const [unconfirmed, setUnconfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const commandId = useRef(crypto.randomUUID());
   useEffect(() => {
     if (initialized.current || !index.isSuccess) return;
     initialized.current = true;
@@ -59,7 +60,7 @@ export function CharacterBindingsDialog({ projectId, itemId, session, readOnly, 
   const stateHash = JSON.stringify({ fields: session.state.fields, version: session.state.expectedVersion,
     bindingVersion: binding?.version ?? 0, profiles: characters.map((profile) => [profile.id, profile.version, profile.archived]), selectedResult });
   const previewCurrent = prepared?.stateHash === stateHash;
-  function changeSelections(next: CharacterBindingSelection[]) { setSelections(next); setPrepared(null); setNotice(null); commandId.current = crypto.randomUUID(); }
+  function changeSelections(next: CharacterBindingSelection[]) { setSelections(next); setPrepared(null); setNotice(null); }
   async function withBusy(work: () => Promise<void>) {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); onBusy(true); setError(null); setNotice(null);
@@ -79,35 +80,59 @@ export function CharacterBindingsDialog({ projectId, itemId, session, readOnly, 
     return saved;
   }
   async function preview() {
+    if (unconfirmed) return;
     await withBusy(async () => {
       const before = await flushDraft();
       const request: PreviewCharacterBindings = { expectedBindingVersion: binding?.version ?? 0, expectedDraftVersion: before.version, selections, clearMode };
       const result = await previewCharacterBindings(projectId, itemId, request);
       const latest = session.getLatest();
-      setPrepared({ request, result, before, stateHash: JSON.stringify({ fields: latest.fields, version: latest.expectedVersion,
+      setPrepared({ request, result, before, commandId: crypto.randomUUID(), stateHash: JSON.stringify({ fields: latest.fields, version: latest.expectedVersion,
         bindingVersion: binding?.version ?? 0, profiles: characters.map((profile) => [profile.id, profile.version, profile.archived]), selectedResult }) });
-      commandId.current = crypto.randomUUID();
     });
   }
   async function apply() {
-    if (!prepared || !previewCurrent) return;
+    if (!prepared || !previewCurrent && !unconfirmed) return;
     await withBusy(async () => {
       const finish = session.beginBusinessWrite();
       let failure: Error | null = null;
+      let submitted = false;
+      let reconciled = false;
       try {
         if (session.isReadOnly() || readOnly) throw new Error(t("media.editor.editingLocked"));
         await session.awaitPendingSave();
-        const saved = await applyCharacterBindings(projectId, itemId, { ...prepared.request, commandId: commandId.current, previewHash: prepared.result.previewHash });
-        session.acceptSaved(saved.draft);
-        client.setQueryData(characterQueryOptions(projectId).queryKey, (current) => current ? { ...current, bindings: [...current.bindings.filter((entry) => entry.canvasItemId !== itemId), saved.binding] } : current);
-        setPrepared(null); setNotice(t("character.appliedDraftOnly"));
+        submitted = true;
+        const saved = await applyCharacterBindings(projectId, itemId, { ...prepared.request, commandId: prepared.commandId, previewHash: prepared.result.previewHash });
+        // A command replay returns its historical receipt. Read the current draft before
+        // adopting it, and stop older in-flight reads from replacing this acknowledgement.
+        const fresh = await getMediaDraft(projectId, itemId);
+        await client.cancelQueries({ queryKey: session.queryKey, exact: true });
+        const cached = client.getQueryData<MediaDraft>(session.queryKey);
+        const acknowledged = [saved.draft, fresh, ...(cached ? [cached] : [])].reduce((latest, next) => next.version > latest.version ? next : latest);
+        const latest = session.getLatest();
+        if (latest.expectedVersion === null || acknowledged.version >= latest.expectedVersion) {
+          const localFields = latest.fields;
+          const changed = latest.dirty && localFields && JSON.stringify(localFields) !== JSON.stringify(fieldsFromMediaDraft(prepared.before));
+          session.acceptSaved(acknowledged, changed && localFields ? { fields: localFields, dirty: true, error: latest.error } : undefined);
+        }
+        client.setQueryData(characterQueryOptions(projectId).queryKey, (current) => {
+          const existing = current?.bindings.find((entry) => entry.canvasItemId === itemId);
+          return current && (!existing || existing.version <= saved.binding.version)
+            ? { ...current, bindings: [...current.bindings.filter((entry) => entry.canvasItemId !== itemId), saved.binding] } : current;
+        });
+        reconciled = true; setUnconfirmed(false); setPrepared(null); setNotice(t("character.appliedDraftOnly"));
         await Promise.all([client.invalidateQueries({ queryKey: ["canvas-connections", projectId] }), client.invalidateQueries({ queryKey: ["canvas", projectId] }), client.invalidateQueries({ queryKey: characterQueryOptions(projectId).queryKey })]);
-      } catch (caught) { failure = caught instanceof Error ? caught : new Error(t("character.applyFailed")); setPrepared(null); throw failure; }
+      } catch (caught) {
+        failure = caught instanceof Error ? caught : new Error(t("character.applyFailed"));
+        const uncertain = submitted && !reconciled && (!(caught instanceof ApiError) || caught.status >= 500 || caught.status === REQUEST_TIMEOUT_STATUS);
+        setUnconfirmed(uncertain);
+        if (!uncertain) setPrepared(null);
+        throw failure;
+      }
       finally { finish(failure); }
     });
   }
   async function review() {
-    if (!binding || !selectedResult) return;
+    if (unconfirmed || !binding || !selectedResult) return;
     await withBusy(async () => {
       const draft = await flushDraft();
       await reviewCharacterBindings(projectId, itemId, { expectedBindingVersion: binding.version, expectedDraftVersion: draft.version, selectedVersionId: selectedResult });
@@ -116,6 +141,7 @@ export function CharacterBindingsDialog({ projectId, itemId, session, readOnly, 
     });
   }
   async function refreshForRetry() {
+    if (unconfirmed) return;
     await withBusy(async () => {
       await index.refetch({ throwOnError: true });
       await canvas.refetch({ throwOnError: true });
@@ -128,8 +154,8 @@ export function CharacterBindingsDialog({ projectId, itemId, session, readOnly, 
   }
   const stale = binding && characterBindingStale(binding, characters);
   return <Dialog title={t("character.bindingsTitle")} description={t("character.bindingsDescription")} busy={busy} onClose={onClose} onSubmit={(event) => { event.preventDefault(); void preview(); }}
-    footer={<><Button type="submit" variant="outline" disabled={busy || readOnly || !index.isSuccess}>{t("character.previewApply")}</Button><Button type="button" disabled={busy || readOnly || !prepared || !previewCurrent} onClick={() => { void apply(); }}>{t("character.applyDraft")}</Button></>}>
-    <fieldset className="flex min-w-0 flex-col gap-4" disabled={busy}>
+    footer={<><Button type="submit" variant="outline" disabled={busy || unconfirmed || readOnly || !index.isSuccess}>{t("character.previewApply")}</Button><Button type="button" disabled={busy || readOnly || !prepared || !previewCurrent && !unconfirmed} onClick={() => { void apply(); }}>{t("character.applyDraft")}</Button></>}>
+    <fieldset className="flex min-w-0 flex-col gap-4" disabled={busy || unconfirmed}>
       <Button type="button" variant="outline" onClick={() => setManagerOpen(true)}>{t("character.manage")}</Button>
       {index.isPending ? <p role="status">{t("common.loading")}</p> : null}
       {index.error ? <Alert variant="destructive"><AlertDescription>{index.error.message}<Button type="button" variant="ghost" onClick={() => { void index.refetch(); }}>{t("common.retry")}</Button></AlertDescription></Alert> : null}
@@ -159,7 +185,7 @@ export function CharacterBindingsDialog({ projectId, itemId, session, readOnly, 
       {readOnly ? <Alert><AlertDescription>{t("media.editor.editingLocked")}</AlertDescription></Alert> : null}
     </fieldset>
     {prepared ? <FieldSet><FieldLegend>{t("character.actualChanges")}</FieldLegend>
-      {!previewCurrent ? <Alert variant="destructive"><AlertDescription>{t("character.previewExpired")}</AlertDescription></Alert> : null}
+      {!previewCurrent && !unconfirmed ? <Alert variant="destructive"><AlertDescription>{t("character.previewExpired")}</AlertDescription></Alert> : null}
       <ul>{prepared.result.changes.map((change, index) => <li key={`${change}-${index}`}>{changeLabel(change)}</li>)}</ul>
       {prepared.result.warnings.map((warning, index) => <Alert key={`${warning}-${index}`}><AlertDescription>{changeLabel(warning)}</AlertDescription></Alert>)}
       <Field><FieldLabel htmlFor={`${id}-before-prompt`}>{t("character.promptBefore")}</FieldLabel><Textarea id={`${id}-before-prompt`} readOnly value={prepared.before.prompt} /></Field>
@@ -169,7 +195,7 @@ export function CharacterBindingsDialog({ projectId, itemId, session, readOnly, 
       <FieldSet><FieldLegend>{t("character.referencesAfter")}</FieldLegend>{prepared.result.candidateDraft.mediaInputs.map((input) => <div className="flex flex-col gap-1 rounded-lg border p-2" key={`${input.role}-${input.versionId}`}><p className="text-sm">{prepared.result.snapshots.flatMap((snapshot) => snapshot.look?.views ?? []).find((view) => view.versionId === input.versionId)?.purpose ?? t(input.role === "AUDIO_REFERENCE" ? "character.audioReference" : "character.imageReference")}</p><CharacterReferencePreview projectId={projectId} versionId={input.versionId} kind={input.role === "AUDIO_REFERENCE" ? "AUDIO" : input.role === "VIDEO_REFERENCE" ? "VIDEO" : "IMAGE"} /></div>)}</FieldSet>
       <FieldSet><FieldLegend>{t("character.referencesRemoved")}</FieldLegend>{prepared.before.mediaInputs.filter((input) => !prepared.result.candidateDraft.mediaInputs.some((next) => next.versionId === input.versionId && next.role === input.role)).map((input) => <div className="flex flex-col gap-1 rounded-lg border p-2" key={`${input.role}-${input.versionId}`}><p className="text-sm">{prepared.result.snapshots.flatMap((snapshot) => snapshot.look?.views ?? []).find((view) => view.versionId === input.versionId)?.purpose ?? t(input.role === "AUDIO_REFERENCE" ? "character.audioReference" : "character.imageReference")}</p><CharacterReferencePreview projectId={projectId} versionId={input.versionId} kind={input.role === "AUDIO_REFERENCE" ? "AUDIO" : input.role === "VIDEO_REFERENCE" ? "VIDEO" : "IMAGE"} /></div>)}</FieldSet>
     </FieldSet> : null}
-    {error ? <Alert variant="destructive"><AlertDescription>{error.message}<Button type="button" variant="outline" disabled={busy || readOnly} onClick={() => { void refreshForRetry(); }}>{t("character.refreshKeepDraft")}</Button><p>{t("character.refreshKeepDraftHint")}</p></AlertDescription></Alert> : null}
+    {error ? <Alert variant="destructive"><AlertDescription>{error.message}{unconfirmed ? <p>{t("character.retryApplyHint", { "0": t("character.applyDraft") })}</p> : <><Button type="button" variant="outline" disabled={busy || readOnly} onClick={() => { void refreshForRetry(); }}>{t("character.refreshKeepDraft")}</Button><p>{t("character.refreshKeepDraftHint")}</p></>}</AlertDescription></Alert> : null}
     {notice ? <p role="status">{notice}</p> : null}
     {managerOpen ? <CharacterManagerDialog projectId={projectId} onClose={() => setManagerOpen(false)} /> : null}
   </Dialog>;
