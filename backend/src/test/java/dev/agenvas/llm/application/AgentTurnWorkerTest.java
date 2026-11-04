@@ -117,6 +117,14 @@ class AgentTurnWorkerTest {
         }
     }
 
+    @Test
+    void freshModelRequestsUseTheFullRequestDeadline() throws Exception {
+        worker.runOnce(WORKER);
+
+        verify(execution).call(ArgumentMatchers.<Callable<JsonNode>>any(), eq(Duration.ofMinutes(10)));
+        verifyAppliedResponse();
+    }
+
     @Test void toolRepairReusesRejectedRequestBudgetInsteadOfLiveDirectorSettings() throws Exception {
         var budget = LlmRequestBudget.resolve(DirectorSettings.defaults(),
                 dev.agenvas.settings.application.LlmModelPolicy.manual(

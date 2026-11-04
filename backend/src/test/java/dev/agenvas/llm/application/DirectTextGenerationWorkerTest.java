@@ -21,6 +21,7 @@ import dev.agenvas.audit.application.CallLogService;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -185,11 +186,12 @@ class DirectTextGenerationWorkerTest {
 
     @ParameterizedTest
     @ValueSource(ints = {1, 2})
-    void callsThePinnedModelWithTheFrozenSchemaSpecificPromptBeforeCheckpointing(int schema) {
+    void callsThePinnedModelWithTheFrozenSchemaSpecificPromptBeforeCheckpointing(int schema) throws Exception {
         input.put("schemaVersion", schema);
         if (schema == 1) input.remove("systemPrompt");
 
         assertThat(worker.runOnce(WORKER)).isEqualTo(1);
+        verify(execution).call(any(), eq(Duration.ofMinutes(10)));
 
         ArgumentCaptor<List<Message>> messages = ArgumentCaptor.captor();
         verify(gateway).call(messages.capture(), eq(List.of()), eq(java.util.Map.of()), eq(pinned));

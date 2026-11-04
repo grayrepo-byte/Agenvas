@@ -6,7 +6,6 @@ import dev.agenvas.task.application.TaskProperties;
 import dev.agenvas.task.application.TaskService;
 import dev.agenvas.task.domain.Task;
 import jakarta.annotation.PreDestroy;
-import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -27,7 +26,6 @@ import tools.jackson.databind.node.ObjectNode;
 public class DirectTextGenerationWorker {
     private static final Logger LOGGER = LoggerFactory.getLogger(DirectTextGenerationWorker.class);
     private static final int MAX_OUTPUT_LENGTH = 20_000;
-    private static final Duration MODEL_TIMEOUT = LlmCallTimeouts.REQUEST;
 
     private final TaskService tasks;
     private final ChatGateway gateway;
@@ -92,10 +90,7 @@ public class DirectTextGenerationWorker {
             } else tasks.succeedWithTextArtifact(lease, workerId, content);
         } catch (LeasedModelExecutor.Stopped stopped) {
             throw stopped;
-        } catch (ExecutionException | TimeoutException failure) {
-            execution.checkActive();
-            tasks.fail(lease, workerId, errorCode(failure));
-        } catch (RuntimeException failure) {
+        } catch (ExecutionException | TimeoutException | RuntimeException failure) {
             execution.checkActive();
             tasks.fail(lease, workerId, errorCode(failure));
         }
@@ -149,7 +144,7 @@ public class DirectTextGenerationWorker {
                 () -> budget == null ? gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
                         List.of(), Map.of(), pinned) : gateway.call(lease.isImagePrompt() ? images.hydrate(lease, messages) : messages,
                         List.of(), Map.of(), pinned, budget),
-                ignored -> CallLogService.CallOutcome.succeeded(null)), MODEL_TIMEOUT);
+                ignored -> CallLogService.CallOutcome.succeeded(null)), LlmCallTimeouts.REQUEST);
         execution.checkActive();
         if (exchange.configVersion() != pinned.version()) {
             throw new IllegalStateException("Text model configuration changed during call");

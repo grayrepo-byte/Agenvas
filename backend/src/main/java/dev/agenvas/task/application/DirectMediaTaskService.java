@@ -528,8 +528,10 @@ public class DirectMediaTaskService {
             if (kind == Task.Kind.VIDEO_GENERATION && !KlingModels.motion(kling)
                     && (duration == null || duration < limits.minimumSeconds() || duration > limits.maximumSeconds()))
                 throw KlingProtocol.invalid();
-        } else if (comfy == null) validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding), capabilities.parameters(binding,
-                comfy == null ? draft.parameters() : ComfyUiWorkflowDefinition.standardParameters(draft.parameters())));
+        } else if (comfy == null) {
+            validateCapabilityInputs(kind, draft, capabilities.inputPolicy(binding),
+                    capabilities.parameters(binding, draft.parameters()));
+        }
         if (capabilities.inputPolicy(binding).platform() == dev.agenvas.provider.domain.MediaPlatform.COMFYUI
                 && renderedPrompt.length() > MediaAdapterRegistry.COMFY_MAX_PROMPT_LENGTH) {
             throw new ApiProblemException(HttpStatus.BAD_REQUEST, "MEDIA_STYLE_PROMPT_TOO_LONG",
