@@ -103,7 +103,10 @@ export function useCanvasEditing(projectId: string) {
   }, [run]);
   const replay = useCallback(async (direction: "UNDO" | "REDO") => {
     if (pending.current) throw new Error(t("canvas.edit.failed"));
-    if (Object.keys(useCanvasStore.getState().drafts).length) throw new Error(t("canvas.edit.draftsPending"));
+    // Other projects retain their drafts across navigation; only this canvas blocks its replay.
+    const drafts = useCanvasStore.getState().drafts;
+    const canvas = queryClient.getQueryData<Canvas>(["canvas", projectId]);
+    if (canvas?.items.some((item) => drafts[item.id])) throw new Error(t("canvas.edit.draftsPending"));
     const entry = (direction === "UNDO" ? historyRef.current.undo : historyRef.current.redo).at(-1);
     if (!entry) return;
     if (entry.receipt.operation === "DUPLICATE" && direction === "UNDO") {
@@ -111,7 +114,7 @@ export function useCanvasEditing(projectId: string) {
     }
     return run({ type: "REPLAY", receiptId: entry.receipt.id,
       request: { commandId: crypto.randomUUID(), expectedRevision: entry.receipt.revision, direction } });
-  }, [projectId, run]);
+  }, [projectId, queryClient, run]);
   const retry = useCallback(async () => pending.current ? run(pending.current) : undefined, [run]);
   const discardPending = useCallback(() => { if (!busyRef.current) { pending.current = null; setError(null); } }, []);
   const clearHistory = useCallback(() => updateHistory(emptyCanvasHistory()), [updateHistory]);
