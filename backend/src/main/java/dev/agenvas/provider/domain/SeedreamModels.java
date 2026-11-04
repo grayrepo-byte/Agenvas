@@ -188,7 +188,7 @@ public final class SeedreamModels implements NativeMediaProtocol {
 
     public static void validateSize(Profile profile, String size) {
         List<String> presets = layers(profile) ? List.of("auto", "1K", "1.5K", "2K")
-                : proFamily(profile) ? List.of("1K", "1.5K", "2K") : lite(profile) ? List.of("2K", "3K", "4K")
+                : proFamily(profile) ? List.of("1K", "1.5K", "2K")
                 : List.of("2K", "3K", "4K");
         if (presets.contains(size)) return;
         if (layers(profile)) throw invalid();

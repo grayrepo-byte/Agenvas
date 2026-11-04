@@ -144,7 +144,7 @@ public record RunningHubDefinition(int schemaVersion, String protocolVersion, Ta
         Set<String> outputKeys = new HashSet<>();
         int totalOutputs = 0;
         for (Output output : outputs) {
-            if (output == null || output.kind() == null || output.maxCount() < 1 || output.maxCount() > MAX_OUTPUTS
+            if (output.kind() == null || output.maxCount() < 1 || output.maxCount() > MAX_OUTPUTS
                     || output.nodeId() != null && !output.nodeId().matches("[0-9]{1,32}")
                     || !outputKeys.add(output.nodeId() + ":" + output.kind())) throw invalid(ApiMessage.of("api.running-hub-definition.invalid-or-duplicate-output-map"));
             if (output.primary() && !output.kind().name().equals(kind.name().replace("_GENERATION", "")))

@@ -278,7 +278,7 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         try (OnnxTensor tensor = OnnxTensor.createTensor(OrtEnvironment.getEnvironment(),
                 values, new long[]{1, 3, height, width});
                 OrtSession.Result result = session.run(Map.of(inputName, tensor))) {
-            float[][] depth = flattenDepth(result.get(0).getValue(), height, width);
+            float[][] depth = flattenDepth(result.get(0).getValue());
             BufferedImage map = normalizeDepth(depth, width, height);
             return upscaleTo(map, source.getWidth(), source.getHeight());
         } catch (OrtException failure) {
@@ -309,7 +309,7 @@ public final class LocalImageProcessorAdapter implements MediaAdapter {
         }
     }
 
-    private float[][] flattenDepth(Object value, int height, int width) {
+    private float[][] flattenDepth(Object value) {
         if (value instanceof float[][][] batch && batch.length == 1) return batch[0];
         if (value instanceof float[][][][] batch && batch.length == 1
                 && batch[0].length == 1) return batch[0][0];

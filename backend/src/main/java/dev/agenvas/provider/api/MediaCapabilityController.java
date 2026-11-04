@@ -2,7 +2,6 @@ package dev.agenvas.provider.api;
 
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.provider.application.MediaCapabilityService;
-import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.KlingModels;
 import dev.agenvas.provider.domain.ComfyUiWorkflowDefinition;
 import dev.agenvas.provider.infrastructure.JooqMediaCapabilityRepository.Capability;
@@ -41,13 +40,10 @@ import tools.jackson.databind.ObjectMapper;
 public class MediaCapabilityController {
 
     private final MediaCapabilityService catalog;
-    private final MediaAdapterRegistry adapters;
     private final ObjectMapper mapper;
 
-    public MediaCapabilityController(MediaCapabilityService catalog,
-            MediaAdapterRegistry adapters, ObjectMapper mapper) {
+    public MediaCapabilityController(MediaCapabilityService catalog, ObjectMapper mapper) {
         this.catalog = catalog;
-        this.adapters = adapters;
         this.mapper = mapper;
     }
 

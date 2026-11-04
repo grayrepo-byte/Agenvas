@@ -92,7 +92,7 @@ public class ArkSeedanceClient {
         // Leave native audio to the provider in every input mode; reference audio does not control output tracks.
         request.put("output_format", "mp4");
         request.put("execution_expires_after", java.time.Duration.ofHours(48).toSeconds());
-        JsonNode response = request(key, "POST", TASKS,
+        JsonNode response = request(key, TASKS,
                 request.toString().getBytes(StandardCharsets.UTF_8), true);
         String id = response.path("id").asText();
         if (!validTaskId(id)) throw new Uncertain("Ark create response omitted task ID");
@@ -104,7 +104,7 @@ public class ArkSeedanceClient {
         if (!validTaskId(originalTaskId)) {
             throw new ProtocolFailure("Persisted Ark task ID is invalid");
         }
-        JsonNode response = request(key, "GET", TASKS + "/" + originalTaskId,
+        JsonNode response = request(key, TASKS + "/" + originalTaskId,
                 null, false);
         if (!originalTaskId.equals(response.path("id").asText())
                 || !MODEL_ID.equals(response.path("model").asText())) {
@@ -119,7 +119,7 @@ public class ArkSeedanceClient {
         return new TaskState(status, videoUrl);
     }
 
-    private JsonNode request(String key, String method, String path, byte[] body,
+    private JsonNode request(String key, String path, byte[] body,
             boolean create) {
         Request.Builder request = new Request.Builder().url(origin.resolve(path).toString())
                 .header("Authorization", "Bearer " + key)

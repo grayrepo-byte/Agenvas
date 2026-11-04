@@ -74,7 +74,7 @@ public record ComfyUiWorkflowDefinition(int schemaVersion, JsonNode graph, List<
         if (source == null || !source.isObject() || !FIELDS.containsAll(source.propertyNames())
                 || !source.propertyNames().containsAll(REQUIRED_FIELDS)) throw invalid("definition");
         requireDefinitionSize(source);
-        if (integer(source, "schemaVersion", SCHEMA_VERSION, SCHEMA_VERSION) != SCHEMA_VERSION) throw invalid("definition");
+        integer(source, "schemaVersion", SCHEMA_VERSION, SCHEMA_VERSION);
         ObjectNode graph = validateGraph(mapper, source.get("graph"));
         JsonNode rawOutput = source.path("output");
         if (!rawOutput.isObject() || !Set.of("nodeId", "field").equals(rawOutput.propertyNames())) throw invalid("output");

@@ -70,7 +70,7 @@ public class MediaFunctionService {
                     || MediaAdapterRegistry.COMFY_IMAGE_V1.equals(binding.adapterId()) && policy.maxReferenceImages() == 1);
             boolean workflow = !transparent && (image.cloud() || image == ImageOperation.DEPTH_MAP || image == ImageOperation.UPSCALE)
                     && compatibleDefinition(catalog.runningHubDefinition(binding), RunningHubDefinition.FieldType.IMAGE);
-            if (!local && !nativeEdit && !workflow) {
+            if (!nativeEdit && !workflow) {
                 throw problem(HttpStatus.BAD_REQUEST, "MEDIA_FUNCTION_INCOMPATIBLE", ApiMessage.of("api.media-function.incompatible"));
             }
             return binding;
