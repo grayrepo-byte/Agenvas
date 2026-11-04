@@ -3681,5 +3681,9 @@
   "audio.voiceNames.mysteryNarrator": "Рассказчик детективов 2.0",
   "audio.voiceNames.pictureBooks": "Рассказчик детских книг 2.0",
   "audio.voiceNames.teacherTina": "Учительница Тина 2.0",
-  "audio.voiceNames.warmFemale": "Тёплый женский голос 2.0"
+  "audio.voiceNames.warmFemale": "Тёплый женский голос 2.0",
+  "app.pageFailed.title": "Не удалось отобразить страницу",
+  "app.pageFailed.description": "Не удалось загрузить ресурсы страницы или произошла ошибка отображения. Проверьте соединение и перезагрузите страницу.",
+  "app.pageFailed.unsavedHint": "Перезагрузка откроет текущую страницу заново. Несохранённые данные могут быть потеряны.",
+  "app.pageFailed.reload": "Перезагрузить страницу"
 }

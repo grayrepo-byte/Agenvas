@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 import { server } from "../test/server";
+import { setLocale } from "../shared/i18n";
 import { App } from "./App";
 
 // Lazy route imports also transform the icon package on a cold test worker.
@@ -16,6 +17,20 @@ describe("App routes", () => {
     render(<App />);
     expect(await screen.findByRole("button", { name: "登录" }, { timeout: ROUTE_LOAD_TIMEOUT_MS })).toBeInTheDocument();
     expect(screen.getByText("自托管模式 · Provider 状态登录后可查看")).toBeInTheDocument();
+  });
+
+  it("preserves an unsaved form when only the query or locale changes", async () => {
+    window.history.replaceState({}, "", "/login");
+    render(<App />);
+    const password = await screen.findByLabelText("密码", {}, { timeout: ROUTE_LOAD_TIMEOUT_MS });
+    fireEvent.change(password, { target: { value: "synthetic-unsaved-draft" } });
+    await act(async () => {
+      window.history.pushState({}, "", "/login?from=synthetic");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      setLocale("en");
+    });
+    expect(screen.getByLabelText("Password")).toBe(password);
+    expect(password).toHaveValue("synthetic-unsaved-draft");
   });
 
   it("loads the project list and provider settings navigation", async () => {

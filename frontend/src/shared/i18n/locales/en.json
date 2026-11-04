@@ -3681,5 +3681,9 @@
   "audio.voiceNames.mysteryNarrator": "Mystery narrator 2.0",
   "audio.voiceNames.pictureBooks": "Children’s book narrator 2.0",
   "audio.voiceNames.teacherTina": "Teacher Tina 2.0",
-  "audio.voiceNames.warmFemale": "Warm female voice 2.0"
+  "audio.voiceNames.warmFemale": "Warm female voice 2.0",
+  "app.pageFailed.title": "This page could not be displayed",
+  "app.pageFailed.description": "Page resources could not load, or a display error occurred. Check your connection, then reload the page.",
+  "app.pageFailed.unsavedHint": "Reloading opens the current page again. Unsaved input may be lost.",
+  "app.pageFailed.reload": "Reload page"
 }

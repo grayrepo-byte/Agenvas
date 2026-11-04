@@ -3681,5 +3681,9 @@
   "audio.voiceNames.mysteryNarrator": "ミステリーナレーター 2.0",
   "audio.voiceNames.pictureBooks": "絵本の読み聞かせ 2.0",
   "audio.voiceNames.teacherTina": "ティナ先生 2.0",
-  "audio.voiceNames.warmFemale": "温かい女性の声 2.0"
+  "audio.voiceNames.warmFemale": "温かい女性の声 2.0",
+  "app.pageFailed.title": "ページを表示できません",
+  "app.pageFailed.description": "ページの読み込み、または表示中にエラーが発生しました。接続を確認してからページを再読み込みしてください。",
+  "app.pageFailed.unsavedHint": "再読み込みすると現在のページが開き直され、未保存の入力内容が失われる場合があります。",
+  "app.pageFailed.reload": "ページを再読み込み"
 }
