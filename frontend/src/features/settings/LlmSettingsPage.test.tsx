@@ -40,8 +40,8 @@ describe("LlmSettingsPage", () => {
         keyMask: "masked", toolCallingVerified: false, updatedAt: null }); }));
     render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><LlmSettingsPage /></MemoryRouter></QueryClientProvider>);
     const user = userEvent.setup();
-    await user.type(await screen.findByRole("textbox", { name: "endpoint address" }), "https://router.example/v1");
-    fireEvent.change(screen.getByLabelText("API Key (need to be re-entered each time it is modified)"), { target: { value: "synthetic-key" } });
+    await user.type(await screen.findByRole("textbox", { name: "Endpoint address" }), "https://router.example/v1");
+    fireEvent.change(screen.getByLabelText("API key (re-enter each time you save)"), { target: { value: "synthetic-key" } });
     await user.click(screen.getByRole("combobox", { name: "Metadata provider" }));
     await user.click(screen.getByRole("option", { name: "OpenRouter" }));
     await user.click(screen.getByRole("button", { name: "Read model list" }));
@@ -140,7 +140,7 @@ describe("LlmSettingsPage", () => {
     const consent = await screen.findByRole("checkbox", { name: "I understand this diagnostic sends real model requests and may incur charges" });
     expect(consent).not.toBeChecked();
     expect(screen.getByText("Charges depend on your provider or proxy, including for local endpoints. Confirm before each diagnostic.")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Perform diagnostics that may be billable" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run potentially billable diagnostics" })).toBeDisabled();
   });
 
   it("discards unsaved fields and credentials without saving or diagnosing", async () => {

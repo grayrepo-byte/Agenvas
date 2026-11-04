@@ -121,7 +121,15 @@ try {
     await waitFor(() => document.getElementById("llm-endpoint").value === "http://host.docker.internal:11434/v1");
     assert.equal(await page(() => document.getElementById("llm-model").value), "Unsaved model draft");
     assert.equal(await page(() => document.getElementById("llm-api-key").value), "synthetic-placeholder");
-    assert.equal(await page(() => [...document.querySelectorAll("button")].some((button) => button.textContent.includes("Perform diagnostics that may be billable"))), true, "Original diagnostics remain");
+    assert.deepEqual(await page(() => {
+      const panel = document.querySelector(".llm-diagnostics-panel");
+      const button = panel?.querySelector(".llm-diagnostic-action button");
+      const consent = panel?.querySelector('[role="checkbox"]');
+      return { label: button?.textContent, disabled: button?.disabled,
+        consentDisabled: consent?.disabled, consentChecked: consent?.getAttribute("aria-checked"),
+        costExplained: panel?.textContent.includes("Charges depend on your provider or proxy") };
+    }), { label: "Run potentially billable diagnostics", disabled: true,
+      consentDisabled: true, consentChecked: "false", costExplained: true }, "Unsaved discovery drafts keep diagnostics cost-protected");
     await page(() => { window.localServiceDiscoveryFixture.mode = "DELAYED"; });
     await clickText(find);
     await waitFor(() => document.body.innerText.includes("Cancel check"));
