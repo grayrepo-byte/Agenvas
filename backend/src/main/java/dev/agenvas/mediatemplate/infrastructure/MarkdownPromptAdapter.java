@@ -18,15 +18,15 @@ import org.springframework.stereotype.Component;
 public class MarkdownPromptAdapter implements ThirdPartyPromptAdapter {
     private static final Pattern HEADING = Pattern.compile("^### (.+)$");
     private static final Pattern IMAGE = Pattern.compile("<img\\b[^>]*\\bsrc=[\"']([^\"']+)[\"']|!\\[[^]]*]\\(([^)]+)\\)", Pattern.CASE_INSENSITIVE);
-    private static final Pattern LINK = Pattern.compile("\\[([^]]+)]\\((https://[^)]+)\\)");
-    private static final Pattern GALLERY_ID = Pattern.compile("https://youmind\\.com/[^)\\s]+[?&]id=(\\d+)");
+    private static final Pattern LINK = Pattern.compile("\\[([^]]+)]\\((https?://[^)]+)\\)");
+    private static final Pattern GALLERY_ID = Pattern.compile("https?://youmind\\.com/[^)\\s]+[?&]id=(\\d+)");
     private static final Pattern INLINE = Pattern.compile("(?ms)^[^\\n]*\\*\\*Prompt Text:\\*\\*\\s*`(.*?)`[ \\t]*(?=\\n|$)");
     private static final Pattern SOURCE = Pattern.compile("(?im)^.*(?:\\*\\*Source:|\\*Source:|\\*\\*Author:).*$");
     private static final Pattern DESCRIPTION = Pattern.compile("(?s)#### [^\\n]*Description\\s*\\n(.*?)(?=\\n#### |$)");
     private static final Pattern PUBLISHED = Pattern.compile("(?m)^- \\*\\*Published:\\*\\* (.+)$");
     private static final Pattern FENCE = Pattern.compile("(?ms)^```[^\\n]*\\n(.*?)^```[ \\t]*$");
     private static final Pattern PROMPT_SECTION = Pattern.compile("(?im)^(?:[^\\n]*\\*\\*Prompt(?: Text)?:\\*\\*|####[^\\n]*Prompt)");
-    private static final Pattern VIDEO_LINK = Pattern.compile("(?i)(?:href=[\"']|\\]\\()(https://[^\"')\\s]+\\.(?:mp4|webm)(?:\\?[^\"')\\s]*)?)");
+    private static final Pattern VIDEO_LINK = Pattern.compile("(?i)(?:href=[\"']|\\]\\()(https?://[^\"')\\s]+\\.(?:mp4|webm)(?:\\?[^\"')\\s]*)?)");
     @Override public Format format() { return Format.GITHUB_MARKDOWN; }
     @Override public List<ThirdPartyPrompt> fetch(ThirdPartyPromptSource source, ThirdPartyPromptHttpClient http) {
         String body = http.feed(source.url());

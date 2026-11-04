@@ -16,8 +16,24 @@ import org.junit.jupiter.api.Test;
 /** An operator HTTP exception never bypasses runtime origin, IP or pinned DNS checks. */
 class SafeLlmTransportPolicyTest {
     @Test
+    void httpDnsCannotRebindToSpecialAddresses() {
+        String endpoint = "http://model.internal:11434/v1";
+        var policy = new LlmEndpointPolicy(new LlmEndpointProperties(false));
+        for (String blocked : List.of("127.0.0.1", "169.254.169.254", "fd00:ec2::254")) {
+            var transport = new SafeLlmTransport(endpoint, policy,
+                    host -> List.of(InetAddress.getByName("192.168.1.50"), InetAddress.getByName(blocked)));
+            var client = new OkHttpClient.Builder().addInterceptor(transport.interceptor()).build();
+            var request = new Request.Builder().url(endpoint + "/chat/completions")
+                    .header("Authorization", "Bearer synthetic-local-key")
+                    .post(RequestBody.create("{}", okhttp3.MediaType.get("application/json"))).build();
+            assertThatThrownBy(() -> client.newCall(request).execute()).as(blocked)
+                    .isInstanceOf(UnknownHostException.class).hasMessageContaining("blocked address");
+        }
+    }
+
+    @Test
     void removingAnHttpOriginRevokesPersistedConfigurationsBeforeAnyRequest() {
-        var defaultPolicy = new LlmEndpointPolicy(new LlmEndpointProperties(false));
+        var defaultPolicy = new LlmEndpointPolicy(new LlmEndpointProperties(false, List.of(), false));
         assertThatThrownBy(() -> new SafeLlmTransport("http://192.168.1.50:11434/v1", defaultPolicy))
                 .isInstanceOf(ApiProblemException.class);
     }

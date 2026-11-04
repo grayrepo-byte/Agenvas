@@ -20,7 +20,36 @@ import org.junit.jupiter.api.Test;
 class LlmEndpointPolicyTest {
 
     /** Deployment without the loopback exception, the default posture. */
-    private final LlmEndpointPolicy policy = new LlmEndpointPolicy(new LlmEndpointProperties(false));
+    private final LlmEndpointPolicy policy = new LlmEndpointPolicy(new LlmEndpointProperties(false, List.of(), false));
+
+    @Test
+    void defaultDeploymentAllowsPublicHttpWithoutAnOriginAllowlist() {
+        var defaults = new LlmEndpointPolicy(new LlmEndpointProperties(false));
+        assertThat(defaults.normalize("http://8.8.8.8:8080/v1")).isEqualTo("http://8.8.8.8:8080/v1");
+    }
+
+    @Test
+    void bindsPrivateHttpDefaultAndRetainsExplicitPublicOriginOverrides() throws Exception {
+        var source = new MapConfigurationPropertySource(Map.of("agenvas.settings.llm.allow-loopback-http", "false"));
+        var settings = new Binder(source).bind("agenvas.settings.llm", Bindable.of(LlmEndpointProperties.class)).get();
+        assertThat(settings.allowHttp()).isTrue();
+        var trusted = configured("http://8.8.8.8:8080");
+        assertThat(trusted.normalize("http://8.8.8.8:8080/v1")).isEqualTo("http://8.8.8.8:8080/v1");
+    }
+
+    @Test
+    void defaultDeploymentAllowsHttpButStillBlocksSpecialAddresses() {
+        var defaults = new LlmEndpointPolicy(new LlmEndpointProperties(false));
+        for (String host : List.of("10.0.0.5", "172.31.255.254", "192.168.1.50", "8.8.8.8", "198.18.0.1", "[2001:2::1]", "[fd12::1]", "[fd12:0:0:0:0:0:0:1]")) {
+            String endpoint = "http://" + host + ":11434/v1";
+            assertThat(defaults.normalize(endpoint)).isEqualTo(endpoint);
+        }
+        for (String host : List.of("169.254.169.254",
+                "127.0.0.1", "[::1]", "[fd00:ec2::254]", "[fd20:ce::254]")) {
+            assertThatThrownBy(() -> defaults.normalize("http://" + host + ":11434/v1"))
+                    .as("HTTP must reject %s", host).isInstanceOf(ApiProblemException.class);
+        }
+    }
 
     @Test
     void permitsOnlyAnExplicitDeploymentTrustedHttpOrigin() {
@@ -69,7 +98,8 @@ class LlmEndpointPolicyTest {
 
     private LlmEndpointPolicy configured(String origins) {
         var source = new MapConfigurationPropertySource(Map.of(
-                "agenvas.settings.llm.trusted-http-origins", origins));
+                "agenvas.settings.llm.trusted-http-origins", origins,
+                "agenvas.settings.llm.allow-http", "false"));
         var settings = new Binder(source).bind("agenvas.settings.llm",
                 Bindable.of(LlmEndpointProperties.class)).orElse(new LlmEndpointProperties(false));
         return new LlmEndpointPolicy(settings);

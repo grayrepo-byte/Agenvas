@@ -4,13 +4,9 @@ import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.shared.security.EndpointAddressRules;
 import java.net.InetAddress;
-import java.net.Inet4Address;
-import java.net.Inet6Address;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
-import java.util.Arrays;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -21,11 +17,6 @@ import org.springframework.stereotype.Component;
 /** 在关联密钥前校验 LLM 目标，阻止特殊用途地址及未获部署准入的 HTTP。 */
 @Component
 public class LlmEndpointPolicy {
-
-    /** Cloud metadata also uses ULA addresses; a general private-network exception must not admit them. */
-    private static final List<byte[]> CLOUD_METADATA_IPV6 = List.of(
-            HexFormat.of().parseHex("fd000ec2000000000000000000000254"),
-            HexFormat.of().parseHex("fd2000ce000000000000000000000254"));
 
     /** Deployment settings remain separate from administrator-saved provider configuration. */
     private final LlmEndpointProperties properties;
@@ -61,7 +52,7 @@ public class LlmEndpointPolicy {
         try {
             InetAddress[] addresses = InetAddress.getAllByName(host);
             if (addresses.length == 0) throw invalid();
-            for (InetAddress address : addresses) requireAllowedAddress(host, address);
+            for (InetAddress address : addresses) requireAllowedAddress(uri, address);
         } catch (UnknownHostException unresolved) {
             throw invalid();
         }
@@ -85,11 +76,19 @@ public class LlmEndpointPolicy {
                         && !"http".equalsIgnoreCase(scheme))) {
             throw invalid();
         }
+        try {
+            okhttp3.HttpUrl url = okhttp3.HttpUrl.get(uri.toString());
+            String suppliedHost = host.replaceAll("^\\[|\\]$", "");
+            String path = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
+            if ((!host.contains(":") && !url.host().equalsIgnoreCase(suppliedHost)) || !url.encodedPath().equals(path)
+                    || host.contains("%") || uri.getRawAuthority().endsWith(":")) throw invalid();
+        } catch (IllegalArgumentException malformed) { throw invalid(); }
         boolean loopback = "127.0.0.1".equals(host);
         if (loopback && !properties.allowLoopbackHttp()) throw invalid();
         if ("http".equalsIgnoreCase(scheme)
                 && !(properties.allowLoopbackHttp() && loopback)
-                && !trustedHttpOrigins.contains(HttpOrigin.from(uri))) {
+                && !trustedHttpOrigins.contains(HttpOrigin.from(uri))
+                && !properties.allowHttp()) {
             throw invalid();
         }
     }
@@ -106,40 +105,12 @@ public class LlmEndpointPolicy {
                     && (bytes[2] & 0xff) == 0 && (bytes[3] & 0xff) == 1) return;
             throw invalid();
         }
-        for (byte[] metadata : CLOUD_METADATA_IPV6) {
-            if (Arrays.equals(metadata, address.getAddress())) throw invalid();
-        }
-        // 私网与代理 fake-ip 段按部署者意图放行：自托管常把模型服务放在内网。
-        // IPv4 云元数据属于 link-local；IPv6 ULA 元数据已在上方排除。
-        if (EndpointAddressRules.allowsSelfHosted(address)) return;
-        if (address.isAnyLocalAddress() || address.isLoopbackAddress()
-                || address.isLinkLocalAddress() || address.isMulticastAddress()) throw invalid();
-        byte[] bytes = address.getAddress();
-        if (address instanceof Inet4Address) {
-            int first = bytes[0] & 0xff;
-            int second = bytes[1] & 0xff;
-            int third = bytes[2] & 0xff;
-            if (first == 0 || first >= 224 || (first == 100 && second >= 64 && second <= 127)
-                    || (first == 192 && second == 0 && third == 0)
-                    || (first == 192 && second == 0 && third == 2)
-                    || (first == 192 && second == 88 && third == 99)
-                    || (first == 198 && second == 51 && third == 100)
-                    || (first == 203 && second == 0 && third == 113)
-                    || (first == 168 && second == 63 && third == 129
-                            && (bytes[3] & 0xff) == 16)) throw invalid();
-            return;
-        }
-        if (address instanceof Inet6Address) {
-            int first = bytes[0] & 0xff;
-            int second = bytes[1] & 0xff;
-            int third = bytes[2] & 0xff;
-            int fourth = bytes[3] & 0xff;
-            if ((first & 0xe0) != 0x20
-                    || (first == 0x20 && second == 0x01 && third == 0x0d && fourth == 0xb8)
-                    || (first == 0x20 && second == 0x02)) throw invalid();
-            return;
-        }
-        throw invalid();
+        if (!EndpointAddressRules.allowsService(address)) throw invalid();
+    }
+
+    /** Runtime URI overload keeps the same scheme-independent address guard for HTTP and HTTPS. */
+    public void requireAllowedAddress(URI uri, InetAddress address) {
+        requireAllowedAddress(uri.getHost().replaceAll("^\\[|\\]$", ""), address);
     }
 
     /** Configuration entries are origins only; malformed operator input fails at startup. */

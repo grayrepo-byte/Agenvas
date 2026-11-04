@@ -62,7 +62,7 @@ final class SafeLlmTransport {
         // OkHttp bypasses custom Dns for IP literals, so validate them before credentials leave.
         if (base.host().contains(":") || base.host().matches("[0-9.]+")) {
             try {
-                policy.requireAllowedAddress(base.host(), InetAddress.getByName(base.host()));
+                policy.requireAllowedAddress(URI.create(endpoint), InetAddress.getByName(base.host()));
             } catch (UnknownHostException invalid) {
                 throw new IllegalArgumentException("LLM endpoint has an invalid IP address");
             }
@@ -77,7 +77,7 @@ final class SafeLlmTransport {
             if (addresses.isEmpty()) throw new UnknownHostException("LLM DNS returned no addresses");
             try {
                 for (InetAddress address : addresses) {
-                    policy.requireAllowedAddress(host, address);
+                    policy.requireAllowedAddress(URI.create(endpoint), address);
                 }
             } catch (RuntimeException unsafe) {
                 throw new UnknownHostException("LLM DNS returned a blocked address");

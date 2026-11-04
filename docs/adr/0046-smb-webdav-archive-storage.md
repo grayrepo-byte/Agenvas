@@ -17,3 +17,5 @@ SMB/WebDAV 不提供限时公网签名，因此不能被选作媒体中继。它
 追加 V25 扩展存储类型约束并更新数据库注释，jOOQ 从一次性 PostgreSQL 生成；OpenAPI、生成 TypeScript 和四语言界面同步。前后端应一起升级；不搬迁已有数据，启用 SMB/WebDAV 后不能降级到不识别这两种存储类型的版本。
 
 协议依据：[SMBJ 0.15.0](https://github.com/hierynomus/smbj/releases/tag/v0.15.0)、[WebDAV RFC 4918](https://www.rfc-editor.org/rfc/rfc4918.html)。测试结果及未验证范围记录在开发清单。
+
+当前端点协议规则由 [ADR 0070](0070-operator-selected-http-endpoints.md) 更新：用户可选择 HTTP 或 HTTPS，原地址、凭据与存储安全边界继续有效。

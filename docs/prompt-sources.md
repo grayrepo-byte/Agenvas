@@ -29,14 +29,14 @@ For a standalone JVM, export `AGENVAS_PROMPT_SYNC_ENABLED=false` before launch. 
 
 ## What the server contacts
 
-The ten built-in sources use public HTTPS GETs:
+The ten built-in sources use public HTTP or HTTPS GETs:
 
 | Destination | Catalogue data |
 | --- | --- |
 | `raw.githubusercontent.com` | Seven sources: ZeroLu, ImgEdify, YouMind GPT Image 2, YouMind Nano Banana Pro, David GPT Image 2, YouMind Seedance 2.0 and BeatAPI MiniMax H3. YouMind Seedance also reads the repository's public `video-urls.json` manifest. |
 | `imagepromptgallery.com` | Three public video catalogues: Seedance 2.0, Seedance 2.5 and MiniMax H3. This API may require multiple paginated GETs. |
 
-Administrators may add a custom public HTTPS JSON source. Requests send an `Agenvas-Prompt-Sync/1` user agent and the requested public source path/query. These catalogue downloads do not upload your project content, saved model credentials or private prompts. The remote service can see the server's network address and request metadata. Source URLs containing credentials, private/local DNS destinations, redirects and oversized responses are rejected.
+Administrators may add a custom public HTTP or HTTPS JSON source. Requests send an `Agenvas-Prompt-Sync/1` user agent and the requested public source path/query. These catalogue downloads do not upload your project content, saved model credentials or private prompts. The remote service can see the server's network address and request metadata. Source URLs containing credentials, private/local DNS destinations, redirects and oversized responses are rejected.
 
 Browsing a cached prompt or preview may separately load its third-party image/video URL in the browser. Explicitly importing a template with references can download its public media files into project storage. These actions are separate from periodic catalogue synchronization.
 

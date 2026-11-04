@@ -47,6 +47,15 @@ class LocalServiceDiscoveryServiceTest {
         }
     }
 
+    @Test void defaultPrivateHttpAllowsThePinnedContainerCandidate() throws Exception {
+        when(probe.runtime()).thenReturn(Runtime.CONTAINER);
+        when(probe.discover(eq(Service.OLLAMA), eq(Runtime.CONTAINER), any(), any()))
+                .thenReturn(found("http://host.docker.internal:11434/v1", "192.168.65.254"));
+        try (var service = service(new LlmEndpointProperties(false), Duration.ofSeconds(1))) {
+            assertThat(service.discover(Service.OLLAMA).policyAllowed()).isTrue();
+        }
+    }
+
     @Test void exactDeploymentOriginAllowsThePinnedContainerCandidate() throws Exception {
         when(probe.runtime()).thenReturn(Runtime.CONTAINER);
         when(probe.discover(eq(Service.OLLAMA), eq(Runtime.CONTAINER), any(), any()))

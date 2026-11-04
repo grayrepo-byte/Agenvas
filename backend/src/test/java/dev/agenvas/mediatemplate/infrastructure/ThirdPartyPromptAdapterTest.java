@@ -108,10 +108,12 @@ class ThirdPartyPromptAdapterTest {
         assertThatThrownBy(() -> ThirdPartyPromptValidation.validate(source, List.of(missing))).isInstanceOf(RuntimeException.class);
     }
     @Test void transportRejectsLocalAndMetadataAddressesBeforeRequests() throws Exception {
+        assertThat(ThirdPartyPromptValidation.url("http://example.com/feed").getScheme()).isEqualTo("http");
+        assertThat(ThirdPartyPromptValidation.url("https://example.com/post#section").getFragment()).isEqualTo("section");
         for (String address : List.of("127.0.0.1", "169.254.169.254", "10.0.0.1", "::1", "fc00::1", "198.18.0.1"))
             assertThat(ThirdPartyPromptHttpClient.publicAddress(InetAddress.getByName(address))).isFalse();
         assertThat(ThirdPartyPromptHttpClient.publicAddress(InetAddress.getByName("8.8.8.8"))).isTrue();
-        for (String url : List.of("http://example.com/feed", "https://user:pass@example.com/feed", "https://127.0.0.1/feed", "https://[::1]/feed"))
+        for (String url : List.of("https://user:pass@example.com/feed", "https://127.0.0.1/feed", "https://[::1]/feed"))
             assertThatThrownBy(() -> new ThirdPartyPromptHttpClient().download(url, 10)).isInstanceOf(RuntimeException.class);
     }
     @Test void sharedOriginalPostDoesNotMergeDifferentPromptsAndDocumentationSamplesAreIgnored() {

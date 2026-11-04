@@ -54,10 +54,10 @@ class OpenAiImage2ClientTest {
             respond(exchange, 200, "{\"data\":[{\"b64_json\":\"" + Base64.getEncoder().encodeToString(new byte[] {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10}) + "\"}]}");
         });
         try (var result = client.editUrls("synthetic-key", "gpt-image-2", "Synthetic edit", "high", "1024x1024",
-                List.of("https://example.com/first.png", "https://example.com/second.png"), "https://example.com/mask.png", true, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
+                List.of("http://example.com/first.png", "https://example.com/second.png"), "https://example.com/mask.png", true, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")) {
             assertThat(result.declaredContentType()).isEqualTo("image/png");
         }
-        assertThat(received.get().at("/images/0/image_url").asText()).isEqualTo("https://example.com/first.png");
+        assertThat(received.get().at("/images/0/image_url").asText()).isEqualTo("http://example.com/first.png");
         assertThat(received.get().at("/images/1/image_url").asText()).isEqualTo("https://example.com/second.png");
         assertThat(received.get().at("/mask/image_url").asText()).isEqualTo("https://example.com/mask.png");
         assertThat(received.get().path("background").asText()).isEqualTo("transparent");
@@ -441,6 +441,56 @@ class OpenAiImage2ClientTest {
         assertThatThrownBy(() -> client.generate("fake-secret", OpenAiImage2Client.DEFAULT_MODEL, "ridge", "low",
                 "1024x1024", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1")).isInstanceOf(OpenAiImage2Client.Uncertain.class);
         assertThat(redirected).hasValue(0);
+    }
+
+    @Test
+    void queryOnlyResultRedirectPreservesTheFilePath() throws IOException {
+        String origin = "http://127.0.0.1:" + server.getAddress().getPort();
+        AtomicInteger downloaded = new AtomicInteger();
+        server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                "{\"data\":[{\"url\":\"" + origin + "/results/image.png?old=1\"}]}"));
+        server.createContext("/results/image.png", exchange -> {
+            assertThat(exchange.getRequestHeaders().getFirst("Authorization")).isNull();
+            if ("old=1".equals(exchange.getRequestURI().getRawQuery())) {
+                exchange.getResponseHeaders().set("Location", "?signature=2");
+                exchange.sendResponseHeaders(302, -1); exchange.close();
+            } else {
+                assertThat(exchange.getRequestURI().getRawQuery()).isEqualTo("signature=2");
+                downloaded.incrementAndGet(); respond(exchange, 200, "synthetic-result");
+            }
+        });
+        try (var generated = client.generate("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
+                "ridge", "medium", "1024x1024", origin + "/v1")) {
+            assertThat(new String(generated.stream().readAllBytes(), StandardCharsets.UTF_8)).isEqualTo("synthetic-result");
+        }
+        assertThat(downloaded).hasValue(1);
+    }
+
+    @Test
+    void resultUrlsAndRedirectsCannotReachAnotherLocalService() throws IOException {
+        AtomicInteger leaked = new AtomicInteger();
+        HttpServer other = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        other.createContext("/admin", exchange -> { leaked.incrementAndGet(); respond(exchange, 200, "private"); });
+        other.start();
+        String forbidden = "http://127.0.0.1:" + other.getAddress().getPort() + "/admin";
+        String origin = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        try {
+            server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                    "{\"data\":[{\"url\":\"" + forbidden + "\"}]}"));
+            assertThatThrownBy(() -> client.generate("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
+                    "ridge", "medium", "1024x1024", origin)).isInstanceOf(OpenAiImage2Client.Uncertain.class);
+            assertThat(leaked).hasValue(0);
+            server.removeContext("/v1/images/generations");
+            server.createContext("/v1/images/generations", exchange -> respond(exchange, 200,
+                    "{\"data\":[{\"url\":\"" + origin + "/jump\"}]}"));
+            server.createContext("/v1/jump", exchange -> {
+                exchange.getResponseHeaders().set("Location", forbidden);
+                exchange.sendResponseHeaders(302, -1); exchange.close();
+            });
+            assertThatThrownBy(() -> client.generate("synthetic-key", OpenAiImage2Client.DEFAULT_MODEL,
+                    "ridge", "medium", "1024x1024", origin)).isInstanceOf(OpenAiImage2Client.Uncertain.class);
+            assertThat(leaked).hasValue(0);
+        } finally { other.stop(0); }
     }
 
     /** 中转站只回结果 URL（官方 API 回 b64_json），客户端必须去下载它，且不带凭证过去。 */

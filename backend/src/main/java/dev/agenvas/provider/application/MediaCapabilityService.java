@@ -1,5 +1,6 @@
 package dev.agenvas.provider.application;
 
+import dev.agenvas.shared.security.ServiceEndpointPolicy;
 import dev.agenvas.shared.crypto.Sha256;
 import dev.agenvas.shared.i18n.ApiMessage;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
@@ -889,12 +890,7 @@ public class MediaCapabilityService {
                                 || path.contains("\\") || path.contains("//"))) {
                     throw invalid(ApiMessage.of("api.media-capability-service.the-base-url-must-be-the-public-https-api-root"));
                 }
-                // 本机回环是自托管服务与本地假 API 的固定例外，与 ComfyUI 的规则一致。
-                boolean loopback = "http".equals(uri.getScheme())
-                        && "127.0.0.1".equals(uri.getHost()) && uri.getPort() > 0;
-                if (!"https".equals(uri.getScheme()) && !loopback) {
-                    throw invalid(ApiMessage.of("api.media-capability-service.the-base-url-must-be-the-public-https-api-root"));
-                }
+                ServiceEndpointPolicy.validate(uri, true);
                 return uri.toASCIIString().replaceAll("/+$", "");
             } catch (IllegalArgumentException invalidUri) {
                 throw invalid(ApiMessage.of("api.media-capability-service.base-url-is-invalid"));

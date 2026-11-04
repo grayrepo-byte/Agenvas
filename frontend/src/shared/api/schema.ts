@@ -4765,7 +4765,7 @@ export interface components {
             /** Format: int64 */
             version: number;
             connectionVersion: number;
-            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTPS root, or optional OPENAI/GOOGLE HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint. */
+            /** @description COMFYUI base URL with its entire path redacted as /[configured-path], RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or WAN official WorkspaceId.region.maas.aliyuncs.com HTTP/HTTPS root, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL; Google video requires the official Gemini host. null uses the platform official endpoint. */
             origin: string | null;
             keyMask: string | null;
             /** @enum {string} */
@@ -5127,7 +5127,7 @@ export interface components {
             name: string;
             /** @enum {string} */
             platform: "MOCK" | "COMFYUI" | "OPENAI" | "ARK" | "GOOGLE" | "VOLCENGINE" | "AUTODL" | "RUNNINGHUB" | "MINIMAX" | "KLING" | "WAN";
-            /** @description Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             /** @description Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential. */
             apiKey?: string | null;
@@ -5137,7 +5137,7 @@ export interface components {
             expectedVersion: number;
             name: string;
             enabled: boolean;
-            /** @description Required full COMFYUI base URL (remote HTTPS or exact local HTTP IP and port), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
+            /** @description Required full COMFYUI base URL (HTTP or HTTPS host/IP and port; literal IPv4 loopback is also supported), including any proxy path and path credential; encrypted server-side. No query, fragment or userinfo. Unchanged redacted COMFYUI origin on update preserves the full saved URL. KLING selects only https://api-singapore.klingai.com or https://api-beijing.klingai.com with an API Key (AK/SK JWT is not supported). MINIMAX selects only https://api.minimax.cn (default) or https://api.minimax.io, without a path. Optional RUNNINGHUB HTTP or HTTPS root without a domain allowlist, or optional OPENAI/GOOGLE HTTP or HTTPS API base URL. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. Beta requests use generationConfig.imageConfig; stable requests use generationConfig.responseFormat.image. */
             origin?: string | null;
             /** @description Cloud API Key; KLING requires the official API Key, not an AK/SK-generated JWT. Empty on update preserves the pinned credential. */
             apiKey?: string | null;
@@ -5265,7 +5265,7 @@ export interface components {
             provider: components["schemas"]["StorageProvider"];
             /**
              * Format: uri
-             * @description Object service HTTPS origin, WebDAV HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment
+             * @description Object service HTTP/HTTPS origin, WebDAV HTTP/HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment
              */
             endpoint: string;
             /** @description Object-store region; empty for SMB and WebDAV */
@@ -5286,7 +5286,7 @@ export interface components {
             provider: components["schemas"]["StorageProvider"];
             /**
              * Format: uri
-             * @description Object service HTTPS origin, WebDAV HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment
+             * @description Object service HTTP/HTTPS origin, WebDAV HTTP/HTTPS base collection, or smb://host[:port]/share[/directory]. No embedded credentials, query, or fragment
              */
             endpoint: string;
             /** @description Object-store region (OSS without oss- prefix); empty for SMB and WebDAV */

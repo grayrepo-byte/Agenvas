@@ -49,11 +49,7 @@ public class ObjectStorageClient implements RemoteStorageClient {
             List<InetAddress> addresses = resolver.lookup(hostname);
             if (addresses.isEmpty()) throw new UnknownHostException("Object storage DNS is empty");
             for (InetAddress address : addresses) {
-                if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()
-                        || address.isMulticastAddress())
-                    throw new UnknownHostException("Object storage address is blocked");
-                byte[] bytes = address.getAddress();
-                if (bytes.length == 4 && ((bytes[0] & 0xff) == 0 || (bytes[0] & 0xff) >= 224))
+                if (!EndpointAddressRules.allowsService(address))
                     throw new UnknownHostException("Object storage address is blocked");
             }
             return addresses;
@@ -82,11 +78,7 @@ public class ObjectStorageClient implements RemoteStorageClient {
         }
     }
     static boolean isPublic(InetAddress address) {
-        byte[] bytes = address.getAddress();
-        return !address.isAnyLocalAddress() && !address.isLoopbackAddress() && !address.isLinkLocalAddress()
-                && !address.isMulticastAddress() && !EndpointAddressRules.allowsSelfHosted(address)
-                && (bytes.length != 4 || (bytes[0] & 0xff) > 0 && (bytes[0] & 0xff) < 224
-                        && (bytes[0] & 0xff) != 127);
+        return EndpointAddressRules.allowsPublicDownload(address);
     }
     public String signedGet(StorageProfile profile, String key, Duration lifetime) {
         requirePublic(profile);
@@ -167,8 +159,10 @@ public class ObjectStorageClient implements RemoteStorageClient {
         } catch (IOException failure) { throw unavailable(); }
     }
     private Response execute(StorageProfile p, String key, Request request, String hash) throws IOException {
+        OkHttpClient selected = client.newBuilder().dns(dev.agenvas.shared.security.ServiceEndpointPolicy.dns(
+                request.url().uri(), client.dns(), false)).build();
         String[] credentials = settings.credentials(p);
-        return client.newCall(ObjectStorageSigner.sign(request, p, credentials[0], credentials[1],
+        return selected.newCall(ObjectStorageSigner.sign(request, p, credentials[0], credentials[1],
                 key, hash, clock.instant())).execute();
     }
     private static ApiProblemException unavailable() {

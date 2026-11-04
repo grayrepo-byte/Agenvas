@@ -31,9 +31,9 @@ Container markers are checked before native OS detection. Standard Compose expli
 
 ## A service was found but the address is blocked
 
-Discovery does not change endpoint authorization. Ollama's HTTP address must still be allowed by the deployment policy before it can be selected as a usable connection. For a container installation, the existing [Ollama override](ollama-local.md) explicitly permits only `http://host.docker.internal:11434`. A native JVM can use the existing exact-loopback option. Neither option allows every private host or port.
+Discovery does not change endpoint authorization. [Configured HTTP/HTTPS endpoints](http-endpoints.md) now accept public and private service addresses by default. Metadata, special addresses and loopback aliases stay blocked; a native JVM needs the existing exact-loopback LLM option. The bounded container discovery probe still checks only the standard ports at its fixed private host candidate; it does not scan the network or gain public probing targets. Operators may explicitly [restrict LLM HTTP to exact origins](ollama-local.md#optional-exact-origin-only-llm-http); the legacy Ollama override alone does not disable general HTTP.
 
-ComfyUI discovery returns the exact private IPv4 address that answered. Its existing local HTTP rule accepts that literal address without adding a hostname exception. A later address change requires a new check or manual update.
+ComfyUI discovery continues returning the exact private IPv4 address that answered. Manual ComfyUI configuration also accepts private IPv6 and private DNS names, including `host.docker.internal`. A later discovered-address change requires a new check or manual update.
 
 ## Understanding failed checks
 

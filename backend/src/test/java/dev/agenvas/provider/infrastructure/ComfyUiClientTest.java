@@ -745,7 +745,7 @@ class ComfyUiClientTest {
     void rejectsUnsafeSchemesAddressesAndPathsAtConstruction() {
         for (String endpoint : new String[] {"http://localhost:8188", "http://127.0.0.1:8188/../path",
                 "http://user@127.0.0.1:8188", "http://127.0.0.1:8188?x=1",
-                "http://169.254.169.254:80/metadata", "http://8.8.8.8:8188",
+                "http://169.254.169.254:80/metadata",
                 "file:///etc/passwd", "https://169.254.169.254/proxy/key",
                 "https://comfy.example.com/proxy/%2e%2e", "https://comfy.example.com//proxy",
                 "https://comfy.example.com/proxy/key#fragment"}) {

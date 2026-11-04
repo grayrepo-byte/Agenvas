@@ -399,7 +399,7 @@ describe("MediaSettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "添加连接" }));
     const dialog = screen.getByRole("dialog");
     const platforms = [
-      ["COMFYUI", "代理路径和其中的 Key 直接填入地址", "ComfyUI 地址"],
+      ["COMFYUI", "ComfyUI HTTP 或 HTTPS 基地址", "ComfyUI 地址"],
       ["OPENAI", "系统不会自动补 /v1", "API Base URL（留空使用官方地址）"],
       ["GOOGLE", "服务商要求 /v1beta 时需显式填写", "API Base URL（留空使用官方地址）"],
       ["RUNNINGHUB", "不要添加 /v1、/openapi/v2", "RunningHub API 地址"],
@@ -413,6 +413,8 @@ describe("MediaSettingsPage", () => {
       const help = within(dialog).getByRole("button", { name: "地址填写说明" });
       await user.hover(help);
       expect(await screen.findByRole("tooltip")).toHaveTextContent(hint);
+      if (["COMFYUI", "OPENAI", "GOOGLE", "RUNNINGHUB"].includes(platform))
+        expect(screen.getByRole("tooltip")).toHaveTextContent("明文传输");
       await user.keyboard("{Escape}");
       await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
     }

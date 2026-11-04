@@ -218,7 +218,8 @@ class GoogleVideoClientTest {
         assertThat(paths).hasSize(4);
     }
     @Test void downloadsCannotUseImageRelayOriginsSignedUrisOrUnrelatedGooglePaths() {
-        for (String bad : List.of("https://relay.example.invalid/v1beta", GoogleVideoClient.ORIGIN + "/unrelated", "http://generativelanguage.googleapis.com"))
+        assertThat(GoogleVideoClient.validatedOrigin("http://generativelanguage.googleapis.com/v1beta")).isEqualTo("http://generativelanguage.googleapis.com");
+        for (String bad : List.of("https://relay.example.invalid/v1beta", GoogleVideoClient.ORIGIN + "/unrelated"))
             assertThatThrownBy(() -> GoogleVideoClient.validatedOrigin(bad)).isInstanceOf(NativeMediaFailure.class);
         for (String bad : List.of("https://generativelanguage.googleapis.com.evil.invalid/v1beta/files/synthetic",
                 "https://generativelanguage.googleapis.com/v1beta/files/synthetic?key=fake", "https://generativelanguage.googleapis.com/v1beta/models/synthetic",

@@ -819,6 +819,7 @@ Compose 已可显式传入候选 LLM/ComfyUI 模式、精确端点、固定模�
 - [ ] Key 轮换后旧任务仍能按原配置查询，或明确报认证阻断。
 - [ ] 无 Key 泄露到日志、SSE、导出或浏览器持久存储。
 - [x] 端点地址策略放行私网与代理 fake-ip 段（`EndpointAddressRules`），云元数据与非路由地址仍拒绝，理由见 ADR 0007；重定向/DNS 等 SSRF 测试通过（精确管理员端点、ComfyUI 双路由不安全重定向目标零请求、LLM 模拟恶意 DNS；真实网络基础设施仍未演练）。
+- [x] 用户可选公网/私网 HTTP 或 HTTPS：模型、媒体与存储端点默认不强制 HTTPS；订阅仍保持公网地址策略。保存 URL/字面地址与运行时全 DNS 答案检查、元数据/回环控制、S3 实际 authority 签名、结果跳转及凭据隔离保留；界面四语言提示明文风险，旧 LLM Origin/回环配置兼容，见 ADR 0070 与 HTTP/HTTPS 指南。定向合成与 PostgreSQL 测试覆盖；真实 Provider、LAN、Docker 宿主、IPv6 链路和 Windows/WSL 未验证。
 
 ### T22 图片版本与晚到结果
 

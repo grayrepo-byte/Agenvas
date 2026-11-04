@@ -1,4 +1,4 @@
-# Optional override: explicitly trust only this local model origin.
+# Legacy optional Ollama host mapping and exact-origin entry; ordinary HTTP is allowed by default.
 # Use together with docker-compose.yml; see docs/ollama-local.md.
 services:
   server:

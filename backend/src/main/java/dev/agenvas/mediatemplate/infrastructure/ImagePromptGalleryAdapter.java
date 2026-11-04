@@ -133,7 +133,7 @@ public class ImagePromptGalleryAdapter implements ThirdPartyPromptAdapter {
         if (href.length() > MAX_PREFILL_BYTES * 2) throw ThirdPartyPromptValidation.invalid();
         try {
             URI uri = URI.create(href);
-            if (!"https".equals(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null
+            if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || uri.getHost() == null || uri.getUserInfo() != null
                     || uri.getRawQuery() == null) throw ThirdPartyPromptValidation.invalid();
             String encoded = null;
             for (String pair : uri.getRawQuery().split("&")) {

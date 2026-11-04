@@ -94,6 +94,7 @@ agenvas:
       runtime: ${AGENVAS_LOCAL_SERVICE_RUNTIME:AUTO}
     llm:
       allow-loopback-http: ${AGENVAS_LLM_ALLOW_LOOPBACK_HTTP:false}
+      allow-http: ${AGENVAS_LLM_ALLOW_HTTP:true}
       trusted-http-origins: ${AGENVAS_LLM_TRUSTED_HTTP_ORIGINS:}
   llm:
     mode: ${AGENVAS_LLM_MODE:mock}

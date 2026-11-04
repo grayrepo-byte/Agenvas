@@ -1673,9 +1673,9 @@ springdoc 作为后端实现说明与比对工具，不允许它与手写合约�
 
 原文件默认私有。应用先鉴权再提供内容；支持 GET、HEAD、Range 与正确 Content-Type。大视频流式传输，不整段读入 JVM 内存。
 
-媒体中继与永久存储分开配置，复用管理员加密连接目录但各自有独立选择项。`PUT /api/v1/settings/storage/relay` 使用 `expectedVersion`/CAS；选择或关闭中继不改变默认存储，不移动历史资源。参考任务在受理时固定本地视频所需的中继连接。桶可保持私有，但最终对象端点必须为公网 HTTPS；私网桶不能直接提供给外部生成服务。连接需要上传、签名读取与删除临时副本的权限。
+媒体中继与永久存储分开配置，复用管理员加密连接目录但各自有独立选择项。`PUT /api/v1/settings/storage/relay` 使用 `expectedVersion`/CAS；选择或关闭中继不改变默认存储，不移动历史资源。参考任务在受理时固定本地视频所需的中继连接。桶可保持私有，但最终对象端点必须通过公网 HTTP 或 HTTPS 可达（接收方可要求 HTTPS）；私网桶不能直接提供给外部生成服务。连接需要上传、签名读取与删除临时副本的权限。
 
-2026-10-09 图片中继扩展：存储设置增加 `llmRelayEnabled`、`imageRelayEnabled`，与中继连接一起通过 CAS 保存，可设置 LLM 开启、图片生成关闭。已选择中继且相应开关开启时，OpenAI 兼容 LLM 的已授权图片预览使用 HTTPS `image_url`；普通与流式共用，输入范围与缩略图约束保持。OpenAI Images 编辑使用 JSON `images[].image_url` 与 `mask.image_url`，上传与文件模式相同的缩放参考 PNG/alpha 蒙版；其他未支持 URL 协议的适配器继续原方式。图片任务受理时固定连接与传输选择，旧任务无该字段时保持文件上传；LLM 每次调用读取开关。V17 两个开关默认开启，已有中继安装升级后启用图片中继，没有中继连接仍用原方式。永久归档与视频中继规则保留。OpenAI 兼容中转站必须实测此 JSON URL 协议，multipart 文件编辑成功不代表 URL 编辑可用；独立异步 URL 接口需要对应提交、查询与结果解析协议。中继公网预检继续拒绝私网及代理 fake-IP，部署侧应让对象存储域名返回真实公网地址。上传前短事务登记临时副本，网络不持事务；检查点前预检失败进入 BLOCKED 并释放用量预留，公网地址失败保留 `MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED`，其他中继准备失败使用 `MEDIA_RELAY_PREPARATION_FAILED`。准备失败不提交生成，不进入 UNKNOWN、不自动换协议重提。签名继续 72 小时、副本 7 天清理。见 [ADR 0041](adr/0041-image-relay-by-function.md)。
+2026-10-09 图片中继扩展：存储设置增加 `llmRelayEnabled`、`imageRelayEnabled`，与中继连接一起通过 CAS 保存，可设置 LLM 开启、图片生成关闭。已选择中继且相应开关开启时，OpenAI 兼容 LLM 的已授权图片预览使用 按中继配置使用 HTTP(S) `image_url`；普通与流式共用，输入范围与缩略图约束保持。OpenAI Images 编辑使用 JSON `images[].image_url` 与 `mask.image_url`，上传与文件模式相同的缩放参考 PNG/alpha 蒙版；其他未支持 URL 协议的适配器继续原方式。图片任务受理时固定连接与传输选择，旧任务无该字段时保持文件上传；LLM 每次调用读取开关。V17 两个开关默认开启，已有中继安装升级后启用图片中继，没有中继连接仍用原方式。永久归档与视频中继规则保留。OpenAI 兼容中转站必须实测此 JSON URL 协议，multipart 文件编辑成功不代表 URL 编辑可用；独立异步 URL 接口需要对应提交、查询与结果解析协议。中继公网预检继续拒绝私网及代理 fake-IP，部署侧应让对象存储域名返回真实公网地址。上传前短事务登记临时副本，网络不持事务；检查点前预检失败进入 BLOCKED 并释放用量预留，公网地址失败保留 `MEDIA_RELAY_PUBLIC_ENDPOINT_REQUIRED`，其他中继准备失败使用 `MEDIA_RELAY_PREPARATION_FAILED`。准备失败不提交生成，不进入 UNKNOWN、不自动换协议重提。签名继续 72 小时、副本 7 天清理。见 [ADR 0041](adr/0041-image-relay-by-function.md)。
 
 本地视频只上传到中继的 `media-relay/` 临时对象键，上传前持久登记清理记录；副本保留 7 天，默认每小时按有界批次清理，删除失败保留记录以后重试。清理不删除原 Asset，也不再次提交生成。上传或签名失败且未调用 Ark create 时为明确失败，只有 Ark 提交是否被受理不明才进入 UNKNOWN。追加 V4 与生成 jOOQ；未配置中继的安装默认关闭，永久存储及历史资源保留。
 
@@ -1740,11 +1740,15 @@ MCP 用户凭据可包含 `MEDIA_GENERATE`，表示用户委托外部客户端�
 
 Provider endpoint 只能由管理员配置，模型不能传入任意 endpoint。连接云接口默认只允许 HTTPS 和明确的主机/端口；重定向、DNS 解析结果和下载目标要逐次检查。[S17]
 
-LLM 的 HTTP 默认不准入，部署者可按 [ADR 0067](adr/0067-explicit-local-llm-http-origins.md) 显式信任精确主机与端口，字面回环仍需独立开关，保存与运行时继续校验目标和全部 DNS 答案、阻断元数据与特殊用途地址；Docker 到宿主机 Ollama 的配置见[本地连接指南](ollama-local.md)。
+管理员配置的 LLM（含模型元数据）、ComfyUI、OpenAI/Gemini 兼容图片接口、RunningHub、对象存储和 WebDAV 默认可选择公网或私网 HTTP/HTTPS，普通 HTTP 无需来源白名单；不自动降级已保存的 HTTPS。WAN Workspace 和 Google 原生视频保留官方主机、区域/能力和固定路径限制，但尊重显式选择的 HTTP/HTTPS。内置固定官方地址与 SMB 协议保持。新建连接时检查全部 DNS 答案，字面 IP 单独检查；元数据、回环别名、link-local、特殊用途与过渡 IPv6 拒绝，与协议无关。LLM 保留独立字面回环开关及精确 Origin 白名单，`AGENVAS_LLM_ALLOW_HTTP` 默认 true，设为 false 可选恢复仅白名单 HTTP；撤销时须关闭通用准入并清空例外。HTTP 会明文暴露 API Key、内容和存储凭据，界面四语言提示风险。管理员需选定真实服务主机/有效端口，模型及响应不能授予新端点。详见 [ADR 0070](adr/0070-operator-selected-http-endpoints.md) 和 [HTTP/HTTPS 指南](http-endpoints.md)。
+
+媒体/存储保存只做 URL/字面地址校验，域名在实际调用前检查，不在配置事务中解析 DNS；LLM 保留原保存时 DNS 预检。存储在解密/签名前校验最终请求主机（含 S3 bucket 前缀），继续拒绝回环；签名保留协议对应的有效端口及 IPv6 方括号。第三方订阅接受 HTTP(S)，但继续仅公网地址、无 URL 凭据/字面 IP/重定向；展示来源链接可保留片段。中继仍需真实公网可达，尊重选定的 HTTP(S)，接收方 Provider 可能要求 HTTPS。不绕过浏览器混合内容、Cookie 或证书保护。
+
+OpenAI 图片结果仅下载已选服务同源或公网 HTTPS，最多三跳且逐跳校验目标及全部 DNS；不携带 API Key。RunningHub 结果使用同样目标边界并拒绝重定向。用户显式选择 HTTP 服务可同源下载 HTTP，但任何跳转都不能把当前 HTTPS 静默降级或把私网授权转授另一主机/端口。ComfyUI 保留受控输出接口、HTTPS 跨源检查及既有 fake-IP 代理兼容。
 
 管理员可主动发现标准宿主机 Ollama / ComfyUI 服务，见 [ADR 0068](adr/0068-bounded-host-service-discovery.md)。接口只接受服务枚举，限定端口 11434/8188 和无凭据状态 GET，不扫描地址或端口；容器宿主别名仅接受全部 RFC1918 IPv4 答案并固定一个地址，原生运行使用本机字面回环，未知拓扑保留手动配置。DNS 与 HTTP 共用有界执行器和整体截止时间，正文限制解压后 32 KiB，探测管道不采集 debug 正文。发现不保存配置、不授予 HTTP 权限、不验证生成或工具能力；用户明确选择才填入表单草稿。
 
-ComfyUI 允许管理员配置本地精确 HTTP IP/端口或远程 HTTPS 地址及代理前缀，沿用自托管私网与代理 fake-ip 策略；拒绝云元数据、非路由地址和域名解析到回环。媒体结果下载仍只能回到固定服务前缀的受控接口。普通用户与模型不能配置任意 URL。
+ComfyUI 允许管理员配置 HTTP/HTTPS 主机/IP 与有效端口、既有字面 IPv4 回环及代理前缀，沿用自托管私网与代理 fake-ip 策略；拒绝云元数据、非路由地址和域名解析到回环。媒体结果下载仍只能回到固定服务前缀的受控接口。普通用户与模型不能配置任意 URL。
 
 P0 不提供任意 URL 导入。访问云元数据地址、环回/内网绕过、DNS rebinding、跨主机重定向均属于安全测试。
 

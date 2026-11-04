@@ -10,7 +10,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import org.springframework.stereotype.Component;
 
-/** Bounded credential-free GETs; public HTTPS, checked DNS, no redirects or implicit retries. */
+/** Bounded credential-free GETs; public HTTP(S), checked DNS, no redirects or implicit retries. */
 @Component
 public class ThirdPartyPromptHttpClient {
     public static final int MAX_FEED_BYTES = 32 * 1024 * 1024;
@@ -49,14 +49,6 @@ public class ThirdPartyPromptHttpClient {
         } catch (IOException failure) { throw new DownloadFailure(FailureReason.DOWNLOAD_FAILED, failure); }
     }
     static boolean publicAddress(InetAddress address) {
-        if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()
-                || address.isSiteLocalAddress() || address.isMulticastAddress()) return false;
-        byte[] b = address.getAddress(); int first = b[0] & 255;
-        if (b.length == 4) {
-            int second = b[1] & 255;
-            return first != 0 && first < 224 && !(first == 100 && second >= 64 && second <= 127)
-                    && !(first == 198 && (second == 18 || second == 19));
-        }
-        return (first & 0xfe) != 0xfc && first != 0;
+        return dev.agenvas.shared.security.EndpointAddressRules.allowsPublicDownload(address);
     }
 }

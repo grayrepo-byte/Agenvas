@@ -102,7 +102,7 @@ public class LocalServiceDiscoveryService implements AutoCloseable {
         URI endpoint = URI.create(found.endpoint());
         try {
             llmPolicy.requireAllowedOrigin(endpoint);
-            llmPolicy.requireAllowedAddress(endpoint.getHost(), found.address());
+            llmPolicy.requireAllowedAddress(endpoint, found.address());
             return true;
         } catch (ApiProblemException denied) {
             return false;

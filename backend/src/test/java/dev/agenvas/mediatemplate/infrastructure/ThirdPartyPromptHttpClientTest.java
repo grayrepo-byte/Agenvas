@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 
 /** Synthetic application interceptors stop before DNS or sockets; no live source is contacted. */
 class ThirdPartyPromptHttpClientTest {
-    private static final String URL = "https://example.com/synthetic-feed";
+    private static final String URL = "http://example.com/synthetic-feed";
 
     @Test void boundedSuccessUsesCredentialFreeGetWithoutVisitingAnyOtherAddress() {
         AtomicInteger requests = new AtomicInteger();

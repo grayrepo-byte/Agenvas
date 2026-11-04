@@ -69,9 +69,15 @@ public class GoogleVideoClient {
     /** Existing Google image base versions are accepted, but native video always chooses its fixed v1beta route. */
     public static String validatedOrigin(String origin) {
         if (origin == null || origin.isBlank()) return ORIGIN;
-        if (!Set.of(ORIGIN, ORIGIN + "/", ORIGIN + "/v1", ORIGIN + "/v1/", ORIGIN + "/v1beta", ORIGIN + "/v1beta/").contains(origin))
+        URI parsed;
+        try { parsed = URI.create(origin); } catch (IllegalArgumentException invalid) { throw GoogleVideoModels.invalid(); }
+        if (!("https".equals(parsed.getScheme()) || "http".equals(parsed.getScheme()))
+                || !"generativelanguage.googleapis.com".equals(parsed.getHost())
+                || parsed.getRawUserInfo() != null || parsed.getRawQuery() != null || parsed.getRawFragment() != null
+                || parsed.getPort() == 0 || parsed.getPort() > 65535
+                || !Set.of("", "/", "/v1", "/v1/", "/v1beta", "/v1beta/").contains(parsed.getRawPath()))
             throw GoogleVideoModels.invalid();
-        return ORIGIN;
+        return parsed.getScheme() + "://" + parsed.getRawAuthority();
     }
     public record Input(String mimeType, byte[] bytes, String fileName) {
         public Input(String mimeType, byte[] bytes) { this(mimeType, bytes, null); }
@@ -294,8 +300,8 @@ public class GoogleVideoClient {
         }
     }
     private URI endpoint(String origin, String path) {
-        validatedOrigin(origin);
-        return (testOrigin == null ? URI.create(ORIGIN) : testOrigin).resolve(path);
+        String selected = validatedOrigin(origin);
+        return (testOrigin == null ? URI.create(selected) : testOrigin).resolve(path);
     }
     public static boolean validId(Profile p, String id) {
         if (id == null || id.length() > 512) return false;
@@ -307,8 +313,8 @@ public class GoogleVideoClient {
     public static String fileName(String value) {
         URI uri;
         try { uri = URI.create(value); } catch (IllegalArgumentException invalid) { throw resultUrl(); }
-        if (!"https".equals(uri.getScheme()) || !"generativelanguage.googleapis.com".equals(uri.getHost())
-                || uri.getRawUserInfo() != null || uri.getRawFragment() != null || uri.getPort() != -1
+        if (!("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || !"generativelanguage.googleapis.com".equals(uri.getHost())
+                || uri.getRawUserInfo() != null || uri.getRawFragment() != null || uri.getPort() == 0 || uri.getPort() > 65535
                 || uri.getRawQuery() != null && !"alt=media".equals(uri.getRawQuery())) throw resultUrl();
         String path = uri.getRawPath();
         String name = path != null ? path.replaceFirst("^/(?:download/)?v1beta/", "").replaceFirst(":download$", "") : "";

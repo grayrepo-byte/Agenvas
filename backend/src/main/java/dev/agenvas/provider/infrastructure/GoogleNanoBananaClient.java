@@ -1,5 +1,6 @@
 package dev.agenvas.provider.infrastructure;
 
+import dev.agenvas.shared.security.ServiceEndpointPolicy;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.artifact.domain.ImageGenerationParameters;
 import dev.agenvas.provider.domain.MediaPayload;
@@ -67,10 +68,14 @@ public class GoogleNanoBananaClient {
      */
     GoogleNanoBananaClient(ObjectMapper mapper, Duration readTimeout, Duration callTimeout) {
         this.mapper = mapper;
-        // 配置层已把端点限定为 HTTPS 公网或字面 127.0.0.1；这里放行回环，域名解析
-        // 落到回环仍被拦，因为 hostname 不是字面 127.0.0.1。
+        // Each selected endpoint installs a scheme-aware pinned DNS policy before sending credentials.
         this.http = PinnedHttpClients.pinned(FixedCloudDns.checked(Dns.SYSTEM, true),
                 CONNECT_TIMEOUT, readTimeout, callTimeout);
+    }
+
+    private OkHttpClient serviceClient(Request request) throws IOException {
+        return http.newBuilder().dns(ServiceEndpointPolicy.dns(
+                request.url().uri(), Dns.SYSTEM, true)).build();
     }
 
     public MediaPayload generate(String key, String model, String origin, String prompt,
@@ -106,7 +111,7 @@ public class GoogleNanoBananaClient {
                 .header("Accept", "application/json")
                 .post(RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8),
                         MediaType.parse("application/json"))).build();
-        try (Response response = http.newCall(request).execute()) {
+        try (Response response = serviceClient(request).newCall(request).execute()) {
             if (response.body() == null) {
                 throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
                         "Google response has no body");
@@ -154,13 +159,7 @@ public class GoogleNanoBananaClient {
      */
     static URI apiEndpoint(String origin, String model) {
         URI target = origin == null || origin.isBlank() ? OFFICIAL : URI.create(origin);
-        boolean loopback = "http".equals(target.getScheme())
-                && "127.0.0.1".equals(target.getHost()) && target.getPort() > 0;
-        if (target.getHost() == null || !(loopback || "https".equals(target.getScheme()))
-                || target.getRawUserInfo() != null || target.getRawQuery() != null
-                || target.getRawFragment() != null) {
-            throw new IllegalArgumentException("Pinned Google API base URL is invalid");
-        }
+        ServiceEndpointPolicy.validate(target, true);
         String path = target.getRawPath();
         URI base = path == null || path.isEmpty() || "/".equals(path)
                 ? target.resolve(DEFAULT_API_PATH)
