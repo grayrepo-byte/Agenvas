@@ -427,25 +427,25 @@ public class LocalAssetStorage implements dev.agenvas.asset.storage.AssetStorage
     /** 从任务固定路径重建崩溃前已安装的图片元数据；冲突文件或孤立缩略图会报错。 */
     public Optional<StoredImage> recoverImage(UUID projectId, UUID assetId) {
         String prefix = projectId + "/" + assetId;
-        Path png = checkedPath(prefix + ".png");
-        Path jpeg = checkedPath(prefix + ".jpg");
-        boolean hasPng = Files.isRegularFile(png, LinkOption.NOFOLLOW_LINKS);
-        boolean hasJpeg = Files.isRegularFile(jpeg, LinkOption.NOFOLLOW_LINKS);
-        Path thumbnail = checkedPath(prefix + ".thumb.png");
-        if ((Files.exists(png, LinkOption.NOFOLLOW_LINKS) && !hasPng)
-                || (Files.exists(jpeg, LinkOption.NOFOLLOW_LINKS) && !hasJpeg)) {
-            throw new IllegalStateException("Task image path is not a regular file");
+        Path original = null;
+        for (String suffix : PREPARED_IMAGE_ORIGINAL_SUFFIXES) {
+            Path candidate = checkedPath(prefix + suffix);
+            if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) continue;
+            if (!Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IllegalStateException("Task image path is not a regular file");
+            }
+            if (original != null) {
+                throw new IllegalStateException("Conflicting task image files require investigation");
+            }
+            original = candidate;
         }
-        if (hasPng && hasJpeg) {
-            throw new IllegalStateException("Conflicting task image files require investigation");
-        }
-        if (!hasPng && !hasJpeg) {
+        Path thumbnail = checkedPath(prefix + PREPARED_IMAGE_THUMBNAIL_SUFFIX);
+        if (original == null) {
             if (Files.exists(thumbnail, LinkOption.NOFOLLOW_LINKS)) {
                 throw new IllegalStateException("Task image thumbnail has no original file");
             }
             return Optional.empty();
         }
-        Path original = hasPng ? png : jpeg;
         Path temporary = null;
         try {
             long size = Files.size(original);
