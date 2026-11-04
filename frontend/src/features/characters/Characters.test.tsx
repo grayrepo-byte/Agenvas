@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -49,6 +49,38 @@ function installPreview() {
 }
 
 describe("project characters", () => {
+  it("keeps a nested manager preview from saving or previewing its parent's dirty draft", async () => {
+    setLocale("zh");
+    const bindingPreviews = installPreview();
+    const draftWrites: unknown[] = [];
+    const managerPreviews: SaveCharacter[] = [];
+    server.use(http.put(`${BASE}/canvas-items/${ITEM}/media-draft`, async ({ request }) => {
+      const input = await request.json(); draftWrites.push(input);
+      return HttpResponse.json({ ...draft, prompt: "Edited during preview", version: 2 });
+    }), http.post(`${BASE}/characters/${profile.id}/preview-change`, async ({ request }) => {
+      managerPreviews.push(await request.json() as SaveCharacter);
+      return HttpResponse.json({ characterId: profile.id, expectedVersion: 1, affectedItems: [] });
+    }));
+    mountBindings();
+    await screen.findByLabelText(t("character.include"));
+    fireEvent.click(screen.getByText("Edit draft test"));
+    await userEvent.click(screen.getByRole("button", { name: t("character.manage") }));
+    await userEvent.click(await screen.findByRole("button", { name: "Mira" }));
+    await userEvent.click(screen.getByRole("button", { name: t("character.previewSave") }));
+    await screen.findByRole("button", { name: t("character.confirmSave") });
+    expect(managerPreviews).toHaveLength(1);
+    await userEvent.keyboard("{Escape}");
+    const parent = screen.getByRole("dialog", { name: t("character.bindingsTitle") });
+    await waitFor(() => expect(within(parent).getByRole("button", { name: t("character.previewApply") })).toBeEnabled());
+    expect(draftWrites).toHaveLength(0);
+    expect(bindingPreviews).toHaveLength(0);
+    expect(screen.getByTestId("current-prompt")).toHaveTextContent("Edited during preview");
+    await userEvent.click(within(parent).getByRole("button", { name: t("character.previewApply") }));
+    await screen.findByLabelText(t("character.promptAfter"));
+    expect(draftWrites).toHaveLength(1);
+    expect(bindingPreviews).toHaveLength(1);
+  });
+
   it.each([["save", 503, "zh"], ["archive", 503, "en"], ["save", 408, "ru"], ["save", "network", "ja"]] as const)("reconciles a committed %s after %s in %s with its original command", async (mode, failure, locale) => {
     setLocale(locale);
     baseHandlers();
