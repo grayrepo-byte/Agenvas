@@ -1,7 +1,33 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyOpenAiImageTokenPreset, openAiImagePricePreset, updateOpenAiImagePricingDraft } from "./openAiImagePricingPresets";
 
 describe("OpenAI Images standard price presets", () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-04T12:00:00Z")); });
+  afterEach(() => vi.useRealTimers());
+  it.each([
+    ["gpt-image-1.5", "5", "8", "32"], ["gpt-image-1.5-2025-12-16", "5", "8", "32"],
+    ["gpt-image-1-mini", "2", "2.5", "8"],
+  ])("uses model-specific USD rates per million tokens for %s before retirement", (model, text, image, output) => {
+    const preset = openAiImagePricePreset(model, null, "2026-11-04");
+    expect(preset?.rates).toEqual({ currency: "USD", textInputPerMillion: text, imageInputPerMillion: image, imageOutputPerMillion: output });
+    expect(preset?.source).toBe(`https://developers.openai.com/api/docs/models/${model.startsWith("gpt-image-1.5") ? "gpt-image-1.5" : "gpt-image-1-mini"}`);
+    expect(preset?.availableUntil).toBe("2026-12-01");
+    expect(openAiImagePricePreset(model, null, "2026-12-01")).toBeUndefined();
+  });
+  it("stops offering retired presets using the current UTC date by default", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-12-01T00:00:00Z"));
+      expect(openAiImagePricePreset("gpt-image-1-mini", null)).toBeUndefined();
+      expect(openAiImagePricePreset("gpt-image-2", null)).toBeDefined();
+    } finally { vi.useRealTimers(); }
+  });
+  it("switches untouched model defaults between distinct tariffs without copying cache or Batch discounts", () => {
+    const initial = applyOpenAiImageTokenPreset({}, null);
+    const mini = updateOpenAiImagePricingDraft(initial, { ...initial, model: "gpt-image-1-mini" }, null);
+    expect(mini.tokenPricing).toEqual({ currency: "USD", textInputPerMillion: "2", imageInputPerMillion: "2.5", imageOutputPerMillion: "8" });
+    expect(updateOpenAiImagePricingDraft(mini, { ...mini, model: "gpt-image-1.5" }, null).tokenPricing?.imageOutputPerMillion).toBe("32");
+  });
   it.each(["", "gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare-2026-09-08"])("matches the verified exact model %s", (model) => {
     expect(openAiImagePricePreset(model, null)?.rates).toEqual({ currency: "USD", textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "30" });
     expect(openAiImagePricePreset(model, "https://api.openai.com/v1/")?.verifiedAt).toBe("2026-11-04");

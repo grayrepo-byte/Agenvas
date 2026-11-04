@@ -3593,7 +3593,9 @@
   "settings.capabilities.tokenCachedTextInput": "キャッシュテキスト入力 / 百万 Token（任意）",
   "settings.capabilities.tokenCachedImageInput": "キャッシュ画像入力 / 百万 Token（任意）",
   "settings.capabilities.tokenPricingHint": "API の実際の使用量とタスクに固定した単価で見積もります。実際の請求額はプロバイダーの請求に従います。使用量がなければ費用は不明です。キャッシュ詳細がなければ通常入力単価で見積もり、ゼロと仮定しません。",
-  "settings.capabilities.officialTokenPreset": "公式参考：{0}、USD / 百万 Token、Standard 処理。確認日 {1}。単価は編集可能です。OpenAI Images API にキャッシュ入力割引は適用されません。",
+  "settings.capabilities.officialTokenPreset": "公式参考：{0}、USD / 百万 Token、Standard 処理。確認日 {1}。単価は編集可能です。通常入力と画像出力のみを含み、キャッシュや Batch の割引は自動適用しません。",
   "settings.capabilities.officialTokenSource": "OpenAI 公式価格情報",
-  "settings.capabilities.noOfficialTokenPreset": "このモデルまたはエンドポイントの確認済み公式プリセットはありません。プロバイダーの単価を入力してください。既存の価格は自動上書きされません。"
+  "settings.capabilities.noOfficialTokenPreset": "このモデルまたはエンドポイントの確認済み公式プリセットはありません。プロバイダーの単価を入力してください。既存の価格は自動上書きされません。",
+  "settings.capabilities.officialTokenPresetExpiry": "このモデルは非推奨で、{0} に停止予定です。同日以降は自動価格プリセットを提供しません。",
+  "settings.capabilities.officialModelDeprecation": "公式の廃止告知"
 }

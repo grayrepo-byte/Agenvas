@@ -3593,7 +3593,9 @@
   "settings.capabilities.tokenCachedTextInput": "缓存文本输入 / 百万 Token（可选）",
   "settings.capabilities.tokenCachedImageInput": "缓存图片输入 / 百万 Token（可选）",
   "settings.capabilities.tokenPricingHint": "按接口返回的实际用量及本次任务冻结的单价估算，实际扣费以平台账单为准。未返回用量时费用未知；未返回缓存明细时按普通输入费率估算，不假定缓存为零。",
-  "settings.capabilities.officialTokenPreset": "官方参考：{0}，USD / 百万 Token，标准处理；核验日期 {1}。单价可手动修改。OpenAI Images API 不适用缓存输入折扣。",
+  "settings.capabilities.officialTokenPreset": "官方参考：{0}，USD / 百万 Token，标准处理；核验日期 {1}。单价可手动修改。预设只包含普通输入和图片输出，不自动套用缓存或 Batch 折扣。",
   "settings.capabilities.officialTokenSource": "OpenAI 官方价格来源",
-  "settings.capabilities.noOfficialTokenPreset": "此模型或端点没有已核验的官方预设，请填写服务商单价。已有价格不会自动覆盖。"
+  "settings.capabilities.noOfficialTokenPreset": "此模型或端点没有已核验的官方预设，请填写服务商单价。已有价格不会自动覆盖。",
+  "settings.capabilities.officialTokenPresetExpiry": "此型号已弃用，计划于 {0} 停用；届时不再提供自动价格预设。",
+  "settings.capabilities.officialModelDeprecation": "官方停用公告"
 }

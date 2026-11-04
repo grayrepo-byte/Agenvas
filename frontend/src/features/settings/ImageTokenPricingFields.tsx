@@ -29,7 +29,9 @@ export function ImageTokenPricingFields({ values, onChange, connectionOrigin }: 
     </FieldLabel></Field>)}
     <p className="ui-muted">{t("settings.capabilities.tokenPricingHint")}</p>
     {preset ? <p className="ui-muted">{t("settings.capabilities.officialTokenPreset", { "0": preset.model, "1": preset.verifiedAt })}{" "}
-      <a href={preset.source} target="_blank" rel="noreferrer">{t("settings.capabilities.officialTokenSource")}</a></p>
+      <a href={preset.source} target="_blank" rel="noreferrer">{t("settings.capabilities.officialTokenSource")}</a>
+      {preset.availableUntil ? <> {t("settings.capabilities.officialTokenPresetExpiry", { "0": preset.availableUntil })}{" "}
+        <a href="https://developers.openai.com/api/docs/deprecations#2026-06-02-gpt-image-model-deprecations" target="_blank" rel="noreferrer">{t("settings.capabilities.officialModelDeprecation")}</a></> : null}</p>
       : <p className="ui-muted">{t("settings.capabilities.noOfficialTokenPreset")}</p>}
   </>;
 }

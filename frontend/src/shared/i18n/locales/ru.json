@@ -3593,7 +3593,9 @@
   "settings.capabilities.tokenCachedTextInput": "Кэш текста на входе / млн токенов (необязательно)",
   "settings.capabilities.tokenCachedImageInput": "Кэш изображения на входе / млн токенов (необязательно)",
   "settings.capabilities.tokenPricingHint": "Оценка использует сообщённый расход и тарифы, зафиксированные для задачи. Фактическая сумма определяется счётом провайдера. Без расхода стоимость неизвестна. Без детализации кэша применяются обычные входные ставки; неизвестный кэш не считается нулевым.",
-  "settings.capabilities.officialTokenPreset": "Официальный ориентир: {0}, USD за миллион токенов, Standard; проверено {1}. Ставки можно менять. Скидки за кэш не применяются к запросам OpenAI Images API.",
+  "settings.capabilities.officialTokenPreset": "Официальный ориентир: {0}, USD за миллион токенов, Standard; проверено {1}. Ставки можно менять. Включены обычный ввод и вывод изображений, без автоматически предполагаемых скидок за кэш или Batch.",
   "settings.capabilities.officialTokenSource": "Официальные цены OpenAI",
-  "settings.capabilities.noOfficialTokenPreset": "Для этой модели или адреса нет проверенного официального тарифа. Укажите ставки провайдера; существующие цены автоматически не заменяются."
+  "settings.capabilities.noOfficialTokenPreset": "Для этой модели или адреса нет проверенного официального тарифа. Укажите ставки провайдера; существующие цены автоматически не заменяются.",
+  "settings.capabilities.officialTokenPresetExpiry": "Эта устаревшая модель будет отключена {0}; с этой даты автоматический тариф не предлагается.",
+  "settings.capabilities.officialModelDeprecation": "Официальное уведомление об отключении"
 }
