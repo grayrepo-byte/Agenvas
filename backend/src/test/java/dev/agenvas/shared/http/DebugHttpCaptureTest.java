@@ -26,6 +26,60 @@ class DebugHttpCaptureTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TIMEOUT_SECONDS = 5;
 
+    @Test void mediaDebugHidesAuthKeyFieldsAndResultSignaturesBeforeAnyDownload() {
+        try (var capture = DebugHttpCapture.open(ignored -> {})) {
+            String saved = capture.sanitizeJson("{\"auth_key\":\"synthetic-auth-field\","
+                    + "\"result\":\"https://cdn.invalid/result.png?auth_key=synthetic-download-auth&page=2\"}");
+            assertThat(saved).contains("result.png", "page=2", "[REDACTED]")
+                    .doesNotContain("synthetic-auth-field", "synthetic-download-auth");
+        }
+    }
+
+    @Test void mediaDebugHidesPercentEncodedAuthParameterNamesBeforeDownloadRegistration() throws Exception {
+        for (String name : List.of("auth%5Fkey", "%61uth_key", "auth%2Dkey")) {
+            var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+            try (var capture = DebugHttpCapture.open(saved::set)) {
+                String url = "https://cdn.invalid/result.png?" + name + "=synthetic-encoded-auth&page=2";
+                assertThat(capture.sanitizeJson(MAPPER.createObjectNode().put("result", url).toString()))
+                        .contains("result.png", "page=2", "[REDACTED]").doesNotContain("synthetic-encoded-auth");
+                int index = DebugHttpCapture.begin("POST", "https://provider.invalid/generate", null, null);
+                String response = name + "=synthetic-encoded-form&page=2";
+                try (var body = DebugHttpCapture.responseStream(index, 200, "application/x-www-form-urlencoded",
+                        new java.io.ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8)))) {
+                    assertThat(new String(body.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(response);
+                }
+                assertThat(saved.get().getFirst().responseBody().content())
+                        .contains("page=2", "[REDACTED]").doesNotContain("synthetic-encoded-form");
+            }
+        }
+    }
+
+    @Test void requestAddressesHideAuthKeysInBothCaptureModesWithoutChangingLlmBodyPolicy() {
+        for (boolean llm : List.of(false, true)) {
+            var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+            try (var capture = llm ? DebugHttpCapture.openLlm(saved::set) : DebugHttpCapture.open(saved::set)) {
+                DebugHttpCapture.begin("GET", "https://cdn.invalid/result.png?Auth_Key=synthetic-url-auth&page=2", null, null);
+                if (llm) assertThat(capture.sanitizeJson("{\"auth_key\":\"literal-model-content\"}"))
+                        .contains("literal-model-content");
+            }
+            assertThat(saved.get().getFirst().url()).contains("result.png", "page=2").doesNotContain("synthetic-url-auth");
+        }
+    }
+
+    @Test void mediaTextBodiesHideAuthKeysWithoutChangingTheConsumedResponse() throws Exception {
+        String response = "result=https://cdn.invalid/result.png?auth_key=synthetic-text-auth&page=2";
+        var saved = new AtomicReference<List<DebugHttpCapture.Exchange>>();
+        try (var capture = DebugHttpCapture.open(saved::set)) {
+            int index = DebugHttpCapture.begin("POST", "https://provider.invalid/generate", null, null);
+            try (var body = DebugHttpCapture.responseStream(index, 200, "text/plain",
+                    new java.io.ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8)))) {
+                assertThat(new String(body.readAllBytes(), StandardCharsets.UTF_8)).isEqualTo(response);
+            }
+        }
+        assertThat(saved.get().getFirst().responseBody().content()).contains("result.png", "page=2", "[REDACTED]")
+                .doesNotContain("synthetic-text-auth");
+    }
+
     @Test void nativeVideoDebugRemovesOmniThoughtSteps() {
         try (var capture = DebugHttpCapture.open(ignored -> {})) {
             String saved = capture.sanitizeJson("{\"steps\":[{\"type\":\"thought\",\"content\":[{\"type\":\"text\",\"text\":\"private-thought-marker\"}]},{\"type\":\"model_output\",\"content\":[{\"type\":\"video\",\"uri\":\"files/public-result\"}]}]}");
