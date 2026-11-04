@@ -68,6 +68,21 @@ class SystemLogBufferTest {
         assertThat(logs.snapshot(null, ".*", 1).entries()).isEmpty();
     }
 
+    @Test void longCredentialPrefixesAndSensitiveSuffixesRemainMasked() {
+        var logs = new SystemLogBuffer(CLOCK);
+        String prefix = "a-".repeat(4000);
+        for (String field : new String[]{"api_key", "api-key", "clientSecret", "client-secret",
+                "access_token", "refresh-token", "master_key_base64", "previous_keys", "password", "passwd"}) {
+            logs.append(SystemLogBuffer.Stream.STDOUT, prefix + field + "=synthetic-sensitive-value", false);
+        }
+        assertThat(logs.snapshot(null, "synthetic-sensitive-value", 20).entries()).isEmpty();
+        assertThat(logs.snapshot(null, null, 20).entries()).hasSize(10).allSatisfy(entry ->
+                assertThat(entry.message()).startsWith(prefix).endsWith("=[REDACTED]"));
+        logs.append(SystemLogBuffer.Stream.STDOUT, "tokenizer=ordinary passwordless=ordinary", false);
+        assertThat(logs.snapshot(null, "ordinary", 1).entries()).singleElement()
+                .extracting(SystemLogBuffer.Entry::message).isEqualTo("tokenizer=ordinary passwordless=ordinary");
+    }
+
     @Test void concurrentWritersAndSnapshotsKeepConsistentWatermarks() throws Exception {
         var logs = new SystemLogBuffer(CLOCK, 10);
         try (var executor = Executors.newFixedThreadPool(2)) {

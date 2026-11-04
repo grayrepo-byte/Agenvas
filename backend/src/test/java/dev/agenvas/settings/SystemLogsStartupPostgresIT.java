@@ -50,6 +50,16 @@ class SystemLogsStartupPostgresIT {
         mvc.perform(get("/api/v1/settings/system-logs").param("stream", "STDERR")
                         .param("search", "system-log-stderr-fixture").with(user("admin").roles("ADMIN")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.entries[0].stream").value("STDERR"));
+        String longLine = "system-log-boundary-fixture " + "a-".repeat(4000);
+        System.out.println(longLine);
+        System.out.println("system-log-boundary-fixture healthy");
+        mvc.perform(get("/api/v1/settings/system-logs").param("stream", "STDOUT")
+                        .param("search", "system-log-boundary-fixture").with(user("admin").roles("ADMIN")))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.entries.length()").value(2))
+                .andExpect(jsonPath("$.entries[0].message").value(longLine))
+                .andExpect(jsonPath("$.entries[0].truncated").value(false))
+                .andExpect(jsonPath("$.entries[1].message").value("system-log-boundary-fixture healthy"));
         mvc.perform(get("/api/v1/settings/system-logs")).andExpect(status().isUnauthorized());
     }
 }
