@@ -18,7 +18,6 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -69,8 +68,6 @@ class UsageMediaPricingTest {
         UUID owner = UUID.randomUUID();
         Task original = task(Task.Kind.IMAGE_GENERATION, null);
         service.reserveMediaTask(owner, original, "PROVIDER_UNPRICED", 7);
-        when(ledger.findByOperationKey("media:" + original.id() + ":settle"))
-                .thenReturn(Optional.empty());
         Task blocked = new Task(original.id(), original.projectId(), null, original.stepKey(),
                 original.kind(), Task.Status.BLOCKED, false, original.input(), original.inputHash(),
                 null, null, original.attemptNo(), NOW, null, null, original.leaseEpoch(),
@@ -104,7 +101,6 @@ class UsageMediaPricingTest {
         UUID owner = UUID.randomUUID();
         Task original = task(Task.Kind.AUDIO_GENERATION, null);
         service.reserveMediaTask(owner, original, "LOCAL_NO_COST", 1);
-        when(ledger.findByOperationKey("media:" + original.id() + ":settle")).thenReturn(Optional.empty());
         Task failed = new Task(original.id(), original.projectId(), null, original.stepKey(), original.kind(), status,
                 false, original.input(), original.inputHash(), null, null, 1, NOW, null, null, 1, 1, code, NOW, NOW, NOW);
         service.releaseUnsubmittedMediaTask(owner, failed);
@@ -184,6 +180,7 @@ class UsageMediaPricingTest {
         assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("0.4321");
         Task precise = task(Task.Kind.VIDEO_GENERATION, "{\"amount\":\"0.000001\",\"currency\":\"CNY\",\"unit\":\"SECOND\"}");
         ((tools.jackson.databind.node.ObjectNode) precise.input()).put("providerProtocol", "KLING");
+        service.reserveMediaTask(UUID.randomUUID(), precise, "PROVIDER_UNPRICED", 7);
         service.settleMediaTask(UUID.randomUUID(), precise, 0, new java.math.BigDecimal("5.033"));
         assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("0.000005");
     }
@@ -200,12 +197,34 @@ class UsageMediaPricingTest {
         assertThat(entries.getLast().actualCost()).isNull();
     }
 
+    @Test
+    void settlementRequiresItsOwnReservationAndCannotBorrowAnotherTasksCostSource() {
+        UsageService service = service();
+        UUID owner = UUID.randomUUID();
+        Task local = task(Task.Kind.IMAGE_GENERATION, null);
+        service.reserveMediaTask(owner, local, "LOCAL_NO_COST", 1);
+        Task cloud = task(Task.Kind.IMAGE_GENERATION,
+                "{\"amount\":\"0.2\",\"currency\":\"CNY\",\"unit\":\"IMAGE\"}");
+
+        assertThatThrownBy(() -> service.settleMediaTask(owner, cloud))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(entries).hasSize(1);
+
+        service.reserveMediaTask(owner, cloud, "PROVIDER_UNPRICED", 7);
+        service.settleMediaTask(owner, cloud);
+        assertThat(entries.getLast().taskId()).isEqualTo(cloud.id());
+        assertThat(entries.getLast().costSource()).isEqualTo("ADMIN_CONFIGURED");
+        assertThat(entries.getLast().providerConfigVersion()).isEqualTo(7);
+        assertThat(entries.getLast().estimatedCost()).isEqualByComparingTo("0.2");
+        assertThat(entries.getLast().actualCost()).isNull();
+    }
+
     private UsageService service() {
         when(ledger.insertOnce(any())).thenAnswer(invocation -> {
             entries.add(invocation.getArgument(0)); return true;
         });
         when(ledger.findByOperationKey(anyString())).thenAnswer(invocation ->
-                Optional.of(entries.getFirst()));
+                entries.stream().filter(entry -> entry.operationKey().equals(invocation.getArgument(0))).findFirst());
         return new UsageService(ledger, mock(ProjectService.class), mock(ProjectEventService.class),
                 mapper, Clock.fixed(NOW, ZoneOffset.UTC), mock(LlmModeProperties.class));
     }
