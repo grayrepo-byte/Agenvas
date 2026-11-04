@@ -132,9 +132,6 @@ public class CanvasService {
             CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                     .orElseThrow(this::notFound);
             if (source.version() != expectedSourceVersion) throw conflict();
-            if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
-                throw validation(ApiMessage.of("api.canvas-service.only-picture-and-video-cards-can-copy-working-branches"));
-            }
             ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                     source.subjectId());
             if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
@@ -211,8 +208,7 @@ public class CanvasService {
     @Transactional(readOnly = true)
     public boolean hasArtifactItem(UUID ownerId, UUID projectId, UUID itemId, UUID artifactId) {
         return canvasItems.find(ownerId, projectId, itemId)
-                .filter(item -> item.subjectType() == CanvasItem.SubjectType.ARTIFACT
-                        && item.subjectId().equals(artifactId)).isPresent();
+                .filter(item -> item.subjectId().equals(artifactId)).isPresent();
     }
 
     /**
@@ -224,8 +220,7 @@ public class CanvasService {
     public boolean removeUnchangedEmptyMediaItemWithinChange(UUID ownerId, UUID projectId,
             UUID itemId, UUID artifactId, long expectedDraftVersion) {
         CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
-        if (current == null || current.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                || !current.subjectId().equals(artifactId) || current.selectedVersionId() != null
+        if (current == null || !current.subjectId().equals(artifactId) || current.selectedVersionId() != null
                 || !canvasItems.mediaVersionIds(ownerId, projectId, itemId).isEmpty()
                 || mediaDrafts.get(ownerId, projectId, itemId).version() != expectedDraftVersion) {
             return false;
@@ -246,8 +241,7 @@ public class CanvasService {
         if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return;
         CanvasItem item = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
         if (item == null) return;
-        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                || !item.subjectId().equals(artifactId)) throw validation(ApiMessage.of("api.canvas-service.media-mission-objectives-do-not-match"));
+        if (!item.subjectId().equals(artifactId)) throw validation(ApiMessage.of("api.canvas-service.media-mission-objectives-do-not-match"));
         ArtifactVersion version = artifacts.requireVersion(ownerId, projectId, artifactId, versionId);
         canvasItems.addMediaVersion(projectId, itemId, versionId, version.createdAt());
     }
@@ -255,9 +249,6 @@ public class CanvasService {
     private CanvasItem requireMediaItem(UUID ownerId, UUID projectId, UUID itemId, boolean lock) {
         CanvasItem item = (lock ? canvasItems.findForUpdate(ownerId, projectId, itemId)
                 : canvasItems.find(ownerId, projectId, itemId)).orElseThrow(this::notFound);
-        if (item.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
-            throw validation(ApiMessage.of("api.canvas-service.only-image-and-video-nodes-have-media-versions"));
-        }
         Artifact.Kind kind = artifacts.get(ownerId, projectId, item.subjectId()).artifact().kind();
         if (kind == Artifact.Kind.TEXT) {
             throw validation(ApiMessage.of("api.canvas-service.only-image-and-video-nodes-have-media-versions"));
@@ -322,9 +313,6 @@ public class CanvasService {
         projects.requireActiveProject(ownerId, projectId);
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                 .orElseThrow(this::notFound);
-        if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT) {
-            throw validation(ApiMessage.of("api.canvas-service.only-media-cards-can-create-output-branches"));
-        }
         ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId,
                 source.subjectId());
         if (artifact.artifact().kind() == Artifact.Kind.TEXT) {
@@ -385,8 +373,7 @@ public class CanvasService {
         projects.requireActiveProject(ownerId, projectId);
         CanvasItem source = canvasItems.findForUpdate(ownerId, projectId, sourceItemId)
                 .orElseThrow(this::notFound);
-        if (source.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                || source.selectedVersionId() == null
+        if (source.selectedVersionId() == null
                 || artifacts.get(ownerId, projectId, source.subjectId()).artifact().kind()
                         != Artifact.Kind.VIDEO) throw conflict();
         String title = derivationTitle(source.title(), resultLabel);
@@ -629,11 +616,9 @@ public class CanvasService {
             projects.requireActiveProject(ownerId, projectId);
             CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId)
                     .orElseThrow(this::notFound);
-            if (current.subjectType() != CanvasItem.SubjectType.ARTIFACT) throw notFound();
             CanvasItem replay = canvasItems.find(ownerId, projectId, targetItemId).orElse(null);
             if (replay != null && replay.selectedVersionId() != null) {
-                if (replay.subjectType() != CanvasItem.SubjectType.ARTIFACT
-                        || !replay.subjectId().equals(current.subjectId())) throw conflict();
+                if (!replay.subjectId().equals(current.subjectId())) throw conflict();
                 ArtifactVersion replayVersion = artifacts.requireVersion(ownerId, projectId,
                         replay.subjectId(), replay.selectedVersionId());
                 if (!replayVersion.content().equals(content)
@@ -704,7 +689,6 @@ public class CanvasService {
             Long expectedSelectionEpoch, Long expectedDraftVersion) {
         CanvasItem current = canvasItems.findForUpdate(ownerId, projectId, itemId).orElse(null);
         if (current == null
-                || current.subjectType() != CanvasItem.SubjectType.ARTIFACT
                 || !current.subjectId().equals(artifactId)
                 || !java.util.Objects.equals(current.selectedVersionId(),
                         expectedParentVersionId)
