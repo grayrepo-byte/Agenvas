@@ -9,6 +9,7 @@ import { Button } from "../../shared/ui/primitives/button";
 import { Field, FieldDescription, FieldLabel } from "../../shared/ui/primitives/field";
 import { Input } from "../../shared/ui/primitives/input";
 import { automaticModelOptions, modelOptionsFromPolicy, type ModelOptionsDraft } from "./llmModelConfiguration";
+import { validLlmApiKey } from "./llmApiKey";
 
 const PROVIDERS: Record<LlmModelProvider, MessageKey> = {
   COMPATIBLE: "modelConnection.compatible", OPENAI: "modelConnection.openai", OPENROUTER: "modelConnection.openrouter",
@@ -66,7 +67,7 @@ export function LlmModelOptions(props: Props) {
   function load() {
     if (disabled || isPending) return;
     let request: LlmModelPreviewRequest;
-    if (apiKey.length >= 8 && apiKey.length <= 4096 && !/[^!-~]/.test(apiKey)) {
+    if (validLlmApiKey(apiKey)) {
       request = { provider: value.provider, credentialMode: "DRAFT", expectedVersion: base?.version ?? 0, endpoint: endpoint.trim(), apiKey, modelId: modelId.trim() || null };
     } else if (apiKey === "" && base?.configured && endpoint === base.endpoint
       && value.provider === (base.modelPolicy?.provider ?? "COMPATIBLE")) {

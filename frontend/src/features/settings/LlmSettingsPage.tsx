@@ -15,12 +15,10 @@ import { LocalServiceDiscovery } from "./LocalServiceDiscovery";
 import "./SettingsPages.css";
 import { LlmModelOptions } from "./LlmModelOptions";
 import { modelOptionsFromPolicy, modelSelection, type ModelOptionsDraft } from "./llmModelConfiguration";
+import { LLM_API_KEY_MAX_LENGTH, LLM_API_KEY_MIN_LENGTH, LLM_API_KEY_PATTERN, validLlmApiKey } from "./llmApiKey";
 
 
 type ConfigurationDraft = { base: LlmSettings; endpoint: string; modelId: string };
-// Match the server credential contract without trimming or replacing the supplied key.
-const API_KEY_PATTERN = "[!-~]{8,4096}";
-const INVALID_API_KEY_CHARACTER = /[^!-~]/;
 
 /** The edit base stays pinned while typing; background reads cannot replace a draft or its CAS version. */
 export function LlmSettingsPage() {
@@ -67,7 +65,7 @@ export function LlmSettingsPage() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!base || busy) return;
-    if (apiKey.length < 8 || apiKey.length > 4096 || INVALID_API_KEY_CHARACTER.test(apiKey)) {
+    if (!validLlmApiKey(apiKey)) {
       setKeyInvalid(true);
       keyInput.current?.focus();
       return;
@@ -152,7 +150,7 @@ export function LlmSettingsPage() {
               <Field><FieldLabel htmlFor="llm-model">{t("settings.llm.modelId")}</FieldLabel><Input id="llm-model" autoComplete="off" required disabled={busy} value={modelId} onChange={(event) => editDraft("modelId", event.target.value)} placeholder="model-name" /></Field>
               </FieldGroup>
               <Field className="llm-credential-field" data-invalid={keyInvalid || undefined}><FieldLabel htmlFor="llm-api-key">{t("settings.llm.apiKey")}</FieldLabel><Input ref={keyInput} id="llm-api-key" autoComplete="new-password" required type="password" disabled={busy} value={apiKey}
-                minLength={8} maxLength={4096} pattern={API_KEY_PATTERN} title={t("settings.llm.keyValidationError")}
+                minLength={LLM_API_KEY_MIN_LENGTH} maxLength={LLM_API_KEY_MAX_LENGTH} pattern={LLM_API_KEY_PATTERN} title={t("settings.llm.keyValidationError")}
                 aria-invalid={keyInvalid || undefined} onInvalid={() => setKeyInvalid(true)} onChange={(event) => {
                   if (base && !draft) setDraft({ base, endpoint, modelId });
                   setApiKey(event.target.value); setKeyInvalid(false); setError(""); setSaved(false); setAcknowledgedVersion(null);

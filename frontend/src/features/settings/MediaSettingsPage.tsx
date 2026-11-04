@@ -62,13 +62,6 @@ function capabilityMatches(connection: MediaConnection, capability: MediaCapabil
     connection.enabled && capability.enabled, query, status)
     && (kind === "all" || (kind === "local" ? connection.platform === "LOCAL" : capability.kind === kind && connection.platform !== "LOCAL"));
 }
-const cloudImageFields = [{ key: "model", get label() { return t("settings.mediaSettings.modelName"); } }] as const;
-
-function fixedModelFields(adapterId: string) {
-  return adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2"
-      ? cloudImageFields : [];
-}
-
 function QualityChoice({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   useLocale();
   return <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.imageQuality")}<Select value={value} onChange={(event) => onChange(event.target.value)}>
@@ -94,11 +87,10 @@ function FixedModelFields({ adapterId, values, onChange }: {
     </FieldLabel></Field> : null}
     {isKlingAdapter(adapterId) || ["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.fixedModel")}<Input value={adapterModel(adapterId)} readOnly />
     </FieldLabel></Field> : null}
-    {fixedModelFields(adapterId).map(({ key, label }) => <Field key={key}><FieldLabel className="ui-field block">{label}
-      <Input value={String(values[key as keyof AdapterSettings] ?? "")} onChange={(event) => onChange({ ...values, [key]: event.target.value })}
-        required={key !== "model"} maxLength={key === "model" ? MODEL_LIMIT : NAME_LIMIT}
-        placeholder={key === "model" ? adapterModel(adapterId) ?? t("settings.mediaSettings.builtinDefaultPlaceholder") : "model.safetensors"} />
-    </FieldLabel></Field>)}
+    {adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2" ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelName")}
+      <Input value={values.model ?? ""} onChange={(event) => onChange({ ...values, model: event.target.value })}
+        maxLength={MODEL_LIMIT} placeholder={adapterModel(adapterId) ?? t("settings.mediaSettings.builtinDefaultPlaceholder")} />
+    </FieldLabel></Field> : null}
     {adapterId === "GOOGLE_NANO_BANANA_2" ? <p className="ui-muted media-model-help">
       {t("settings.mediaSettings.googleModelHint")}</p> : null}
     {isKlingAdapter(adapterId) ? <p className="ui-muted media-model-help">{t("settings.mediaSettings.klingModelHint")}</p> : null}
