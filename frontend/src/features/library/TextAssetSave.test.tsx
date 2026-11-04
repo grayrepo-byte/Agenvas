@@ -15,18 +15,19 @@ const text: VersionedArtifact = { id: "a", projectId: "p", kind: "TEXT", title: 
 
 it("saves unsaved text before reading the library snapshot", async () => {
   const events: string[] = [];
+  const rawText = "\n    新正文  \n\n";
   server.use(
     http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
     http.post("/api/v1/projects/p/artifacts/a/revisions", async ({ request }) => {
-      expect(await request.json()).toEqual({ expectedVersion: 1, title: "说明", content: { format: "PLAIN_TEXT", text: "新正文" } });
-      events.push("text-saved"); return HttpResponse.json({ ...text, version: 2, resourceDefaultVersionId: "v2", resourceDefaultVersion: { ...text.resourceDefaultVersion, id: "v2", versionNo: 2, content: { format: "PLAIN_TEXT", text: "新正文" } } });
+      expect(await request.json()).toEqual({ expectedVersion: 1, title: "说明", content: { format: "PLAIN_TEXT", text: rawText } });
+      events.push("text-saved"); return HttpResponse.json({ ...text, version: 2, resourceDefaultVersionId: "v2", resourceDefaultVersion: { ...text.resourceDefaultVersion, id: "v2", versionNo: 2, content: { format: "PLAIN_TEXT", text: rawText } } });
     }),
     http.get("/api/v1/projects/p/canvas-items/i/library-saves", () => {
-      events.push("snapshot-read"); return HttpResponse.json({ title: "说明", kind: "TEXT", versionId: "v2", expectedSelectionEpoch: 0, expectedArtifactVersion: 2, versionNo: 2, textContent: { format: "PLAIN_TEXT", text: "新正文" }, assetId: null });
+      events.push("snapshot-read"); return HttpResponse.json({ title: "说明", kind: "TEXT", versionId: "v2", expectedSelectionEpoch: 0, expectedArtifactVersion: 2, versionNo: 2, textContent: { format: "PLAIN_TEXT", text: rawText }, assetId: null });
     }),
   );
   render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><TextCanvasEditor artifact={text} canvasItemId="i" locked={false} onDone={() => {}} /></MemoryRouter></QueryClientProvider>);
-  const user = userEvent.setup(); await user.clear(screen.getByRole("textbox", { name: "内容" })); await user.type(screen.getByRole("textbox", { name: "内容" }), "新正文");
+  const user = userEvent.setup(); await user.clear(screen.getByRole("textbox", { name: "内容" })); await user.type(screen.getByRole("textbox", { name: "内容" }), rawText);
   await user.click(screen.getByRole("button", { name: "保存为资产" }));
   await waitFor(() => expect(events).toEqual(["text-saved", "snapshot-read"]));
   expect(await screen.findByRole("dialog", { name: "保存为资产" })).toHaveTextContent("新正文");

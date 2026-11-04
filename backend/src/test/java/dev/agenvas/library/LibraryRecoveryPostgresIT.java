@@ -324,21 +324,24 @@ class LibraryRecoveryPostgresIT {
         UUID item = place(project.id(), text.artifact().id());
         String path = "/api/v1/projects/" + project.id() + "/canvas-items/" + item + "/library-saves";
         mvc.perform(get(path).with(auth)).andExpect(status().isUnprocessableEntity());
-        var revised = artifacts.revise(owner.userId(), project.id(), text.artifact().id(), 0, "角色说明", mapper.valueToTree(Map.of("format", "MARKDOWN", "text", "# 角色\n勇敢的旅行者")));
-        var request = Map.of("versionId", revised.resourceDefaultVersion().id(), "expectedSelectionEpoch", 0,
+        String rawText = "\n    # 角色  \n\t勇敢的旅行者  \n\n";
+        JsonNode revised = postJson("/api/v1/projects/" + project.id() + "/artifacts/" + text.artifact().id() + "/revisions",
+                Map.of("expectedVersion", 0, "title", "角色说明", "content", Map.of("format", "MARKDOWN", "text", rawText)), 201);
+        assertThat(revised.path("resourceDefaultVersion").path("content").path("text").asText()).isEqualTo(rawText);
+        var request = Map.of("versionId", revised.path("resourceDefaultVersion").path("id").asText(), "expectedSelectionEpoch", 0,
                 "expectedArtifactVersion", 1, "name", "角色说明", "category", "CHARACTER", "commandKey", "text-save");
         var stale = new java.util.HashMap<>(request); stale.put("expectedArtifactVersion", 0); stale.put("commandKey", "text-stale");
         postJson(path, stale, 409);
         String commandId = postJson(path, request, 202).path("id").asText(); library.processNext();
         String entry = command(commandId).path("result").path("entryId").asText();
-        assertThat(read("/api/v1/library/entries/" + entry).path("textContent").path("text").asText()).isEqualTo("# 角色\n勇敢的旅行者");
+        assertThat(read("/api/v1/library/entries/" + entry).path("textContent").path("text").asText()).isEqualTo(rawText);
         Project target = projects.create(owner.userId(), "Imported text", Project.AspectRatio.SQUARE_1_1);
         String imported = postJson("/api/v1/projects/" + target.id() + "/library-imports", Map.of("entryId", entry, "expectedVersion", 0,
                 "commandKey", "text-import", "x", 10, "y", 20), 202).path("id").asText(); library.processNext();
         assertThat(command(imported).path("status").asText()).isEqualTo("SUCCEEDED");
         JsonNode importedText = read("/api/v1/projects/" + target.id() + "/canvas/items").path("items").get(0).path("artifact").path("resourceDefaultVersion").path("content");
         assertThat(importedText.path("format").asText()).isEqualTo("MARKDOWN");
-        assertThat(importedText.path("text").asText()).isEqualTo("# 角色\n勇敢的旅行者");
+        assertThat(importedText.path("text").asText()).isEqualTo(rawText);
         mvc.perform(get("/api/v1/library/entries?cursor=eyJ2YWx1ZSI6IngiLCJpZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMCJ9").with(auth))
                 .andExpect(status().isBadRequest());
     }

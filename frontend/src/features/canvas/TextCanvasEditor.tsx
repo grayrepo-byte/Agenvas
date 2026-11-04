@@ -42,13 +42,14 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
     saveRevision: (current, revision: ReviseArtifactRequest) =>
       reviseArtifact(current.projectId, current.id, revision),
   });
+  // Trim only to reject a blank draft; indentation and trailing whitespace belong to the body.
   const valid = Boolean(fields.text.trim());
   useCanvasEditingGuard(artifact.projectId, canvasItemId, async () => {
     if (status.busy || status.conflict) throw new Error(t("canvas.edit.draftsPending"));
     if (!status.dirty) return;
     if (!valid) throw new Error(t("canvas.edit.draftsPending"));
     await saveAsync({ expectedVersion: base.version, title: base.title,
-      content: { format: fields.format, text: fields.text.trim() } });
+      content: { format: fields.format, text: fields.text } });
   });
   const [confirmExit, setConfirmExit] = useState(false);
   // Toolbar, footer and Escape must all preserve dirty drafts before leaving.
@@ -71,7 +72,7 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
   async function saveAndExit() {
     try {
       await saveAsync({ expectedVersion: base.version, title: base.title,
-        content: { format: fields.format, text: fields.text.trim() } });
+        content: { format: fields.format, text: fields.text } });
       onDone();
     } catch { setConfirmExit(false); } // Mutation renders the failure while retaining the editor.
   }
@@ -80,7 +81,7 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
     event.preventDefault();
     if (status.busy || !status.dirty || !valid) return;
     save({ expectedVersion: base.version, title: base.title,
-      content: { format: fields.format, text: fields.text.trim() } });
+      content: { format: fields.format, text: fields.text } });
   }
 
   return <><form className="text-card-editor nodrag nowheel nopan" onSubmit={submit}
@@ -108,7 +109,7 @@ export function TextCanvasEditor({ artifact, canvasItemId, locked, onDone, edito
     <footer className="content-card-sources text-card-editor-footer">
       {canvasItemId ? <SaveToLibraryButton projectId={artifact.projectId} itemId={canvasItemId} disabled={status.busy || !valid}
         beforeOpen={async () => { if (status.dirty) await saveAsync({ expectedVersion: base.version, title: base.title,
-          content: { format: fields.format, text: fields.text.trim() } }); }} /> : null}
+          content: { format: fields.format, text: fields.text } }); }} /> : null}
       <Select variant="ghost" density="compact" aria-label={t("text.editor.format")} disabled={status.busy} value={fields.format}
         onChange={(event) => edit({ format: event.target.value === "MARKDOWN" ? "MARKDOWN" : "PLAIN_TEXT" })}>
         <option value="PLAIN_TEXT">{t("common.plainText")}</option><option value="MARKDOWN">Markdown</option>

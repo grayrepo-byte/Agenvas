@@ -109,6 +109,7 @@ describe("text copy flush uses immutable revisions", () => {
   });
 
   it("saves the current text once before allowing a copy and refuses a second flush while saving", async () => {
+    const rawText = "\n    Revised for this copy  \n\n";
     const pending = gate();
     const revisions: unknown[] = [];
     server.use(http.post(`/api/v1/projects/${PROJECT}/artifacts/${textArtifact.id}/revisions`, async ({ request }) => {
@@ -116,21 +117,21 @@ describe("text copy flush uses immutable revisions", () => {
       await pending.promise;
       return HttpResponse.json({ ...textArtifact, version: 4, resourceDefaultVersionId: "text-v2",
         resourceDefaultVersion: { ...textArtifact.resourceDefaultVersion, id: "text-v2", versionNo: 2,
-          content: { format: "PLAIN_TEXT", text: "Revised for this copy" } } });
+          content: { format: "PLAIN_TEXT", text: rawText } } });
     }));
     const { wrapper } = setup();
     const view = render(<TextCanvasEditor artifact={textArtifact} canvasItemId={ITEM} locked={false} onDone={() => {}} />, { wrapper });
-    fireEvent.change(screen.getByRole("textbox", { name: "内容" }), { target: { value: "  Revised for this copy  " } });
+    fireEvent.change(screen.getByRole("textbox", { name: "内容" }), { target: { value: rawText } });
     let flushing: Promise<void> | undefined;
     act(() => { flushing = flushCanvasEditors(PROJECT, [ITEM]); });
     try {
       await waitFor(() => expect(revisions).toHaveLength(1));
       expect(revisions[0]).toEqual({ expectedVersion: 3, title: "Script",
-        content: { format: "PLAIN_TEXT", text: "Revised for this copy" } });
+        content: { format: "PLAIN_TEXT", text: rawText } });
       await act(async () => { await expect(flushCanvasEditors(PROJECT, [ITEM])).rejects.toThrow("未完成"); });
       expect(revisions).toHaveLength(1);
       await act(async () => { pending.release(); await flushing; });
-      expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue("Revised for this copy");
+      expect(screen.getByRole("textbox", { name: "内容" })).toHaveValue(rawText);
       await act(async () => { await flushCanvasEditors(PROJECT, [ITEM]); });
       expect(revisions).toHaveLength(1);
       view.unmount();
