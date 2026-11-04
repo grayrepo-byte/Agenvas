@@ -40,10 +40,7 @@ export function isCanvasConnectionValid(items: CanvasItem[], connection: Connect
   return mediaInputConnection(items, connection) !== null;
 }
 
-export type CanvasRelationRemoval = { kind: "mediaConnection"; connection: CanvasConnection };
-
 /** Deletion resolves only a real server-owned input or lineage record. */
-export function canvasRelationRemoval(connections: CanvasConnection[], edge: Edge): CanvasRelationRemoval | null {
-  const connection = connections.find((candidate) => edge.id === `canvas-connection:${candidate.id}`);
-  return connection ? { kind: "mediaConnection", connection } : null;
+export function canvasConnectionForEdge(connections: CanvasConnection[], edge: Edge): CanvasConnection | null {
+  return connections.find((candidate) => edge.id === `canvas-connection:${candidate.id}`) ?? null;
 }

@@ -1,6 +1,6 @@
 import { describe,expect,it } from "vitest";
 import type { CanvasConnection,CanvasItem } from "../../shared/api/client";
-import { canvasRelationRemoval,isCanvasConnectionValid,mediaInputConnection,projectCanvasRelations } from "./canvasRelations";
+import { canvasConnectionForEdge,isCanvasConnectionValid,mediaInputConnection,projectCanvasRelations } from "./canvasRelations";
 import { canvasItemVersionId } from "./versionedArtifact";
 
 const now = "2026-10-20T00:00:00Z";
@@ -75,7 +75,7 @@ describe("media canvas relations", () => {
     const source = item("source"); const target = item("target"); const line = relation(source, target, "MEDIA_DERIVATION");
     const edge = projectCanvasRelations([source, target], [line])[0]!;
     expect(edge.className).toBe("relation-edge relation-edge--derivation");
-    expect(canvasRelationRemoval([line], edge)).toEqual({ kind: "mediaConnection", connection: line });
+    expect(canvasConnectionForEdge([line], edge)).toBe(line);
     expect(target.selectedVersionId).toBe("target-selected");
     expect(source.selectedVersionId).toBe("source-selected");
   });
@@ -83,9 +83,9 @@ describe("media canvas relations", () => {
   it("deletes only existing server relation identities", () => {
     const source = item("source"); const target = item("target"); const line = relation(source, target);
     const edge = projectCanvasRelations([source, target], [line])[0]!;
-    expect(canvasRelationRemoval([line], edge)).toEqual({ kind: "mediaConnection", connection: line });
-    expect(canvasRelationRemoval([], edge)).toBeNull();
-    expect(canvasRelationRemoval([line], { ...edge, id: "missing" })).toBeNull();
+    expect(canvasConnectionForEdge([line], edge)).toBe(line);
+    expect(canvasConnectionForEdge([], edge)).toBeNull();
+    expect(canvasConnectionForEdge([line], { ...edge, id: "missing" })).toBeNull();
     expect(isCanvasConnectionValid([source, target], edge)).toBe(true);
   });
 });
