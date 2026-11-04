@@ -50,8 +50,7 @@ public class ObjectStorageClient implements RemoteStorageClient {
             if (addresses.isEmpty()) throw new UnknownHostException("Object storage DNS is empty");
             for (InetAddress address : addresses) {
                 if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()
-                        || address.isMulticastAddress()
-                        || address.isSiteLocalAddress() && !EndpointAddressRules.allowsSelfHosted(address))
+                        || address.isMulticastAddress())
                     throw new UnknownHostException("Object storage address is blocked");
                 byte[] bytes = address.getAddress();
                 if (bytes.length == 4 && ((bytes[0] & 0xff) == 0 || (bytes[0] & 0xff) >= 224))

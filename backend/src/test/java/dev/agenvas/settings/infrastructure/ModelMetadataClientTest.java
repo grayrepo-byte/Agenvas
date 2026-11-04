@@ -115,9 +115,16 @@ class ModelMetadataClientTest {
     }
 
     @Test void unapprovedHttpAndMetadataTargetsAreRejectedBeforeDispatch() {
-        try (var client = new ModelMetadataClient(new LlmEndpointPolicy(new LlmEndpointProperties(false)), Dns.SYSTEM, Duration.ofSeconds(1))) {
+        AtomicInteger lookups = new AtomicInteger();
+        Dns resolver = host -> {
+            lookups.incrementAndGet();
+            throw new java.net.UnknownHostException("Synthetic resolver must not be reached");
+        };
+        try (var client = new ModelMetadataClient(new LlmEndpointPolicy(new LlmEndpointProperties(false)), resolver, Duration.ofSeconds(1))) {
             for (String target : List.of("http://169.254.169.254/v1", "http://192.168.1.50/v1", "https://user:secret@example.com/v1"))
-                assertThatThrownBy(() -> client.fetch(Provider.COMPATIBLE, target, "synthetic-key", null)).isInstanceOf(RuntimeException.class);
+                assertThatThrownBy(() -> client.fetch(Provider.COMPATIBLE, target, "synthetic-key", null))
+                        .isInstanceOf(ModelMetadataClient.MetadataFailure.class).hasMessage("MODEL_METADATA_INVALID");
+            assertThat(lookups).hasValue(0);
         }
     }
     @Test void canonicalizationCannotTurnAnAliasOrEscapedPathIntoAnotherCredentialScope() {
