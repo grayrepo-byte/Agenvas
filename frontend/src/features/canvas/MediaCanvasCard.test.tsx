@@ -54,6 +54,72 @@ function showCard(shownArtifact: Artifact = artifact, onCardClick = vi.fn()) {
 }
 
 describe("MediaCanvasCard", () => {
+  it.each([
+    ["IMAGE", "RESULT"], ["VIDEO", "RESULT"], ["AUDIO", "RESULT"],
+    ["IMAGE", "DRAFT"], ["VIDEO", "DRAFT"], ["AUDIO", "DRAFT"],
+  ] as const)("reads %s history on toolbar demand while displaying %s and refreshes after invalidation", async (kind, displayMode) => {
+    const result: NonNullable<Artifact["resourceDefaultVersion"]> = { id: "saved-version", versionNo: 8, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "saved-asset" }, inputReferences: [],
+      createdByKind: "USER" as const, runId: null, createdAt: artifact.createdAt };
+    const shown = { ...artifact, kind, resourceDefaultVersionId: result.id, resourceDefaultVersion: result };
+    let versions = [result];
+    const readHistory = vi.fn(() => HttpResponse.json({ items: versions }));
+    server.use(
+      http.get("/api/v1/projects/project-1/canvas-items/item-1/media-draft", () => HttpResponse.json({ displayMode, version: 0 })),
+      http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", readHistory),
+    );
+    const client = createQueryClient();
+    const card = (selected: boolean, toolbarVisible = true) => <QueryClientProvider client={client}>
+      <MemoryRouter><MediaCanvasCard artifact={shown} item={itemFor(shown)} selected={selected}
+        toolbarVisible={toolbarVisible} locked={false} onEdit={vi.fn()}>{null}</MediaCanvasCard></MemoryRouter>
+    </QueryClientProvider>;
+    const view = render(card(false));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(readHistory).not.toHaveBeenCalled();
+    view.rerender(card(true, false));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(readHistory).not.toHaveBeenCalled();
+    view.rerender(card(true));
+    expect(await screen.findByRole("button", { name: "版本 v1" })).toBeVisible();
+    expect(readHistory).toHaveBeenCalledTimes(1);
+    view.rerender(card(false));
+    versions = [...versions, { ...result, id: "later-version", versionNo: 12 }];
+    await act(async () => { await client.invalidateQueries({ queryKey: ["canvas-media-versions", "project-1"] }); });
+    expect(readHistory).toHaveBeenCalledTimes(1);
+    view.rerender(card(true));
+    await waitFor(() => expect(readHistory).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    await clickControl(screen.getByRole("button", { name: "版本 v1" }));
+    expect(await screen.findByRole("menuitem", { name: "v2 选用此版本" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "v1 当前选用" })).toBeVisible();
+  });
+
+  it.each(["IMAGE", "VIDEO", "AUDIO"] as const)("discovers unselected %s results before its toolbar is shown", async (kind) => {
+    const result: NonNullable<Artifact["resourceDefaultVersion"]> = { id: "saved-version", versionNo: 8, schemaVersion: 1,
+      content: { sourceType: "UPLOAD", assetId: "saved-asset" }, inputReferences: [],
+      createdByKind: "USER" as const, runId: null, createdAt: artifact.createdAt };
+    const shown = { ...artifact, kind };
+    const readHistory = vi.fn(() => HttpResponse.json({ items: [result] }));
+    server.use(
+      http.get("/api/v1/projects/project-1/artifacts/image-1/run", () => HttpResponse.json([])),
+      http.get("/api/v1/projects/project-1/canvas/items/item-1/media-versions", readHistory),
+    );
+    const client = createQueryClient();
+    const card = (selected: boolean) => <QueryClientProvider client={client}>
+      <MemoryRouter><MediaCanvasCard artifact={shown} item={itemFor(shown)} selected={selected}
+        locked={false} onEdit={vi.fn()}>{null}</MediaCanvasCard></MemoryRouter>
+    </QueryClientProvider>;
+    const view = render(card(false));
+    await waitFor(() => expect(readHistory).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    expect(screen.queryByRole("button", { name: /^上传/ })).not.toBeInTheDocument();
+    view.rerender(card(true));
+    await clickControl(await screen.findByRole("button", { name: "版本" }));
+    expect(await screen.findByRole("menuitem", { name: "v1 选用此版本" })).toBeVisible();
+    expect(readHistory).toHaveBeenCalledTimes(1);
+  });
+
   describe("audio trimming", () => {
     beforeEach(() => {
       vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});

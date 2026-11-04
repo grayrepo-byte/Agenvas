@@ -103,7 +103,10 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const queryClient = useQueryClient();
   const draft = useQuery(mediaDraftQueryOptions(artifact.projectId, item.id));
   const showDraft = isMediaDraftDisplayed(item, draft.data);
-  const history = useQuery(mediaVersionsQueryOptions(artifact.projectId, item.id));
+  const toolbarActive = selected && toolbarVisible !== false;
+  const history = useQuery({ ...mediaVersionsQueryOptions(artifact.projectId, item.id),
+    // An existing version proves saved results; empty selections still need history to discover them.
+    enabled: toolbarActive || item.selectedVersionId === null });
   const hasResults = Boolean(history.data?.items.length);
   const tasks = useQuery({ queryKey: ["direct-media-tasks", artifact.projectId, item.id],
     queryFn: () => listDirectMediaTasks(artifact.projectId, artifact.id, item.id), enabled: showDraft,
@@ -145,7 +148,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
       ]);
     },
   });
-  const toolbarActive = selected && toolbarVisible !== false;
   const videoOperation = useMutation({
     mutationFn: (input: RunVideoOperationRequest) => {
       // A layout save after an uncertain response must replay the original command.
