@@ -54,4 +54,29 @@ describe("AudioPlayer", () => {
     await act(async () => resolve());
     expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledOnce();
   });
+
+  it("does not pause a newer playback when an older play promise resolves", async () => {
+    showPlayer();
+    const audio = screen.getByLabelText("秋日旁白 的音频") as HTMLAudioElement;
+    let paused = true;
+    Object.defineProperty(audio, "paused", { get: () => paused });
+    let resolveFirst!: () => void;
+    const firstPlay = new Promise<void>((resolve) => { resolveFirst = resolve; });
+    let attempts = 0;
+    audio.play = vi.fn(() => {
+      paused = false; audio.dispatchEvent(new Event("play"));
+      return attempts++ === 0 ? firstPlay : Promise.resolve();
+    });
+    audio.pause = vi.fn(() => { paused = true; });
+    const toggle = screen.getByRole("button", { name: "播放音频" });
+    fireEvent.click(toggle);
+    fireEvent.click(toggle);
+    await act(async () => { fireEvent.click(toggle); });
+    // The browser queues pause events; the old event may arrive after playback has restarted.
+    fireEvent.pause(audio);
+    await act(async () => resolveFirst());
+    expect(audio.paused).toBe(false);
+    expect(screen.getByRole("button", { name: "暂停音频" })).toBeEnabled();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });

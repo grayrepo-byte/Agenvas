@@ -1,6 +1,6 @@
 import { Range } from "../../shared/ui/Range";
 import { ArrowLeft, ArrowRight, BookmarkSimple, Pause, Play, SpeakerHigh, SpeakerSlash, X } from "@/shared/ui/icons";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { t, useLocale } from "../../shared/i18n";
 import { Select } from "../../shared/ui/Select";
 import { Alert, AlertDescription } from "../../shared/ui/primitives/alert";
@@ -39,13 +39,15 @@ export function VideoReviewControls({ video, partner = null, markers = true, com
   const [error, setError] = useState(false);
   const [note, setNote] = useState("");
   const [points, setPoints] = useState<{ id: number; seconds: number; note: string }[]>([]);
+  // Native play promises may settle after a pause, source switch or newer play attempt.
+  const playbackAttempt = useRef(0);
 
   useEffect(() => {
     if (!video) return;
     let active = true;
     let animation: number | undefined;
     const videos = partner ? [video, partner] : [video];
-    function pause() { videos.forEach((element) => element.pause()); setPlaying(false); }
+    function pause() { playbackAttempt.current++; videos.forEach((element) => element.pause()); setPlaying(false); }
     function failed() { if (active) { pause(); setError(true); } }
     function update() {
       const lengths = videos.map(playableDuration);
@@ -70,18 +72,24 @@ export function VideoReviewControls({ video, partner = null, markers = true, com
       if (active && !video!.paused) animation = window.requestAnimationFrame(tick);
     }
     function playPartner() {
+      if (video!.paused) return;
       setError(false);
       if (partner) {
         partner.currentTime = Math.min(video!.currentTime, playableDuration(partner));
         partner.playbackRate = video!.playbackRate;
         partner.muted = true;
-        void partner.play().catch(failed);
+        const attempt = playbackAttempt.current;
+        void partner.play().catch(() => { if (attempt === playbackAttempt.current) failed(); });
       }
       if (animation !== undefined) window.cancelAnimationFrame(animation);
       animation = window.requestAnimationFrame(tick);
       update();
     }
-    function pausePartner() { partner?.pause(); update(); }
+    function pausePartner() {
+      // pause/play events are queued; an earlier pause must not invalidate a newer play.
+      if (video!.paused) { playbackAttempt.current++; partner?.pause(); }
+      update();
+    }
     const events = ["timeupdate", "durationchange", "loadedmetadata", "seeking", "ratechange", "volumechange"];
     events.forEach((name) => video.addEventListener(name, update));
     video.addEventListener("play", playPartner);
@@ -92,6 +100,7 @@ export function VideoReviewControls({ video, partner = null, markers = true, com
     update();
     return () => {
       active = false;
+      playbackAttempt.current++;
       if (animation !== undefined) window.cancelAnimationFrame(animation);
       events.forEach((name) => video.removeEventListener(name, update));
       video.removeEventListener("play", playPartner);
@@ -111,15 +120,18 @@ export function VideoReviewControls({ video, partner = null, markers = true, com
     setPosition(next);
   }
   function step(direction: -1 | 1) {
+    playbackAttempt.current++;
     video?.pause(); partner?.pause(); setPlaying(false);
     seek((video?.currentTime ?? position) + direction / frameRate);
   }
   async function togglePlayback() {
     if (!video) return;
+    const attempt = ++playbackAttempt.current;
     if (!video.paused) { video.pause(); partner?.pause(); setPlaying(false); return; }
     if (video.currentTime >= duration - END_TOLERANCE_SECONDS) seek(0);
     setError(false);
     const results = await Promise.allSettled((partner ? [video, partner] : [video]).map((element) => element.play()));
+    if (attempt !== playbackAttempt.current) return;
     if (results.some((result) => result.status === "rejected")) {
       video.pause(); partner?.pause(); setPlaying(false); setError(true);
     } else setPlaying(true);

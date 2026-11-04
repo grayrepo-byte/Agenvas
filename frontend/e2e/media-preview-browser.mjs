@@ -310,6 +310,16 @@ try {
     assert.ok(await page((selector) => document.querySelector(selector).paused, video), "Video must initially be paused");
     await screenshot(`video-${viewport.width}x${viewport.height}`);
     await keyboardIsolation();
+    const interruptedPlayback = await page(async (selector) => {
+      const root = document.querySelector(selector);
+      const button = root.querySelector("button[aria-label='播放']");
+      // pause() can abort play() before its promise or queued native events settle.
+      button.click(); button.click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return { paused: root.querySelector("video").paused, failed: Boolean(root.querySelector("[role='alert']")) };
+    }, dialog);
+    assert.ok(interruptedPlayback.paused && !interruptedPlayback.failed,
+      "An intentionally interrupted native play must remain paused without a playback failure");
     // Space activates the visible shared Play button; the native player has no controls.
     await page((selector) => document.querySelector(selector).focus(), `${dialog} button[aria-label="播放"]`);
     await key(" ", "Space", 32);
@@ -400,5 +410,5 @@ try {
   }
   if (server?.close) await server.close();
   else if (server) await new Promise((resolve, reject) => server.httpServer.close((error) => error ? reject(error) : resolve()));
-  await rm(profile, { recursive: true, force: true });
+  await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }
