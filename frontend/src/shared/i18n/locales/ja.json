@@ -3685,5 +3685,6 @@
   "app.pageFailed.title": "ページを表示できません",
   "app.pageFailed.description": "ページの読み込み、または表示中にエラーが発生しました。接続を確認してからページを再読み込みしてください。",
   "app.pageFailed.unsavedHint": "再読み込みすると現在のページが開き直され、未保存の入力内容が失われる場合があります。",
-  "app.pageFailed.reload": "ページを再読み込み"
+  "app.pageFailed.reload": "ページを再読み込み",
+  "character.retryConfirmationHint": "結果を確認できていません。「{0}」をもう一度選ぶと、同じ操作を再試行します。入力の変更やバージョンの更新後は、再度プレビューが必要です。"
 }

@@ -49,6 +49,74 @@ function installPreview() {
 }
 
 describe("project characters", () => {
+  it.each([["save", 503, "zh"], ["archive", 503, "en"], ["save", 408, "ru"], ["save", "network", "ja"]] as const)("reconciles a committed %s after %s in %s with its original command", async (mode, failure, locale) => {
+    setLocale(locale);
+    baseHandlers();
+    let committed: CharacterProfile | null = null;
+    let acceptedCommand: string | null = null;
+    let previews = 0, commits = 0;
+    const writes: unknown[] = [];
+    const write = async ({ request }: { request: Request }) => {
+      const input = await request.json() as SaveCharacter; writes.push(input);
+      if (committed && input.commandId !== acceptedCommand) return HttpResponse.json({ detail: "Synthetic stale version", code: "CHARACTER_CONFLICT" }, { status: 409 });
+      if (!committed) {
+        acceptedCommand = input.commandId; commits++;
+        committed = { ...profile, version: 2, archived: mode === "archive", content: mode === "save" ? input.content : profile.content };
+        return failure === "network" ? HttpResponse.error() : HttpResponse.json({ detail: "Synthetic response lost after commit", code: "HTTP_ERROR", retryable: true }, { status: failure, headers: { "Content-Type": "application/problem+json" } });
+      }
+      return HttpResponse.json(committed);
+    };
+    server.use(http.get(`${BASE}/characters`, () => HttpResponse.json({ characters: [committed ?? profile], bindings: [] })),
+      http.post(`${BASE}/characters/${profile.id}/preview-change`, () => { previews++; return HttpResponse.json({ characterId: profile.id, expectedVersion: 1, affectedItems: [] }); }),
+      mode === "save" ? http.put(`${BASE}/characters/${profile.id}`, write) : http.post(`${BASE}/characters/${profile.id}/archive`, write));
+    render(<QueryClientProvider client={client()}><CharacterManagerDialog projectId={PROJECT} onClose={() => {}} /></QueryClientProvider>);
+    await userEvent.click(await screen.findByRole("button", { name: "Mira" }));
+    if (mode === "save") fireEvent.change(screen.getByLabelText(t("character.characterDescription")), { target: { value: "Updated synthetic identity" } });
+    await userEvent.click(screen.getByRole("button", { name: t(mode === "save" ? "character.previewSave" : "character.archive") }));
+    await userEvent.click(await screen.findByRole("button", { name: t("character.confirmSave") }));
+    await screen.findByText(t("character.retryConfirmationHint", { "0": t("character.confirmSave") }));
+    const retry = screen.getByRole("button", { name: t("character.confirmSave") });
+    expect(retry).toBeEnabled();
+    await userEvent.click(retry);
+    expect(await screen.findByText(t("character.saved"))).toBeVisible();
+    expect(writes).toHaveLength(2);expect(writes[1]).toEqual(writes[0]);
+    expect(previews).toBe(1);expect(commits).toBe(1);
+    if (mode === "save") expect(screen.getByLabelText(t("character.characterDescription"))).toHaveValue("Updated synthetic identity");
+    else expect(screen.getByLabelText(t("character.name"))).toBeDisabled();
+  });
+
+  it("invalidates the unconfirmed command when the user edits its frozen content", async () => {
+    baseHandlers();
+    server.use(http.post(`${BASE}/characters/${profile.id}/preview-change`, () => HttpResponse.json({ characterId: profile.id, expectedVersion: 1, affectedItems: [] })),
+      http.put(`${BASE}/characters/${profile.id}`, () => HttpResponse.error()));
+    render(<QueryClientProvider client={client()}><CharacterManagerDialog projectId={PROJECT} onClose={() => {}} /></QueryClientProvider>);
+    await userEvent.click(await screen.findByRole("button", { name: "Mira" }));
+    await userEvent.click(screen.getByRole("button", { name: t("character.previewSave") }));
+    await userEvent.click(await screen.findByRole("button", { name: t("character.confirmSave") }));
+    await screen.findByText(t("character.retryConfirmationHint", { "0": t("character.confirmSave") }));
+    fireEvent.change(screen.getByLabelText(t("character.characterDescription")), { target: { value: "A new explicit intent" } });
+    expect(screen.queryByRole("button", { name: t("character.confirmSave") })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: t("character.previewSave") })).toBeEnabled();
+    expect(screen.getByLabelText(t("character.characterDescription"))).toHaveValue("A new explicit intent");
+  });
+
+  it("shows a newer archived profile after reconciling an older successful save", async () => {
+    baseHandlers();let writes = 0;
+    const saved = { ...profile, version: 2 };
+    const archived = { ...profile, version: 3, archived: true };
+    server.use(http.get(`${BASE}/characters`, () => HttpResponse.json({ characters: [writes ? archived : profile], bindings: [] })),
+      http.post(`${BASE}/characters/${profile.id}/preview-change`, () => HttpResponse.json({ characterId: profile.id, expectedVersion: 1, affectedItems: [] })),
+      http.put(`${BASE}/characters/${profile.id}`, () => ++writes === 1 ? HttpResponse.error() : HttpResponse.json(saved)));
+    render(<QueryClientProvider client={client()}><CharacterManagerDialog projectId={PROJECT} onClose={() => {}} /></QueryClientProvider>);
+    await userEvent.click(await screen.findByRole("button", { name: "Mira" }));
+    await userEvent.click(screen.getByRole("button", { name: t("character.previewSave") }));
+    await userEvent.click(await screen.findByRole("button", { name: t("character.confirmSave") }));
+    await screen.findByText(t("character.retryConfirmationHint", { "0": t("character.confirmSave") }));
+    await userEvent.click(screen.getByRole("button", { name: t("character.confirmSave") }));
+    await screen.findByText(t("character.saved"));
+    expect(screen.getByLabelText(t("character.name"))).toBeDisabled();
+    expect(screen.getByText(t("character.archivedHint"))).toBeVisible();
+  });
   it("shows the localized official voice alias while retaining character text and its speaker ID", async () => {
     setLocale("en");
     try {
@@ -86,6 +154,7 @@ describe("project characters", () => {
     expect(submitted[0]?.content.voice).toMatchObject({ versionId: "voice-one", speakerId: "zh_female_xiaohe_uranus_bigtts" });
     await userEvent.click(screen.getByRole("button", { name: "确认保存" }));
     expect(await screen.findByText("Concurrent edit")).toBeVisible();
+    expect(screen.queryByRole("button", { name: t("character.confirmSave") })).not.toBeInTheDocument();
     expect(screen.getAllByLabelText("造型名称")[1]).toHaveValue("Formal revised");
     expect(screen.getByText("voice-one")).toBeInTheDocument();
   });

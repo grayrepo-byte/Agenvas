@@ -7,6 +7,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
@@ -190,6 +191,49 @@ class CharacterPostgresIT {
                 .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.code()).isEqualTo("CANVAS_ITEM_BUSY"));
         archiveRaceRejectsEveryNewMutation(ownerId);
         releaseOwnedSourceThenDisconnect(ownerId);
+        confirmationCommandsReplayWithoutDuplicateRevisions(ownerId);
+    }
+
+    private void confirmationCommandsReplayWithoutDuplicateRevisions(UUID owner) throws Exception {
+        var project = projects.create(owner, "Synthetic confirmation replay", Project.AspectRatio.SQUARE_1_1);
+        UUID character = UUID.randomUUID();
+        var content = new CharacterContent("Replay character", "Synthetic identity", List.of(), null);
+        var save = new SaveCharacter(UUID.randomUUID(), 0, content);
+        long cursor = events.replayWindow(owner, project.id()).latestSequence();
+        var saves = concurrentReplays(() -> characters.save(owner, project.id(), character, save));
+        assertThat(saves.getFirst()).isEqualTo(saves.getLast());
+        assertThat(saves.getFirst().version()).isEqualTo(1);
+        var mvc = webAppContextSetup(context).apply(springSecurity()).build();
+        var auth = authentication(new UsernamePasswordAuthenticationToken(new AdminPrincipal(owner, "synthetic-replay"), null, List.of()));
+        String path = "/api/v1/projects/" + project.id() + "/characters/" + character;
+        // The caller can lose both responses; HTTP replay still resolves the original CAS-0 command.
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(save)))
+                .andExpect(status().isOk());
+        var archive = new ArchiveCharacter(UUID.randomUUID(), 1);
+        var archives = concurrentReplays(() -> characters.archive(owner, project.id(), character, archive));
+        assertThat(archives.getFirst()).isEqualTo(archives.getLast());
+        assertThat(archives.getFirst().archived()).isTrue();
+        assertThat(archives.getFirst().version()).isEqualTo(2);
+        mvc.perform(post(path + "/archive").with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(archive)))
+                .andExpect(status().isOk());
+        assertThat(characters.save(owner, project.id(), character, save)).isEqualTo(saves.getFirst());
+        assertThat(characters.list(owner, project.id()).characters().getFirst()).isEqualTo(archives.getFirst());
+        mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(
+                new SaveCharacter(save.commandId(), 0, new CharacterContent("Different intent", "", List.of(), null)))))
+                .andExpect(status().isConflict());
+        assertThat(jdbc.sql("select count(*) from project_character_revision where character_id=:id")
+                .param("id", character).query(Long.class).single()).isEqualTo(2);
+        assertThat(events.listAfter(owner, project.id(), cursor, 10)).extracting(event -> event.type())
+                .containsExactly("character.profile.changed", "character.profile.changed");
+    }
+
+    private <T> List<T> concurrentReplays(Callable<T> command) throws Exception {
+        var ready = new java.util.concurrent.CyclicBarrier(2);
+        Callable<T> replay = () -> { ready.await(10, java.util.concurrent.TimeUnit.SECONDS); return command.call(); };
+        try (var executor = Executors.newFixedThreadPool(2)) {
+            var first = executor.submit(replay); var second = executor.submit(replay);
+            return List.of(first.get(10, java.util.concurrent.TimeUnit.SECONDS), second.get(10, java.util.concurrent.TimeUnit.SECONDS));
+        }
     }
 
     private void releaseOwnedSourceThenDisconnect(UUID owner) {

@@ -3685,5 +3685,6 @@
   "app.pageFailed.title": "This page could not be displayed",
   "app.pageFailed.description": "Page resources could not load, or a display error occurred. Check your connection, then reload the page.",
   "app.pageFailed.unsavedHint": "Reloading opens the current page again. Unsaved input may be lost.",
-  "app.pageFailed.reload": "Reload page"
+  "app.pageFailed.reload": "Reload page",
+  "character.retryConfirmationHint": "The result is unconfirmed. Select “{0}” again to retry the same operation. Editing inputs or refreshing the version requires a new preview."
 }

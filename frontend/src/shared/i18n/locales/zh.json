@@ -3685,5 +3685,6 @@
   "app.pageFailed.title": "页面无法显示",
   "app.pageFailed.description": "页面资源加载失败或显示发生异常。请检查网络后重新加载页面。",
   "app.pageFailed.unsavedHint": "重新加载会重新打开当前页面，未保存的输入可能丢失。",
-  "app.pageFailed.reload": "重新加载页面"
+  "app.pageFailed.reload": "重新加载页面",
+  "character.retryConfirmationHint": "结果尚未确认。再次点击“{0}”会重试本次操作；修改输入或刷新版本后需重新预览。"
 }
