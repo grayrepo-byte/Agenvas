@@ -1,5 +1,5 @@
 export const MEDIA_FILE_ACCEPT = {
-  IMAGE: "image/png,image/jpeg,image/webp",
+  IMAGE: "image/png,image/jpeg,image/webp,image/gif",
   AUDIO: "audio/mpeg,audio/wav,audio/ogg",
   VIDEO: "video/mp4",
 } as const;

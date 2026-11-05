@@ -31,13 +31,14 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
   connectionOrigin?: string | null;
 }) {
   useLocale();
+  const gif = adapterId === "OPENAI_GPT_IMAGE_2" && values.outputFormat === "gif";
   const metadata = adapterMetadata(adapterId);
   const workflow = adapterId === AUTODL_ADAPTER ? resolveAutoDlWorkflow(values) : undefined;
   const declaredNative = isKlingNativeAdapter(adapterId) || isNativeMediaAdapter(adapterId);
   const nativeInputs = isNativeMediaAdapter(adapterId) ? values.nativeInputs ?? [] : declaredNative ? values.klingInputs ?? [] : [];
   const nativeDuration = nativeInputs.find((field) => field.source === "DURATION_SECONDS");
   const durationOptions = nativeDuration?.options?.map((option) => option.value).filter((value): value is number => typeof value === "number");
-  const adapter = metadata && declaredNative ? { ...metadata,
+  const adapter = metadata && gif ? { ...metadata, references: 0 } : metadata && declaredNative ? { ...metadata,
     minimum: nativeDuration?.minimum ?? (durationOptions?.length ? Math.min(...durationOptions) : 0),
     maximum: nativeDuration?.maximum ?? (durationOptions?.length ? Math.max(...durationOptions) : 0),
     references: nativeInputLimits?.maxReferenceImages ?? nativeInputs.filter((field) => field.type === "IMAGE").length,
@@ -57,7 +58,7 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
   const audio = adapter.kind === "AUDIO_GENERATION";
   const comfyImage = adapterId === "COMFY_IMAGE_V1";
   const klingImage = adapterId === KLING_IMAGE_ADAPTER;
-  const transparent = adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "MOCK_IMAGE";
+  const transparent = !gif && (adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "MOCK_IMAGE");
   const parameters = values.defaultParameters ?? {};
   function changeParameters(patch: Parameters) {
     onChange({ ...values, defaultParameters: { ...(image ? {
@@ -85,14 +86,14 @@ export function CapabilityConfigurationFields({ adapterId, values, onChange, sec
       <h3>{t("settings.capabilities.defaultParameters")}</h3>
       {!audio ? <Field><FieldLabel className="ui-field block">{t("settings.capabilities.defaultAspectRatio")}<Select value={parameters.aspectRatio ?? "AUTO"}
           onChange={(event) => changeParameters({ aspectRatio: event.target.value as Parameters["aspectRatio"] })}>
-          {(image ? klingImage ? KLING_IMAGE_ASPECT_RATIOS : comfyImage ? values.comfyWorkflow && !values.comfyWorkflow.bindings.some((binding) => binding.source === "WIDTH") ? ["AUTO"] : ["AUTO", "1:1", "9:16", "16:9"] : IMAGE_RATIOS : values.comfyWorkflow && !values.comfyWorkflow.bindings.some((binding) => binding.source === "WIDTH") ? ["AUTO"] : VIDEO_RATIOS)
+          {(gif ? ["AUTO"] : image ? klingImage ? KLING_IMAGE_ASPECT_RATIOS : comfyImage ? values.comfyWorkflow && !values.comfyWorkflow.bindings.some((binding) => binding.source === "WIDTH") ? ["AUTO"] : ["AUTO", "1:1", "9:16", "16:9"] : IMAGE_RATIOS : values.comfyWorkflow && !values.comfyWorkflow.bindings.some((binding) => binding.source === "WIDTH") ? ["AUTO"] : VIDEO_RATIOS)
             .map((ratio) => <option key={ratio} value={ratio}>{ratio === "AUTO" ? t("common.automatic") : ratio}</option>)}
         </Select>
       </FieldLabel></Field> : null}
       {audio ? <>{(["speechRate", "loudnessRate", "pitchRate"] as const).map((key) => <Field><FieldLabel className="ui-field block" key={key}>{{ speechRate: t("settings.capabilities.defaultSpeechRate"), loudnessRate: t("settings.capabilities.defaultVolume"), pitchRate: t("settings.capabilities.defaultPitch") }[key]}<Input type="number" min={key === "pitchRate" ? -12 : -50} max={key === "pitchRate" ? 12 : 100} step={1} value={parameters[key] ?? 0} onChange={(event) => changeParameters({ [key]: Number(event.target.value) })} /></FieldLabel></Field>)}</> : image ? <>
         <Field><FieldLabel className="ui-field block">{t("media.defaultResolution")}<Select value={parameters.resolution ?? "1K"}
             onChange={(event) => changeParameters({ resolution: event.target.value as Parameters["resolution"] })}>
-            {(klingImage ? KLING_IMAGE_RESOLUTIONS : comfyImage ? ["1K"] : RESOLUTIONS).map((resolution) => <option key={resolution}>{resolution}</option>)}
+            {(gif ? ["1K"] : klingImage ? KLING_IMAGE_RESOLUTIONS : comfyImage ? ["1K"] : RESOLUTIONS).map((resolution) => <option key={resolution}>{resolution}</option>)}
           </Select>
         </FieldLabel></Field>
         <Field><FieldLabel className="ui-field block">{t("settings.capabilities.defaultBatchSize")}<Select value={parameters.generationCount ?? 1}

@@ -3,7 +3,7 @@ import type { MediaCapabilityDraft } from "./mediaCapabilityDraft";
 const VERIFIED_AT = "2026-11-04";
 const GUIDE = "https://developers.openai.com/api/docs/guides/image-generation#cost-and-latency";
 const MODELS = new Set(["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-2.5-sunburst", "gpt-image-2.5-sunburst-2026-09-08",
-  "gpt-image-2.5-flare", "gpt-image-2.5-flare-2026-09-08"]);
+  "gpt-image-2.5-flare", "gpt-image-2.5-flare-2026-09-08", "gpt-image-2.6-flare", "gpt-image-2.6-sunburst"]);
 
 /** Matches the actual direct Images API base, never a proxy or a lookalike host. */
 function officialImagesEndpoint(origin: string | null | undefined): boolean {
@@ -19,9 +19,9 @@ function officialImagesEndpoint(origin: string | null | undefined): boolean {
 export function openAiImagePricePreset(model: string | undefined, origin: string | null | undefined) {
   const selected = model?.trim() || "gpt-image-2";
   if (!officialImagesEndpoint(origin) || !MODELS.has(selected)) return undefined;
-  // Official model pages state that GPT Image 2.5 and GPT Image 2 share these Standard rates.
-  // Direct Images requests do not receive the Responses image tool's cache discount or Batch rates.
-  return { model: selected, verifiedAt: VERIFIED_AT, source: GUIDE,
+  // Verified Standard rates; never infer a per-frame fee or substitute Batch pricing.
+  // Cache applicability/counts are not established for direct 2.6 Images calls: do not assume a discount.
+  return { model: selected, verifiedAt: selected.startsWith("gpt-image-2.5-") || selected.startsWith("gpt-image-2.6-") ? "2026-11-05" : VERIFIED_AT, source: GUIDE,
     rates: { currency: "USD" as const, textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "30" } };
 }
 

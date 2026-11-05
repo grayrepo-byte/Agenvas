@@ -305,6 +305,29 @@ try {
     await clickAt({ x: 8, y: viewport.height / 2 });
     await closed("#image-open");
 
+    await open("#gif-open", "image");
+    await waitFor((selector) => document.querySelector(selector)?.src.startsWith("data:image/gif"), image);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const colors = [];
+    for (let sample = 0; sample < 10; sample++) {
+      const clip = await page((selector) => {
+        const bounds = document.querySelector(selector).getBoundingClientRect();
+        return { x: Math.floor(bounds.x + bounds.width / 2), y: Math.floor(bounds.y + bounds.height / 2), width: 1, height: 1, scale: 1 };
+      }, image);
+      const captured = await cdp("Page.captureScreenshot", { format: "png", clip });
+      colors.push(await page(async (png) => {
+        const pixel = new Image(); pixel.src = `data:image/png;base64,${png}`; await pixel.decode();
+        const canvas = document.createElement("canvas"); canvas.width = canvas.height = 1;
+        const context = canvas.getContext("2d"); context.drawImage(pixel, 0, 0);
+        return [...context.getImageData(0, 0, 1, 1).data];
+      }, captured.data));
+      await new Promise((resolve) => setTimeout(resolve, 80));
+    }
+    assert.ok(colors.some(([red, green]) => red > 200 && green < 50), "GIF preview must render its red frame");
+    assert.ok(colors.some(([red, green]) => green > 200 && red < 50), "GIF preview must render its green frame, retaining animation");
+    await pointerClick(close);
+    await closed("#gif-open");
+
     await open("#video-open", "video");
     await layout(viewport, "video", 16 / 9);
     assert.ok(await page((selector) => document.querySelector(selector).paused, video), "Video must initially be paused");
@@ -400,7 +423,7 @@ try {
     await pointerClick(close);
     await closed(`#retry-${kind}-open`);
   }
-  console.log(`Media preview browser checks passed (3 viewports, image/portrait/video, zoom, fullscreen, keyboard, playback and retry). Private screenshots: ${screenshots}`);
+  console.log(`Media preview browser checks passed (3 viewports, image/portrait/animated GIF/video, zoom, fullscreen, keyboard, playback and retry). Private screenshots: ${screenshots}`);
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode == null) {

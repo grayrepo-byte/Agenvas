@@ -3,6 +3,7 @@ package dev.agenvas.provider.infrastructure;
 import dev.agenvas.shared.security.ServiceEndpointPolicy;
 import dev.agenvas.provider.domain.MediaAdapterRegistry;
 import dev.agenvas.provider.domain.MediaPayload;
+import dev.agenvas.provider.domain.OpenAiImageOptions;
 import dev.agenvas.provider.domain.ProviderFailure;
 import dev.agenvas.provider.domain.ProviderModeration;
 import dev.agenvas.shared.error.ProviderFailureCodes;
@@ -101,6 +102,14 @@ public class OpenAiImage2Client {
 
     public MediaPayload generate(String key, String model, String prompt, String quality,
             String size, boolean transparentBackground, String baseUrl) {
+        return generate(key, model, prompt, quality, size, transparentBackground, baseUrl,
+                new OpenAiImageOptions("png", null, 0, 0));
+    }
+
+    public MediaPayload generate(String key, String model, String prompt, String quality,
+            String size, boolean transparentBackground, String baseUrl, OpenAiImageOptions options) {
+        if (options.animated() && (!OpenAiImageOptions.MODELS_26.contains(model) || transparentBackground))
+            throw new IllegalArgumentException("GIF generation requires a supported model and opaque background");
         ObjectNode body = mapper.createObjectNode();
         body.put("model", model);
         body.put("prompt", prompt);
@@ -108,10 +117,13 @@ public class OpenAiImage2Client {
         body.put("size", size);
         body.put("background", transparentBackground ? "transparent" : "opaque");
         body.put("n", 1);
-        body.put("output_format", "png");
+        body.put("output_format", options.outputFormat());
+        if (options.moderation() != null) body.put("moderation", options.moderation());
+        if (options.complexity() != null) body.put("complexity", options.complexity());
+        if (options.animated()) body.put("frame_count", options.frameCount()).put("frame_duration_ms", options.frameDurationMs());
         return send(key, baseUrl, "images/generations",
                 RequestBody.create(body.toString().getBytes(StandardCharsets.UTF_8),
-                        MediaType.parse("application/json")));
+                        MediaType.parse("application/json")), options.outputFormat());
     }
 
     MediaPayload generate(String key, String model, String prompt, String quality,
@@ -122,6 +134,17 @@ public class OpenAiImage2Client {
     public MediaPayload edit(String key, String model, String prompt, String quality, String size,
             List<byte[]> referencePngs, byte[] maskPng, boolean transparentBackground,
             String baseUrl) {
+        return edit(key, model, prompt, quality, size, referencePngs, maskPng, transparentBackground, baseUrl, null);
+    }
+
+    public MediaPayload edit(String key, String model, String prompt, String quality, String size,
+            List<byte[]> referencePngs, byte[] maskPng, boolean transparentBackground, String baseUrl, String complexity) {
+        return edit(key, model, prompt, quality, size, referencePngs, maskPng, transparentBackground, baseUrl, complexity, null);
+    }
+
+    public MediaPayload edit(String key, String model, String prompt, String quality, String size,
+            List<byte[]> referencePngs, byte[] maskPng, boolean transparentBackground, String baseUrl, String complexity, String moderation) {
+        OpenAiImageOptions.requireModeration(moderation);
         validateReferences(referencePngs);
         validateMask(maskPng);
         MultipartBody.Builder body = new MultipartBody.Builder().setType(MultipartBody.FORM)
@@ -132,6 +155,8 @@ public class OpenAiImage2Client {
                 .addFormDataPart("background", transparentBackground ? "transparent" : "opaque")
                 .addFormDataPart("n", "1")
                 .addFormDataPart("output_format", "png");
+        if (complexity != null) body.addFormDataPart("complexity", complexity);
+        if (moderation != null) body.addFormDataPart("moderation", moderation);
         for (int index = 0; index < referencePngs.size(); index++) {
             body.addFormDataPart("image[]", "reference-" + (index + 1) + ".png",
                     RequestBody.create(referencePngs.get(index), MediaType.parse("image/png")));
@@ -157,12 +182,25 @@ public class OpenAiImage2Client {
     /** URL input is explicit; a rejected/uncertain request must never be retried as a file submission. */
     public MediaPayload editUrls(String key, String model, String prompt, String quality, String size,
             List<String> images, String mask, boolean transparentBackground, String baseUrl) {
+        return editUrls(key, model, prompt, quality, size, images, mask, transparentBackground, baseUrl, null);
+    }
+
+    public MediaPayload editUrls(String key, String model, String prompt, String quality, String size,
+            List<String> images, String mask, boolean transparentBackground, String baseUrl, String complexity) {
+        return editUrls(key, model, prompt, quality, size, images, mask, transparentBackground, baseUrl, complexity, null);
+    }
+
+    public MediaPayload editUrls(String key, String model, String prompt, String quality, String size,
+            List<String> images, String mask, boolean transparentBackground, String baseUrl, String complexity, String moderation) {
+        OpenAiImageOptions.requireModeration(moderation);
         if (images == null || images.isEmpty() || images.size() > MediaAdapterRegistry.OPENAI_MAX_REFERENCE_IMAGES)
             throw new IllegalArgumentException("Pinned reference URL count is invalid");
         ObjectNode body = mapper.createObjectNode();
         body.put("model", model).put("prompt", prompt).put("quality", quality).put("size", size)
                 .put("background", transparentBackground ? "transparent" : "opaque")
                 .put("n", 1).put("output_format", "png");
+        if (complexity != null) body.put("complexity", complexity);
+        if (moderation != null) body.put("moderation", moderation);
         var references = body.putArray("images");
         for (String image : images) references.addObject().put("image_url", requireImageUrl(image));
         if (mask != null) body.putObject("mask").put("image_url", requireImageUrl(mask));
@@ -205,6 +243,10 @@ public class OpenAiImage2Client {
     }
 
     private MediaPayload send(String key, String baseUrl, String path, RequestBody body) {
+        return send(key, baseUrl, path, body, "png");
+    }
+
+    private MediaPayload send(String key, String baseUrl, String path, RequestBody body, String outputFormat) {
         URI endpoint = apiEndpoint(baseUrl, path);
         Request request = new Request.Builder().url(endpoint.toString())
                 .header("Authorization", "Bearer " + key)
@@ -241,11 +283,11 @@ public class OpenAiImage2Client {
                 JsonNode item = data.path(0);
                 if (item.path("b64_json").isTextual()) {
                     byte[] image = decodeInline(item.path("b64_json").asText());
-                    requirePng(image);
-                    return new MediaPayload(new ByteArrayInputStream(image), "image/png", metadata);
+                    requireFormat(image, outputFormat);
+                    return new MediaPayload(new ByteArrayInputStream(image), "image/" + outputFormat, metadata);
                 }
                 if (item.path("url").isTextual()) {
-                    MediaPayload downloaded = download(endpoint, item.path("url").asText());
+                    MediaPayload downloaded = download(endpoint, item.path("url").asText(), outputFormat);
                     return new MediaPayload(downloaded.stream(), downloaded.declaredContentType(), metadata);
                 }
                 LOGGER.warn("OpenAI image result payload missing status={} code={}", status,
@@ -319,7 +361,7 @@ public class OpenAiImage2Client {
     }
 
     /** Result URLs are untrusted; only the selected service or public HTTPS can supply bytes. */
-    private MediaPayload download(URI selected, String rawUrl) {
+    private MediaPayload download(URI selected, String rawUrl, String outputFormat) {
         URI url;
         try {
             url = URI.create(rawUrl);
@@ -338,7 +380,7 @@ public class OpenAiImage2Client {
         }
         for (int attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
             try {
-                return fetch(selected, url);
+                return fetch(selected, url, outputFormat);
             } catch (IOException transientFailure) {
                 LOGGER.warn("OpenAI image download attempt {}/{} failed code={}",
                         attempt, DOWNLOAD_ATTEMPTS, ProviderFailureCodes.DOWNLOAD_FAILED);
@@ -350,7 +392,7 @@ public class OpenAiImage2Client {
     }
 
     /** Follow at most three result redirects, validating each destination before a socket is opened. */
-    private MediaPayload fetch(URI selected, URI url) throws IOException {
+    private MediaPayload fetch(URI selected, URI url, String outputFormat) throws IOException {
         for (int redirects = 0; redirects <= 3; redirects++) {
             okhttp3.Dns checked = ServiceEndpointPolicy.downloadDns(
                     selected, url, Dns.SYSTEM, true);
@@ -377,8 +419,9 @@ public class OpenAiImage2Client {
                     byte[] image = input.readNBytes(MAX_IMAGE_BYTES + 1);
                     if (image.length > MAX_IMAGE_BYTES)
                         throw new Uncertain(ProviderFailureCodes.RESULT_TOO_LARGE, "OpenAI image result exceeds bound");
-                    return new MediaPayload(new ByteArrayInputStream(image),
-                            response.header("Content-Type", "application/octet-stream"));
+                    if ("gif".equals(outputFormat)) requireFormat(image, outputFormat);
+                    return new MediaPayload(new ByteArrayInputStream(image), "gif".equals(outputFormat)
+                            ? "image/gif" : response.header("Content-Type", "application/octet-stream"));
                 }
             } catch (java.net.UnknownHostException blocked) {
                 throw new Uncertain(ProviderFailureCodes.RESULT_URL_INVALID, "Image result address is unavailable or blocked");
@@ -387,12 +430,15 @@ public class OpenAiImage2Client {
         throw new Uncertain(ProviderFailureCodes.RESULT_URL_INVALID, "Unsafe image result redirect");
     }
 
-    private static void requirePng(byte[] image) {
-        if (image.length == 0 || image.length > MAX_IMAGE_BYTES
-                || image.length < 8 || image[0] != (byte) 0x89
-                || image[1] != 'P' || image[2] != 'N' || image[3] != 'G') {
+    private static void requireFormat(byte[] image, String format) {
+        boolean png = "png".equals(format) && image.length >= 8 && image[0] == (byte) 0x89
+                && image[1] == 'P' && image[2] == 'N' && image[3] == 'G';
+        boolean gif = "gif".equals(format) && image.length >= 13
+                && (new String(image, 0, 6, StandardCharsets.US_ASCII).equals("GIF87a")
+                    || new String(image, 0, 6, StandardCharsets.US_ASCII).equals("GIF89a"));
+        if (image.length > MAX_IMAGE_BYTES || !png && !gif) {
             throw new Uncertain(ProviderFailureCodes.PROTOCOL_INVALID,
-                    "OpenAI image result is not a bounded PNG");
+                    "OpenAI image result does not match the requested bounded format");
         }
     }
 

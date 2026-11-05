@@ -1,3 +1,5 @@
+import { OpenAiImageFields } from "./OpenAiImageFields";
+import { OPENAI_IMAGE_QUICK_MODELS, changeOpenAiImageModel, openAiImageQualities } from "./openAiImageOptions";
 import { mediaDisplayName } from "../../shared/mediaDisplayNames";
 import { Field, FieldLabel, FieldGroup, FieldSet } from "../../shared/ui/primitives/field";
 import { ArrowLeft,ArrowRight,CheckCircle,DotsThree,HardDrives,ImageSquare,MagnifyingGlass,MusicNotes,PlugsConnected,Plus,Sparkle,VideoCamera } from "@/shared/ui/icons";
@@ -64,11 +66,10 @@ function capabilityMatches(connection: MediaConnection, capability: MediaCapabil
     connection.enabled && capability.enabled, query, status)
     && (kind === "all" || (kind === "local" ? connection.platform === "LOCAL" : capability.kind === kind && connection.platform !== "LOCAL"));
 }
-function QualityChoice({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function QualityChoice({ value, model, onChange }: { value: string; model?: string; onChange: (value: string) => void }) {
   useLocale();
   return <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.imageQuality")}<Select value={value} onChange={(event) => onChange(event.target.value)}>
-      <option value="low">low</option><option value="medium">medium</option>
-      <option value="high">high</option>
+      {openAiImageQualities(model).map((quality) => <option key={quality} value={quality}>{quality}</option>)}
     </Select>
   </FieldLabel></Field>;
 }
@@ -81,24 +82,27 @@ function FixedModelFields({ adapterId, values, onChange }: {
   useLocale();
   return <>
     {adapterId === AUTODL_ADAPTER ? <AutoDlWorkflowFields values={values} onChange={onChange} /> : null}
-    {adapterModel(adapterId) && !isKlingAdapter(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelOptions")}<Select value={values.model ? "custom" : "builtin"} onChange={(event) => onChange({ ...values,
-        model: event.target.value === "builtin" ? "" : adapterModel(adapterId) })}>
+    {adapterModel(adapterId) && !isKlingAdapter(adapterId) && !["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelOptions")}<Select value={adapterId === "OPENAI_GPT_IMAGE_2" && OPENAI_IMAGE_QUICK_MODELS.some((model) => model.id === values.model) ? values.model : values.model ? "custom" : "builtin"}
+        onChange={(event) => { const model = event.target.value === "builtin" ? "" : event.target.value === "custom" ? adapterModel(adapterId) ?? "" : event.target.value;
+          onChange(adapterId === "OPENAI_GPT_IMAGE_2" ? changeOpenAiImageModel(values, model) : { ...values, model }); }}>
         <option value="builtin">{t("settings.mediaSettings.builtinModel", { "0": adapterModel(adapterId) })}</option>
+        {adapterId === "OPENAI_GPT_IMAGE_2" ? OPENAI_IMAGE_QUICK_MODELS.map((model) => <option key={model.id} value={model.id}>{model.label}</option>) : null}
         <option value="custom">{t("settings.mediaSettings.customModel")}</option>
       </Select>
     </FieldLabel></Field> : null}
     {isKlingAdapter(adapterId) || ["ARK_SEEDANCE_2_I2V", "VOLC_SEED_AUDIO_1", MINIMAX_H3_ADAPTER].includes(adapterId) ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.fixedModel")}<Input value={adapterModel(adapterId)} readOnly />
     </FieldLabel></Field> : null}
     {adapterId === "OPENAI_GPT_IMAGE_2" || adapterId === "GOOGLE_NANO_BANANA_2" ? <Field><FieldLabel className="ui-field block">{t("settings.mediaSettings.modelName")}
-      <Input value={values.model ?? ""} onChange={(event) => onChange({ ...values, model: event.target.value })}
+      <Input value={values.model ?? ""} onChange={(event) => onChange(adapterId === "OPENAI_GPT_IMAGE_2" ? changeOpenAiImageModel(values, event.target.value) : { ...values, model: event.target.value })}
         maxLength={MODEL_LIMIT} placeholder={adapterModel(adapterId) ?? t("settings.mediaSettings.builtinDefaultPlaceholder")} />
     </FieldLabel></Field> : null}
     {adapterId === "GOOGLE_NANO_BANANA_2" ? <p className="ui-muted media-model-help">
       {t("settings.mediaSettings.googleModelHint")}</p> : null}
     {isKlingAdapter(adapterId) ? <p className="ui-muted media-model-help">{t("settings.mediaSettings.klingModelHint")}</p> : null}
-    {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={values.quality ?? "medium"}
+    {adapterId === "OPENAI_GPT_IMAGE_2" ? <QualityChoice value={values.quality ?? "medium"} model={values.model}
       onChange={(quality) => onChange({ ...values, quality: quality as AdapterSettings["quality"],
         ...(values.defaultParameters ? { defaultParameters: { ...values.defaultParameters, quality: quality as AdapterSettings["quality"] } } : {}) })} /> : null}
+    {adapterId === "OPENAI_GPT_IMAGE_2" ? <OpenAiImageFields values={values} onChange={onChange} /> : null}
   </>;
 }
 

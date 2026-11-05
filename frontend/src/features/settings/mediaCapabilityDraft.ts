@@ -59,7 +59,11 @@ function providerSettings(adapterId: string, draft: Settings): Settings {
   };
   switch (adapterId) {
     case AUTODL_ADAPTER: return autoDlSettings(draft);
-    case "OPENAI_GPT_IMAGE_2": return { model: draft.model?.toString().trim() ?? "", quality: draft.quality ?? "medium" };
+    case "OPENAI_GPT_IMAGE_2": return { model: draft.model?.toString().trim() ?? "", quality: draft.quality ?? "medium",
+      ...(draft.moderation !== undefined ? { moderation: draft.moderation } : {}),
+      ...(draft.outputFormat ? { outputFormat: draft.outputFormat } : {}),
+      ...(draft.complexity ? { complexity: draft.complexity } : {}),
+      ...(draft.outputFormat === "gif" ? { frameCount: draft.frameCount ?? 9, frameDurationMs: draft.frameDurationMs ?? 200 } : {}) };
     case "GOOGLE_NANO_BANANA_2": return { model: draft.model?.toString().trim() ?? "" };
     case KLING_VIDEO_ADAPTER:
     case MINIMAX_H3_ADAPTER: return draft.pricingByResolution

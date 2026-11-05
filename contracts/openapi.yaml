@@ -541,6 +541,7 @@ paths:
           description: 预置 WebP 或实际解码后重新编码的 PNG；Cache-Control no-store
           content:
             image/webp: {schema: {type: string, format: binary}}
+            image/gif: {schema: {type: string, format: binary}}
             image/png: {schema: {type: string, format: binary}}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -960,6 +961,10 @@ paths:
                 "type": "string"
                 "format": "binary"
             "image/webp":
+              "schema":
+                "type": "string"
+                "format": "binary"
+            "image/gif":
               "schema":
                 "type": "string"
                 "format": "binary"
@@ -2632,6 +2637,8 @@ paths:
             image/jpeg:
               schema: {type: string, format: binary}
             image/webp:
+              schema: {type: string, format: binary}
+            image/gif:
               schema: {type: string, format: binary}
             video/mp4:
               schema: {type: string, format: binary}
@@ -5002,6 +5009,8 @@ paths:
               schema: {$ref: "#/components/schemas/SkillMediaBytes"}
             image/webp:
               schema: {$ref: "#/components/schemas/SkillMediaBytes"}
+            image/gif:
+              schema: {$ref: "#/components/schemas/SkillMediaBytes"}
         "400": {$ref: "#/components/responses/ValidationError"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "404": {$ref: "#/components/responses/NotFound"}
@@ -6666,7 +6675,7 @@ components:
         supportedImageQualities:
           type: array
           uniqueItems: true
-          items: {type: string, enum: [low, medium, high]}
+          items: {type: string, enum: [low, medium, high, xhigh, max]}
         supportsTransparentBackground: {type: boolean}
         supportsImageMask: {type: boolean}
         mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
@@ -6720,7 +6729,12 @@ components:
         textEncoder: {type: string, maxLength: 160}
         vae: {type: string, maxLength: 160}
         clipVision: {type: string, maxLength: 160}
-        quality: {type: string, enum: [low, medium, high]}
+        quality: {type: string, enum: [low, medium, high, xhigh, max]}
+        moderation: {type: string, enum: [auto, low], description: "OpenAI Images only. auto uses standard moderation; low is less restrictive and moderation still applies. Frozen in the capability version. Historical configurations without this field preserve omission and OpenAI's auto default."}
+        outputFormat: {type: string, enum: [png, gif], description: "OpenAI Images output. GIF requires an exact GPT Image 2.6 model, no references/masks/transparency, and automatic dimensions. Omitted keeps PNG."}
+        complexity: {type: string, enum: [low, medium, high], description: "GPT Image 2.6 planning complexity, independent of quality. Omitted uses the model default."}
+        frameCount: {type: integer, minimum: 2, maximum: 16, description: "GIF only; defaults to 9. Conservative intersection of the official guide and API reference."}
+        frameDurationMs: {type: integer, minimum: 20, maximum: 2000, multipleOf: 10, description: "GIF only; milliseconds per frame, defaults to 200."}
         model: {type: string, maxLength: 120, pattern: "^([A-Za-z0-9][A-Za-z0-9._:/-]{0,119})?$", description: "OPENAI/GOOGLE accept provider model names; KLING_IMAGE/KLING_VIDEO use the compiled Kling profile catalog. Empty uses the compiled default. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1."}
         defaultParameters:
           $ref: "#/components/schemas/ImageGenerationParameters"
@@ -8233,7 +8247,7 @@ components:
         aspectRatio: {type: string, enum: [AUTO, "1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9"]}
         videoResolution: {type: string, pattern: '^[1-9][0-9]{2,3}p$', description: "AutoDL published resolution tier, MINIMAX_H3 768p/1440p (official 768P/2K), or KLING_VIDEO_3 720p/1080p/2160p (official 720p/1080p/4k). Omitted uses the capability default. Frozen into accepted tasks."}
         resolution: {type: string, enum: [1K, 2K, 4K]}
-        quality: {type: string, enum: [low, medium, high]}
+        quality: {type: string, enum: [low, medium, high, xhigh, max]}
         transparentBackground: {type: boolean}
         generationCount: {type: integer, enum: [1, 2, 4]}
     VideoInputMode:

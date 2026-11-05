@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { applyOpenAiImageTokenPreset, openAiImagePricePreset, updateOpenAiImagePricingDraft } from "./openAiImagePricingPresets";
 
 describe("OpenAI Images standard price presets", () => {
-  it.each(["", "gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare-2026-09-08"])("matches the verified exact model %s", (model) => {
+  it.each(["", "gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare", "gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst-2026-09-08", "gpt-image-2.6-flare", "gpt-image-2.6-sunburst"])("matches the verified exact model %s", (model) => {
     expect(openAiImagePricePreset(model, null)?.rates).toEqual({ currency: "USD", textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "30" });
-    expect(openAiImagePricePreset(model, "https://api.openai.com/v1/")?.verifiedAt).toBe("2026-11-04");
+    expect(openAiImagePricePreset(model, "https://api.openai.com/v1/")?.verifiedAt).toBe(model.startsWith("gpt-image-2.5-") || model.startsWith("gpt-image-2.6-") ? "2026-11-05" : "2026-11-04");
   });
   it.each([undefined, "https://proxy.example.com/v1", "https://api.openai.com.evil/v1", "http://api.openai.com/v1",
     "https://api.openai.com:8443/v1", "https://api.openai.com/proxy/v1", "https://user@api.openai.com/v1"])("does not infer an official tariff for endpoint %s", (origin) => {

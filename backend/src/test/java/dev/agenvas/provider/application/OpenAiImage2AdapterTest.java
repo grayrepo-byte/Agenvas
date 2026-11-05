@@ -128,6 +128,7 @@ class OpenAiImage2AdapterTest {
                 MediaAdapterRegistry.OPENAI_GPT_IMAGE_2, "synthetic-hash");
         var snapshot = mock(JooqMediaCapabilityRepository.Snapshot.class);
         when(catalog.snapshotAt(binding.capabilityId(), 1, binding.connectionId(), 1)).thenReturn(Optional.of(snapshot));
+        when(snapshot.specJson()).thenReturn("{\"settings\":{}}");
         when(snapshot.adapterId()).thenReturn(binding.adapterId());
         when(snapshot.mappingSha256()).thenReturn(binding.mappingSha256());
         when(snapshot.connectionVersion()).thenReturn(new JooqMediaCapabilityRepository.ConnectionVersion(

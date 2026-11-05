@@ -204,3 +204,11 @@ describe("AutoDL administrator draft changes", () => {
     expect(draft).toEqual(before);
   });
 });
+
+
+it.each(["auto", "low"] as const)("publishes explicit OpenAI moderation %s without leaking it to other adapters", (moderation) => {
+  expect(buildMediaCapabilitySettings("OPENAI_GPT_IMAGE_2", { model: "gpt-image-2.5-flare", moderation }))
+    .toEqual({ model: "gpt-image-2.5-flare", quality: "medium", moderation });
+  expect(buildMediaCapabilitySettings("GOOGLE_NANO_BANANA_2", { moderation })).not.toHaveProperty("moderation");
+  expect(buildMediaCapabilitySettings("MOCK_IMAGE", { moderation })).not.toHaveProperty("moderation");
+});

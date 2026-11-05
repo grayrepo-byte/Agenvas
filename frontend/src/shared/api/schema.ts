@@ -4794,7 +4794,7 @@ export interface components {
             supportsEndFrame: boolean;
             supportedImageAspectRatios: ("AUTO" | "1:1" | "2:3" | "3:2" | "9:16" | "16:9" | "3:4" | "4:3" | "21:9")[];
             supportedImageResolutions: ("1K" | "2K" | "4K")[];
-            supportedImageQualities: ("low" | "medium" | "high")[];
+            supportedImageQualities: ("low" | "medium" | "high" | "xhigh" | "max")[];
             supportsTransparentBackground: boolean;
             supportsImageMask: boolean;
             mappingSha256: string;
@@ -4835,7 +4835,26 @@ export interface components {
             vae?: string;
             clipVision?: string;
             /** @enum {string} */
-            quality?: "low" | "medium" | "high";
+            quality?: "low" | "medium" | "high" | "xhigh" | "max";
+            /**
+             * @description OpenAI Images only. auto uses standard moderation; low is less restrictive and moderation still applies. Frozen in the capability version. Historical configurations without this field preserve omission and OpenAI's auto default.
+             * @enum {string}
+             */
+            moderation?: "auto" | "low";
+            /**
+             * @description OpenAI Images output. GIF requires an exact GPT Image 2.6 model, no references/masks/transparency, and automatic dimensions. Omitted keeps PNG.
+             * @enum {string}
+             */
+            outputFormat?: "png" | "gif";
+            /**
+             * @description GPT Image 2.6 planning complexity, independent of quality. Omitted uses the model default.
+             * @enum {string}
+             */
+            complexity?: "low" | "medium" | "high";
+            /** @description GIF only; defaults to 9. Conservative intersection of the official guide and API reference. */
+            frameCount?: number;
+            /** @description GIF only; milliseconds per frame, defaults to 200. */
+            frameDurationMs?: number;
             /** @description OPENAI/GOOGLE accept provider model names; KLING_IMAGE/KLING_VIDEO use the compiled Kling profile catalog. Empty uses the compiled default. GOOGLE preserves explicit API prefixes such as /v1beta; a bare origin uses /v1. */
             model?: string;
             /** @description Image defaults; fixed video adapters accept their declared parameters. Native media adapters use dynamicValues derived from nativeInputs or klingInputs. Unsupported parameters are rejected. */
@@ -6077,7 +6096,7 @@ export interface components {
             /** @enum {string} */
             resolution?: "1K" | "2K" | "4K";
             /** @enum {string} */
-            quality?: "low" | "medium" | "high";
+            quality?: "low" | "medium" | "high" | "xhigh" | "max";
             transparentBackground?: boolean;
             /** @enum {integer} */
             generationCount?: 1 | 2 | 4;
@@ -8369,6 +8388,7 @@ export interface operations {
                 };
                 content: {
                     "image/webp": string;
+                    "image/gif": string;
                     "image/png": string;
                 };
             };
@@ -8910,6 +8930,7 @@ export interface operations {
                     "image/png": string;
                     "image/jpeg": string;
                     "image/webp": string;
+                    "image/gif": string;
                 };
             };
             400: components["responses"]["ValidationError"];
@@ -11437,6 +11458,7 @@ export interface operations {
                     "image/png": string;
                     "image/jpeg": string;
                     "image/webp": string;
+                    "image/gif": string;
                     "video/mp4": string;
                 };
             };
@@ -14902,6 +14924,7 @@ export interface operations {
                     "image/png": components["schemas"]["SkillMediaBytes"];
                     "image/jpeg": components["schemas"]["SkillMediaBytes"];
                     "image/webp": components["schemas"]["SkillMediaBytes"];
+                    "image/gif": components["schemas"]["SkillMediaBytes"];
                 };
             };
             400: components["responses"]["ValidationError"];

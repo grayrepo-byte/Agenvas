@@ -5,7 +5,7 @@ import { http,HttpResponse } from "msw";
 import { MemoryRouter } from "react-router";
 import { beforeEach,describe,expect,it } from "vitest";
 import { createQueryClient } from "../../app/queryClient";
-import { setLocale } from "../../shared/i18n";
+import { setLocale, t } from "../../shared/i18n";
 import type { KlingProfile,MediaCapability,MediaConnection,MediaSettings } from "../../shared/api/client";
 import { clickControl,selectValue } from "../../test/controls";
 import { server } from "../../test/server";
@@ -1401,6 +1401,115 @@ describe("MediaSettingsPage", () => {
         "14": { ...comfyGraph["14"]!, inputs: { ...comfyGraph["14"]!.inputs, steps: 30 } },
       } }, pricing: { amount: "1.25", currency: "CNY", unit: "SECOND" } },
     }]);
+  });
+
+  it.each((["zh", "en", "ja", "ru"] as const).flatMap((locale) =>
+    ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst"].map((model) => [locale, model] as const)))("publishes the 2.5 shortcut in %s: %s", async (locale, model) => {
+    setLocale(locale);
+    const fixture = settingsFixture(); fixture.connections[0]!.capabilities = [];
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: t("settings.mediaSettings.connections") }));
+    await user.click(await screen.findByRole("button", { name: t("settings.mediaSettings.publishCapability") }));
+    const dialog = within(screen.getByRole("dialog"));
+    await user.type(dialog.getByRole("textbox", { name: t("settings.mediaSettings.newCapabilityName") }), "2.5 shortcut");
+    const choice = dialog.getByRole("combobox", { name: t("settings.mediaSettings.modelOptions") });
+    await selectValue(choice, model);
+    expect(choice).toHaveTextContent(model.endsWith("flare") ? "GPT Image 2.5 Flare" : "GPT Image 2.5 Sunburst");
+    await selectValue(dialog.getByRole("combobox", { name: t("settings.mediaSettings.imageQuality") }), "max");
+    expect(dialog.getByRole("combobox", { name: t("settings.openAi.moderation") })).toHaveValue("auto");
+    expect(dialog.getByText(t("settings.openAi.moderationHint"))).toBeInTheDocument();
+    expect(dialog.queryByRole("combobox", { name: t("settings.openAi.outputFormat") })).not.toBeInTheDocument();
+    await user.click(dialog.getByRole("button", { name: t("settings.mediaSettings.publishCapability") }));
+    await waitFor(() => expect(submitted).toMatchObject({ adapterId: "OPENAI_GPT_IMAGE_2", settings: { model, quality: "max",
+      tokenPricing: { currency: "USD", textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "30" } } }));
+  });
+
+  it.each(["gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst-2026-09-08", "my-compatible-image"])("preserves saved custom model %s and its administrator rates", async (model) => {
+    const tokenPricing = { currency: "CNY" as const, textInputPerMillion: "1", imageInputPerMillion: "2", imageOutputPerMillion: "3" };
+    const quality = model.startsWith("gpt-image-2.5-") ? "max" : "high";
+    const fixture = settingsFixture({}, { settings: { model, quality, tokenPricing } });
+    let submitted: unknown;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    expect(screen.getByRole("combobox", { name: "模型选项" })).toHaveValue("custom");
+    expect(screen.getByRole("textbox", { name: t("settings.mediaSettings.modelName") })).toHaveValue(model);
+    await user.click(screen.getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(submitted).toMatchObject({ settings: { model, quality, tokenPricing } }));
+  });
+
+  it.each(["auto", "low"] as const)("saves and reloads explicit OpenAI moderation %s", async (moderation) => {
+    let fixture = settingsFixture({}, { settings: { model: "gpt-image-2.5-sunburst", quality: "high" } });
+    let submitted: Record<string, unknown> | undefined;
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.put("/api/v1/settings/media-connections/openai-1/capabilities/portrait", async ({ request }) => {
+        submitted = await request.json() as Record<string, unknown>;
+        fixture = settingsFixture({}, { version: 5, capabilityVersion: 3,
+          settings: submitted.settings as MediaCapability["settings"] });
+        return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "编辑能力参数" }));
+    expect(screen.getByRole("combobox", { name: "内容审核" })).toHaveValue("auto");
+    expect(screen.getByText("auto 使用标准内容审核；low 的过滤较宽松，但内容审核仍然生效。")).toBeInTheDocument();
+    await selectValue(screen.getByRole("combobox", { name: "内容审核" }), "low");
+    if (moderation === "auto") await selectValue(screen.getByRole("combobox", { name: "内容审核" }), "auto");
+    await user.click(screen.getByRole("button", { name: "保存能力" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(submitted).toMatchObject({ expectedVersion: 4, settings: { model: "gpt-image-2.5-sunburst", moderation } });
+    await user.click(screen.getByRole("button", { name: "编辑能力参数" }));
+    expect(screen.getByRole("combobox", { name: "内容审核" })).toHaveValue(moderation);
+    expect(screen.getByRole("combobox", { name: "模型选项" })).toHaveValue("gpt-image-2.5-sunburst");
+    expect(screen.getByRole("textbox", { name: t("settings.mediaSettings.modelName") })).toHaveValue("gpt-image-2.5-sunburst");
+  });
+
+  it.each(["gpt-image-2.6-flare", "gpt-image-2.6-sunburst"])("publishes %s with GIF controls and official token rates", async (model) => {
+    let submitted: unknown;
+    const fixture = settingsFixture(); fixture.connections[0]!.capabilities = [];
+    server.use(
+      http.get("/api/v1/auth/me", () => HttpResponse.json({ id: "admin", role: "ADMIN" })),
+      http.get("/api/v1/settings/media-connections", () => HttpResponse.json(fixture)),
+      http.get("/api/v1/auth/csrf", () => HttpResponse.json({ headerName: "X-XSRF-TOKEN", token: "test" })),
+      http.post("/api/v1/settings/media-connections/openai-1/capabilities", async ({ request }) => {
+        submitted = await request.json(); return HttpResponse.json(fixture);
+      }),
+    );
+    mount(); const user = userEvent.setup();
+    await user.click(await screen.findByRole("tab", { name: "媒体连接" }));
+    await user.click(await screen.findByRole("button", { name: "发布能力" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await user.type(dialog.getByRole("textbox", { name: "新能力名称" }), "Looping illustration");
+    await selectValue(dialog.getByRole("combobox", { name: "模型选项" }), model);
+    await selectValue(dialog.getByRole("combobox", { name: "GPT Image 2 质量" }), "xhigh");
+    await selectValue(dialog.getByRole("combobox", { name: "输出格式" }), "gif");
+    await selectValue(dialog.getByRole("combobox", { name: "图像复杂度" }), "medium");
+    await user.clear(dialog.getByRole("spinbutton", { name: "GIF 帧数" }));
+    await user.type(dialog.getByRole("spinbutton", { name: "GIF 帧数" }), "4");
+    await user.click(dialog.getByRole("button", { name: "发布能力" }));
+    await waitFor(() => expect(submitted).toEqual({ name: "Looping illustration", adapterId: "OPENAI_GPT_IMAGE_2",
+      settings: { model, quality: "xhigh", outputFormat: "gif", frameCount: 4, frameDurationMs: 200, complexity: "medium",
+        maxReferenceImages: 0, defaultParameters: { aspectRatio: "AUTO", resolution: "1K", transparentBackground: false },
+        tokenPricing: { currency: "USD", textInputPerMillion: "5", imageInputPerMillion: "8", imageOutputPerMillion: "30" } } }));
   });
 
   it("publishes GPT Image 2 with editable official Standard token defaults and an allowed quality", async () => {

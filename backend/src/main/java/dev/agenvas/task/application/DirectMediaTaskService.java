@@ -903,6 +903,7 @@ public class DirectMediaTaskService {
             if (!source.artifactId().equals(artifactId)) {
                 throw invalid(ApiMessage.of("api.direct-media-task-service.the-processing-source-must-be-the-version-of-the-image"));
             }
+            requireStaticImage(ownerId, projectId, source);
             if (operation == ImageOperation.RESIZE) {
                 var sourceAsset = assets.requireReadyMedia(ownerId, projectId,
                         UUID.fromString(source.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
@@ -929,8 +930,9 @@ public class DirectMediaTaskService {
                 if (referenceVersionId.equals(sourceVersionId)) {
                     throw invalid(ApiMessage.of("api.direct-media-task-service.the-source-image-is-already-the-first-input-for-smart"));
                 }
-                referenceVersions.add(artifacts.requireImageVersionForTask(ownerId, projectId,
-                        referenceVersionId));
+                var reference = artifacts.requireImageVersionForTask(ownerId, projectId, referenceVersionId);
+                requireStaticImage(ownerId, projectId, reference);
+                referenceVersions.add(reference);
             }
             if (maskAssetId != null) {
                 if (!inputPolicy.supportsImageMask()) {
@@ -1385,9 +1387,20 @@ public class DirectMediaTaskService {
         }
     }
 
+    /** Existing image tools emit static output, so never silently discard an animation. */
+    private void requireStaticImage(UUID ownerId, UUID projectId, ArtifactVersion version) {
+        var asset = assets.requireReadyMedia(ownerId, projectId,
+                UUID.fromString(version.content().path("assetId").asText()), Asset.MediaKind.IMAGE);
+        if ("image/gif".equals(asset.contentType())) throw invalid(ApiMessage.of("api.asset.gif-static-operation"));
+    }
+
     /** Reject known protocol limits before creating a task or reserving usage. */
     private void validateReferenceAssets(UUID ownerId, UUID projectId, MediaDraft draft,
             MediaCapabilityBinding binding) {
+        for (var input : draft.mediaInputs()) {
+            if (MediaDraftService.mediaKind(input.role()) == Artifact.Kind.IMAGE)
+                requireStaticImage(ownerId, projectId, artifacts.requireImageVersionForTask(ownerId, projectId, input.versionId()));
+        }
         boolean seed = MediaAdapterRegistry.SEED_AUDIO_1.equals(binding.adapterId());
         boolean ark = MediaAdapterRegistry.SEEDANCE_2.equals(binding.adapterId());
         if (capabilities.comfyWorkflowDefinition(binding) != null) {

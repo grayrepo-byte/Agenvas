@@ -117,6 +117,26 @@ class MediaCapabilityNormalizationTest {
     }
 
     @Test
+    void publishedModerationIsPartOfTheImmutableCapabilitySpec() {
+        stubConnection(MediaPlatform.OPENAI, true, null);
+        when(repository.capability(any())).thenAnswer(invocation -> Optional.of(capability(invocation.getArgument(0), 0, 1)));
+        service.publishCapability(CONNECTION_ID, "Moderated images", ADAPTER, openAiSettings().put("moderation", "low"));
+        var spec = ArgumentCaptor.forClass(String.class);
+        verify(repository).insertCapability(any(), eq(CONNECTION_ID), eq("Moderated images"), eq(ADAPTER), anyString(), spec.capture(), eq(NOW));
+        assertThat(mapper.readTree(spec.getValue()).at("/settings/moderation").asText()).isEqualTo("low");
+    }
+
+    @Test
+    void nonOpenAiAdapterRejectsTheModerationSetting() {
+        stubConnection(MediaPlatform.GOOGLE, true, null);
+        assertThatThrownBy(() -> service.publishCapability(CONNECTION_ID, "Google images", MediaAdapterRegistry.GOOGLE_NANO_BANANA_2,
+                mapper.createObjectNode().put("moderation", "low")))
+                .isInstanceOfSatisfying(ApiProblemException.class, error -> assertThat(error.detail().key())
+                        .isEqualTo("api.media-capability-service.capability-template-contains-parameters-that-are-not-allowed"));
+        verify(repository, never()).insertCapability(any(), any(), anyString(), anyString(), anyString(), anyString(), any());
+    }
+
+    @Test
     void idempotentCreationKeepsExactSpecBytesAndHashesAndClaimsBeforeConnectionAdmission() {
         stubConnection(MediaPlatform.OPENAI, true, null);
         when(repository.claimCapabilityCreateKey(anyString(), anyString(), any(), eq(NOW))).thenReturn(true);

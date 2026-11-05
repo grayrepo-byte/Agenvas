@@ -1450,6 +1450,21 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(seed).toBeDisabled());
   });
 
+  it("lets creators select and save both extended GPT Image 2.6 quality levels", async () => {
+    const capability: MediaCapability = { ...imageCapability, settings: { model: "gpt-image-2.6-flare" },
+      supportedImageQualities: ["low", "medium", "high", "xhigh", "max"] };
+    const { saves } = setup({ settings: { ...settings, connections: [{ ...settings.connections[0]!, capabilities: [capability] }] },
+      draft: { ...initialDraft, capabilityId: capability.id, parameters: { quality: "medium" } } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "运行" })).toBeEnabled());
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "尺寸与画质" }));
+    const picker = within(screen.getByRole("dialog", { name: "尺寸与画质设置" }));
+    await user.click(picker.getByRole("radio", { name: "xhigh" }));
+    await waitFor(() => expect(saves.some((save) => save.parameters?.quality === "xhigh")).toBe(true));
+    await user.click(picker.getByRole("radio", { name: "max" }));
+    await waitFor(() => expect(saves.at(-1)?.parameters?.quality).toBe("max"));
+  });
+
   it("blocks an unsupported AutoDL ratio and enables the saved supported ratio", async () => {
     const capability: MediaCapability = { ...videoCapability, id: "autodl", adapterId: "AUTODL_COMFY_VIDEO",
       name: "H3 text", minimumSeconds: 1, maximumSeconds: 15, maxReferenceImages: 0,

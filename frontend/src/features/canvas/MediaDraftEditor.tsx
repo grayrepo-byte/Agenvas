@@ -95,7 +95,7 @@ const INPUT_COLORS = [
 const QUEUE_LABELS = {
   get WAITING_WORKER() { return t("media.editor.waitingForWorker"); }, get NOT_QUEUED() { return t("media.editor.notQueued"); },
 } as const;
-const QUALITY_LABELS = { get low() { return t("media.editor.lowQuality"); }, get medium() { return t("media.editor.mediumQuality"); }, get high() { return t("media.editor.highQuality"); } } as const;
+const QUALITY_LABELS = { get low() { return t("media.editor.lowQuality"); }, get medium() { return t("media.editor.mediumQuality"); }, get high() { return t("media.editor.highQuality"); }, get xhigh() { return "xhigh"; }, get max() { return "max"; } } as const;
 const ASPECT_RATIO_LABELS: Readonly<Record<(typeof ASPECT_RATIO_OPTIONS)[number], string>> = {
   "1:1": "1:1", "2:3": "2:3", "3:2": "3:2", "9:16": "9:16", "16:9": "16:9",
   "3:4": "3:4", "4:3": "4:3", "21:9": "21:9", get AUTO() { return t("common.automatic"); },
@@ -1322,7 +1322,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         <DropdownMenuTrigger asChild><Button variant="ghost" className="media-draft-toolbar-button media-draft-model-trigger" type="button"
           disabled={editorReadOnly} aria-label={t("media.editor.chooseModel")} aria-haspopup="menu" aria-expanded={popover === "models"}
           aria-controls={`${id}-models`} onPointerDown={(event) => { triggerRef.current = event.currentTarget; }}>
-          <Cube size={17} /><span>{settings.isPending ? t("models.loading") : settings.error ? t("models.loadFailed") : chosenCapability?.name
+          <Cube size={17} /><span>{settings.isPending ? t("models.loading") : settings.error ? t("models.loadFailed") : (chosenCapability ? `${chosenCapability.name}${chosenCapability.settings.outputFormat === "gif" ? " · GIF" : ""}` : undefined)
             ?? (fields.capabilityId ? t("media.editor.modelUnavailable") : t("media.editor.defaultNotConfigured"))}</span><CaretDown size={12} />
         </Button></DropdownMenuTrigger>
         {popover === "models" ? <DropdownMenuContent aria-labelledby={undefined} side="top" align="start" onEscapeKeyDown={(event) => event.stopPropagation()} className="media-draft-popover media-draft-models p-3" ref={focusModelMenu}

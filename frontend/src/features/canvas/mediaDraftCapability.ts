@@ -11,7 +11,7 @@ import { activeWorkflowMediaFields, workflowDefinition, workflowDraftValues } fr
 export const ASPECT_RATIO_OPTIONS = ["1:1", "2:3", "3:2", "9:16", "16:9", "3:4", "4:3", "21:9", "AUTO"] as const;
 export const VIDEO_ASPECT_RATIO_OPTIONS = ["AUTO", "16:9", "9:16", "1:1"] as const;
 export const RESOLUTION_OPTIONS = ["1K", "2K", "4K"] as const;
-export const QUALITY_OPTIONS = ["low", "medium", "high"] as const;
+export const QUALITY_OPTIONS = ["low", "medium", "high", "xhigh", "max"] as const;
 export const GENERATION_COUNT_OPTIONS = [1, 2, 4] as const;
 const START_END_FRAME_COUNT = 2;
 
