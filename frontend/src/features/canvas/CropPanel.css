@@ -64,7 +64,9 @@
 }
 
 .crop-selection-surface { inset: 7px; cursor: move; }
-.crop-selection-surface:focus-visible { outline: 1px dashed var(--ui-focus); outline-offset: -5px; }
+.crop-selection-surface:focus-visible { outline: none; }
+.crop-selection:has(> .crop-selection-surface:focus-visible) .crop-handle::after,
+.crop-handle:focus-visible::after { transform: scale(1.15); }
 
 .crop-handle::after {
   position: absolute;

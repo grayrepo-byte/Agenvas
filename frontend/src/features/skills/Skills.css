@@ -162,7 +162,7 @@
 .app-shell--studio .skills-version-preview .skills-document > .skills-source-preview { max-height:480px; }
 .app-shell--studio .skills-resource-list summary { padding:12px 14px; border-radius:var(--ui-radius-md); color:var(--ui-text-secondary); font-family:ui-monospace,monospace; font-size:12px; line-height:1.7; transition:background-color 160ms; }
 .app-shell--studio .skills-resource-list summary:hover { background:var(--ui-hover); }
-.app-shell--studio .skills-resource-list summary:focus-visible { outline:2px solid var(--ui-accent-ring); outline-offset:2px; }
+.app-shell--studio .skills-resource-list summary:focus-visible { background:var(--ui-focus-surface); }
 .app-shell--studio .skills-published-assets { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,140px)); gap:12px; }
 .app-shell--studio .skills-published-assets figure { min-width:0; max-width:none; padding:7px; border:1px solid var(--ui-border); border-radius:9px; }
 .app-shell--studio .skills-published-assets img { border-radius:5px; background:var(--ui-surface-raised); }

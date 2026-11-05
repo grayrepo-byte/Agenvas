@@ -26,7 +26,7 @@
 .app-shell--settings .system-logs-summary time { margin-left: 5px; }
 .app-shell--settings .system-logs-retention { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0 16px 8px; color: var(--ui-warning); font-size: 10px; line-height: 1.7; }
 .app-shell--settings .system-logs-console { min-height: 300px; max-height: min(58vh, 720px); overflow: auto; overscroll-behavior: contain; padding: 6px 0; border-block: 1px solid var(--settings-rule, var(--ui-border)); background: color-mix(in srgb, var(--ui-bg) 78%, var(--ui-field)); font: 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; scrollbar-gutter: stable; }
-.app-shell--settings .system-logs-console:focus-visible { outline: 1px solid var(--ui-focus); outline-offset: -1px; }
+.app-shell--settings .system-logs-console:focus-visible { border-color: var(--ui-focus-border); }
 .app-shell--settings .system-log-line { display: grid; grid-template-columns: 4ch 12ch 7ch minmax(0, 1fr); gap: 10px; min-height: 24px; padding: 2px 16px; transition: background-color 150ms; }
 .app-shell--settings .system-log-line:hover { background: color-mix(in srgb, var(--ui-hover) 45%, transparent); }
 .app-shell--settings .system-log-sequence { text-align: right; }

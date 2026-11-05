@@ -35,11 +35,16 @@
   * { border-color: var(--ui-border); }
 }
 
-/* A single keyboard focus outline replaces stacked rings and legacy outlines. */
+/* Native scroll regions must not inherit the browser's jagged automatic outline.
+   Control focus uses quiet surfaces/borders; semantic selections keep their own styling. */
+:where(:focus) { outline: none; }
 .ui-focusable:focus-visible {
-  outline: var(--ui-focus-width) solid var(--ui-focus);
-  outline-offset: var(--ui-focus-offset);
+  outline: none;
+  box-shadow: none;
 }
+:where(button, a[href], summary, [role="button"]):focus-visible { filter: brightness(1.15); }
+:where(summary, a[href], button[data-variant="ghost"], button[data-variant="link"]):focus-visible { background-color: var(--ui-focus-surface); }
+.ui-focusable:is(input, textarea, [data-slot="select-trigger"]):focus-visible:not([aria-invalid="true"]) { border-color: var(--ui-focus-border); }
 
 /* Share the same quiet scroll treatment between textareas and rich prompt editors.
    A stable gutter keeps line wrapping unchanged when a long draft starts scrolling. */
@@ -99,8 +104,8 @@ input:not([data-slot]):not([type="range"]) {
 }
 
 input:not([data-slot]):not([type="range"]):focus {
-  border-color: var(--accent);
-  box-shadow: var(--ui-focus-shadow);
+  border-color: var(--ui-focus-border);
+  box-shadow: none;
 }
 
 .primary-button,
@@ -305,7 +310,7 @@ button:disabled {
   color: var(--ui-text-muted);
 }
 .workspace-settings-trigger:hover:enabled { background: var(--ui-hover); }
-.workspace-settings-trigger:focus-visible { outline: 1px solid var(--ui-focus); }
+.workspace-settings-trigger:focus-visible { background: var(--ui-focus-surface); }
 .workspace-settings-trigger:disabled { opacity: .5; }
 .workspace-settings-menu {    width: 290px; }
 .workspace-settings-menu .workspace-settings-check { display: grid; place-items: center; width: 16px; flex-shrink: 0; }
@@ -638,7 +643,7 @@ button:disabled {
 .media-operation-panel :is(textarea, input) { width: 100%; border: 1px solid var(--ui-border); border-radius: 9px; background: var(--ui-field); color: var(--ui-text); font: inherit; outline: none; }
 .media-operation-panel input { height: 36px; padding: 0 10px; }
 .media-operation-panel textarea { min-height: 82px; padding: 9px 10px; resize: vertical; line-height: 1.5; }
-.media-operation-panel :is(textarea, input):focus { border-color: var(--ui-focus); box-shadow: 0 0 0 2px var(--ui-accent-ring); }
+.media-operation-panel :is(textarea, input):focus { border-color: var(--ui-focus-border); box-shadow: none; }
 .media-operation-panel fieldset { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0; padding: 0; border: 0; }
 .media-operation-panel legend { grid-column: 1 / -1; margin-bottom: 6px; color: var(--ui-text-secondary); font-size: 11px; }
 .media-operation-panel fieldset label { display: grid; gap: 5px; color: var(--ui-text-muted); font-size: 10px; }
