@@ -80,9 +80,10 @@ const EXTENSIONS = [
 
 /** The media surface contains only the preview; editing and history live outside its bounds. */
 export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, locked, onEdit,
-  onDuplicate, onMakeMV, onComposeVideo, onEditVideo, compositionDisabledReason, children }: {
+  onDuplicate, onMakeMV, onComposeVideo, onEditVideo, onShowCard, compositionDisabledReason, children }: {
   artifact: Artifact; item: CanvasItem; selected: boolean; toolbarVisible?: boolean; locked: boolean; onEdit: () => void;
   onDuplicate?: () => void;
+  onShowCard?: (itemId: string, signal: AbortSignal) => Promise<boolean>;
   onComposeVideo?: () => void;
   onEditVideo?: () => void;
   compositionDisabledReason?: string | null;
@@ -234,7 +235,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             projectId={artifact.projectId} artifactId={artifact.id} title={item.title} assetId={reversePrompt.assetId}
             request={{ canvasItemId: item.id, sourceVersionId: reversePrompt.sourceVersionId,
               expectedCanvasItemVersion: reversePrompt.expectedCanvasItemVersion }}
-            open={reversePrompt.open} onClose={() => setReversePrompt((current) => current ? { ...current, open: false } : null)} /> : null}
+            open={reversePrompt.open} onShowCard={onShowCard} onClose={() => setReversePrompt((current) => current?.sourceVersionId === reversePrompt.sourceVersionId ? { ...current, open: false } : current)} /> : null}
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />{t("media.card.smartEdit")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}

@@ -3061,7 +3061,7 @@ paths:
     post:
       operationId: runImagePrompt
       summary: 固定选用图片版本、语言、功能提示词与文字模型，受理提示词反推任务
-      description: 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 3；无产物输出目标，不修改媒体草稿或选用结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送受控图片预览，关闭自动工具执行，成功后 output 仅返回 prompt、sourceVersionId、mock。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
+      description: 使用 TEXT_GENERATION Task 的 IMAGE_REVERSE_PROMPT 用途与输入 schema 5；成功后在同一租约及取消屏障事务中创建独立 TEXT 产物、不可变 TASK 版本和画布文字卡片，不修改媒体草稿或来源选用结果。校验来源节点 CAS 与精确版本归属，固定 image.reverse-prompt 正文与版本。相同键同请求重放，不重新读取配置；同节点有其他命令的活动任务时返回 409，不创建重复任务。Worker 发送固定版本的归档原图，关闭自动工具执行。成功 output 返回 prompt、sourceVersionId、mock、artifactId、artifactVersionId 和 canvasItemId（项目已删除时不创建节点并省略 canvasItemId）。标题冻结为请求语言，Mock 卡片标题明确标记。重复命令、查询和检查点恢复不会重复建卡；发布失败保留响应检查点，租约恢复只重试发布。历史 schema 3 继续只返回原反推文本，不自动补卡。Mock 明确标记为演示；真实模型须支持图片理解。沿用任务租约、公开状态事件、查询、取消、用量与响应检查点恢复。
       tags: [Tasks]
       parameters:
         - name: Idempotency-Key
@@ -9079,11 +9079,17 @@ components:
             modelRetry 是 AgentModelRetry 投影；READY 使用 nextActionAt 显示下次重试时间。
             内部上下文压缩完成时 contextCompacted=true；不包含 assistantText、assistantStream 或交接摘要正文。
             媒体故障或恢复中可包含有界 providerFailure 诊断；成功后使用实际归档结果，不保留旧故障正文。
-            TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时仅返回 prompt、sourceVersionId、mock；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
+            TEXT_GENERATION 的 IMAGE_REVERSE_PROMPT 用途成功时返回 prompt、sourceVersionId、mock；schema 5 另有 artifactId、artifactVersionId 及 canvasItemId（已删除项目省略节点 ID），schema 3 保持结果文本而不补卡；VIDEO_PROMPT_OPTIMIZATION 仅返回 prompt、mock，其他状态 output=null；不返回请求、模型完整响应或私有推理。
           oneOf:
             - type: object
               additionalProperties: true
               properties:
+                prompt: {type: string, description: 反推或优化的原始提示词；文字卡片的后续编辑从产物版本读取。}
+                sourceVersionId: {type: string, format: uuid, description: 反推时固定的来源图片版本。}
+                mock: {type: boolean}
+                artifactId: {type: string, format: uuid}
+                artifactVersionId: {type: string, format: uuid}
+                canvasItemId: {type: string, format: uuid, description: 已创建的结果节点；重放不重建已移除节点。}
                 modelRetry: {$ref: "#/components/schemas/AgentModelRetry"}
                 providerFailure: {$ref: "#/components/schemas/ProviderFailure"}
                 contextCompacted: {type: boolean, description: 内部上下文压缩已完成；不代表创作任务完成。}

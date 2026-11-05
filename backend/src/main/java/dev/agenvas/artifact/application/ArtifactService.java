@@ -121,6 +121,15 @@ public class ArtifactService {
                 ArtifactVersion.CreatedByKind.USER, null, false);
     }
 
+    /** Only an already accepted, lease-fenced task may use this boundary, including after project archival. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public ArtifactView createTaskTextWithinChange(UUID ownerId, UUID projectId, String title, JsonNode content) {
+        ArtifactView created = createLocked(ownerId, projectId, Artifact.Kind.TEXT, title, content,
+                ArtifactVersion.CreatedByKind.TASK, null, false);
+        events.append(ownerId, projectId, artifactEvent("artifact.created", created));
+        return created;
+    }
+
     /** Advances only the text copy's optimistic revision when its deleted canvas incarnation
      * is restored. The exact immutable content and history stay unchanged, while an autosave
      * prepared before undo can no longer overwrite the explicitly restored branch.
@@ -303,7 +312,8 @@ public class ArtifactService {
             String requestedTitle, JsonNode content, ArtifactVersion.CreatedByKind createdByKind,
             UUID runId, boolean trustedImport) {
         if (content != null && content.isNull()) content = null;
-        projects.requireActiveProject(ownerId, projectId);
+        if (createdByKind == ArtifactVersion.CreatedByKind.TASK) projects.getRetainedProject(ownerId, projectId);
+        else projects.requireActiveProject(ownerId, projectId);
         String title = validateTitle(requestedTitle);
         if (content == null && isMediaKind(kind)) {
             if (createdByKind != ArtifactVersion.CreatedByKind.USER

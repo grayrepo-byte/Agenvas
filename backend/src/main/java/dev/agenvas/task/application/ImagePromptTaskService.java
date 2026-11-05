@@ -24,7 +24,8 @@ import tools.jackson.databind.node.ObjectNode;
 /** Accepts recoverable image-to-prompt work, independent of media generation and its output targets. */
 @Service
 public class ImagePromptTaskService {
-    public static final int INPUT_SCHEMA_VERSION = 3;
+    public static final int INPUT_SCHEMA_VERSION = Task.IMAGE_PROMPT_CARD_SCHEMA_VERSION;
+    public static final int LEGACY_INPUT_SCHEMA_VERSION = 3;
     public static final String PROMPT_KEY = "image.reverse-prompt";
     private final TaskRepository tasks;
     private final ArtifactService artifacts;
@@ -36,13 +37,15 @@ public class ImagePromptTaskService {
     private final UsageService usage;
     private final ObjectMapper mapper;
     private final Clock clock;
+    private final dev.agenvas.shared.i18n.ApiMessages messages;
 
     public ImagePromptTaskService(TaskRepository tasks, ArtifactService artifacts, ProjectService projects, CanvasItemQueryService canvas,
             ChatGateway gateway, PromptService prompts, ProjectEventService events, UsageService usage,
-            ObjectMapper mapper, Clock clock) {
+            ObjectMapper mapper, Clock clock, dev.agenvas.shared.i18n.ApiMessages messages) {
         this.tasks = tasks; this.artifacts = artifacts; this.canvas = canvas; this.gateway = gateway;
         this.projects = projects;
         this.prompts = prompts; this.events = events; this.usage = usage; this.mapper = mapper; this.clock = clock;
+        this.messages = messages;
     }
 
     /** Project serialization prevents duplicate active work; command replay never consults newer settings. */
@@ -88,6 +91,8 @@ public class ImagePromptTaskService {
             var prompt = prompts.require(PROMPT_KEY, PromptService.Kind.FUNCTION);
             ObjectNode input = request.deepCopy().put("schemaVersion", INPUT_SCHEMA_VERSION)
                     .put("purpose", Task.IMAGE_PROMPT_PURPOSE).put("language", language)
+                    .put("outputTitle", messages.text(ApiMessage.of("mock".equals(config.source())
+                            ? "api.image-prompt.mock-card-title" : "api.image-prompt.card-title"), java.util.Locale.forLanguageTag(language)))
                     .put("systemPrompt", prompt.content()).put("promptKey", prompt.key()).put("promptVersion", prompt.version())
                     .put("modelConfigSource", config.source()).put("modelConfigVersion", config.version());
             var budget = gateway.requestBudgetFor(config);

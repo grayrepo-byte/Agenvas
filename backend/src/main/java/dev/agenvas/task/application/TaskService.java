@@ -559,6 +559,35 @@ public class TaskService {
         }).value();
     }
 
+    /** Publishes a new text identity and its canvas node atomically with success, never from a browser receipt.
+     * The project lock and live-lease fence precede all writes, so replay, recovery and cancel cannot duplicate cards.
+     */
+    @Transactional
+    public void succeedWithImagePromptCard(Task lease, String workerId, JsonNode output, JsonNode content) {
+        if (!lease.isImagePromptCard()) throw new IllegalArgumentException("Expected an image prompt card task");
+        UUID ownerId = tasks.ownerId(lease.id()).orElseThrow(this::notFound);
+        Instant now = clock.instant();
+        events.recordChange(ownerId, lease.projectId(), () -> {
+            Task current = tasks.findById(lease.id()).orElseThrow(this::notFound);
+            if (current.status() != Task.Status.RUNNING || !workerId.equals(current.leaseOwner())
+                    || current.leaseEpoch() != lease.leaseEpoch() || current.leaseUntil() == null
+                    || !current.leaseUntil().isAfter(now) || current.cancelRequested() || current.output() == null)
+                throw leaseLost();
+            var artifact = artifacts.createTaskTextWithinChange(ownerId, lease.projectId(),
+                    current.input().path("outputTitle").asText(), content);
+            var item = canvas.placeTaskTextWithinChange(ownerId, lease.projectId(), artifact.artifact().id());
+            ObjectNode completed = (ObjectNode) output.deepCopy();
+            ObjectNode summary = (ObjectNode) completed.path("result");
+            summary.put("artifactId", artifact.artifact().id().toString());
+            summary.put("artifactVersionId", artifact.resourceDefaultVersion().id().toString());
+            if (item != null) summary.put("canvasItemId", item.id().toString());
+            if (!tasks.finish(lease.id(), validateWorkerId(workerId), lease.leaseEpoch(),
+                    Task.Status.SUCCEEDED, completed, null, now)) throw leaseLost();
+            events.append(ownerId, lease.projectId(), taskEvent(tasks.findById(lease.id()).orElseThrow(this::notFound), false));
+            return ProjectEventService.Change.unchanged(null);
+        });
+    }
+
     /** 仅当前 Worker 和 epoch 仍匹配且租约未过期时续租；长任务执行线程无需持有数据库事务。 */
     @Transactional
     public void heartbeat(UUID taskId, String workerId, long leaseEpoch) {

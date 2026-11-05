@@ -39,7 +39,9 @@ public class ImagePromptInputService {
     }
 
     public List<Message> messages(Task task) {
-        if (!task.isImagePrompt() || task.input().path("schemaVersion").asInt() != ImagePromptTaskService.INPUT_SCHEMA_VERSION
+        int schema = task.input().path("schemaVersion").asInt();
+        if (!task.isImagePrompt() || (schema != ImagePromptTaskService.INPUT_SCHEMA_VERSION
+                && schema != ImagePromptTaskService.LEGACY_INPUT_SCHEMA_VERSION)
                 || task.input().path("systemPrompt").asText().isBlank()) throw new IllegalArgumentException("Invalid image prompt Task");
         String language = switch (task.input().path("language").asText()) {
             case "en" -> "English";

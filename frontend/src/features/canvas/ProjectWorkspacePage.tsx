@@ -30,6 +30,7 @@ createArtifact,
 createCanvasConnection,
 disconnectCanvasConnection,
 getCurrentUser,
+getCanvasEditor,
 getMediaDraft,
 getMediaSettings,
 getProject,
@@ -102,7 +103,7 @@ import { CanvasGroupRenameDialog } from "./CanvasGroupActions";
 import { canvasGroupCreationPoint, canvasGroupDropTarget, canvasGroupIdFromNodeId, canvasGroupNodeId,
   remapCollapsedCanvasEdges, type CanvasGroupMemberLayout, type CanvasGroupProjection } from "./canvasGroups";
 import { hasOpenCanvasEditingOverlay, resolveCanvasEditingShortcut } from "./canvasEditingShortcuts";
-import { CanvasEditingContext, canvasItemPresentation } from "./useCanvasEditing";
+import { CanvasEditingContext, canvasEditorKey, canvasItemPresentation } from "./useCanvasEditing";
 import { CANVAS_EDIT_ITEM_LIMIT, useCanvasOrganization } from "./useCanvasOrganization";
 import { connectedMediaModel, type ConnectedMediaModel } from "./connectedMediaModel";
 import { fieldsFromMediaDraft } from "./useMediaDraftSession";
@@ -165,6 +166,7 @@ type CanvasNodeData = {
   onMakeMV: (item: CanvasItem) => void;
   onComposeVideo: (item: CanvasItem) => void;
   onEditVideo: (item: CanvasItem) => void;
+  onShowCard: (itemId: string, signal: AbortSignal) => Promise<boolean>;
   compositionDisabledReason: string | null;
   mediaAspectRatio: number | undefined;
   dragging: boolean;
@@ -811,6 +813,27 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     const item = canvas.data?.items.find((candidate) => candidate.id === node.id);
     return item && !item.locked ? [{ id: item.id, groupId: item.groupId, ...node.position, ...effectiveNodeSize(item) }] : [];
   }), [canvas.data?.items, effectiveNodeSize]);
+  const showGeneratedCard = useCallback(async (itemId: string, signal: AbortSignal) => {
+    const item = queryClient.getQueryData<Canvas>(["canvas", projectId])?.items.find((candidate) => candidate.id === itemId);
+    if (item?.groupId) {
+      const editor = await queryClient.fetchQuery({ queryKey: canvasEditorKey(projectId),
+        queryFn: () => getCanvasEditor(projectId), staleTime: 0, retry: false });
+      if (signal.aborted) return false;
+      const currentItem = editor.items.find((candidate) => candidate.id === itemId);
+      const group = editor.groups.find((candidate) => candidate.id === currentItem?.groupId);
+      if (group?.collapsed) await editing.execute({ operation: "GROUP", groupChanges: [{ type: "UPSERT",
+        groupId: group.id, expectedVersion: group.version, name: group.name, collapsed: false }] });
+    }
+    if (signal.aborted) return false;
+    // Fit before selecting: selecting the target unmounts this source's toolbar and cancels its signal.
+    // The returned boolean distinguishes that completed navigation from an abandoned preparation.
+    return new Promise<boolean>((resolve) => window.requestAnimationFrame(() => {
+      if (signal.aborted) { resolve(false); return; }
+      viewportMotion.fit({ nodes: [{ id: itemId }], padding: 0.2, maxZoom: 1 });
+      setSelectedIds([itemId], CANVAS_SELECTION_MODE.SINGLE);
+      resolve(true);
+    }));
+  }, [queryClient, projectId, editing, setSelectedIds, viewportMotion]);
   const nodes = useMemo<WorkspaceNode[]>(
     () => [
       ...organization.projection.groups.map((entry): CanvasGroupFlowNode => ({
@@ -861,6 +884,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               onMakeMV: (item) => makeMV.mutate(item),
               onComposeVideo: (item) => requestVideoComposition([item]),
               onEditVideo: (item) => setVideoEditIds([item.id]),
+              onShowCard: showGeneratedCard,
               compositionDisabledReason,
               mediaAspectRatio: mediaRatios[item.id],
               dragging: draggingIds.includes(item.id),
@@ -891,6 +915,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
       nodeActionsVisible,
       multiSelecting,
       requestVideoComposition,
+      showGeneratedCard,
       compositionDisabledReason,
       handleToggleSelection,
       effectiveNodeSize,
@@ -1612,7 +1637,7 @@ const CanvasCardNode = memo(function CanvasCardNode({ data, selected }: NodeProp
       {halo}
       {selectionControl}
       {artifact.kind === "IMAGE" || artifact.kind === "VIDEO" || artifact.kind === "AUDIO"
-        ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor}
+        ? <MediaCanvasCard {...cardProps} onEdit={focusArtifactEditor} onShowCard={data.onShowCard}
           onDuplicate={() => data.onDuplicate(data.item)} onMakeMV={() => data.onMakeMV(data.item)}
           onComposeVideo={() => data.onComposeVideo(data.item)} onEditVideo={() => data.onEditVideo(data.item)} compositionDisabledReason={data.compositionDisabledReason} />
         : <ContentCanvasCard {...cardProps} onDuplicate={() => data.onDuplicate(data.item)} />}

@@ -1,7 +1,7 @@
 import { CopySimple, MagicWand } from "@/shared/ui/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useId, useRef, useState } from "react";
-import { ApiError, assetContentUrl, cancelImagePrompt, listImagePromptTasks, runImagePrompt,
+import { useEffect, useId, useRef, useState } from "react";
+import { ApiError, assetContentUrl, cancelImagePrompt, listImagePromptTasks, listCanvasItems, runImagePrompt,
   type ImagePromptRequest, type Task } from "../../shared/api/client";
 import { t, useLocale } from "../../shared/i18n";
 import { LoadingState } from "../../shared/ui/LoadingState";
@@ -16,16 +16,19 @@ import { acknowledgePromptTask } from "./promptTaskHistory";
 
 type Props = {
   projectId: string; artifactId: string; title: string; assetId: string;
-  request: ImagePromptRequest; open: boolean; onClose: () => void;
+  request: ImagePromptRequest; open: boolean; onClose: () => void; onShowCard?: (itemId: string, signal: AbortSignal) => Promise<boolean>;
 };
 
 /** The selected image is pinned by the caller; a lost acceptance response retries the original command. */
-export function ImageReversePromptDialog({ projectId, artifactId, title, assetId, request, open, onClose }: Props) {
+export function ImageReversePromptDialog({ projectId, artifactId, title, assetId, request, open, onClose, onShowCard }: Props) {
   useLocale();
   const id = useId();
   const client = useQueryClient();
   const queryKey = ["image-prompt-tasks", projectId, request.canvasItemId] as const;
   const command = useRef<{ key: string; request: ImagePromptRequest } | null>(null);
+  const viewing = useRef<AbortController | null>(null);
+  useEffect(() => () => viewing.current?.abort(), [open, projectId, artifactId, request.canvasItemId, request.sourceVersionId]);
+  function close() { viewing.current?.abort(); onClose(); }
   const [edited, setEdited] = useState<{ taskId: string; value: string } | null>(null);
   const history = useQuery({ queryKey, queryFn: () => listImagePromptTasks(projectId, artifactId, request.canvasItemId),
     enabled: open, retry: false,
@@ -47,15 +50,34 @@ export function ImageReversePromptDialog({ projectId, artifactId, title, assetId
     onSuccess: updateTask, onSettled: () => void history.refetch() });
   const output = latest?.status === "SUCCEEDED" ? latest.output : undefined;
   const generated = typeof output?.prompt === "string" ? output.prompt : "";
-  const value = latest && edited?.taskId === latest.id ? edited.value : generated;
+  const cardId = typeof output?.canvasItemId === "string" ? output.canvasItemId : undefined;
+  const savedCard = typeof output?.artifactId === "string";
+  const value = !savedCard && latest && edited?.taskId === latest.id ? edited.value : generated;
+  const viewCard = useMutation({ mutationFn: async () => {
+    if (!cardId || !onShowCard) return;
+    viewing.current?.abort();
+    const attempt = new AbortController(); viewing.current = attempt;
+    try {
+      // The shared read may still refresh the cache after dismissal; only this live invocation may navigate.
+      const canvas = await client.fetchQuery({ queryKey: ["canvas", projectId], queryFn: () => listCanvasItems(projectId), staleTime: 0, retry: false });
+      if (attempt.signal.aborted) return;
+      if (!canvas.items.some((item) => item.id === cardId)) throw new Error(t("image.reversePrompt.cardUnavailable"));
+      const navigated = await onShowCard(cardId, attempt.signal);
+      // Successful selection can unmount this source toolbar itself. Finish that accepted navigation
+      // even though its own unmount aborted the signal; canceled preparations return false.
+      if (navigated) close();
+    } catch (failure) {
+      if (!attempt.signal.aborted) throw failure;
+    }
+  } });
   const copy = useMutation({ mutationFn: () => navigator.clipboard.writeText(value) });
-  const error = run.error ?? cancel.error ?? history.error;
+  const error = viewCard.error ?? run.error ?? cancel.error ?? history.error;
   const uncertain = run.isError && (!(run.error instanceof ApiError) || run.error.status >= 500 || run.error.status === 408);
   const busy = Boolean(active) || run.isPending || cancel.isPending;
   const sourceChanged = active && active.input.sourceVersionId !== request.sourceVersionId;
   const failed = latest?.status === "FAILED" || latest?.status === "BLOCKED" || latest?.status === "UNKNOWN";
 
-  return <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+  return <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
     <DialogContent className="nodrag nowheel nopan max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
       showCloseButton={false} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
@@ -77,19 +99,22 @@ export function ImageReversePromptDialog({ projectId, artifactId, title, assetId
       </AlertDescription></Alert> : null}
       {generated ? <>
         {output?.mock === true ? <p role="status">{t("image.reversePrompt.mock")}</p> : null}
+        {savedCard ? <p role="status">{t("image.reversePrompt.cardCreated")}</p> : null}
         <FieldGroup><Field><FieldLabel htmlFor={id}>{t("image.reversePrompt.result")}</FieldLabel>
-          <Textarea id={id} rows={8} className="max-h-72 resize-y" value={value} maxLength={20000}
+          <Textarea id={id} rows={8} className="max-h-72 resize-y" value={value} maxLength={20000} readOnly={savedCard}
             onChange={(event) => { if (latest) setEdited({ taskId: latest.id, value: event.target.value }); copy.reset(); }} />
         </Field></FieldGroup>
       </> : null}
       {copy.isError ? <Alert variant="destructive"><AlertDescription>{t("image.reversePrompt.copyFailed")}</AlertDescription></Alert> : null}
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>{t("common.close")}</Button>
+        <Button variant="outline" onClick={close}>{t("common.close")}</Button>
         {active ? <Button variant="outline" disabled={cancel.isPending} onClick={() => cancel.mutate(active)}>{t("common.cancel")}</Button> : null}
+        {cardId && onShowCard ? <Button variant="outline" disabled={viewCard.isPending} onClick={() => viewCard.mutate()}>
+          {t("image.reversePrompt.viewCard")}</Button> : null}
         {generated ? <Button variant="outline" disabled={!value.trim() || copy.isPending} onClick={() => copy.mutate()}>
           <CopySimple data-icon="inline-start" />{copy.isSuccess ? t("image.reversePrompt.copied") : t("image.reversePrompt.copy")}
         </Button> : null}
-        <Button disabled={busy || history.isPending || history.isError} onClick={() => { copy.reset(); cancel.reset(); run.mutate(); }}>
+        <Button disabled={busy || viewCard.isPending || history.isPending || history.isError} onClick={() => { copy.reset(); cancel.reset(); run.mutate(); }}>
           <MagicWand data-icon="inline-start" />{run.isPending ? t("image.reversePrompt.submitting") : uncertain ? t("common.retry")
             : latest ? t("image.reversePrompt.again") : t("image.reversePrompt.start")}
         </Button>

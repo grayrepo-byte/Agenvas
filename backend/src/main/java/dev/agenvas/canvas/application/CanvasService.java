@@ -410,6 +410,15 @@ public class CanvasService {
         return placeGeneratedArtifact(ownerId, projectId, artifact, mediaSelection(artifact), groupId);
     }
 
+    /** Accepted text results survive removal of the source node and project archival. Deleted projects retain only the artifact. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public CanvasItem placeTaskTextWithinChange(UUID ownerId, UUID projectId, UUID artifactId) {
+        if (projects.getRetainedProject(ownerId, projectId).status() == Project.Status.DELETED) return null;
+        ArtifactService.ArtifactView artifact = artifacts.get(ownerId, projectId, artifactId);
+        if (artifact.artifact().kind() != Artifact.Kind.TEXT) throw new IllegalArgumentException("Expected a text task result");
+        return placeGeneratedArtifact(ownerId, projectId, artifact, null, null);
+    }
+
     private CanvasItem placeGeneratedArtifact(UUID ownerId, UUID projectId,
             ArtifactService.ArtifactView artifact, UUID selectedVersionId, UUID groupId) {
         List<CanvasItem> existing = canvasItems.list(ownerId, projectId);
