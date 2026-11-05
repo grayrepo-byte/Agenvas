@@ -93,6 +93,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   const [menuOpen, setMenuOpen] = useState(false);
   const [threeViewMenuOpen, setThreeViewMenuOpen] = useState(false);
   const [operationOpen, setOperationOpen] = useState<ImageTool | null>(null);
+  const [smartEditSource, setSmartEditSource] = useState<{ versionId: string; canvasVersion: number; assetId: string; title: string } | null>(null);
   const [reversePrompt, setReversePrompt] = useState<{ assetId: string; sourceVersionId: string; expectedCanvasItemVersion: number; open: boolean } | null>(null);
   const [videoOperationOpen, setVideoOperationOpen] = useState<VideoOperation | null>(null);
   const [audioTrim, setAudioTrim] = useState<{ assetId: string; sourceVersionId: string; expectedCanvasItemVersion: number; durationMs: number } | null>(null);
@@ -197,7 +198,12 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
       expectedCapabilityVersion: configured.capability.capabilityVersion });
   }
 
+  const operationImage = operationOpen === "SMART_EDIT" && smartEditSource ? smartEditSource
+    : { versionId: item.selectedVersionId ?? "", canvasVersion: item.version, assetId: assetId ?? "", title: item.title };
+
   function chooseOperation(name: ImageTool, threeView: ThreeViewType | null = null) {
+    if (name === "SMART_EDIT" && item.selectedVersionId && assetId)
+      setSmartEditSource({ versionId: item.selectedVersionId, canvasVersion: item.version, assetId, title: item.title });
     setMenuOpen(false);
     setThreeViewMenuOpen(false);
     setThreeViewType(threeView);
@@ -237,7 +243,7 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
               expectedCanvasItemVersion: reversePrompt.expectedCanvasItemVersion }}
             open={reversePrompt.open} onShowCard={onShowCard} onClose={() => setReversePrompt((current) => current?.sourceVersionId === reversePrompt.sourceVersionId ? { ...current, open: false } : current)} /> : null}
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
-            onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />{t("media.card.smartEdit")}</Button>
+            onClick={() => chooseOperation("SMART_EDIT")}><MagicWand size={17} />{t("media.card.smartEdit")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             onClick={() => runOperation("DEPTH_MAP")}><Stack size={17} />{t("media.card.extractDepth")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
@@ -268,32 +274,32 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
             sourceVersionId={item.selectedVersionId} expectedVersion={item.version}
             sourceTitle={item.title} sourceUrl={assetContentUrl(artifact.projectId, assetId)}
             onClose={() => setOperationOpen(null)} /> : null)
-            : operationOpen && assetId && item.selectedVersionId ? <ImageFunctionConfiguration operation={operationOpen}
-              sourceVersionId={item.selectedVersionId} busy={operation.isPending}
+            : operationOpen && operationImage.assetId && operationImage.versionId ? <ImageFunctionConfiguration operation={operationOpen}
+              sourceVersionId={operationImage.versionId} busy={operation.isPending}
               onClose={() => { setOperationOpen(null); operation.reset(); }}
               onSubmit={(input) => operation.mutate({ ...input, canvasItemId: item.id,
-                sourceVersionId: item.selectedVersionId ?? "", expectedCanvasItemVersion: item.version, operation: operationOpen })}>
+                sourceVersionId: operationImage.versionId, expectedCanvasItemVersion: operationImage.canvasVersion, operation: operationOpen })}>
               {({ capability, controls, parameterControls, submitDisabled, submit }) => operationOpen === "SMART_EDIT" ? <SmartEditDialog
-                projectId={artifact.projectId} sourceVersionId={item.selectedVersionId ?? ""} sourceTitle={item.title}
-                sourceUrl={assetContentUrl(artifact.projectId, assetId)} capabilities={[capability]} configuredMethod
+                projectId={artifact.projectId} sourceVersionId={operationImage.versionId} sourceTitle={operationImage.title}
+                sourceUrl={assetContentUrl(artifact.projectId, operationImage.assetId)} capabilities={[capability]} configuredMethod
                 extraControls={parameterControls} submitDisabled={submitDisabled} busy={operation.isPending} error={operation.error}
                 onClose={() => { setOperationOpen(null); operation.reset(); }}
-                onSubmit={(input) => submit({}, input.instruction, { referenceVersionIds: input.referenceVersionIds, maskAssetId: input.maskAssetId ?? null })} />
-                : operationOpen === "RELIGHT" ? <RelightPanel sourceUrl={assetContentUrl(artifact.projectId, assetId)}
+                onSubmit={(input) => submit({}, input.instruction, { referenceVersionIds: input.referenceVersionIds, maskAssetId: input.maskAssetId ?? null, ...(input.markupAssetId ? { markupAssetId: input.markupAssetId } : {}) })} />
+                : operationOpen === "RELIGHT" ? <RelightPanel sourceUrl={assetContentUrl(artifact.projectId, operationImage.assetId)}
                   capabilities={[capability]} configuredMethod extraControls={controls} submitDisabled={submitDisabled}
                   busy={operation.isPending} error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}
                   onSubmit={(parameters, instruction) => submit(parameters, instruction)} />
                 : operationOpen === "RESIZE" ? <ImageResizePanel key={item.selectedVersionId}
-                  sourceUrl={assetContentUrl(artifact.projectId, assetId)} sourceTitle={item.title}
+                  sourceUrl={assetContentUrl(artifact.projectId, operationImage.assetId)} sourceTitle={item.title}
                   sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height}
                   loading={metadata.isPending} metadataError={metadata.error} onRetryMetadata={() => void metadata.refetch()}
                   busy={operation.isPending} error={operation.error} extraControls={controls} submitDisabled={submitDisabled}
                   onClose={() => { setOperationOpen(null); operation.reset(); }} onSubmit={(parameters) => submit(parameters)} />
-                : operationOpen === "CROP" ? <CropPanel sourceUrl={assetContentUrl(artifact.projectId, assetId)}
+                : operationOpen === "CROP" ? <CropPanel sourceUrl={assetContentUrl(artifact.projectId, operationImage.assetId)}
                   sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height} busy={operation.isPending}
                   error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }} onSubmit={(parameters) => submit(parameters)} />
                 : <ImageOperationPanel operation={operationOpen}
-                  sourceUrl={assetContentUrl(artifact.projectId, assetId)} sourceTitle={item.title}
+                  sourceUrl={assetContentUrl(artifact.projectId, operationImage.assetId)} sourceTitle={item.title}
                   sourceWidth={metadata.data?.width} sourceHeight={metadata.data?.height} initialThreeViewType={threeViewType ?? undefined}
                   capabilities={[capability]} extraControls={controls} submitDisabled={submitDisabled}
                   busy={operation.isPending} error={operation.error} onClose={() => { setOperationOpen(null); operation.reset(); }}

@@ -126,6 +126,33 @@ class OpenAiImage2ClientTest {
         assertThat(submissions).hasValue(1);
     }
 
+    @ParameterizedTest @ValueSource(strings = {"gpt-image-2.6-flare", "gpt-image-2.6-sunburst"})
+    void sendsNativeMarkupAsSeparateMultipartAndJsonParts(String model) throws Exception {
+        var fileBody = new java.util.concurrent.atomic.AtomicReference<String>();
+        var jsonBody = new java.util.concurrent.atomic.AtomicReference<tools.jackson.databind.JsonNode>();
+        server.createContext("/v1/images/edits", exchange -> {
+            byte[] body = exchange.getRequestBody().readAllBytes();
+            if (exchange.getRequestHeaders().getFirst("Content-Type").startsWith("application/json")) jsonBody.set(mapper.readTree(body));
+            else fileBody.set(new String(body, StandardCharsets.ISO_8859_1));
+            respond(exchange,200,"{\"data\":[{\"b64_json\":\"iVBORw0KGgo=\"}]}");
+        });
+        String origin = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+        byte[] png = {(byte)0x89,'P','N','G',13,10,26,10};
+        try (var file = client.edit("synthetic-key",model,"blue vase","high","1024x1024",List.of(png),null,false,origin,"high","auto",png);
+             var url = client.editUrls("synthetic-key",model,"blue vase","high","1024x1024",List.of("https://example.com/source.png"),null,false,origin,"high","auto","https://example.com/markup.png")) {
+            assertThat(file.declaredContentType()).isEqualTo("image/png");
+            assertThat(url.declaredContentType()).isEqualTo("image/png");
+        }
+        assertThat(fileBody.get()).contains("name=\"markup\"; filename=\"edit-markup.png\"").doesNotContain("name=\"mask\"", "prompt_rewriter");
+        assertThat(jsonBody.get().at("/markup/image_url").asText()).isEqualTo("https://example.com/markup.png");
+        assertThat(jsonBody.get().at("/images/0/image_url").asText()).isEqualTo("https://example.com/source.png");
+        assertThat(jsonBody.get().has("mask")).isFalse();
+        assertThatThrownBy(() -> client.edit("synthetic-key",model,"edit","high","1024x1024",List.of(png),png,false,origin,null,null,png))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> client.editUrls("synthetic-key","gpt-image-2","edit","high","1024x1024",List.of("https://example.com/source.png"),null,false,origin,null,null,"https://example.com/markup.png"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test void urlEditsUseOrderedJsonReferencesAndMaskWithoutUploadingFiles() throws Exception {
         var received = new java.util.concurrent.atomic.AtomicReference<tools.jackson.databind.JsonNode>();
         server.createContext("/v1/images/edits", exchange -> {

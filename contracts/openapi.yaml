@@ -6678,6 +6678,7 @@ components:
           items: {type: string, enum: [low, medium, high, xhigh, max]}
         supportsTransparentBackground: {type: boolean}
         supportsImageMask: {type: boolean}
+        supportsImageMarkup: {type: boolean, description: "Native separate transparent PNG annotation for supported OpenAI GPT Image 2.5/2.6 PNG capabilities. Omitted means unsupported."}
         mappingSha256: {type: string, pattern: "^[0-9a-f]{64}$"}
         settings: {$ref: "#/components/schemas/FixedMediaAdapterSettings"}
     FixedMediaAdapterSettings:
@@ -8147,6 +8148,10 @@ components:
           uniqueItems: true
           items: {type: string, format: uuid}
         maskAssetId: {type: [string, "null"], format: uuid}
+        markupAssetId:
+          type: [string, "null"]
+          format: uuid
+          description: "SMART_EDIT only. Same-project READY transparent PNG containing annotations, matching the oriented first source image. At most 16,777,216 pixels and 20 MiB. Mutually exclusive with maskAssetId; requires supportsImageMarkup."
         parameters: {$ref: "#/components/schemas/ImageOperationParameters"}
     ImageOperationParameters:
       type: object

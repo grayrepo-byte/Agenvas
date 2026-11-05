@@ -11,14 +11,14 @@ import { RunningHubForm } from "./RunningHubForm";
 import { workflowValidationErrors, type WorkflowValue } from "./workflowFields";
 import "./ImageFunctionConfiguration.css";
 
-type Submission = Pick<RunImageOperationRequest, "expectedFunctionVersion" | "expectedCapabilityVersion" | "parameters" | "instruction" | "referenceVersionIds" | "maskAssetId">;
+type Submission = Pick<RunImageOperationRequest, "expectedFunctionVersion" | "expectedCapabilityVersion" | "parameters" | "instruction" | "referenceVersionIds" | "maskAssetId" | "markupAssetId">;
 type Configuration = {
   capability: MediaCapability;
   controls: ReactNode;
   parameterControls: ReactNode;
   submitDisabled: boolean;
   submit: (parameters: RunImageOperationRequest["parameters"], instruction?: string,
-    extras?: Pick<RunImageOperationRequest, "referenceVersionIds" | "maskAssetId">) => void;
+    extras?: Pick<RunImageOperationRequest, "referenceVersionIds" | "maskAssetId" | "markupAssetId">) => void;
 };
 
 /** All image workspaces consume the same administrator route and pin its displayed versions. */

@@ -4797,6 +4797,8 @@ export interface components {
             supportedImageQualities: ("low" | "medium" | "high" | "xhigh" | "max")[];
             supportsTransparentBackground: boolean;
             supportsImageMask: boolean;
+            /** @description Native separate transparent PNG annotation for supported OpenAI GPT Image 2.5/2.6 PNG capabilities. Omitted means unsupported. */
+            supportsImageMarkup?: boolean;
             mappingSha256: string;
             settings: components["schemas"]["FixedMediaAdapterSettings"];
         };
@@ -5996,6 +5998,11 @@ export interface components {
             referenceVersionIds?: string[];
             /** Format: uuid */
             maskAssetId?: string | null;
+            /**
+             * Format: uuid
+             * @description SMART_EDIT only. Same-project READY transparent PNG containing annotations, matching the oriented first source image. At most 16,777,216 pixels and 20 MiB. Mutually exclusive with maskAssetId; requires supportsImageMarkup.
+             */
+            markupAssetId?: string | null;
             parameters: components["schemas"]["ImageOperationParameters"];
         };
         ImageOperationParameters: {

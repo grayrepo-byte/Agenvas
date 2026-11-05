@@ -1,5 +1,7 @@
 package dev.agenvas.provider.api;
 
+import dev.agenvas.provider.domain.MediaAdapterRegistry;
+
 import dev.agenvas.identity.application.AdminPrincipal;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.domain.KlingModels;
@@ -184,6 +186,8 @@ public class MediaCapabilityController {
                 declaration.supportedImageResolutions().stream().sorted().toList(),
                 declaration.supportedImageQualities().stream().sorted().toList(),
                 declaration.supportsTransparentBackground(), declaration.supportsImageMask(),
+                MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(snapshot.adapterId()) && declaration.maxReferenceImages() > 0
+                        && dev.agenvas.provider.domain.OpenAiImageOptions.supportsMarkup(settings),
                 snapshot.mappingSha256(), settings.isMissingNode()
                         ? mapper.createObjectNode() : settings);
     }
@@ -212,7 +216,7 @@ public class MediaCapabilityController {
             List<String> supportedVideoInputModes, String defaultVideoInputMode,
             boolean supportsEndFrame, List<String> supportedImageAspectRatios,
             List<String> supportedImageResolutions, List<String> supportedImageQualities,
-            boolean supportsTransparentBackground, boolean supportsImageMask, String mappingSha256,
+            boolean supportsTransparentBackground, boolean supportsImageMask, boolean supportsImageMarkup, String mappingSha256,
             JsonNode settings) {}
     public record DefaultView(Task.Kind kind, UUID capabilityId, long version) {}
     public record NativeProfiles(List<NativeProfile> profiles) {}

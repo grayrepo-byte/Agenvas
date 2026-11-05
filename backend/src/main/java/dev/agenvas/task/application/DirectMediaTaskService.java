@@ -836,11 +836,23 @@ public class DirectMediaTaskService {
             ImageOperation operation, String instruction, long expectedFunctionVersion, int expectedCapabilityVersion,
             List<UUID> referenceVersionIds, UUID maskAssetId, JsonNode requestedParameters,
             String commandKey) {
+        return runImageOperation(ownerId, projectId, artifactId, canvasItemId, sourceVersionId,
+                expectedCanvasItemVersion, operation, instruction, expectedFunctionVersion, expectedCapabilityVersion,
+                referenceVersionIds, maskAssetId, null, requestedParameters, commandKey);
+    }
+
+    public Task runImageOperation(UUID ownerId, UUID projectId, UUID artifactId,
+            UUID canvasItemId, UUID sourceVersionId, long expectedCanvasItemVersion,
+            ImageOperation operation, String instruction, long expectedFunctionVersion, int expectedCapabilityVersion,
+            List<UUID> referenceVersionIds, UUID maskAssetId, UUID markupAssetId, JsonNode requestedParameters,
+            String commandKey) {
         if (canvasItemId == null || sourceVersionId == null || operation == null
                 || expectedCanvasItemVersion < 0 || commandKey == null || commandKey.isBlank()
                 || commandKey.length() > MAX_COMMAND_KEY_LENGTH) {
             throw invalid(ApiMessage.of("api.direct-media-task-service.requires-a-valid-image-action-card-version-and-idempotency-key"));
         }
+        if (markupAssetId != null && (maskAssetId != null || operation != ImageOperation.SMART_EDIT))
+            throw invalid(ApiMessage.of("api.image-markup.invalid-mode"));
         ImageOperationSpec operationSpec = ImageOperationSpec.parse(mapper, operation, requestedParameters);
         ObjectNode operationParameters = operationSpec.parameters();
         List<UUID> normalizedReferenceIds = referenceVersionIds == null
@@ -870,6 +882,8 @@ public class DirectMediaTaskService {
         request.set("referenceVersionIds", requestedReferenceIds);
         if (maskAssetId == null) request.putNull("maskAssetId");
         else request.put("maskAssetId", maskAssetId.toString());
+        // Omit absent markup to preserve fingerprints of historical mask and unmarked commands.
+        if (markupAssetId != null) request.put("markupAssetId", markupAssetId.toString());
         request.set("parameters", requestedParameters);
         // Compare parsed numbers with the JSONB replay representation (for example 2 and 2.0).
         JsonNode normalizedRequest = mapper.readTree(request.toString());
@@ -878,6 +892,8 @@ public class DirectMediaTaskService {
         if (maskAssetId != null && tasks.findDirectByStepKey(ownerId, projectId, commandKey).isEmpty()) {
             validateImageMask(ownerId, projectId, maskAssetId);
         }
+        final int[] markupDimensions = markupAssetId != null && tasks.findDirectByStepKey(ownerId, projectId, commandKey).isEmpty()
+                ? validateImageMarkup(ownerId, projectId, sourceVersionId, markupAssetId) : null;
         return events.recordChange(ownerId, projectId, () -> {
             Task prior = tasks.findDirectByStepKey(ownerId, projectId, commandKey).orElse(null);
             if (prior != null) {
@@ -940,6 +956,12 @@ public class DirectMediaTaskService {
                 }
                 assets.requireReadyMedia(ownerId, projectId, maskAssetId, Asset.MediaKind.IMAGE);
             }
+            if (markupAssetId != null) {
+                if (!MediaAdapterRegistry.OPENAI_GPT_IMAGE_2.equals(binding.adapterId())
+                        || !dev.agenvas.provider.domain.OpenAiImageOptions.supportsMarkup(capabilities.settings(binding)))
+                    throw invalid(ApiMessage.of("api.image-markup.unsupported-model"));
+                assets.requireReadyMedia(ownerId, projectId, markupAssetId, Asset.MediaKind.IMAGE);
+            }
             boolean transparentOutput = operationSpec.requiresTransparentOutput();
             if (transparentOutput && !inputPolicy.supportsTransparentBackground()) {
                 throw invalid(ApiMessage.of("api.direct-media-task-service.the-selected-ai-picture-capability-does-not-support-transparent-background"));
@@ -950,10 +972,13 @@ public class DirectMediaTaskService {
                     : prompts.require(promptKey, PromptService.Kind.FUNCTION);
             String prompt = imageOperationPrompt(operation, operationSpec, normalizedInstruction,
                     functionPrompt, definition, referenceVersions.size(), maskAssetId != null);
+            if (markupAssetId != null) prompt += " Use the separate annotation layer on image 1 to guide the requested edit. "
+                    + "Remove the annotations from the finished image and preserve unmentioned details.";
             ObjectNode workflowParameters = imageWorkflowParameters(ownerId, projectId, source,
                     sourceVersionId, definition, requestedParameters, prompt);
             String outputRatio = operation == ImageOperation.OUTPAINT || operation == ImageOperation.THREE_VIEW
                     ? operationParameters.path("aspectRatio").asText()
+                    : markupDimensions != null ? sourceAspectRatio(markupDimensions[0], markupDimensions[1], inputPolicy.supportedImageAspectRatios())
                     : sourceAspectRatio(ownerId, projectId, source, inputPolicy.supportedImageAspectRatios());
             if (definition == null && !MediaAdapterRegistry.LOCAL_IMAGE_PROCESSOR.equals(binding.adapterId())
                     && !inputPolicy.supportedImageAspectRatios().contains(outputRatio)) {
@@ -996,6 +1021,7 @@ public class DirectMediaTaskService {
             frozenOperation.set("referenceVersionIds", requestedReferenceIds.deepCopy());
             if (maskAssetId == null) frozenOperation.putNull("maskAssetId");
             else frozenOperation.put("maskAssetId", maskAssetId.toString());
+            if (markupAssetId != null) frozenOperation.put("markupAssetId", markupAssetId.toString());
             frozenOperation.set("parameters", operationParameters.deepCopy());
             freezeImageOperationMediaInput(input, artifactId, sourceVersionId, operationSettings,
                     new PreparedImageOperation(binding, definition, prompt, outputRatio,
@@ -1130,6 +1156,21 @@ public class DirectMediaTaskService {
         else input.put("imageRelayProfileId", profile.toString());
     }
 
+    /** Storage reads happen before project locks; acceptance rechecks immutable asset identity. */
+    private int[] validateImageMarkup(UUID ownerId, UUID projectId, UUID sourceVersionId, UUID markupAssetId) {
+        var version = artifacts.requireImageVersionForTask(ownerId, projectId, sourceVersionId);
+        var source = assets.get(ownerId, projectId, UUID.fromString(version.content().path("assetId").asText()));
+        var markup = assets.get(ownerId, projectId, markupAssetId);
+        try {
+            if (!"image/png".equals(markup.asset().contentType())) throw new IllegalArgumentException();
+            var pair = dev.agenvas.provider.domain.OpenAiMarkupInput.prepare(java.nio.file.Files.readAllBytes(source.path()),
+                    java.nio.file.Files.readAllBytes(markup.path()));
+            return new int[] { pair.width(), pair.height() };
+        } catch (IOException | IllegalArgumentException invalidPair) {
+            throw invalid(ApiMessage.of("api.image-markup.invalid-pair"));
+        }
+    }
+
     /** A provider mask is an immutable, project-scoped PNG with a real alpha channel. */
     private void validateImageMask(UUID ownerId, UUID projectId, UUID maskAssetId) {
         AssetService.AssetFile file = assets.get(ownerId, projectId, maskAssetId);
@@ -1153,7 +1194,11 @@ public class DirectMediaTaskService {
         UUID assetId = UUID.fromString(source.content().path("assetId").asText());
         Asset asset = assets.requireReadyMedia(ownerId, projectId, assetId,
                 Asset.MediaKind.IMAGE);
-        double actual = (double) asset.width() / asset.height();
+        return sourceAspectRatio(asset.width(), asset.height(), supported);
+    }
+
+    private String sourceAspectRatio(int width, int height, Set<String> supported) {
+        double actual = (double) width / height;
         return (supported.isEmpty() ? ImageGenerationParameters.ASPECT_RATIOS : supported).stream()
                 .filter(ratio -> !ImageGenerationParameters.AUTO_ASPECT_RATIO.equals(ratio))
                 .min(java.util.Comparator.comparingDouble(ratio -> {

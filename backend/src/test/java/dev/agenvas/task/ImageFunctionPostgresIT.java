@@ -159,6 +159,58 @@ class ImageFunctionPostgresIT {
         }
     }
 
+    @Test void nativeMarkupPinsAuthorizedPairRejectsMixedModesAndReplaysTheSameCommand() throws Exception {
+        var connection = capabilities.createConnection(UUID.randomUUID().toString(),"Synthetic markup","OPENAI",null,"synthetic-key");
+        var capability = capabilities.publishCapability(connection.id(),"Synthetic markup","OPENAI_GPT_IMAGE_2",
+                mapper.createObjectNode().put("model","gpt-image-2.6-flare"));
+        var previous=setting(MediaFunction.IMAGE_SMART_EDIT);
+        functions.update(MediaFunction.IMAGE_SMART_EDIT,previous.version(),capability.id());
+        var source=source(ImageAssetFixture.orientedJpeg(30,20,6));
+        var overlay=new BufferedImage(20,30,BufferedImage.TYPE_INT_ARGB); overlay.setRGB(0,0,0xffff0000);
+        var encoded=new ByteArrayOutputStream(); ImageIO.write(overlay,"png",encoded);
+        UUID markup=assets.archiveImage(owner.userId(),source.project(),new ByteArrayInputStream(encoded.toByteArray())).id();
+        long version=previous.version()+1;
+        try {
+            assertThatThrownBy(() -> direct.runImageOperation(owner.userId(),source.project(),source.artifact(),source.item(),source.version(),0,
+                    ImageOperation.SMART_EDIT,"blue vase",version,1,List.of(),markup,markup,mapper.createObjectNode(),"mixed-markup"))
+                    .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("VALIDATION_ERROR");
+            assertThat(canvas.list(owner.userId(),source.project())).hasSize(1);
+            var mvc = MockMvcBuilders.webAppContextSetup(webContext).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();
+            var auth = authentication(new UsernamePasswordAuthenticationToken(owner, null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+            var request = mapper.createObjectNode().put("canvasItemId",source.item().toString()).put("sourceVersionId",source.version().toString())
+                    .put("expectedCanvasItemVersion",0).put("operation","SMART_EDIT").put("instruction","blue vase")
+                    .put("expectedFunctionVersion",version).put("expectedCapabilityVersion",1).put("markupAssetId",markup.toString());
+            request.putObject("parameters");
+            var response = mvc.perform(post("/api/v1/projects/"+source.project()+"/artifacts/"+source.artifact()+"/image-operations")
+                    .with(auth).with(csrf()).header("Idempotency-Key","native-markup").contentType("application/json").content(request.toString()))
+                    .andExpect(status().isOk()).andReturn().getResponse();
+            Task task = tasks.get(owner.userId(),source.project(),UUID.fromString(mapper.readTree(response.getContentAsString()).path("id").asText()));
+            assertThat(task.input().at("/imageOperation/markupAssetId").asText()).isEqualTo(markup.toString());
+            assertThat(task.input().at("/mediaInput/images/0/versionId").asText()).isEqualTo(source.version().toString());
+            assertThat(task.input().at("/mediaInput/parameters/aspectRatio").asText()).isEqualTo("2:3");
+            assertThat(task.input().path("prompt").asText()).contains("annotation layer", "Remove the annotations");
+            functions.update(MediaFunction.IMAGE_SMART_EDIT,version,null);
+            assertThat(direct.runImageOperation(owner.userId(),source.project(),source.artifact(),source.item(),source.version(),0,
+                    ImageOperation.SMART_EDIT,"blue vase",version,1,List.of(),null,markup,mapper.createObjectNode(),"native-markup").id()).isEqualTo(task.id());
+            assertThat(canvas.list(owner.userId(),source.project())).hasSize(2);
+            direct.cancelQueued(owner.userId(),source.project(),task.id());
+            var unsupported = capabilities.publishCapability(connection.id(),"Synthetic legacy image","OPENAI_GPT_IMAGE_2",
+                    mapper.createObjectNode().put("model","gpt-image-2"));
+            functions.update(MediaFunction.IMAGE_SMART_EDIT,version+1,unsupported.id());
+            assertThatThrownBy(() -> direct.runImageOperation(owner.userId(),source.project(),source.artifact(),source.item(),source.version(),0,
+                    ImageOperation.SMART_EDIT,"blue vase",version+2,1,List.of(),null,markup,mapper.createObjectNode(),"unsupported-markup"))
+                    .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("VALIDATION_ERROR");
+            assertThat(canvas.list(owner.userId(),source.project())).hasSize(2);
+            var other=source();
+            assertThatThrownBy(() -> direct.runImageOperation(owner.userId(),other.project(),other.artifact(),other.item(),other.version(),0,
+                    ImageOperation.SMART_EDIT,"blue vase",version,1,List.of(),null,markup,mapper.createObjectNode(),"foreign-markup"))
+                    .isInstanceOf(ApiProblemException.class).extracting("code").isEqualTo("ASSET_NOT_FOUND");
+        } finally {
+            var current=setting(MediaFunction.IMAGE_SMART_EDIT);
+            functions.update(MediaFunction.IMAGE_SMART_EDIT,current.version(),previous.capabilityId());
+        }
+    }
+
     @Test void freezesSmartEditReferencesAndMaskAndReplaysWithoutAnotherAcceptance() throws Exception {
         var connection = capabilities.createConnection(UUID.randomUUID().toString(),
                 "Synthetic smart editing", "OPENAI", null, "synthetic-smart-edit-key");
@@ -283,9 +335,10 @@ class ImageFunctionPostgresIT {
         return functions.list().stream().filter(entry -> entry.operation() == function).findFirst().orElseThrow();
     }
     private record Source(UUID project, UUID artifact, UUID item, UUID version, UUID asset) {}
-    private Source source() {
+    private Source source() { return source(ImageAssetFixture.encoded("png", 2, 2)); }
+    private Source source(byte[] bytes) {
         var project = projects.create(owner.userId(), "Synthetic image tool", Project.AspectRatio.LANDSCAPE_16_9);
-        var asset = ImageAssetFixture.archive(assets, owner.userId(), project.id());
+        var asset = assets.archiveImage(owner.userId(), project.id(), new ByteArrayInputStream(bytes)).id();
         var image = artifacts.create(owner.userId(), project.id(), Artifact.Kind.IMAGE, "Synthetic image",
                 mapper.createObjectNode().put("assetId", asset.toString()).put("sourceType", "UPLOAD"));
         UUID item = dev.agenvas.support.CanvasMediaFixture.place(canvas, owner.userId(), project.id(), image.artifact().id());

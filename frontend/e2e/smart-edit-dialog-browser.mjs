@@ -180,6 +180,53 @@ try {
     await waitFor(() => !document.querySelector(".smart-edit-dialog"));
     await waitFor(() => document.activeElement === document.querySelector("#root > button"));
   }
+  await cdp("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  await cdp("Page.navigate", { url: new URL(`${route}?exercise=1`, baseUrl).href });
+  await waitFor(() => Boolean(document.querySelector("#root > button")));
+  await pointerClick("#root > button");
+  await waitFor(() => document.querySelector(".smart-edit-image-wrap canvas")?.width === 640);
+  await page(() => {
+    const original = window.fetch;
+    window.__layerUploads = [];
+    window.fetch = async (url, options) => {
+      if (String(url).endsWith("/auth/csrf")) return Response.json({ headerName: "X-XSRF-TOKEN", token: "synthetic" });
+      if (String(url).endsWith("/assets") && options?.method === "POST") {
+        const file = options.body.get("file");
+        const image = await createImageBitmap(file);
+        const canvas = document.createElement("canvas"); canvas.width = image.width; canvas.height = image.height;
+        const context = canvas.getContext("2d"); context.drawImage(image, 0, 0);
+        const data = context.getImageData(0,0,canvas.width,canvas.height).data;
+        let clear = 0, ink = 0;
+        for (let i=3; i<data.length; i+=4) { if (data[i] === 0) clear++; else ink++; }
+        window.__layerUploads.push({ width:image.width,height:image.height,type:file.type,clear,ink });
+        return Response.json({ id:"synthetic-layer" });
+      }
+      return original(url,options);
+    };
+  });
+  await pointerClick('[data-guidance="MARKUP"]');
+  const point = await page(() => {
+    const box = document.querySelector(".smart-edit-image-wrap canvas").getBoundingClientRect();
+    return {x:box.x+box.width/2,y:box.y+box.height/2};
+  });
+  await cdp("Input.dispatchMouseEvent",{type:"mousePressed",...point,button:"left",clickCount:1});
+  await cdp("Input.dispatchMouseEvent",{type:"mouseReleased",...point,button:"left",clickCount:1});
+  await pointerClick(".smart-edit-composer textarea");
+  await cdp("Input.insertText",{text:"Recolor the marked area and remove the annotations"});
+  await pointerClick(".smart-edit-submit");
+  await waitFor(() => JSON.parse(document.querySelector('[data-testid="submissions"]').textContent).length === 1);
+  await pointerClick(".smart-edit-submit");
+  await waitFor(() => JSON.parse(document.querySelector('[data-testid="submissions"]').textContent).length === 2);
+  const native = await page(() => ({uploads:window.__layerUploads,
+    submissions:JSON.parse(document.querySelector('[data-testid="submissions"]').textContent)}));
+  assert.equal(native.uploads.length,1,"Retry must reuse the uploaded immutable layer");
+  assert.deepEqual(native.submissions[0],native.submissions[1],"Retry must preserve the accepted payload");
+  assert.equal(native.submissions[0].markupAssetId,"synthetic-layer");
+  assert.equal(native.submissions[0].maskAssetId,undefined);
+  assert.equal(native.uploads[0].width,640); assert.equal(native.uploads[0].height,360);
+  assert.equal(native.uploads[0].type,"image/png");
+  assert.ok(native.uploads[0].clear>0 && native.uploads[0].ink>0,"Markup must contain visible ink and transparent pixels");
+  console.log("Native markup browser export and retry passed",JSON.stringify(native.uploads[0]));
   console.log("Smart edit viewport regression passed (4 viewports)");
 } finally {
   socket?.close();

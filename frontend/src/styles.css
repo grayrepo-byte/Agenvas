@@ -662,8 +662,8 @@ button:disabled {
 .artifact-card-toolbar .media-operation-panel footer button.is-primary { background: var(--ui-accent); color: var(--ui-accent-foreground); }
 .artifact-card-toolbar .media-operation-panel footer button.is-primary:hover:not(:disabled) { background: var(--ui-accent-hover); }
 .smart-edit-dialog { position: fixed; inset: 0; width: 100%; max-width: none; height: 100dvh; border: 0; border-radius: 0; background: var(--ui-bg); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 18px; padding: 14px 24px 20px; color: var(--ui-text); }
-.smart-edit-toolbar { justify-self: center; display: flex; align-items: center; gap: 5px; min-height: 50px; padding: 7px 10px; border: 1px solid var(--ui-border); border-radius: 25px; background: var(--ui-canvas-chrome); box-shadow: 0 14px 34px #0009; }
-.smart-edit-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: transparent; color: var(--ui-text-secondary); font-size: 12px; cursor: pointer; }
+.smart-edit-toolbar { max-width: calc(100vw - 48px); overflow-x: auto; justify-self: center; display: flex; align-items: center; gap: 5px; min-height: 50px; padding: 7px 10px; border: 1px solid var(--ui-border); border-radius: 25px; background: var(--ui-canvas-chrome); box-shadow: 0 14px 34px #0009; }
+.smart-edit-toolbar button { flex-shrink: 0; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; border: 0; border-radius: 17px; background: transparent; color: var(--ui-text-secondary); font-size: 12px; cursor: pointer; }
 .smart-edit-toolbar button:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-text); }
 .smart-edit-toolbar button.is-active { background: var(--ui-accent); color: var(--ui-accent-foreground); }
 .smart-edit-toolbar button.is-icon { width: 34px; padding: 0; }
