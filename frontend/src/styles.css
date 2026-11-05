@@ -878,6 +878,8 @@ button:disabled {
   background: var(--ui-canvas-chrome);
   color: var(--ink);
 }
+/* The minimap must not cover prompt controls in the node-anchored editor. */
+.workspace-canvas:has(.workspace-media-editor) .react-flow__minimap { display: none; }
 
 .workspace-shell .react-flow__controls svg {
   fill: var(--ink);

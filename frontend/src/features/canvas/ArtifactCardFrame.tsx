@@ -9,12 +9,13 @@ const TOOLBAR_NODE_GAP = 44;
 
 /** Shared media/content surface and node-anchored toolbar; callers own their content and actions. */
 export function ArtifactCardFrame({ title, titleIcon, kindLabel, selected, locked, toolbar, toolbarLabel,
-  toolbarRaised = false, toolbarVisible = true, editableTitle, className = "", children }: {
+  toolbarRaised = false, toolbarVisible = true, toolbarStage = "result", editableTitle, className = "", children }: {
   title: string; kindLabel: string; selected: boolean; locked: boolean;
   titleIcon?: ReactNode;
   toolbar: ReactNode; toolbarLabel?: string;
   toolbarRaised?: boolean;
   toolbarVisible?: boolean;
+  toolbarStage?: "draft" | "result";
   editableTitle?: { projectId: string; item: CanvasItem };
   className?: string; children: ReactNode;
 }) {
@@ -24,6 +25,7 @@ export function ArtifactCardFrame({ title, titleIcon, kindLabel, selected, locke
     <NodeToolbar className={`artifact-actions-toolbar nopan${toolbarRaised ? " artifact-card-toolbar-raised" : ""}`}
       isVisible={selected && toolbarVisible ? undefined : false} position={Position.Top} offset={TOOLBAR_NODE_GAP}>
       <div className="artifact-card-toolbar nodrag nowheel" aria-label={toolbarLabel ?? t("canvas.card.toolbarLabel", { "0": kindLabel })}>
+        <span className="studio-result-label">{t(toolbarStage === "draft" ? "canvas.studio.draft" : "canvas.studio.result")}</span>
         {toolbar}
       </div>
     </NodeToolbar>

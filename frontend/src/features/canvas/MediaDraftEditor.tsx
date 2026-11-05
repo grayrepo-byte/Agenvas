@@ -1067,7 +1067,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
     edit(changes);
   }
 
-  return <div className="media-draft-editor" aria-label={t("media.editor.title")}>
+  return <div className="media-draft-editor" aria-label={t("media.editor.title")}
+    data-reference-panel={!settings.isSuccess || !chosenCapability || Boolean(workflow) || imageCapacity + audioCapacity + videoCapacity > 0 || fields.mediaInputs.length > 0}>
     {stylePickerOpen ? <MediaStylePicker selected={fields.styleId ?? null} onClose={() => setStylePickerOpen(false)}
       onSelect={(styleId) => edit({ styleId })} /> : null}
     {cameraPresetsOpen && artifact.kind === "VIDEO" && promptEnabled ? <Suspense fallback={<CanvasLoadingState compact label={t("common.loading")} />}><VideoPromptPresetsDialog
@@ -1092,7 +1093,7 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       disabled={editorReadOnly || run.isPending} onChange={changeDynamicField} /> : null}
     <fieldset className="media-draft-controls" disabled={editorReadOnly}>
     <div className="media-draft-header">
-      <span className="media-draft-tab-active">Prompt</span>
+      <strong className="studio-editor-title">{t("canvas.studio.input")}</strong>
       {artifact.kind === "VIDEO" && promptEnabled ? <Button variant="ghost" className="media-draft-tab" type="button"
         disabled={cameraPresetsBusy || editorReadOnly || run.isPending}
         onClick={() => { setPopover(null); setReferenceSourcesOpen(false); setCameraPresetsOpen(true); }}>
@@ -1128,6 +1129,8 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
         title: choice.title, thumbnailUrl: assetThumbnailUrl(artifact.projectId, choice.assetId) }] : [])}
       onApply={applyTemplate} onBusy={setTemplateBusy} onClose={() => setTemplateOpen(false)} /> : null}
     <div ref={referencePickerAnchorRef} className="media-draft-reference-picker-anchor">
+    <div className="studio-reference-heading"><strong>{t("canvas.studio.references")}</strong><span>{fields.mediaInputs.length}</span></div>
+    {!workflow && selectedReferences.length === 0 ? <p className="studio-reference-hint">{t("canvas.studio.referenceHint")}</p> : null}
     {!workflow ? <div className="media-draft-reference-row" aria-label={audioCapacity > 0 ? t("media.editor.mixedInputs") : t("media.editor.imageInputs")}>
       <div className="media-draft-popover-anchor">
         <Input ref={uploadInputRef} className="media-draft-upload-input" type="file"
@@ -1445,14 +1448,14 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       <span className="media-draft-cost" title={t("media.editor.estimateHint")}><Coins size={16} /><span>{estimatedCost}
         {motionDurationUpperBound ? ` · ${t("media.pricing.referenceDurationUpperBound")}` : null}</span></span>
       <PopoverPrimitive.Root open={submissionTipOpen} onOpenChange={setSubmissionTipOpen}>
-        <PopoverPrimitive.Anchor asChild><Button size="icon-sm" className="media-draft-run" type="button" disabled={!canSubmit}
+        <PopoverPrimitive.Anchor asChild><Button size="sm" className="media-draft-run" type="button" disabled={!canSubmit}
           aria-label={run.isPending ? t("media.editor.submittingRun") : t("media.editor.run")}
           title={occupied ? t("media.editor.activeTaskHint") : t("media.editor.run")}
           onClick={() => {
             if (!canSubmit) return;
             if (validationMessages.length > 0) { setSubmissionTipOpen(true); return; }
             setSubmissionTipOpen(false); run.mutate();
-          }}><ArrowUp size={21} weight="bold" /></Button></PopoverPrimitive.Anchor>
+          }}><span>{run.isPending ? t("media.editor.submittingRun") : artifact.kind === "IMAGE" ? t("canvas.studio.generateImage") : artifact.kind === "AUDIO" ? t("canvas.studio.generateAudio") : t("media.generateVideo")}</span><ArrowUp size={18} weight="bold" aria-hidden /></Button></PopoverPrimitive.Anchor>
         <PopoverPrimitive.Portal><PopoverPrimitive.Content side="top" align="end" sideOffset={10}
           className="media-draft-submit-tip z-[var(--ui-z-popup)] nodrag nowheel nopan" aria-label={t("media.editor.checkInputs")}
           onOpenAutoFocus={(event) => event.preventDefault()} onCloseAutoFocus={(event) => event.preventDefault()}>
@@ -1484,8 +1487,15 @@ export function MediaDraftEditor({ artifact, canvasItemId, onOpenAgentConversati
       {directTasks.isPending ? <EditorFeedbackRow tone="loading">{t("media.editor.taskChecking")}</EditorFeedbackRow> : null}
       {directTasks.error ? <EditorFeedbackRow tone="danger" action={<Button variant="ghost" size="xs" type="button" onClick={() => void directTasks.refetch()}>{t("media.editor.retryTaskCheck")}</Button>}>
         {t("media.editor.taskStatusFailed", { "0": directTasks.error.message })}</EditorFeedbackRow> : null}
-      {settings.isSuccess && fields.capabilityId && !chosenCapability ? <EditorFeedbackRow tone="warning">{t("media.editor.modelUnavailableHint")}</EditorFeedbackRow> : null}
-      {settings.isSuccess && !fields.capabilityId && !chosenCapability ? <EditorFeedbackRow tone="warning">{t("media.editor.defaultModelMissingHint")}</EditorFeedbackRow> : null}
+      {settings.isSuccess && !chosenCapability ? <EditorFeedbackRow tone="warning" action={availableCapabilities.length > 0
+        ? <Button variant="ghost" size="xs" type="button" disabled={editorReadOnly || libraryBusy} onClick={(event) => togglePopover("models", event.currentTarget)}>{t("models.chooseAvailable")}</Button>
+        : <>
+          <Button asChild variant="ghost" size="xs"><a href="/settings/media" target="_blank" rel="noopener noreferrer">{t("models.configureMedia")}</a></Button>
+          <Button variant="ghost" size="xs" type="button" disabled={settings.isFetching} onClick={() => void settings.refetch()}>{t("models.refreshConfiguration")}</Button>
+        </>}>
+        {fields.capabilityId ? t("media.editor.modelUnavailableHint") : availableCapabilities.length > 0
+          ? t("media.editor.defaultModelMissingHint") : t("media.editor.noModelsHint")}
+      </EditorFeedbackRow> : null}
       {settings.error ? <EditorFeedbackRow tone="danger" action={<Button variant="ghost" size="xs" onClick={() => void settings.refetch()} type="button">{t("media.editor.retryModels")}</Button>}>{t("media.editor.modelSettingsFailed")}</EditorFeedbackRow> : null}
       {((chosenCapability?.adapterId === "ARK_SEEDANCE_2_I2V" || minimax) && videoCount > 0
         || chosenCapability?.adapterId === "WAN_VIDEO" && videoCount + audioCount > 0) ? <EditorFeedbackRow>{t("media.editor.videoRelayHint")}</EditorFeedbackRow> : null}
