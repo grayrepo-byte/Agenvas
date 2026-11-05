@@ -136,6 +136,42 @@ describe("MediaDraftEditor", () => {
     await waitFor(() => expect(Object.values(useCanvasStore.getState().mediaDraftRecoveries)
       .some((recovery) => recovery.saving)).toBe(false));
   });
+  it("offers media settings only when no models are available and reloads without generating", async () => {
+    let generations = 0;
+    setup({ settings: { connections: [], defaults: [] }, handlers: [
+      http.post(`${BASE}/run`, () => { generations++; return HttpResponse.json({}); }),
+    ] });
+    const user = userEvent.setup();
+    const link = await screen.findByRole("link", { name: "配置媒体模型（新标签页）" });
+    expect(link).toHaveAttribute("href", "/settings/media");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "选择可用模型" })).not.toBeInTheDocument();
+    server.use(http.get("/api/v1/settings/media-connections", () => HttpResponse.json(settings)));
+    await user.click(screen.getByRole("button", { name: "重新读取配置" }));
+    await waitFor(() => expect(screen.queryByRole("link", { name: "配置媒体模型（新标签页）" })).not.toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "图片提示词" })).toHaveTextContent(initialDraft.prompt);
+    expect(generations).toBe(0);
+  });
+
+  it("opens the existing model picker when models exist but no default is configured", async () => {
+    const { saves } = setup({ settings: { ...settings, defaults: [] } });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "选择可用模型" }));
+    expect(screen.queryByRole("link", { name: "配置媒体模型（新标签页）" })).not.toBeInTheDocument();
+    const menu = screen.getByRole("menu", { name: "生成模型" });
+    await user.click(within(menu).getByRole("menuitemradio"));
+    await waitFor(() => expect(saves).toHaveLength(1));
+    expect(saves[0]?.capabilityId).toBe(imageCapability.id);
+    expect(screen.queryByRole("button", { name: "选择可用模型" })).not.toBeInTheDocument();
+  });
+
+  it("does not show a setup link when media configuration failed to load", async () => {
+    setup({ handlers: [http.get("/api/v1/settings/media-connections", () => HttpResponse.json({ title: "读取失败" }, { status: 503 }))] });
+    await screen.findByText("无法读取模型配置。");
+    expect(screen.queryByRole("link", { name: "配置媒体模型（新标签页）" })).not.toBeInTheDocument();
+  });
   it("runs one Wan request with finite image count and keeps sequential cost unknown", async () => {
     const capability = nativeCapability(nativeProfiles.find((profile) => profile.adapterId === "WAN_IMAGE")!);
     capability.settings.pricing = { amount: "0.1", currency: "CNY", unit: "IMAGE" };
@@ -2419,7 +2455,7 @@ describe("MediaDraftEditor", () => {
         { kind: "IMAGE_GENERATION", capabilityId: null, version: 0 },
       ] }))] });
     const user = userEvent.setup();
-    await screen.findByText("尚未配置默认模型，请选择可用模型或先在媒体设置中配置。");
+    await screen.findByRole("link", { name: "配置媒体模型（新标签页）" });
     expect(screen.getByRole("button", { name: "运行" })).toBeDisabled();
     configured = true;
     failed = true;

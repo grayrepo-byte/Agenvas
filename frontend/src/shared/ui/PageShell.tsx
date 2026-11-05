@@ -1,5 +1,6 @@
 import { Cube,FilmStrip,FolderSimple,GearSix,HardDrives,ListMagnifyingGlass,PlugsConnected,SidebarSimple,SignOut,Sparkle,TerminalWindow,UserCircle } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
+import { useCanvasStore } from "../../features/canvas/canvasStore";
 import type { ReactNode } from "react";
 import { Link,Navigate,useLocation,useNavigate } from "react-router";
 import { HTTP_STATUS,ApiError,getCurrentUser,logout } from "../api/client";
@@ -37,6 +38,7 @@ export function PageShell({ title, description, actions, children }: {
   const queryClient = useQueryClient();
   const session = useQuery({ queryKey: ["auth", "me"], queryFn: getCurrentUser, retry: false });
   const signOut = useMutation({ mutationFn: logout, onSuccess: () => {
+    useCanvasStore.getState().clearTextGenerationDrafts();
     queryClient.clear();
     navigate("/login", { replace: true });
   } });

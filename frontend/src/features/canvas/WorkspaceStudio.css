@@ -1,0 +1,236 @@
+/* The workbench keeps existing node geometry and screen-sized editor anchoring.
+   These rules only organize controls inside those surfaces. */
+.workspace-shell {
+  --workspace-header-height: 64px;
+  color: var(--ui-text);
+}
+.workspace-shell .workspace-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: var(--ui-space-6);
+  padding: var(--ui-space-3) var(--ui-space-6);
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-bg);
+}
+.workspace-shell .workspace-header::after { display: none; }
+.workspace-shell .workspace-header-identity { gap: var(--ui-space-3); }
+.workspace-shell .workspace-project-name { font-size: var(--ui-text-lg); }
+.workspace-shell .workspace-header-identity > a {
+  padding-inline: var(--ui-space-2);
+  color: var(--ui-text-muted);
+}
+.workspace-shell .workspace-header-actions { justify-content: flex-end; gap: var(--ui-space-2); }
+.workspace-shell .workspace-header-actions > :where(button, a) { color: var(--ui-text-secondary); }
+.workspace-shell .workspace-header .workspace-tool-rail {
+  position: static;
+  flex-direction: row;
+  gap: var(--ui-space-2);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.workspace-shell .workspace-header .workspace-add-button {
+  display: inline-flex;
+  gap: var(--ui-space-2);
+  width: auto;
+  height: 36px;
+  padding-inline: var(--ui-space-3);
+  border-radius: var(--ui-radius-md);
+}
+.workspace-shell .workspace-header .workspace-tool-trigger {
+  flex-direction: row;
+  gap: var(--ui-space-2);
+  width: auto;
+  height: 36px;
+  padding: 0 var(--ui-space-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface);
+  color: var(--ui-text-secondary);
+  font-size: var(--ui-text-md);
+}
+.workspace-shell .workspace-header .workspace-settings-trigger {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--ui-radius-md);
+  background: transparent;
+  color: var(--ui-text-muted);
+}
+.workspace-shell .workspace-header .workspace-settings-trigger:hover:enabled,
+.workspace-shell .workspace-header .workspace-tool-trigger:hover { background: var(--ui-hover); }
+
+.workspace-shell .media-draft-editor:not(.media-draft-initial) {
+  --draft-min-height: calc(var(--draft-prompt-height) + 210px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  grid-template-areas: "heading heading" "prompt references" "controls controls" "feedback feedback";
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: var(--ui-space-4);
+  padding: var(--ui-space-5);
+  border-color: var(--ui-border-strong);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  animation: studio-editor-enter 160ms ease-out;
+}
+.workspace-shell .media-draft-editor.text-generation-editor {
+  --draft-min-height: calc(var(--draft-prompt-height) + 250px);
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "heading" "prompt" "draft" "controls" "feedback";
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  gap: var(--ui-space-3);
+}
+.workspace-shell .media-draft-editor:not(.text-generation-editor):has(.media-draft-feedback:not(:empty)) {
+  --draft-min-height: calc(var(--draft-prompt-height) + 250px);
+}
+.workspace-shell .media-draft-editor[data-reference-panel="false"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "heading" "prompt" "controls" "feedback";
+}
+.workspace-shell .media-draft-editor[data-reference-panel="false"] .media-draft-reference-picker-anchor { display: none; }
+.workspace-shell .media-draft-header { grid-area: heading; gap: var(--ui-space-4); padding: 0; }
+.workspace-shell .studio-editor-title { font-size: var(--ui-text-lg); font-weight: 600; }
+.workspace-shell .media-draft-save-state { color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.workspace-shell .media-draft-save-state.is-error { color: var(--ui-danger); }
+.workspace-shell .media-draft-editor .media-draft-prompt-shell {
+  grid-area: prompt;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-space-2);
+  min-width: 0;
+  margin: 0;
+}
+.workspace-shell .media-draft-prompt-label {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-sm);
+}
+.workspace-shell .media-draft-prompt-shell .media-draft-prompt {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-field);
+  color: var(--ui-text);
+  transition: border-color var(--ui-duration) ease;
+}
+.workspace-shell .media-draft-prompt-shell .media-draft-prompt:focus {
+  border-color: var(--ui-accent);
+  box-shadow: var(--ui-focus-shadow);
+  outline: none;
+}
+.workspace-shell .media-draft-reference-picker-anchor {
+  grid-area: references;
+  min-width: 0;
+  border-left: 1px solid var(--ui-border);
+  padding-left: var(--ui-space-4);
+}
+.workspace-shell .studio-reference-heading { display: flex; align-items: center; gap: var(--ui-space-2); }
+.workspace-shell .studio-reference-heading strong { font-size: var(--ui-text-sm); font-weight: 500; color: var(--ui-text-secondary); }
+.workspace-shell .studio-reference-heading > span {
+  min-width: 20px;
+  padding-inline: var(--ui-space-1);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface-raised);
+  color: var(--ui-text-muted);
+  font-size: var(--ui-text-xs);
+  text-align: center;
+}
+.workspace-shell .studio-reference-hint { margin: var(--ui-space-2) 0 var(--ui-space-3); font-size: var(--ui-text-sm); line-height: 1.7; color: var(--ui-text-subtle); }
+.workspace-shell .media-draft-reference-row { margin-top: var(--ui-space-3); align-items: flex-start; }
+.workspace-shell .media-draft-reference-list { flex-wrap: wrap; max-height: 184px; overflow: auto; scrollbar-width: thin; }
+.workspace-shell .media-draft-reference-chip,
+.workspace-shell .media-draft-reference-add { width: 56px; height: 56px; flex-basis: 56px; border-radius: var(--ui-radius-md); }
+.workspace-shell .text-generation-draft-hint { grid-area: draft; margin: 0; color: var(--ui-text-subtle); }
+.workspace-shell .media-draft-toolbar {
+  grid-area: controls;
+  min-height: 48px;
+  margin: 0;
+  padding-top: var(--ui-space-3);
+  border-top: 1px solid var(--ui-border);
+  gap: var(--ui-space-2);
+}
+.workspace-shell .media-draft-toolbar-button {
+  height: 36px;
+  padding: 0 var(--ui-space-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-surface-raised);
+  color: var(--ui-text-secondary);
+}
+.workspace-shell .media-draft-toolbar-button:hover:enabled,
+.workspace-shell .media-draft-toolbar-button[aria-expanded="true"] { background: var(--ui-hover); border-color: var(--ui-border-strong); }
+.workspace-shell .media-draft-model-anchor { margin-right: 0; }
+.workspace-shell .media-draft-cost { margin-left: auto; color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.workspace-shell .media-draft-run {
+  display: inline-flex;
+  width: auto;
+  min-width: 112px;
+  height: 36px;
+  gap: var(--ui-space-2);
+  padding: 0 var(--ui-space-4);
+  border-radius: var(--ui-radius-md);
+  font-size: var(--ui-text-md);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.workspace-shell .media-draft-editor .media-draft-feedback {
+  grid-area: feedback;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  gap: var(--ui-space-2);
+}
+.workspace-shell .media-draft-feedback:empty { display: none; }
+.workspace-shell .media-draft-feedback > * { animation: studio-feedback-enter 140ms ease-out; }
+.workspace-shell .media-draft-feedback .editor-feedback-row {
+  width: 100%;
+  padding: var(--ui-space-1) var(--ui-space-2);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-surface-raised);
+}
+.workspace-shell .media-draft-feedback .editor-feedback-row[data-tone="warning"] { background: var(--ui-warning-bg); border-color: var(--ui-warning-border); }
+.workspace-shell .media-draft-feedback .editor-feedback-row[data-tone="danger"] { background: var(--ui-danger-bg); border-color: var(--ui-danger-border); }
+.workspace-shell .media-draft-feedback .editor-feedback-row[data-tone="success"] { background: var(--ui-success-bg); border-color: var(--ui-success-border); }
+.workspace-shell .workspace-media-editor > .workspace-bottom-close { top: 14px; right: 14px; color: var(--ui-text-muted); }
+
+.workspace-shell .artifact-card-toolbar {
+  gap: var(--ui-space-1);
+  padding: var(--ui-space-2);
+  border-color: var(--ui-border-strong);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  color: var(--ui-text-secondary);
+  box-shadow: var(--ui-menu-shadow);
+}
+.workspace-shell .studio-result-label { padding-inline: var(--ui-space-2); color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
+.workspace-shell .artifact-card-toolbar > :where(.media-version-picker, .text-card-version-picker) > button {
+  border-radius: var(--ui-radius-sm);
+  background: var(--ui-accent-subtle);
+  color: var(--ui-accent-text);
+}
+.workspace-shell .artifact-card-toolbar > :where(button, a) { border-radius: var(--ui-radius-sm); }
+@keyframes studio-editor-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes studio-feedback-enter { from { opacity: 0; } to { opacity: 1; } }
+@media (max-width: 1279px) {
+  .workspace-shell .workspace-header { grid-template-columns: minmax(0, 1fr) auto; gap: var(--ui-space-2); padding-inline: var(--ui-space-3); }
+  .workspace-shell .workspace-header .workspace-tool-rail { display: none; }
+}
+@media (max-width: 600px) {
+  .workspace-shell .workspace-header-actions > a { width: 32px; overflow: hidden; font-size: 0; padding-inline: var(--ui-space-2); gap: 0; }
+  .workspace-shell .workspace-header-identity { gap: var(--ui-space-1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-shell .media-draft-editor,
+  .workspace-shell .media-draft-feedback > * { animation: none; }
+  .workspace-shell .media-draft-prompt-shell .media-draft-prompt { transition: none; }
+}

@@ -1,3 +1,4 @@
 .text-generation-editor .media-draft-prompt-shell { margin-top: var(--ui-space-5); }
+.text-generation-draft-hint { flex-shrink: 0; margin: 0 0 var(--ui-space-2); color: var(--ui-text-muted); font-size: var(--ui-text-xs); }
 .text-generation-model { max-width: 280px; margin-right: auto; cursor: default; }
 .text-generation-model > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

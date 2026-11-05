@@ -57,14 +57,14 @@ export function ContentCanvasCard({ artifact, item, selected, toolbarVisible, lo
   }
 
   return <ArtifactCardFrame title={item.title} titleIcon={<Icon size={16} />} kindLabel={label} selected={selected} locked={locked}
-    toolbarVisible={toolbarVisible}
+    toolbarVisible={toolbarVisible} toolbarStage={emptyText ? "draft" : "result"}
     editableTitle={{ projectId: artifact.projectId, item }} className="content-canvas-card" toolbar={<>
-        {!editingText ? <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={emptyText} /> : null}
         {hasCurrentVersion(artifact)
           ? <TextVersionPicker artifact={editingText && editingState ? editingState.artifact : artifact}
             disabled={editingText && Boolean(editingState?.dirty || editingState?.busy)} />
           : <span className="text-card-count"><Stack size={12} aria-hidden />
             {artifact.resourceDefaultVersion ? `v${artifact.resourceDefaultVersion.versionNo}` : t("text.card.noVersion")}</span>}
+        {!editingText ? <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={emptyText} /> : null}
         <Button variant="ghost" type="button" disabled={!hasCurrentVersion(artifact) || Boolean(editingState?.busy)}
           aria-pressed={editingText} className={editingText ? "is-open" : undefined}
           onClick={(event) => {

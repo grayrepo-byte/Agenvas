@@ -403,13 +403,36 @@ describe("node selection preserves the canvas view", () => {
       expect(focusProbe.viewport).not.toHaveBeenCalled();
       expect(focusProbe.fit).not.toHaveBeenCalled();
     }
-    fireEvent.click(screen.getByRole("button", { name: "关闭编辑区" }));
+    const closeEditor = screen.getByRole("button", { name: "关闭编辑区" });
+    closeEditor.focus();
+    fireEvent.click(closeEditor);
     expect(selectedIds()).toEqual([]);
     expect(screen.queryByLabelText("所选卡片编辑区")).not.toBeInTheDocument();
+    expect(nodeElement("text-card")).toHaveFocus();
+    expect(flowProps.autoPanOnNodeFocus).toBe(false);
     expect(focusProbe.instance!.getViewport()).toEqual(viewport);
     expect(focusProbe.center).not.toHaveBeenCalled();
     expect(focusProbe.viewport).not.toHaveBeenCalled();
     expect(focusProbe.fit).not.toHaveBeenCalled();
+  });
+
+  it("leaves composing Escape to the input method, then returns focus when the editor closes", async () => {
+    await renderInteractiveFlow();
+    fireEvent.click(nodeElement("text-card"));
+    const prompt = await screen.findByRole("textbox", { name: "文字生成提示词" });
+    fireEvent.change(prompt, { target: { value: "正在输入的中文" } });
+    prompt.focus();
+    const transform = document.querySelector(".react-flow__viewport")?.getAttribute("style");
+    fireEvent.keyDown(prompt, { key: "Escape", isComposing: true });
+    expect(selectedIds()).toEqual(["text-card"]);
+    expect(prompt).toHaveFocus();
+    fireEvent.keyDown(prompt, { key: "Escape", isComposing: false });
+    expect(selectedIds()).toEqual([]);
+    expect(nodeElement("text-card")).toHaveFocus();
+    expect(document.querySelector(".react-flow__viewport")).toHaveAttribute("style", transform!);
+    expect(focusProbe.center).not.toHaveBeenCalled();
+    fireEvent.keyDown(nodeElement("text-card"), { key: "Enter" });
+    expect(await screen.findByRole("textbox", { name: "文字生成提示词" })).toHaveValue("正在输入的中文");
   });
 });
 

@@ -1,4 +1,3 @@
-import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act,fireEvent,render,screen,waitFor,within } from "@testing-library/react";
 import { http,HttpResponse } from "msw";
@@ -388,20 +387,19 @@ describe("MediaCanvasCard", () => {
     });
   });
 
-  it("offers upload into the empty card and keeps image operations disabled until a source exists", async () => {
-    const { onCardClick } = showCard();
+  it("focuses an empty card on upload or draft editing and reserves result operations for a source", async () => {
+    const { onCardClick, onEdit } = showCard();
     const pickerClick = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => undefined);
     await clickControl(await screen.findByRole("button", { name: "上传图片" }));
     expect(pickerClick).toHaveBeenCalledOnce();
     expect(onCardClick).not.toHaveBeenCalled();
     pickerClick.mockRestore();
-    await clickControl(screen.getByRole("button", { name: "扩展" }));
-    expect(screen.getByLabelText("媒体卡片操作").closest(".react-flow__node-toolbar"))
-      .toHaveClass("artifact-card-toolbar-raised");
-    expect(screen.getByRole("menuitem", { name: /高清放大/ })).toHaveAttribute("aria-disabled", "true");
-    await userEvent.setup().keyboard("{Escape}");
-    expect(screen.queryByLabelText("图片扩展功能")).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: "扩展" })).toHaveFocus());
+    expect(screen.getByText("草稿", { exact: true })).toBeVisible();
+    for (const name of ["保存为资产", "智能编辑", "深度提取", "缩放", "扩展"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+    await clickControl(screen.getByRole("button", { name: "编辑草稿" }));
+    expect(onEdit).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "卡片详情" })).not.toBeInTheDocument();
   });
 

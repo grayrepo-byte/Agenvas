@@ -10,6 +10,7 @@ import { server } from "../../test/server";
 import { getLocale,LOCALE_NAMES,SUPPORTED_LOCALES } from "../i18n";
 import { PageShell } from "./PageShell";
 import { useNavigationStore } from "./navigationStore";
+import { useCanvasStore } from "../../features/canvas/canvasStore";
 
 function showShell(path = "/projects") {
   const client = createQueryClient();
@@ -114,12 +115,15 @@ describe("PageShell", () => {
     );
     const client = showShell();
     client.setQueryData(["private-project"], { id: "project" });
+    useCanvasStore.getState().setTextGenerationPrompt("project:canvas", "未提交提示词");
     await clickControl(await screen.findByRole("button", { name: "退出登录" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("退出失败");
     expect(client.getQueryData(["private-project"])).toBeDefined();
+    expect(useCanvasStore.getState().textGenerationDrafts["project:canvas"]?.prompt).toBe("未提交提示词");
     fail = false;
     await clickControl(screen.getByRole("button", { name: "退出登录" }));
     expect(await screen.findByRole("heading", { name: "登录页" })).toBeInTheDocument();
     await waitFor(() => expect(client.getQueryData(["private-project"])).toBeUndefined());
+    expect(useCanvasStore.getState().textGenerationDrafts).toEqual({});
   });
 });

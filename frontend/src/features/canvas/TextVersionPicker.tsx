@@ -36,6 +36,15 @@ export function TextVersionPicker({ artifact, disabled = false }: {
       ]);
     },
   });
+  const refresh = useMutation({
+    // Refresh only the server projections; selecting a result remains a separate user action.
+    mutationFn: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["canvas", artifact.projectId] }, { throwOnError: true }),
+      queryClient.invalidateQueries({ queryKey: ["snapshot", artifact.projectId] }, { throwOnError: true }),
+      history.refetch({ throwOnError: true }),
+    ]),
+    onSuccess: () => select.reset(),
+  });
 
   return <DropdownMenu open={open} onOpenChange={setOpen} modal={false}><div className="text-card-version-picker">
     <DropdownMenuTrigger asChild><Button variant="ghost" aria-expanded={open} aria-haspopup="menu"
@@ -46,16 +55,19 @@ export function TextVersionPicker({ artifact, disabled = false }: {
     </Button></DropdownMenuTrigger>
     {open ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="text-card-version-menu" role="menu" aria-label={t("text.versions.title")}><DropdownMenuGroup>
       {disabled ? <p>{t("text.versions.saveBeforeSelection")}</p> : null}
-      {history.isPending ? <p>{t("common.versionLoading")}</p> : null}
-      {history.error ? <p role="alert">{history.error instanceof ApiError
-        ? history.error.message : t("artifacts.versions.loadFailed")}</p> : null}
-      {history.data?.items.map((version) => <DropdownMenuItem className="text-card-version-option" disabled={disabled || select.isPending || version.id === artifact.resourceDefaultVersionId} aria-current={version.id === artifact.resourceDefaultVersionId ? "true" : undefined} role="menuitem" key={version.id} onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }}>
+      {history.isPending ? <p role="status">{t("common.versionLoading")}</p> : null}
+      {history.error ? <div role="alert">{history.error instanceof ApiError
+        ? history.error.message : t("artifacts.versions.loadFailed")}<Button variant="ghost" size="xs" type="button" disabled={history.isFetching || refresh.isPending}
+          onClick={() => void history.refetch()}>{t("common.retryRead")}</Button></div> : null}
+      {history.data?.items.map((version) => <DropdownMenuItem className="text-card-version-option" disabled={disabled || select.isPending || refresh.isPending || version.id === artifact.resourceDefaultVersionId} aria-current={version.id === artifact.resourceDefaultVersionId ? "true" : undefined} role="menuitem" key={version.id} onSelect={(event) => { event.preventDefault(); select.mutate(version.id); }}>
         <span>v{version.versionNo}</span>
         <small>{version.id === artifact.resourceDefaultVersionId ? t("artifacts.versions.selected") : version.createdByKind}</small>
       </DropdownMenuItem>)}
-      {select.error ? <p role="alert">{select.error instanceof ApiError && select.error.status === HTTP_STATUS.CONFLICT
+      {select.error ? <div role="alert">{select.error instanceof ApiError && select.error.status === HTTP_STATUS.CONFLICT
         ? t("text.versions.selectionConflict")
-        : select.error instanceof ApiError ? select.error.message : t("artifacts.versions.selectFailed")}</p> : null}
+        : select.error instanceof ApiError ? select.error.message : t("artifacts.versions.selectFailed")}
+        <Button variant="ghost" size="xs" type="button" disabled={refresh.isPending || select.isPending} onClick={() => refresh.mutate()}>{t("media.versions.refresh")}</Button></div> : null}
+      {refresh.error ? <p role="alert">{refresh.error instanceof Error ? refresh.error.message : t("artifacts.versions.loadFailed")}</p> : null}
     </DropdownMenuGroup></DropdownMenuContent> : null}
   </div></DropdownMenu>;
 }

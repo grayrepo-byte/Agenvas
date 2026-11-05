@@ -1,4 +1,4 @@
-import { Check,Cursor,DotsThree,Hand,Plus } from "@/shared/ui/icons";
+import { CaretDown,Check,Cursor,Hand,Plus } from "@/shared/ui/icons";
 import { useRef,useState,type ReactNode } from "react";
 import { t,useLocale } from "../../shared/i18n";
 import { Button } from "../../shared/ui/primitives/button";
@@ -25,11 +25,11 @@ export function CanvasToolMenu({ tool, spaceHeld, onToolChange, onAdd, children 
       event.stopPropagation(); setOpen(false); trigger.current?.focus();
     }
   }}>
-    <Button variant="ghost" size="icon-sm" aria-label={t("canvas.tools.addCard")} className="workspace-add-button" onClick={onAdd} type="button"><Plus size={20} /></Button>
+    <Button variant="ghost" size="sm" aria-label={t("canvas.tools.addCard")} className="workspace-add-button" onClick={onAdd} type="button"><Plus size={18} aria-hidden /><span>{t("canvas.tools.addCard")}</span></Button>
     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" ref={trigger} type="button" className="workspace-tool-trigger" aria-label={t("canvas.tools.title")}
       aria-haspopup="menu" aria-expanded={open}
       title={handActive ? t("canvas.tools.handToolHint") : t("canvas.tools.selectionToolHint")}>
-      {handActive ? <Hand size={20} /> : <Cursor size={20} />}<DotsThree size={16} />
+      {handActive ? <Hand size={18} aria-hidden /> : <Cursor size={18} aria-hidden />}<span>{handActive ? t("canvas.tools.handTool") : t("canvas.tools.selectionTool")}</span><CaretDown size={12} aria-hidden />
     </Button></DropdownMenuTrigger>
     {open ? <DropdownMenuContent aria-labelledby={undefined} onEscapeKeyDown={(event) => event.stopPropagation()} className="workspace-tool-menu" role="menu" aria-label={t("canvas.tools.mode")}><DropdownMenuGroup>
       <DropdownMenuItem ref={firstOption} role="menuitemradio" aria-checked={tool === "select"} onSelect={(event) => { event.preventDefault(); choose("select"); }}><span>{tool === "select" ? <Check size={14} /> : null}</span><Cursor size={18} />{t("canvas.tools.selectionTool")}<kbd>V</kbd></DropdownMenuItem>

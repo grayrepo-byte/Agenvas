@@ -218,12 +218,13 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
   return <ArtifactCardFrame title={item.title} kindLabel={isImage ? t("common.image") : isAudio ? t("common.audio") : t("common.video")}
     titleIcon={isImage ? <ImageIcon size={16} /> : isAudio ? <MusicNotes size={16} /> : <VideoCamera size={16} />}
     className={isAudio && assetId ? "audio-canvas-card" : undefined}
-    selected={selected} locked={locked} toolbarVisible={toolbarVisible}
+    selected={selected} locked={locked} toolbarVisible={toolbarVisible} toolbarStage={assetId ? "result" : "draft"}
     toolbarRaised={menuOpen || operationOpen !== null || videoOperationOpen !== null}
     editableTitle={{ projectId: artifact.projectId, item }}
     toolbarLabel={t("media.card.toolbarLabel")} toolbar={<>
-        <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} disabled={!assetId} />
-        {isImage ? <>
+        <MediaVersionPicker projectId={artifact.projectId} item={item} />
+        {assetId ? <SaveToLibraryButton projectId={artifact.projectId} itemId={item.id} /> : null}
+        {isImage && assetId ? <>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
             onClick={() => setOperationOpen("SMART_EDIT")}><MagicWand size={17} />{t("media.card.smartEdit")}</Button>
           <Button variant="ghost" type="button" disabled={!assetId || Boolean(busy) || operation.isPending}
@@ -311,7 +312,6 @@ export function MediaCanvasCard({ artifact, item, selected, toolbarVisible, lock
         {isAudio && assetId && onMakeMV ? <Button variant="ghost" type="button" onClick={onMakeMV}><VideoCamera size={17} />{t("media.card.musicVideo")}</Button> : null}
         <Button variant="ghost" type="button" onClick={onEdit} title={t("media.card.regenerateHint")}>
           <ArrowClockwise size={17} />{item.selectedVersionId ? t("media.card.regenerate") : t("media.card.editDraft")}</Button>
-        <MediaVersionPicker projectId={artifact.projectId} item={item} />
         {onDuplicate ? <Button variant="ghost" type="button" onClick={onDuplicate} title={t("media.card.copyHint")}>
           <CopySimple size={17} />{t("common.copy")}</Button> : null}
         {assetId ? <a href={assetContentUrl(artifact.projectId, assetId)} download

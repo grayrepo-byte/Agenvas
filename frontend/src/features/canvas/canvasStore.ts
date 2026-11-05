@@ -3,6 +3,12 @@ import type { ImageGenerationParameters, SaveMediaDraftRequest } from "../../sha
 
 export type MediaDraftRecovery = { request: SaveMediaDraftRequest; saving: boolean; error: Error | null };
 
+export type TextGenerationIntent = {
+  key: string; projectId: string; artifactId: string; draftKey: string; prompt: string;
+  expectedArtifactVersion: number; expectedCurrentVersionId: string;
+};
+type TextGenerationDraft = { prompt: string; intent: TextGenerationIntent | null };
+
 export type LayoutDraft = {
   x?: number;
   y?: number;
@@ -27,6 +33,12 @@ type CanvasInteractionState = {
   mediaDraftRecoveries: Record<string, MediaDraftRecovery>;
   setMediaDraftRecovery: (key: string, recovery: MediaDraftRecovery) => void;
   clearMediaDraftRecovery: (key: string) => void;
+  /** Memory-only prompts; closing a node editor is not a save or a generation. */
+  textGenerationDrafts: Record<string, TextGenerationDraft>;
+  setTextGenerationPrompt: (key: string, prompt: string) => void;
+  setTextGenerationIntent: (key: string, intent: TextGenerationIntent) => void;
+  clearTextGenerationIntent: (key: string, intentKey: string) => void;
+  clearTextGenerationDrafts: () => void;
   updateDraft: (itemId: string, patch: LayoutDraft) => void;
   clearDraft: (itemId: string) => void;
   /** A response acknowledges only the draft captured for that request, never a later edit. */
@@ -43,6 +55,21 @@ export const useCanvasStore = create<CanvasInteractionState>((set) => ({
   saveState: "saved",
   imageRatioDrafts: {},
   mediaDraftRecoveries: {},
+  textGenerationDrafts: {},
+  setTextGenerationPrompt: (key, prompt) => set((state) => ({
+    textGenerationDrafts: { ...state.textGenerationDrafts, [key]: { prompt, intent: null } },
+  })),
+  setTextGenerationIntent: (key, intent) => set((state) => ({
+    textGenerationDrafts: { ...state.textGenerationDrafts, [key]: {
+      prompt: state.textGenerationDrafts[key]?.prompt ?? intent.prompt, intent,
+    } },
+  })),
+  clearTextGenerationIntent: (key, intentKey) => set((state) => {
+    const draft = state.textGenerationDrafts[key];
+    if (!draft || draft.intent?.key !== intentKey) return state;
+    return { textGenerationDrafts: { ...state.textGenerationDrafts, [key]: { ...draft, intent: null } } };
+  }),
+  clearTextGenerationDrafts: () => set({ textGenerationDrafts: {} }),
   setMediaDraftRecovery: (key, recovery) => set((state) => ({
     mediaDraftRecoveries: { ...state.mediaDraftRecoveries, [key]: recovery },
   })),

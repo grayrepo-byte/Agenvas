@@ -1,4 +1,4 @@
-import { AlignLeftSimple,ImageSquare,LinkBreak,LinkSimple,MusicNotes,SelectionAll,Sparkle,TextT,VideoCamera,X,type Icon } from "@/shared/ui/icons";
+import { AlignLeftSimple,ArrowLeft,DownloadSimple,FolderSimple,ImageSquare,LinkBreak,LinkSimple,MusicNotes,SelectionAll,Sparkle,TextT,VideoCamera,X,type Icon } from "@/shared/ui/icons";
 import { useMutation,useQuery,useQueryClient } from "@tanstack/react-query";
 import {
 Background,
@@ -19,6 +19,7 @@ type ReactFlowInstance,
 type ResizeParams,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import "./WorkspaceStudio.css";
 import { memo,useCallback,useEffect,useMemo,useRef,useState } from "react";
 import { Link,Navigate,useParams,useLocation } from "react-router";
 import {
@@ -1008,11 +1009,24 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
   }, [creationMenu]);
 
+  const closeSelectionEditor = useCallback(() => {
+    const canvas = canvasElement.current;
+    const editor = canvas?.querySelector(".workspace-media-editor");
+    const ownsFocus = editor?.contains(document.activeElement);
+    const selection = useCanvasStore.getState().selectedIds;
+    const node = selection.length === 1
+      ? Array.from(canvas?.querySelectorAll<HTMLElement>(".react-flow__node") ?? [])
+        .find((element) => element.dataset.id === selection[0]) : undefined;
+    setSelectedIds([]);
+    // Closing an editor returns keyboard context without scrolling or selecting the node.
+    if (ownsFocus) node?.focus({ preventScroll: true });
+  }, [setSelectedIds]);
+
   // Esc 先交给当前模态/弹出层，再关创建菜单，最后关底部编辑区。setSelectedIds 对相同值返回原 state，
   // 因此没有选中时按 Esc 不会引起重渲染。
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
       // Radix 的 document 监听器可能晚于画布注册；不能依赖它先 preventDefault。
       // 即使焦点落到 document，打开的模态仍拥有 Escape，避免取消选中卸载编辑草稿。
       if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
@@ -1022,11 +1036,11 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         return;
       }
       if (document.querySelector('[role="listbox"], [role="menu"]')) return;
-      setSelectedIds([]);
+      closeSelectionEditor();
     }
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [creationMenu, setSelectedIds]);
+  }, [creationMenu, closeSelectionEditor]);
 
   function chooseCreationKind(kind: CreationKind, point = creationMenu?.point, promptKey?: string) {
     if (!point) return;
@@ -1102,23 +1116,31 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
         }} />
       <header className="workspace-header" data-sync-state={eventStatus}>
         <div className="workspace-header-identity">
-          <Button asChild variant="ghost" size="sm"><Link to="/projects">{t("common.project")}</Link></Button>
+          <Button asChild variant="ghost" size="sm"><Link to="/projects"><ArrowLeft aria-hidden />{t("common.project")}</Link></Button>
           <h1 className="workspace-project-name" title={project.data?.name}>{project.data?.name ?? t("common.projectLoading")}</h1>
+          <SaveBadge state={saveState} />
         </div>
+        <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={() => {
+          const rect = canvasElement.current?.getBoundingClientRect();
+          if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        }}>
+          <CanvasSettingsMenu preferences={displaySettings.preferences} onPreferenceChange={displaySettings.setPreference}
+            persistenceError={displaySettings.persistenceError} onRetrySave={displaySettings.retrySave}
+            disabled={!displaySettings.ready} />
+        </CanvasToolMenu>
         <div className="workspace-header-actions">
           <Button variant="ghost" size="sm" onClick={() => {
             setToolsKind(null); setResourcesOpen(true);
-          }} type="button">{t("canvas.workspace.resources")}</Button>
+          }} type="button"><FolderSimple aria-hidden />{t("canvas.workspace.resources")}</Button>
           {/* 导出清单只含项目的非密钥配置、产物历史与媒体元数据，用于备份与迁移。 */}
           <Button asChild variant="ghost" size="sm">
             <a download={`agenvas-project-${projectId}.json`}
-              href={projectExportManifestUrl(projectId)}>{t("canvas.workspace.exportManifest")}</a>
+              href={projectExportManifestUrl(projectId)}><DownloadSimple aria-hidden />{t("canvas.workspace.exportManifest")}</a>
           </Button>
           {eventStatus !== "live" ? <span className="workspace-sync-status" role="status">
             {eventStatus === "failed" ? t("canvas.workspace.syncRetrying") :
               eventStatus === "recovering" ? t("canvas.workspace.snapshotRestoring") : t("canvas.workspace.streamConnecting")}
           </span> : null}
-          <SaveBadge state={saveState} />
         </div>
       </header>
 
@@ -1219,6 +1241,8 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
             onLocate={canvas.data?.items.some((item) => item.id === toggleLocked.variables?.id) ? () => locateFeedbackNodes([toggleLocked.variables!.id]) : undefined} /> : null}
         </div>
         <ReactFlow<CanvasNode>
+          // Focus return must preserve the user's view, including nodes outside the viewport.
+          autoPanOnNodeFocus={false}
           colorMode="dark"
           connectOnClick={false}
           connectionLineType={ConnectionLineType.Bezier}
@@ -1305,7 +1329,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
               className="workspace-media-toolbar nodrag nowheel nopan">
               <div className="workspace-media-editor" aria-label={t("canvas.workspace.selectionEditor")}>
                 <Button variant="ghost" aria-label={t("canvas.workspace.closeEditor")} className="workspace-bottom-close"
-                  onClick={() => setSelectedIds([])} type="button"><X size={15} /></Button>
+                  onClick={closeSelectionEditor} type="button"><X size={15} /></Button>
                 {selectedItems[0].artifact.kind === "IMAGE" ||
                   selectedItems[0].artifact.kind === "VIDEO" || selectedItems[0].artifact.kind === "AUDIO" ?
                   <MediaDraftEditor key={selectedItems[0].id}
@@ -1315,7 +1339,7 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
                     openingAgentConversation={openAudioConversation.isPending} /> : null}
                 {selectedItems[0].artifact.kind === "TEXT" ?
                   <TextGenerationEditor key={selectedItems[0].artifact.id}
-                    artifact={selectedItems[0].artifact} /> : null}
+                    artifact={selectedItems[0].artifact} canvasItemId={selectedItems[0].id} /> : null}
               </div>
             </NodeToolbar> : null}
           <Background color="var(--ui-border-strong)" gap={20} size={1.1} />
@@ -1333,14 +1357,6 @@ function ProjectWorkspace({ projectId }: { projectId: string }) {
           arranging={organizeCanvas.isPending || saveLayout.isPending || alignSelected.isPending}
           canArrange={canvas.isSuccess && canvasConnections.isSuccess &&
             nodes.some((node) => !node.data.item.locked)} />
-        <CanvasToolMenu tool={tool} spaceHeld={spaceHeld} onToolChange={setTool} onAdd={() => {
-          const rect = canvasElement.current?.getBoundingClientRect();
-          if (rect) openCreationMenu(rect.left + rect.width / 2, rect.top + rect.height / 2);
-        }}>
-          <CanvasSettingsMenu preferences={displaySettings.preferences} onPreferenceChange={displaySettings.setPreference}
-            persistenceError={displaySettings.persistenceError} onRetrySave={displaySettings.retrySave}
-            disabled={!displaySettings.ready} />
-        </CanvasToolMenu>
         {creationMenu ? <Command loop shouldFilter={false} tabIndex={-1} className="workspace-create-menu h-auto"
           ref={creationMenuElement}
           style={{ left: creationMenu.x, top: creationMenu.y, width: CREATION_MENU_WIDTH }}>
