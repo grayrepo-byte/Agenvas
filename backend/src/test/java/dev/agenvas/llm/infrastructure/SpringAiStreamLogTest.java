@@ -17,7 +17,10 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
+import reactor.core.Scannable;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Scheduler;
+import reactor.core.scheduler.Schedulers;
 
 /** Synthetic reactive model exercises the real ChatClient/aggregator/batching pipeline. */
 class SpringAiStreamLogTest {
@@ -25,7 +28,26 @@ class SpringAiStreamLogTest {
 
     @Test void waitsForInFlightPublicBatchBeforeCompletingTheResponse() throws Exception {
         var source = reactor.core.publisher.Sinks.many().unicast().<ChatResponse>onBackpressureBuffer();
-        var gateway = gateway(source.asFlux());
+        CountDownLatch completionDispatched = new CountDownLatch(1);
+        var modelSubscription = new AtomicReference<org.reactivestreams.Subscription>();
+        var dispatcher = new AtomicReference<Runnable>();
+        var gateway = gateway(source.asFlux().doOnSubscribe(modelSubscription::set));
+        String hook = "in-flight-public-batch-" + java.util.UUID.randomUUID();
+        // Observe only this subscription's ChatClient dispatcher returning after it
+        // forwards completion and disposes its worker; other streams cannot open the gate.
+        Schedulers.onScheduleHook(hook, task -> {
+            Scannable scanned = Scannable.from(task);
+            if ("publishOn".equals(scanned.stepName()) && scanned.parents()
+                    .anyMatch(parent -> parent == modelSubscription.get())) dispatcher.compareAndSet(null, task);
+            return () -> {
+                try { task.run(); }
+                finally {
+                    if (task == dispatcher.get()
+                            && scanned.scanUnsafe(Scannable.Attr.RUN_ON) instanceof Scheduler.Worker worker
+                            && worker.isDisposed()) completionDispatched.countDown();
+                }
+            };
+        });
         CountDownLatch writing = new CountDownLatch(1), releaseWrite = new CountDownLatch(1);
         List<String> outputs = new CopyOnWriteArrayList<>();
         AtomicInteger active = new AtomicInteger(), maxActive = new AtomicInteger();
@@ -46,12 +68,16 @@ class SpringAiStreamLogTest {
             assertThat(writing.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
             source.emitNext(chunk("complete"), reactor.core.publisher.Sinks.EmitFailureHandler.FAIL_FAST);
             source.emitComplete(reactor.core.publisher.Sinks.EmitFailureHandler.FAIL_FAST);
+            // ChatClient schedules upstream signals. Wait until completion has actually
+            // reached the batcher while its timer-triggered public write is still gated.
+            assertThat(completionDispatched.await(TIMEOUT_SECONDS, TimeUnit.SECONDS)).isTrue();
+            assertThat(call.isDone()).isFalse();
             releaseWrite.countDown();
             var result = call.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
             assertThat(maxActive).hasValue(1);
             assertThat(String.join("", outputs)).isEqualTo("Test complete");
             assertThat(result.response().getResult().getOutput().getText()).isEqualTo("Test complete");
-        } finally { releaseWrite.countDown(); }
+        } finally { releaseWrite.countDown(); Schedulers.resetOnScheduleHook(hook); }
     }
 
     @Test void completesWithPublicResponseAndSeparateDebugContentFromTheSameSubscription() {

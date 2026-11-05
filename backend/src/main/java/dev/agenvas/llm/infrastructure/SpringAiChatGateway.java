@@ -181,7 +181,9 @@ public class SpringAiChatGateway implements ChatGateway {
                 });
                 AtomicReference<ChatResponse> completed = new AtomicReference<>();
                 return new MessageAggregator().aggregate(chunks, completed::set)
-                        .bufferTimeout(MAX_PUBLIC_BATCH_CHUNKS, PUBLIC_BATCH_INTERVAL).doOnNext(batch -> {
+                        // Serialize completion behind an in-flight timer batch. The default
+                        // variant disposes that timer worker on completion and interrupts its write.
+                        .bufferTimeout(MAX_PUBLIC_BATCH_CHUNKS, PUBLIC_BATCH_INTERVAL, true).doOnNext(batch -> {
                             StringBuilder text = new StringBuilder();
                             batch.forEach(chunk -> text.append(PublicAssistantResponse.text(chunk)));
                             if (!text.isEmpty()) {
