@@ -8,10 +8,12 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class DirectorSettingsTest {
-    @Test void defaultsUseOneMillionTokensAndAHalfWindowTrigger() {
+    @Test void defaultsUseConservativeApplicationCeilingsAndAHalfWindowTrigger() {
         var settings = DirectorSettings.defaults();
-        assertThat(settings.contextWindowTokens()).isEqualTo(1_000_000);
-        assertThat(settings.compactionTriggerTokens()).isEqualTo(500_000);
+        assertThat(settings.contextWindowTokens()).isEqualTo(32_768);
+        assertThat(settings.responseReserveTokens()).isEqualTo(4_096);
+        assertThat(settings.summaryTokens()).isEqualTo(1_024);
+        assertThat(settings.compactionTriggerTokens()).isEqualTo(16_384);
         assertThat(settings.recoveryWindow()).isEqualTo(java.time.Duration.ofHours(24));
     }
 

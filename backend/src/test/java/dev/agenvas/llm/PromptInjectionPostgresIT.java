@@ -105,7 +105,7 @@ class PromptInjectionPostgresIT {
                 "Create a safe three-shot plan", "injection-run").run();
         gateway.readReferenceBeforeInjection(run.id());
 
-        for (int attempt = 0; attempt < 5; attempt++) {
+        for (int attempt = 0; attempt < 6; attempt++) {
             assertThat(worker.runOnce("injection-worker")).isEqualTo(1);
         }
         // Fatal tool errors with no outstanding work end the Run and release its project slot.
@@ -120,11 +120,10 @@ class PromptInjectionPostgresIT {
                 .filteredOn(task -> task.status() == Task.Status.FAILED)
                 .singleElement().satisfies(task ->
                         assertThat(task.errorCode()).isEqualTo("MODEL_OUTPUT_INVALID"));
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run")
-                .param("run", run.id()).query(Long.class).single()).isEqualTo(2);
+        assertToolExecutions(run.id(), 2);
         assertThat(jdbc.sql("select count(*) from llm_turn where run_id = :runId "
                         + "and status = 'RESPONDED'")
-                .param("runId", run.id()).query(Long.class).single()).isEqualTo(5);
+                .param("runId", run.id()).query(Long.class).single()).isEqualTo(6);
         // The committed reads contain hostile material, but forged approval never creates media work.
         assertThat(jdbc.sql("select count(*) from asset")
                 .query(Long.class).single()).isZero();
@@ -132,12 +131,12 @@ class PromptInjectionPostgresIT {
                 .param("projectId", project.id()).query(Long.class).single()).isEqualTo(1);
         assertThat(jdbc.sql("select count(*) from canvas_item where project_id = :projectId")
                 .param("projectId", project.id()).query(Long.class).single()).isEqualTo(1);
-        assertThat(gateway.requests).hasSize(5);
+        assertThat(gateway.requests).hasSize(6);
         List<Message> firstRequest = gateway.requests.getFirst();
         assertThat(firstRequest.stream().filter(SystemMessage.class::isInstance)
                 .map(Message::getText)).noneMatch(text -> text.contains(malicious));
         assertThat(firstRequest.stream().map(Message::getText)).noneMatch(text -> text.contains(malicious));
-        List<Message> afterRead = gateway.requests.get(2);
+        List<Message> afterRead = gateway.requests.get(3);
         assertThat(afterRead.stream().filter(org.springframework.ai.chat.messages.ToolResponseMessage.class::isInstance)
                 .map(org.springframework.ai.chat.messages.ToolResponseMessage.class::cast)
                 .flatMap(message -> message.getResponses().stream()).map(reply -> reply.responseData()))
@@ -160,14 +159,13 @@ class PromptInjectionPostgresIT {
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Synthetic media request", "synthetic-creative-injection").run();
         int firstRequest = gateway.requests.size();
-        for (int attempt = 0; attempt < 3; attempt++) {
+        for (int attempt = 0; attempt < 4; attempt++) {
             assertThat(worker.runOnce("synthetic-creative-injection-worker")).isEqualTo(1);
         }
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.FAILED);
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .extracting(Task::kind).containsOnly(Task.Kind.AGENT_TURN);
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:runId")
-                .param("runId", run.id()).query(Long.class).single()).isZero();
+        assertToolExecutions(run.id(), 0);
         var messages = gateway.requests.get(firstRequest);
         assertThat(messages.getFirst().getText()).contains("server permissions", "media approval");
         assertThat(messages.get(2)).isInstanceOf(SystemMessage.class);
@@ -194,7 +192,7 @@ class PromptInjectionPostgresIT {
         gateway.readReferenceBeforeInjection(run.id());
         int firstRequestIndex = gateway.requests.size();
 
-        for (int attempt = 0; attempt < 5; attempt++) {
+        for (int attempt = 0; attempt < 6; attempt++) {
             assertThat(worker.runOnce("image-injection-worker")).isEqualTo(1);
         }
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
@@ -205,7 +203,7 @@ class PromptInjectionPostgresIT {
         assertThat(jdbc.sql("select count(*) from task where project_id = :projectId "
                         + "and kind in ('IMAGE_GENERATION', 'VIDEO_GENERATION')")
                 .param("projectId", project.id()).query(Long.class).single()).isZero();
-        assertThat(gateway.requests).hasSize(firstRequestIndex + 5);
+        assertThat(gateway.requests).hasSize(firstRequestIndex + 6);
         List<Message> imageRequest = gateway.requests.get(firstRequestIndex);
         assertThat(imageRequest.stream().filter(SystemMessage.class::isInstance)
                 .map(Message::getText)).noneMatch(text -> text.contains(malicious));
@@ -215,15 +213,24 @@ class PromptInjectionPostgresIT {
         assertThat(imageRequest.stream().map(Message::getText))
                 .noneMatch(text -> text.contains(malicious));
         assertThat(imageRequest.stream().map(Message::getText)).noneMatch(text -> text.contains(assetId.toString()));
-        var afterRead = gateway.requests.get(firstRequestIndex + 2);
+        var afterRead = gateway.requests.get(firstRequestIndex + 3);
         assertThat(afterRead.stream().filter(UserMessage.class::isInstance).map(UserMessage.class::cast)
                 .flatMap(message -> message.getMedia().stream()).toList()).hasSize(1);
         assertThat(afterRead.stream().filter(SystemMessage.class::isInstance).map(Message::getText))
                 .noneMatch(text -> text.contains(malicious));
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run")
-                .param("run", run.id()).query(Long.class).single()).isEqualTo(2);
+        assertToolExecutions(run.id(), 2);
         assertThat(jdbc.sql("select count(*) from agent_media_approval where run_id=:run")
                 .param("run", run.id()).query(Long.class).single()).isZero();
+    }
+
+    /** Discovery is committed independently; rejected hostile batches commit no business calls. */
+    private void assertToolExecutions(UUID runId, long businessCount) {
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")
+                .param("run", runId).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name<>'load_toolset'")
+                .param("run", runId).query(Long.class).single()).isEqualTo(businessCount);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run")
+                .param("run", runId).query(Long.class).single()).isEqualTo(businessCount + 1);
     }
 
     /** Encodes visible hostile pixels rather than merely naming an image fixture malicious. */
@@ -271,6 +278,14 @@ class PromptInjectionPostgresIT {
             requests.add(List.copyOf(messages));
             assertThat(tools).extracting(tool -> tool.getToolDefinition().name())
                     .doesNotContain("approve_plan");
+            if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
+                var discovery = AssistantMessage.builder().content("").toolCalls(List.of(
+                        new AssistantMessage.ToolCall("load-reference-tools", "function", "load_toolset",
+                                "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}"))).build();
+                return new Exchange(1, new ChatResponse(List.of(new Generation(discovery))));
+            }
+            assertThat(tools).extracting(tool -> tool.getToolDefinition().name())
+                    .contains("read_canvas", "read_artifacts", "create_text");
             UUID runId = UUID.fromString(toolContext.get("runId").toString());
             int call = calls.computeIfAbsent(runId, ignored -> new java.util.concurrent.atomic.AtomicInteger()).getAndIncrement();
             if (referenceRuns.contains(runId) && call < 2) {

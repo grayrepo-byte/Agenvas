@@ -56,18 +56,21 @@ public class ThirdPartyPromptSyncSettings extends TableImpl<ThirdPartyPromptSync
 
     /**
      * The column <code>public.third_party_prompt_sync_settings.id</code>.
+     * Singleton identity for administrator prompt synchronization settings
      */
-    public final TableField<ThirdPartyPromptSyncSettingsRecord, Short> ID = createField(DSL.name("id"), SQLDataType.SMALLINT.nullable(false), this, "");
+    public final TableField<ThirdPartyPromptSyncSettingsRecord, Short> ID = createField(DSL.name("id"), SQLDataType.SMALLINT.nullable(false), this, "Singleton identity for administrator prompt synchronization settings");
 
     /**
      * The column <code>public.third_party_prompt_sync_settings.enabled</code>.
+     * Explicit administrator consent to scheduled third-party prompt downloads
      */
-    public final TableField<ThirdPartyPromptSyncSettingsRecord, Boolean> ENABLED = createField(DSL.name("enabled"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+    public final TableField<ThirdPartyPromptSyncSettingsRecord, Boolean> ENABLED = createField(DSL.name("enabled"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "Explicit administrator consent to scheduled third-party prompt downloads");
 
     /**
      * The column <code>public.third_party_prompt_sync_settings.version</code>.
+     * Optimistic locking version for administrator consent updates
      */
-    public final TableField<ThirdPartyPromptSyncSettingsRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<ThirdPartyPromptSyncSettingsRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "Optimistic locking version for administrator consent updates");
 
     private ThirdPartyPromptSyncSettings(Name alias, Table<ThirdPartyPromptSyncSettingsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

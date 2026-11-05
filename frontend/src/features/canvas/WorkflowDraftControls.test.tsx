@@ -168,27 +168,53 @@ describe("WorkflowMediaInputs", () => {
     expect(screen.queryByRole("menu", { name: "图片来源" })).not.toBeInTheDocument();
   });
 
-  it("routes mixed uploads to the first compatible empty slot and narrows accepted types as slots fill", async () => {
+  it.each([
+    { extension: "png", type: "image/png" },
+    { extension: "gif", type: "image/gif" },
+  ])("routes mixed uploads including $type to the first compatible empty slot and narrows accepted types as slots fill", async ({ extension, type }) => {
     const videoField = { key: "clip", label: "参考视频", type: "VIDEO" as const, nodeId: "11", fieldName: "video", required: false, advanced: false };
     const mixedDefinition = { ...definition, fields: [...definition.fields, videoField] };
-    const upload = vi.fn().mockResolvedValue(undefined);
-    const props = { definition: mixedDefinition, values: {}, prompt: "", durationSeconds: null, choices, onChooseSource: vi.fn(), onChange: vi.fn(), onUpload: upload };
-    const { rerender } = render(<WorkflowMediaInputs {...props} />);
-    const input = screen.getByLabelText("选择本地图片、视频或音频");
-    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,audio/mpeg,audio/wav,audio/ogg,video/mp4");
+    const firstImage = new File(["synthetic"], `first.${extension}`, { type });
+    const lastImage = new File(["synthetic"], `last.${extension}`, { type });
     const audio = new File(["synthetic"], "sound.ogg", { type: "audio/ogg" });
-    fireEvent.change(input, { target: { files: [audio] } });
-    await waitFor(() => expect(upload).toHaveBeenLastCalledWith(expect.objectContaining({ key: "sound" }), audio, { requireEmptySlot: true }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "添加参考素材" })).toBeEnabled());
-    rerender(<WorkflowMediaInputs {...props} values={{ sound: "audio-v1", first: "image-v1" }} />);
-    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,video/mp4");
     const video = new File(["synthetic"], "clip.mp4", { type: "video/mp4" });
+    const uploadedChoices: WorkflowMediaChoice[] = [
+      { id: firstImage.name, label: "上传首帧", kind: "IMAGE", available: true },
+      { id: lastImage.name, label: "上传尾帧", kind: "IMAGE", available: true },
+      { id: audio.name, label: "上传音频", kind: "AUDIO", available: true },
+      { id: video.name, label: "上传视频", kind: "VIDEO", available: true },
+    ];
+    const upload = vi.fn().mockResolvedValue(undefined);
+    function MixedUploadsHarness() {
+      const [values, setValues] = useState<Record<string, WorkflowValue>>({});
+      return <WorkflowMediaInputs definition={mixedDefinition} values={values} prompt="" durationSeconds={null}
+        choices={uploadedChoices} onChooseSource={vi.fn()} onChange={vi.fn()} onUpload={async (field, file, options) => {
+          await upload(field, file, options);
+          setValues((previous) => ({ ...previous, [field.key]: file.name }));
+        }} />;
+    }
+    render(<MixedUploadsHarness />);
+    const input = screen.getByLabelText("选择本地图片、视频或音频");
+    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,audio/mpeg,audio/wav,audio/ogg,video/mp4");
+    fireEvent.change(input, { target: { files: [audio] } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "选择配音" })).toBeEnabled());
+    expect(upload).toHaveBeenNthCalledWith(1, expect.objectContaining({ key: "sound" }), audio, { requireEmptySlot: true });
+    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,video/mp4");
+    fireEvent.change(input, { target: { files: [firstImage] } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "选择首帧" })).toBeEnabled());
+    expect(upload).toHaveBeenNthCalledWith(2, expect.objectContaining({ key: "first" }), firstImage, { requireEmptySlot: true });
+    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif,video/mp4");
     fireEvent.change(input, { target: { files: [video] } });
-    await waitFor(() => expect(upload).toHaveBeenLastCalledWith(expect.objectContaining({ key: "clip" }), video, { requireEmptySlot: true }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "添加参考素材" })).toBeEnabled());
-    const image = new File(["synthetic"], "last.png", { type: "image/png" });
-    fireEvent.change(input, { target: { files: [image] } });
-    await waitFor(() => expect(upload).toHaveBeenLastCalledWith(expect.objectContaining({ key: "last" }), image, { requireEmptySlot: true }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "选择参考视频" })).toBeEnabled());
+    expect(upload).toHaveBeenNthCalledWith(3, expect.objectContaining({ key: "clip" }), video, { requireEmptySlot: true });
+    expect(input).toHaveAttribute("accept", "image/png,image/jpeg,image/webp,image/gif");
+    fireEvent.change(input, { target: { files: [lastImage] } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "选择尾帧" })).toBeEnabled());
+    expect(upload).toHaveBeenNthCalledWith(4, expect.objectContaining({ key: "last" }), lastImage, { requireEmptySlot: true });
+    expect(upload).toHaveBeenCalledTimes(4);
+    expect(input).toHaveAttribute("accept", "");
+    expect(input).toBeDisabled();
+    expect(screen.getByRole("button", { name: "添加参考素材" })).toBeDisabled();
   });
 
   it("keeps the shared entry disabled at capacity and restores it after a named assignment is cleared", async () => {

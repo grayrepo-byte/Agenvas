@@ -152,20 +152,21 @@ class MediaCloudCapabilityPostgresIT {
         assertThat(catalog.getConnectionVersion(custom.id(), custom.currentVersion())
                 .orElseThrow().origin()).isEqualTo("https://images.example.com/proxy/v1");
         var changed = catalog.updateConnection(custom.id(), custom.version(), "Custom",
-                true, "https://images.example.com/next/v1", null);
+                true, "http://images.example.com/next/v1", null);
         assertThat(changed.currentVersion()).isEqualTo(custom.currentVersion() + 1);
         assertThat(catalog.getConnectionVersion(custom.id(), custom.currentVersion())
                 .orElseThrow().origin()).isEqualTo("https://images.example.com/proxy/v1");
         var changedVersion = catalog.getConnectionVersion(changed.id(), changed.currentVersion())
                 .orElseThrow();
+        assertThat(changedVersion.origin()).isEqualTo("http://images.example.com/next/v1");
         assertThat(changedVersion.keyMask()).isEqualTo("••••cret");
         assertThat(cipher.decryptMedia(changed.id(), changedVersion.version(),
                 new CredentialCipher.Encrypted(changedVersion.credentialCiphertext(),
                         changedVersion.credentialNonce(), changedVersion.credentialKeyVersion())))
                 .isEqualTo("secret");
-        // 回环端点现在可用（本地假 API 与自托管服务），HTTP 非回环仍被拒。
+        // ADR 0070 允许管理员显式选择公网/私网 HTTP(S)，云元数据地址与 URL 内凭据仍被拒。
         assertThatThrownBy(() -> catalog.createConnection("cloud-bad-origin", "Bad",
-                "OPENAI", "http://images.example.com/v1", "secret"))
+                "OPENAI", "http://169.254.169.254/v1", "secret"))
                 .isInstanceOf(ApiProblemException.class);
         assertThatThrownBy(() -> catalog.createConnection("cloud-bad-origin-2", "Bad",
                 "OPENAI", "https://user:pass@images.example.com/v1", "secret"))
@@ -173,9 +174,12 @@ class MediaCloudCapabilityPostgresIT {
         assertThatThrownBy(() -> catalog.publishCapability(google.id(), "Bad model",
                 "GOOGLE_NANO_BANANA_2", mapper.readTree("{\"modelId\":\"custom\"}")))
                 .isInstanceOf(ApiProblemException.class);
-        // Google 现在允许自定义 HTTPS 端点（中转站）；明文与私网地址仍被拒。
+        var googlePrivate = catalog.createConnection("cloud-google-private-origin", "Private Google",
+                "GOOGLE", "http://192.168.1.10:8080", "secret");
+        assertThat(catalog.getConnectionVersion(googlePrivate.id(), googlePrivate.currentVersion())
+                .orElseThrow().origin()).isEqualTo("http://192.168.1.10:8080");
         assertThatThrownBy(() -> catalog.createConnection("cloud-google-origin", "Bad",
-                "GOOGLE", "http://192.168.1.10:8080", "secret"))
+                "GOOGLE", "http://[fd20:ce::254]:8080", "secret"))
                 .isInstanceOf(ApiProblemException.class);
     }
 }

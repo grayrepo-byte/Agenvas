@@ -98,7 +98,14 @@ class RunActionsPostgresIT {
         String path = actionsPath(project.id(), run.id());
         assertThat(readActions(mvc, owner, path)).isEmpty();
 
-        // 使用无外部模型的真实持久化工具链；四个回合依次读取、创建文本并修订，最后无工具结束。
+        // 工具发现独立持久化并成为公开动作，之后才允许业务调用。
+        assertThat(worker.runOnce("actions-test-worker")).isEqualTo(1);
+        JsonNode discovery = readActions(mvc, owner, path);
+        assertThat(discovery).singleElement().satisfies(action -> {
+            assertThat(action.path("toolName").asText()).isEqualTo("load_toolset");
+            assertThat(action.path("summary").asText()).isEqualTo("已准备所需能力");
+        });
+        // 使用无外部模型的真实持久化工具链；四个业务回合依次读取、创建文本并修订，最后无工具结束。
         for (int step = 0; step < 4; step++) {
             assertThat(worker.runOnce("actions-test-worker")).isEqualTo(1);
         }
@@ -109,13 +116,17 @@ class RunActionsPostgresIT {
                         + "and status <> 'SUCCEEDED'")
                 .param("runId", run.id()).query(Long.class).single()).isZero();
         JsonNode initial = readActions(mvc, owner, path);
-        assertThat(initial).hasSize(4);
-        assertThat(initial).extracting(action -> action.path("toolName").asText())
+        assertThat(initial).hasSize(5);
+        assertThat(initial.get(0)).isEqualTo(discovery.get(0));
+        var businessActions = java.util.stream.StreamSupport.stream(initial.spliterator(), false)
+                .filter(action -> !"load_toolset".equals(action.path("toolName").asText())).toList();
+        assertThat(businessActions).hasSize(4);
+        assertThat(businessActions).extracting(action -> action.path("toolName").asText())
                 .containsExactlyInAnyOrder("read_project_summary", "read_selection",
                         "create_text", "revise_artifact");
         assertThat(initial).extracting(action -> action.path("status").asText())
                 .containsOnly("SUCCEEDED");
-        assertThat(initial.get(3).path("summary").asText())
+        assertThat(initial.get(4).path("summary").asText())
                 .isEqualTo("已创建产物的新内容版本");
         for (JsonNode action : initial) {
             assertThat(action.propertyNames()).containsExactlyInAnyOrder(
@@ -126,11 +137,11 @@ class RunActionsPostgresIT {
 
         // 幂等重放不能增加动作；公开结果不随调用次数发生变化。
         executor.execute(new TrustedToolContext(owner.userId(), project.id(), run.id()),
-                0, "actions-summary");
+                1, "actions-summary");
         assertThat(readActions(mvc, owner, path)).isEqualTo(initial);
 
         // 模拟未提交完成的账本项，及内部响应中的敏感元数据，确认读取边界按字段筛选。
-        assertThat(ledger.insertExecuting(UUID.randomUUID(), project.id(), run.id(), 2,
+        assertThat(ledger.insertExecuting(UUID.randomUUID(), project.id(), run.id(), 3,
                 "pending-call", "read_selection", "0".repeat(64), Instant.now())).isTrue();
         jdbc.sql("""
                         update tool_execution
@@ -154,7 +165,12 @@ class RunActionsPostgresIT {
                 "toolCallId", "argumentHash", "createdIds", "result_json");
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId")
                 .param("projectId", project.id()).query(Long.class).single()).isEqualTo(eventCount);
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :run").param("run", run.id()).query(Long.class).single()).isEqualTo(5);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name='load_toolset'")
+                .param("run", run.id()).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:run and tool_name<>'load_toolset'")
+                .param("run", run.id()).query(Long.class).single()).isEqualTo(5);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :run")
+                .param("run", run.id()).query(Long.class).single()).isEqualTo(6);
 
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
         AdminPrincipal outsider = new AdminPrincipal(UUID.randomUUID(), "outsider");
@@ -171,18 +187,18 @@ class RunActionsPostgresIT {
         // 同一步的登记时间相同时使用 id 稳定排序；步骤优先于墙钟时间。
         jdbc.sql("""
                         update tool_execution set created_at = timestamptz '2030-01-01 00:00:00Z'
-                        where run_id = :runId and step_index = 0
+                        where run_id = :runId and step_index = 1
                         """).param("runId", run.id()).update();
         JsonNode tied = readActions(mvc, owner, path);
-        assertThat(List.of(tied.get(0).path("id").asText(), tied.get(1).path("id").asText()))
+        assertThat(List.of(tied.get(1).path("id").asText(), tied.get(2).path("id").asText()))
                 .isSorted();
         assertThat(tied).extracting(action -> action.path("stepIndex").asInt())
-                .containsExactly(0, 0, 1, 2);
+                .containsExactly(0, 1, 1, 2, 3);
 
         // 防御性上限：即使测试直接写入超预算账本，读取也不得成为无界列表。
         for (int index = 0; index < 37; index++) {
             UUID id = UUID.randomUUID();
-            assertThat(ledger.insertExecuting(id, project.id(), run.id(), 2,
+            assertThat(ledger.insertExecuting(id, project.id(), run.id(), 3,
                     "bounded-fixture-" + index, "read_selection", "1".repeat(64), Instant.now())).isTrue();
             assertThat(ledger.complete(id, mapper.readTree("""
                     {"status":"SUCCEEDED","userVisibleSummary":"有界历史测试记录"}
@@ -190,6 +206,7 @@ class RunActionsPostgresIT {
         }
         assertThat(readActions(mvc, owner, path)).hasSize(40);
         assertThat(gateway.calls.get()).isEqualTo(4);
+        assertThat(gateway.discoveryCalls.get()).isEqualTo(1);
     }
 
     private JsonNode readActions(MockMvc mvc, AdminPrincipal owner, String path) throws Exception {
@@ -220,6 +237,7 @@ class RunActionsPostgresIT {
     static class FakeGateway implements ChatGateway {
         private final ObjectMapper mapper;
         private final AtomicInteger calls = new AtomicInteger();
+        private final AtomicInteger discoveryCalls = new AtomicInteger();
         private volatile UUID createdArtifactId;
         private volatile long createdArtifactVersion;
 
@@ -239,6 +257,13 @@ class RunActionsPostgresIT {
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
+            if (tools.size() == 1 && "load_toolset".equals(tools.getFirst().getToolDefinition().name())) {
+                discoveryCalls.incrementAndGet();
+                AssistantMessage discovery = AssistantMessage.builder().content("").toolCalls(List.of(
+                        new AssistantMessage.ToolCall("load-action-tools", "function", "load_toolset",
+                                "{\"toolsets\":[\"CANVAS\",\"TEXT\"]}"))).build();
+                return new Exchange(1, new ChatResponse(List.of(new Generation(discovery))));
+            }
             assertThat(tools.stream().map(tool -> tool.getToolDefinition().name()))
                     .contains("read_project_summary", "read_selection", "create_text",
                             "revise_artifact");

@@ -1,6 +1,9 @@
 package dev.agenvas.llm;
 
 import static dev.agenvas.testing.AgentFixture.configureDirector;
+import static dev.agenvas.testing.OnDemandToolsetFixture.onlyLoader;
+import static dev.agenvas.testing.OnDemandToolsetFixture.load;
+import static dev.agenvas.testing.OnDemandToolsetFixture.prepare;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -71,6 +74,7 @@ class AgentFailureRecoveryPostgresIT {
         var project = projects.create(owner.userId(), "Automatic ending fixture", Project.AspectRatio.LANDSCAPE_16_9);
         var agent = configureDirector(agents, owner.userId(), project.id(), "Synthetic creator", "Create one text");
         var run = runs.create(owner.userId(), project.id(), agent.id(), "Create then fail", "fatal-fixture").run();
+        prepare(worker, jdbc, run.id());
         assertThat(worker.runOnce("failure-worker")).isEqualTo(1);
         assertThat(worker.runOnce("failure-worker")).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.FAILED);
@@ -91,7 +95,7 @@ class AgentFailureRecoveryPostgresIT {
         assertThat(gateway.count(run.id())).isEqualTo(2);
         assertThat(failureEvents(project.id())).isEqualTo(eventsBefore + 1);
         assertThat(jdbc.sql("select count(*) from artifact where project_id = :id").param("id", project.id()).query(Long.class).single()).isEqualTo(1);
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id").param("id", run.id()).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :id and tool_name <> 'load_toolset'").param("id", run.id()).query(Long.class).single()).isEqualTo(1);
         var next = runs.create(owner.userId(), project.id(), agent.id(), "Continue with the saved text", "next-fixture").run();
         assertThat(commits.finishBlockedFailures(100)).isZero();
         assertThat(jdbc.sql("select active_run_id from project where id=:id").param("id", project.id()).query(UUID.class).single()).isEqualTo(next.id());
@@ -103,6 +107,7 @@ class AgentFailureRecoveryPostgresIT {
         var project = projects.create(owner.userId(), "Uncertain media fixture", Project.AspectRatio.LANDSCAPE_16_9);
         var agent = configureDirector(agents, owner.userId(), project.id(), "Synthetic creator", "Create one text");
         var run = runs.create(owner.userId(), project.id(), agent.id(), "Create then fail", "unknown-fixture").run();
+        prepare(worker, jdbc, run.id());
         assertThat(worker.runOnce("failure-worker")).isEqualTo(1);
         var media = tasks.create(owner.userId(), project.id(), run.id(), "synthetic-media", Task.Kind.IMAGE_GENERATION,
                 mapper.createObjectNode(), 1);
@@ -120,7 +125,7 @@ class AgentFailureRecoveryPostgresIT {
     }
 
     private String request(UUID run) {
-        return jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 1").param("id", run).query(String.class).single();
+        return jdbc.sql("select request_json::text from llm_turn where run_id = :id and step_index = 2").param("id", run).query(String.class).single();
     }
     private long failureEvents(UUID project) {
         return jdbc.sql("select count(*) from project_event where project_id = :id and type = 'agent.run.changed' and payload_json->>'status' = 'FAILED'")
@@ -141,6 +146,8 @@ class AgentFailureRecoveryPostgresIT {
         @Override public int configVersion() { return 1; }
         @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
         @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
+            if (onlyLoader(tools)) return load("TEXT");
+            assertThat(tools.stream().map(tool -> tool.getToolDefinition().name())).contains("create_text");
             int count = calls.computeIfAbsent(context.get("runId").toString(), ignored -> new AtomicInteger()).incrementAndGet();
             if (count > 1) throw new IllegalStateException("Synthetic terminal model fault");
             var response = AssistantMessage.builder().content("Create a durable text before the synthetic failure.")

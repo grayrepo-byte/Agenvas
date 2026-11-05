@@ -1,6 +1,9 @@
 package dev.agenvas.llm;
 
 import static dev.agenvas.testing.AgentFixture.configureDirector;
+import static dev.agenvas.testing.OnDemandToolsetFixture.onlyLoader;
+import static dev.agenvas.testing.OnDemandToolsetFixture.load;
+import static dev.agenvas.testing.OnDemandToolsetFixture.prepare;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -75,15 +78,16 @@ class AgentTurnWorkerPostgresIT {
         AgentRun run = runs.create(owner.userId(), project.id(), agent.id(),
                 "Create one text", "worker-run").run();
 
+        prepare(worker, jdbc, run.id());
         assertThat(worker.runOnce("worker-test")).isEqualTo(1);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status())
                 .isEqualTo(AgentRun.Status.RUNNING);
         assertThat(runs.get(owner.userId(), project.id(), run.id()).nextStepIndex())
-                .isEqualTo(1);
+                .isEqualTo(2);
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .extracting(Task::status)
-                .containsExactly(Task.Status.SUCCEEDED, Task.Status.READY);
-        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId")
+                .containsExactly(Task.Status.SUCCEEDED, Task.Status.SUCCEEDED, Task.Status.READY);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id = :runId and tool_name <> 'load_toolset'")
                 .param("runId", run.id()).query(Long.class).single()).isEqualTo(1);
 
         assertThat(worker.runOnce("worker-test")).isEqualTo(1);
@@ -91,7 +95,7 @@ class AgentTurnWorkerPostgresIT {
                 .isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(tasks.listByRun(owner.userId(), project.id(), run.id()))
                 .extracting(Task::status)
-                .containsExactly(Task.Status.SUCCEEDED, Task.Status.SUCCEEDED);
+                .containsExactly(Task.Status.SUCCEEDED, Task.Status.SUCCEEDED, Task.Status.SUCCEEDED);
         assertThat(jdbc.sql("select count(*) from project where id = :projectId and active_run_id is not null")
                 .param("projectId", project.id()).query(Long.class).single()).isZero();
         assertThat(gateway.calls.get()).isEqualTo(2);
@@ -119,10 +123,14 @@ class AgentTurnWorkerPostgresIT {
                 "Creator", "Create one text first");
         AgentRun rollbackRun = runs.create(owner.userId(), failedContinuation.id(), rollbackAgent.id(),
                 "Create one text", "continuation-rollback").run();
+        prepare(worker, jdbc, rollbackRun.id());
+        long completedBefore = jdbc.sql("select count(*) from project_event where project_id=:project "
+                + "and type='task.status.changed' and payload_json->>'status'='SUCCEEDED'")
+                .param("project", failedContinuation.id()).query(Long.class).single();
         // PostgreSQL rejects the next Task after the current turn was completed. The whole
         // commit must roll back before the worker records its separate failure transaction.
         jdbc.sql("alter table task add constraint test_reject_continuation "
-                + "check (step_key <> 'agent-turn-1') not valid").update();
+                + "check (step_key <> 'agent-turn-2') not valid").update();
         try {
             assertThat(worker.runOnce("worker-rollback")).isEqualTo(1);
         } finally {
@@ -134,12 +142,12 @@ class AgentTurnWorkerPostgresIT {
         assertThat(jdbc.sql("select count(*) from artifact where project_id = :projectId")
                 .param("projectId", failedContinuation.id()).query(Long.class).single()).isEqualTo(1);
         assertThat(runs.get(owner.userId(), failedContinuation.id(), rollbackRun.id()).nextStepIndex())
-                .isZero();
+                .isEqualTo(1);
         assertThat(tasks.listByRun(owner.userId(), failedContinuation.id(), rollbackRun.id()))
-                .singleElement().satisfies(task -> assertThat(task.status()).isEqualTo(Task.Status.FAILED));
+                .extracting(Task::status).containsExactly(Task.Status.SUCCEEDED, Task.Status.FAILED);
         assertThat(jdbc.sql("select count(*) from project_event where project_id = :projectId "
                         + "and type = 'task.status.changed' and payload_json->>'status' = 'SUCCEEDED'")
-                .param("projectId", failedContinuation.id()).query(Long.class).single()).isZero();
+                .param("projectId", failedContinuation.id()).query(Long.class).single()).isEqualTo(completedBefore);
     }
 
     @TestConfiguration
@@ -169,6 +177,8 @@ class AgentTurnWorkerPostgresIT {
         @Override
         public Exchange call(List<Message> messages, List<ToolCallback> tools,
                 Map<String, Object> toolContext) {
+            if (onlyLoader(tools)) return load("TEXT");
+            assertThat(tools.stream().map(tool -> tool.getToolDefinition().name())).contains("create_text");
             int count = calls.incrementAndGet();
             if (count == 1) {
                 AssistantMessage response = AssistantMessage.builder().content("")

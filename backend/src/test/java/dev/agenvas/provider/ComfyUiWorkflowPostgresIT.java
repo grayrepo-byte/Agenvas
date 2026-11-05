@@ -23,9 +23,8 @@ import dev.agenvas.asset.infrastructure.MediaToolRunner;
 import dev.agenvas.bootstrap.AgenvasApplication;
 import dev.agenvas.canvas.application.CanvasService;
 import dev.agenvas.identity.application.IdentityService;
-import dev.agenvas.llm.application.LlmProtocolCodec;
-import dev.agenvas.llm.application.AgentTurnCommitService;
-import dev.agenvas.llm.application.LlmTurnCheckpointService;
+import dev.agenvas.llm.application.AgentTurnWorker;
+import dev.agenvas.llm.application.ChatGateway;
 import dev.agenvas.llm.application.ToolExecutionService;
 import dev.agenvas.llm.application.TrustedToolContext;
 import dev.agenvas.project.application.ProjectService;
@@ -33,6 +32,7 @@ import dev.agenvas.project.domain.Project;
 import dev.agenvas.provider.application.MediaCapabilityService;
 import dev.agenvas.provider.application.MediaExecutionWorker;
 import dev.agenvas.run.application.AgentRunService;
+import dev.agenvas.run.domain.AgentRun;
 import dev.agenvas.shared.error.ApiProblemException;
 import dev.agenvas.support.CanvasMediaFixture;
 import dev.agenvas.support.ComfyWorkflowFixture;
@@ -49,6 +49,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -57,10 +58,15 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.ToolResponseMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -77,7 +83,7 @@ import tools.jackson.databind.ObjectMapper;
 /** Synthetic ComfyUI HTTP server and real PostgreSQL; this does not prove GPU generation. */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@SpringBootTest(classes = AgenvasApplication.class, properties = {
+@SpringBootTest(classes = {AgenvasApplication.class, ComfyUiWorkflowPostgresIT.FakeConfig.class}, properties = {
         "agenvas.llm.scheduler-enabled=false", "agenvas.provider.mode=configured",
         "agenvas.provider.media.scheduler-enabled=false"})
 class ComfyUiWorkflowPostgresIT {
@@ -123,9 +129,7 @@ class ComfyUiWorkflowPostgresIT {
     @Autowired WebApplicationContext context;
     @Autowired AgentInstanceService agents;
     @Autowired AgentRunService runs;
-    @Autowired LlmTurnCheckpointService checkpoints;
-    @Autowired AgentTurnCommitService turnCommits;
-    @Autowired LlmProtocolCodec codec;
+    @Autowired AgentTurnWorker agentWorker;
     @Autowired ToolExecutionService toolExecutor;
 
     @Test void importedGraphsPublishThroughAdminApiExecutePinnedMappingsAndArchiveSelectedOutput() throws Exception {
@@ -292,29 +296,58 @@ class ComfyUiWorkflowPostgresIT {
         var agent = configureDirector(agents, owner.userId(), project.id(), "Catalog reader", "Read the published media inputs");
         var queuedRun = runs.create(owner.userId(), project.id(), agent.id(), "List media inputs", "comfy-catalog-run").run();
         String modelWorker = "comfy-catalog-worker";
-        Task modelLease = tasks.claimAgentTurns(modelWorker, 1).getFirst();
-        assertThat(modelLease.runId()).isEqualTo(queuedRun.id());
-        var run = turnCommits.start(modelLease, modelWorker);
-        int modelVersion = run.policySnapshot().path("modelConfigVersion").asInt();
-        String modelSource = run.policySnapshot().path("modelConfigSource").asText();
-        checkpoints.reserveLeased(owner.userId(), project.id(), run.id(), 0, modelVersion, modelSource,
-                codec.request(List.of(new UserMessage("List the media inputs")), List.of()), modelLease, modelWorker);
-        tasks.startAgentStream(modelLease, modelWorker);
-        var response = AssistantMessage.builder().content("").toolCalls(List.of(new AssistantMessage.ToolCall(
-                "comfy-catalog-call", "function", "list_media_capabilities", "{}"))).build();
-        checkpoints.saveResponseLeased(owner.userId(), project.id(), run.id(), 0, modelVersion,
-                codec.response(new ChatResponse(List.of(new Generation(response)))), modelLease, modelWorker);
-        long taskCountBeforeTool = jdbc.sql("select count(*) from task").query(Long.class).single();
-        var trusted = new TrustedToolContext(owner.userId(), project.id(), run.id());
-        JsonNode toolResult = toolExecutor.execute(trusted, 0, "comfy-catalog-call");
+        long mediaTasksBeforeCatalog = jdbc.sql("select count(*) from task where kind <> 'AGENT_TURN'").query(Long.class).single();
+        assertThat(agentWorker.runOnce(modelWorker)).isEqualTo(1); // Commit MEDIA discovery first.
+        assertThat(agentWorker.runOnce(modelWorker)).isEqualTo(1); // Read through the exposed catalog tool.
+        var trusted = new TrustedToolContext(owner.userId(), project.id(), queuedRun.id());
+        JsonNode toolResult = toolExecutor.execute(trusted, 1, "comfy-catalog-call");
         JsonNode listed = java.util.stream.StreamSupport.stream(toolResult.path("capabilities").spliterator(), false)
                 .filter(entry -> entry.path("capabilityId").asText().equals(extended.id().toString())).findFirst().orElseThrow();
         assertThat(listed.path("fields")).hasSize(5);
         assertThat(listed.toString()).doesNotContain("\"graph\"").doesNotContain("synthetic prompt")
                 .doesNotContain("filename_prefix").doesNotContain("127.0.0.1");
-        assertThat(toolExecutor.execute(trusted, 0, "comfy-catalog-call")).isEqualTo(toolResult);
-        assertThat(jdbc.sql("select count(*) from task").query(Long.class).single()).isEqualTo(taskCountBeforeTool);
+        long taskCountBeforeReplay = jdbc.sql("select count(*) from task").query(Long.class).single();
+        assertThat(toolExecutor.execute(trusted, 1, "comfy-catalog-call")).isEqualTo(toolResult);
+        assertThat(jdbc.sql("select count(*) from task").query(Long.class).single()).isEqualTo(taskCountBeforeReplay);
+        assertThat(agentWorker.runOnce(modelWorker)).isEqualTo(1);
+        assertThat(runs.get(owner.userId(), project.id(), queuedRun.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
+        assertThat(jdbc.sql("select count(*) from task where kind <> 'AGENT_TURN'").query(Long.class).single()).isEqualTo(mediaTasksBeforeCatalog);
         assertMixedMediaInputs(owner.userId(), project.id(), connection.id(), reference.resourceDefaultVersion().id());
+    }
+
+    @TestConfiguration static class FakeConfig {
+        @Bean @Primary CatalogGateway comfyCatalogGateway() { return new CatalogGateway(); }
+    }
+
+    static class CatalogGateway implements ChatGateway {
+        private final AtomicInteger turns = new AtomicInteger();
+        @Override public String configSource() { return "synthetic-comfy-catalog"; }
+        @Override public int configVersion() { return 1; }
+        @Override public Capabilities capabilities() { return new Capabilities(true, false, false); }
+        @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
+            int turn = turns.getAndIncrement();
+            AssistantMessage response;
+            if (turn == 0) {
+                assertThat(tools).extracting(tool -> tool.getToolDefinition().name()).containsExactly("load_toolset");
+                response = tool("comfy-discovery", "load_toolset", "{\"toolsets\":[\"MEDIA\"]}");
+            } else {
+                assertThat(tools).extracting(tool -> tool.getToolDefinition().name()).contains("list_media_capabilities");
+                var reply = messages.stream().filter(ToolResponseMessage.class::isInstance).map(ToolResponseMessage.class::cast)
+                        .reduce((before, after) -> after).orElseThrow();
+                assertThat(reply.getResponses()).singleElement().satisfies(result ->
+                        assertThat(result.name()).isEqualTo(turn == 1 ? "load_toolset" : "list_media_capabilities"));
+                if (turn == 1) response = tool("comfy-catalog-call", "list_media_capabilities", "{}");
+                else {
+                    assertThat(turn).isEqualTo(2);
+                    response = new AssistantMessage("The published media input fields were read.");
+                }
+            }
+            return new Exchange(1, new ChatResponse(List.of(new Generation(response))));
+        }
+        private static AssistantMessage tool(String id, String name, String arguments) {
+            return AssistantMessage.builder().content("").toolCalls(List.of(
+                    new AssistantMessage.ToolCall(id, "function", name, arguments))).build();
+        }
     }
 
     private void assertMixedMediaInputs(UUID ownerId, UUID projectId, UUID connectionId, UUID imageVersion) throws Exception {

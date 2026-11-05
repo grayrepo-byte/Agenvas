@@ -20,6 +20,7 @@ public class ThirdPartyPromptSyncSettingsRecord extends UpdatableRecordImpl<Thir
 
     /**
      * Setter for <code>public.third_party_prompt_sync_settings.id</code>.
+     * Singleton identity for administrator prompt synchronization settings
      */
     public void setId(Short value) {
         set(0, value);
@@ -27,6 +28,7 @@ public class ThirdPartyPromptSyncSettingsRecord extends UpdatableRecordImpl<Thir
 
     /**
      * Getter for <code>public.third_party_prompt_sync_settings.id</code>.
+     * Singleton identity for administrator prompt synchronization settings
      */
     public Short getId() {
         return (Short) get(0);
@@ -34,6 +36,7 @@ public class ThirdPartyPromptSyncSettingsRecord extends UpdatableRecordImpl<Thir
 
     /**
      * Setter for <code>public.third_party_prompt_sync_settings.enabled</code>.
+     * Explicit administrator consent to scheduled third-party prompt downloads
      */
     public void setEnabled(Boolean value) {
         set(1, value);
@@ -41,6 +44,7 @@ public class ThirdPartyPromptSyncSettingsRecord extends UpdatableRecordImpl<Thir
 
     /**
      * Getter for <code>public.third_party_prompt_sync_settings.enabled</code>.
+     * Explicit administrator consent to scheduled third-party prompt downloads
      */
     public Boolean getEnabled() {
         return (Boolean) get(1);
@@ -48,6 +52,7 @@ public class ThirdPartyPromptSyncSettingsRecord extends UpdatableRecordImpl<Thir
 
     /**
      * Setter for <code>public.third_party_prompt_sync_settings.version</code>.
+     * Optimistic locking version for administrator consent updates
      */
     public void setVersion(Long value) {
         set(2, value);
@@ -55,6 +60,7 @@ public class ThirdPartyPromptSyncSettingsRecord extends UpdatableRecordImpl<Thir
 
     /**
      * Getter for <code>public.third_party_prompt_sync_settings.version</code>.
+     * Optimistic locking version for administrator consent updates
      */
     public Long getVersion() {
         return (Long) get(2);

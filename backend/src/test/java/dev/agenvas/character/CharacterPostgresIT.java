@@ -264,7 +264,11 @@ class CharacterPostgresIT {
         mvc.perform(post(path + "/archive").with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(archive)))
                 .andExpect(status().isOk());
         assertThat(characters.save(owner, project.id(), character, save)).isEqualTo(saves.getFirst());
-        assertThat(characters.list(owner, project.id()).characters().getFirst()).isEqualTo(archives.getFirst());
+        var persisted = characters.list(owner, project.id()).characters().getFirst();
+        assertThat(persisted).usingRecursiveComparison().ignoringFields("updatedAt").isEqualTo(archives.getFirst());
+        // Command receipts replay exactly; the current row separately uses PostgreSQL's microsecond precision.
+        assertThat(persisted.updatedAt()).isCloseTo(archives.getFirst().updatedAt(),
+                org.assertj.core.api.Assertions.within(1, java.time.temporal.ChronoUnit.MICROS));
         mvc.perform(put(path).with(auth).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(
                 new SaveCharacter(save.commandId(), 0, new CharacterContent("Different intent", "", List.of(), null)))))
                 .andExpect(status().isConflict());

@@ -1,6 +1,9 @@
 package dev.agenvas.llm;
 
 import static dev.agenvas.testing.AgentFixture.configureDirector;
+import static dev.agenvas.testing.OnDemandToolsetFixture.load;
+import static dev.agenvas.testing.OnDemandToolsetFixture.onlyLoader;
+import static dev.agenvas.testing.OnDemandToolsetFixture.prepare;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -238,18 +241,27 @@ class AgentModelRetryPostgresIT {
     @Test void continuationRetryDoesNotRepeatAnAlreadyCommittedTool() {
         gateway.createFirstTool = true;
         gateway.failures = 2;
+        prepare(worker, jdbc, run.id());
         worker.runOnce("retry-worker");
         worker.runOnce("retry-worker");
         Task waiting = tasks.listByRun(owner.userId(), project.id(), run.id()).stream()
-                .filter(task -> task.input().path("stepIndex").asInt() == 1).findFirst().orElseThrow();
+                .filter(task -> task.input().path("stepIndex").asInt() == 2).findFirst().orElseThrow();
         assertThat(waiting.status()).isEqualTo(Task.Status.READY);
+        String frozenRequest = jdbc.sql("select request_json::text from llm_turn where run_id=:id and step_index=2")
+                .param("id", run.id()).query(String.class).single();
         clock.now = waiting.nextActionAt();
         worker.runOnce("retry-worker");
         assertThat(runs.get(owner.userId(), project.id(), run.id()).status()).isEqualTo(AgentRun.Status.SUCCEEDED);
         assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:id")
-                .param("id", run.id()).query(Long.class).single()).isEqualTo(1);
-        assertThat(jdbc.sql("select count(*) from llm_turn where run_id=:id")
                 .param("id", run.id()).query(Long.class).single()).isEqualTo(2);
+        assertThat(jdbc.sql("select count(*) from tool_execution where run_id=:id and tool_name='create_text'")
+                .param("id", run.id()).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from artifact where project_id=:project")
+                .param("project", project.id()).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("select count(*) from llm_turn where run_id=:id")
+                .param("id", run.id()).query(Long.class).single()).isEqualTo(3);
+        assertThat(jdbc.sql("select request_json::text from llm_turn where run_id=:id and step_index=2")
+                .param("id", run.id()).query(String.class).single()).isEqualTo(frozenRequest);
         assertThat(gateway.calls).hasValue(3);
     }
 
@@ -351,6 +363,8 @@ class AgentModelRetryPostgresIT {
         @Override public int configVersion() { return 1; }
         @Override public Capabilities capabilities() { return new Capabilities(toolCalling, false, false); }
         @Override public Exchange call(List<Message> messages, List<ToolCallback> tools, Map<String, Object> context) {
+            if (createFirstTool && onlyLoader(tools)) return load("TEXT");
+            if (createFirstTool) assertThat(tools).extracting(tool -> tool.getToolDefinition().name()).contains("create_text");
             int attempt = calls.incrementAndGet();
             if (expectedReadSchema != null) {
                 var restored = tools.stream().map(ToolCallback::getToolDefinition)
