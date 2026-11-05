@@ -55,7 +55,7 @@ export function SetupPage() {
       ) : !setupStatus.data.setupRequired ? (
         <div className="ui-stack">
           <Notice title={t("auth.setup.initialized")} tone="success">{t("auth.setup.adminExists")}</Notice>
-          <Link className="primary-button" to="/login">{t("auth.setup.loginLink")}</Link>
+          <Button asChild><Link to="/login">{t("auth.setup.loginLink")}</Link></Button>
         </div>
       ) : (
         <form className="ui-form" onSubmit={submit} aria-busy={setup.isPending}>

@@ -135,7 +135,7 @@ export function VoiceLibrary({ selected, onSelect, onClose, containerRef }: {
           const isFavorite = preferences.favorites.includes(voice.id);
           const name = getVoiceDisplayName(voice);
           return <div className="flex min-w-0 items-center gap-1" key={voice.id}>
-            <Button variant={isSelected ? "outline" : "ghost"} type="button" className="h-auto min-w-0 flex-1 justify-start py-2" aria-pressed={isSelected} onClick={() => {
+            <Button variant={isSelected ? "outline" : "ghost"} size="content" type="button" className="min-w-0 flex-1 justify-start" aria-pressed={isSelected} onClick={() => {
               remember({ ...preferences, recent: [voice.id, ...preferences.recent.filter((id) => id !== voice.id)].slice(0, RECENT_LIMIT) }); onSelect(voice.id);
             }}>
               <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-full border bg-muted text-xs text-muted-foreground">{name.slice(0, 1)}</span>

@@ -69,7 +69,7 @@ export function SystemSettingsPage() {
     <Tabs className="system-settings-workspace" orientation="vertical" value={selected} onValueChange={(value) => { const tab = TABS.find((item) => item === value); if (tab) choose(tab); }}>
     <div className="system-settings-navigation">
       <div className="system-settings-navigation-intro"><h2>{t("settings.general.categories")}</h2><p>{t("settings.general.navigationHint")}</p></div>
-      <TabsList className="system-settings-tabs" variant="line" aria-label={t("settings.general.categories")}>
+      <TabsList className="system-settings-tabs" variant="navigation" size="sm" aria-label={t("settings.general.categories")}>
         {TABS.map((tab) => {
           const CategoryIcon = TAB_ICONS[tab];
           return <TabsTrigger className="system-settings-tab" key={tab} value={tab} aria-label={tabLabel(tab)} title={tabDescription(tab)}>

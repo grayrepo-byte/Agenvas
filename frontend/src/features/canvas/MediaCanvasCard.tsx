@@ -434,7 +434,7 @@ function MediaPreview({ artifact, assetId, title, audioDescription, demo, select
         : <div className="media-card-empty"><ImageIcon size={36} /><span>{t("media.card.previewUnavailable")}</span>
           <Button variant="ghost" className="media-upload-button nodrag" type="button" onClick={() => setFailed(false)}>{t("media.card.retryPreview")}</Button></div>}
     {demo ? <span className="media-demo-badge">{t("media.card.mockAsset")}</span> : null}
-    <Button variant="ghost" className="media-expand-button nodrag nowheel nopan" type="button" aria-label={t("media.card.upscale")} title={t("media.card.upscale")}
+    <Button variant="ghost" size="icon-sm" className="media-expand-button nodrag nowheel nopan" type="button" aria-label={t("media.card.upscale")} title={t("media.card.upscale")}
         onPointerDown={(event) => event.stopPropagation()} onMouseDown={(event) => event.stopPropagation()}
         onClick={(event) => { event.stopPropagation(); setExpanded(true); }}><ArrowsOutSimple size={19} /></Button>
     {expanded ? <MediaPreviewDialog kind="image" title={title} width={width} height={height}

@@ -75,7 +75,7 @@ export function ProjectsPage() {
         <section className="projects-library" aria-label={t("projects.title")}>
           <div className="projects-list-heading"><h2>{t("projects.title")}</h2><StatusBadge>{t("projects.loadedCount", { "0": loadedProjects.length })}</StatusBadge>{query ? <span className="ui-muted">{t("projects.matchCount", { "0": visibleProjects.length })}</span> : null}</div>
           <div className="projects-toolbar">
-            <label className="projects-search"><MagnifyingGlass size={17} aria-hidden="true" /><Input aria-label={t("projects.search")} placeholder={t("projects.searchPlaceholder")} type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+            <label className="projects-search ui-search-field"><MagnifyingGlass size={17} aria-hidden="true" /><Input variant="ghost" aria-label={t("projects.search")} placeholder={t("projects.searchPlaceholder")} type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
             <div className="projects-filter-actions"><label className="projects-archive-filter"><Checkbox checked={includeArchived} onCheckedChange={(event) => setIncludeArchived(event === true)} />{t("projects.showArchived")}</label>
               <Button variant="outline" size="icon" aria-label={t("projects.refresh")} disabled={projects.isFetching} onClick={() => void projects.refetch()} type="button"><ArrowClockwise aria-hidden="true" /></Button></div>
           </div>

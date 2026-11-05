@@ -90,7 +90,7 @@ function WorkflowMediaSlot({ field, index, value, choices, canvasChoices, disabl
         {hasValue ? <MediaPreview choice={choice} kind={field.type} /> : undefined}
       </MediaReferenceSourceMenu>
       {hasValue ? <><span className="media-draft-reference-index pointer-events-none" aria-hidden="true">{index + 1}</span>
-        <Button type="button" variant="ghost" className="media-draft-reference-remove" disabled={locked}
+        <Button type="button" variant="ghost" size="icon-xs" className="media-draft-reference-remove" disabled={locked}
           aria-label={t("media.workflow.clearSlot", { "0": label })} onClick={() => onChange(field.key, undefined)}><X size={13} /></Button></> : null}
     </div>
     <span className="sr-only" id={labelId}>{label}{field.required ? " *" : ""}</span>

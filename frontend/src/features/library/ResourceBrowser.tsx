@@ -35,15 +35,15 @@ export function ResourceBrowser() {
     <p className="library-resource-description">{t("resources.description")}</p>
     <FieldGroup className="library-filters">
       <Field className="library-search-field"><FieldLabel htmlFor={`${id}-search`}>{t("resources.search")}</FieldLabel>
-        <Input id={`${id}-search`} type="search" maxLength={MAX_LIBRARY_NAME_LENGTH} value={query} placeholder={t("resources.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} /></Field>
+        <Input density="compact" id={`${id}-search`} type="search" maxLength={MAX_LIBRARY_NAME_LENGTH} value={query} placeholder={t("resources.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} /></Field>
       <Field className="library-select-field"><FieldLabel htmlFor={`${id}-kind`}>{t("media.kind")}</FieldLabel>
         <Select density="compact" id={`${id}-kind`} value={kind ?? ""} onChange={(event) => setKind(event.target.value ? event.target.value as MediaKind : undefined)}>
           <option value="">{t("common.allKinds")}</option>{MEDIA_ASSET_KINDS.map((value) => <option key={value} value={value}>{KIND_LABELS[value]}</option>)}
         </Select></Field>
-      <div className="library-filter-actions"><Button variant="outline" type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>{t("resources.refresh")}</Button></div>
+      <div className="library-filter-actions"><Button size="sm" variant="outline" type="button" disabled={list.isFetching} onClick={() => void list.refetch()}>{t("resources.refresh")}</Button></div>
     </FieldGroup>
     {list.isPending ? <p role="status">{t("resources.loading")}</p> : null}
-    {list.error ? <div role="alert">{list.error.message}<Button variant="outline" type="button" disabled={list.isFetching}
+    {list.error ? <div role="alert">{list.error.message}<Button size="sm" variant="outline" type="button" disabled={list.isFetching}
       onClick={() => { if (list.isFetchNextPageError) void list.fetchNextPage(); else void list.refetch(); }}>{t("resources.retry")}</Button></div> : null}
     <div className="library-grid">{items.map((resource) => {
       const assetId = mediaId(resource);
@@ -63,7 +63,7 @@ export function ResourceBrowser() {
     {list.isSuccess && !items.length ? <Empty><EmptyHeader><EmptyMedia variant="icon"><Images /></EmptyMedia>
       <EmptyTitle>{query || kind ? t("resources.emptySearch") : t("resources.empty")}</EmptyTitle><EmptyDescription>{t("resources.emptyHint")}</EmptyDescription>
     </EmptyHeader></Empty> : null}
-    {list.hasNextPage ? <Button variant="outline" className="library-load-more" type="button" disabled={list.isFetching}
+    {list.hasNextPage ? <Button size="sm" variant="outline" className="library-load-more" type="button" disabled={list.isFetching}
       onClick={() => void list.fetchNextPage()}>{list.isFetchingNextPage ? t("common.loading") : t("resources.loadMore")}</Button> : null}
     {selected ? <ResourceDetail resource={selected} onClose={() => setSelected(null)} /> : null}
   </section>;

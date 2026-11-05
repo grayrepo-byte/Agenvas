@@ -66,7 +66,7 @@ function TaskRetryAttempt({ projectId, taskId, taskVersion, errorCode, taskStatu
       ? t("media.card.blocked") : t("tasks.status.unknown")}</p>
     {/* 说明为什么未知：超时、断线、结果下载失败与协议不符的重试预期并不相同。 */}
     {reason ? <p>{reason}</p> : errorCode ? <p>{errorCode}</p> : null}
-    <Button variant="ghost" className="agent-chat-panel-secondary" disabled={retry.isPending}
+    <Button variant="outline" size="sm" className="agent-chat-panel-retry" disabled={retry.isPending}
       onClick={() => retry.mutate()} type="button">
       {retry.isPending ? t("common.retrying") : t("common.retry")}
     </Button>

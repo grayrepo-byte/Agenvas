@@ -87,7 +87,7 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, extraContro
     aria-label={t("media.card.lighting")} onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
     <header className="relight-dialog-header">
       <strong>{t("media.card.lighting")}</strong>
-      <Button variant="ghost" type="button" aria-label={t("image.relight.close")} onClick={onClose}><X size={19} /></Button>
+      <Button variant="ghost" size="icon-sm" type="button" aria-label={t("image.relight.close")} onClick={onClose}><X size={19} /></Button>
     </header>
 
     <div className="relight-dialog-body">
@@ -148,7 +148,7 @@ export function RelightPanel({ sourceUrl, capabilities, busy, error, extraContro
       </label> : null}
       <div className="relight-submit-group">
         <span title={t("image.relight.billingHint")}><Stack size={19} weight="fill" />AI</span>
-        <Button variant="ghost" type="button" className="relight-submit" disabled={!canSubmit}
+        <Button size="icon-sm" type="button" className="relight-submit" disabled={!canSubmit}
           aria-label={busy ? t("image.relight.submitting") : t("image.relight.start")} onClick={submit}>
           <ArrowUp size={21} weight="bold" />
         </Button>

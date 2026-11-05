@@ -181,13 +181,13 @@ export function BrushMarkupEditor(props: {
             style={{ backgroundColor: entry.value }} onClick={() => setColor(entry.value)} />)}
         </div> : null}
         <div className="markup-toolbar" role="toolbar" aria-label={t("image.markupEditor.tools")}>
-          <Button variant="ghost" type="button" className="markup-close" aria-label={t("image.markupEditor.close")} disabled={save.isPending}
+          <Button variant="ghost" size="sm" type="button" className="markup-close" aria-label={t("image.markupEditor.close")} disabled={save.isPending}
             onClick={onClose}><X size={17} /><span>{t("image.markupEditor.title")}</span></Button>
           <div className="markup-tool-group">
-            <Button variant="ghost" type="button" className="markup-color" aria-label={t("image.markupEditor.chooseColor")}
+            <Button variant="ghost" size="icon-sm" type="button" className="markup-color" aria-label={t("image.markupEditor.chooseColor")}
               aria-expanded={paletteOpen} onClick={() => setPaletteOpen(!paletteOpen)}>
               <span style={{ backgroundColor: color }} /></Button>
-            {TOOLS.map((entry) => <Button variant="ghost" type="button" key={entry.tool}
+            {TOOLS.map((entry) => <Button variant="ghost" size="icon-sm" type="button" key={entry.tool}
               title={entry.tool === "BRUSH" || entry.tool === "ERASER" ? t("image.markupEditor.toolSizeHint", { "0": entry.label }) : entry.label}
               aria-label={entry.label} aria-pressed={tool === entry.tool} disabled={save.isPending}
               onClick={() => {
@@ -241,12 +241,12 @@ export function BrushMarkupEditor(props: {
         {!ready ? <Button variant="ghost" type="button" onClick={() => { setLocalError(null); setReload(reload + 1); }}>{t("image.markupEditor.retryLoad")}</Button> : null}
       </p> : null}
       <div className="markup-save-toolbar">
-        <Button variant="ghost" type="button" aria-label={t("image.markupEditor.undo")} title={t("image.markupEditor.undo")} disabled={!cursor || save.isPending}
+        <Button variant="ghost" size="icon-sm" type="button" aria-label={t("image.markupEditor.undo")} title={t("image.markupEditor.undo")} disabled={!cursor || save.isPending}
           onClick={() => restore(cursor - 1)}><ArrowCounterClockwise size={20} /></Button>
-        <Button variant="ghost" type="button" aria-label={t("image.markupEditor.redo")} title={t("image.markupEditor.redo")} disabled={cursor >= strokes.length || save.isPending}
+        <Button variant="ghost" size="icon-sm" type="button" aria-label={t("image.markupEditor.redo")} title={t("image.markupEditor.redo")} disabled={cursor >= strokes.length || save.isPending}
           onClick={() => restore(cursor + 1)}><ArrowClockwise size={20} /></Button>
         <span className="markup-divider" />
-        <Button variant="ghost" type="button" className="markup-save" disabled={!ready || !cursor || save.isPending || Boolean(text)}
+        <Button size="sm" type="button" className="markup-save" disabled={!ready || !cursor || save.isPending || Boolean(text)}
           onClick={() => save.mutate()}>{save.isPending ? t("common.saving") : save.error ? t("common.retrySave") : t("image.markupEditor.save")}</Button>
       </div>
     </div>

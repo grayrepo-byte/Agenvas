@@ -251,7 +251,7 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
         {error instanceof ApiError ? error.message : t("image.crop.submitFailed")}</p> : null}
 
       <footer className="crop-toolbar">
-        <Button variant="ghost" type="button" className="crop-cancel" onClick={onClose}>
+        <Button variant="ghost" size="sm" type="button" className="crop-cancel" onClick={onClose}>
           <X size={18} weight="bold" />{t("common.cancel")}</Button>
         <span className="crop-toolbar-divider" aria-hidden="true" />
         <label className="crop-ratio-control"><Crop size={19} />
@@ -262,7 +262,7 @@ export function CropPanel({ sourceUrl, sourceWidth, sourceHeight, busy, error, o
               value={option.value}>{option.label}</option>)}
           </Select>
         </label>
-        <Button variant="ghost" type="button" className="crop-confirm" disabled={busy || !imageSize} onClick={submit}>
+        <Button size="sm" type="button" className="crop-confirm" disabled={busy || !imageSize} onClick={submit}>
           <Check size={18} weight="bold" />{busy ? t("image.crop.processing") : t("image.crop.confirm")}</Button>
       </footer>
     </div>

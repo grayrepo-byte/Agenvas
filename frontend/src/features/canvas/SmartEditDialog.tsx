@@ -388,18 +388,18 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
           disabled={busy || uploading} aria-pressed={tool === "RECTANGLE"} onClick={() => setTool("RECTANGLE")}>
           <BoundingBox size={17} />{guidance === "MARKUP" ? t("image.markupEditor.rectangle") : t("image.smartEdit.rectangleMask")}</Button>
         <span className="smart-edit-divider" />
-        <Button variant="ghost" type="button" className={strokeMode === "PAINT" ? "is-active is-icon" : "is-icon"}
+        <Button variant="ghost" size="icon-sm" type="button" className={strokeMode === "PAINT" ? "is-active is-icon" : "is-icon"}
           aria-label={t("image.smartEdit.addMask")} disabled={busy || uploading} aria-pressed={strokeMode === "PAINT"}
           onClick={() => setStrokeMode("PAINT")}><PaintBrush size={18} /></Button>
-        <Button variant="ghost" type="button" className={strokeMode === "ERASE" ? "is-active is-icon" : "is-icon"}
+        <Button variant="ghost" size="icon-sm" type="button" className={strokeMode === "ERASE" ? "is-active is-icon" : "is-icon"}
           aria-label={t("image.smartEdit.eraseMask")} disabled={busy || uploading} aria-pressed={strokeMode === "ERASE"}
           onClick={() => setStrokeMode("ERASE")}><Eraser size={18} /></Button>
         <label className="smart-edit-brush-size"><span className="sr-only">{t("image.brushSize")}</span>
           <Range disabled={busy || uploading} min={8} max={120} value={brushSize}
             onChange={(event) => setBrushSize(Number(event.target.value))} /></label>
-        <Button variant="ghost" type="button" className="is-icon" aria-label={t("image.smartEdit.undoMask")} disabled={busy || uploading || !historyState.canUndo}
+        <Button variant="ghost" size="icon-sm" type="button" className="is-icon" aria-label={t("image.smartEdit.undoMask")} disabled={busy || uploading || !historyState.canUndo}
           onClick={() => restoreHistory(historyIndex.current - 1)}><ArrowCounterClockwise size={18} /></Button>
-        <Button variant="ghost" type="button" className="is-icon" aria-label={t("image.smartEdit.redoMask")} disabled={busy || uploading || !historyState.canRedo}
+        <Button variant="ghost" size="icon-sm" type="button" className="is-icon" aria-label={t("image.smartEdit.redoMask")} disabled={busy || uploading || !historyState.canRedo}
           onClick={() => restoreHistory(historyIndex.current + 1)}><ArrowClockwise size={18} /></Button>
       </div>
 
@@ -440,11 +440,11 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
         {references.length ? <div className="smart-edit-references" aria-label={t("image.smartEdit.selectedReferences")}>
           {references.map((reference, index) => <div key={reference.versionId}>
             <img src={reference.thumbnailUrl} alt="" /><span>{index + 2}</span>
-            <Button variant="ghost" type="button" disabled={busy || uploading} aria-label={t("image.smartEdit.removeReference", { "0": reference.label })}
+            <Button variant="ghost" size="icon-xs" type="button" disabled={busy || uploading} aria-label={t("image.smartEdit.removeReference", { "0": reference.label })}
               onClick={() => setReferences((current) => current.filter(
                 (item) => item.versionId !== reference.versionId))}><X size={12} /></Button>
           </div>)}</div> : null}
-        <Textarea disabled={busy || uploading} value={instruction} maxLength={4000}
+        <Textarea variant="ghost" disabled={busy || uploading} value={instruction} maxLength={4000}
           aria-label={t("image.smartEdit.prompt")}
           placeholder={t("image.smartEdit.promptPlaceholder")}
           onChange={(event) => setInstruction(event.target.value)} />
@@ -462,7 +462,7 @@ export function SmartEditDialog({ projectId, sourceVersionId, sourceTitle, sourc
           <span className="smart-edit-cost" title={t("media.editor.estimateHint")}>
             <Coins size={16} /><span>{estimatedMediaCost(selectedCapability, 1, null)}</span>
           </span>
-          <Button variant="ghost" type="button" className="smart-edit-submit" aria-label={t("image.smartEdit.start")}
+          <Button size="icon-sm" type="button" className="smart-edit-submit" aria-label={t("image.smartEdit.start")}
             disabled={!canSubmit} onClick={() => void submit()}>
             {busy || uploading ? <span className="smart-edit-submit-progress">…</span>
               : <ArrowUp size={21} weight="bold" />}</Button>

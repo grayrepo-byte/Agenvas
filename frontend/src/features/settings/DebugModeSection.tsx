@@ -50,7 +50,7 @@ export function DebugModeSection({ enabled }: { enabled: boolean }) {
       </FieldGroup>
       {save.isSuccess && draft === null ? <p role="status">{t("settings.debug.saved", { "0": settings.data?.debugMode ? t("common.enabled") : t("common.disabled") })}</p> : null}
       <div className="ui-form-actions">
-        <Link className="secondary-button" to="/settings/calls">{t("settings.debug.viewLogs")}</Link>
+        <Button asChild variant="outline"><Link to="/settings/calls">{t("settings.debug.viewLogs")}</Link></Button>
         <Button variant="default"  type="button" disabled={!settings.data || settings.isError || forbidden || conflict || save.isPending || checked === settings.data.debugMode}
           onClick={() => { if (settings.data) save.mutate({ debugMode: checked, expectedVersion: settings.data.version }); }}>{save.isPending ? t("common.savingProgress") : t("settings.debug.save")}</Button>
       </div>

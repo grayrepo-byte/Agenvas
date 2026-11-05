@@ -5,12 +5,9 @@
 .app-shell--settings .system-settings-navigation-intro h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--ui-text-secondary); }
 .app-shell--settings .system-settings-navigation-intro p { margin: 0; font-size: 11px; line-height: 1.8; color: var(--ui-text-muted); }
 .app-shell--settings .system-settings-tabs { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 5px; width: 100%; min-width: 0; max-width: none; height: auto; margin: 0; padding: 0; }
-.app-shell--settings .system-settings-tab { flex: none; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; min-height: 36px; height: auto; padding: 8px 10px; border-radius: 9px; text-align: left; font-size: 12px; white-space: normal; transition: background-color 180ms ease, color 180ms ease; }
+.app-shell--settings .system-settings-tab { flex: none; align-items: center; gap: 8px; width: 100%; }
 .app-shell--settings .system-settings-tab > svg { margin-top: 0; }
 .app-shell--settings .system-settings-tab > span { display: grid; gap: 5px; min-width: 0; }
-.app-shell--settings .system-settings-tab:hover { background: var(--ui-surface-raised); }
-.app-shell--settings .system-settings-tab[data-state="active"] { background: var(--ui-accent-subtle); color: var(--ui-accent-text); }
-.app-shell--settings .system-settings-tab::after { display: none; }
 .app-shell--settings .system-settings-content { min-width: 0; }
 .app-shell--settings .system-settings-panel { min-width: 0; }
 .app-shell--settings .system-settings-panel[hidden] { display: none; }
@@ -58,7 +55,6 @@
 }
 @media (max-width: 640px) {
   .app-shell--settings .system-settings-navigation { margin-bottom: 12px; }
-  .app-shell--settings .system-settings-tab { padding-inline: 10px; }
   .app-shell--settings .system-settings-panel .ui-panel { padding: 12px; }
   .app-shell--settings .system-settings-panel .system-settings-language-panel { padding: 12px; }
 }
@@ -75,12 +71,10 @@
   .app-shell--settings .system-settings-navigation { position: static; margin: 0; padding: 0; }
   .app-shell--settings .system-settings-navigation-intro { display: none; }
   .app-shell--settings .system-settings-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .app-shell--settings .system-settings-tab { min-height: 36px; align-items: center; }
   .app-shell--settings .system-settings-tab > svg { margin: 0; }
 }
 @media (max-width: 560px) {
   .app-shell--settings .system-settings-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .app-shell--settings .system-settings-tab { min-height: 36px; padding: 8px 10px; }
 }
 
 /* Sub-settings adapt to their available content width beside the category navigation. */

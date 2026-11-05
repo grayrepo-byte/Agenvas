@@ -100,7 +100,7 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
     </div>
     <div className="media-draft-prompt-shell">
       <label className="media-draft-prompt-label" htmlFor={`${id}-prompt`}>{t("text.generation.prompt")}</label>
-      <Textarea ref={promptRef} id={`${id}-prompt`} className="media-draft-prompt" rows={MIN_PROMPT_ROWS} maxLength={MAX_PROMPT_LENGTH}
+      <Textarea variant="ghost" ref={promptRef} id={`${id}-prompt`} className="media-draft-prompt" rows={MIN_PROMPT_ROWS} maxLength={MAX_PROMPT_LENGTH}
         placeholder={t("text.generation.promptPlaceholder")} value={prompt}
         onChange={(event) => {
           intent.current = null;
@@ -113,7 +113,7 @@ export function TextGenerationEditor({ artifact }: { artifact: Artifact }) {
         <Cube size={17} /><span>{modelLabel}</span>
       </span>
       <span className="media-draft-cost" title={t("text.generation.unknownEstimatedCost")}><Coins size={16} />{t("media.pricing.unknown")}</span>
-      <Button variant="ghost" className="media-draft-run" type="button" disabled={!canRun}
+      <Button size="icon-sm" className="media-draft-run" type="button" disabled={!canRun}
         aria-label={run.isPending ? t("text.generation.submitting") : t("text.generate")}
         title={occupied ? t("text.generation.activeTask") : t("text.generate")}
         onClick={() => run.mutate()}><ArrowUp size={21} weight="bold" /></Button>

@@ -121,7 +121,7 @@ export function MediaFunctionSettingsPage() {
   const activeEntries = groups.find((group) => group.tab === selectedTab)?.entries ?? [];
   if (loadError instanceof ApiError && loadError.status === HTTP_STATUS.UNAUTHORIZED) return <Navigate to="/login" replace />;
   return <PageShell title={t("media.functions.title")} description={t("media.functions.description")}
-    actions={<Link className="secondary-button" to="/settings/media">{t("ui.pageShell.mediaSettings")}</Link>}>
+    actions={<Button asChild variant="outline"><Link to="/settings/media">{t("ui.pageShell.mediaSettings")}</Link></Button>}>
     {!loadError && (functions.isPending || settings.isPending) ? <LoadingState label={t("app.pageLoading")} /> : null}
     {loadError ? <Notice tone="danger"><p>{loadError.message}</p>
       <Button variant="outline" type="button" onClick={() => { void session.refetch(); void functions.refetch(); void settings.refetch(); }}>{t("common.retry")}</Button></Notice> : null}
