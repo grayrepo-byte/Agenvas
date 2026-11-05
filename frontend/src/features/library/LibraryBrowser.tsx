@@ -89,6 +89,6 @@ export function LibraryBrowser({ trash = false, kinds, onPick, disabled = false,
     })}</div>
     {list.data?.pages[0]?.total === 0 ? page ? <EmptyState icon={<Images />} title={emptyTitle} description={t("library.browser.saveHint")} />
       : <div className="library-empty"><FileText size={32} /><p>{emptyTitle}</p><p>{t("library.browser.saveHint")}</p></div> : null}
-    {list.hasNextPage ? <Button variant="outline" className={page ? "library-load-more" : undefined} type="button" disabled={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>{list.isFetchingNextPage ? t("common.loading") : t("library.browser.loadMore")}</Button> : null}
+    {list.hasNextPage ? <Button variant="outline" className={page ? "library-load-more" : undefined} type="button" disabled={list.isFetching} onClick={() => void list.fetchNextPage()}>{list.isFetchingNextPage ? t("common.loading") : t("library.browser.loadMore")}</Button> : null}
   </section>;
 }

@@ -63,7 +63,7 @@ export function ResourceBrowser() {
     {list.isSuccess && !items.length ? <Empty><EmptyHeader><EmptyMedia variant="icon"><Images /></EmptyMedia>
       <EmptyTitle>{query || kind ? t("resources.emptySearch") : t("resources.empty")}</EmptyTitle><EmptyDescription>{t("resources.emptyHint")}</EmptyDescription>
     </EmptyHeader></Empty> : null}
-    {list.hasNextPage ? <Button variant="outline" className="library-load-more" type="button" disabled={list.isFetchingNextPage}
+    {list.hasNextPage ? <Button variant="outline" className="library-load-more" type="button" disabled={list.isFetching}
       onClick={() => void list.fetchNextPage()}>{list.isFetchingNextPage ? t("common.loading") : t("resources.loadMore")}</Button> : null}
     {selected ? <ResourceDetail resource={selected} onClose={() => setSelected(null)} /> : null}
   </section>;
